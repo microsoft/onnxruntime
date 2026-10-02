@@ -1656,7 +1656,9 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
                              size_t length, IAllocatorUniquePtr<void>& external_data) {
   // query length if it is 0
   if (length == 0) {
-    ORT_RETURN_IF_ERROR(file.GetLength(length));
+    uint64_t file_length = 0;
+    ORT_RETURN_IF_ERROR(file.GetLength(file_length));
+    length = SafeInt<size_t>(file_length);
   }
 
   // first, try to map into memory
@@ -1840,7 +1842,7 @@ Status GetExtDataFromTensorProto(const Env& env,
     ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
     ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
 
-    size_t file_length = 0;
+    uint64_t file_length = 0;
     ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
@@ -1923,7 +1925,7 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
   PathString opened_path;
   ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
   ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
-  size_t file_length = 0;
+  uint64_t file_length = 0;
   ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
   return LoadPrepackedWeightsFromFile(*external_data_file, file_length, prepacked_infos, prepacked_info);
 #endif

@@ -140,8 +140,14 @@ class PosixRandomAccessFile final : public RandomAccessFile {
   PosixRandomAccessFile(ScopedFileDescriptor descriptor, std::string path)
       : descriptor_(std::move(descriptor)), path_(std::move(path)) {}
 
-  common::Status GetLength(size_t& length) const override {
-    return GetFileLength(descriptor_.Get(), length);
+  common::Status GetLength(uint64_t& length) const override {
+    struct stat file_stat{};
+    if (TempFailureRetry(fstat, descriptor_.Get(), &file_stat) < 0) {
+      return ReportSystemError("fstat", path_);
+    }
+    ORT_RETURN_IF(file_stat.st_size < 0, "RandomAccessFile: received negative file length.");
+    length = static_cast<uint64_t>(file_stat.st_size);
+    return Status::OK();
   }
 
   common::Status GetCanonicalPath(PathString& path) const override {
@@ -157,7 +163,9 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     std::array<char, PATH_MAX> buffer{};
     const auto length = readlink(fd_path.c_str(), buffer.data(), buffer.size() - 1);
     if (length < 0) {
-      return ReportSystemError("readlink", fd_path);
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL, "Secure opened-file canonicalization requires procfs at ", fd_path,
+          ". Ensure /proc is mounted in the sandbox or chroot. Error: ", strerror(errno));
     }
     path.assign(buffer.data(), static_cast<size_t>(length));
     return Status::OK();
@@ -169,20 +177,9 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     path.assign(file_info.kf_path);
     return Status::OK();
 #else
-    std::array<char, PATH_MAX> buffer{};
-    ORT_RETURN_IF_NOT(realpath(path_.c_str(), buffer.data()) != nullptr,
-                      "realpath failed for ", path_, ": ", strerror(errno));
-
-    struct stat opened_stat{};
-    struct stat path_stat{};
-    ORT_RETURN_IF_NOT(fstat(descriptor_.Get(), &opened_stat) == 0,
-                      "fstat failed for ", path_, ": ", strerror(errno));
-    ORT_RETURN_IF_NOT(stat(buffer.data(), &path_stat) == 0,
-                      "stat failed for ", path_, ": ", strerror(errno));
-    ORT_RETURN_IF_NOT(opened_stat.st_dev == path_stat.st_dev && opened_stat.st_ino == path_stat.st_ino,
-                      "The opened file no longer matches its canonical path: ", path_);
-    path.assign(buffer.data());
-    return Status::OK();
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "Secure canonical-path lookup for an opened file is not available on this POSIX platform.");
 #endif
   }
 
@@ -193,9 +190,9 @@ class PosixRandomAccessFile final : public RandomAccessFile {
       return Status::OK();
     }
 
-    size_t file_size = 0;
+    uint64_t file_size = 0;
     ORT_RETURN_IF_ERROR(GetLength(file_size));
-    const size_t requested_end = SafeInt<size_t>(offset) + length;
+    const uint64_t requested_end = SafeInt<uint64_t>(offset) + length;
     ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
 
     const long system_page_size = sysconf(_SC_PAGESIZE);
@@ -205,7 +202,7 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
     void* const mapped_base =
-        mmap(nullptr, mapped_length, PROT_READ, MAP_PRIVATE, descriptor_.Get(), mapped_offset);
+        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, descriptor_.Get(), mapped_offset);
     if (mapped_base == MAP_FAILED) {
       return ReportSystemError("mmap", path_);
     }

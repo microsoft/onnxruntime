@@ -365,16 +365,13 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
   explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
 
-  Status GetLength(size_t& length) const override {
+  Status GetLength(uint64_t& length) const override {
     LARGE_INTEGER file_size{};
     if (!GetFileSizeEx(file_handle_.get(), &file_size)) {
       return FileError("GetFileSizeEx", GetLastError());
     }
-    if (file_size.QuadPart < 0 ||
-        static_cast<ULONGLONG>(file_size.QuadPart) > std::numeric_limits<size_t>::max()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: invalid or unrepresentable file length");
-    }
-    length = static_cast<size_t>(file_size.QuadPart);
+    ORT_RETURN_IF(file_size.QuadPart < 0, "RandomAccessFile: received negative file length.");
+    length = static_cast<uint64_t>(file_size.QuadPart);
     return Status::OK();
   }
 
@@ -427,9 +424,9 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
       return Status::OK();
     }
 
-    size_t file_size = 0;
+    uint64_t file_size = 0;
     ORT_RETURN_IF_ERROR(GetLength(file_size));
-    const size_t requested_end = SafeInt<size_t>(offset) + length;
+    const uint64_t requested_end = SafeInt<uint64_t>(offset) + length;
     ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
 
     wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr, PAGE_READONLY, 0, 0, nullptr)};

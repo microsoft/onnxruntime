@@ -136,7 +136,7 @@ class RandomAccessFile {
   virtual ~RandomAccessFile() = default;
 
   // Query the open file, leaving length unchanged on failure.
-  virtual common::Status GetLength(size_t& length) const = 0;
+  virtual common::Status GetLength(uint64_t& length) const = 0;
 
   // Return the canonical path of this open file handle.
   virtual common::Status GetCanonicalPath(PathString& path) const = 0;

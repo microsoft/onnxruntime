@@ -198,7 +198,7 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
   const size_t length = data_length;
   ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "External data length does not match tensor size.");
 
-  size_t file_length = 0;
+  uint64_t file_length = 0;
   ORT_RETURN_IF_ERROR(file.GetLength(file_length));
   const SafeInt<FileOffsetType> end_offset = SafeInt<FileOffsetType>(data_offset) + length;
   ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
