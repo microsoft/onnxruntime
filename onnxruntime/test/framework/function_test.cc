@@ -468,6 +468,10 @@ TEST(FunctionTest, AotInliningChargesNestedBoundGraphAttributeReferences) {
   condition_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
   condition_attribute->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
   condition_attribute->mutable_t()->add_int32_data(1);
+  auto* condition_value_info = function->add_value_info();
+  condition_value_info->set_name("condition");
+  condition_value_info->mutable_type()->mutable_tensor_type()->set_elem_type(
+      ONNX_NAMESPACE::TensorProto_DataType_BOOL);
 
   auto* if_node = function->add_node();
   if_node->set_op_type("If");
