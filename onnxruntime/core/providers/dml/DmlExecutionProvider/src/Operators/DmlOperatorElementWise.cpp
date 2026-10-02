@@ -731,6 +731,36 @@ public:
 
         auto fmod = kernelInfo.GetOptionalAttribute<int>(AttrName::Fmod, 0);
 
+        const DML_TENSOR_DATA_TYPE dataType = m_inputTensorDescs[0].GetDmlDataType();
+        if (!fmod && (dataType == DML_TENSOR_DATA_TYPE_FLOAT16 || dataType == DML_TENSOR_DATA_TYPE_FLOAT32))
+        {
+            dml::Graph graph(m_dmlDevice.Get());
+            dml::Expression x = dml::InputTensor(graph, 0, inputDescs[0]);
+            dml::Expression y = dml::InputTensor(graph, 1, inputDescs[1]);
+
+            dml::Expression signY = dml::Sign(y);
+            dml::Expression zero = dml::Subtract(signY, signY);
+            dml::Expression xIsZero = dml::Equals(x, zero);
+            dml::Expression yIsZero = dml::Equals(y, zero);
+            dml::Expression zeroDividend = dml::LogicalAnd(
+                dml::LogicalAnd(xIsZero, dml::LogicalNot(yIsZero)),
+                dml::LogicalAnd(dml::LogicalNot(dml::IsNaN(x)), dml::LogicalNot(dml::IsNaN(y))));
+
+            dml::Expression finiteNonzeroX = dml::LogicalAnd(
+                dml::LogicalAnd(dml::LogicalNot(dml::IsNaN(x)), dml::LogicalNot(dml::IsInfinity(x))),
+                dml::LogicalNot(xIsZero));
+            dml::Expression infiniteDivisor = dml::LogicalAnd(dml::IsInfinity(y), finiteNonzeroX);
+            dml::Expression sameSign = dml::Equals(dml::Sign(x), signY);
+
+            dml::Expression result = dml::ModulusFloor(x, y);
+            result = dml::If(infiniteDivisor, dml::If(sameSign, x, y), result);
+            result = dml::If(zeroDividend, dml::Multiply(zero, signY), result);
+
+            std::array<dml::Expression, 1> outputs = {result};
+            m_compiledOperator.Attach(graph.Compile(GetExecutionFlags(), outputs).Detach());
+            return;
+        }
+
         // Note TRUNCATE and FLOOR modulus operator descriptions are identical.
         static_assert(sizeof(DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC) == sizeof(DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC));
         DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC opDesc = {};
