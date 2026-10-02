@@ -125,6 +125,11 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 `E = num_experts`. `pack = 8 / expert_weight_bits` for INT/MXFP4 weights; `pack = 1`
 for FP8 weights. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
 
+> **CUDA EP restriction for `quant_type="int"`:** `fc1_scales` and `fc2_scales`
+> must use the same FP16 or BF16 type as the activation input. Although the
+> operator schema also permits float scales, the CUDA INT kernel does not
+> currently cast float scales internally. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
+
 For packed input, tokens from variable-length sequences may be concatenated
 without padding. MoE routing is token-local, so no sequence-offset input is
 required, and the output preserves `(total_tokens, hidden_size)`. Padded 3D

@@ -244,9 +244,8 @@ def create_nvfp4_moe_onnx_graph(
 
     for name, tensor in (("fc1_bias", fc1_bias), ("fc2_bias", fc2_bias)):
         if tensor is not None:
-            initializers.append(
-                helper.make_tensor(name, onnx_dtype, list(tensor.shape), tensor.cpu().float().flatten().tolist())
-            )
+            raw = tensor.contiguous().view(torch.uint8).cpu().numpy().tobytes()
+            initializers.append(helper.make_tensor(name, onnx_dtype, list(tensor.shape), raw, raw=True))
 
     graph_inputs = [
         helper.make_tensor_value_info("input", onnx_dtype, [num_tokens, hidden_size]),
