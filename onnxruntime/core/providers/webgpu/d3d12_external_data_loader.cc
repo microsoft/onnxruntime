@@ -604,7 +604,7 @@ bool D3D12AcceleratedExternalDataLoader::
 
 common::Status
 D3D12AcceleratedExternalDataLoader::BeginLoad() const {
-  impl_->batch.reset();
+  AbortLoad();
   impl_->ResolveSupport();
   ORT_RETURN_IF_ERROR(impl_->resolved_status);
   if (!impl_->enabled) {
