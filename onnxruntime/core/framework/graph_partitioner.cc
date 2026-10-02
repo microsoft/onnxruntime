@@ -1890,7 +1890,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr;
   if (ep_context_data_write_callback_required) {
     for (const auto& ep : providers_) {
-      if (ep->MayProduceEpContextNodesWithoutCompilation()) {
+      if (ep->MayProduceExternalEpContextDataWithoutCompilation()) {
         ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(*ep, OrtEpContextDataCallbackSupportFlags_WRITE));
       }
     }

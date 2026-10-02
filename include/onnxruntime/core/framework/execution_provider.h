@@ -478,12 +478,12 @@ class IExecutionProvider {
   }
 
   /**
-   * Returns whether this EP may produce EPContext nodes without a Compile() call.
+   * Returns whether this EP may produce external EPContext data without a Compile() call.
    *
-   * This query must not have side effects. ORT uses it to validate callback support before calling
-   * GetEpContextNodes(), which may create external EPContext data for these providers.
+   * This query must not have side effects. ORT uses it to validate WRITE callback support before capability
+   * discovery or GetEpContextNodes() can create external artifacts. Embedded EPContext data does not require it.
    */
-  virtual bool MayProduceEpContextNodesWithoutCompilation() const {
+  virtual bool MayProduceExternalEpContextDataWithoutCompilation() const {
     return false;
   }
 

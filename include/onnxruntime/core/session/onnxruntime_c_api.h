@@ -636,10 +636,10 @@ typedef enum OrtEpContextDataCallbackSupportFlags {
   /** The EP does not support application-managed external EPContext data. */
   OrtEpContextDataCallbackSupportFlags_NONE = 0,
 
-  /** The EP honors a configured read callback or rejects an unsupported external format before filesystem I/O. */
+  /** The EP will use the read callback if one is configured. */
   OrtEpContextDataCallbackSupportFlags_READ = 1 << 0,
 
-  /** The EP honors a configured write callback or rejects an unsupported external format before filesystem I/O. */
+  /** The EP will use the write callback if one is configured. */
   OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
 } OrtEpContextDataCallbackSupportFlags;
 
@@ -7655,10 +7655,6 @@ struct OrtApi {
    * callback is not used for EPContext nodes whose data is embedded in the ONNX model. Passing NULL clears the
    * callback and its state. If an external EPContext node is assigned to an EP that does not advertise READ support,
    * session initialization fails before that EP's Compile() call.
-   *
-   * ORT does not invoke the callback or validate its returned payload. The application is responsible for imposing
-   * allocation limits in its callback, and the EP is responsible for validating the returned data and imposing
-   * deserialization limits before consuming it. This API does not configure or enforce a payload-size limit.
    *
    * \param[in] options Session options used to create the session and execution providers.
    * \param[in] read_func Read callback, or NULL to clear a previously registered callback.

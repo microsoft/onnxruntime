@@ -203,7 +203,7 @@ class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider
     return nodes;
   }
 
-  bool MayProduceEpContextNodesWithoutCompilation() const override {
+  bool MayProduceExternalEpContextDataWithoutCompilation() const override {
     return produces_ep_context_nodes_;
   }
 

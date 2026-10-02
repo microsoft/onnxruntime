@@ -1667,7 +1667,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
   /// Register or clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
-  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state = nullptr);
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state);
   /// Clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
   SessionOptionsImpl& ClearEpContextDataReadFunc();
 
@@ -1797,7 +1797,7 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
 
   /// Register or clear the external EPContext write callback. Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc.
-  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state = nullptr);
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation

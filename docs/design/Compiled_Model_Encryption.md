@@ -628,7 +628,7 @@ An EP should claim support only after its tests prove callback write/read, callb
 fallback, no extra payload copy on read, legacy disk behavior with no callback, and embed-mode bypass.
 
 Built-in EPs that can generate external context data without `Compile()` must report that through
-`IExecutionProvider::MayProduceEpContextNodesWithoutCompilation()`. ORT checks WRITE support before capability
+`IExecutionProvider::MayProduceExternalEpContextDataWithoutCompilation()`. ORT checks WRITE support before capability
 discovery for these EPs. VitisAI has a direct-assignment path through `GetComputeCapabilityOps()` and compiles its
 backend model in `GetCapability()`. Merely moving context-node creation into its `Compile()` would skip
 direct-assignment-only sessions; changing that lifecycle requires coordinated VAIP changes.
