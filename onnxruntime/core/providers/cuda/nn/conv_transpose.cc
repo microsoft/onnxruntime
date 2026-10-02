@@ -259,7 +259,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
   // set B
   // Always in NCHW format
-  const size_t bias_index = dynamic_padding ? 3 : 2;
+  const int bias_index = dynamic_padding ? 3 : 2;
   const Tensor* B = context->InputCount() > bias_index ? context->Input<Tensor>(bias_index) : nullptr;
   s_.b_data = B ? reinterpret_cast<const CudaT*>(B->Data<T>()) : nullptr;
 
