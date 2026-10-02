@@ -5,6 +5,13 @@ This is a historical evidence contribution for the ORT `benchmark` branch,
 not a production code change or a new benchmark of current upstream releases.
 No measurements were rerun to prepare it.
 
+**October 2 follow-up:** [historical arena/initializer/last-row results](HISTORICAL-FOLLOWUP.md)
+add completed, single-run instrumented captures on the historical logits-fixed
+stack. Arena bypass preserved exact outputs; initializer setting 1 helped
+initialization much more than peak usage; the last-row candidate failed exact
+logits and remains rejected. These results do not replace the original medians
+below or establish a matched llama.cpp gap or larger-model scaling result.
+
 ## Start here
 
 The September 29 reproduction addition separates three workflows:
@@ -26,6 +33,8 @@ definitions, actual host-only validation and untested/blocked GPU portions.
 Code being included is not evidence that a fresh GPU replay has passed.
 Historical evidence CSV/JSON files remain unchanged; their provenance
 describes the original compact package, not this later tooling addition.
+The [new follow-up JSON](evidence/historical-followup.json) is separate:
+the existing reviewer checks its checksum, not its result schema or raw captures.
 
 The correction phase passed **73 host tests and 26 integration checks**.
 The packaged Phase A and Phase B applications subsequently compiled and linked
@@ -51,6 +60,10 @@ requests, live arena allocations, retained capacity and sampled GPU memory.
   effective configurations, saved input hashes and historical library hashes.
 - [Source provenance](evidence/source-provenance.json): input report hashes,
   transformations and limits of this compact bundle.
+- [Historical follow-up](HISTORICAL-FOLLOWUP.md) and
+  [curated single-run evidence](evidence/historical-followup.json): completed
+  arena bypass, decoder initializer Reserve and rejected last-row experiments,
+  plus pinned llama.cpp source recovery and its provenance limits.
 - [Reproduction workflows](REPRODUCING.md): runnable offline review,
   comparison tooling, historical A/B prerequisites and measurement precautions.
 

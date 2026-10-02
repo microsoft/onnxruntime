@@ -4,8 +4,11 @@
 
 Run commands from `docs/phi4-memory-diagnostics/`. Use an existing Python
 3.11+ environment for the host-only tools. Host checks and the completed
-application-build check below are separate from application execution,
-actual runtime loading and fresh GPU replay, which remain unperformed.
+application-build check below describe the September reproduction-tooling
+preparation; that check did not execute inference or demonstrate runtime loading.
+The separately completed [October follow-ups](HISTORICAL-FOLLOWUP.md) did execute
+the historical stack. They are not a fresh replay of these portable runners or
+a current-upstream benchmark. This documentation update ran no inference.
 
 | Level | Entry point | What it establishes |
 | --- | --- | --- |
@@ -57,6 +60,46 @@ The original vectors are identified in the unchanged
 [model manifest](evidence/model-manifest.json) and
 [parity records](evidence/parity-checks.json). Hashes identify required
 artifacts; they cannot reconstruct those artifacts.
+
+## October 2 follow-up evidence
+
+[HISTORICAL-FOLLOWUP.md](HISTORICAL-FOLLOWUP.md) and
+[historical-followup.json](evidence/historical-followup.json) add four completed
+single-run historical conditions without replacing the original five evidence
+files or median tables. The initializer-setting proposal is superseded by the
+completed setting-1 experiment; the last-row candidate remains rejected.
+
+`sha256sum --check SHA256SUMS` and the reviewer's `--check-integrity` cover these
+new files' bytes. **The existing reviewer does not validate the follow-up JSON
+schema, its numerical outcomes or its source-artifact hashes against excluded
+files.** Its `--raw-captures` option remains specific to the original four
+Phase A directories and must not be presented as a follow-up validator.
+No new execution entry point is included.
+
+The JSON labels units, column order for compact phase/BFC rows, per-condition
+configuration identities, comparison references, acceptance, null/sparse
+coverage and source hashes. Initialization/setup, overall sampled maximum and
+post-generator cleanup are distinct; whole-device and process usage are never
+interchanged. Reserves are tracked separately but already included in total
+backing/live counters. The experimental initializer configuration is not
+relabelled as the baseline; applied-config means the supplied overlay record,
+not an ORT option getter.
+
+Independent verification requires authorized original logits/ID/input captures,
+effective/applied configurations, search readbacks, phase markers, NVML logs,
+BFC checkpoint logs, gate inventories and runtime/model identities. Hashes
+alone are not reproduction evidence. The external follow-up application,
+controllers and observer are also needed for fresh execution, which requires
+separate approval. Do not rerun an existing one-attempt controller output,
+relax the candidate's numerical gate, or treat the portable allocation runner
+as implementing the initializer-delta exception.
+
+During this update, host-only inspection recomputed all four overall/phase
+maxima and complete logits/ID comparisons against the saved long reference,
+checked the explicit configuration delta, raw BFC accounting and saved gates,
+and rehashed model/runtime artifacts. The original controllers were not run.
+The original offline reviewer and targeted package host tests are used for
+package regression/integrity, not claimed as validators of new result fields.
 
 ## What can be checked from this contribution
 
