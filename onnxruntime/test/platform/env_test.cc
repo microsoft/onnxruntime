@@ -142,7 +142,7 @@ TEST_F(RandomAccessFileTest, MappingUsesOpenedFileAfterPathReplacement) {
 
   PathString canonical_path;
   ASSERT_STATUS_OK(file_->GetCanonicalPath(canonical_path));
-  EXPECT_FALSE(canonical_path.empty());
+  EXPECT_TRUE(std::filesystem::equivalent(canonical_path, opened_path, ec)) << ec.message();
 }
 
 #ifndef __wasm__

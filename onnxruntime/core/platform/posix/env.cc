@@ -55,6 +55,9 @@ limitations under the License.
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/sysctl.h>
 #endif
+#if defined(__FreeBSD__)
+#include <sys/user.h>
+#endif
 
 #include "core/common/common.h"
 #include <gsl/gsl>
@@ -142,7 +145,7 @@ class PosixRandomAccessFile final : public RandomAccessFile {
   }
 
   common::Status GetCanonicalPath(PathString& path) const override {
-#if defined(__APPLE__) && defined(F_GETPATH)
+#if defined(F_GETPATH)
     std::array<char, PATH_MAX> buffer{};
     if (fcntl(descriptor_.Get(), F_GETPATH, buffer.data()) != 0) {
       return ReportSystemError("fcntl(F_GETPATH)", path_);
@@ -158,10 +161,28 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     }
     path.assign(buffer.data(), static_cast<size_t>(length));
     return Status::OK();
+#elif defined(__FreeBSD__) && defined(F_KINFO)
+    struct kinfo_file file_info {};
+    if (fcntl(descriptor_.Get(), F_KINFO, &file_info) != 0) {
+      return ReportSystemError("fcntl(F_KINFO)", path_);
+    }
+    path.assign(file_info.kf_path);
+    return Status::OK();
 #else
-    ORT_UNUSED_PARAMETER(path);
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Canonical paths for open files are not supported on this platform.");
+    std::array<char, PATH_MAX> buffer{};
+    ORT_RETURN_IF_NOT(realpath(path_.c_str(), buffer.data()) != nullptr,
+                      "realpath failed for ", path_, ": ", strerror(errno));
+
+    struct stat opened_stat {};
+    struct stat path_stat {};
+    ORT_RETURN_IF_NOT(fstat(descriptor_.Get(), &opened_stat) == 0,
+                      "fstat failed for ", path_, ": ", strerror(errno));
+    ORT_RETURN_IF_NOT(stat(buffer.data(), &path_stat) == 0,
+                      "stat failed for ", path_, ": ", strerror(errno));
+    ORT_RETURN_IF_NOT(opened_stat.st_dev == path_stat.st_dev && opened_stat.st_ino == path_stat.st_ino,
+                      "The opened file no longer matches its canonical path: ", path_);
+    path.assign(buffer.data());
+    return Status::OK();
 #endif
   }
 

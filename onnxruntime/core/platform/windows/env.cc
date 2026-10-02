@@ -379,17 +379,36 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
   }
 
   Status GetCanonicalPath(PathString& path) const override {
-    std::vector<PathChar> buffer(MAX_PATH);
-    for (;;) {
+    auto get_final_path = [&](DWORD flags, PathString& result) -> DWORD {
+      std::vector<PathChar> buffer(MAX_PATH);
       const DWORD length = GetFinalPathNameByHandleW(
-          file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), 0);
-      ORT_RETURN_IF_NOT(length > 0, "GetFinalPathNameByHandleW failed: ", GetLastError());
-      if (length < buffer.size()) {
-        path.assign(buffer.data(), length);
-        break;
+          file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), flags);
+      if (length == 0) {
+        return GetLastError();
       }
-      buffer.resize(length);
+      if (length >= buffer.size()) {
+        buffer.resize(length);
+        const DWORD resized_length = GetFinalPathNameByHandleW(
+            file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), flags);
+        if (resized_length == 0 || resized_length >= buffer.size()) {
+          return resized_length == 0 ? GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+        }
+        result.assign(buffer.data(), resized_length);
+      } else {
+        result.assign(buffer.data(), length);
+      }
+      return ERROR_SUCCESS;
+    };
+
+    DWORD error = get_final_path(FILE_NAME_NORMALIZED | VOLUME_NAME_DOS, path);
+    if (error == ERROR_ACCESS_DENIED) {
+      error = get_final_path(FILE_NAME_NORMALIZED | VOLUME_NAME_NT, path);
+      if (error == ERROR_SUCCESS) {
+        path.insert(0, ORT_TSTR(R"(\\?\GLOBALROOT)"));
+        return Status::OK();
+      }
     }
+    ORT_RETURN_IF_NOT(error == ERROR_SUCCESS, "GetFinalPathNameByHandleW failed: ", error);
 
     if (path.find(ORT_TSTR(R"(\\?\)")) == 0) {
       if (path.size() > 6 && path[5] == ORT_TSTR(':')) {

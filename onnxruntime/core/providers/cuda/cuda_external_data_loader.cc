@@ -186,8 +186,7 @@ void ExternalDataLoader::ReleaseResources() const noexcept {
   }
 }
 
-common::Status ExternalDataLoader::LoadTensor(const Env& env,
-                                              const std::filesystem::path& data_file_path,
+common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
                                               FileOffsetType data_offset,
                                               SafeInt<size_t> data_length,
                                               Tensor& tensor) const {
@@ -199,10 +198,8 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   const size_t length = data_length;
   ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "External data length does not match tensor size.");
 
-  std::unique_ptr<RandomAccessFile> file;
-  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(data_file_path.native().c_str(), file));
   size_t file_length = 0;
-  ORT_RETURN_IF_ERROR(file->GetLength(file_length));
+  ORT_RETURN_IF_ERROR(file.GetLength(file_length));
   const SafeInt<FileOffsetType> end_offset = SafeInt<FileOffsetType>(data_offset) + length;
   ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
                 "External data range is outside the file.");
@@ -214,7 +211,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   if (!resource_status.IsOK()) {
     // TODO: Remember setup failures during initialization and report the first CUDA error
     // so later initializers do not repeatedly retry unavailable pinned buffers or streams.
-    return LoadWithPageableBuffer(*file, data_offset, length, tensor, reading_thread_count_, reader_pool_);
+    return LoadWithPageableBuffer(file, data_offset, length, tensor, reading_thread_count_, reader_pool_);
   }
 
   auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
@@ -247,7 +244,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
     }
 
     const auto read_status =
-        ReadChunk(*file, data_offset + offset, chunk_size, buffers_[buffer_index],
+        ReadChunk(file, data_offset + offset, chunk_size, buffers_[buffer_index],
                   reading_thread_count_, reader_pool_);
     if (!read_status.IsOK()) {
       ORT_IGNORE_RETURN_VALUE(synchronize_streams());

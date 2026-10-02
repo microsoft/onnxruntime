@@ -1949,7 +1949,16 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
+#if defined(__wasm__)
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
+#else
+  std::unique_ptr<RandomAccessFile> external_data_file;
+  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
+  PathString opened_path;
+  ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
+  ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
+  return ext_data_loader.LoadTensor(*external_data_file, file_offset, raw_data_safe_len, tensor);
+#endif
 }
 
 #define CASE_PROTO(X, Y)                                                                                            \
