@@ -1,0 +1,14 @@
+diff --git a/src/models/logits.cpp b/src/models/logits.cpp
+index 32d1992c..24b94fc4 100644
+--- a/src/models/logits.cpp
++++ b/src/models/logits.cpp
+@@ -44,9 +44,6 @@ DeviceSpan<float> Logits::Get() {
+     // create new OrtValue for logits_of_last_token and use output_last_tokens_ to hold it
+     output_last_tokens_ = OrtValue::CreateTensor(model_.p_device_inputs_->GetAllocator(), shape_last, type_);
+ 
+-    if (type_ == Ort::TypeToTensorType<Ort::Float16_t> || type_ == Ort::TypeToTensorType<Ort::BFloat16_t>)
+-      logits_of_last_token_fp32_ = OrtValue::CreateTensor<float>(model_.p_device_inputs_->GetAllocator(), shape_);
+-
+     logits_of_last_token = output_last_tokens_.get();
+ 
+     size_t element_size = Ort::SizeOf(type_);

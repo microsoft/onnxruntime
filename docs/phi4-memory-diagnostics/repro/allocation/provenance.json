@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "source_bundle": "handoff-20260922-GkUEpR/reproduction",
+  "source_paths_relative_to_bundle": true,
+  "genai_source_pin": "ed5f4e87147731e5b07810f9f5c90103b3603cdf",
+  "ort_source_pin": "94e76459dc9a759888707aa430d51a95d878da8f",
+  "validation": {
+    "correction_host_tests_passed": 73,
+    "correction_integration_checks_passed": 26,
+    "packaged_applications_compiled_and_linked": ["phi_phase_a", "phi_phase_b"],
+    "historical_runtime_variants_built_against": ["baseline", "patched"],
+    "toolchain": {"gcc": "13.2", "cmake": "4.1.2", "cuda": "13.0.48"},
+    "ort_genai_rebuilt": false,
+    "native_regression_targets_rebuilt": false,
+    "application_execution_demonstrated": false,
+    "actual_runtime_loading_demonstrated": false,
+    "fresh_gpu_replay_performed": false
+  },
+  "external_data_copied": false,
+  "source_sha256": {
+    "patches/historical-tests-normalized.patch": "1485beda53090cc53f4c1cfc0a19c3938d2f4f720a881632e7398d25eb7f038b",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/baseline-src/test/logits_allocation/tests.cpp": "30ac48501a07b7d3a3a71b5dbd51c52928ac9177a25cb1c38c371a8b4d164ed8",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/run_validation.py": "3f2107833ed8aaddd90d8c12fc2b97c322a01232b697cdd0d74330887feaa0c8",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/main.cpp": "e79c75f85398fb04a0130e7539c6688bdf7ded306462dfa04ca7aad587f78660",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/capture_support.h": "87da3b0601edf0fe12c1f0474de69dc4eb77bfe64b347939dc4de1d2e8288f3f",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/CMakeLists.txt": "05af6aaf69f2a041b3f7ed382b9b4f64ce545b555ab35d4b1e66905e610b9d59",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/build_app.sh": "37405a6d9e43c2d34ab7329aad0573c5e6c859027592d0b78fb021fad914208b",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/build.sh": "679aa809d5f791eeafce589eafa544c767f22dbee996bbabb77538203556bd17",
+    "originals/phi4-arena-diagnostic/logits-fix-phase-a-20260921T1706-X79nUR/production.diff": "34723df6327bb3430ff00a05d8329d3c69660ceaf67a7efd3d2b268314124e38",
+    "originals/phi4-arena-diagnostic/logits-phase-b-20260921T1738-zSJLBb/run_phase_b.py": "69c8056bfad4daac5e7e09055ce393c0e25e3fee4a1237704dcae2deed429cfa",
+    "originals/phi4-arena-diagnostic/logits-phase-b-20260921T1738-zSJLBb/main.cpp": "546e9420429703459db04d5a10f8f40acae5e7f2494adc3ea4eb04edd3687a3a",
+    "originals/phi4-arena-diagnostic/logits-phase-b-20260921T1738-zSJLBb/CMakeLists.txt": "ba9d7149d4136cf67ce2a75981f17ce78b5e14a38a3b4e0b2377bb494cd6245a",
+    "originals/phi4-arena-diagnostic/logits-phase-b-20260921T1738-zSJLBb/build_app_runpath.sh": "c7dfb0e5a087825a2e714eb594f309db7c3079d1b641bad1412c69041e9a08bd",
+    "originals/phi4-arena-diagnostic/logits-phase-b-20260921T1738-zSJLBb/offline_checks.py": "e420ed44efeeb18f96df86b413968c380d611dbbf6bb02f94c8c499c29bb83d3",
+    "originals/phi4-arena-diagnostic/reclaimability-20260917T1929-1e6LTm/run_reclaimability.py": "915178bdf917ebbf811f2e908a2e9e18a5b2f9880cf8eb50d8461ab62db07e59",
+    "originals/phi4-arena-diagnostic/run-comparison.py": "1cd8f6de174c636fad24c273b1915af0b85fc51973e59716ca617597843aa225"
+  },
+  "additional_pinned_public_source_sha256": {
+    "repository": "microsoft/onnxruntime-genai",
+    "revision": "ed5f4e87147731e5b07810f9f5c90103b3603cdf",
+    "verification": "Read-only git show from existing local objects; no checkout, download or build",
+    "files": {
+      "test/CMakeLists.txt": "49caec12f0b630be81dc319ea62ec128bdc6f7d2ee05114a0577f9e4eaf25cb4",
+      "test/model_tests.cpp": "e93b79b61b0f3fdf47f95603623e31bb721da3bded8caec46e25180d3c515aaf",
+      "test/c_api_tests.cpp": "1101c4ad7f3ae02e61f40438e2970d4aad5415f96019e3f9788e1d25fc2db108"
+    },
+    "fixture_files": "fixture-manifest.json: all nine SHA-256 hashes additionally match the pinned public Git blobs"
+  },
+  "adaptations": {
+    "production.diff": "Byte-identical historical production change; no added license header or rebasing.",
+    "historical-tests-normalized.patch": "Byte-identical complete historical test target and native test source, including original mixed CRLF/LF bytes; separate from production.diff.",
+    "prepare_sources.sh": "Local-only parameterized application to two already available clean pinned checkouts; both receive the test patch and only patched receives production.diff.",
+    "run_validation.py": "Five regression selectors/counts/classification and four full-logits/64-token captures retained; external paths/configuration replace historical tree lookup.",
+    "run_phase_b.py": "Twelve-condition order, 64/63 timing, bounded-query NVML peaks, arena accounting and signed paired reports retained.",
+    "support.py": "Only identity, correctness, timing, arena parsing and statistical helpers ported from the original chain.",
+    "monitor.py": "Focused shared idle/interference/watchdog/GO-ACK controller replaces import of stopped benchmark controllers; adds explicit host/GPU resource limits.",
+    "native": "Phase A and B native bodies adapted with shared IO/library/search helpers; timing barriers/order unchanged; Phase A only supports required float32 logits.",
+    "build_apps.sh": "Phase A build_app and Phase B RUNPATH recipe combined; all source/runtime/toolkit/output paths explicit.",
+    "build_runtime.sh": "Original test-enabled disconnected GenAI flags preserved; requires included normalized test integration, verifies test-source digest, production diff and external pinned tiny-fixture bytes; no automatic fetching.",
+    "test_allocation.py": "Focused host unit tests adapted from offline_checks with invented unit fixtures only; no saved vectors, raw captures or loader execution."
+  }
+}

@@ -1,0 +1,808 @@
+{
+  "schema_version": 1,
+  "scope": "Historical single-run instrumented follow-ups; not current-upstream or matched llama.cpp benchmarking",
+  "hardware": {
+    "gpu_model": "NVIDIA A100-SXM4-80GB",
+    "driver": "580.105.08",
+    "one_assigned_device_uuid_verified": true,
+    "pre_run_whole_device_mib": 767.25
+  },
+  "curation": "Recomputed raw memory maxima/phase coverage and complete numerical comparisons on host; no inference",
+  "units": {
+    "memory": "MiB = 2^20 bytes",
+    "bfc_rows": "bytes",
+    "sampling_intervals": "milliseconds"
+  },
+  "workload": {
+    "input_tokens": 28747,
+    "generated_ids": 64,
+    "max_length": 28811,
+    "batch": 1,
+    "beams": 1,
+    "greedy": true,
+    "chunk_size": 0,
+    "shared_cache": true,
+    "input_sha256": "fbe6fe0929666ac5a91dd152aea07bc2bf7675c765f31ad57e701604ccaa3831",
+    "logits_dtype": "float32",
+    "logits_shape": [
+      1,
+      1,
+      200064
+    ],
+    "logits_bytes": 800256
+  },
+  "runtime_identity": {
+    "ort_commit": "94e76459dc9a759888707aa430d51a95d878da8f",
+    "genai_base_commit": "ed5f4e87147731e5b07810f9f5c90103b3603cdf",
+    "genai_variant": "Historical redundant full-prompt FP32 destination removed in all four conditions",
+    "shared_libraries_sha256": {
+      "libonnxruntime.so.1.31.0": "3b48b4813d80044d153441a532d24b9849c924b53492a619bbbb3569ebb4f342",
+      "libonnxruntime_providers_shared.so": "ed328e9f3360f9ade1f104fcedbff745dd53748e0e9ed76e5751d0f8ba6d48f7",
+      "libonnxruntime-genai-cuda.so": "9d9393e982b2bac3a6c23b2b90fdf1007041b1c9a7e3291852966f3690cf6fd2",
+      "libonnxruntime-genai.so": "2a3fdb76ae7f3683b2b73f2acef4792bcd8443ba233cafe7922506ff7c6a2682"
+    },
+    "cuda_provider_sha256": {
+      "on": "09eb6e57f6148e0a85963b8f6663eab7b33fd6fa6212731ee5fd2e474e61fe9b",
+      "off": "faec64e54231a81fd8af38f6111ec76d4f3c94cf5fffc2e4e5f4160b72555913"
+    },
+    "application_sha256": "fa662f8bcbe828ccf0e62ef521806bc23a9e05b4ae0057c9fce9c982d1184415",
+    "observer_sha256": "271ba0c5cb7db07da10e4465e8875607bc46e7be06e5c4d459cf62111eaf29de"
+  },
+  "model_identity": {
+    "original": {
+      "genai_config.json": {
+        "bytes": 1568,
+        "sha256": "3cdbd2ff0b2cda7829b262cda331a72b99daaa758d55bb056bb4d098d22b1140"
+      },
+      "model.onnx": {
+        "bytes": 286690,
+        "sha256": "f8ff300b85719f79f1c220c88575626c62cc772a228244a6b96031d1a8d25250"
+      },
+      "model.onnx.data": {
+        "bytes": 3413194752,
+        "sha256": "b32f38f9211040b01c1483759cef7a6cce28df9f83b6b8bb91a474575d559d0f"
+      }
+    },
+    "candidate": {
+      "genai_config.json": {
+        "bytes": 1568,
+        "sha256": "3cdbd2ff0b2cda7829b262cda331a72b99daaa758d55bb056bb4d098d22b1140"
+      },
+      "model.onnx": {
+        "bytes": 287130,
+        "sha256": "cf8a7b6279ff66a7a9a3b3d064eae47b38fbe5879991b382284a4e5b72172e11"
+      },
+      "model.onnx.data": {
+        "bytes": 3413194752,
+        "sha256": "b32f38f9211040b01c1483759cef7a6cce28df9f83b6b8bb91a474575d559d0f"
+      }
+    }
+  },
+  "configurations": {
+    "baseline_sha256": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "initializer_experiment_sha256": "60271eb04195d1e00c0c890e101773b0bb0545a487d49d1db141e4b1540039da",
+    "allowed_delta": {
+      "path": [
+        "model",
+        "decoder",
+        "session_options",
+        "session.use_device_allocator_for_initializers"
+      ],
+      "original_value": "0",
+      "experimental_value": "1"
+    },
+    "genai_global_session_changed": false,
+    "applied_config_semantics": "Supplied overlay record, not an ORT session-option getter"
+  },
+  "phase_columns": [
+    "phase",
+    "process_peak_mib",
+    "whole_device_peak_mib",
+    "complete_device_samples",
+    "available_process_samples"
+  ],
+  "bfc_columns": [
+    "checkpoint",
+    "domain",
+    "bfc_region_bytes",
+    "reserved_bytes",
+    "live_bytes_including_reserves",
+    "requested_live_bytes_including_reserves",
+    "cumulative_reserve_calls"
+  ],
+  "bfc_domain_attribution": "Source/creation-order correlation; raw checkpoint rows have no allocator pointers",
+  "bfc_accounting": "Total backing = regions + outstanding reserves; reserves already included in live/requested counters; BFC live = live - reserves; no sum with NVML",
+  "conditions": [
+    {
+      "id": "arena_on_setting_0",
+      "arena": "on",
+      "initializer_setting": "0",
+      "graph_identity": "original",
+      "cuda_provider_identity": "on",
+      "repetitions": 1,
+      "application_exit_code": 0,
+      "acceptance": "passed",
+      "comparison_references": [
+        "saved_long_reference",
+        "arena_off_setting_0"
+      ],
+      "logits_exact": true,
+      "generated_ids_exact": true,
+      "logit_mismatches": 0,
+      "max_absolute_logit_difference": 0.0,
+      "effective_config_sha256": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+      "logits_sha256": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+      "generated_ids_sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+      "overall_sampled_peak_mib": {
+        "process": 27592.0,
+        "whole_device": 28368.125
+      },
+      "first_peak_phase": "first_token_complete -> generation_complete",
+      "phase_rows": [
+        [
+          "initialization",
+          5048.0,
+          5824.125,
+          926,
+          813
+        ],
+        [
+          "setup",
+          9152.0,
+          9928.125,
+          818,
+          818
+        ],
+        [
+          "prefill",
+          27590.0,
+          28366.125,
+          285,
+          285
+        ],
+        [
+          "logits_capture",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "first_token",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "decode",
+          27592.0,
+          28368.125,
+          63,
+          63
+        ],
+        [
+          "cleanup_transition",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "post_generator_cleanup",
+          27592.0,
+          28368.125,
+          10,
+          10
+        ]
+      ],
+      "sampling": {
+        "whole_device_samples": 2384,
+        "missing_process_samples": 359,
+        "requested_ms": 10,
+        "median_ms": 9.999756,
+        "p95_ms": 10.020381,
+        "max_ms": 34.440036,
+        "intervals_over_15_ms": 4
+      },
+      "device_bfc_status": "applicable",
+      "bfc_rows": [
+        [
+          "post_initialize",
+          "genai_global",
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "post_initialize",
+          "decoder",
+          4831838208,
+          0,
+          3441672192,
+          3413227536,
+          0
+        ],
+        [
+          "post_generation",
+          "genai_global",
+          21484273664,
+          0,
+          3880676352,
+          3785511600,
+          0
+        ],
+        [
+          "post_generation",
+          "decoder",
+          6979321856,
+          0,
+          3441672192,
+          3413227536,
+          0
+        ],
+        [
+          "post_generator_cleanup",
+          "genai_global",
+          21484273664,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "post_generator_cleanup",
+          "decoder",
+          6979321856,
+          0,
+          3441672192,
+          3413227536,
+          0
+        ]
+      ],
+      "gates": {
+        "both_allocator_domains": true,
+        "global_binding": true,
+        "return_breakpoint_deleted_before_GO": true,
+        "recorded_runtime_hashes": true,
+        "overlay_and_search": true,
+        "owned_cleanup_recorded": true
+      }
+    },
+    {
+      "id": "arena_off_setting_0",
+      "arena": "off",
+      "initializer_setting": "0",
+      "graph_identity": "original",
+      "cuda_provider_identity": "off",
+      "repetitions": 1,
+      "application_exit_code": 0,
+      "acceptance": "passed",
+      "comparison_references": [
+        "saved_long_reference",
+        "arena_on_setting_0"
+      ],
+      "logits_exact": true,
+      "generated_ids_exact": true,
+      "logit_mismatches": 0,
+      "max_absolute_logit_difference": 0.0,
+      "effective_config_sha256": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+      "logits_sha256": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+      "generated_ids_sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+      "overall_sampled_peak_mib": {
+        "process": 21004.0,
+        "whole_device": 21780.125
+      },
+      "first_peak_phase": "prefill_begin -> prefill_end",
+      "phase_rows": [
+        [
+          "initialization",
+          3822.0,
+          4598.125,
+          924,
+          817
+        ],
+        [
+          "setup",
+          7542.0,
+          8318.125,
+          795,
+          795
+        ],
+        [
+          "prefill",
+          21004.0,
+          21780.125,
+          259,
+          259
+        ],
+        [
+          "logits_capture",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "first_token",
+          18520.0,
+          19296.125,
+          1,
+          1
+        ],
+        [
+          "decode",
+          7552.0,
+          8328.125,
+          70,
+          70
+        ],
+        [
+          "cleanup_transition",
+          6906.0,
+          7740.125,
+          2,
+          2
+        ],
+        [
+          "post_generator_cleanup",
+          3830.0,
+          4606.125,
+          10,
+          10
+        ]
+      ],
+      "sampling": {
+        "whole_device_samples": 2439,
+        "missing_process_samples": 348,
+        "requested_ms": 10,
+        "median_ms": 9.999727,
+        "p95_ms": 10.022544,
+        "max_ms": 31.807867,
+        "intervals_over_15_ms": 3
+      },
+      "device_bfc_status": "not_applicable",
+      "bfc_rows": [],
+      "gates": {
+        "both_allocator_domains": true,
+        "global_binding": true,
+        "return_breakpoint_deleted_before_GO": true,
+        "recorded_runtime_hashes": true,
+        "overlay_and_search": true,
+        "owned_cleanup_recorded": true
+      }
+    },
+    {
+      "id": "arena_on_setting_1",
+      "arena": "on",
+      "initializer_setting": "1",
+      "graph_identity": "original",
+      "cuda_provider_identity": "on",
+      "repetitions": 1,
+      "application_exit_code": 0,
+      "acceptance": "passed",
+      "comparison_references": [
+        "saved_long_reference",
+        "arena_on_setting_0"
+      ],
+      "logits_exact": true,
+      "generated_ids_exact": true,
+      "logit_mismatches": 0,
+      "max_absolute_logit_difference": 0.0,
+      "effective_config_sha256": "60271eb04195d1e00c0c890e101773b0bb0545a487d49d1db141e4b1540039da",
+      "logits_sha256": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+      "generated_ids_sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+      "overall_sampled_peak_mib": {
+        "process": 27392.0,
+        "whole_device": 28168.125
+      },
+      "first_peak_phase": "first_token_complete -> generation_complete",
+      "phase_rows": [
+        [
+          "initialization",
+          3824.0,
+          4600.125,
+          954,
+          849
+        ],
+        [
+          "setup",
+          7928.0,
+          8704.125,
+          753,
+          753
+        ],
+        [
+          "prefill",
+          27390.0,
+          28166.125,
+          299,
+          299
+        ],
+        [
+          "logits_capture",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "first_token",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "decode",
+          27392.0,
+          28168.125,
+          63,
+          63
+        ],
+        [
+          "cleanup_transition",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "post_generator_cleanup",
+          27392.0,
+          28168.125,
+          10,
+          10
+        ]
+      ],
+      "sampling": {
+        "whole_device_samples": 2372,
+        "missing_process_samples": 349,
+        "requested_ms": 10,
+        "median_ms": 9.999619,
+        "p95_ms": 10.018935,
+        "max_ms": 34.396509,
+        "intervals_over_15_ms": 4
+      },
+      "device_bfc_status": "applicable",
+      "bfc_rows": [
+        [
+          "post_initialize",
+          "genai_global",
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "post_initialize",
+          "decoder",
+          1048576,
+          3413194768,
+          3413227536,
+          3413227536,
+          392
+        ],
+        [
+          "post_generation",
+          "genai_global",
+          21484273664,
+          0,
+          3880676352,
+          3785511600,
+          0
+        ],
+        [
+          "post_generation",
+          "decoder",
+          3222274048,
+          3413194768,
+          3413227536,
+          3413227536,
+          392
+        ],
+        [
+          "post_generator_cleanup",
+          "genai_global",
+          21484273664,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "post_generator_cleanup",
+          "decoder",
+          3222274048,
+          3413194768,
+          3413227536,
+          3413227536,
+          392
+        ]
+      ],
+      "gates": {
+        "both_allocator_domains": true,
+        "global_binding": true,
+        "return_breakpoint_deleted_before_GO": true,
+        "recorded_runtime_hashes": true,
+        "overlay_and_search": true,
+        "owned_cleanup_recorded": true
+      }
+    },
+    {
+      "id": "last_hidden_candidate",
+      "arena": "off",
+      "initializer_setting": "0",
+      "graph_identity": "candidate",
+      "cuda_provider_identity": "off",
+      "repetitions": 1,
+      "application_exit_code": 0,
+      "acceptance": "rejected_exact_logits",
+      "comparison_references": [
+        "saved_long_reference",
+        "arena_off_setting_0"
+      ],
+      "logits_exact": false,
+      "generated_ids_exact": true,
+      "logit_mismatches": 52128,
+      "max_absolute_logit_difference": 0.046875,
+      "effective_config_sha256": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+      "logits_sha256": "f45036b0cab8602df715a9a9a0939549f533ca0613dea760ebf44698ca69797e",
+      "generated_ids_sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+      "overall_sampled_peak_mib": {
+        "process": 10036.0,
+        "whole_device": 10812.125
+      },
+      "first_peak_phase": "prefill_begin -> prefill_end",
+      "phase_rows": [
+        [
+          "initialization",
+          3824.0,
+          4600.125,
+          848,
+          747
+        ],
+        [
+          "setup",
+          7544.0,
+          8320.125,
+          803,
+          803
+        ],
+        [
+          "prefill",
+          10036.0,
+          10812.125,
+          240,
+          240
+        ],
+        [
+          "logits_capture",
+          null,
+          null,
+          0,
+          0
+        ],
+        [
+          "first_token",
+          7550.0,
+          8326.125,
+          1,
+          1
+        ],
+        [
+          "decode",
+          7552.0,
+          8328.125,
+          68,
+          68
+        ],
+        [
+          "cleanup_transition",
+          7138.0,
+          7972.125,
+          2,
+          2
+        ],
+        [
+          "post_generator_cleanup",
+          3832.0,
+          4608.125,
+          10,
+          10
+        ]
+      ],
+      "sampling": {
+        "whole_device_samples": 2255,
+        "missing_process_samples": 328,
+        "requested_ms": 10,
+        "median_ms": 9.999470500000001,
+        "p95_ms": 10.030801,
+        "max_ms": 30.752744,
+        "intervals_over_15_ms": 4
+      },
+      "device_bfc_status": "not_applicable",
+      "bfc_rows": [],
+      "gates": {
+        "both_allocator_domains": true,
+        "global_binding": true,
+        "return_breakpoint_deleted_before_GO": true,
+        "recorded_runtime_hashes": true,
+        "overlay_and_search": true,
+        "owned_cleanup_recorded": true
+      }
+    }
+  ],
+  "candidate_transformation": {
+    "selection": "Gather(axis=1,index=-1) then Unsqueeze(axes=[1]) before LM-head",
+    "input_shape": [
+      1,
+      1,
+      3072
+    ],
+    "output_shape": [
+      1,
+      1,
+      200064
+    ],
+    "output_dtype": "float16",
+    "original_initializers_unchanged": 518,
+    "external_data_descriptors_unchanged": true,
+    "weights_requantized": false,
+    "full_graph_standalone_onnx_checker_valid": false,
+    "validation": "Exact graph delta plus standard-node host model; pinned ORT loaded candidate in sole attempt",
+    "attribution": "Transformation as a whole, not exclusively logits output allocation",
+    "numerical_cause": "Different projection arithmetic plausible; runtime kernels and hidden-vector equality not captured"
+  },
+  "llama_source_recovery": {
+    "binding_version": "0.3.35",
+    "binding_commit": "3691546f1c9e0c1bf93323dff02230bd959cf562",
+    "native_commit": "4df29be4f4c3673f428170fda944a5b19f743bb8",
+    "archive_sha256": "1139dbb54509074b70893fab8554e3b079aa9f4d312058ce4018ef0019e3de12",
+    "member_sha256": {
+      "vendor/llama.cpp/src/models/phi3.cpp": "1dc4b740a1e449c6c81a035a226aa9428ee7cef03bfeb606bdf715b363e564ed",
+      "vendor/llama.cpp/src/llama-graph.cpp": "bc1c497c4da0951a4f98de50e397bcb632b2e40d4f24b8c58203c964d4d6183b",
+      "vendor/llama.cpp/src/llama-batch.cpp": "484607d92fb08d510727e0c4b01139e27a40137ef03e74e1dbea4aac3965e328",
+      "llama_cpp/llama.py": "fff35cbe5f93076683089447cf7b38195c85a9d7bb344459fa22361994b1f228",
+      "llama_cpp/_internals.py": "349a1794a0061685ce1ad52e38aba0c9906a7907e83df1167cf36bfbbba0dd58"
+    },
+    "selection": "Requested rows gathered before final FFN and vocabulary projection in phi3 graph",
+    "source_lines": {
+      "vendor/llama.cpp/src/models/phi3.cpp": [
+        130,
+        131,
+        132,
+        182
+      ],
+      "vendor/llama.cpp/src/llama-graph.cpp": [
+        198,
+        218,
+        219,
+        220,
+        2401
+      ],
+      "llama_cpp/_internals.py": [
+        507,
+        515,
+        516
+      ],
+      "llama_cpp/llama.py": [
+        76,
+        77,
+        92,
+        667,
+        673,
+        677
+      ]
+    },
+    "historical_wrapper": {
+      "n_ctx": 32768,
+      "n_batch": 512,
+      "n_ubatch": 512,
+      "logits_all": false,
+      "max_tokens": 64,
+      "temperature": 0.0,
+      "stream": true,
+      "requested_prompt_outputs": "Last token of each prompt batch; decode uses one token",
+      "reported_long_completion_tokens": 45
+    },
+    "limits": [
+      "Cached source/native wheel match current installation; old metadata matches size/mtime, not contemporaneous library hash",
+      "Historical process maps and literal shell-command record absent; no current-main substitution",
+      "No matched llama.cpp rerun or larger-model scaling result; no validated 0.8 GiB gap"
+    ]
+  },
+  "external_artifact_policy": "Source hashes identify excluded raw artifacts; independent verification requires authorized raw files and matching model/runtime artifacts, not hashes alone",
+  "source_artifact_sha256": {
+    "long/report": "8889ac263fa326045dcf192311b0f477a7d27e4c5f2139467f7bfdcef810a4e0",
+    "long/audit": "de9ce3e44ce8f7e8be00aa19050d9591392d79d111d4db3bb0c7b0e250841e6d",
+    "long/final_audit": "50c6d3dd04f55951b760168398d00fa48578026dc02ca5c0c74b03bc9ca054a1",
+    "initializer/report": "c98a55e132668750ba789e7843e76a9e4ddc2d79c2bc2da20aa49b3a2048ac5c",
+    "initializer/audit": "820798ddc5aeba797c6c0fcbf99497de979a686e479e3d19c04036a94aca5f93",
+    "initializer/cleanup": "019547599888e7322d0c424a84f20985e1c3975ece983345bda9ff3ef499bf68",
+    "candidate/report": "d95592e8be5fa8aaa8ea471ff2f787f195a08c4609929418048ff225baf98553",
+    "candidate/audit": "7f33c64a842d0f7126b464177e01f42ad7b039c88833f79cdcab8f733bf4c2eb",
+    "candidate/cleanup": "9e2e14c6c75d5a62e6d05f5ff23f643663486542be4843d9067bca266a4ab53e",
+    "long/preservation": "0c7bcd9c61633652db113e8a2f2fb314c652524d892a95a9f293910e93a8583c",
+    "initializer/preservation": "861480c0a619a05059c677ad7bfececfdf92bbbc7179f4d6616a1771a67955dd",
+    "candidate/preservation": "06b171ddccd99b07d706e653febb2a7287753070255108fd3d9e459db9e0e8be",
+    "reference/effective-config.json": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "reference/logits.bin": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+    "reference/generated-ids.i32le": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+    "reference/input-ids.i32le": "fbe6fe0929666ac5a91dd152aea07bc2bf7675c765f31ad57e701604ccaa3831",
+    "reference/identity.json": "7bbfb78f112939078d9b4880903003ccfe4ea33771b84a110a096633dcdd5994",
+    "initializer/configuration_identity": "d34f11eaf2f6a52f54bfed2683b4a008be494c196541d1c2f1194648b6397ecd",
+    "candidate/graph_validation": "0bc8478e715378c4816064aebe424fdbc5e9a5008cbbb79a905549fc51defee3",
+    "candidate/model_identity": "706ae1f0559c88c1ebde61c92810204cf88c96e311b1388c6fe9a024b0a23e56",
+    "candidate/graph_diff": "0e3dcb543b6d109b2ff4582b5a432c479fe4b277c70851657ba87905145e8f6e",
+    "arena_on_setting_0/post_initialize-arenas.log": "7508a33487b058cdc73de827ac7b7694278f8d138babaaafd09a17e297ff14ce",
+    "arena_on_setting_0/post_generation-arenas.log": "582e55dceb4ca9fe6071b37bc29f2430a7582e1be32fcb3418abb2da42159bd5",
+    "arena_on_setting_0/post_generator_cleanup-arenas.log": "beb3b5202331b70b9979af41fc757b4d5322f761ec41206856ffd15c18b6b70c",
+    "arena_on_setting_0/nvml.jsonl": "b17dbc6f6fcbe2c8135c74bbabf095a1ae64fd28ddbd02bdfe9e570941af4e49",
+    "arena_on_setting_0/phases.jsonl": "23d800652bb4e3fa4c8af784b6e6548e5ad15e51f259defef5339efdd1456be3",
+    "arena_on_setting_0/effective-config.json": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "arena_on_setting_0/applied-config.json": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "arena_on_setting_0/logits.bin": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+    "arena_on_setting_0/generated-ids.i32le": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+    "arena_on_setting_0/capture-state.json": "aed020bb2d5bf638e9cbd7e629750cbbd466a4303e0cec2a4d70e3d61e6ae54b",
+    "arena_on_setting_0/allocator-gate.json": "fb79cc6e2ccb2391f89ca015a50562488fe252e9dac794933686d70b41cccb71",
+    "arena_on_setting_0/binding.json": "eede95723c8e4d10ec64182104804de7f0be19c99e9de8aa687151a76f170343",
+    "arena_on_setting_0/breakpoint-gate.json": "1767245772bc2f5f6a65097f681ed13a487470460a3a23e18bbde3d727d9450b",
+    "arena_on_setting_0/events.jsonl": "258ac3c2d7f116d0d560a0281e5f73f9f3db65ab50280766a9a7c0c3790b0251",
+    "arena_on_setting_0/command.json": "09eacd63211d6922eadf72d55e12d9e084f1a5e83bc1c41658c97bc262f31f7c",
+    "arena_off_setting_0/post_initialize-arenas.log": "2585e47d69605a01ed575e5469d11d825b58c4c6d67204606cc3146049664501",
+    "arena_off_setting_0/post_generation-arenas.log": "e150fc6340ac07d6a75052cde9985c1eebd0f21d2e99b0e6c65d6dbc0696ec20",
+    "arena_off_setting_0/post_generator_cleanup-arenas.log": "d3dad17a09fcc96cce8ed61ffa842d5cd8d4c9d77f0c105ce98f1d3ab88899f8",
+    "arena_off_setting_0/nvml.jsonl": "5b983f14d7459d5092cda5186bef167e095929a0e505be668cfac2b32324c135",
+    "arena_off_setting_0/phases.jsonl": "7a48e1b97fb30782540c8500b0bd883fd21194ed541d19dec8202593eeff83c9",
+    "arena_off_setting_0/effective-config.json": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "arena_off_setting_0/applied-config.json": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "arena_off_setting_0/logits.bin": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+    "arena_off_setting_0/generated-ids.i32le": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+    "arena_off_setting_0/capture-state.json": "aed020bb2d5bf638e9cbd7e629750cbbd466a4303e0cec2a4d70e3d61e6ae54b",
+    "arena_off_setting_0/allocator-gate.json": "457ba16b23694e74bb3840ac384b988be086785b8cc554884ab80554fb790dcc",
+    "arena_off_setting_0/binding.json": "c98d3106f512e809f7864dadfdf2c5632cf098757ee9da1452841367ab47a416",
+    "arena_off_setting_0/breakpoint-gate.json": "ec47e2aaa97f500478dc9fde24a04eb92575c36dedbbaf92c286ac7a89d592d1",
+    "arena_off_setting_0/events.jsonl": "6ae52c2f6c546d48ca726d9b19eaef221a8b2933473011ea624eade5b7c1a59e",
+    "arena_off_setting_0/command.json": "6b35cafc1e65d7ae86f7651a877ceaaaf9af37e66eb889684e76f2600aef643a",
+    "arena_on_setting_1/post_initialize-arenas.log": "82943ca98ecd1717d5489e10ce565bfc6d46cced472bc49293efe39592fcebd1",
+    "arena_on_setting_1/post_generation-arenas.log": "03f72c65a8a6aad5e2be8c86f6b4cd7bb303f01b2149b8eff7ccad331c4e6eeb",
+    "arena_on_setting_1/post_generator_cleanup-arenas.log": "1d3d0c7c93e1257358992b07e64240633b3a20a1ae511a71562be3a52a45ad77",
+    "arena_on_setting_1/nvml.jsonl": "e7c1d5e2e63d6f695ac1c7e160b7a4ce28a6b98c328a52db7f33b12f95fbeed1",
+    "arena_on_setting_1/phases.jsonl": "fbf92b71bced9ad298ae2a38f168cb2937db3ffbbb7d79a70dca04116f29c608",
+    "arena_on_setting_1/effective-config.json": "60271eb04195d1e00c0c890e101773b0bb0545a487d49d1db141e4b1540039da",
+    "arena_on_setting_1/applied-config.json": "60271eb04195d1e00c0c890e101773b0bb0545a487d49d1db141e4b1540039da",
+    "arena_on_setting_1/logits.bin": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+    "arena_on_setting_1/generated-ids.i32le": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+    "arena_on_setting_1/capture-state.json": "aed020bb2d5bf638e9cbd7e629750cbbd466a4303e0cec2a4d70e3d61e6ae54b",
+    "arena_on_setting_1/allocator-gate.json": "1e0a06a993e1734b996ec619001c1f33673211248ab3cdbcd0f460df7696654b",
+    "arena_on_setting_1/binding.json": "102b09108dc42d97fda94357fb7f67398b1a84d104fc922ca11e66df27c23419",
+    "arena_on_setting_1/breakpoint-gate.json": "f9c0bc3b97421e41d80c6e0fe58753d853d8699f6bcd7c3c6ca18c157b4a09fd",
+    "arena_on_setting_1/events.jsonl": "1f969f24cde7d51b058c8e0d7ebcc2ea1d77b8876258230fc4f13c11f4836ebf",
+    "arena_on_setting_1/command.json": "1cd4bd956dfe7416966d86f938d20e721ad63c70aea26bd7e7737ac2898ebaa5",
+    "last_hidden_candidate/post_initialize-arenas.log": "2585e47d69605a01ed575e5469d11d825b58c4c6d67204606cc3146049664501",
+    "last_hidden_candidate/post_generation-arenas.log": "e150fc6340ac07d6a75052cde9985c1eebd0f21d2e99b0e6c65d6dbc0696ec20",
+    "last_hidden_candidate/post_generator_cleanup-arenas.log": "d3dad17a09fcc96cce8ed61ffa842d5cd8d4c9d77f0c105ce98f1d3ab88899f8",
+    "last_hidden_candidate/nvml.jsonl": "ebc394ccad2990f462585e2d7f2d7752da9e02ba7c9772a8d77fb9a5d06a653f",
+    "last_hidden_candidate/phases.jsonl": "bbb3f03a5c90e65199dc5a7504454adf256c51d1ddf8a22593b655223c73c416",
+    "last_hidden_candidate/effective-config.json": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "last_hidden_candidate/applied-config.json": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+    "last_hidden_candidate/logits.bin": "f45036b0cab8602df715a9a9a0939549f533ca0613dea760ebf44698ca69797e",
+    "last_hidden_candidate/generated-ids.i32le": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+    "last_hidden_candidate/capture-state.json": "aed020bb2d5bf638e9cbd7e629750cbbd466a4303e0cec2a4d70e3d61e6ae54b",
+    "last_hidden_candidate/allocator-gate.json": "8a15d34f3bb9e19ea92bacff42c71887c5f68e7d5088f1f72d556aa6a57e7453",
+    "last_hidden_candidate/binding.json": "771351a0c2a0f612428ad7803b79ad7caf05f7131ca89e46ea2520b95d0eb0ff",
+    "last_hidden_candidate/breakpoint-gate.json": "3e1bf51b6359d15e860002d89170e6f3fb754c36009c2f1c32c20e1471b4fae0",
+    "last_hidden_candidate/events.jsonl": "030bfd9d0858d3a11f0a6b8306cb6201aa42f4059f31142f6332933e18f7b7b9",
+    "last_hidden_candidate/command.json": "6ac3b3b020239916351d5d2831d9558ab3d9078972a0fe0539a2a4ff0aedd363",
+    "llama/source_archive": "1139dbb54509074b70893fab8554e3b079aa9f4d312058ce4018ef0019e3de12",
+    "llama/historical_harness": "4bacaadcbb62465127cc98c7199275bfe26de7c983bf16c431f6fe8c1d4041f3",
+    "llama/current_installed_library": "9a5c7eaed88df63aad9296eb552e6f44deaf6e8d859f1be6c6ec85305461fabd",
+    "llama/current_installed_common_library": "a0b1033ce75fb2d93d545ed386c95d21cc9eff04514d514d6173126411d1a40b",
+    "long/application": "fa662f8bcbe828ccf0e62ef521806bc23a9e05b4ae0057c9fce9c982d1184415",
+    "long/observer": "271ba0c5cb7db07da10e4465e8875607bc46e7be06e5c4d459cf62111eaf29de"
+  }
+}
