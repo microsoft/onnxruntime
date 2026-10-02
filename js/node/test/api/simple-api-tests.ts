@@ -92,6 +92,7 @@ describe('API Tests - simple API tests', () => {
     const values: ReadonlyArray<NonNullable<InferenceSession.WebGpuExecutionProviderOption['weightLoadAcceleration']>> =
       ['off', 'preferred', 'required'];
     const model = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    let unavailableProviderError: string | undefined;
 
     for (const weightLoadAcceleration of values) {
       try {
@@ -100,10 +101,18 @@ describe('API Tests - simple API tests', () => {
         });
         await session.release();
       } catch (error) {
-        // Builds without WebGPU/D3D12 file loading and machines without compatible
-        // hardware can reject the provider after parsing. The regression here
-        // is specifically that Node must recognize and forward the option.
-        assert.doesNotMatch(String(error), /WebGPU EP has an unrecognized option: 'weightLoadAcceleration'/);
+        const message = String(error);
+        assert.doesNotMatch(message, /WebGPU EP has an unrecognized option: 'weightLoadAcceleration'/);
+        if (weightLoadAcceleration === 'off') {
+          // A build without WebGPU, or a machine without a usable adapter, can
+          // fail before an acceleration mode matters. Later modes must not hide
+          // a different, unexpected failure.
+          unavailableProviderError = message;
+        } else if (weightLoadAcceleration === 'required' && unavailableProviderError === undefined) {
+          assert.match(message, /weightLoadAcceleration|disk-to-GPU|D3D12/);
+        } else {
+          assert.equal(message, unavailableProviderError);
+        }
       }
     }
   });

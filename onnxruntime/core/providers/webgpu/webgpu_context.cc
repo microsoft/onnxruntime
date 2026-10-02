@@ -374,10 +374,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       }
       d3d12_shared_resource_features_available_ =
           has_shared_buffer_memory && has_shared_fence;
-      wgpu::AdapterInfo supplied_adapter_info;
-      if (device_.GetAdapterInfo(&supplied_adapter_info) == wgpu::Status::Success) {
-        requested_backend_type_ = supplied_adapter_info.backendType;
-      }
     }
 #endif
     LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
@@ -421,6 +417,11 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     }
 #endif
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+    // Use the backend selected by Dawn rather than the requested backend. The
+    // request can be Undefined when Dawn performs automatic adapter selection.
+    requested_backend_type_ = adapter_info_.backendType;
+#endif
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
