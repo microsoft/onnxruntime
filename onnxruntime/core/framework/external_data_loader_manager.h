@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "core/common/status.h"
 #include "core/common/common.h"
 #include "core/framework/external_data_loader.h"
