@@ -77,7 +77,8 @@ static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, co
   return axes_values;
 };
 
-static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& node_arg, double& value) {
+template <typename T>
+static bool TryGetScalarInitializer(const Graph& graph, const NodeArg& node_arg, T& value) {
   const auto* tensor_proto = graph_utils::GetConstantInitializer(graph, node_arg.Name());
   if (tensor_proto == nullptr) {
     return false;
@@ -90,40 +91,40 @@ static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& n
 
   switch (tensor_proto->data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      value = static_cast<double>(initializer.data<float>()[0]);
+      value = static_cast<T>(initializer.data<float>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      value = static_cast<double>(initializer.data<MLFloat16>()[0]);
+      value = static_cast<T>(initializer.data<MLFloat16>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      value = initializer.data<double>()[0];
+      value = static_cast<T>(initializer.data<double>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-      value = static_cast<double>(initializer.data<BFloat16>()[0]);
+      value = static_cast<T>(initializer.data<BFloat16>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      value = static_cast<double>(initializer.data<int8_t>()[0]);
+      value = static_cast<T>(initializer.data<int8_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      value = static_cast<double>(initializer.data<int16_t>()[0]);
+      value = static_cast<T>(initializer.data<int16_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      value = static_cast<double>(initializer.data<int32_t>()[0]);
+      value = static_cast<T>(initializer.data<int32_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      value = static_cast<double>(initializer.data<int64_t>()[0]);
+      value = static_cast<T>(initializer.data<int64_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      value = static_cast<double>(initializer.data<uint8_t>()[0]);
+      value = static_cast<T>(initializer.data<uint8_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      value = static_cast<double>(initializer.data<uint16_t>()[0]);
+      value = static_cast<T>(initializer.data<uint16_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      value = static_cast<double>(initializer.data<uint32_t>()[0]);
+      value = static_cast<T>(initializer.data<uint32_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      value = static_cast<double>(initializer.data<uint64_t>()[0]);
+      value = static_cast<T>(initializer.data<uint64_t>()[0]);
       return true;
     default:
       return false;
@@ -131,7 +132,7 @@ static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& n
 }
 
 static bool TryGetScalarInitializerOrFloatCastAsDouble(const Graph& graph, const NodeArg& node_arg, double& value) {
-  if (TryGetScalarInitializerAsDouble(graph, node_arg, value)) {
+  if (TryGetScalarInitializer(graph, node_arg, value)) {
     return true;
   }
 
@@ -143,13 +144,14 @@ static bool TryGetScalarInitializerOrFloatCastAsDouble(const Graph& graph, const
   }
 
   const auto to_it = cast_node->GetAttributes().find("to");
+  float cast_value = 0.0f;
   if (to_it == cast_node->GetAttributes().end() ||
       to_it->second.i() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-      !TryGetScalarInitializerAsDouble(graph, *cast_node->InputDefs()[0], value)) {
+      !TryGetScalarInitializer(graph, *cast_node->InputDefs()[0], cast_value)) {
     return false;
   }
 
-  value = static_cast<double>(static_cast<float>(value));
+  value = static_cast<double>(cast_value);
   return true;
 }
 
@@ -160,7 +162,7 @@ static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
   }
 
   double exponent_value = 0.0;
-  if (TryGetScalarInitializerAsDouble(graph, *pow_inputs[1], exponent_value)) {
+  if (TryGetScalarInitializer(graph, *pow_inputs[1], exponent_value)) {
     return exponent_value == 2.0;
   }
 
@@ -171,7 +173,7 @@ static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
     return false;
   }
 
-  return TryGetScalarInitializerAsDouble(graph, *exponent_input_node->InputDefs()[0], exponent_value) &&
+  return TryGetScalarInitializer(graph, *exponent_input_node->InputDefs()[0], exponent_value) &&
          exponent_value == 2.0;
 }
 
