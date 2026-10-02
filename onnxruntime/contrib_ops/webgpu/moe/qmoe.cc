@@ -452,6 +452,15 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "Block-scaled FP8 QMoE requires a build with float8 types enabled.");
 #endif
+    const int64_t fc1_size = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
+    ORT_RETURN_IF_NOT(fc1_experts_weights->Shape() ==
+                              TensorShape({moe_params.num_experts, fc1_size, moe_params.hidden_size}) &&
+                          fc2_experts_weights->Shape() ==
+                              TensorShape({moe_params.num_experts, moe_params.hidden_size, moe_params.inter_size}) &&
+                          (fc3_experts_weights_optional == nullptr ||
+                           fc3_experts_weights_optional->Shape() ==
+                               TensorShape({moe_params.num_experts, moe_params.inter_size, moe_params.hidden_size})),
+                      "Block-scaled FP8 QMoE requires canonical [E,N,K] expert weight shapes.");
     ORT_RETURN_IF_NOT(fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr,
                       "Block-scaled FP8 QMoE does not support zero points.");
     ORT_RETURN_IF_NOT(fc1_global_scale == nullptr && fc2_global_scale == nullptr,
@@ -461,7 +470,6 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                           (fc3_experts_weights_optional == nullptr ||
                            fc3_experts_weights_optional->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN),
                       "Block-scaled FP8 QMoE weights must use float8e4m3fn elements.");
-    const int64_t fc1_size = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
     ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc1_scales, "fc1_scales", moe_params.num_experts,
                                                fc1_size, moe_params.hidden_size));
     ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc2_scales, "fc2_scales", moe_params.num_experts,
