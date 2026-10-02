@@ -73,6 +73,18 @@ index cbb1532c0..6597a2ef9 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
+--- a/onnx/defs/schema.h
++++ b/onnx/defs/schema.h
+@@ -937,7 +937,7 @@
+       // Version corresponding last release of ONNX. Update this to match with
+       // the max version above in a *release* version of ONNX. But in other
+       // versions, the max version may be ahead of the last-release-version.
+-      last_release_version_map_[ONNX_DOMAIN] = 27;
++      last_release_version_map_[ONNX_DOMAIN] = 28;
+       last_release_version_map_[AI_ONNX_ML_DOMAIN] = 5;
+       last_release_version_map_[AI_ONNX_TRAINING_DOMAIN] = 1;
+       last_release_version_map_[AI_ONNX_PREVIEW_DOMAIN] = 1;
 diff --git a/onnx/defs/printer.cc b/onnx/defs/printer.cc
 index 1d43bccb0..b6beed6f3 100644
 --- a/onnx/defs/printer.cc
