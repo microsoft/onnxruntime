@@ -1187,9 +1187,15 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
 
 /** \brief Validate a compiled model's compatibility for one or more EP devices.
  *
- * Throws on error. Returns the resulting compatibility status.
- * /// \param ep_devices The EP devices to check compatibility against.
- * /// \param compatibility_info The compatibility string from the precompiled model to validate.
+ * The EP interprets the ordered device configuration using the same selection, fallback, and participation rules as
+ * OrtEpFactory::CreateEp. If the model is subsequently loaded, pass the same devices in the same order to
+ * Ort::SessionOptions::AppendExecutionProvider_V2.
+ *
+ * Throws on error.
+ *
+ * \param ep_devices The non-empty, ordered EP device configuration to check.
+ * \param compatibility_info The opaque compatibility string from the precompiled model.
+ * \return The compatibility status for the intended EP device configuration.
  */
 OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
     const std::vector<ConstEpDevice>& ep_devices,
