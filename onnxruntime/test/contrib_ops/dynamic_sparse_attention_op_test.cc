@@ -29,6 +29,10 @@
 #include "test/common/cuda_op_test_utils.h"
 #endif
 
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -1185,6 +1189,40 @@ TEST(DynamicSparseAttentionTest, LocalPlusSelectedAuxiliaryJointSoftmaxSharedKv_
   c.expected_present_value = c.value;
 
   RunDynamicSparseAttentionCase(c, std::move(webgpu_ep));
+}
+
+TEST(DynamicSparseAttentionTest, RejectsAttentionStageAboveStorageBufferLimit_WebGPU) {
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(
+      config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  DynamicSparseAttentionCase c;
+  c.attention_mode = "local_plus_selected";
+  c.selected_kv_source = "auxiliary";
+  c.local_window_size = 1;
+  c.auxiliary_kv_shared = 1;
+  c.auxiliary_sequence_length = 2;
+  c.query.assign(8, 0.0f);
+  c.key.assign(8, 0.0f);
+  c.value.assign(8, 2.0f);
+  c.past_key.assign(8, 0.0f);
+  c.past_value.assign(8, 0.0f);
+  c.auxiliary_key.assign(16, 4.0f);
+  c.selected_indices = {1};
+  c.selected_counts = {1};
+  c.seqlens_k = {0};
+  c.head_sink = {0.0f};
+  c.expected_output.assign(8, 0.0f);
+  c.expected_present_key = c.key;
+  c.expected_present_value = c.value;
+
+  RunDynamicSparseAttentionCase(
+      c, std::move(webgpu_ep), OpTester::ExpectResult::kExpectFailure,
+      "requires 9 storage buffers, but the device supports 8");
 }
 
 TEST(DynamicSparseAttentionTest, PaddingZeroAndOutOfRangeSelectionsAreGuarded_WebGPU) {

@@ -793,6 +793,21 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
       parameters.max_selected > 0 && (!selected_from_auxiliary || parameters.auxiliary_sequence_length > 0);
   const bool has_auxiliary_value = auxiliary_value != nullptr;
   const bool use_smooth_softmax = use_smooth_softmax_ && head_sink == nullptr;
+  const uint32_t required_storage_buffers =
+      5u +                                             // prepared Q, main K/V, seqlens, and output
+      (has_selection ? 2u : 0u) +                      // selected indices and counts
+      (selected_from_auxiliary && has_selection
+           ? 1u + static_cast<uint32_t>(has_auxiliary_value)
+           : 0u) +                                     // auxiliary K and optional distinct V
+      static_cast<uint32_t>(head_sink != nullptr);
+  if (required_storage_buffers > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "DynamicSparseAttention (WebGPU): attention configuration requires ",
+        required_storage_buffers, " storage buffers, but the device supports ",
+        context.DeviceLimits().maxStorageBuffersPerShaderStage,
+        " per shader stage. Use shared auxiliary K/V, omit head_sink, or use an adapter with a higher limit.");
+  }
   DynamicSparseAttentionProgram attention_program(
       has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
       head_sink != nullptr, use_smooth_softmax);
