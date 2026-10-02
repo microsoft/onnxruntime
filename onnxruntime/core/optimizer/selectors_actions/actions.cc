@@ -43,6 +43,13 @@ InlinedVector<NodeIndex> SafelyRemoveNodes(
       // TODO: It's slightly insane we don't support optionally removing the output edges as part of Graph::RemoveNode
       // but to make that change we need to validate a lot of existing code
       const NodeIndex node_index = node->Index();
+      const auto output_edges = node->GetRelationships().output_edges;
+      for (const auto& output_edge : output_edges) {
+        if (output_edge.IsControlEdge()) {
+          graph.RemoveEdge(node_index, output_edge.GetNode().Index(),
+                           output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+        }
+      }
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       if (graph.RemoveNode(node_index)) {
         removed_node_indices.push_back(node_index);
