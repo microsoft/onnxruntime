@@ -9,9 +9,9 @@
 #include <iomanip>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <system_error>
-#include <unordered_map>
 #include <utility>
 
 #include <gsl/gsl>
@@ -33,6 +33,19 @@ constexpr uint64_t kBufferAlignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT
 // off during longer transfers to avoid unnecessary CPU wakeups.
 constexpr DWORD kInitialCancellationPollMilliseconds = 1;
 constexpr DWORD kMaximumCancellationPollMilliseconds = 10;
+
+struct WindowsPathLess {
+  bool operator()(const std::wstring& left,
+                  const std::wstring& right) const noexcept {
+    const int result = CompareStringOrdinal(
+        left.data(), static_cast<int>(left.size()),
+        right.data(), static_cast<int>(right.size()), TRUE);
+    if (result == 0) {
+      return left < right;
+    }
+    return result == CSTR_LESS_THAN;
+  }
+};
 
 common::Status HResultError(const char* operation, HRESULT hr) {
   return ORT_MAKE_STATUS(
@@ -547,16 +560,12 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
     std::vector<PreparedFile>& files) {
   // Group ranges by source file so each file is opened once. Later, aligned
   // overlapping ranges are merged to avoid redundant unbuffered reads.
-  std::unordered_map<std::wstring, size_t> file_indices;
-  file_indices.reserve(ranges.size());
+  std::map<std::wstring, size_t, WindowsPathLess> file_indices;
   for (size_t range_index = 0;
        range_index < ranges.size(); ++range_index) {
     const auto& range = ranges[range_index];
-    auto file_key = range.path;
-    CharLowerBuffW(file_key.data(),
-                   static_cast<DWORD>(file_key.size()));
     const auto [file_index_it, inserted] =
-        file_indices.try_emplace(std::move(file_key), files.size());
+        file_indices.try_emplace(range.path, files.size());
     if (inserted) {
       PreparedFile file;
       file.path = range.path;

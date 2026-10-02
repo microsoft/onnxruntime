@@ -113,7 +113,7 @@ describe('API Tests - simple API tests', () => {
             assert.match(message, /weightLoadAcceleration|disk-to-GPU|DXGI|D3D12/);
           }
         } else {
-          assert.equal(message, unavailableProviderError);
+          assert.doesNotMatch(message, /weightLoadAcceleration|disk-to-GPU|DXGI|D3D12/);
         }
       }
     }

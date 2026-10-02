@@ -52,7 +52,15 @@ double Milliseconds(Clock::duration duration) {
 struct WindowsPathLess {
   bool operator()(const std::filesystem::path& left,
                   const std::filesystem::path& right) const {
-    return _wcsicmp(left.c_str(), right.c_str()) < 0;
+    const auto& left_native = left.native();
+    const auto& right_native = right.native();
+    const int result = CompareStringOrdinal(
+        left_native.data(), static_cast<int>(left_native.size()),
+        right_native.data(), static_cast<int>(right_native.size()), TRUE);
+    if (result == 0) {
+      return left_native < right_native;
+    }
+    return result == CSTR_LESS_THAN;
   }
 };
 
