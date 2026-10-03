@@ -6,6 +6,8 @@ Options:
         -r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.
         -t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.
         -p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.
+        --run_config [run_config_entries]: Specify run configuration entries as key-value pairs: --run_config "<key1>|<val1> <key2>|<val2>"
+                                      [Example] --run_config "gpu_graph_id|1 qnn.htp_perf_mode|burst"
         -v: Show verbose information
         -h: help
 
