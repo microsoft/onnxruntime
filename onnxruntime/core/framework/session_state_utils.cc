@@ -142,6 +142,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // Bool external initializers are copied verbatim and may carry bytes outside the canonical
       // {0, 1} set. The CPU staging tensor above can be backed by a read-only mmap, so normalize into
       // a writable CPU copy before copying to the device (see utils::NormalizeBoolTensorIfNeeded).
+#if defined(ORT_MINIMAL_BUILD)
       if (cpu_staging_tensor.IsDataType<bool>()) {
         Tensor normalized_cpu_tensor;
         ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
@@ -154,6 +155,25 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
       return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_value.Get<Tensor>(),
                                        std::move(tensor), ort_value);
+#else
+      if (cpu_staging_tensor.IsDataType<bool>()) {
+        Tensor normalized_cpu_tensor;
+        ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
+                                                           tensor_shape, type,
+                                                           default_cpu_alloc, normalized_cpu_tensor));
+        utils::MakeCpuTensorCopy(cpu_staging_tensor, normalized_cpu_tensor);
+        utils::NormalizeBoolTensorIfNeeded(normalized_cpu_tensor);
+        ORT_RETURN_IF_ERROR(
+            CopyTensorFromCPUToDevice(data_transfer_mgr, normalized_cpu_tensor, std::move(tensor), ort_value));
+      } else {
+        ORT_RETURN_IF_ERROR(CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_value.Get<Tensor>(),
+                                                      std::move(tensor), ort_value));
+      }
+      if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
+        LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pageable bytes=" << cpu_staging_tensor.SizeInBytes();
+      }
+      return Status::OK();
+#endif
     }
   } else {
     if (device == default_cpu_device) {

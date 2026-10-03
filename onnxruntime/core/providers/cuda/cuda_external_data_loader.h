@@ -8,6 +8,10 @@
 #include <mutex>
 
 #include "core/framework/external_data_loader.h"
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+#include "core/providers/cuda/cuda_external_data_loader_gds.h"
+#include "core/providers/cuda/cuda_external_data_loader_directstorage.h"
+#endif
 #include "cuda_pch.h"
 
 namespace onnxruntime {
@@ -64,12 +68,8 @@ class ExternalDataLoaderThreadPool;
  */
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
-  using AllocatePinnedBufferFn = cudaError_t (*)(void**, size_t);
-  using CreateStreamFn = cudaError_t (*)(cudaStream_t*, unsigned int);
-
-  ExternalDataLoader(int device_id, size_t reading_thread_count,
-                     AllocatePinnedBufferFn allocate_pinned_buffer = cudaMallocHost,
-                     CreateStreamFn create_stream = cudaStreamCreateWithFlags);
+  ExternalDataLoader(int device_id, size_t reading_thread_count, bool use_gds = false,
+                     bool use_directstorage = false);
   ~ExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
@@ -89,8 +89,14 @@ class ExternalDataLoader final : public IExternalDataLoader {
   mutable std::array<void*, 2> buffers_{};
   mutable std::array<cudaStream_t, 2> streams_{};
   const size_t reading_thread_count_;
-  const AllocatePinnedBufferFn allocate_pinned_buffer_;
-  const CreateStreamFn create_stream_;
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+  const bool use_gds_;
+  mutable bool gds_disabled_{false};
+  mutable std::unique_ptr<GdsLoader> gds_loader_;
+  const bool use_directstorage_;
+  mutable bool directstorage_disabled_{false};
+  mutable std::unique_ptr<DirectStorageLoader> directstorage_loader_;
+#endif
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
 };
 

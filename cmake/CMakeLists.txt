@@ -70,6 +70,7 @@ option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER "Experimental: Enable ConvSymKernelAvx2 assembly saturation checker in build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+cmake_dependent_option(onnxruntime_USE_CUDA_DIRECTSTORAGE "Build Microsoft DirectStorage CUDA loading support" OFF "onnxruntime_USE_CUDA;WIN32" OFF)
 cmake_dependent_option(onnxruntime_USE_CUDA_NHWC_OPS "Build CUDA with NHWC op support" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_BUILD_CUDA_EP_AS_PLUGIN "Build CUDA EP as a separate plugin shared library instead of the legacy in-tree provider" OFF "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_BUILD_CUDA_QUANT_PREPROCESS "Build CUDA weight-packing module onnxruntime_cuda_quant_preprocess.so" OFF)
@@ -495,6 +496,12 @@ endif()
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
+if (onnxruntime_USE_CUDA_DIRECTSTORAGE AND
+    (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN OR onnxruntime_MINIMAL_BUILD OR onnxruntime_CUDA_MINIMAL))
+  message(FATAL_ERROR
+    "onnxruntime_USE_CUDA_DIRECTSTORAGE is not supported with CUDA plugin or minimal builds.")
 endif()
 
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -1555,6 +1562,24 @@ if (onnxruntime_USE_CUDA)
     file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDAToolkit_ROOT)
   endif()
   find_package(CUDAToolkit REQUIRED)
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_CUDA_MINIMAL)
+    include(CheckCXXSourceCompiles)
+    include(CMakePushCheckState)
+    cmake_push_check_state(RESET)
+    set(CMAKE_REQUIRED_INCLUDES ${CUDAToolkit_INCLUDE_DIRS})
+    check_cxx_source_compiles("
+      #include <cufile.h>
+      using SetBoolParameterFn = decltype(&cuFileSetParameterBool);
+      int main() {
+        return CUFILE_PARAM_USE_PCIP2PDMA == CUFILE_PARAM_PROPERTIES_ALLOW_COMPAT_MODE;
+      }" onnxruntime_CUFILE_CONFIG_API_SUPPORTED)
+    cmake_pop_check_state()
+    if(onnxruntime_CUFILE_CONFIG_API_SUPPORTED)
+      set_property(SOURCE "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_external_data_loader_gds.cc"
+        APPEND PROPERTY COMPILE_DEFINITIONS ORT_CUDA_GDS_AVAILABLE)
+    endif()
+  endif()
 
   if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9
           AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
