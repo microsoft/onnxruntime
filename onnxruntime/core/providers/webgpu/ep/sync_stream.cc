@@ -3,6 +3,7 @@
 
 #include "sync_stream.h"
 
+#include "core/platform/env_var.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -74,6 +75,18 @@ OrtStatus* ORT_API_CALL WebGpuSyncStream::CreateNotificationImpl(
 
 OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep) {
   return new WebGpuSyncStream(ep);
+}
+
+bool UseLegacyRecording() {
+  static const bool legacy = [] {
+    const auto force_legacy = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY");
+    ORT_ENFORCE(force_legacy.empty() || force_legacy == "0" || force_legacy == "1",
+                "ORT_WEBGPU_EP_FORCE_LEGACY must be 0 or 1.");
+    // Conservatively include every 1.30.x runtime: the single-copy stream fix landed
+    // after the original 1.30.1 minimum was chosen.
+    return onnxruntime::ep::CurrentOrtApiVersion() < 31 || force_legacy == "1";
+  }();
+  return legacy;
 }
 
 CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream) {

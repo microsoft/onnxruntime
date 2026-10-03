@@ -564,7 +564,7 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
   }
   if (buffer) {
     if (initialize_to_zero) {
-      // Plugin plain allocations pass call-local recording and submit only their own clear.
+      // Modern plugin plain allocations pass call-local recording and submit only their own clear.
       // AllocOnStream defers the clear on the Session timeline. Built-in allocations use the
       // Session recording and retain their caller-supplied submission policy.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);

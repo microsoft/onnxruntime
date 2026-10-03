@@ -4,6 +4,7 @@
 #include "factory.h"
 #include "allocator.h"
 #include "ep.h"
+#include "sync_stream.h"
 
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
@@ -215,13 +216,24 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   // These implementations belong to this Session, not the Env shared allocator below.
-  // Plain writable Alloc must submit cached clears even during Run: a subsequent copy may
-  // use a different recording. Only a matching AllocOnStream may defer those clears.
-  auto device_alloc = webgpu::CreateWebGpuAllocator(
-      device_free,
-      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
-      [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-      false);
+  AllocatorPtr device_alloc;
+  if (UseLegacyRecording()) {
+    // Legacy callers serialize all operations; internal Run allocations can defer their clears.
+    device_alloc = webgpu::CreateWebGpuAllocator(
+        device_free,
+        [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
+        [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
+        false,
+        [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
+  } else {
+    // Plain writable Alloc must submit cached clears even during Run: a subsequent copy may
+    // use a different recording. Only a matching AllocOnStream may defer those clears.
+    device_alloc = webgpu::CreateWebGpuAllocator(
+        device_free,
+        [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
+        [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
+        false);
+  }
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
@@ -264,6 +276,15 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
         auto context = std::shared_ptr<WebGpuContext>(
             &WebGpuContextFactory::DefaultContext(),
             [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
+        if (UseLegacyRecording()) {
+          // Legacy Env copies share this context-owned recording. Ordinary allocations still submit clears.
+          auto recording = context->LegacyRecording();
+          return std::make_shared<GpuBufferAllocator>(
+              [context = std::move(context)]() -> const BufferManager& { return context->LegacyBufferManager(); },
+              [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
+              false,
+              []() { return true; });
+        }
         return std::make_shared<GpuBufferAllocator>(
             [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
             std::function<CommandRecordingState&()>{},

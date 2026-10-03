@@ -12,6 +12,7 @@
 
 #include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
+#include "core/providers/webgpu/ep/sync_stream.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
 // To make symbols visible on macOS/iOS
@@ -98,6 +99,10 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
 
   // Initialize the global default logger
   ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(default_logger);
+
+  if (onnxruntime::webgpu::ep::UseLegacyRecording()) {
+    LOGS_DEFAULT(INFO) << "WebGPU EP uses serial compatibility mode. Serialize all WebGPU operations on the same device.";
+  }
 
   if (factory_config.allow_software_adapter) {
     LOGS_DEFAULT(WARNING) << kAllowSoftwareAdapterEnvironmentVariable
