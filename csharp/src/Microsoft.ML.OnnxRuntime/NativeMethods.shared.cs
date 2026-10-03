@@ -482,6 +482,21 @@ namespace Microsoft.ML.OnnxRuntime
         // v1.25 APIs
         public IntPtr RunOptionsEnableProfiling;
         public IntPtr RunOptionsDisableProfiling;
+        public IntPtr KernelInfoGetAttributeArray_string;
+        public IntPtr SetPerSessionThreadPoolCallbacks;
+        // v1.27 APIs
+        public IntPtr GetMemPatternEnabled;
+        public IntPtr GetSessionExecutionMode;
+        public IntPtr SessionReleaseCapturedGraph;
+        // v1.28 APIs
+        public IntPtr GetExperimentalFunction;
+        public IntPtr KernelContext_GetSyncStream;
+        // v1.29 APIs
+        public IntPtr SessionOptionsSetWeightlessSourceModelBuffer;
+        // v1.30 APIs
+        public IntPtr KernelContext_GetPreallocatedOutput;
+        // v1.31 APIs
+        public IntPtr SetSeed;
     }
 
     internal static class NativeMethods
@@ -960,6 +975,8 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtGetCompatibilityInfoFromModelBytes)Marshal.GetDelegateForFunctionPointer(
                     api_.GetCompatibilityInfoFromModelBytes,
                     typeof(DOrtGetCompatibilityInfoFromModelBytes));
+
+            OrtSetSeed = (DOrtSetSeed)Marshal.GetDelegateForFunctionPointer(api_.SetSeed, typeof(DOrtSetSeed));
         }
 
         internal class NativeLib
@@ -1383,6 +1400,10 @@ namespace Microsoft.ML.OnnxRuntime
             uint /* OrtErrorCode */ code,
             byte[] /* const char* */ msg);
         public static DOrtCreateStatus OrtCreateStatus;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtSetSeed(long seed);
+        public static DOrtSetSeed OrtSetSeed;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtCreateSession(
