@@ -54,8 +54,8 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
 namespace {
 
 // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
-// (N_b >= N), zero-filling columns [N, N_b). Gives B an even row stride so the
-// subgroup-matrix f16 load's 4-byte row-start alignment holds for odd N.
+// (N_b >= N), zero-filling columns [N, N_b). Gives B an aligned row stride so the
+// subgroup-matrix f16 load's row-start alignment holds for odd N.
 class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMulPadBProgram> {
  public:
   SubgroupMatrixMatMulPadBProgram() : Program{"SubgroupMatrixMatMulPadB"} {}
@@ -73,8 +73,8 @@ class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMu
 
 // Subgroup-matrix MatMul implementation. Loads both A and B directly from global
 // memory and runs the subgroup-matrix kernel during Compute. The class is
-// intended to support all subgroup-matrix configs; for now only 8x16x16 is
-// implemented. The per-problem output tiling is supplied by a vendor-specific
+// intended to support all subgroup-matrix configs. For now 8x16x16 and 16x16x16
+// are implemented. The per-problem output tiling is supplied by a vendor-specific
 // selector kept internal to this impl.
 class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
  public:
@@ -142,7 +142,10 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     }
 
     const auto& config = config_;
-    const bool needs_padded_b = N % 2 != 0;
+    // Vulkan cooperative matrix loads need 16 byte aligned rows so the
+    // 16x16x16 config pads B to a multiple of 8 columns.
+    const uint32_t n_align = config.Is(16, 16, 16) ? 8 : 2;
+    const bool needs_padded_b = N % n_align != 0;
     // Require whole subgroup-matrix K blocks. An odd-width B must be constant
     // because its padded copy is cached by this implementation.
     if (config.K == 0 || K % config.K != 0 ||
@@ -150,13 +153,13 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
       return Status::OK();
     }
 
-    // N_b is just N rounded up to even - compute it before doing any padding work so
+    // N_b is just N rounded up to a multiple of n_align. Compute it before padding so
     // the tile-fit check below can bail out without a wasted pad dispatch.
     uint32_t N_b = N;
     if (needs_padded_b) {
-      ORT_RETURN_IF_NOT(N < std::numeric_limits<uint32_t>::max(),
-                        "Cannot pad odd-N B because N+1 exceeds uint32_t range.");
-      N_b = N + 1;
+      ORT_RETURN_IF_NOT(N <= std::numeric_limits<uint32_t>::max() - n_align,
+                        "Cannot pad B because its padded width exceeds uint32_t range.");
+      N_b = (N / n_align + 1) * n_align;
     }
 
     // The kernel keeps its operand loads in bounds by shifting a trailing partial
@@ -214,7 +217,7 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
  private:
   // Lazily builds an even-strided copy of a constant weight B [..., K, N] with odd N
-  // by widening its last dim to N_b = N + 1 (zero-filling the extra column) and
+  // by widening its last dim to an aligned N_b (zero-filling the extra columns) and
   // caches it, so the per-run pad cost is paid once. Works for a 2D weight [K, N]
   // and a batched weight [batch, K, N] alike: the pad pass treats B as a flat
   // [rows, N] -> [rows, N_b] copy over rows = numel / N (= K, or batch*K), which is
@@ -232,7 +235,7 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     const TensorShape padded_shape{padded_dims};
     const int64_t output_size_i64 = padded_shape.Size();
     ORT_RETURN_IF_NOT(output_size_i64 <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                      "Cannot pad odd-N B because the padded tensor has ", output_size_i64,
+                      "Cannot pad B because the padded tensor has ", output_size_i64,
                       " elements, exceeding uint32_t shader indexing range.");
     const uint32_t output_size = narrow<uint32_t>(output_size_i64);
 
@@ -258,7 +261,7 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     // padded_b_ persists the outcome across calls: call_once runs the body only on
     // the first call, so a failed pad stays failed (and null) on later calls.
     return padded_b_ ? Status::OK()
-                     : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pad odd-N B for subgroup-matrix MatMul.");
+                     : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pad B for subgroup-matrix MatMul.");
   }
 
   const SubgroupMatrixConfig config_;
@@ -269,15 +272,15 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
   mutable std::unique_ptr<Tensor> padded_b_;
 };
 
-Status GenerateShaderCode8x16x16(ShaderHelper& shader,
-                                 uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
-                                 uint32_t split_k) {
+Status GenerateSubgroupMatrixShaderCode(ShaderHelper& shader, const SubgroupMatrixConfig& config,
+                                        uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
+                                        uint32_t split_k) {
   return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_matmul_8x16x16.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_m, sg_mat_count_m),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_n, sg_mat_count_n),
-                             WGSL_TEMPLATE_PARAMETER(sg_mat_k, 16),
-                             WGSL_TEMPLATE_PARAMETER(sg_mat_m, 8),
-                             WGSL_TEMPLATE_PARAMETER(sg_mat_n, 16),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_k, config.K),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_m, config.M),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_n, config.N),
                              WGSL_TEMPLATE_PARAMETER(split_k, split_k));
 }
 
@@ -313,18 +316,19 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  " << output.SetByOffset("output_offset", "value") << "\n"
       << "}\n";
 
-  if (config_.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, sg_mat_count_m_, sg_mat_count_n_, split_k_);
+  if (config_.Is(8, 16, 16) || config_.Is(16, 16, 16)) {
+    return GenerateSubgroupMatrixShaderCode(shader, config_, sg_mat_count_m_, sg_mat_count_n_, split_k_);
   }
   return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                 "Unsupported subgroup matrix config dimensions.");
 }
 
 std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context) {
-  // Only run on devices that report the 8x16x16 F16 subgroup-matrix config this
-  // kernel is implemented for and can provide its required subgroup size.
+  // Only run on devices that report an F16 subgroup-matrix config this kernel
+  // implements (8x16x16 or 16x16x16) and can provide its required subgroup size.
   constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
-  const auto config = SelectSubgroupMatrixConfig(context, {{kF16, kF16, 8, 16, 16, 32, false}});
+  const auto config = SelectSubgroupMatrixConfig(context, {{kF16, kF16, 8, 16, 16, 32, false},
+                                                           {kF16, kF16, 16, 16, 16, 32, false}});
   if (!config) {
     return nullptr;
   }

@@ -20,10 +20,10 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(Shader
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
 //   3 | //
-//   4 | // Subgroup-matrix MatMul kernel (F16) for the 8x16x16 (sg_mat_m x sg_mat_n x
-//   5 | // sg_mat_k) subgroup-matrix shape. The sg_mat_m/n/k values are still supplied as
-//   6 | // params, but this kernel is currently only validated for 8/16/16; other
-//   7 | // subgroup-matrix shapes are TBD and should get their own template variant.
+//   4 | // Subgroup-matrix MatMul kernel (F16) for the 8x16x16 and 16x16x16 (sg_mat_m x
+//   5 | // sg_mat_n x sg_mat_k) subgroup-matrix shapes. The sg_mat_m/n/k values are still
+//   6 | // supplied as params, but this kernel is only validated for 8/16/16 and 16/16/16.
+//   7 | // Other subgroup-matrix shapes are TBD and should get their own template variant.
 //   8 | //
 //   9 | // Computes Y[MxN] = A[MxK] @ B[KxN] using subgroupMatrixMultiplyAccumulate.
 //  10 | //
@@ -32,8 +32,8 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(Shader
 //  13 | // B: weight, loaded directly from global memory in plain row-major KxN layout as a
 //  14 | //    right operand (subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>) with row stride
 //  15 | //    N_b. N_b is the padded row stride of the (possibly column-padded) B buffer and
-//  16 | //    equals N unless the host padded B to an even stride to satisfy the load's
-//  17 | //    4-byte row-start alignment (see the odd-N handling in subgroup_matrix_matmul.cc).
+//  16 | //    equals N unless the host padded B to an aligned stride to satisfy the load's
+//  17 | //    row-start alignment (see the B padding in subgroup_matrix_matmul.cc).
 //  18 | //
 //  19 | // Workgroup: split_k subgroups x 32 lanes (split_k in {1,2,4,8}).
 //  20 | // Tile: kTileM x kTileN, chosen adaptively by the host config provider. Each
@@ -43,7 +43,7 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(Shader
 //  24 | // tile in shared memory, and the partials are summed at write-out.
 //  25 | //
 //  26 | // Preconditions enforced by the host: K % sg_mat_k == 0; B's row stride N_b is
-//  27 | // even (the load requires 4-byte-aligned row starts); and the tile fits the
+//  27 | // padded to the row-start alignment the load requires and the tile fits the
 //  28 | // matrix (kTileM <= M, kTileN <= N - the host falls back otherwise). M and N may
 //  29 | // otherwise be any size: a trailing partial tile is shifted back to end exactly
 //  30 | // at M / N_b so no operand load runs past the end of A or B, and the rows/columns
@@ -139,9 +139,9 @@ ss << __str_17;
 ss << __str_18;
 //  86 |     // Shift a trailing partial tile back so its operand loads stay inside A and B.
 ss << __str_12;
-//  87 |     // The N shift uses B's padded stride N_b so the shifted origin stays even (the
-//  88 |     // load needs 4-byte-aligned row starts); the extra column is clipped at
-//  89 |     // write-out. The max() only guards the u32 subtraction; the host guarantees
+//  87 |     // The N shift uses B's padded stride N_b so the shifted origin stays aligned (the
+//  88 |     // load needs aligned row starts). The extra columns are clipped at write-out.
+//  89 |     // The max() only guards the u32 subtraction; the host guarantees
 //  90 |     // the tile fits.
 //  91 |     let global_base_n = min(n_tile_start, max(uniforms.N_b, kTileN) - kTileN);
 ss << __str_199;
