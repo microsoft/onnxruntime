@@ -85,12 +85,14 @@ template <typename T>
 Status LaunchTinyGemm2(cudaStream_t stream, const T* a, const T* b, T* c, int m, int n, int k, bool b_is_constant) {
   using namespace tinygemm2;
   ORT_RETURN_IF_NOT(CanUseTinyGemm2(m, n, k, a, b), "tinygemm2 does not support M=", m, " N=", n, " K=", k, ".");
-  TensorMaps maps{};
+  alignas(128) TensorMaps maps{};
+  auto& weight_map = *reinterpret_cast<CUtensorMap*>(maps.weight);
+  auto& activation_map = *reinterpret_cast<CUtensorMap*>(maps.activation);
   // B is [K, N]: kTileN columns (32 bytes) by kTileK rows per box.
-  ORT_RETURN_IF_ERROR(EncodeTensorMap(maps.weight, b, static_cast<uint64_t>(n), static_cast<uint64_t>(k), kTileN,
+  ORT_RETURN_IF_ERROR(EncodeTensorMap(weight_map, b, static_cast<uint64_t>(n), static_cast<uint64_t>(k), kTileN,
                                       kTileK, CU_TENSOR_MAP_SWIZZLE_32B));
   // A is [M, K]: kTileK columns (128 bytes) by kTileM rows per box.
-  ORT_RETURN_IF_ERROR(EncodeTensorMap(maps.activation, a, static_cast<uint64_t>(k), static_cast<uint64_t>(m), kTileK,
+  ORT_RETURN_IF_ERROR(EncodeTensorMap(activation_map, a, static_cast<uint64_t>(k), static_cast<uint64_t>(m), kTileK,
                                       kTileM, CU_TENSOR_MAP_SWIZZLE_128B));
 
   cudaLaunchConfig_t config{};
@@ -110,7 +112,7 @@ Status LaunchTinyGemm2(cudaStream_t stream, const T* a, const T* b, T* c, int m,
 #else
   ORT_UNUSED_PARAMETER(b_is_constant);
 #endif
-  CUDA_RETURN_IF_ERROR(cudaLaunchKernelEx(&config, TinyGemm2Kernel<T>, c, m, n, k, maps));
+  CUDA_RETURN_IF_ERROR(cudaLaunchKernelEx(&config, TinyGemm2Kernel<T>, maps, c, m, n, k));
   return Status::OK();
 }
 

@@ -44,10 +44,15 @@ constexpr int kWeightTileBytes = kTileK * kTileN * 2;
 constexpr int kActivationTileBytes = kTileM * kTileK * 2;
 constexpr int kDynamicSmemBytes = kStages * kStageUnroll * (kWeightTileBytes + kActivationTileBytes);
 
+#if defined(__CUDA_ARCH__)
+struct __align__(128) TensorMaps {
+#else
 struct TensorMaps {
-  CUtensorMap weight;
-  CUtensorMap activation;
+#endif
+  cuuint64_t weight[CU_TENSOR_MAP_NUM_QWORDS];
+  cuuint64_t activation[CU_TENSOR_MAP_NUM_QWORDS];
 };
+static_assert(sizeof(TensorMaps::weight) == sizeof(CUtensorMap));
 
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
 
@@ -144,10 +149,10 @@ __device__ __forceinline__ __half FromFloat<__half>(float v) { return __float2ha
 // shared-memory address, which the ldmatrix addressing below reproduces.
 template <typename T>
 __global__ void __launch_bounds__(kThreads, 1)
-    TinyGemm2Kernel(T* __restrict__ output, int m, int n, int k, const __grid_constant__ TensorMaps maps) {
+    TinyGemm2Kernel(const __grid_constant__ TensorMaps maps, T* __restrict__ output, int m, int n, int k) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
-  const CUtensorMap& weight_map = maps.weight;
-  const CUtensorMap& activation_map = maps.activation;
+  const CUtensorMap& weight_map = *reinterpret_cast<const CUtensorMap*>(maps.weight);
+  const CUtensorMap& activation_map = *reinterpret_cast<const CUtensorMap*>(maps.activation);
   extern __shared__ __align__(128) char smem[];
   char* sh_weights = smem;
   char* sh_activations = smem + kStages * kStageUnroll * kWeightTileBytes;
