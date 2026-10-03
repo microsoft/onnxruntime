@@ -171,6 +171,43 @@ static const NodeArg* GetOtherAddInput(const Node& add_node, const NodeArg& know
   return nullptr;
 }
 
+// Resolve an epsilon operand into a value for the fused node's "epsilon" attribute.
+// A scalar constant initializer gives the value directly; a non-scalar constant
+// initializer (e.g. a zero-element tensor) keeps the historical default-epsilon
+// fallback; and a scalar constant initializer consumed through a Cast producing
+// float (e.g. inserted by InsertCastTransformer for an fp16 initializer) is
+// followed to its source, which is exact since the attribute is a float anyway.
+// Returns false when epsilon is not constant; the fusion must be skipped then
+// because a runtime-provided epsilon cannot be preserved as an attribute.
+static bool TryResolveConstantEpsilon(const Graph& graph, const NodeArg& epsilon_input, double& epsilon) {
+  if (graph_utils::GetConstantInitializer(graph, epsilon_input.Name()) != nullptr) {
+    if (!TryGetScalarInitializerAsDouble(graph, epsilon_input, epsilon)) {
+      epsilon = DEFAULT_LAYERNORM_EPSILON;
+    }
+  } else {
+    // A Cast to float (e.g. inserted by InsertCastTransformer for an fp16 initializer)
+    // still carries an exact constant value: follow it.
+    const Node* producer = graph.GetProducerNode(epsilon_input.Name());
+    if (producer == nullptr ||
+        !graph_utils::IsSupportedOptypeVersionAndDomain(*producer, "Cast", {9, 13, 19, 21, 23, 24, 25}) ||
+        producer->InputDefs().empty() || producer->InputDefs()[0] == nullptr) {
+      return false;
+    }
+    const auto& attributes = producer->GetAttributes();
+    const auto to = attributes.find("to");
+    if (to == attributes.end() || to->second.i() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+        !TryGetScalarInitializerAsDouble(graph, *producer->InputDefs()[0], epsilon)) {
+      return false;
+    }
+  }
+
+  // The fused node stores epsilon as a float attribute, so the constant must be exactly
+  // representable as float; a double initializer like 1e-300 would otherwise silently
+  // underflow to 0.0f.
+  const float epsilon_f32 = static_cast<float>(epsilon);
+  return static_cast<double>(epsilon_f32) == epsilon;
+}
+
 /**
 Layer Normalization will fuse LayerNormalization into one node :
 +---------------------+
@@ -562,6 +599,20 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    // Get "epsilon" from the "Add2" node. Add is commutative, so find the epsilon operand by
+    // connectivity. It must resolve to a constant: LayerNormalization takes epsilon as an
+    // attribute, so a runtime-provided epsilon cannot be preserved and the fusion must be
+    // skipped rather than silently replaced with the default value.
+    const NodeArg* epsilon_input = GetOtherAddInput(add2_node, *reduce_mean2_node.MutableOutputDefs()[0]);
+    double epsilon = 0.0;
+    if (epsilon_input == nullptr || !TryResolveConstantEpsilon(graph, *epsilon_input, epsilon)) {
+      continue;
+    }
+
+    // If epsilon is produced by a Cast to float, fusing the Add removes its only
+    // consumer; remember it so it can be cleaned up below if it is left dead.
+    const Node* epsilon_producer = graph.GetProducerNode(epsilon_input->Name());
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/LayerNormFusion/"),
                                           "LayerNormalization",
@@ -569,13 +620,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           layer_norm_input_defs,
                                           {}, mul_node, nullptr, kOnnxDomain);
 
-    // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
-    double epsilon = 0.0;
-    if (TryGetScalarInitializerAsDouble(graph, *add2_node.MutableInputDefs()[1], epsilon)) {
-      layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
 
     // The axis definition of layer_norm is ranging from axis to the last dim
     layer_norm_node.AddAttribute("axis", static_cast<int64_t>(axes_values[0]));
@@ -593,6 +638,13 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
+
+    // The epsilon Cast (if any) lost its only consumer; prune it and any upstream nodes
+    // it stranded unless it backs a graph output.
+    if (epsilon_producer != nullptr && epsilon_producer->GetOutputEdgesCount() == 0 &&
+        !graph.NodeProducesGraphOutput(*epsilon_producer)) {
+      graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *epsilon_producer);
+    }
 
 #ifdef ENABLE_TRAINING_CORE
     // add two extra output defs, so we have 3 output defs that match what gradient builder expected
@@ -814,25 +866,20 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
+    // "epsilon" must resolve to a constant: SimplifiedLayerNormalization takes epsilon as an
+    // attribute, so a runtime-provided epsilon cannot be preserved and the fusion must be
+    // skipped rather than silently replaced with the default value.
+    double epsilon = 0.0;
+    if (!TryResolveConstantEpsilon(graph, *epsilon_input, epsilon)) {
+      continue;
+    }
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
     Node& layer_norm_node =
         graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/SimplifiedLayerNormFusion/"), "SimplifiedLayerNormalization",
                       "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, mul_node, nullptr, kOnnxDomain);
 
-    // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
-    const ONNX_NAMESPACE::TensorProto* tensor_proto =
-        graph_utils::GetConstantInitializer(graph, epsilon_input->Name());
-    if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
-      if (initializer.size() == 1) {
-        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
-      } else {
-        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-      }
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
 
     // Set stash_type to double if any input is double, default value if float.
     if (x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
@@ -853,6 +900,11 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // explicitly because removing Pow will disconnect that edge without moving it to the replacement.
     if (const Node* pow_exponent_input_node = graph_utils::GetInputNode(pow_node, 1)) {
       unused_input_node_indices.insert(pow_exponent_input_node->Index());
+    }
+
+    // If epsilon is produced by a Cast to float, fusing the Add removes its only consumer.
+    if (const Node* epsilon_producer = graph.GetProducerNode(epsilon_input->Name())) {
+      unused_input_node_indices.insert(epsilon_producer->Index());
     }
 
     const auto first_node_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(nodes_to_remove.front().get());
