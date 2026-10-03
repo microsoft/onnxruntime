@@ -277,6 +277,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         elif algorithm == "HQQ":
             # test HQQ algorithm
             algo_config = matmul_nbits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
+        elif algorithm == "k_quant":
+            algo_config = matmul_nbits_quantizer.KQuantWeightOnlyQuantConfig()
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         bits = 4
@@ -365,6 +367,12 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test_with_algo("GPTQ", model_fp32_path, data_reader, 32, False)
+
+    def test_quantize_matmul_int4_using_k_quant_algo(self):
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test_with_algo("k_quant", model_fp32_path, data_reader, 32, False)
 
     def test_quantize_matmul_int4_using_hqq_algo(self):
         if not find_spec("torch"):
