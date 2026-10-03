@@ -99,6 +99,7 @@ punctuation) that make CSV quoting fragile.
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	matmulnbits_fpa_intb
+# tactic_selection_version	1
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -118,6 +119,7 @@ n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	qmoe_gemm
+# tactic_selection_version	1
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -164,6 +166,9 @@ signature = {
   `device_name` / `sm` / `cuda_runtime` / `ort_version` rejects the file (forces re-profiling).
   `multiprocessor_count`, `cuda_driver`, `ort_git_commit`, and `ort_build_config` are recorded for
   diagnostics only; every loaded CUTLASS tactic is also re-validated against the current runner.
+- `tactic_selection_version` (a code constant, not hardware) is also strict. Bump it whenever the
+  profiler's selection logic changes (for example, the L2-resident GEMV bias), because dev builds
+  keep the same `ort_version` across commits.
 - Rationale: RTX 4090 and RTX 4060 are both `sm_89` but perform differently, so the **device name**,
   not just SM, is the primary discriminator — matching the requirement.
 
