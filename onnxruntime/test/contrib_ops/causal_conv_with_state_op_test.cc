@@ -1481,7 +1481,7 @@ TEST(CausalConvWithStateTest, BFloat16_Cuda) {
 TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("VarlenCausalConvWithState", 1, kMSDomain);
   ASSERT_NE(schema, nullptr);
-  EXPECT_EQ(schema->inputs().size(), 6u);
+  EXPECT_EQ(schema->inputs().size(), 7u);
   EXPECT_EQ(schema->outputs().size(), 3u);
   EXPECT_GT(schema->attributes().count("activation"), 0u);
   EXPECT_EQ(schema->attributes().count("ndim"), 0u);
@@ -1570,6 +1570,7 @@ struct VarlenCausalConvCase {
   int state_update_capacity = 0;
   bool request_state_update = false;
   std::vector<int32_t> capture_count;
+  std::optional<int32_t> state_update_active;
   bool verify_compact_replay = false;
   bool use_fp16 = false;
   bool use_bf16 = false;
@@ -1581,11 +1582,20 @@ struct VarlenCausalConvCase {
 };
 
 void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
-  auto ep = c.max_storage_buffer_binding_size == 0
-                ? TryGetEpWithVarlenCausalConvWithState()
-                : GetWebGpuEpWithTestStorageBufferBindingSize(c.max_storage_buffer_binding_size);
+  std::unique_ptr<IExecutionProvider> ep;
+  if (c.state_update_active.has_value()) {
+#ifdef USE_CUDA
+    ep = DefaultCudaExecutionProvider();
+#endif
+  } else {
+    ep = c.max_storage_buffer_binding_size == 0
+             ? TryGetEpWithVarlenCausalConvWithState()
+             : GetWebGpuEpWithTestStorageBufferBindingSize(c.max_storage_buffer_binding_size);
+  }
   if (!ep) {
-    GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
+    GTEST_SKIP() << (c.state_update_active.has_value()
+                         ? "CUDA execution provider not available"
+                         : "VarlenCausalConvWithState kernel not registered");
     return;
   }
   // WGSL has no bfloat16 type, so the WebGPU kernel is float/float16 only.
@@ -1657,7 +1667,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     packed_input.insert(packed_input.end(), input_td.begin(), input_td.end());
     packed_output.insert(packed_output.end(), output_td.begin(), output_td.end());
 
-    if (C > 0) {
+    if (C > 0 && c.state_update_active.value_or(1) != 0) {
       clamped_capture_count[i] = std::max(0, std::min({static_cast<int>(c.capture_count[i]), C, L}));
       for (int t = 0; t < clamped_capture_count[i]; ++t) {
         std::copy_n(input_td.begin() + static_cast<size_t>(t) * D, D,
@@ -1713,6 +1723,9 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     if (C > 0) {
       tester.AddInput<int32_t>("capture_count", {B}, c.capture_count);
     }
+    if (c.state_update_active.has_value()) {
+      tester.AddInput<int32_t>("state_update_active", {1}, {c.state_update_active.value()});
+    }
     tester.AddOutput<float>("output", input_dims, packed_output, false, tol, tol);
     tester.AddOutput<float>("final_state", state_dims, packed_final_state, false, tol, tol);
     if (C > 0 || c.request_state_update) {
@@ -1732,6 +1745,9 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     tester.AddInput<MLFloat16>("initial_state", state_dims, ToFloat16(packed_initial_state));
     if (C > 0) {
       tester.AddInput<int32_t>("capture_count", {B}, c.capture_count);
+    }
+    if (c.state_update_active.has_value()) {
+      tester.AddInput<int32_t>("state_update_active", {1}, {c.state_update_active.value()});
     }
     tester.AddOutput<MLFloat16>("output", input_dims, ToFloat16(packed_output), false, tol, tol);
     tester.AddOutput<MLFloat16>("final_state", state_dims, ToFloat16(packed_final_state), false, tol, tol);
@@ -1753,6 +1769,9 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     tester.AddInput<BFloat16>("initial_state", state_dims, ToBFloat16(packed_initial_state));
     if (C > 0) {
       tester.AddInput<int32_t>("capture_count", {B}, c.capture_count);
+    }
+    if (c.state_update_active.has_value()) {
+      tester.AddInput<int32_t>("state_update_active", {1}, {c.state_update_active.value()});
     }
     tester.AddOutput<BFloat16>("output", input_dims, ToBFloat16(packed_output), false, 0.02f, 0.02f);
     tester.AddOutput<BFloat16>("final_state", state_dims, ToBFloat16(packed_final_state), false, 0.02f, 0.02f);
@@ -1892,10 +1911,34 @@ TEST(ContribOpVarlenCausalConvWithStateTest, DilatedRaggedWithStateUpdate) {
   VarlenCausalConvCase c;
   c.seq_lens = {5, 1, 3};
   c.kernel_size = 3;
-  c.dilation = 2;
+  c.dilation = 3;
   c.with_initial_state = true;
   c.state_update_capacity = 4;
   c.capture_count = {5, 0, 2};
+  c.state_update_active = 1;
+  c.verify_compact_replay = true;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, StateUpdateInactiveGeneralPath) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {4, 2};
+  c.kernel_size = 3;
+  c.dilation = 3;
+  c.with_initial_state = true;
+  c.state_update_capacity = 3;
+  c.capture_count = {2, 1};
+  c.state_update_active = 0;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, StateUpdateInactiveDecodePath) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {1, 1, 1};
+  c.with_initial_state = true;
+  c.state_update_capacity = 1;
+  c.capture_count = {1, 1, 1};
+  c.state_update_active = 0;
   RunVarlenCausalConvCase(c);
 }
 
@@ -2370,7 +2413,8 @@ static void RunVarlenCausalConvShapeFailure(
     const std::vector<int64_t>& output_dims,
     const std::vector<int64_t>& state_dims,
     const std::string& expected_error,
-    const std::vector<int64_t>& initial_state_dims = {}) {
+    const std::vector<int64_t>& initial_state_dims = {},
+    const std::vector<int64_t>& state_update_active_dims = {}) {
   auto ep = DefaultCudaExecutionProvider();
   if (!ep) {
     GTEST_SKIP() << "CUDA execution provider not available";
@@ -2392,6 +2436,11 @@ static void RunVarlenCausalConvShapeFailure(
   const auto& actual_state_dims = initial_state_dims.empty() ? state_dims : initial_state_dims;
   tester.AddInput<float>("initial_state", actual_state_dims,
                          std::vector<float>(element_count(actual_state_dims), 0.0f));
+  if (!state_update_active_dims.empty()) {
+    tester.AddOptionalInputEdge<int32_t>();  // capture_count
+    tester.AddInput<int32_t>("state_update_active", state_update_active_dims,
+                             std::vector<int32_t>(element_count(state_update_active_dims), 1));
+  }
   tester.AddOutput<float>("output", output_dims, std::vector<float>(element_count(output_dims), 0.0f));
   tester.AddOutput<float>("final_state", state_dims, std::vector<float>(element_count(state_dims), 0.0f));
   tester.AddOptionalOutputEdge<float>();
@@ -2434,6 +2483,11 @@ TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsWeightMidDimNotOne) {
 TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsInitialStateShape) {
   RunVarlenCausalConvShapeFailure({3, 4}, {4, 1, 2}, {2}, {0, 3}, {3, 4}, {1, 4, 1},
                                   "initial_state must have shape", {2, 4, 1});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsStateUpdateActiveShape) {
+  RunVarlenCausalConvShapeFailure({3, 4}, {4, 1, 2}, {2}, {0, 3}, {3, 4}, {1, 4, 1},
+                                  "state_update_active must have shape (1)", {}, {2});
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, InitialStateIsRequired) {
