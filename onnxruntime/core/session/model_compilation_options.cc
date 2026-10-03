@@ -258,6 +258,21 @@ Status ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
   return Status::OK();
 }
 
+Status ModelCompilationOptions::SetWeightlessMode(OrtWeightlessSupport weightless_mode) {
+  if (weightless_mode != OrtWeightlessSupport_NONE && weightless_mode != OrtWeightlessSupport_EXTERNAL_ONLY &&
+      weightless_mode != OrtWeightlessSupport_ALL) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "weightless_mode with value ",
+                           static_cast<int>(weightless_mode), " is invalid. Valid values are: ",
+                           "OrtWeightlessSupport_NONE (0), OrtWeightlessSupport_EXTERNAL_ONLY (1), and ",
+                           "OrtWeightlessSupport_ALL (2).");
+  }
+
+  ORT_RETURN_IF_ERROR(
+      session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode,
+                                                           std::to_string(static_cast<int>(weightless_mode)).c_str()));
+  return Status::OK();
+}
+
 Status ModelCompilationOptions::Check() const {
   const ConfigOptions& config_options = session_options_.value.config_options;
 
