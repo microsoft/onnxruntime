@@ -49,6 +49,9 @@ react {
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]
+
+    /* Autolinking */
+    autolinkLibrariesWithApp()
 }
 
 /**
@@ -67,13 +70,13 @@ def enableProguardInReleaseBuilds = false
  * give correct results when using with locales other than en-US. Note that
  * this variant is about 6MiB larger per architecture than default.
  */
-def jscFlavor = 'org.webkit:android-jsc:+'
+def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 
 android {
-
+    ndkVersion rootProject.ext.ndkVersion
 		buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdkVersion rootProject.ext.compileSdkVersion
+    compileSdk rootProject.ext.compileSdkVersion
 		namespace "com.reactnativeonnxruntimemodule"
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -144,5 +147,3 @@ task copyDownloadableDepsToLibs(type: Copy) {
     from configurations.implementation
     into 'libs'
 }
-
-apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
