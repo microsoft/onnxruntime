@@ -724,15 +724,18 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0Uint8DequantBatchBoundary) {
 #endif
 
 #ifdef USE_CUDA
-TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_4Bits_Cuda) {
-  const std::vector<uint8_t> data(32, 0xAA);
-  const std::vector<float> scales = {0.5f, 0.25f};
-  std::vector<float> output(32, 1.0f);
-  output.insert(output.end(), 32, 0.5f);
+TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_4Bits_OddBlockCount_Cuda) {
+  const std::vector<uint8_t> data(36, 0xAA);
+  const std::vector<float> scales(6, 1.0f);
+  const std::vector<uint8_t> zero_points = {0x88, 0x08, 0xA9, 0x0B};
+  std::vector<float> output(36, 2.0f);
+  output.insert(output.end(), 16, 1.0f);
+  output.insert(output.end(), 16, 0.0f);
+  output.insert(output.end(), 4, -1.0f);
 
   RunGatherBlockQuantized<uint8_t, float, int64_t>(
-      data, {2, 16}, {0, 1}, {2}, scales, {2, 1}, {}, {},
-      0, 1, 32, 4, output, {2, 32});
+      data, {2, 18}, {0, 1}, {2}, scales, {2, 3}, zero_points, {2, 2},
+      0, 1, 16, 4, output, {2, 36});
 }
 #endif
 
