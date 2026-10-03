@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <gsl/gsl>
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -43,6 +44,10 @@
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/webgpu/reduction/reduction_ops.h"
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/sync_stream.h"
+#endif
 
 namespace onnxruntime {
 
@@ -617,7 +622,11 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
-      recording_{std::make_unique<webgpu::CommandRecordingState>()},
+      recording_{
+#if defined(ORT_USE_EP_API_ADAPTERS)
+          webgpu::ep::UseLegacyRecording() ? context.LegacyRecording() :
+#endif
+                                           std::make_shared<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
@@ -816,7 +825,8 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
   prepack_allocator_.reset();
   session_buffer_pool_.reset();
-  if (context_.Device()) {
+  // Legacy recording belongs to the context and may still hold work from other Sessions or Env.
+  if (context_.Device() && recording_ != context_.LegacyRecording()) {
     // A failed Run may leave an unsubmitted recording in the context-shared pools.
     context_.BufferManager().DiscardPendingBuffers(*recording_);
     context_.InitializerBufferManager().DiscardPendingBuffers(*recording_);
@@ -841,6 +851,18 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  const bool legacy = webgpu::ep::UseLegacyRecording();
+  ORT_RETURN_IF(legacy && !context_.TryBeginLegacyRun(),
+                "WebGPU legacy mode requires serialized operations across all Sessions on the device.");
+  bool started = false;
+  auto release_on_error = gsl::finally([&] {
+    if (legacy && !started) {
+      graph_buffer_mgr_active_ = false;
+      context_.EndLegacyRun();
+    }
+  });
+#endif
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();
   }
@@ -877,6 +899,12 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
           session_buffer_pool_->SeedInto(*it->second);
         }
       }
+#if defined(ORT_USE_EP_API_ADAPTERS)
+      if (legacy) {
+        ORT_RETURN_IF_ERROR(context_.Flush(context_.LegacyBufferManager(), *recording_));
+        context_.SetLegacyBufferManager(it->second.get());
+      }
+#endif
       graph_buffer_mgr_active_ = true;
 
       if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
@@ -887,10 +915,22 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
   }
 
   run_active_.store(true);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  started = true;
+#endif
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  auto end_run = gsl::finally([&] {
+    graph_buffer_mgr_active_ = false;
+    run_active_.store(false);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    if (webgpu::ep::UseLegacyRecording()) {
+      context_.EndLegacyRun();
+    }
+#endif
+  });
   // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager(), *recording_);
@@ -956,8 +996,24 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  const bool legacy_replay = webgpu::ep::UseLegacyRecording() && !IsRunActive();
+  ORT_RETURN_IF(legacy_replay && !context_.TryBeginLegacyRun(),
+                "WebGPU legacy mode requires serialized operations across all Sessions on the device.");
+  auto release_legacy_run = gsl::finally([&] {
+    if (legacy_replay) {
+      context_.EndLegacyRun();
+    }
+  });
+#endif
   // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  if (legacy_replay) {
+    ORT_RETURN_IF_ERROR(context_.Flush(context_.LegacyBufferManager(), *recording_));
+    context_.SetLegacyBufferManager(per_graph_buffer_mgrs_.at(graph_annotation_id).get());
+  }
+#endif
   // TODO: enable profiling in run level
   if (session_profiler_ && session_profiler_->Enabled()) {
     context_.StartProfiling();

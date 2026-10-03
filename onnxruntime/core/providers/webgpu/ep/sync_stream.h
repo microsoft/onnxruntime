@@ -15,6 +15,7 @@ struct CommandRecordingState;
 namespace ep {
 
 OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep);
+bool UseLegacyRecording();
 CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream);
 common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void* src_data,
                                         bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes);

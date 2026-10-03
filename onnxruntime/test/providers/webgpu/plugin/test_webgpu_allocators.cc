@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -32,6 +35,7 @@
 #endif
 #include "dawn/dawn_proc.h"
 #include "dawn/native/DawnNative.h"
+#include "dawn/webgpu_cpp.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -195,6 +199,310 @@ class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
 namespace {
 WGPUBuffer free_failure_buffer = nullptr;
 size_t free_failure_probes = 0;
+std::atomic<size_t> nonempty_queue_submissions{0};
+std::atomic<size_t> storage_buffer_clears{0};
+WGPUDevice public_allocation_device = nullptr;
+
+WGPUBuffer CapturePublicAllocationDevice(WGPUDevice device, const WGPUBufferDescriptor* descriptor) {
+  public_allocation_device = device;
+  return dawn::native::GetProcs().deviceCreateBuffer(device, descriptor);
+}
+
+std::array<float, 8> ReadPublicBufferWithDawn(WGPUBuffer buffer) {
+  ORT_ENFORCE(public_allocation_device != nullptr, "The allocation hook did not capture a WebGPU device.");
+  wgpu::Device device{public_allocation_device};
+  constexpr size_t bytes = sizeof(std::array<float, 8>);
+  wgpu::BufferDescriptor descriptor{};
+  descriptor.size = bytes;
+  descriptor.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
+  auto staging = device.CreateBuffer(&descriptor);
+  auto encoder = device.CreateCommandEncoder();
+  encoder.CopyBufferToBuffer(buffer, 0, staging, 0, bytes);
+  auto commands = encoder.Finish();
+  device.GetQueue().Submit(1, &commands);
+
+  wgpu::MapAsyncStatus map_status{};
+  auto future = staging.MapAsync(
+      wgpu::MapMode::Read, 0, bytes, wgpu::CallbackMode::WaitAnyOnly,
+      [](wgpu::MapAsyncStatus status, wgpu::StringView, wgpu::MapAsyncStatus* result) noexcept {
+        *result = status;
+      },
+      &map_status);
+  ORT_ENFORCE(device.GetAdapter().GetInstance().WaitAny(future, UINT64_MAX) == wgpu::WaitStatus::Success,
+              "Failed to wait for direct Dawn readback.");
+  ORT_ENFORCE(map_status == wgpu::MapAsyncStatus::Success,
+              "Failed to map direct Dawn readback: ", static_cast<uint32_t>(map_status));
+
+  const auto* mapped = static_cast<const float*>(staging.GetConstMappedRange());
+  ORT_ENFORCE(mapped != nullptr, "Direct Dawn readback returned a null mapped range.");
+  std::array<float, 8> result;
+  std::copy_n(mapped, result.size(), result.begin());
+  staging.Unmap();
+  return result;
+}
+
+void CountNonemptyQueueSubmissions(WGPUQueue queue, size_t command_count, const WGPUCommandBuffer* commands) {
+  if (command_count != 0) {
+    nonempty_queue_submissions.fetch_add(1, std::memory_order_relaxed);
+  }
+  dawn::native::GetProcs().queueSubmit(queue, command_count, commands);
+}
+
+void CountStorageBufferClears(WGPUCommandEncoder encoder, WGPUBuffer buffer, uint64_t offset, uint64_t size) {
+  const auto& procs = dawn::native::GetProcs();
+  if ((procs.bufferGetUsage(buffer) & WGPUBufferUsage_Storage) != 0) {
+    storage_buffer_clears.fetch_add(1, std::memory_order_relaxed);
+  }
+  procs.commandEncoderClearBuffer(encoder, buffer, offset, size);
+}
+
+int VerifyPublicAllocSubmitsReusedBufferClear(Ort::Env& env, Ort::ConstEpDevice ep_device,
+                                              bool use_session_allocator, bool cancel_run = false) {
+  auto procs = dawn::native::GetProcs();
+  procs.queueSubmit = CountNonemptyQueueSubmissions;
+  procs.deviceCreateBuffer = CapturePublicAllocationDevice;
+  dawnProcSetProcs(&procs);
+  Ort::SessionOptions options;
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.AppendExecutionProvider_V2(
+      env, {ep_device}, {{"dawnProcTable", std::to_string(reinterpret_cast<uintptr_t>(&procs))}});
+  std::optional<Ort::Session> session;
+  session.emplace(env, ORT_TSTR("testdata/mul_1.onnx"), options);
+  const auto gpu_memory = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  std::optional<Ort::Allocator> session_allocator;
+  OrtAllocator* allocator = nullptr;
+  if (use_session_allocator) {
+    session_allocator.emplace(*session, gpu_memory);
+    allocator = *session_allocator;
+  } else {
+    // Configure the plugin's proc table, then exercise the Env allocator without a live Session.
+    session.reset();
+    allocator = env.GetSharedAllocator(gpu_memory);
+  }
+  if (allocator == nullptr) {
+    return 2;
+  }
+
+  if (cancel_run) {
+    ORT_ENFORCE(session.has_value(), "Run cancellation requires a Session allocator.");
+    constexpr std::array<int64_t, 2> run_shape{3, 2};
+    std::array<float, 6> run_data;
+    run_data.fill(1.0f);
+    auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    auto input = Ort::Value::CreateTensor<float>(
+        cpu_memory, run_data.data(), run_data.size(), run_shape.data(), run_shape.size());
+    Ort::IoBinding binding(*session);
+    binding.BindInput("X", input);
+    binding.BindOutput("Y", gpu_memory);
+    Ort::RunOptions run_options;
+    run_options.SetTerminate();
+    Ort::Status status{Ort::GetApi().RunWithBinding(*session, run_options, binding)};
+    const auto message = status.GetErrorMessage();
+    // This error comes from the executor after OnRunStart, not input validation.
+    if (status.IsOK() || message.find("Exiting due to terminate flag") == std::string::npos) {
+      std::fprintf(stderr, "Expected an executor cancellation, got: %s\n", message.c_str());
+      return 9;
+    }
+  }
+
+  constexpr std::array<int64_t, 1> shape{8};
+  std::array<float, 8> nonzero_data;
+  nonzero_data.fill(7.0f);
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, nonzero_data.data(), nonzero_data.size(), shape.data(), shape.size());
+  void* buffer = allocator->Alloc(allocator, sizeof(nonzero_data));
+  auto free_buffer = gsl::finally([&] {
+    if (buffer != nullptr) {
+      allocator->Free(allocator, buffer);
+    }
+  });
+  if (buffer == nullptr) {
+    return 3;
+  }
+  {
+    auto gpu_tensor = Ort::Value::CreateTensor<float>(
+        gpu_memory, static_cast<float*>(buffer), nonzero_data.size(), shape.data(), shape.size());
+    Ort::ThrowOnError(env.CopyTensor(cpu_input, gpu_tensor, nullptr));
+    if (ReadPublicBufferWithDawn(static_cast<WGPUBuffer>(buffer)) != nonzero_data) {
+      std::fputs("Failed to seed a nonzero cached GPU buffer\n", stderr);
+      return 4;
+    }
+  }
+  void* dirty_buffer = buffer;
+  allocator->Free(allocator, buffer);
+  buffer = nullptr;
+
+  const size_t before = nonempty_queue_submissions.load(std::memory_order_relaxed);
+  if (before == 0) {
+    std::fputs("Queue submission hook did not observe the seed readback\n", stderr);
+    return 8;
+  }
+  buffer = allocator->Alloc(allocator, sizeof(nonzero_data));
+  const size_t after = nonempty_queue_submissions.load(std::memory_order_relaxed);
+  if (buffer == nullptr || buffer != dirty_buffer) {
+    std::fputs("Ordinary Alloc did not reuse the dirty cached GPU buffer\n", stderr);
+    return 5;
+  }
+  // This encoder only reads the raw buffer. It cannot submit clears left in ORT's recording.
+  const auto readback_data = ReadPublicBufferWithDawn(static_cast<WGPUBuffer>(buffer));
+  for (size_t index = 0; index < readback_data.size(); ++index) {
+    if (readback_data[index] != 0.0f) {
+      std::fprintf(stderr, "Direct Dawn readback found old data at element %zu: %g (expected 0)\n",
+                   index, static_cast<double>(readback_data[index]));
+      return 7;
+    }
+  }
+  // These counts were captured around Alloc, excluding the independent Dawn readback above.
+  if (after <= before) {
+    std::fputs("Ordinary Alloc did not submit the reused-buffer clear before readback\n", stderr);
+    return 6;
+  }
+
+  std::fputs("Ordinary Alloc submitted the reused-buffer clear before readback\n", stderr);
+  return 0;
+}
+
+int VerifyInstanceNormScratchAllocationsStayBatched(Ort::Env& env, Ort::ConstEpDevice ep_device) {
+  constexpr std::array<int64_t, 4> shape{1, 2, 2, 3};
+  constexpr std::array<int64_t, 1> parameter_shape{2};
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model.add_opset_import()->set_version(18);
+  auto* graph = model.mutable_graph();
+  graph->set_name("webgpu_batched_instance_norm_scratch");
+  auto* input = graph->add_input();
+  input->set_name("X");
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  for (auto* value_info : {input, output}) {
+    auto* type = value_info->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int64_t dimension : shape) {
+      type->mutable_shape()->add_dim()->set_dim_value(dimension);
+    }
+  }
+  for (const char* name : {"scale", "bias"}) {
+    auto* parameter = graph->add_input();
+    parameter->set_name(name);
+    auto* type = parameter->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(parameter_shape[0]);
+  }
+  auto* node = graph->add_node();
+  node->set_name("instance_norm");
+  node->set_op_type("InstanceNormalization");
+  node->add_input("X");
+  node->add_input("scale");
+  node->add_input("bias");
+  node->add_output("Y");
+
+  struct SubmissionProbe {
+    bool armed{false};
+    bool submitted_before_program{false};
+    size_t baseline{0};
+    size_t programs{0};
+
+    static void ORT_API_CALL Log(void* param, OrtLoggingLevel, const char*, const char*, const char*,
+                                 const char* message) {
+      auto& probe = *static_cast<SubmissionProbe*>(param);
+      if (probe.armed && std::string_view{message}.find("Starting program") != std::string_view::npos) {
+        ++probe.programs;
+        probe.submitted_before_program |=
+            nonempty_queue_submissions.load(std::memory_order_relaxed) != probe.baseline;
+      }
+    }
+  } probe;
+  auto procs = dawn::native::GetProcs();
+  procs.queueSubmit = CountNonemptyQueueSubmissions;
+  procs.commandEncoderClearBuffer = CountStorageBufferClears;
+  dawnProcSetProcs(&procs);
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.SetLogSeverityLevel(ORT_LOGGING_LEVEL_INFO);
+  Ort::ThrowOnError(Ort::GetApi().SetUserLoggingFunction(options, SubmissionProbe::Log, &probe));
+  options.AppendExecutionProvider_V2(
+      env, {ep_device}, {{"maxNumPendingDispatches", "4096"}, {"dawnProcTable", std::to_string(reinterpret_cast<uintptr_t>(&procs))}});
+  const auto model_bytes = model.SerializeAsString();
+  Ort::Session session(env, model_bytes.data(), model_bytes.size(), options);
+  Ort::Allocator allocator(session, ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  auto gpu_input = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+  auto gpu_output = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+  auto gpu_scale = Ort::Value::CreateTensor<float>(allocator, parameter_shape.data(), parameter_shape.size());
+  auto gpu_bias = Ort::Value::CreateTensor<float>(allocator, parameter_shape.data(), parameter_shape.size());
+  std::array<float, 12> input_data{-5.0f, -3.0f, -1.0f, 1.0f, 3.0f, 5.0f,
+                                   -10.0f, -6.0f, -2.0f, 2.0f, 6.0f, 10.0f};
+  std::array<float, 12> output_data{};
+  std::array<float, 2> scale_data{1.5f, 0.5f};
+  std::array<float, 2> bias_data{0.25f, -0.75f};
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), shape.data(), shape.size());
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), shape.data(), shape.size());
+  auto cpu_scale = Ort::Value::CreateTensor<float>(
+      cpu_memory, scale_data.data(), scale_data.size(), parameter_shape.data(), parameter_shape.size());
+  auto cpu_bias = Ort::Value::CreateTensor<float>(
+      cpu_memory, bias_data.data(), bias_data.size(), parameter_shape.data(), parameter_shape.size());
+  Ort::ThrowOnError(env.CopyTensor(cpu_input, gpu_input, nullptr));
+  Ort::ThrowOnError(env.CopyTensor(cpu_scale, gpu_scale, nullptr));
+  Ort::ThrowOnError(env.CopyTensor(cpu_bias, gpu_bias, nullptr));
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", gpu_input);
+  binding.BindInput("scale", gpu_scale);
+  binding.BindInput("bias", gpu_bias);
+  binding.BindOutput("Y", gpu_output);
+
+  auto expected = input_data;
+  for (size_t channel = 0; channel < scale_data.size(); ++channel) {
+    float mean = 0.0f;
+    for (size_t spatial = 0; spatial < 6; ++spatial) {
+      mean += expected[channel * 6 + spatial] / 6.0f;
+    }
+    float variance = 0.0f;
+    for (size_t spatial = 0; spatial < 6; ++spatial) {
+      const float centered = expected[channel * 6 + spatial] - mean;
+      variance += centered * centered / 6.0f;
+    }
+    for (size_t spatial = 0; spatial < 6; ++spatial) {
+      auto& value = expected[channel * 6 + spatial];
+      value = scale_data[channel] * (value - mean) / std::sqrt(variance + 1e-5f) + bias_data[channel];
+    }
+  }
+
+  // Warm pipelines and the scratch-buffer cache before measuring allocation-triggered submits.
+  for (int iteration = 0; iteration < 3; ++iteration) {
+    session.Run(Ort::RunOptions{nullptr}, binding);
+  }
+  for (int iteration = 0; iteration < 3; ++iteration) {
+    probe.baseline = nonempty_queue_submissions.load(std::memory_order_relaxed);
+    const size_t clears_before = storage_buffer_clears.load(std::memory_order_relaxed);
+    probe.programs = 0;
+    probe.submitted_before_program = false;
+    probe.armed = true;
+    session.Run(Ort::RunOptions{nullptr}, binding);
+    probe.armed = false;
+    const size_t submissions = nonempty_queue_submissions.load(std::memory_order_relaxed) - probe.baseline;
+    const size_t clears = storage_buffer_clears.load(std::memory_order_relaxed) - clears_before;
+    // InstanceNormalization computes scale/shift into CreateGPUTensor scratch, then applies it.
+    // Stable graph bindings leave only internal scratch storage eligible for these cache clears.
+    if (probe.programs < 2 || probe.submitted_before_program || submissions != 1 || clears == 0) {
+      std::fprintf(stderr, "Scratch batching failed: programs=%zu, premature_submit=%d, submissions=%zu, clears=%zu\n",
+                   probe.programs, static_cast<int>(probe.submitted_before_program), submissions, clears);
+      return 9;
+    }
+    Ort::ThrowOnError(env.CopyTensor(gpu_output, cpu_output, nullptr));
+    for (size_t index = 0; index < expected.size(); ++index) {
+      if (!(std::abs(output_data[index] - expected[index]) <= 1e-4f)) {
+        std::fputs("Batched InstanceNormalization returned incorrect output\n", stderr);
+        return 10;
+      }
+    }
+  }
+  std::fputs("Warmed InstanceNormalization scratch allocations retained a single Run submission\n", stderr);
+  return 0;
+}
 
 WGPUBufferMapState InjectMappedBufferOnFree(WGPUBuffer buffer) {
   if (buffer == free_failure_buffer) {
@@ -274,6 +582,46 @@ TEST_F(WebGpuSessionAllocatorDeathTest, FreeContainsExceptionAndPreservesUnrelea
         std::_Exit(0);
       },
       ::testing::ExitedWithCode(0), "Buffer is still mapped");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, PublicSessionAllocSubmitsReusedBufferClearBeforeReadback) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifyPublicAllocSubmitsReusedBufferClear(Env(), EpDevice(), true)),
+      ::testing::ExitedWithCode(0), "Ordinary Alloc submitted the reused-buffer clear before readback");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, PublicEnvAllocSubmitsReusedBufferClearBeforeReadback) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifyPublicAllocSubmitsReusedBufferClear(Env(), EpDevice(), false)),
+      ::testing::ExitedWithCode(0), "Ordinary Alloc submitted the reused-buffer clear before readback");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, PublicSessionAllocSubmitsClearAfterCancelledRun) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifyPublicAllocSubmitsReusedBufferClear(Env(), EpDevice(), true, true)),
+      ::testing::ExitedWithCode(0), "Ordinary Alloc submitted the reused-buffer clear before readback");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, WarmedInstanceNormalizationScratchAllocationsStayBatched) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifyInstanceNormScratchAllocationsStayBatched(Env(), EpDevice())),
+      ::testing::ExitedWithCode(0), "Warmed InstanceNormalization scratch allocations retained a single Run submission");
 #endif
 }
 #endif
