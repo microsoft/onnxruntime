@@ -98,6 +98,12 @@ def test_import_and_library_path():
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
     print(f"OK: Library path: {lib_path}")
 
+    if platform.system() == "Windows":
+        d3d12_dir = pkg_dir / "D3D12"
+        for filename in ("D3D12Core.dll", "d3d12SDKLayers.dll"):
+            assert (d3d12_dir / filename).is_file(), f"D3D12 Agility SDK binary is missing: {filename}"
+        print(f"OK: D3D12 Agility SDK binaries: {d3d12_dir}")
+
     ep_name = webgpu_ep.get_ep_name()
     assert ep_name == "WebGpuExecutionProvider", f"Unexpected EP name: {ep_name}"
     print(f"OK: EP name: {ep_name}")
