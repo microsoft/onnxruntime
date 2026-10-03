@@ -40,14 +40,19 @@ constexpr SubgroupMatrixMatMulNBitsTiling GetSubgroupMatrixMatMulNBitsTiling(
     const onnxruntime::webgpu::SupportedSubgroupMatrixConfig& config, bool has_bias, uint32_t M, uint32_t N) {
   if (config.Is(8, 16, 16)) {
     // Cap tile at 64x64 to stay within workgroup memory limits.
+    // 64x64 tile size, 256 threads.
     if (has_bias) {
       return {64, 64, 256, 1, 1, 32};
     }
-    // Optimized for M >= 512: 128x256 (512 threads).
-    if (M >= 512 && N % 256 == 0) {
+    // Large M (M>=2048): 128x256 tile size, 512 threads.
+    if (M >= 2048 && N % 256 == 0) {
       return {128, 256, 512, 1, 256, 32};
     }
-    // Default: 128x64 (512 threads).
+    // Mid-sized M (256<=M<2048): 128x128 tile size, 512 threads.
+    if (M >= 256 && N % 128 == 0) {
+      return {128, 128, 512, 1, 128, 32};
+    }
+    // Default: 128x64 tile size, 512 thread.
     return {128, 64, 512, 1, 64, 32};
   }
   if (config.Is(16, 16, 16)) {
@@ -285,12 +290,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   uint32_t num_M_tile = CeilDiv(M, tiling.tile_m);
   mul_program.SetDispatchGroupSize(num_N_tile, num_M_tile, 1);
 
-  // The 8x16x16 shader always reads input_b as Uint8x16 (vec4<u32>) chunks, regardless of nbits;
-  // TODO: Apply vec4 to all configs.
-  const int input_b_components = static_cast<int>(
-      config.Is(8, 16, 16)
-          ? kU32Components * 4
-          : (nbits == 4 ? kU32Components : 2 * kU32Components));
+  const int input_b_components = static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components);
   mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, input_b_components},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})

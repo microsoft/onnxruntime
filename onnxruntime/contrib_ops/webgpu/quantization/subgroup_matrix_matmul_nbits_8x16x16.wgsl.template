@@ -5,7 +5,7 @@
 // Uses subgroupMatrixLoad/Store/MultiplyAccumulate for hardware DPAS acceleration
 //
 // A: prepacked layout (from PrepackProgram) - elements arranged for subgroupMatrixLoad
-// B: 4-bit or 8-bit quantized, dequantized into SLM (tile_b)
+// B: 4-bit or 8-bit quantized, dequantized into SLM (tile_b).
 //
 // Workgroup size and tile_m/tile_n (kTileM x kTileN) are caller-configurable; the number of
 // subgroups per workgroup must equal kTileM / sg_mat_m (i.e. workgroup size = kTileM / sg_mat_m * 32).
@@ -29,8 +29,14 @@
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
 const kQuantizationBlockSize : u32 = 32;
-const kValuesPerPack : u32 = 8;  // K-values dequantized per packed_data element (mat2x4 = 8 elements)
-const kU32sPerBPack : u32 = 4;   // Number of packs loaded per kChunkSizeK cycle
+const kValuesPerPack : u32 = 8;  // K-values dequantized per pack (mat2x4 = 8 elements), both n_bits
+const kU32sPerBPack : u32 = 4;   // Packs per quantization block, both n_bits
+
+#if n_bits == 4
+alias BPackT = u32;          // one pack = one nibble-packed u32 word (8 values)
+#elif n_bits == 8
+alias BPackT = vec2<u32>;    // one pack = one byte-packed vec2<u32> (8 values)
+#endif
 
 const kTileM : u32 = u32(tile_m);                // Tile size along M (output rows per workgroup)
 const kTileN : u32 = u32(tile_n);                // Tile size along N (output columns per workgroup)
@@ -99,17 +105,24 @@ fn load_scale(row : u32, block_idx : u32, scale_offset : u32) -> output_element_
   return output_element_t();
 }
 
-#if n_bits == 4
-alias InputBPack = vec4<u32>;
-fn load_b(row : u32, block_idx : u32, weight_offset : u32) -> InputBPack {
+// Fetches a single pack of raw B data (one u32 word for n_bits=4, one
+// vec2<u32> for n_bits=8), addressed by its flat pack index within the row
+// (row * packs_per_row + pack_idx), offset by weight_offset (in block units,
+// scaled up to pack units here). Spreads the Load Phase across the full
+// workgroup (kU32sPerBPack packs per quantization block, cycled by all
+// workgroup_size_x threads -- see main() below) instead of a single thread
+// reading the whole block in one wide transaction.
+fn load_b(row : u32, pack_idx : u32, weight_offset : u32) -> BPackT {
   let k_of_b = uniforms.K / kQuantizationBlockSize;
-  if (row < uniforms.N && block_idx < k_of_b) {
-    let offset = row * k_of_b + block_idx + weight_offset;
+  let packs_per_row = k_of_b * kU32sPerBPack;
+  if (row < uniforms.N && pack_idx < packs_per_row) {
+    let offset = row * packs_per_row + pack_idx + weight_offset * kU32sPerBPack;
     return input_b.getByOffset(offset);
   }
-  return InputBPack();
+  return BPackT();
 }
 
+#if n_bits == 4
 fn dequantize(packed_data : u32,
               zero_point : output_element_t,
               scale : output_element_t) -> mat2x4<output_element_t> {
@@ -131,23 +144,6 @@ fn dequantize(packed_data : u32,
 #endif
 
 #if n_bits == 8
-alias InputBPack = array<vec2<u32>, 4>;
-fn load_b(row : u32, block_idx : u32, weight_offset : u32) -> InputBPack {
-  let k_vec4_offset = block_idx * 2u;
-  if (row < uniforms.N && k_vec4_offset + 1u < uniforms.K / 16u) {
-    let k_vec4s = uniforms.K / 16u;
-    let offset = row * k_vec4s + k_vec4_offset + weight_offset;
-
-    // Natively read 32 bytes at once
-    let v0 = input_b.getByOffset(offset);
-    let v1 = input_b.getByOffset(offset + 1u);
-
-    return array<vec2<u32>, 4>(
-        v0.xy, v0.zw, v1.xy, v1.zw);
-  }
-  return InputBPack();
-}
-
 fn dequantize(packed_data : vec2<u32>,
               zero_point : output_element_t,
               scale : output_element_t) -> mat2x4<output_element_t> {
@@ -173,13 +169,9 @@ fn dequantize(packed_data : vec2<u32>,
 $MAIN {
   // Resolve the (possibly indirect) weight index once per workgroup, not once per K-tile iteration.
   let scale_offset = get_scale_offset();
-#if n_bits == 4
+  // In block units; load_b scales this up to pack units (kU32sPerBPack is the
+  // same pack-per-block count for both n_bits).
   let weight_offset = get_weight_offset() / 32u;
-#elif n_bits == 8
-  let weight_offset = get_weight_offset() / 16u;
-#else
-  let weight_offset = 0u;
-#endif
 
   let m_tile = (workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile;
 
@@ -191,21 +183,26 @@ $MAIN {
 
   var sg_mat_acc : array<SgMatResult, kSgMatCountN>;
   for (var k_idx : u32 = 0; k_idx < uniforms.K; k_idx += kChunkSizeK) {
-    if (local_idx < kTileN) {
-      let global_n = global_base_n + local_idx;
-      let b_col = k_idx / kQuantizationBlockSize;
-      let tile_offset = local_idx * kChunkSizeK;
+    // Load Phase: every thread in the workgroup (not just kTileN of them)
+    // cycles through single-pack load units, narrowing each storage
+    // transaction to one pack (u32 for n_bits=4, vec2<u32> for n_bits=8)
+    // instead of one thread reading a whole quantization block at once.
+    // This trades fewer, wider loads for full thread occupancy. Shared
+    // verbatim across both n_bits.
+    let b_col = k_idx / kQuantizationBlockSize;
+    for (var load_unit = local_idx; load_unit < kTileN * kU32sPerBPack; load_unit += workgroup_size_x) {
+      let n_idx = load_unit / kU32sPerBPack;
+      let pack_idx = load_unit % kU32sPerBPack;
+      let global_n = global_base_n + n_idx;
 
-      let b_data = load_b(global_n, b_col, weight_offset);
+      let packed = load_b(global_n, b_col * kU32sPerBPack + pack_idx, weight_offset);
       let scale = load_scale(global_n, b_col, scale_offset);
       let zero_point = mm_read_zero(global_n, b_col, uniforms.N, uniforms.zero_blocks_per_col);
+      let tile_b_base = n_idx * kChunkSizeK + pack_idx * kValuesPerPack;
 
-      for (var pack_idx = 0u; pack_idx < kU32sPerBPack; pack_idx++) {
-        let b_dequantized = dequantize(b_data[pack_idx], zero_point, scale);
-        let tile_b_base = tile_offset + pack_idx * kValuesPerPack;
-        for (var elem_idx = 0u; elem_idx < kValuesPerPack; elem_idx++) {
-          tile_b[tile_b_base + elem_idx] = b_dequantized[elem_idx / 4u][elem_idx % 4u];
-        }
+      let b_dequantized = dequantize(packed, zero_point, scale);
+      for (var elem_idx = 0u; elem_idx < kValuesPerPack; elem_idx++) {
+        tile_b[tile_b_base + elem_idx] = b_dequantized[elem_idx / 4u][elem_idx % 4u];
       }
     }
     workgroupBarrier();
