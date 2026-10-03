@@ -4,6 +4,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/graph/graph_utils.h"
+#include "core/providers/cpu/activation/activation_fp16_support.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -58,8 +59,9 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     NodeArg* node_output = node.MutableOutputDefs()[0];
     auto data_type = node_output->TypeAsProto()->tensor_type().elem_type();
-    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      // FusedGemm is only registered for float data type in fused_gemm.cc!
+    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+        data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      // FusedGemm is only registered for float and MLFloat16 data types in fused_gemm.cc!
       continue;
     }
 
@@ -67,6 +69,13 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (!IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+        !functors::IsFp16FusableActivation(next_node.OpType())) {
+      continue;
+    }
+#endif
 
     if (graph.NodeProducesGraphOutput(node)) {
       continue;
