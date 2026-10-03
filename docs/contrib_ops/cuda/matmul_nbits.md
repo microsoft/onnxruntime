@@ -574,7 +574,8 @@ overrides both env vars. When none is set, nothing is
 written and behavior is unchanged. Cache instances are process-global and keyed
 by their resolved location, so all `MatMulNBits` nodes/sessions that resolve to
 the same location share one cache, while sessions configured with different
-locations each get their own.
+locations each get their own. Missing cache directories are created on the first
+write.
 
 **Stale-tactic guard.** On load, each CUTLASS tactic read from disk is checked
 against the tactics the current runner can actually dispatch (`getConfigs()`);
@@ -596,7 +597,10 @@ are recorded in the header for diagnostics but are **not** part of the guard: a
 tactic is only a config selected among `getConfigs()`, so a cross-commit or
 cross-build reuse can at worst pick a slightly suboptimal (never incorrect)
 tactic, and the stale-tactic guard above re-validates every CUTLASS tactic
-against the current runner anyway.
+against the current runner anyway. The header also carries a
+`tactic_selection_version` that must match exactly; it is bumped whenever the
+profiler's selection logic changes, so caches tuned under an older policy are
+re-profiled even when the ORT version is unchanged.
 
 **Offline tuning tool.** To pre-populate a cache without running your own
 workload, use

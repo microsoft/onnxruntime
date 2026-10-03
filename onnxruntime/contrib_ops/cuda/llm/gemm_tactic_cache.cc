@@ -8,10 +8,12 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -124,12 +126,25 @@ std::string CurrentBuildConfig() {
 #endif
 }
 
+// Cache paths are UTF-8; convert explicitly so non-ASCII paths work on Windows.
+std::filesystem::path Utf8Path(const std::string& s) {
+  return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
+}
+
+int CurrentProcessId() {
+#if defined(_WIN32)
+  return static_cast<int>(::GetCurrentProcessId());
+#else
+  return static_cast<int>(::getpid());
+#endif
+}
+
 // RAII cross-process advisory lock on "<path>.lock".
 class ScopedFileLock {
  public:
-  explicit ScopedFileLock(const std::string& path) : lock_path_(path + ".lock") {
+  explicit ScopedFileLock(const std::string& path) : lock_path_(Utf8Path(path + ".lock")) {
 #if defined(_WIN32)
-    handle_ = ::CreateFileA(lock_path_.c_str(), GENERIC_READ | GENERIC_WRITE,
+    handle_ = ::CreateFileW(lock_path_.c_str(), GENERIC_READ | GENERIC_WRITE,
                             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                             OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle_ != INVALID_HANDLE_VALUE) {
@@ -169,7 +184,7 @@ class ScopedFileLock {
   ScopedFileLock& operator=(const ScopedFileLock&) = delete;
 
  private:
-  std::string lock_path_;
+  std::filesystem::path lock_path_;
   bool locked_ = false;
 #if defined(_WIN32)
   HANDLE handle_ = INVALID_HANDLE_VALUE;
@@ -445,7 +460,7 @@ void MatMulNBitsTacticCache::Put(const MatMulNBitsKey& key, int m_bucket,
 }
 
 onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
-  std::ifstream in(file_path_);
+  std::ifstream in(Utf8Path(file_path_));
   if (!in.is_open()) {
     return onnxruntime::common::Status::OK();
   }
@@ -453,6 +468,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
   HardwareSignature file_sig;
   file_sig.ort_build_config.clear();
   std::string magic_ok_version;
+  std::string selection_version;
   std::string table_name;
   std::vector<std::string> header_columns;
   std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> loaded;
@@ -481,6 +497,8 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
           magic_ok_version = v;
         } else if (k == "table") {
           table_name = v;
+        } else if (k == "tactic_selection_version") {
+          selection_version = v;
         } else if (k == "device_name") {
           file_sig.device_name = TsvDecode(v);
         } else if (k == "sm") {
@@ -554,9 +572,9 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
     loaded[key][m_bucket] = *parsed;
   }
 
-  // Reject the file if the format, table, or hardware/build signature does not match.
-  if (magic_ok_version != kCacheFormatVersion || table_name != kTableMatMulNBits ||
-      !signature_.StrictMatches(file_sig)) {
+  // Reject the file if the format, selection policy, table, or hardware/build signature does not match.
+  if (magic_ok_version != kCacheFormatVersion || selection_version != kTacticSelectionVersion ||
+      table_name != kTableMatMulNBits || !signature_.StrictMatches(file_sig)) {
     return onnxruntime::common::Status::OK();
   }
 
@@ -572,9 +590,14 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
 
 onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
     const std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash>& table) const {
-  const std::string tmp_path = file_path_ + ".tmp";
+  // Unique per writer so concurrent writers never share a temp file, even if the file lock failed.
+  static std::atomic<uint64_t> tmp_counter{0};
+  const std::string tmp_path = file_path_ + ".tmp." + std::to_string(CurrentProcessId()) + "." +
+                               std::to_string(tmp_counter.fetch_add(1));
+  const std::filesystem::path tmp_fs_path = Utf8Path(tmp_path);
+  const std::filesystem::path fs_path = Utf8Path(file_path_);
   {
-    std::ofstream out(tmp_path, std::ios::trunc);
+    std::ofstream out(tmp_fs_path, std::ios::trunc);
     if (!out.is_open()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Failed to open gemm tactic cache temp file for writing: ", tmp_path);
@@ -583,6 +606,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
     // Signature / format header lines.
     out << "# " << kCacheMagic << '\t' << kCacheFormatVersion << '\n';
     out << "# table\t" << kTableMatMulNBits << '\n';
+    out << "# tactic_selection_version\t" << kTacticSelectionVersion << '\n';
     out << "# device_name\t" << TsvEncode(signature_.device_name) << '\n';
     out << "# sm\t" << signature_.sm << '\n';
     out << "# multiprocessor_count\t" << signature_.multiprocessor_count << '\n';
@@ -624,15 +648,17 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
   }
 
 #if defined(_WIN32)
-  if (::MoveFileExA(tmp_path.c_str(), file_path_.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0) {
-    std::remove(tmp_path.c_str());
+  if (::MoveFileExW(tmp_fs_path.c_str(), fs_path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0) {
+    std::error_code ec;
+    std::filesystem::remove(tmp_fs_path, ec);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to atomically replace gemm tactic cache file: ", file_path_,
                            ", Windows error: ", ::GetLastError());
   }
 #else
-  if (std::rename(tmp_path.c_str(), file_path_.c_str()) != 0) {
-    std::remove(tmp_path.c_str());
+  if (std::rename(tmp_fs_path.c_str(), fs_path.c_str()) != 0) {
+    std::error_code ec;
+    std::filesystem::remove(tmp_fs_path, ec);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to atomically replace gemm tactic cache file: ", file_path_);
   }
@@ -645,6 +671,16 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
     std::lock_guard<std::mutex> guard(mutex_);
     if (!dirty_) {
       return onnxruntime::common::Status::OK();
+    }
+  }
+
+  const std::filesystem::path parent = Utf8Path(file_path_).parent_path();
+  if (!parent.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create gemm tactic cache directory for ", file_path_,
+                             ": ", ec.message());
     }
   }
 
