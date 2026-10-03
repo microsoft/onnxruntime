@@ -41,6 +41,32 @@ inline InlinedVector<std::string_view> SplitString(std::string_view string_to_sp
 }
 
 /**
+ * Splits a string on any character in `delimiters`. Each character in
+ * `delimiters` is treated as an independent single-character delimiter
+ * (unlike SplitString, which matches a delimiter substring).
+ * @param string_to_split The string to split.
+ * @param delimiters The set of delimiter characters. Must not be empty.
+ * @param keep_empty Whether to keep empty substrings.
+ * @return The split substrings.
+ */
+inline InlinedVector<std::string_view> SplitStringOnAny(std::string_view string_to_split,
+                                                        std::string_view delimiters,
+                                                        bool keep_empty = false) {
+  ORT_ENFORCE(!delimiters.empty(), "delimiters must not be empty");
+  InlinedVector<std::string_view> result{};
+  std::string_view::size_type segment_begin_pos = 0;
+  while (segment_begin_pos != std::string_view::npos) {
+    const std::string_view::size_type segment_end_pos = string_to_split.find_first_of(delimiters, segment_begin_pos);
+    const bool is_segment_empty = segment_begin_pos == segment_end_pos || segment_begin_pos == string_to_split.size();
+    if (!is_segment_empty || keep_empty) {
+      result.push_back(string_to_split.substr(segment_begin_pos, segment_end_pos - segment_begin_pos));
+    }
+    segment_begin_pos = (segment_end_pos == std::string_view::npos) ? segment_end_pos : segment_end_pos + 1;
+  }
+  return result;
+}
+
+/**
  * Trim a string from start inplace.
  * @param s The string to trim.
  */

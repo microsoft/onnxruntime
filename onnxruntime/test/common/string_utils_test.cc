@@ -135,6 +135,24 @@ TEST(StringUtilsTest, SplitString) {
   run_test(",", ",", {"", ""});
 }
 
+TEST(StringUtilsTest, SplitStringOnAny) {
+  const auto parts = utils::SplitStringOnAny("MatMulAddFusion,ConstantFolding;Rule2", ",;");
+  ASSERT_EQ(parts.size(), 3u);
+  EXPECT_EQ(parts[0], "MatMulAddFusion");
+  EXPECT_EQ(parts[1], "ConstantFolding");
+  EXPECT_EQ(parts[2], "Rule2");
+
+  const auto comma_only = utils::SplitStringOnAny("A,B", ",;");
+  ASSERT_EQ(comma_only.size(), 2u);
+  EXPECT_EQ(comma_only[0], "A");
+  EXPECT_EQ(comma_only[1], "B");
+
+  const auto semicolon_only = utils::SplitStringOnAny("A;B", ",;");
+  ASSERT_EQ(semicolon_only.size(), 2u);
+  EXPECT_EQ(semicolon_only[0], "A");
+  EXPECT_EQ(semicolon_only[1], "B");
+}
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST(StringUtilsTest, SplitStringWithEmptyDelimiter) {
   EXPECT_THROW(utils::SplitString("a", ""), OnnxRuntimeException);
