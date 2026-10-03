@@ -22,6 +22,7 @@
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/utils.h"
@@ -1382,6 +1383,9 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
   output = std::make_shared<CustomRegistry>();
 
   for (const auto& domain : op_domains) {
+    ORT_RETURN_IF(IsOrtOwnedOperatorDomain(domain->domain_),
+                  "Custom operators may not be registered in ORT-owned domain '",
+                  domain->domain_, "'. Use a unique custom domain instead.");
 #if !defined(ORT_MINIMAL_BUILD)
     std::unordered_map<std::string, ONNX_NAMESPACE::OpSchema> schema_map;
     std::unordered_map<std::string, InlinedVector<const KernelDef*>> kernel_def_map;
