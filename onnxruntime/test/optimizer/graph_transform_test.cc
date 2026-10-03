@@ -615,6 +615,31 @@ TEST_F(GraphTransformationTests, NoopElimination) {
   }
 }
 
+TEST_F(GraphTransformationTests, NoopEliminationPreservesNonzeroDoubleInitializer) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>(std::vector<int64_t>{3});
+    auto* neg_out = builder.MakeIntermediate();
+    auto* value = builder.MakeInitializer<double>({}, {1e-50});
+    auto* add_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Neg", {input}, {neg_out});
+    builder.AddNode("Add", {neg_out, value}, {add_out});
+    builder.AddNode("Neg", {add_out}, {output});
+  };
+
+  auto check_add_is_preserved = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(transformer->Register(std::make_unique<NoopElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1,
+                                        check_add_is_preserved, check_add_is_preserved));
+}
+
 TEST_F(GraphTransformationTests, DropoutElimination) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "dropout.onnx";
   std::shared_ptr<Model> model;
@@ -659,6 +684,59 @@ TEST_F(GraphTransformationTests, SliceElimination) {
     // Only one Slice operator is redundant and is removed.
     ASSERT_TRUE(op_to_count["Slice"] == --initial_slice_num);
   }
+}
+
+TEST_F(GraphTransformationTests, SliceEliminationChecksStepsWithoutAxes) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{6});
+    auto* starts = builder.MakeInitializer<int64_t>({1}, {0});
+    auto* ends = builder.MakeInitializer<int64_t>({1}, {INT64_MAX});
+    auto* axes = builder.MakeOptionalTensor();
+    auto* steps = builder.MakeInitializer<int64_t>({1}, {2});
+    auto* relu_out = builder.MakeIntermediate();
+    auto* slice_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Relu", {input}, {relu_out});
+    builder.AddNode("Slice", {relu_out, starts, ends, axes, steps}, {slice_out});
+    builder.AddNode("Neg", {slice_out}, {output});
+  };
+
+  auto check_slice_is_preserved = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Slice"] == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(transformer->Register(std::make_unique<EliminateSlice>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1,
+                                        check_slice_is_preserved, check_slice_is_preserved));
+}
+
+TEST_F(GraphTransformationTests, ExpandEliminationPreservesZeroSizedOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{1});
+    auto* shape = builder.MakeInitializer<int64_t>({1}, {0});
+    auto* relu_out = builder.MakeIntermediate();
+    auto* expand_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Relu", {input}, {relu_out});
+    builder.AddNode("Expand", {relu_out, shape}, {expand_out});
+    builder.AddNode("Neg", {expand_out}, {output});
+  };
+
+  auto check_expand_is_preserved = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Expand"] == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(transformer->Register(std::make_unique<ExpandElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1,
+                                        check_expand_is_preserved, check_expand_is_preserved));
 }
 
 TEST_F(GraphTransformationTests, ConstantFolding) {

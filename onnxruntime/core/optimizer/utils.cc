@@ -273,7 +273,7 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
 constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike",
-                                                    "RandomNormalLike", "Multinomial", "Dropout"};
+                                                    "RandomNormalLike", "Multinomial", "Bernoulli", "Dropout"};
 
 // List of deterministic MS domain operators. Currently used for constant folding and common subexpression elimination.
 //
