@@ -117,7 +117,8 @@ class SparsePagedAttentionTokenMetaProgram final
 //   selected_counts  : (token_count,)                                    [S] (optional)
 //
 // Output (write):
-//   partial : (token_count, num_heads, head_size + 2)                    [float]
+//   partial : (token_count, num_heads, head_size + 2)                    [float], or
+//   output  : (token_count, num_heads * head_size)                       [T]
 //
 // The trailing two floats per (token, head) are the running softmax maximum
 // and denominator, so the finalize stage can merge this partial state with the
@@ -131,14 +132,16 @@ class SparsePagedAttentionMainProgram final
     : public Program<SparsePagedAttentionMainProgram> {
  public:
   SparsePagedAttentionMainProgram(int head_size, bool is_causal, bool use_local_window,
-                                  bool use_selected, bool dedup_selected, bool use_slot_mapping)
+                                  bool use_selected, bool dedup_selected, bool use_slot_mapping,
+                                  bool direct_output)
       : Program{"SparsePagedAttentionMain"},
         head_size_(head_size),
         is_causal_(is_causal),
         use_local_window_(use_local_window),
         use_selected_(use_selected),
         dedup_selected_(dedup_selected),
-        use_slot_mapping_(use_slot_mapping) {}
+        use_slot_mapping_(use_slot_mapping),
+        direct_output_(direct_output) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -162,20 +165,22 @@ class SparsePagedAttentionMainProgram final
   bool use_selected_;
   bool dedup_selected_;
   bool use_slot_mapping_;
+  bool direct_output_;
 };
 
 // Partial attention over the contiguous auxiliary cache.
 //
 // Inputs (all read):
 //   query            : (token_count, num_heads * head_size)                [T]
-//   auxiliary_key    : (batch_size, capacity, kv_heads_or_one, head_size)  [T_AUX]
-//   auxiliary_value  : same shape as auxiliary_key           [T_AUX] (absent when K=V)
+//   auxiliary_key    : (batch_size, capacity, kv_heads_or_one, head_size)  [T]
+//   auxiliary_value  : same shape as auxiliary_key               [T] (absent when K=V)
 //   token_meta       : (token_count, 6)                                    [S]
 //   selected_indices : (token_count, max_selected_entries)                 [S]
 //   selected_counts  : (token_count,)                                      [S]
 //
 // Output (write):
-//   partial : (token_count, num_heads, head_size + 2)                      [float]
+//   partial : (token_count, num_heads, head_size + 2)                      [float], or
+//   output  : (token_count, num_heads * head_size)                         [T]
 //
 // Selected positions are request-local rows in the auxiliary cache; entries
 // that are negative or beyond the request's auxiliary_lengths value are
@@ -183,10 +188,11 @@ class SparsePagedAttentionMainProgram final
 class SparsePagedAttentionAuxiliaryProgram final
     : public Program<SparsePagedAttentionAuxiliaryProgram> {
  public:
-  SparsePagedAttentionAuxiliaryProgram(int head_size, bool auxiliary_kv_shared)
+  SparsePagedAttentionAuxiliaryProgram(int head_size, bool auxiliary_kv_shared, bool direct_output)
       : Program{"SparsePagedAttentionAuxiliary"},
         head_size_(head_size),
-        auxiliary_kv_shared_(auxiliary_kv_shared) {}
+        auxiliary_kv_shared_(auxiliary_kv_shared),
+        direct_output_(direct_output) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -203,6 +209,7 @@ class SparsePagedAttentionAuxiliaryProgram final
  private:
   int head_size_;
   bool auxiliary_kv_shared_;
+  bool direct_output_;
 };
 
 // Merge the partial softmax states into one joint FP32 softmax and write the
@@ -233,7 +240,7 @@ class SparsePagedAttentionFinalizeProgram final
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+      {"workgroup_count", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_main_;
