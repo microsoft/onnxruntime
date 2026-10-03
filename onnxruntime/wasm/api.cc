@@ -110,6 +110,14 @@ int OrtGetLastError(int* error_code, const char** error_message) {
   return ORT_OK;
 }
 
+int OrtGetAvailableProviders(char*** out_ptr, int* providers_length) {
+  return CHECK_STATUS(GetAvailableProviders, out_ptr, providers_length);
+}
+
+int OrtReleaseAvailableProviders(char** ptr, int providers_length) {
+  return CHECK_STATUS(ReleaseAvailableProviders, ptr, providers_length);
+}
+
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
                                            bool enable_cpu_mem_arena,
                                            bool enable_mem_pattern,

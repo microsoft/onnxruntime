@@ -343,6 +343,9 @@ export interface OrtInferenceAPIs {
 
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): number;
 
+  _OrtGetAvailableProviders(providersOffset: number, providersLengthOffset: number): number;
+  _OrtReleaseAvailableProviders(providersOffset: number, providersLength: number): number;
+
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
   _OrtReleaseSession(sessionHandle: number): number;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
