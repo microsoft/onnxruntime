@@ -518,6 +518,97 @@ TEST(GemmTacticCacheTest, FlushFailsWhenFileLockUnavailable) {
   CleanUp(file);
 }
 
+TEST(GemmTacticCacheTest, ParseCacheAccessAndFlag) {
+  auto both = gc::ParseCacheAccess("");
+  ASSERT_TRUE(both.has_value());
+  EXPECT_TRUE(both->load && both->save);
+  auto load_save = gc::ParseCacheAccess("LOAD_SAVE");
+  ASSERT_TRUE(load_save.has_value());
+  EXPECT_TRUE(load_save->load && load_save->save);
+  auto load = gc::ParseCacheAccess("load");
+  ASSERT_TRUE(load.has_value());
+  EXPECT_TRUE(load->load && !load->save);
+  auto save = gc::ParseCacheAccess("save");
+  ASSERT_TRUE(save.has_value());
+  EXPECT_TRUE(!save->load && save->save);
+  EXPECT_FALSE(gc::ParseCacheAccess("readonly").has_value());
+
+  EXPECT_EQ(gc::ParseCacheFlag(""), std::optional<bool>(false));
+  EXPECT_EQ(gc::ParseCacheFlag("0"), std::optional<bool>(false));
+  EXPECT_EQ(gc::ParseCacheFlag("On"), std::optional<bool>(true));
+  EXPECT_EQ(gc::ParseCacheFlag("1"), std::optional<bool>(true));
+  EXPECT_FALSE(gc::ParseCacheFlag("2").has_value());
+}
+
+TEST(GemmTacticCacheTest, SameTactic) {
+  EXPECT_TRUE(gc::SameTactic(std::nullopt, std::nullopt));
+  EXPECT_TRUE(gc::SameTactic(MakeSm80Config(), MakeSm80Config()));
+  EXPECT_FALSE(gc::SameTactic(MakeSm80Config(), MakeSm90Config()));
+  EXPECT_FALSE(gc::SameTactic(MakeSm80Config(), std::nullopt));
+}
+
+TEST(GemmTacticCacheTest, ResolveFilePathSidecar) {
+  const auto sig = MakeSignature("NVIDIA H200", 90);
+  const std::string suffix = ".matmulnbits_fpa_intb.tsv";
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig, "/models/m.onnx"), "/models/m.onnx" + suffix);
+  // Explicit session locations win over the sidecar.
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "/tmp/p", sig, "/models/m.onnx"), "/tmp/p" + suffix);
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "", sig, "/models/m.onnx"),
+            "/tmp/dir/NVIDIA_H200_sm90" + suffix);
+}
+
+TEST(GemmTacticCacheTest, ReloadIfChangedPicksUpOtherWriters) {
+  const std::string prefix = UniqueTempPrefix("reload");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::HardwareSignature sig = MakeSignature();
+  const gc::MatMulNBitsKey key = MakeKey();
+
+  gc::MatMulNBitsTacticCache reader(file, sig);
+  ASSERT_TRUE(reader.Load().IsOK());  // file does not exist yet
+
+  {
+    gc::MatMulNBitsTacticCache writer(file, sig);
+    writer.Put(key, 1, MakeSm80Config());
+    ASSERT_TRUE(writer.Flush().IsOK());
+  }
+  ASSERT_TRUE(reader.ReloadIfChanged().IsOK());
+  EXPECT_TRUE(reader.Get(key, 1).has_value());
+
+  {
+    gc::MatMulNBitsTacticCache writer(file, sig);
+    writer.Put(key, 64, MakeSm90Config());
+    ASSERT_TRUE(writer.Flush().IsOK());
+  }
+  ASSERT_TRUE(reader.ReloadIfChanged().IsOK());
+  EXPECT_TRUE(reader.Get(key, 64).has_value());
+
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, FlushAdoptsRowsFromOtherWriters) {
+  const std::string prefix = UniqueTempPrefix("adopt");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::HardwareSignature sig = MakeSignature();
+  const gc::MatMulNBitsKey key = MakeKey();
+
+  gc::MatMulNBitsTacticCache self(file, sig);
+  ASSERT_TRUE(self.Load().IsOK());
+  {
+    gc::MatMulNBitsTacticCache other(file, sig);
+    other.Put(key, 1, MakeSm80Config());
+    ASSERT_TRUE(other.Flush().IsOK());
+  }
+  self.Put(key, 64, MakeSm90Config());
+  ASSERT_TRUE(self.Flush().IsOK());
+
+  // The other writer's row is now known in memory, and no reload is needed to see it.
+  EXPECT_TRUE(self.Get(key, 1).has_value());
+  ASSERT_TRUE(self.ReloadIfChanged().IsOK());
+  EXPECT_TRUE(self.Get(key, 64).has_value());
+
+  CleanUp(file);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

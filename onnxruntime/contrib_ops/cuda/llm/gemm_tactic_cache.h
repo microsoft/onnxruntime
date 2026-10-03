@@ -24,11 +24,13 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/common/status.h"
@@ -50,12 +52,32 @@ constexpr const char* kTableMatMulNBits = "matmulnbits_fpa_intb";
 // Environment variables (see docs section 9).
 constexpr const char* kEnvCacheDir = "ORT_CUDA_GEMM_TACTIC_CACHE_DIR";
 constexpr const char* kEnvCachePrefix = "ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX";
+constexpr const char* kEnvCacheMode = "ORT_CUDA_GEMM_TACTIC_CACHE_MODE";
+constexpr const char* kEnvCacheToModel = "ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL";
 
 // Session-option config keys (equivalents of the env vars). These can be set via
 // SessionOptions::AddConfigEntry, or through onnxruntime-genai's session_options in
 // genai_config.json (any unrecognized session_options key is forwarded to AddConfigEntry).
 constexpr const char* kSessionConfigCacheDir = "ep.cuda.gemm_tactic_cache_dir";
 constexpr const char* kSessionConfigCachePrefix = "ep.cuda.gemm_tactic_cache_prefix";
+constexpr const char* kSessionConfigCacheMode = "ep.cuda.gemm_tactic_cache_mode";
+constexpr const char* kSessionConfigCacheToModel = "ep.cuda.gemm_tactic_cache_to_model";
+
+// Persistence directions used by a session. Parsed from the cache mode:
+//   "load_save" (default): load at session creation, save newly tuned tactics at session close.
+//   "load": read-only; never writes (e.g. a pre-tuned cache shipped with an application).
+//   "save": ignore existing rows, re-tune, and write the results at session close.
+struct CacheAccess {
+  bool load = true;
+  bool save = true;
+};
+
+// Returns std::nullopt for an unrecognized mode. An empty mode means "load_save".
+std::optional<CacheAccess> ParseCacheAccess(const std::string& mode);
+
+// Returns true for "1"/"true"/"on" (case-insensitive), false for empty/"0"/"false"/"off",
+// and std::nullopt otherwise.
+std::optional<bool> ParseCacheFlag(const std::string& value);
 
 // Hardware / build signature used both to name cache files and as a stored guard.
 // Reuse is rejected on mismatch of any strict field (see StrictMatches).
@@ -107,6 +129,9 @@ void AppendConfigColumns(std::vector<std::string>& row, const std::optional<Cutl
 std::optional<std::optional<CutlassGemmConfig>> ParseConfigColumns(
     const std::vector<std::string>& columns, size_t begin);
 
+// True if both are absent or both serialize to the same config columns.
+bool SameTactic(const std::optional<CutlassGemmConfig>& a, const std::optional<CutlassGemmConfig>& b);
+
 // Problem key for MatMulNBits fpA_intB. Many nodes with the same shape collapse to
 // one entry. n_16b is the value used by GemmIdCore (N after casting int weight to fp16).
 struct MatMulNBitsKey {
@@ -140,9 +165,10 @@ struct MatMulNBitsKeyHash {
 class MatMulNBitsTacticCache {
  public:
   // Resolves the cache file path, or returns an empty string when persistence is disabled.
-  // Resolution order: session-config prefix, session-config dir, env prefix, env dir.
+  // Resolution order: session-config prefix, session-config dir, `sidecar_prefix` (the model path
+  // when the model sidecar is enabled), env prefix, env dir.
   static std::string ResolveFilePath(const std::string& config_dir, const std::string& config_prefix,
-                                     const HardwareSignature& signature);
+                                     const HardwareSignature& signature, const std::string& sidecar_prefix = "");
 
   // Returns a configured cache if persistence is enabled, otherwise nullptr (callers keep the
   // in-process-only behavior). The file location follows ResolveFilePath. The returned cache has
@@ -171,11 +197,19 @@ class MatMulNBitsTacticCache {
   // returns OK (treated as an empty/rejected cache).
   onnxruntime::common::Status Load();
 
+  // Loads again if the file changed on disk since the last Load() or Flush(), so a new session
+  // sees rows written by other processes. Rows already in memory win.
+  onnxruntime::common::Status ReloadIfChanged();
+
   // Atomically merges the in-memory table with the current on-disk file and writes
   // it back. No-op (OK) if there is nothing to persist.
   onnxruntime::common::Status Flush();
 
  private:
+  // Last write time and size of the file, or std::nullopt if it does not exist.
+  using FileStamp = std::pair<std::filesystem::file_time_type, uintmax_t>;
+  std::optional<FileStamp> CurrentFileStamp() const;
+
   onnxruntime::common::Status WriteAllLocked(
       const std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash>& table) const;
 
@@ -186,6 +220,7 @@ class MatMulNBitsTacticCache {
   std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> table_;
   bool dirty_ = false;
   size_t generation_ = 0;
+  std::optional<FileStamp> known_stamp_;
 };
 
 }  // namespace onnxruntime::llm::gemm_cache

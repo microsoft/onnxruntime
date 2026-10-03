@@ -246,7 +246,7 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
     GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
-  if (mCache == nullptr) {
+  if (mCache == nullptr || !mCacheAccess.load) {
     return;
   }
   auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
@@ -330,9 +330,17 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::storePersistentCache(
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
     GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
-  // Lazy-profiling path: stage only (no disk write). The staged tactics are written to disk once at
-  // CUDA EP teardown (FlushMatMulNBitsTacticCaches in matmul_nbits.cc).
-  stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
+  if (mCache == nullptr || !mCacheAccess.save) {
+    return;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  for (auto const& [m, config] : map) {
+    // Re-staging an unchanged bucket would mark the cache dirty and rewrite the file for nothing.
+    auto cached = mCache->Get(key, m);
+    if (!cached.has_value() || !onnxruntime::llm::gemm_cache::SameTactic(*cached, config)) {
+      mCache->Put(key, m, config);
+    }
+  }
 }
 }  // namespace onnxruntime::llm::kernels::weight_only
 #endif

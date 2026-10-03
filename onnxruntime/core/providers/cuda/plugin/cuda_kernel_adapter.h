@@ -505,6 +505,7 @@ class PluginKernelCollector {
 // which is initialized in CudaEpFactory::CudaEpFactory.
 
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -547,6 +548,20 @@ struct CudaKernelAdapterRuntimeConfig {
     std::lock_guard<std::mutex> lock(captured_host_buffers_mutex);
     captured_host_buffers.push_back(std::move(buffer));
   }
+
+  // Path of the model the EP partitioned (recorded in GetCapability); empty if loaded from bytes.
+  void SetModelPath(std::filesystem::path path) {
+    std::lock_guard<std::mutex> lock(model_path_mutex);
+    model_path = std::move(path);
+  }
+  std::filesystem::path GetModelPath() const {
+    std::lock_guard<std::mutex> lock(model_path_mutex);
+    return model_path;
+  }
+
+ private:
+  mutable std::mutex model_path_mutex;
+  std::filesystem::path model_path;
 };
 template <typename T>
 struct SizeOf {
@@ -1158,6 +1173,7 @@ class CudaKernel : public OpKernel {
 
     return device_prop_;
   }
+  std::filesystem::path GetSessionModelPath() const { return runtime_config_->GetModelPath(); }
   int GetCudnnConvAlgo() const { return runtime_config_->cudnn_conv_algo; }
   bool GetCudnnConvUseMaxWorkspace() const { return runtime_config_->cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return runtime_config_->cudnn_conv1d_pad_to_nc1d; }

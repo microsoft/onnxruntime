@@ -544,15 +544,7 @@ sessions, and the first-time tuning cost is reduced. Design details:
 (`{1,2,4,…,2048}` by default, clamped to the problem range and always including
 `M=1` and the top bucket). If a runtime `M` maps to an unprofiled bucket, that
 single bucket is profiled lazily on first use and kept in the in-process map for
-the rest of the session. Lazy buckets are intentionally **not** written to disk
-on the hot path (that would put file I/O on inference latency); instead each
-lazily profiled bucket is **staged** into the process-global in-memory cache
-right after it is profiled, and the cache is written to disk at CUDA EP
-teardown (`~CUDAExecutionProvider` for the built-in EP, `~CudaEp` for the CUDA
-plugin EP). Disk
-persistence therefore covers the construction-time sweep (flushed eagerly so the
-file exists while the session runs), the offline tuning tool, and the
-EP-teardown flush of lazily-discovered buckets. Lazy profiling is also skipped
+the rest of the session. Lazy profiling is skipped
 while a CUDA graph is being captured (profiling kernels/events/allocations are
 illegal during capture), so run a
 warmup inference **before** capture to tune any `M` buckets your captured graph
@@ -560,17 +552,33 @@ needs. Set `ORT_FPA_INTB_PROFILE_M` (comma-separated) to override the bucket set
 its maximum also sets the initial
 profile range.
 
-**Enabling persistence.** Persistence is opt-in. Provide either a directory or an
-explicit file prefix, via environment variable or session-config option:
+**Load on create, save on close.** When a session is created, each
+`MatMulNBits` kernel loads matching tactics from the cache before profiling, so
+only missing buckets are tuned. If another session or process changed the cache
+file since this process last read or wrote it, the file is read again first.
+Newly tuned tactics (from the construction-time sweep and from lazy profiling)
+are only staged in memory while the session runs. They are written to disk once,
+when the session closes (`~CUDAExecutionProvider` for the built-in EP, `~CudaEp`
+for the CUDA plugin EP), so neither session creation nor inference does any
+cache file writes. Tactics of sessions still alive at process exit are written
+when the provider library is unloaded.
+
+**Enabling persistence.** Persistence is opt-in. Provide a directory, an
+explicit file prefix, or enable the model sidecar, via environment variable or
+session-config option:
 
 | Env var | Session-config key | Effect |
 |---------|--------------------|--------|
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | `ep.cuda.gemm_tactic_cache_dir` | Directory for the cache file; the file name is derived from the hardware signature. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | `ep.cuda.gemm_tactic_cache_prefix` | Explicit file prefix; writes `<prefix>.matmulnbits_fpa_intb.tsv`. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `ep.cuda.gemm_tactic_cache_to_model` | `1` stores the cache next to the model as `<model_path>.matmulnbits_fpa_intb.tsv`. Ignored for models loaded from bytes. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | `ep.cuda.gemm_tactic_cache_mode` | `load_save` (default): load on create, save on close. `load`: read-only, never writes (e.g. a pre-tuned cache shipped with an application). `save`: ignore existing rows, re-tune, and save on close. Other values fail session creation. |
 
-Resolution order: session-config prefix → session-config dir → env prefix → env
-dir. A non-empty prefix wins over a directory, and any session-config value
-overrides both env vars. When none is set, nothing is
+Resolution order: session-config prefix → session-config dir → model sidecar →
+env prefix → env dir. A non-empty prefix wins over a directory, and an explicit
+session-config location overrides the sidecar and both env locations. Each
+setting is read from session config first and falls back to its env var. When
+no location is set, nothing is
 written and behavior is unchanged. Cache instances are process-global and keyed
 by their resolved location, so all `MatMulNBits` nodes/sessions that resolve to
 the same location share one cache, while sessions configured with different
@@ -616,8 +624,9 @@ python -m onnxruntime.tools.fpa_intb_tune \
 It enables the fpA_intB path, the cache prefix, and the profile bucket set through
 session config entries, creates a CUDA-EP session (which profiles the bucket set during
 kernel construction), best-effort runs dummy inferences at each `M`, releases the session
-so lazily profiled buckets are flushed, then prints the cache path and a summary of tuned
-shapes.
+so the tuned tactics are saved, then prints the cache path and a summary of tuned
+shapes. Buckets already in the cache are reused; pass `--retune` to profile every bucket
+again (`ep.cuda.gemm_tactic_cache_mode=save`).
 
 **onnxruntime-genai integration.** Two options:
 
@@ -658,9 +667,11 @@ present. `ComputeInternal` then:
 |----------|----------------|--------|
 | `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
-| `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.3). The maximum value also bounds the initial profile range. Session-config equivalent: `ep.cuda.fpa_intb_profile_m`. |
-| `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | path, unset | Directory for the persistent fpA_intB tactic cache (§6.3). Unset means the cache is in-process only. Session-config equivalent: `ep.cuda.gemm_tactic_cache_dir`. |
-| `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | path prefix, unset | Explicit cache file prefix (§6.3); writes `<prefix>.matmulnbits_fpa_intb.tsv`. Session-config equivalent: `ep.cuda.gemm_tactic_cache_prefix`. |
+| `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. Session-config equivalent: `ep.cuda.fpa_intb_profile_m`. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | path, unset | Directory for the persistent fpA_intB tactic cache (§6.1). Unset means the cache is in-process only. Session-config equivalent: `ep.cuda.gemm_tactic_cache_dir`. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | path prefix, unset | Explicit cache file prefix (§6.1); writes `<prefix>.matmulnbits_fpa_intb.tsv`. Session-config equivalent: `ep.cuda.gemm_tactic_cache_prefix`. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | bool, `0` | Store the fpA_intB tactic cache next to the model (§6.1). Session-config equivalent: `ep.cuda.gemm_tactic_cache_to_model`. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | string, `load_save` | `load_save`, `load` (read-only), or `save` (re-tune) for the fpA_intB tactic cache (§6.1). Session-config equivalent: `ep.cuda.gemm_tactic_cache_mode`. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic, and bypass the fpA_intB M-chunking size condition (§6.2). |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 | `ORT_MATMULNBITS_M_CHUNK_SIZE` | int, `0` | Max rows of `A` per fpA_intB launch (§6.2). `0` disables M chunking. Overridden by the `ep.cuda.matmul_nbits_m_chunk_size` session config entry. Also applies to the CUDA plugin EP. |

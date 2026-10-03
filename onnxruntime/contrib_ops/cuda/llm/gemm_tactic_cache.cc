@@ -355,6 +355,46 @@ std::optional<std::optional<CutlassGemmConfig>> ParseConfigColumns(
   return std::optional<CutlassGemmConfig>{c};
 }
 
+bool SameTactic(const std::optional<CutlassGemmConfig>& a, const std::optional<CutlassGemmConfig>& b) {
+  std::vector<std::string> row_a;
+  std::vector<std::string> row_b;
+  AppendConfigColumns(row_a, a);
+  AppendConfigColumns(row_b, b);
+  return row_a == row_b;
+}
+
+namespace {
+std::string ToLower(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return s;
+}
+}  // namespace
+
+std::optional<CacheAccess> ParseCacheAccess(const std::string& mode) {
+  const std::string m = ToLower(mode);
+  if (m.empty() || m == "load_save") {
+    return CacheAccess{true, true};
+  }
+  if (m == "load") {
+    return CacheAccess{true, false};
+  }
+  if (m == "save") {
+    return CacheAccess{false, true};
+  }
+  return std::nullopt;
+}
+
+std::optional<bool> ParseCacheFlag(const std::string& value) {
+  const std::string v = ToLower(value);
+  if (v.empty() || v == "0" || v == "false" || v == "off") {
+    return false;
+  }
+  if (v == "1" || v == "true" || v == "on") {
+    return true;
+  }
+  return std::nullopt;
+}
+
 bool MatMulNBitsKey::operator==(const MatMulNBitsKey& o) const {
   return n_16b == o.n_16b && k == o.k &&
          activation_dtype == o.activation_dtype && weight_type == o.weight_type &&
@@ -400,10 +440,14 @@ MatMulNBitsTacticCache::MatMulNBitsTacticCache(std::string file_path, HardwareSi
     : file_path_(std::move(file_path)), signature_(std::move(signature)) {}
 
 std::string MatMulNBitsTacticCache::ResolveFilePath(const std::string& config_dir, const std::string& config_prefix,
-                                                    const HardwareSignature& signature) {
+                                                    const HardwareSignature& signature,
+                                                    const std::string& sidecar_prefix) {
   std::string prefix = config_prefix;
   std::string dir = config_dir;
-  // Any session-config value overrides both env vars, so an env prefix cannot shadow a session dir.
+  // Any session-config location overrides the env vars, so an env prefix cannot shadow a session dir.
+  if (prefix.empty() && dir.empty()) {
+    prefix = sidecar_prefix;
+  }
   if (prefix.empty() && dir.empty()) {
     prefix = GetEnvironmentVar(kEnvCachePrefix);
     dir = GetEnvironmentVar(kEnvCacheDir);
@@ -465,6 +509,11 @@ void MatMulNBitsTacticCache::Put(const MatMulNBitsKey& key, int m_bucket,
 }
 
 onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
+  const auto stamp = CurrentFileStamp();
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    known_stamp_ = stamp;
+  }
   std::ifstream in(Utf8Path(file_path_));
   if (!in.is_open()) {
     return onnxruntime::common::Status::OK();
@@ -594,6 +643,31 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
     }
   }
   return onnxruntime::common::Status::OK();
+}
+
+onnxruntime::common::Status MatMulNBitsTacticCache::ReloadIfChanged() {
+  const auto stamp = CurrentFileStamp();
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    if (stamp == known_stamp_) {
+      return onnxruntime::common::Status::OK();
+    }
+  }
+  return Load();
+}
+
+std::optional<MatMulNBitsTacticCache::FileStamp> MatMulNBitsTacticCache::CurrentFileStamp() const {
+  const std::filesystem::path path = Utf8Path(file_path_);
+  std::error_code ec;
+  const auto time = std::filesystem::last_write_time(path, ec);
+  if (ec) {
+    return std::nullopt;
+  }
+  const auto size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    return std::nullopt;
+  }
+  return FileStamp{time, size};
 }
 
 onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
@@ -726,9 +800,18 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
   }
 
   ORT_RETURN_IF_ERROR(WriteAllLocked(merged));
+  const auto stamp = CurrentFileStamp();
 
   {
     std::lock_guard<std::mutex> guard(mutex_);
+    known_stamp_ = stamp;
+    // Adopt rows other writers added, since known_stamp_ now hides them from ReloadIfChanged().
+    for (auto& [key, buckets] : merged) {
+      auto& dest = table_[key];
+      for (auto& [m, cfg] : buckets) {
+        dest.emplace(m, cfg);
+      }
+    }
     if (generation_ == flush_generation) {
       dirty_ = false;
     }
