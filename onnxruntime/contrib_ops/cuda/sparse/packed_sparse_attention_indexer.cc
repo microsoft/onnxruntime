@@ -30,6 +30,7 @@ namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
           .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())      \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
+          .InputMemoryType(OrtMemTypeCPUInput, psai::kStateUpdateActive)    \
           .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)          \
           .MayInplace(psai::kPastKvBuffer, psai::kPresentKvBuffer)          \
           .MayInplace(psai::kPastGateBuffer, psai::kPresentGateBuffer)      \
@@ -351,7 +352,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
       reinterpret_cast<const CudaT*>(past_kv_buffer->Data<T>()),
       past_state_lengths->Data<int32_t>(),
       state_update_capture_count != nullptr ? state_update_capture_count->Data<int32_t>() : nullptr,
-      state_update_active != nullptr ? state_update_active->Data<int32_t>() : nullptr,
+      state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0,
       selected_indices->MutableData<int32_t>(),
       selected_counts->MutableData<int32_t>(),
       reinterpret_cast<CudaT*>(present_key_state->MutableData<T>()),

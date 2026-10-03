@@ -131,7 +131,7 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
                                      const T* sin_cache, const int32_t* cumulative_sequence_lengths,
                                      const int32_t* past_sequence_lengths, const T* past_kv_buffer,
                                      const int32_t* past_state_lengths, const int32_t* state_update_capture_count,
-                                     const int32_t* state_update_active,
+                                     bool state_update_active,
                                      T* present_key_state, T* present_kv_buffer,
                                      int32_t* present_state_lengths, T* state_update, int32_t* overflow_flags,
                                      PackedSparseAttentionIndexerParams params) {
@@ -168,7 +168,7 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
     const int new_block_count = rejected ? 0 : full_new_block_count;
     const int new_buf_len = rejected ? old_buf_len : (pending % params.compress_ratio);
     const bool capture_active = !rejected && state_update != nullptr && state_update_capture_count != nullptr &&
-                                (state_update_active == nullptr || state_update_active[0] != 0);
+                                state_update_active;
     const int capture_count = capture_active
                                   ? min(max(state_update_capture_count[b], 0),
                                         min(req_len, params.state_update_capacity))
@@ -1214,7 +1214,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const int32_t* cumulative_sequence_lengths,
     const int32_t* past_sequence_lengths, const int64_t* position_ids, const T* past_key_state,
     const T* past_kv_buffer, const int32_t* past_state_lengths, const int32_t* state_update_capture_count,
-    const int32_t* state_update_active, int32_t* selected_indices,
+    bool state_update_active, int32_t* selected_indices,
     int32_t* selected_counts, T* present_key_state, T* present_kv_buffer, int32_t* present_state_lengths,
     T* state_update, float* float_workspace, int32_t* overflow_flags) {
   if (params.batch_size > 0) {
@@ -1399,7 +1399,7 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   template Status LaunchQsaPackedSparseAttentionIndexer<T>(                                                       \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
       const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, const T*, const int32_t*,     \
-      const int32_t*, const int32_t*, int32_t*, int32_t*, T*, T*, int32_t*, T*, float*, int32_t*);                \
+      const int32_t*, bool, int32_t*, int32_t*, T*, T*, int32_t*, T*, float*, int32_t*);                          \
   template Status LaunchCsaPackedSparseAttentionIndexer<T>(                                                       \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
       const T*, const T*, const T*, const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, \
