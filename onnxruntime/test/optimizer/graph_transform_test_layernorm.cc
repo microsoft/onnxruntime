@@ -50,6 +50,244 @@ static int GetCurrentOnnxOpset() {
   return it != map.end() ? it->second.second : 0;
 }
 
+enum class LayerNormScalarSource { Initializer,
+                                   CastInitializer,
+                                   Input,
+                                   SingleElementInitializer,
+                                   RankExpandingInitializer,
+                                   OverridableInitializer,
+                                   VectorInitializer };
+
+static void TestLayerNormFusionScalars(float exponent_value, LayerNormScalarSource exponent_source,
+                                       LayerNormScalarSource epsilon_source, bool reverse_epsilon_inputs = false) {
+  const float epsilon_value = epsilon_source == LayerNormScalarSource::CastInitializer
+                                  ? static_cast<float>(MLFloat16(2.2189357f))
+                                  : 2.2189357f;
+  const bool expect_fusion = exponent_value == 2.0f && exponent_source != LayerNormScalarSource::Input &&
+                             exponent_source != LayerNormScalarSource::RankExpandingInitializer &&
+                             (epsilon_source == LayerNormScalarSource::Initializer ||
+                              epsilon_source == LayerNormScalarSource::CastInitializer ||
+                              epsilon_source == LayerNormScalarSource::SingleElementInitializer);
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(
+        {1, 1, 10}, {-0.28084490f, 1.15331137f, 1.59188449f, 1.13752341f, -0.03597012f,
+                     0.13884716f, 0.55607885f, 0.42304641f, 0.17175725f, -1.12439930f});
+    auto* skip = builder.MakeInput<float>(
+        {1, 1, 10}, {0.99165827f, 1.06459177f, -1.03936505f, -0.17378822f, -0.42870688f,
+                     -0.73832971f, -0.55676180f, 1.49015868f, -0.13191843f, 0.08038019f});
+    NodeArg* exponent = nullptr;
+    if (exponent_source == LayerNormScalarSource::Input) {
+      exponent = builder.MakeInput<float>({}, {exponent_value});
+    } else if (exponent_source == LayerNormScalarSource::RankExpandingInitializer) {
+      exponent = builder.MakeInitializer<float>({1, 1, 1, 1}, {exponent_value});
+    } else if (exponent_source == LayerNormScalarSource::CastInitializer) {
+      auto* constant = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(exponent_value));
+      exponent = builder.MakeIntermediate();
+      builder.AddNode("Cast", {constant}, {exponent})
+          .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+    } else {
+      exponent = builder.MakeScalarInitializer<float>(exponent_value);
+    }
+
+    NodeArg* epsilon = nullptr;
+    if (epsilon_source == LayerNormScalarSource::Input ||
+        epsilon_source == LayerNormScalarSource::OverridableInitializer) {
+      epsilon = builder.MakeInput<float>({}, {epsilon_value});
+      if (epsilon_source == LayerNormScalarSource::OverridableInitializer) {
+        TensorProto initializer;
+        initializer.set_name(epsilon->Name());
+        initializer.set_data_type(TensorProto_DataType_FLOAT);
+        initializer.add_float_data(0.25f);
+        builder.graph_.AddInitializedTensor(initializer);
+        builder.graph_.SetInputs({input, skip, epsilon});
+      }
+    } else if (epsilon_source == LayerNormScalarSource::VectorInitializer) {
+      epsilon = builder.MakeInitializer<float>({10}, std::vector<float>(10, epsilon_value));
+    } else if (epsilon_source == LayerNormScalarSource::SingleElementInitializer) {
+      epsilon = builder.MakeInitializer<float>({1}, {epsilon_value});
+    } else if (epsilon_source == LayerNormScalarSource::RankExpandingInitializer) {
+      epsilon = builder.MakeInitializer<float>({1, 1, 1, 1}, {epsilon_value});
+    } else if (epsilon_source == LayerNormScalarSource::CastInitializer) {
+      auto* constant = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(epsilon_value));
+      epsilon = builder.MakeIntermediate();
+      builder.AddNode("Cast", {constant}, {epsilon})
+          .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+    } else {
+      epsilon = builder.MakeScalarInitializer<float>(epsilon_value);
+    }
+
+    auto* scale = builder.MakeInitializer<float>({10}, std::vector<float>(10, 1.0f));
+    auto* bias = builder.MakeInitializer<float>({10}, std::vector<float>(10, 0.0f));
+    auto* sum = builder.MakeIntermediate();
+    auto* mean = builder.MakeIntermediate();
+    auto* centered = builder.MakeIntermediate();
+    auto* power = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stabilized = builder.MakeIntermediate();
+    auto* denominator = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* scaled = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    auto add_reduce_mean = [&](NodeArg* in, NodeArg* out) {
+      if (builder.DomainToVersionMap().at(kOnnxDomain) >= 18) {
+        auto* axes = builder.MakeInitializer<int64_t>({1}, {-1});
+        builder.AddNode("ReduceMean", {in, axes}, {out});
+      } else {
+        builder.AddNode("ReduceMean", {in}, {out}).AddAttribute("axes", std::vector<int64_t>{-1});
+      }
+    };
+
+    builder.AddNode("Add", {input, skip}, {sum});
+    add_reduce_mean(sum, mean);
+    builder.AddNode("Sub", {sum, mean}, {centered});
+    builder.AddNode("Pow", {centered, exponent}, {power});
+    add_reduce_mean(power, variance);
+    builder.AddNode("Add", {reverse_epsilon_inputs ? epsilon : variance, reverse_epsilon_inputs ? variance : epsilon},
+                    {stabilized});
+    builder.AddNode("Sqrt", {stabilized}, {denominator});
+    builder.AddNode("Div", {centered, denominator}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {scaled});
+    builder.AddNode("Add", {scaled, bias}, {output});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["LayerNormalization"], expect_fusion ? 1 : 0);
+    EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 0);
+    EXPECT_EQ(op_to_count["Pow"], expect_fusion ? 0 : 1);
+    EXPECT_EQ(op_to_count["ReduceMean"], expect_fusion ? 0 : 2);
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        EXPECT_FLOAT_EQ(node.GetAttributes().at("epsilon").f(), epsilon_value);
+      }
+    }
+  };
+
+  for (const int opset : {14, 17, 18}) {
+    SCOPED_TRACE(opset);
+    const auto level = opset < 17 ? TransformerLevel::Level2 : TransformerLevel::Level1;
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Default, level, opset, 1e-6, 1e-6,
+                      std::make_unique<LayerNormFusion>(InlinedHashSet<std::string_view>{}, level),
+                      [](SessionOptions& options) { options.intra_op_param.thread_pool_size = 1; });
+  }
+
+  if (!expect_fusion) {
+    // A later simplified LayerNorm fusion must not discard epsilon after the regular fusion skips the pattern.
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Default, TransformerLevel::Level3,
+                      17, 1e-6, 1e-6, nullptr,
+                      [](SessionOptions& options) { options.intra_op_param.thread_pool_size = 1; });
+  }
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionRequiresPowExponentTwo) {
+  for (const float exponent : {0.0f, 1.0f, 3.0f}) {
+    SCOPED_TRACE(exponent);
+    for (const auto source : {LayerNormScalarSource::Initializer, LayerNormScalarSource::CastInitializer}) {
+      SCOPED_TRACE(static_cast<int>(source));
+      TestLayerNormFusionScalars(exponent, source, LayerNormScalarSource::Initializer);
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionRequiresConstantPowExponent) {
+  TestLayerNormFusionScalars(2.0f, LayerNormScalarSource::Input, LayerNormScalarSource::Initializer);
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionRequiresShapePreservingPowExponent) {
+  TestLayerNormFusionScalars(2.0f, LayerNormScalarSource::RankExpandingInitializer,
+                             LayerNormScalarSource::Initializer);
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionRequiresConstantScalarEpsilon) {
+  for (const bool reverse_inputs : {false, true}) {
+    SCOPED_TRACE(reverse_inputs);
+    for (const auto source : {LayerNormScalarSource::Input, LayerNormScalarSource::VectorInitializer,
+                              LayerNormScalarSource::RankExpandingInitializer,
+                              LayerNormScalarSource::OverridableInitializer}) {
+      SCOPED_TRACE(static_cast<int>(source));
+      TestLayerNormFusionScalars(2.0f, LayerNormScalarSource::Initializer, source, reverse_inputs);
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionPreservesConstantEpsilon) {
+  for (const bool reverse_inputs : {false, true}) {
+    SCOPED_TRACE(reverse_inputs);
+    for (const auto source : {LayerNormScalarSource::Initializer, LayerNormScalarSource::CastInitializer}) {
+      SCOPED_TRACE(static_cast<int>(source));
+      TestLayerNormFusionScalars(2.0f, source, LayerNormScalarSource::Initializer, reverse_inputs);
+      TestLayerNormFusionScalars(2.0f, source, LayerNormScalarSource::SingleElementInitializer, reverse_inputs);
+      TestLayerNormFusionScalars(2.0f, source, LayerNormScalarSource::CastInitializer, reverse_inputs);
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionNonSquarePowWithRuntimeEpsilon) {
+  TestLayerNormFusionScalars(0.0f, LayerNormScalarSource::Initializer, LayerNormScalarSource::Input);
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionsPreserveDoubleEpsilon) {
+  for (const bool simplified : {false, true}) {
+    SCOPED_TRACE(simplified);
+    for (const double epsilon : {1e-50, 1e50, 0.1, 0.25}) {
+      SCOPED_TRACE(epsilon);
+      const bool expect_fusion = static_cast<double>(static_cast<float>(epsilon)) == epsilon;
+      auto build_test_case = [&](ModelTestBuilder& builder) {
+        auto* input = builder.MakeInput<double>(
+            {2, 4}, {0.0, 1e-25, 2e-25, 3e-25, 4e-25, 5e-25, 6e-25, 7e-25});
+        NodeArg* base = input;
+        if (!simplified) {
+          auto* mean = builder.MakeIntermediate();
+          base = builder.MakeIntermediate();
+          builder.AddNode("ReduceMean", {input}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
+          builder.AddNode("Sub", {input, mean}, {base});
+        }
+        auto* exponent = builder.MakeScalarInitializer<double>(2.0);
+        auto* epsilon_arg = builder.MakeScalarInitializer<double>(epsilon);
+        auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+        auto* power = builder.MakeIntermediate();
+        auto* variance = builder.MakeIntermediate();
+        auto* stabilized = builder.MakeIntermediate();
+        auto* denominator = builder.MakeIntermediate();
+        auto* normalized = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput();
+        builder.AddNode("Pow", {base, exponent}, {power});
+        builder.AddNode("ReduceMean", {power}, {variance}).AddAttribute("axes", std::vector<int64_t>{-1});
+        builder.AddNode("Add", {variance, epsilon_arg}, {stabilized});
+        builder.AddNode("Sqrt", {stabilized}, {denominator});
+        builder.AddNode("Div", {base, denominator}, {normalized});
+        if (simplified) {
+          builder.AddNode("Mul", {normalized, scale}, {output});
+        } else {
+          auto* scaled = builder.MakeIntermediate();
+          auto* bias = builder.MakeInitializer<double>({4}, {0.0, 0.0, 0.0, 0.0});
+          builder.AddNode("Mul", {normalized, scale}, {scaled});
+          builder.AddNode("Add", {scaled, bias}, {output});
+        }
+      };
+      auto check_graph = [&](InferenceSessionWrapper& session) {
+        auto counts = CountOpsInGraph(session.GetGraph());
+        EXPECT_EQ(counts[simplified ? "SimplifiedLayerNormalization" : "LayerNormalization"], expect_fusion ? 1 : 0);
+        EXPECT_EQ(counts["Pow"], expect_fusion ? 0 : 1);
+        for (const auto& node : session.GetGraph().Nodes()) {
+          if (node.OpType() == "LayerNormalization" || node.OpType() == "SimplifiedLayerNormalization") {
+            EXPECT_DOUBLE_EQ(static_cast<double>(node.GetAttributes().at("epsilon").f()), epsilon);
+          }
+        }
+      };
+      std::unique_ptr<GraphTransformer> transformer;
+      if (simplified) {
+        transformer = std::make_unique<SimplifiedLayerNormFusion>();
+      } else {
+        transformer = std::make_unique<LayerNormFusion>();
+      }
+      TransformerTester(build_test_case, check_graph, TransformerLevel::Default, TransformerLevel::Level1,
+                        17, 1e-12, 1e-12, std::move(transformer),
+                        [](SessionOptions& options) { options.intra_op_param.thread_pool_size = 1; });
+    }
+  }
+}
+
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
   std::shared_ptr<Model> p_model;
@@ -2598,26 +2836,15 @@ TEST_F(GraphTransformationTests, LayerNormFusion_ZeroElementEpsilon) {
   // Must handle zero-element epsilon gracefully.
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  // Verify the fusion fired and produced a LayerNormalization with the
-  // default epsilon (1e-5f), per the zero-element fallback in
-  // layer_norm_fusion.cc.
+  // An empty epsilon cannot be represented by the fused operator's scalar attribute.
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["LayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["ReduceMean"], 0);
-  EXPECT_EQ(op_to_count["Sub"], 0);
-  EXPECT_EQ(op_to_count["Pow"], 0);
-  EXPECT_EQ(op_to_count["Sqrt"], 0);
-  EXPECT_EQ(op_to_count["Div"], 0);
-  EXPECT_EQ(op_to_count["Mul"], 0);
-
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "LayerNormalization") {
-      const auto& attrs = node.GetAttributes();
-      auto it = attrs.find("epsilon");
-      ASSERT_NE(it, attrs.end());
-      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
-    }
-  }
+  EXPECT_EQ(op_to_count["LayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["ReduceMean"], 2);
+  EXPECT_EQ(op_to_count["Sub"], 1);
+  EXPECT_EQ(op_to_count["Pow"], 1);
+  EXPECT_EQ(op_to_count["Sqrt"], 1);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
 }
 
 // Test: SimplifiedLayerNormFusion gracefully handles a zero-element epsilon initializer.
@@ -2707,25 +2934,14 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  // Verify the fusion fired and produced a SimplifiedLayerNormalization with
-  // the default epsilon (1e-5f), per the zero-element fallback in
-  // layer_norm_fusion.cc.
+  // An empty epsilon cannot be represented by the fused operator's scalar attribute.
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["Pow"], 0);
-  EXPECT_EQ(op_to_count["ReduceMean"], 0);
-  EXPECT_EQ(op_to_count["Sqrt"], 0);
-  EXPECT_EQ(op_to_count["Div"], 0);
-  EXPECT_EQ(op_to_count["Mul"], 0);
-
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "SimplifiedLayerNormalization") {
-      const auto& attrs = node.GetAttributes();
-      auto it = attrs.find("epsilon");
-      ASSERT_NE(it, attrs.end());
-      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
-    }
-  }
+  EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["Pow"], 1);
+  EXPECT_EQ(op_to_count["ReduceMean"], 1);
+  EXPECT_EQ(op_to_count["Sqrt"], 1);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
 }
 
 #endif
