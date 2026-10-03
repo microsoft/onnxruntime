@@ -323,13 +323,13 @@ class GemmPluginProfiler {
 
   // Optional persistent (disk) tactic cache hooks. Default implementations are no-ops, which
   // preserves the in-process-only behavior. Subclasses may override them to load matching
-  // tactics before the M sweep (populating `map` so profiling is skipped) and to persist the
-  // profiled tactics afterwards. Both are invoked while holding the profile-map writer lock.
+  // tactics before the M sweep (populating `map` so profiling is skipped) and to stage profiled
+  // tactics in memory. Both are invoked while holding the profile-map writer lock. Staged tactics
+  // reach disk only when the session closes (CUDA EP teardown), never during session creation or
+  // inference.
   virtual void loadPersistentCache(GemmIdType const& /*gemmId*/, MProfileMap& /*map*/,
                                    bool /*hasWeightOnlyCudaKernel*/) {}
 
-  // Called after a lazily profiled bucket is inserted: stage the tactics into the in-memory cache
-  // WITHOUT writing to disk, so any later flush point (e.g. CUDA EP teardown) persists them.
   virtual void stagePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 

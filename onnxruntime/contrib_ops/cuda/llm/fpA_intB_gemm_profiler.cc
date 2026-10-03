@@ -337,7 +337,7 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
     GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
-  if (mCache == nullptr) {
+  if (mCache == nullptr || !mCacheAccess.load) {
     return;
   }
   auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
@@ -410,7 +410,7 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
     if (mTuningResultsCache != nullptr) {
       mTuningResultsCache->Put(key, m, config);
     }
-    if (mCache == nullptr) {
+    if (mCache == nullptr || !mCacheAccess.save) {
       continue;
     }
     // Skip buckets already recorded with the same tactic (cache hits). A row rejected on load is still

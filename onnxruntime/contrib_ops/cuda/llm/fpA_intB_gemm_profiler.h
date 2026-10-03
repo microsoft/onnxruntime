@@ -118,8 +118,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
   // in-process-only behavior (no disk reads/writes).
-  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache,
+                          onnxruntime::llm::gemm_cache::CacheAccess access = {}) {
     mCache = std::move(cache);
+    mCacheAccess = access;
   }
 
   void setTuningResultsCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
@@ -163,6 +165,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
                            bool hasWeightOnlyCudaKernel) override;
 
+  // Records buckets in `map` that are new or differ from the cache in memory (no disk write).
   void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
                             bool hasWeightOnlyCudaKernel) override;
 
@@ -186,6 +189,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   std::atomic<size_t> mProfileWeightIndex{0};
   int mPairedGemvMode = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
+  onnxruntime::llm::gemm_cache::CacheAccess mCacheAccess;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
   bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
