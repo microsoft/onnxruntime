@@ -18,7 +18,8 @@ class ExampleKernelEp;
 /// </summary>
 class ExampleKernelEpFactory : public OrtEpFactory {
  public:
-  ExampleKernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtLogger& default_logger);
+  ExampleKernelEpFactory(const char* registration_name, const OrtApi& ort_api, const OrtEpApi& ep_api,
+                         const OrtLogger& default_logger);
   ~ExampleKernelEpFactory();
 
   const OrtApi& GetOrtApi() const { return ort_api_; }
@@ -76,6 +77,10 @@ class ExampleKernelEpFactory : public OrtEpFactory {
   const std::string vendor_{"Contoso2"};   // EP vendor name
   const uint32_t vendor_id_{0xB358};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version
+
+  // Test-only: a registration name containing "fail_create_data_transfer" makes CreateDataTransfer fail, and one
+  // containing "no_data_transfer" leaves CreateDataTransfer unset.
+  const std::string registration_name_;
 
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;

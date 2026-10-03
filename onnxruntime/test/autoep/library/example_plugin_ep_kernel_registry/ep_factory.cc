@@ -12,11 +12,12 @@
 #include "ep_kernel_registration.h"
 #include "../plugin_ep_utils.h"
 
-ExampleKernelEpFactory::ExampleKernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
-                                               const OrtLogger& /*default_logger*/)
+ExampleKernelEpFactory::ExampleKernelEpFactory(const char* registration_name, const OrtApi& ort_api,
+                                               const OrtEpApi& ep_api, const OrtLogger& /*default_logger*/)
     : OrtEpFactory{},
       ort_api_(ort_api),
       ep_api_(ep_api),
+      registration_name_{registration_name},
       default_memory_info_{nullptr},
       readonly_memory_info_{nullptr} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
@@ -33,7 +34,10 @@ ExampleKernelEpFactory::ExampleKernelEpFactory(const OrtApi& ort_api, const OrtE
   CreateAllocator = CreateAllocatorImpl;
   ReleaseAllocator = ReleaseAllocatorImpl;
 
-  CreateDataTransfer = CreateDataTransferImpl;
+  // Test-only: allow tests to validate that CreateDataTransfer is optional.
+  if (registration_name_.find("no_data_transfer") == std::string::npos) {
+    CreateDataTransfer = CreateDataTransferImpl;
+  }
 
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
@@ -239,6 +243,12 @@ void ORT_API_CALL ExampleKernelEpFactory::ReleaseAllocatorImpl(OrtEpFactory* /*t
 OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateDataTransferImpl(OrtEpFactory* this_ptr,
                                                                        OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<ExampleKernelEpFactory*>(this_ptr);
+  *data_transfer = nullptr;
+
+  if (factory.registration_name_.find("fail_create_data_transfer") != std::string::npos) {
+    return factory.ort_api_.CreateStatus(ORT_FAIL, "CreateDataTransfer failed for testing.");
+  }
+
   *data_transfer = factory.data_transfer_impl_.get();
   return nullptr;
 }

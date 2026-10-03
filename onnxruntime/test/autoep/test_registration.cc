@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <filesystem>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -51,6 +52,63 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   // and this should unload it
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env,
                                                                        registration_name.c_str()));
+}
+
+// A failure after the OrtEpDevices and shared allocators are created must roll back the partial registration.
+TEST(OrtEpLibrary, FailedRegistrationIsRolledBack) {
+  const auto& ep_info = Utils::example_ep_kernel_registry_info;
+  const std::string failing_registration_name = ep_info.registration_name + ".fail_create_data_transfer";
+
+  auto count_ep_devices = [&]() {
+    auto ep_devices = ort_env->GetEpDevices();
+    return std::count_if(ep_devices.begin(), ep_devices.end(),
+                         [&](Ort::ConstEpDevice& device) { return device.EpName() == ep_info.ep_name; });
+  };
+
+  ASSERT_EQ(count_ep_devices(), 0);
+
+  Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, failing_registration_name.c_str(),
+                                                                    ep_info.library_path.c_str())};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("CreateDataTransfer failed for testing"));
+
+  EXPECT_EQ(count_ep_devices(), 0);
+
+  // the EP's shared allocator must have been removed. the lookup ignores the name so may return another CPU allocator.
+  Ort::MemoryInfo ep_memory_info{"ExampleKernelEp CPU", OrtMemoryInfoDeviceType_CPU, 0, 0,
+                                 OrtDeviceMemoryType_DEFAULT, 0, OrtDeviceAllocator};
+  auto allocator = ort_env->GetSharedAllocator(ep_memory_info);
+  ASSERT_NE(allocator, nullptr);
+  EXPECT_NE(allocator.GetInfo().GetAllocatorName(), "ExampleKernelEp CPU");
+
+  // no leftover state should prevent a subsequent successful registration.
+  ort_env->RegisterExecutionProviderLibrary(ep_info.registration_name.c_str(), ep_info.library_path.c_str());
+  EXPECT_EQ(count_ep_devices(), 1);
+  ort_env->UnregisterExecutionProviderLibrary(ep_info.registration_name.c_str());
+}
+
+// OrtEpFactory::CreateDataTransfer is optional.
+TEST(OrtEpLibrary, RegistrationWithoutCreateDataTransfer) {
+  const auto& ep_info = Utils::example_ep_kernel_registry_info;
+
+  // the example EP's data transfer handles CPU to CPU copies, so CopyTensor shows whether it was registered.
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  std::array<float, 4> src_data{1.f, 2.f, 3.f, 4.f};
+  std::array<float, 4> dst_data{};
+  std::array<int64_t, 1> shape{4};
+  auto src = Ort::Value::CreateTensor<float>(memory_info, src_data.data(), src_data.size(), shape.data(), shape.size());
+  auto dst = Ort::Value::CreateTensor<float>(memory_info, dst_data.data(), dst_data.size(), shape.data(), shape.size());
+
+  const std::string registration_name = ep_info.registration_name + ".no_data_transfer";
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), ep_info.library_path.c_str());
+  EXPECT_EQ(ort_env->CopyTensor(src, dst, nullptr).GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+
+  // validate the check above by confirming the copy succeeds when the data transfer is registered.
+  ort_env->RegisterExecutionProviderLibrary(ep_info.registration_name.c_str(), ep_info.library_path.c_str());
+  EXPECT_TRUE(ort_env->CopyTensor(src, dst, nullptr).IsOK());
+  ort_env->UnregisterExecutionProviderLibrary(ep_info.registration_name.c_str());
+  EXPECT_EQ(dst_data, src_data);
 }
 
 TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
