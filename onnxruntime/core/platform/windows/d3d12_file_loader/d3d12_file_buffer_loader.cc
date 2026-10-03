@@ -1047,8 +1047,18 @@ common::Status D3D12FileBufferLoader::Impl::TransitionToCommon(
 common::Status D3D12FileBufferLoader::Impl::WaitForFence(
     uint64_t value,
     const CancellationToken& cancellation) {
-  if (value == 0 ||
-      copy_fence_->GetCompletedValue() >= value) {
+  if (value == 0) {
+    return common::Status::OK();
+  }
+  uint64_t completed_value =
+      copy_fence_->GetCompletedValue();
+  if (completed_value ==
+      std::numeric_limits<uint64_t>::max()) {
+    return HResultError(
+        "D3D12 device removed while waiting for copy fence",
+        device_->GetDeviceRemovedReason());
+  }
+  if (completed_value >= value) {
     return common::Status::OK();
   }
   const HRESULT hr =
@@ -1065,13 +1075,21 @@ common::Status D3D12FileBufferLoader::Impl::WaitForFence(
     const DWORD wait_result = WaitForSingleObject(
         fence_event_.get(),
         cancellation_poll_milliseconds);
-    if (wait_result == WAIT_OBJECT_0) {
-      return common::Status::OK();
-    }
-    if (wait_result != WAIT_TIMEOUT) {
+    if (wait_result != WAIT_OBJECT_0 &&
+        wait_result != WAIT_TIMEOUT) {
       return Win32Error(
           "WaitForSingleObject(copy fence)",
           GetLastError());
+    }
+    completed_value = copy_fence_->GetCompletedValue();
+    if (completed_value ==
+        std::numeric_limits<uint64_t>::max()) {
+      return HResultError(
+          "D3D12 device removed while waiting for copy fence",
+          device_->GetDeviceRemovedReason());
+    }
+    if (completed_value >= value) {
+      return common::Status::OK();
     }
     if (cancellation.IsCancellationRequested()) {
       return CancelledStatus();
