@@ -26,3 +26,10 @@ target_link_libraries(
 set_target_properties(
   onnxruntime_d3d12_file_loader
   PROPERTIES FOLDER "ONNXRuntime")
+
+if(NOT onnxruntime_BUILD_SHARED_LIB)
+  install(
+    TARGETS onnxruntime_d3d12_file_loader
+    EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
