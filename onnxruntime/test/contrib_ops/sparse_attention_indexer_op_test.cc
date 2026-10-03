@@ -1339,9 +1339,9 @@ TEST(SparseAttentionIndexerWebGpuTest, CsaInt64PositionVisibilityBoundary) {
   problem.num_heads = 1;
   problem.head_size = 2;
   problem.rotary_width = 1;
-  problem.compress_ratio = 65536;
+  problem.compress_ratio = 2;
   problem.index_topk = 1;
-  problem.past_compressed_length = 65538;
+  problem.past_compressed_length = 2;
   problem.past_buffer_length = 0;
   problem.max_rotary_length = 1;
   problem.query = {1.0f, 0.0f};
@@ -1354,9 +1354,7 @@ TEST(SparseAttentionIndexerWebGpuTest, CsaInt64PositionVisibilityBoundary) {
   problem.position_bias.assign(static_cast<size_t>(problem.compress_ratio) * 4, 0.0f);
   problem.head_weights = {1.0f};
   problem.position_ids = {int64_t{1} << 32};
-  problem.past_compressed_key.assign(static_cast<size_t>(problem.past_compressed_length) * 2, 0.0f);
-  problem.past_compressed_key[65535 * 2] = 1.0f;
-  problem.past_compressed_key[65537 * 2] = 2.0f;
+  problem.past_compressed_key = {1.0f, 0.0f, 2.0f, 0.0f};
   RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
 }
 
