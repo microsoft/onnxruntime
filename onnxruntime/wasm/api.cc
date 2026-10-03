@@ -493,6 +493,18 @@ int OrtReleaseTensor(OrtValue* tensor) {
   return ORT_OK;
 }
 
+OrtLoraAdapter* OrtCreateLoraAdapter(const void* data, size_t data_length) {
+  OrtLoraAdapter* adapter = nullptr;
+  return (CHECK_STATUS(CreateLoraAdapterFromArray, data, data_length, nullptr, &adapter) == ORT_OK)
+             ? adapter
+             : nullptr;
+}
+
+int OrtReleaseLoraAdapter(OrtLoraAdapter* adapter) {
+  Ort::GetApi().ReleaseLoraAdapter(adapter);
+  return ORT_OK;
+}
+
 OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
                                    size_t log_verbosity_level,
                                    bool terminate,
@@ -523,6 +535,10 @@ int OrtAddRunConfigEntry(OrtRunOptions* run_options,
                          const char* config_key,
                          const char* config_value) {
   return CHECK_STATUS(AddRunConfigEntry, run_options, config_key, config_value);
+}
+
+int OrtRunOptionsAddActiveLoraAdapter(OrtRunOptions* run_options, OrtLoraAdapter* adapter) {
+  return CHECK_STATUS(RunOptionsAddActiveLoraAdapter, run_options, adapter);
 }
 
 int OrtReleaseRunOptions(OrtRunOptions* run_options) {

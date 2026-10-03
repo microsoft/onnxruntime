@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { Backend, env, InferenceSession, InferenceSessionHandler } from 'onnxruntime-common';
+import { Backend, env, InferenceSession, InferenceSessionHandler, LoraAdapterHandler } from 'onnxruntime-common';
 
+import { OnnxruntimeWebAssemblyLoraAdapterHandler } from './wasm/lora-adapter-handler';
 import { initializeOrtEp, initializeWebAssemblyAndOrtRuntime } from './wasm/proxy-wrapper';
 import { OnnxruntimeWebAssemblySessionHandler } from './wasm/session-handler-inference';
 
@@ -89,6 +90,11 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
   ): Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     await handler.loadModel(pathOrBuffer, options);
+    return handler;
+  }
+  async createLoraAdapterHandler(pathOrBuffer: string | Uint8Array): Promise<LoraAdapterHandler> {
+    const handler = new OnnxruntimeWebAssemblyLoraAdapterHandler();
+    await handler.loadAdapter(pathOrBuffer);
     return handler;
   }
 }

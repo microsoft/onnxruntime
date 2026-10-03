@@ -31,6 +31,9 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
+struct OrtLoraAdapter;
+using ort_lora_adapter_handle_t = OrtLoraAdapter*;
+
 #ifdef ENABLE_TRAINING_APIS
 struct OrtTrainingSession;
 using ort_training_session_handle_t = OrtTrainingSession*;
@@ -194,6 +197,19 @@ int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, size_t* da
 int EMSCRIPTEN_KEEPALIVE OrtReleaseTensor(ort_tensor_handle_t tensor);
 
 /**
+ * create an instance of ORT LoRA adapter from a buffer in the LoRA adapter format (.onnx_adapter).
+ * @param data a pointer to a buffer that contains the LoRA adapter data. The data is copied.
+ * @param data_length the size of the buffer in bytes
+ * @returns a LoRA adapter handle. Caller must release it after use by calling OrtReleaseLoraAdapter().
+ */
+ort_lora_adapter_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateLoraAdapter(const void* data, size_t data_length);
+
+/**
+ * release the specified ORT LoRA adapter.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtReleaseLoraAdapter(ort_lora_adapter_handle_t adapter);
+
+/**
  * create an instance of ORT run options.
  * @param log_severity_level verbose, info, warning, error or fatal
  * @param log_verbosity_level vlog level
@@ -217,6 +233,16 @@ ort_run_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateRunOptions(size_t log_sev
 int EMSCRIPTEN_KEEPALIVE OrtAddRunConfigEntry(ort_run_options_handle_t run_options,
                                               const char* config_key,
                                               const char* config_value);
+
+/**
+ * add a LoRA adapter to the list of active adapters of the run options.
+ * @param run_options a handle to run options created by OrtCreateRunOptions
+ * @param adapter a handle to a LoRA adapter created by OrtCreateLoraAdapter. It must not be released while the run
+ *                options are in use.
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtRunOptionsAddActiveLoraAdapter(ort_run_options_handle_t run_options,
+                                                           ort_lora_adapter_handle_t adapter);
 
 /**
  * release the specified ORT run options.

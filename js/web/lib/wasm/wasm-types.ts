@@ -371,6 +371,8 @@ export interface OrtInferenceAPIs {
     dimsLength: number,
   ): number;
   _OrtReleaseTensor(tensorHandle: number): number;
+  _OrtCreateLoraAdapter(dataOffset: number, dataLength: number): number;
+  _OrtReleaseLoraAdapter(adapterHandle: number): number;
   _OrtCreateBinding(sessionHandle: number): number;
   _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
   _OrtBindOutput(bindingHandle: number, nameOffset: number, tensorHandle: number, location: number): number;
@@ -419,6 +421,7 @@ export interface OrtInferenceAPIs {
 
   _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
   _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
+  _OrtRunOptionsAddActiveLoraAdapter(runOptionsHandle: number, adapterHandle: number): number;
   _OrtReleaseRunOptions(runOptionsHandle: number): number;
 
   _OrtEndProfiling(sessionHandle: number): number;
