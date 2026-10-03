@@ -1477,6 +1477,7 @@ MlasReorderOutputNchwBlock16Avx512F(
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_ACTIVATION_ROUTINE MlasFusedActivationRvv;
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelRvv;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelRvv;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelRvv;
