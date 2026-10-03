@@ -36,10 +36,17 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
   notifications_.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
     auto* stream = device_stream_map_ ? device_stream_map_->GetStream(notification_owners[i]) : nullptr;
-    if (stream)
+    if (stream) {
+      // A pooled stream may have been created on a different calling thread.
+      const auto& device = stream->GetDevice();
+      auto set_device_fn = sess_state.GetStreamHandleRegistryInstance().GetSetDeviceFn(device.Type());
+      if (set_device_fn.has_value()) {
+        set_device_fn.value()(device.Id());
+      }
       notifications_.emplace_back(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0));
-    else
+    } else {
       notifications_.push_back(nullptr);
+    }
   }
 #ifdef _WIN32
 #pragma warning(push)
