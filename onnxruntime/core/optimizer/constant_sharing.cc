@@ -187,6 +187,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     // Ignore if the initializer exists in graph output,
     // or not a constant initializer (implicitly excludes the graph input).
     if (!graph_utils::IsConstantInitializer(graph, entry.first) ||
+        graph.IsInputsIncludingInitializers(graph.GetNodeArg(entry.first)) ||
         graph.IsOutput(graph.GetNodeArg(entry.first)) ||
         excluded_initializers_.find(entry.first) != excluded_initializers_.end()) {
       continue;
