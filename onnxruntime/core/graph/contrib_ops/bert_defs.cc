@@ -2238,6 +2238,19 @@ const ONNX_NAMESPACE::TensorShapeProto* SparseAttentionIndexerShape(ONNX_NAMESPA
   return &shape;
 }
 
+const ONNX_NAMESPACE::TensorShapeProto* SparseAttentionIndexerRotaryCacheShape(
+    ONNX_NAMESPACE::InferenceContext& ctx, int index) {
+  if (!SparseAttentionIndexerHasInput(ctx, index) || !hasInputShape(ctx, index)) {
+    return nullptr;
+  }
+  const auto& shape = getInputShape(ctx, index);
+  if (shape.dim_size() != 2 && shape.dim_size() != 3) {
+    fail_shape_inference("SparseAttentionIndexer: input ", index, " must have rank 2 or 3, got rank ",
+                         shape.dim_size());
+  }
+  return &shape;
+}
+
 }  // namespace
 
 void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -2278,8 +2291,8 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   }
 
   // Strict policy input validation: every slot of the inactive policy must be omitted, and every
-  // slot of the active policy must be provided.
-  constexpr int kQsaOnlyInputs[] = {sai::kMask};
+  // required slot of the active policy must be provided. The QSA mask is optional because an
+  // omitted mask requests prefix-causal visibility.
   constexpr int kCsaOnlyInputs[] = {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                                     sai::kPositionIds, sai::kPastProjBuffer};
   for (int index = sai::kQuery; index <= sai::kSinCache; ++index) {
@@ -2293,12 +2306,9 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   if (!SparseAttentionIndexerHasInput(ctx, sai::kPastKey)) {
     fail_shape_inference("SparseAttentionIndexer: past_key is required for every policy_mode");
   }
-  for (int index : kQsaOnlyInputs) {
-    if (SparseAttentionIndexerHasInput(ctx, index) != is_qsa) {
-      fail_shape_inference("SparseAttentionIndexer: input ", index,
-                           is_qsa ? " is required when policy_mode is 'qsa'"
-                                  : " must be omitted when policy_mode is 'csa'");
-    }
+  if (!is_qsa && SparseAttentionIndexerHasInput(ctx, sai::kMask)) {
+    fail_shape_inference("SparseAttentionIndexer: input ", sai::kMask,
+                         " must be omitted when policy_mode is 'csa'");
   }
   for (int index : kCsaOnlyInputs) {
     if (SparseAttentionIndexerHasInput(ctx, index) == is_qsa) {
@@ -2317,8 +2327,8 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   const bool has_key = SparseAttentionIndexerHasInput(ctx, sai::kKey);
   (void)SparseAttentionIndexerShape(ctx, sai::kKey, 3);
   (void)SparseAttentionIndexerShape(ctx, sai::kKeyNormWeight, 1);
-  (void)SparseAttentionIndexerShape(ctx, sai::kCosCache, 3);
-  (void)SparseAttentionIndexerShape(ctx, sai::kSinCache, 3);
+  (void)SparseAttentionIndexerRotaryCacheShape(ctx, sai::kCosCache);
+  (void)SparseAttentionIndexerRotaryCacheShape(ctx, sai::kSinCache);
 
   const auto* query_shape = SparseAttentionIndexerShape(ctx, sai::kQuery, 3);
   if (query_shape == nullptr) {
@@ -2564,7 +2574,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(4,
                "cos_cache",
-               "Cosine rotary table indexed by absolute key position, with shape "
+               "Cosine rotary table indexed by absolute key position, shared across the batch with shape "
+               "(max_rotary_sequence_length, rotary_width) or request-specific with shape "
                "(batch_size, max_rotary_sequence_length, rotary_width).",
                "T")
         .Input(5,
@@ -2575,7 +2586,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "mask",
                "Only for policy_mode 'qsa': INT64 padding mask with shape "
                "(batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. "
-               "total_sequence_length is past_sequence_length + sequence_length.",
+               "total_sequence_length is past_sequence_length + sequence_length. When omitted, every position "
+               "through past_sequence_length plus the current query index is visible.",
                "TB",
                OpSchema::Optional)
         .Input(7,
@@ -2696,6 +2708,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     fail_shape_inference("PackedSparseAttentionIndexer: state_capacity must be in (0, INT_MAX], got ",
                          state_capacity);
   }
+  const int64_t state_update_capacity =
+      getAttribute(ctx, "state_update_capacity", static_cast<int64_t>(0));
+  if (state_update_capacity < 0 || state_update_capacity > 8) {
+    fail_shape_inference("PackedSparseAttentionIndexer: state_update_capacity must be in [0, 8], got ",
+                         state_update_capacity);
+  }
 
   const int64_t token_budget = getAttribute(ctx, "token_budget", static_cast<int64_t>(0));
   const int64_t index_topk = getAttribute(ctx, "index_topk", static_cast<int64_t>(0));
@@ -2723,13 +2741,18 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   // Strict policy input validation: every fixed slot required by every policy must be provided;
-  // csa-only slots must be provided iff policy_mode is 'csa'.
-  for (int index : {psai::kQuery, psai::kKey, psai::kKeyNormWeight, psai::kCosCache, psai::kSinCache,
+  // csa-only slots must be provided iff policy_mode is 'csa'; position_ids is optional for 'qsa'
+  // and required for 'csa'.
+  for (int index : {psai::kQuery, psai::kQueryNormWeight, psai::kKeyNormWeight, psai::kCosCache, psai::kSinCache,
                     psai::kCumulativeSequenceLengths, psai::kPastSequenceLengths, psai::kPastKeyState,
                     psai::kPastKvBuffer, psai::kPastStateLengths}) {
     if (!PackedSparseAttentionIndexerHasInput(ctx, index)) {
       fail_shape_inference("PackedSparseAttentionIndexer: input ", index, " is required for every policy_mode");
     }
+  }
+  const bool has_key = PackedSparseAttentionIndexerHasInput(ctx, psai::kKey);
+  if (!is_qsa && !has_key) {
+    fail_shape_inference("PackedSparseAttentionIndexer: key is required for policy_mode 'csa'");
   }
   for (int index : {psai::kGate, psai::kPositionBias, psai::kHeadWeights, psai::kPastGateBuffer}) {
     if (PackedSparseAttentionIndexerHasInput(ctx, index) == is_qsa) {
@@ -2738,15 +2761,28 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                                   : " is required when policy_mode is 'csa'");
     }
   }
-  if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds) == is_qsa) {
+  if (!is_qsa && !PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
     fail_shape_inference("PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                         is_qsa ? " (position_ids) must be omitted when policy_mode is 'qsa'"
-                                : " (position_ids) is required when policy_mode is 'csa'");
+                         " (position_ids) is required when policy_mode is 'csa'");
+  }
+  const bool has_capture_count = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateCaptureCount);
+  const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
+  const bool has_state_update_output =
+      ctx.getNumOutputs() > static_cast<size_t>(psai::kStateUpdate) && ctx.getOutputType(psai::kStateUpdate) != nullptr;
+  if (!is_qsa && (state_update_capacity > 0 || has_capture_count ||
+                  has_state_update_active || has_state_update_output)) {
+    fail_shape_inference("PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
+  }
+  if (state_update_capacity > 0 && !has_capture_count) {
+    fail_shape_inference(
+        "PackedSparseAttentionIndexer: state_update_capture_count is required when "
+        "state_update_capacity is positive");
   }
 
-  if (ctx.getNumOutputs() != static_cast<size_t>(psai::kFixedOutputCount)) {
-    fail_shape_inference("PackedSparseAttentionIndexer: exactly ", psai::kFixedOutputCount,
-                         " declared outputs are required, got ", ctx.getNumOutputs());
+  if (ctx.getNumOutputs() < static_cast<size_t>(psai::kFixedOutputCount) ||
+      ctx.getNumOutputs() > static_cast<size_t>(psai::kOutputCount)) {
+    fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
+                         psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
   updateOutputElemType(ctx, psai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
@@ -2757,6 +2793,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     // present_gate_buffer keeps its fixed positional slot (with an empty name) for policy_mode
     // 'qsa'; only propagate its type/shape when it is actually produced.
     propagateElemTypeFromInputToOutput(ctx, psai::kPastGateBuffer, psai::kPresentGateBuffer);
+  }
+  if (has_state_update_output) {
+    propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kStateUpdate);
   }
 
   const auto* query_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQuery, 2);
@@ -2798,6 +2837,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
     position_ids_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPositionIds, 1);
   }
+  const auto* capture_count_shape =
+      PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateCaptureCount, 1);
+  const auto* state_update_active_shape =
+      PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateActive, 1);
 
   auto require_equal_dims = [](const ONNX_NAMESPACE::TensorShapeProto* lhs, int lhs_index,
                                const ONNX_NAMESPACE::TensorShapeProto* rhs, int rhs_index,
@@ -2826,6 +2869,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                      "past_key_state and past_kv_buffer batch dimensions must match");
   require_equal_dims(state_lengths_shape, 0, key_state_shape, 0,
                      "past_state_lengths dimension 0 must equal the state batch dimension");
+  require_equal_dims(capture_count_shape, 0, key_state_shape, 0,
+                     "state_update_capture_count dimension 0 must equal the state batch dimension");
+  require_dim_value(state_update_active_shape, 0, 1, "state_update_active dimension 0 must equal 1");
   require_equal_dims(key_state_shape, 2, query_norm_shape, 0,
                      "past_key_state dimension 2 must equal head_size");
   require_dim_value(key_state_shape, 1, state_capacity, "past_key_state dimension 1 must equal state_capacity");
@@ -2920,8 +2966,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   if (query_shape != nullptr) {
     const auto& total_tokens_dim = query_shape->dim(0);
     const auto& query_width_dim = query_shape->dim(1);
-    if (query_width_dim.has_dim_value() && query_width_dim.dim_value() <= 0) {
-      fail_shape_inference("PackedSparseAttentionIndexer: query width must be > 0, got ",
+    const int64_t packed_key_heads = is_qsa && !has_key ? 1 : 0;
+    if (query_width_dim.has_dim_value() && query_norm_shape != nullptr &&
+        query_norm_shape->dim(0).has_dim_value() &&
+        query_width_dim.dim_value() <= packed_key_heads * query_norm_shape->dim(0).dim_value()) {
+      fail_shape_inference("PackedSparseAttentionIndexer: query width must contain at least one query head",
+                           has_key ? "" : " followed by one packed key head", ", got ",
                            query_width_dim.dim_value());
     }
     if (query_width_dim.has_dim_value() && query_norm_shape != nullptr &&
@@ -2953,6 +3003,13 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
   if (state_lengths_shape != nullptr) {
     updateOutputShape(ctx, psai::kPresentStateLengths, *state_lengths_shape);
+  }
+  if (has_state_update_output && key_state_shape != nullptr) {
+    ONNX_NAMESPACE::TensorShapeProto state_update_shape;
+    *state_update_shape.add_dim() = key_state_shape->dim(0);
+    state_update_shape.add_dim()->set_dim_value(state_update_capacity);
+    *state_update_shape.add_dim() = key_state_shape->dim(2);
+    updateOutputShape(ctx, psai::kStateUpdate, state_update_shape);
   }
 }
 
@@ -2986,8 +3043,9 @@ request's own packed token range and fixed-capacity state slice:
     sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
     their token indices are emitted (request-local logical positions, i.e. the same numbering as
     past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-    incomplete block. QSA positions are always the request-local logical cache positions derived
-    from past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
+    incomplete block. QSA uses position_ids when provided; otherwise positions are the
+    request-local logical cache positions derived from past_sequence_lengths and
+    cumulative_sequence_lengths.
 
   policy_mode = "csa" ("compressed sparse attention" block indexer)
     Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -3038,6 +3096,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("state_capacity",
               "Fixed capacity (number of entries) of past_key_state / present_key_state. Must be > 0.",
               AttributeProto::INT)
+        .Attr("state_update_capacity",
+              "Only for policy_mode 'qsa': maximum number of leading token transitions captured per request. "
+              "Must be in [0, 8]. Default is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("token_budget",
               "Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. "
               "Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.",
@@ -3064,14 +3127,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0,
                "query",
                "Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, "
-               "logical reshape, and rotary embedding.",
+               "logical reshape, and rotary embedding. For policy_mode 'qsa', key may be omitted and query then "
+               "contains row-wise concatenated query and key projections with shape "
+               "(total_tokens, (num_heads + 1) * head_size).",
                "T")
         .Input(1,
                "key",
                "Packed indexer key projection of the new tokens. Shape is (total_tokens, head_size) for "
                "policy_mode 'qsa' and (total_tokens, 2 * head_size) for policy_mode 'csa', where the first "
-               "head_size channels are the Ca series and the last head_size channels the Cb series.",
-               "T")
+               "head_size channels are the Ca series and the last head_size channels the Cb series. May be "
+               "omitted for policy_mode 'qsa' when query contains the packed query/key projection.",
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "query_norm_weight",
                "Effective RMSNorm multiplier of the queries, with shape (head_size).",
@@ -3121,7 +3188,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(11,
                "position_ids",
-               "Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).",
+               "Absolute position of every packed query, with shape (total_tokens). Required for policy_mode 'csa' "
+               "and optional for policy_mode 'qsa'.",
                "I",
                OpSchema::Optional)
         .Input(12,
@@ -3148,6 +3216,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "pending-buffer length (policy_mode 'qsa': incomplete-block length in [0, compress_ratio); 'csa': "
                "buffer length in [0, 2 * compress_ratio)).",
                "M")
+        .Input(16,
+               "state_update_capture_count",
+               "Only for policy_mode 'qsa': number of leading token transitions to capture for each request, "
+               "with shape (batch_size). Values are clamped to the request length and state_update_capacity. "
+               "Required when state_update_capacity is positive.",
+               "M",
+               OpSchema::Optional)
+        .Input(17,
+               "state_update_active",
+               "Only for policy_mode 'qsa': optional capture gate with shape (1). A zero value disables capture.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "selected_indices",
                 "Selected entries with shape (total_tokens, capacity). capacity is "
@@ -3177,6 +3257,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present_state_lengths",
                 "Updated generic per-request state length, with the same fixed shape as past_state_lengths.",
                 "M")
+        .Output(6,
+                "state_update",
+                "Only for policy_mode 'qsa': compact transition payloads with shape "
+                "(batch_size, state_update_capacity, head_size). A token that completes a compression block "
+                "stores the prepared block representative; any other captured token stores its raw key. "
+                "Inactive and unused slots are zero.",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")
