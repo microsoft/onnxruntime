@@ -70,7 +70,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const T* past_kv_buffer,
     const int32_t* past_state_lengths,
     const int32_t* state_update_capture_count,
-    const int32_t* state_update_active,
+    bool state_update_active,
     int32_t* selected_indices,
     int32_t* selected_counts,
     T* present_key_state,
