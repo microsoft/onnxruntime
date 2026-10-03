@@ -284,6 +284,24 @@ public class OnnxTensorTest {
   }
 
   @Test
+  public void testStringCreationRejectsNullElement() throws OrtException {
+    for (int nullIndex = 0; nullIndex < 3; nullIndex++) {
+      String[] values = {"first", "middle", "last"};
+      values[nullIndex] = null;
+
+      OrtException exception =
+          assertThrows(
+              OrtException.class, () -> OnnxTensor.createTensor(env, values, new long[] {3}));
+      Assertions.assertEquals(OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT, exception.getCode());
+
+      String[] validValues = {"first", "middle", "last"};
+      try (OnnxTensor tensor = OnnxTensor.createTensor(env, validValues, new long[] {3})) {
+        Assertions.assertArrayEquals(validValues, (String[]) tensor.getValue());
+      }
+    }
+  }
+
+  @Test
   public void testUint8Creation() throws OrtException {
     byte[] buf = new byte[] {0, 1};
     ByteBuffer data = ByteBuffer.wrap(buf);
