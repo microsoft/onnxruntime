@@ -91,20 +91,31 @@ struct GemmDims {
 // Unique ID of GEMM
 // In our case GEMM is uniquely identified by N and K, plus the target SM architecture (so the
 // SM80-compatibility and native SM90 kernels for the same shape do not share profiled configs).
+// The quantization fields keep the process-global profile map aligned with the persistent cache key:
+// kernels with different bits/group size/zero points/GEMV support must not share tactics.
 class GemmIdCore {
  public:
   int n;
   int k;
   nvinfer::DataType dtype;
   int sm;
+  int bits;
+  int group_size;
+  bool has_zeros;
+  bool gemv_enabled;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_) {
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, int bits_ = 0, int group_size_ = 0,
+             bool has_zeros_ = false, bool gemv_enabled_ = false)
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), bits(bits_), group_size(group_size_), has_zeros(has_zeros_), gemv_enabled(gemv_enabled_) {
   }
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
-        sm(0) {
+        sm(0),
+        bits(0),
+        group_size(0),
+        has_zeros(false),
+        gemv_enabled(false) {
   }
 
   bool operator==(GemmIdCore const& id) const {
@@ -115,12 +126,15 @@ class GemmIdCore {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
     out << " sm=" << id.sm;
+    out << " bits=" << id.bits << " group_size=" << id.group_size;
+    out << " has_zeros=" << id.has_zeros << " gemv=" << id.gemv_enabled;
     return out;
   }
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm;
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && bits == id.bits &&
+           group_size == id.group_size && has_zeros == id.has_zeros && gemv_enabled == id.gemv_enabled;
   }
 };
 
@@ -131,7 +145,9 @@ struct GemmIdCoreHash {
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
     auto h4 = std::hash<int>{}(id.sm);
-    return h1 ^ h2 ^ h3 ^ h4;
+    auto h5 = std::hash<int>{}((id.bits << 16) ^ (id.group_size << 2) ^ (id.has_zeros ? 2 : 0) ^
+                               (id.gemv_enabled ? 1 : 0));
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5;
   }
 };
 
@@ -203,27 +219,13 @@ class GemmPluginProfiler {
   // Like getBestConfig, but if the requested M bucket has not been profiled yet, profiles it
   // lazily (single bucket) and inserts it into the in-process map. This briefly blocks the caller
   // but guarantees a tuned tactic for any runtime M, which is what makes the reduced first-time M
-  // sweep safe. It does NOT write to the persistent disk cache (that would put file I/O on the
-  // inference hot path); disk persistence happens off the hot path in profileTactics and the
-  // offline tuning tool. Must not be called while the compute stream is being captured into a
-  // CUDA graph (the caller is responsible for using getBestConfig instead during capture).
+  // sweep safe. A newly profiled bucket is staged into the persistent cache in memory only; it
+  // reaches disk at CUDA EP teardown, never on the inference path. Must not be called while the
+  // compute stream is being captured into a CUDA graph (the caller is responsible for using
+  // getBestConfig instead during capture).
   std::optional<Config> getBestConfigOrProfile(int m, GemmIdType const& gemmId);
 
   virtual int getMaxProfileM() const;
-
-  // Stages the current in-process tactics for `gemmId` (including buckets profiled lazily during
-  // inference via getBestConfigOrProfile) into the subclass's persistent cache, if one is configured.
-  // This only populates the process-global in-memory cache; it does NOT write to disk, so calling it
-  // from every MatMulNBits kernel destructor does not cause O(number-of-nodes) full-file rewrites.
-  // The staged tactics are written to disk once, at CUDA EP teardown. No-op if
-  // `gemmId` was never profiled or the subclass has no persistent cache. Best-effort, off the hot path.
-  void persistProfiledTactics(GemmIdType const& gemmId) {
-    reader_lock lock(mMNKProfileMap->mutex);
-    if (mSkip || !mMNKProfileMap->existsMProfileMap(gemmId)) {
-      return;
-    }
-    stagePersistentCache(gemmId, *mMNKProfileMap->getMProfileMap(gemmId), mHasWeightOnlyCudaKernel);
-  }
 
  protected:
   virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
@@ -261,9 +263,8 @@ class GemmPluginProfiler {
   virtual void storePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 
-  // Called at kernel/session teardown: stage the profiled tactics into the in-memory cache WITHOUT
-  // writing to disk. The single disk write is deferred to the process-global cache teardown so that
-  // many per-node destructors do not each rewrite the whole cache file.
+  // Called after a lazily profiled bucket is inserted: stage the tactics into the in-memory cache
+  // WITHOUT writing to disk, so any later flush point (e.g. CUDA EP teardown) persists them.
   virtual void stagePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 
@@ -528,8 +529,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
   mProfileMap->insert({target, best});
 
-  // Deliberately do not flush lazily-profiled buckets on the inference path. Kernel teardown
-  // stages them in memory, and CUDA EP teardown performs the disk write.
+  // In-memory staging only; the disk write happens at CUDA EP teardown, off the inference path.
+  stagePersistentCache(gemmId, *mProfileMap, mHasWeightOnlyCudaKernel);
   return best;
 }
 
