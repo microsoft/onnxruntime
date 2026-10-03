@@ -28,6 +28,7 @@
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 
 using WeightOnlyGemmRunner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
@@ -106,6 +107,12 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mL2CacheBytes = l2CacheBytes;
   }
 
+  // Attaches the process-global persistent tactic cache. A nullptr keeps the
+  // in-process-only behavior (no disk reads/writes).
+  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+    mCache = std::move(cache);
+  }
+
  protected:
   void runTactic(int m, int n, int k, Config const& tactic,
                  char* workspace, cudaStream_t const& stream) override;
@@ -120,7 +127,24 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const override;
 
+  void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
+                           bool hasWeightOnlyCudaKernel) override;
+
+  void storePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel) override;
+
+  void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel) override;
+
  private:
+  onnxruntime::llm::gemm_cache::MatMulNBitsKey makeCacheKey(GemmIdCore const& gemmId,
+                                                            bool hasWeightOnlyCudaKernel) const;
+
+  // Populates the in-memory cache with any buckets in `map` not already recorded (no disk write).
+  // Returns true if at least one new bucket was staged.
+  bool stageProfiledTactics(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel);
+
   bool mHasBiases;
   bool mHasZeros;
   int mQuantBits;
@@ -128,6 +152,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   KernelType mCudaKernelType;
   int mArch;
   size_t mL2CacheBytes = 0;
+  std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
   std::vector<int> mProfileMOverride;
 };
 
