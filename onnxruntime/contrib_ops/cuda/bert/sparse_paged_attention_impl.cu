@@ -54,9 +54,10 @@ __global__ void SparsePagedAttentionSplitKernel(
     int local_window_size, bool is_causal, bool local_plus_selected,
     bool selected_from_auxiliary, bool auxiliary_kv_shared, bool k_per_channel,
     bool v_per_channel, int num_splits) {
-  const int head_id = blockIdx.x;
-  const int token_id = blockIdx.y;
-  const int split_id = blockIdx.z;
+  const int64_t token_head_id = blockIdx.x;
+  const int head_id = static_cast<int>(token_head_id % num_heads);
+  const int token_id = static_cast<int>(token_head_id / num_heads);
+  const int split_id = blockIdx.y;
   const int tid = threadIdx.x;
 
   int batch_id = 0;
@@ -154,14 +155,24 @@ __global__ void SparsePagedAttentionSplitKernel(
                                            ? block_table[static_cast<int64_t>(batch_id) * max_num_blocks_per_seq +
                                                          logical_block]
                                            : -1;
-            const int slot = slot_mapping == nullptr
-                                 ? (physical_block >= 0
-                                        ? physical_block * block_size + logical_position % block_size
-                                        : -1)
-                                 : slot_mapping[current_token];
-            if (physical_block >= 0 && physical_block < num_blocks &&
-                slot >= 0 && slot < num_blocks * block_size) {
-              candidate_ref = kSparsePagedAttentionDirectCandidate + current_token;
+            const int64_t cache_capacity = static_cast<int64_t>(num_blocks) * block_size;
+            const int64_t mapped_slot = physical_block >= 0
+                                            ? static_cast<int64_t>(physical_block) * block_size +
+                                                  logical_position % block_size
+                                            : -1;
+            const int64_t slot = slot_mapping == nullptr ? mapped_slot : slot_mapping[current_token];
+            if (physical_block >= 0 && physical_block < num_blocks) {
+              if (slot >= 0 && static_cast<int64_t>(slot) < cache_capacity) {
+                if constexpr (std::is_same<TCACHE, int8_t>::value) {
+                  // Read back the quantized row so current and past tokens have identical semantics.
+                  candidate_ref = slot;
+                } else {
+                  candidate_ref = kSparsePagedAttentionDirectCandidate + current_token;
+                }
+              } else if (slot < 0 && mapped_slot >= 0 && mapped_slot < cache_capacity) {
+                // A suppressed write can denote a prefix-cache hit; read its logical cache row.
+                candidate_ref = mapped_slot;
+              }
             }
           } else {
             const int logical_block = logical_position / block_size;
@@ -375,8 +386,9 @@ __global__ void SparsePagedAttentionReduceKernel(
   __shared__ float weights[kSparsePagedAttentionMaxSplits];
   __shared__ float maxima[kSparsePagedAttentionMaxSplits];
   __shared__ float sums[kSparsePagedAttentionMaxSplits];
-  const int head_id = blockIdx.x;
-  const int token_id = blockIdx.y;
+  const int64_t token_head_id = blockIdx.x;
+  const int head_id = static_cast<int>(token_head_id % num_heads);
+  const int token_id = static_cast<int>(token_head_id / num_heads);
   const int tid = threadIdx.x;
 
   if (tid < num_splits) {
@@ -454,6 +466,13 @@ Status SparseQkvToContext(
                            " bytes of shared memory, but the device provides ",
                            device_prop.sharedMemPerBlock, " bytes.");
   }
+  const int64_t token_head_count = static_cast<int64_t>(parameters.token_count) * parameters.num_heads;
+  if (token_head_count > device_prop.maxGridSize[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "SparsePagedAttention requires ", token_head_count,
+                           " token-head blocks, but the device grid X dimension supports ",
+                           device_prop.maxGridSize[0], ".");
+  }
 
   T* prepared_query = nullptr;
   T* prepared_key = nullptr;
@@ -464,7 +483,7 @@ Status SparseQkvToContext(
       device_prop, stream, parameters, data, &prepared_query, &prepared_key, &prepared_value,
       &prepared_key_stride, &prepared_value_stride)));
 
-  const dim3 grid(parameters.num_heads, parameters.token_count, num_splits);
+  const dim3 grid(static_cast<unsigned int>(token_head_count), num_splits);
   const float attention_scale =
       parameters.scale == 0.0f ? 1.0f / sqrtf(static_cast<float>(parameters.head_size))
                                : parameters.scale;
@@ -486,7 +505,7 @@ Status SparseQkvToContext(
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   if (num_splits > 1) {
-    const dim3 reduce_grid(parameters.num_heads, parameters.token_count);
+    const dim3 reduce_grid(static_cast<unsigned int>(token_head_count));
     SparsePagedAttentionReduceKernel<T><<<reduce_grid, kSparsePagedAttentionThreads, 0,
                                           static_cast<cudaStream_t>(stream->GetHandle())>>>(
         data.output, partial_out, partial_max, partial_sum, data.head_sink,

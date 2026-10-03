@@ -6,6 +6,7 @@
 #include <limits>
 #include <numeric>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -121,9 +122,7 @@ void RunCuda(OpTester& tester) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-void AddCommonInputs(OpTester& tester, float current_value,
-                     const std::vector<int32_t>& selected_indices = {0, -1},
-                     int32_t selected_count = 1) {
+void AddCommonInputs(OpTester& tester, float current_value) {
   tester.AddAttribute<int64_t>("num_heads", 1);
   tester.AddAttribute<int64_t>("kv_num_heads", 1);
   tester.AddInput<MLFloat16>("query", {1, kHeadSize},
@@ -140,9 +139,8 @@ void AddCommonInputs(OpTester& tester, float current_value,
   tester.AddInput<int32_t>("past_seqlens", {1}, {0});
   tester.AddInput<int32_t>("block_table", {1, 1}, {0});
   tester.AddInput<int32_t>("slot_mapping", {1}, {0});
-  tester.AddInput<int32_t>("selected_indices", {1, static_cast<int64_t>(selected_indices.size())},
-                           selected_indices);
-  tester.AddInput<int32_t>("selected_counts", {1}, {selected_count});
+  tester.AddInput<int32_t>("selected_indices", {1, 2}, {0, -1});
+  tester.AddInput<int32_t>("selected_counts", {1}, {1});
 }
 
 void RunWebGpu(OpTester& tester,
@@ -254,6 +252,60 @@ TEST(SparsePagedAttention, Cuda_CurrentPrefillReadsContiguousKeyValue) {
   RunCuda(tester);
 }
 
+TEST(SparsePagedAttention, Cuda_SuppressedCurrentWriteReadsMappedCache) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(1.0f),
+                       {0}, 1, 0, 0, -1, HalfVector(0.0f, kCacheElementCount),
+                       HalfVector(7.0f, kCacheElementCount));
+  tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(7.0f));
+  RunCuda(tester);
+}
+
+TEST(SparsePagedAttention, Cuda_Int8CurrentTokenUsesQuantizedCacheValue) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  auto query = HalfVector(0.0f);
+  query[0] = MLFloat16(1.0f);
+  auto key = HalfVector(0.0f);
+  key[0] = MLFloat16(0.6f);
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
+  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
+  tester.AddInput<MLFloat16>("query", {1, kHeadSize}, query);
+  tester.AddInput<MLFloat16>("key", {1, kHeadSize}, key);
+  tester.AddInput<MLFloat16>("value", {1, kHeadSize}, HalfVector(0.6f));
+  tester.AddInput<int8_t>("key_cache", {1, kBlockSize, 1, kHeadSize},
+                          std::vector<int8_t>(kCacheElementCount, 0));
+  tester.AddInput<int8_t>("value_cache", {1, kBlockSize, 1, kHeadSize},
+                          std::vector<int8_t>(kCacheElementCount, 0));
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {0});
+  tester.AddInput<int32_t>("block_table", {1, 1}, {0});
+  tester.AddInput<int32_t>("slot_mapping", {1}, {0});
+  tester.AddInput<int32_t>("selected_indices", {1, 1}, {0});
+  tester.AddInput<int32_t>("selected_counts", {1}, {1});
+  tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_key
+  tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_value
+  tester.AddOptionalInputEdge<int32_t>();    // auxiliary_lengths
+  tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+  tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+  tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  tester.AddOptionalInputEdge<MLFloat16>();  // q_norm_weight
+  tester.AddOptionalInputEdge<MLFloat16>();  // k_norm_weight
+  tester.AddInput<float>("k_scale", {1}, {1.0f});
+  tester.AddInput<float>("v_scale", {1}, {1.0f});
+  tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(1.0f));
+  RunCuda(tester);
+}
+
 TEST(SparsePagedAttention, Cuda_LocalAndSharedAuxiliaryUseJointSoftmax) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -351,6 +403,46 @@ TEST(SparsePagedAttention, Cuda_RejectsNumHeadsAboveIntMax) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(SparsePagedAttention, Cuda_RejectsInvalidIntegerAttributes) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  for (const char* attribute : {"is_causal", "do_rotary", "rotary_interleaved", "auxiliary_kv_shared"}) {
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(0.0f), {0}, 1);
+    tester.AddAttribute<int64_t>(attribute, 2);
+    tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(0.0f));
+
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    ASSERT_NE(cuda_ep, nullptr);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(cuda_ep));
+    tester.Run(OpTester::ExpectResult::kExpectFailure, std::string(attribute) + " must be 0 or 1",
+               {}, nullptr, &execution_providers);
+  }
+
+  for (const auto& test_case :
+       std::vector<std::tuple<const char*, int64_t, const char*>>{
+           {"local_window_size", -2, "local_window_size must be in the range [-1, INT_MAX]"},
+           {"local_window_size", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1,
+            "local_window_size must be in the range [-1, INT_MAX]"},
+           {"rotary_offset", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1,
+            "rotary_offset must be in the range [0, INT_MAX]"}}) {
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(0.0f), {0}, 1);
+    tester.AddAttribute<int64_t>(std::get<0>(test_case), std::get<1>(test_case));
+    tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(0.0f));
+
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    ASSERT_NE(cuda_ep, nullptr);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(cuda_ep));
+    tester.Run(OpTester::ExpectResult::kExpectFailure, std::get<2>(test_case),
+               {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(SparsePagedAttention, Cuda_RejectsNonDivisibleQueryWidth) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -414,18 +506,76 @@ TEST(SparsePagedAttention, Cuda_RejectsNonDivisiblePackedQkvWidth) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(SparsePagedAttention, Cuda_RejectsZeroHeadSize) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddInput<MLFloat16>("query", {1, 0}, {});
+  tester.AddInput<MLFloat16>("key", {1, 0}, {});
+  tester.AddInput<MLFloat16>("value", {1, 0}, {});
+  tester.AddInput<MLFloat16>("key_cache", {1, kBlockSize, 1, 0}, {});
+  tester.AddInput<MLFloat16>("value_cache", {1, kBlockSize, 1, 0}, {});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {0});
+  tester.AddInput<int32_t>("block_table", {1, 1}, {0});
+  tester.AddInput<int32_t>("slot_mapping", {1}, {0});
+  tester.AddInput<int32_t>("selected_indices", {1, 1}, {0});
+  tester.AddInput<int32_t>("selected_counts", {1}, {1});
+  tester.AddOutput<MLFloat16>("output", {1, 0}, {});
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  ASSERT_NE(cuda_ep, nullptr);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "head_size must be positive",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(SparsePagedAttention, Cuda_InvalidSelectedMainIndicesAreIgnored) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
   }
 
-  for (const auto& test_case : std::vector<std::pair<int32_t, int32_t>>{{-1, 0}, {kBlockSize, 0}, {0, -1}}) {
+  for (const auto& test_case : std::vector<std::pair<int32_t, int32_t>>{{-1, 0}, {kBlockSize, 0}}) {
     OpTester tester("SparsePagedAttention", 1, kMSDomain);
     AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(7.0f),
                          {test_case.first}, 1, 0, test_case.second);
     tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(0.0f));
     RunCuda(tester);
   }
+}
+
+TEST(SparsePagedAttention, Cuda_PrefillTokenCountExceedsGridYLimit) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int kTokenCount = 65536;
+  constexpr int kNumBlocks = kTokenCount / kBlockSize;
+  std::vector<int32_t> block_table(kNumBlocks);
+  std::iota(block_table.begin(), block_table.end(), 0);
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddInput<MLFloat16>("query", {kTokenCount, kHeadSize}, HalfVector(0.0f, kTokenCount * kHeadSize));
+  tester.AddInput<MLFloat16>("key", {kTokenCount, kHeadSize}, HalfVector(0.0f, kTokenCount * kHeadSize));
+  tester.AddInput<MLFloat16>("value", {kTokenCount, kHeadSize}, HalfVector(0.0f, kTokenCount * kHeadSize));
+  tester.AddInput<MLFloat16>("key_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kTokenCount * kHeadSize));
+  tester.AddInput<MLFloat16>("value_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kTokenCount * kHeadSize));
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, kTokenCount});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {0});
+  tester.AddInput<int32_t>("block_table", {1, kNumBlocks}, block_table);
+  tester.AddInput<int32_t>("slot_mapping", {kTokenCount}, std::vector<int32_t>(kTokenCount, -1));
+  tester.AddInput<int32_t>("selected_indices", {kTokenCount, 1}, std::vector<int32_t>(kTokenCount, -1));
+  tester.AddInput<int32_t>("selected_counts", {kTokenCount}, std::vector<int32_t>(kTokenCount, 0));
+  tester.AddOutput<MLFloat16>("output", {kTokenCount, kHeadSize},
+                              HalfVector(0.0f, kTokenCount * kHeadSize));
+  RunCuda(tester);
 }
 
 TEST(SparsePagedAttention, Cuda_NonCausalSelectedMainIndexIsIgnored) {
@@ -569,6 +719,121 @@ TEST(SparsePagedAttention, WebGpu_SelectedAuxiliaryWritesDirectOutput) {
   tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(5.0f));
   tester.SetOutputTolerance(0.01f);
   RunWebGpu(tester);
+}
+
+TEST(SparsePagedAttention, WebGpu_CurrentPrefillReadsSlotMappedKeyValue) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddInput<MLFloat16>("query", {2, kHeadSize}, HalfVector(0.0f, 2 * kHeadSize));
+  tester.AddInput<MLFloat16>("key", {2, kHeadSize}, HalfVector(0.0f, 2 * kHeadSize));
+  auto values = HalfVector(2.0f);
+  const auto second_value = HalfVector(4.0f);
+  values.insert(values.end(), second_value.begin(), second_value.end());
+  tester.AddInput<MLFloat16>("value", {2, kHeadSize}, values);
+  auto cached_values = HalfVector(0.0f, kCacheElementCount);
+  std::fill_n(cached_values.begin(), kHeadSize, MLFloat16(9.0f));
+  std::fill_n(cached_values.begin() + kHeadSize, kHeadSize, MLFloat16(8.0f));
+  tester.AddInput<MLFloat16>("key_cache", {1, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kCacheElementCount));
+  tester.AddInput<MLFloat16>("value_cache", {1, kBlockSize, 1, kHeadSize}, cached_values);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 2});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {0});
+  tester.AddInput<int32_t>("block_table", {1, 1}, {0});
+  tester.AddInput<int32_t>("slot_mapping", {2}, {2, 3});
+  tester.AddInput<int32_t>("selected_indices", {2, 2}, {0, -1, 0, 1});
+  tester.AddInput<int32_t>("selected_counts", {2}, {1, 2});
+  auto expected = HalfVector(2.0f);
+  const auto second_expected = HalfVector(3.0f);
+  expected.insert(expected.end(), second_expected.begin(), second_expected.end());
+  tester.AddOutput<MLFloat16>("output", {2, kHeadSize}, expected);
+  tester.SetOutputTolerance(0.01f);
+  RunWebGpu(tester);
+}
+
+TEST(SparsePagedAttention, WebGpu_BlockTableScatterRejectsOutOfRangeLogicalBlock) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  constexpr int kNumBlocks = 2;
+  std::vector<MLFloat16> value_cache(kNumBlocks * kCacheElems, MLFloat16(0.0f));
+  SetConstantCacheRow(value_cache, 0, kHeadSize, 5.0f);
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddInput<MLFloat16>("query", {1, kHeadSize}, HalfVector(0.0f));
+  tester.AddInput<MLFloat16>("key", {1, kHeadSize}, HalfVector(0.0f));
+  tester.AddInput<MLFloat16>("value", {1, kHeadSize}, HalfVector(7.0f));
+  tester.AddInput<MLFloat16>("key_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kNumBlocks * kCacheElems));
+  tester.AddInput<MLFloat16>("value_cache", {kNumBlocks, kBlockSize, 1, kHeadSize}, value_cache);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 1, 1});
+  tester.AddInput<int32_t>("past_seqlens", {2}, {kBlockSize, 0});
+  tester.AddInput<int32_t>("block_table", {2, 1}, {0, 1});
+  tester.AddOptionalInputEdge<int32_t>();  // derive the cache slot from block_table
+  tester.AddInput<int32_t>("selected_indices", {1, 1}, {0});
+  tester.AddInput<int32_t>("selected_counts", {1}, {1});
+  tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(5.0f));
+  tester.AddOutput<MLFloat16>("key_cache_out", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                              HalfVector(0.0f, kNumBlocks * kCacheElems));
+  tester.AddOutput<MLFloat16>("value_cache_out", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                              value_cache);
+  tester.SetOutputTolerance(0.01f);
+  RunWebGpu(tester);
+}
+
+TEST(SparsePagedAttention, WebGpu_RejectsOversizedHeadCounts) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  for (const auto& test_case :
+       std::vector<std::tuple<const char*, int64_t, const char*>>{
+           {"num_heads", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1,
+            "num_heads must not exceed INT_MAX"},
+           {"num_heads", int64_t{1} << 32, "num_heads must not exceed INT_MAX"},
+           {"kv_num_heads", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1,
+            "kv_num_heads must not exceed INT_MAX"}}) {
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(0.0f), {0}, 1);
+    tester.AddAttribute<int64_t>(std::get<0>(test_case), std::get<1>(test_case));
+    tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(0.0f));
+    RunWebGpu(tester, OpTester::ExpectResult::kExpectFailure, std::get<2>(test_case));
+  }
+}
+
+TEST(SparsePagedAttention, WebGpu_RejectsInvalidIntegerAttributes) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  for (const char* attribute : {"is_causal", "do_rotary", "rotary_interleaved", "auxiliary_kv_shared"}) {
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(0.0f), {0}, 1);
+    tester.AddAttribute<int64_t>(attribute, 2);
+    tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(0.0f));
+    RunWebGpu(tester, OpTester::ExpectResult::kExpectFailure,
+              std::string(attribute) + " must be 0 or 1");
+  }
+
+  for (const auto& test_case :
+       std::vector<std::tuple<const char*, int64_t, const char*>>{
+           {"local_window_size", -2, "local_window_size must be in the range [-1, INT_MAX]"},
+           {"local_window_size", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1,
+            "local_window_size must be in the range [-1, INT_MAX]"},
+           {"rotary_offset", -1, "rotary_offset must be in the range [0, INT_MAX]"},
+           {"rotary_offset", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1,
+            "rotary_offset must be in the range [0, INT_MAX]"}}) {
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(0.0f), {0}, 1);
+    tester.AddAttribute<int64_t>(std::get<0>(test_case), std::get<1>(test_case));
+    tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(0.0f));
+    RunWebGpu(tester, OpTester::ExpectResult::kExpectFailure, std::get<2>(test_case));
+  }
 }
 
 TEST(SparsePagedAttention, WebGpu_PackedQkvRotaryAndBlockTableScatter) {

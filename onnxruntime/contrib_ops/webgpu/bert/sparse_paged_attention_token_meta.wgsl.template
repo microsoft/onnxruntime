@@ -4,7 +4,8 @@
 // SparsePagedAttention — resolve the per-token metadata the sparse stages need,
 // entirely on device:
 //
-//   token_meta[t] = (batch_id, query_position, main_length, auxiliary_length)
+//   token_meta[t] = (batch_id, query_position, main_length, auxiliary_length,
+//                    cumulative_query_start, past_length)
 //
 // Every value read here is an i32 coming from a caller-owned buffer, so it is
 // sanitized before it is written: negative lengths clamp to zero, the
@@ -39,21 +40,24 @@ $MAIN {
   let position_limit = i32(uniforms.max_main_positions);
   let token_limit = i32(min(uniforms.dispatch_size, 0x3fffffffu));
 
-  // Locate the request this packed token belongs to. Falls back to the last
-  // request when cumulative_sequence_length does not cover the token, which
-  // keeps every later index in range.
-  var batch_idx: u32 = uniforms.batch_size - 1u;
-  for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
-    if (token_index_i32 < cumulative_sequence_length.getByOffset(i + 1u)) {
-      batch_idx = i;
-      break;
+  // Locate the first cumulative upper bound greater than this token. If the
+  // metadata does not cover the token, fall back to the final request.
+  var search_lo: u32 = 0u;
+  var search_hi: u32 = uniforms.batch_size;
+  while (search_lo < search_hi) {
+    let search_mid = search_lo + (search_hi - search_lo) / 2u;
+    if (token_index_i32 < cumulative_sequence_length.getByOffset(search_mid + 1u)) {
+      search_hi = search_mid;
+    } else {
+      search_lo = search_mid + 1u;
     }
   }
+  let batch_idx = min(search_lo, uniforms.batch_size - 1u);
 
   let cum_lo = clamp(cumulative_sequence_length.getByOffset(batch_idx), 0, token_limit);
   let cum_hi = clamp(cumulative_sequence_length.getByOffset(batch_idx + 1u), cum_lo, token_limit);
   let query_length = cum_hi - cum_lo;
-  let query_offset = clamp(token_index_i32 - cum_lo, 0, token_limit);
+  let query_offset = clamp(token_index_i32 - cum_lo, 0, max(query_length - 1, 0));
   let past_length = clamp(past_seqlens.getByOffset(batch_idx), 0, position_limit);
   // Both operands are already clamped below 2^30, so these sums cannot overflow.
   let query_position = min(past_length + query_offset, position_limit);
@@ -64,9 +68,11 @@ $MAIN {
   auxiliary_length = clamp(auxiliary_lengths.getByOffset(batch_idx), 0, i32(uniforms.auxiliary_capacity));
 #endif
 
-  let base = token_idx * 4u;
+  let base = token_idx * 6u;
   token_meta.setByOffset(base, i32(batch_idx));
   token_meta.setByOffset(base + 1u, query_position);
   token_meta.setByOffset(base + 2u, main_length);
   token_meta.setByOffset(base + 3u, auxiliary_length);
+  token_meta.setByOffset(base + 4u, cum_lo);
+  token_meta.setByOffset(base + 5u, past_length);
 }

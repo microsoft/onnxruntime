@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <limits>
 #include <string>
 
 #include "contrib_ops/cpu/bert/attention_parameters.h"
@@ -152,6 +153,10 @@ Status SparsePagedAttentionMainProgram::GenerateShaderCode(ShaderHelper& sh) con
   const auto& value_cache = sh.AddInput("value_cache", ShaderUsage::UseUniform);
   const auto& token_meta = sh.AddInput("token_meta", ShaderUsage::UseUniform);
   const auto& block_table = sh.AddInput("block_table", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* slot_mapping = &block_table;
+  if (use_slot_mapping_) {
+    slot_mapping = &sh.AddInput("slot_mapping", ShaderUsage::UseUniform);
+  }
   const ShaderVariableHelper* selected_indices = &block_table;
   const ShaderVariableHelper* selected_counts = &block_table;
   if (use_selected_) {
@@ -167,12 +172,14 @@ Status SparsePagedAttentionMainProgram::GenerateShaderCode(ShaderHelper& sh) con
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, head_size_),
                              WGSL_TEMPLATE_PARAMETER(use_local_window, use_local_window_),
                              WGSL_TEMPLATE_PARAMETER(use_selected, use_selected_),
+                             WGSL_TEMPLATE_PARAMETER(use_slot_mapping, use_slot_mapping_),
                              WGSL_TEMPLATE_VARIABLE(block_table, block_table),
                              WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(query, query),
                              WGSL_TEMPLATE_VARIABLE(selected_counts, *selected_counts),
                              WGSL_TEMPLATE_VARIABLE(selected_indices, *selected_indices),
+                             WGSL_TEMPLATE_VARIABLE(slot_mapping, *slot_mapping),
                              WGSL_TEMPLATE_VARIABLE(token_meta, token_meta),
                              WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
 }
@@ -305,6 +312,7 @@ Status RunSparseMainPartial(onnxruntime::webgpu::ComputeContext& context,
                             bool use_local_window,
                             bool use_selected,
                             bool dedup_selected,
+                            const Tensor* slot_mapping,
                             bool direct_output,
                             uint32_t max_selected_entries,
                             float scale,
@@ -323,7 +331,8 @@ Status RunSparseMainPartial(onnxruntime::webgpu::ComputeContext& context,
       parameters.local_window_size > 0 ? static_cast<uint32_t>(parameters.local_window_size) : 0u;
 
   SparsePagedAttentionMainProgram program{parameters.head_size, is_causal, use_local_window,
-                                          use_selected, dedup_selected, direct_output};
+                                          use_selected, dedup_selected, slot_mapping != nullptr,
+                                          direct_output};
   program.AddInputs({
       {query, ProgramTensorMetadataDependency::TypeAndRank},
       {key_cache, ProgramTensorMetadataDependency::TypeAndRank},
@@ -331,6 +340,9 @@ Status RunSparseMainPartial(onnxruntime::webgpu::ComputeContext& context,
       {token_meta, ProgramTensorMetadataDependency::TypeAndRank},
       {block_table, ProgramTensorMetadataDependency::TypeAndRank},
   });
+  if (slot_mapping != nullptr) {
+    program.AddInputs({{slot_mapping, ProgramTensorMetadataDependency::TypeAndRank}});
+  }
   if (use_selected) {
     program.AddInputs({
         {selected_indices, ProgramTensorMetadataDependency::TypeAndRank},
@@ -343,8 +355,8 @@ Status RunSparseMainPartial(onnxruntime::webgpu::ComputeContext& context,
       })
       // Every value baked into the generated WGSL must appear here: the four
       // #params, the compile-time head size, and the workgroup size.
-      .CacheHint(parameters.head_size, is_causal, use_local_window, use_selected, dedup_selected, direct_output,
-                 kAttentionWorkgroupSize)
+      .CacheHint(parameters.head_size, is_causal, use_local_window, use_selected, dedup_selected,
+                 slot_mapping != nullptr, direct_output, kAttentionWorkgroupSize)
       .AddUniformVariables({
           {num_heads},
           {static_cast<uint32_t>(parameters.kv_num_heads)},
@@ -458,16 +470,32 @@ SparsePagedAttention::SparsePagedAttention(const OpKernelInfo& info) : WebGpuKer
   int64_t kv_num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0,
               "num_heads must be provided and > 0.");
-  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() &&
-                  kv_num_heads > 0 && num_heads % kv_num_heads == 0,
-              "kv_num_heads must be provided, > 0, and evenly divide num_heads.");
+  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0,
+              "kv_num_heads must be provided and > 0.");
+  ORT_ENFORCE(num_heads <= std::numeric_limits<int>::max(),
+              "num_heads must not exceed INT_MAX.");
+  ORT_ENFORCE(kv_num_heads <= std::numeric_limits<int>::max(),
+              "kv_num_heads must not exceed INT_MAX.");
+  ORT_ENFORCE(num_heads % kv_num_heads == 0,
+              "num_heads must be divisible by kv_num_heads.");
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
-  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
-  is_causal_ = info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1;
-  do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
-  rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
-  rotary_offset_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_offset", 0));
+  const int64_t local_window_size = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
+  ORT_ENFORCE(local_window_size >= -1 && local_window_size <= std::numeric_limits<int>::max(),
+              "local_window_size must be in the range [-1, INT_MAX].");
+  local_window_size_ = static_cast<int>(local_window_size);
+  const auto get_boolean_attribute = [&info](const char* name, int64_t default_value) {
+    const int64_t value = info.GetAttrOrDefault<int64_t>(name, default_value);
+    ORT_ENFORCE(value == 0 || value == 1, name, " must be 0 or 1.");
+    return value == 1;
+  };
+  is_causal_ = get_boolean_attribute("is_causal", 1);
+  do_rotary_ = get_boolean_attribute("do_rotary", 0);
+  rotary_interleaved_ = get_boolean_attribute("rotary_interleaved", 0);
+  const int64_t rotary_offset = info.GetAttrOrDefault<int64_t>("rotary_offset", 0);
+  ORT_ENFORCE(rotary_offset >= 0 && rotary_offset <= std::numeric_limits<int>::max(),
+              "rotary_offset must be in the range [0, INT_MAX].");
+  rotary_offset_ = static_cast<int>(rotary_offset);
   has_explicit_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
   if (!has_explicit_scale_) {
     scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
@@ -493,7 +521,7 @@ SparsePagedAttention::SparsePagedAttention(const OpKernelInfo& info) : WebGpuKer
   ORT_ENFORCE(info.GetAttrOrDefault<std::string>("auxiliary_cache_layout", "contiguous") ==
                   "contiguous",
               "Only auxiliary_cache_layout='contiguous' is supported.");
-  auxiliary_kv_shared_ = info.GetAttrOrDefault<int64_t>("auxiliary_kv_shared", 0) == 1;
+  auxiliary_kv_shared_ = get_boolean_attribute("auxiliary_kv_shared", 0);
 }
 
 Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -837,7 +865,7 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
 
   const auto* int32_type = DataTypeImpl::GetType<int32_t>();
   Tensor token_meta = context.CreateGPUTensor(
-      int32_type, TensorShape({static_cast<int64_t>(parameters.token_count), 4}));
+      int32_type, TensorShape({static_cast<int64_t>(parameters.token_count), 6}));
   ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
       context, "token metadata",
       {{cumulative_seqlens_q, "cumulative_sequence_length"},
@@ -874,12 +902,13 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
          {value_cache_out, "value_cache"},
          {&token_meta, "token_meta"},
          {block_table, "block_table"},
+         {slot_mapping, "slot_mapping"},
          {main_uses_selected ? selected_indices : nullptr, "selected_indices"},
          {main_uses_selected ? selected_counts : nullptr, "selected_counts"},
          {main_output, direct_output ? "output" : "partial"}}));
     ORT_RETURN_IF_ERROR(RunSparseMainPartial(
         context, parameters, is_causal_, local_plus_selected, main_uses_selected,
-        local_plus_selected && main_uses_selected, direct_output,
+        local_plus_selected && main_uses_selected, slot_mapping, direct_output,
         static_cast<uint32_t>(max_selected_entries), scale, query_for_attention, key_cache_out,
         value_cache_out, &token_meta, block_table,
         main_uses_selected ? selected_indices : nullptr,
