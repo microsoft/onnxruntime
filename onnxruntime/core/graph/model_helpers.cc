@@ -5,14 +5,19 @@
 
 #include "core/graph/model_helpers.h"
 
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "core/graph/function_utils.h"
+#include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/schema_registry.h"
 
 namespace onnxruntime {
 
@@ -86,6 +91,7 @@ void CollectLocalFunctionCalls(
         if (seen_calls.insert(key_view).second) {
           called_functions.push_back(key_view);
         }
+        continue;
       }
 
       for (const auto& attr : node.attribute()) {
@@ -106,6 +112,321 @@ void CollectLocalFunctionCalls(
     pending_graphs.pop_back();
     process_nodes(graph->node());
   }
+}
+
+struct AttributeBindingContext;
+
+struct BoundAttribute {
+  const ONNX_NAMESPACE::AttributeProto* proto;
+  const Graph* graph;
+  std::shared_ptr<const AttributeBindingContext> context;
+};
+
+struct AttributeBinding {
+  std::string_view name;
+  BoundAttribute attribute;
+};
+
+using AttributeBindings = InlinedVector<AttributeBinding>;
+
+using DomainToVersionMap = std::unordered_map<std::string, int>;
+
+struct AttributeBindingContext {
+  AttributeBindings bindings;
+  DomainToVersionMap domain_to_version;
+};
+
+using ModelLocalFunctions =
+    std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>;
+
+bool HasRegisteredSchema(const std::string& domain,
+                         const std::string& op_type,
+                         const DomainToVersionMap& domain_to_version,
+                         const IOnnxRuntimeOpSchemaCollection& schema_registry) {
+  const auto version_it = domain_to_version.find(domain);
+  if (version_it == domain_to_version.end()) {
+    return false;
+  }
+
+  const auto* schema = schema_registry.GetSchema(op_type, version_it->second, domain);
+  return schema != nullptr && !schema->Deprecated();
+}
+
+DomainToVersionMap GetFunctionDomainToVersionMap(
+    const ONNX_NAMESPACE::FunctionProto& function_proto) {
+  DomainToVersionMap domain_to_version;
+  domain_to_version.reserve(function_proto.opset_import().size());
+  for (const auto& opset : function_proto.opset_import()) {
+    const auto& domain = opset.domain() == kOnnxDomainAlias ? kOnnxDomain : opset.domain();
+    domain_to_version[domain] = gsl::narrow_cast<int>(opset.version());
+  }
+
+  return domain_to_version;
+}
+
+struct FunctionValidationState {
+  const ONNX_NAMESPACE::FunctionProto* function_proto;
+  size_t call_depth;
+  AttributeBindings bindings;
+
+  bool operator==(const FunctionValidationState& other) const {
+    return function_proto == other.function_proto &&
+           call_depth == other.call_depth &&
+           bindings.size() == other.bindings.size() &&
+           std::equal(bindings.begin(), bindings.end(), other.bindings.begin(),
+                      [](const AttributeBinding& lhs, const AttributeBinding& rhs) {
+                        return lhs.name == rhs.name &&
+                               lhs.attribute.proto == rhs.attribute.proto &&
+                               lhs.attribute.graph == rhs.attribute.graph &&
+                               lhs.attribute.context == rhs.attribute.context;
+                      });
+  }
+};
+
+struct FunctionValidationStateHash {
+  size_t operator()(const FunctionValidationState& state) const {
+    size_t result = std::hash<const void*>{}(state.function_proto);
+    auto combine = [&result](size_t value) {
+      result ^= value + 0x9e3779b9 + (result << 6) + (result >> 2);
+    };
+
+    combine(std::hash<size_t>{}(state.call_depth));
+    for (const auto& binding : state.bindings) {
+      combine(std::hash<std::string_view>{}(binding.name));
+      combine(std::hash<const void*>{}(binding.attribute.proto));
+      combine(std::hash<const void*>{}(binding.attribute.graph));
+      combine(std::hash<const void*>{}(binding.attribute.context.get()));
+    }
+
+    return result;
+  }
+};
+
+using ValidatedFunctionStates =
+    std::unordered_set<FunctionValidationState, FunctionValidationStateHash>;
+
+const BoundAttribute* FindAttributeBinding(const AttributeBindings& bindings,
+                                           std::string_view name) {
+  const auto it = std::find_if(bindings.begin(), bindings.end(),
+                               [name](const AttributeBinding& binding) {
+                                 return binding.name == name;
+                               });
+  return it == bindings.end() ? nullptr : &it->attribute;
+}
+
+BoundAttribute ResolveAttribute(const ONNX_NAMESPACE::AttributeProto& attr,
+                                const AttributeBindings& bindings,
+                                const Graph* graph = nullptr) {
+  if (attr.ref_attr_name().empty()) {
+    return {&attr, graph, nullptr};
+  }
+
+  const auto* binding = FindAttributeBinding(bindings, attr.ref_attr_name());
+  if (binding == nullptr) {
+    return {};
+  }
+
+  return *binding;
+}
+
+void SetAttributeBinding(AttributeBindings& bindings,
+                         std::string_view name,
+                         BoundAttribute attribute) {
+  const auto it = std::find_if(bindings.begin(), bindings.end(),
+                               [name](const AttributeBinding& binding) {
+                                 return binding.name == name;
+                               });
+  if (it == bindings.end()) {
+    bindings.push_back({name, attribute});
+  } else {
+    it->attribute = attribute;
+  }
+}
+
+Status ValidateFunctionCallDepth(
+    const ONNX_NAMESPACE::FunctionProto& function_proto,
+    AttributeBindings bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions,
+    const IOnnxRuntimeOpSchemaCollection& schema_registry,
+    ValidatedFunctionStates& validated_states);
+
+Status ValidateProtoNodesCallDepth(
+    const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto>& nodes,
+    const AttributeBindings& bindings,
+    const DomainToVersionMap& domain_to_version,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions,
+    const IOnnxRuntimeOpSchemaCollection& schema_registry,
+    ValidatedFunctionStates& validated_states);
+
+Status ValidateGraphCallDepth(
+    const Graph& graph,
+    const AttributeBindings& bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions,
+    const IOnnxRuntimeOpSchemaCollection& schema_registry,
+    ValidatedFunctionStates& validated_states);
+
+Status ValidateBoundAttributeCallDepth(
+    BoundAttribute attribute,
+    const AttributeBindings& bindings,
+    const DomainToVersionMap& domain_to_version,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions,
+    const IOnnxRuntimeOpSchemaCollection& schema_registry,
+    ValidatedFunctionStates& validated_states) {
+  if (attribute.proto == nullptr) {
+    return Status::OK();
+  }
+
+  const auto& attribute_bindings =
+      attribute.context == nullptr ? bindings : attribute.context->bindings;
+  const auto& attribute_domain_to_version =
+      attribute.context == nullptr ? domain_to_version : attribute.context->domain_to_version;
+
+  if (attribute.graph != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateGraphCallDepth(
+        *attribute.graph, attribute_bindings, call_depth, model_local_functions,
+        schema_registry, validated_states));
+  } else if (attribute.proto->has_g()) {
+    ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
+        attribute.proto->g().node(), attribute_bindings, attribute_domain_to_version,
+        call_depth, model_local_functions, schema_registry, validated_states));
+  }
+
+  for (const auto& graph : attribute.proto->graphs()) {
+    ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
+        graph.node(), attribute_bindings, attribute_domain_to_version,
+        call_depth, model_local_functions, schema_registry, validated_states));
+  }
+
+  return Status::OK();
+}
+
+Status ValidateFunctionCallDepth(
+    const ONNX_NAMESPACE::FunctionProto& function_proto,
+    AttributeBindings bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions,
+    const IOnnxRuntimeOpSchemaCollection& schema_registry,
+    ValidatedFunctionStates& validated_states) {
+  if (call_depth > kMaxModelLocalFunctionCallDepth) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "Model local function call depth ", call_depth,
+        " exceeds the maximum supported depth of ", kMaxModelLocalFunctionCallDepth, ".");
+  }
+
+  for (const auto& attr : function_proto.attribute_proto()) {
+    if (FindAttributeBinding(bindings, attr.name()) == nullptr) {
+      SetAttributeBinding(bindings, attr.name(), {&attr, nullptr, nullptr});
+    }
+  }
+
+  std::sort(bindings.begin(), bindings.end(),
+            [](const AttributeBinding& lhs, const AttributeBinding& rhs) {
+              return lhs.name < rhs.name;
+            });
+
+  FunctionValidationState validation_state{&function_proto, call_depth, bindings};
+  if (!validated_states.insert(std::move(validation_state)).second) {
+    return Status::OK();
+  }
+
+  const auto domain_to_version = GetFunctionDomainToVersionMap(function_proto);
+  return ValidateProtoNodesCallDepth(
+      function_proto.node(), bindings, domain_to_version, call_depth,
+      model_local_functions, schema_registry, validated_states);
+}
+
+Status ValidateProtoNodesCallDepth(
+    const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto>& nodes,
+    const AttributeBindings& bindings,
+    const DomainToVersionMap& domain_to_version,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions,
+    const IOnnxRuntimeOpSchemaCollection& schema_registry,
+    ValidatedFunctionStates& validated_states) {
+  const auto context = std::make_shared<AttributeBindingContext>(
+      AttributeBindingContext{bindings, domain_to_version});
+
+  for (const auto& node : nodes) {
+    const auto function_id = function_utils::GetFunctionIdentifier(
+        node.domain(), node.op_type(), node.overload());
+    const auto function_it = model_local_functions.find(function_id);
+    if (function_it != model_local_functions.end() &&
+        !HasRegisteredSchema(node.domain(), node.op_type(), domain_to_version, schema_registry)) {
+      AttributeBindings callee_bindings;
+      for (const auto& attr : node.attribute()) {
+        auto resolved_attr = ResolveAttribute(attr, bindings);
+        if (resolved_attr.proto != nullptr) {
+          if (resolved_attr.context == nullptr) {
+            // FunctionProto attributes are specialized in the caller's binding environment.
+            resolved_attr.context = context;
+          }
+          SetAttributeBinding(callee_bindings, attr.name(), resolved_attr);
+        }
+      }
+      ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
+          *function_it->second, std::move(callee_bindings), call_depth + 1,
+          model_local_functions, schema_registry, validated_states));
+      continue;
+    }
+
+    for (const auto& attr : node.attribute()) {
+      ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
+          ResolveAttribute(attr, bindings), bindings, domain_to_version,
+          call_depth, model_local_functions, schema_registry, validated_states));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ValidateGraphCallDepth(
+    const Graph& graph,
+    const AttributeBindings& bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions,
+    const IOnnxRuntimeOpSchemaCollection& schema_registry,
+    ValidatedFunctionStates& validated_states) {
+  for (const auto& node : graph.Nodes()) {
+    const auto function_id = function_utils::GetFunctionIdentifier(
+        node.Domain(), node.OpType(), node.Overload());
+    const auto function_it = model_local_functions.find(function_id);
+    if (function_it != model_local_functions.end() &&
+        !HasRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap(), schema_registry)) {
+      AttributeBindings callee_bindings;
+      for (const auto& [attr_name, attr] : node.GetAttributes()) {
+        const Graph* attribute_graph = nullptr;
+        if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
+          attribute_graph = node.GetGraphAttribute(attr_name);
+        }
+        const auto resolved_attr = ResolveAttribute(attr, bindings, attribute_graph);
+        if (resolved_attr.proto != nullptr) {
+          SetAttributeBinding(callee_bindings, attr_name, resolved_attr);
+        }
+      }
+      ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
+          *function_it->second, std::move(callee_bindings), call_depth + 1,
+          model_local_functions, schema_registry, validated_states));
+      continue;
+    }
+
+    for (const auto& [attr_name, attr] : node.GetAttributes()) {
+      const Graph* attribute_graph = nullptr;
+      if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
+        attribute_graph = node.GetGraphAttribute(attr_name);
+      }
+      ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
+          ResolveAttribute(attr, bindings, attribute_graph),
+          bindings, graph.DomainToVersionMap(), call_depth,
+          model_local_functions, schema_registry, validated_states));
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace
@@ -236,11 +557,92 @@ Status ValidateCallGraphAcyclic(const LocalFunctionCallGraph& call_graph) {
   return Status::OK();
 }
 
+Status ValidateCallGraphDepth(const LocalFunctionCallGraph& call_graph,
+                              gsl::span<const std::string_view> roots) {
+  InlinedHashMap<std::string_view, size_t> call_depths;
+  call_depths.reserve(call_graph.size());
+  InlinedHashSet<std::string_view> visited;
+  InlinedVector<std::string_view> postorder;
+
+  struct DfsFrame {
+    std::string_view function_id;
+    size_t next_callee_index;
+  };
+  InlinedVector<DfsFrame> dfs_stack;
+
+  for (const auto root_id : roots) {
+    if (call_graph.find(root_id) == call_graph.end()) {
+      continue;
+    }
+    if (!visited.insert(root_id).second) {
+      continue;
+    }
+
+    dfs_stack.push_back({root_id, 0});
+    while (!dfs_stack.empty()) {
+      auto& frame = dfs_stack.back();
+      const auto function_it = call_graph.find(frame.function_id);
+      if (function_it == call_graph.end() || frame.next_callee_index >= function_it->second.size()) {
+        postorder.push_back(frame.function_id);
+        dfs_stack.pop_back();
+        continue;
+      }
+
+      const auto callee_id = function_it->second[frame.next_callee_index++];
+      if (call_graph.find(callee_id) != call_graph.end() && visited.insert(callee_id).second) {
+        dfs_stack.push_back({callee_id, 0});
+      }
+    }
+  }
+
+  for (const auto function_id : postorder) {
+    size_t call_depth = 1;
+    const auto function_it = call_graph.find(function_id);
+    ORT_ENFORCE(function_it != call_graph.end());
+    for (const auto callee_id : function_it->second) {
+      const auto callee_depth_it = call_depths.find(callee_id);
+      if (callee_depth_it != call_depths.end()) {
+        call_depth = std::max(call_depth, callee_depth_it->second + 1);
+      }
+    }
+
+    call_depths.emplace(function_id, call_depth);
+  }
+
+  for (const auto root_id : roots) {
+    const auto depth_it = call_depths.find(root_id);
+    if (depth_it != call_depths.end() && depth_it->second > kMaxModelLocalFunctionCallDepth) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, NOT_IMPLEMENTED,
+          "Model local function call depth ", depth_it->second,
+          " exceeds the maximum supported depth of ", kMaxModelLocalFunctionCallDepth, ".");
+    }
+  }
+
+  return Status::OK();
+}
+
 Status ValidateModelLocalFunctionAcyclic(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions) {
   LocalFunctionCallGraph call_graph;
   ORT_RETURN_IF_ERROR(BuildLocalFunctionCallGraph(model_local_functions, call_graph));
   return ValidateCallGraphAcyclic(call_graph);
+}
+
+Status ValidateModelLocalFunctionCallDepth(
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    const Graph& main_graph) {
+  if (model_local_functions.empty()) {
+    return Status::OK();
+  }
+
+  LocalFunctionCallGraph call_graph;
+  ORT_RETURN_IF_ERROR(BuildLocalFunctionCallGraph(model_local_functions, call_graph));
+  ORT_RETURN_IF_ERROR(ValidateCallGraphAcyclic(call_graph));
+  ValidatedFunctionStates validated_states;
+  return ValidateGraphCallDepth(
+      main_graph, {}, 0, model_local_functions,
+      *main_graph.GetSchemaRegistry(), validated_states);
 }
 
 }  // namespace onnxruntime
