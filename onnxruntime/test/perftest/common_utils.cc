@@ -92,7 +92,8 @@ std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
 
 std::vector<Ort::ConstEpDevice> AppendPluginExecutionProviders(Ort::Env& env,
                                                                Ort::SessionOptions& session_options,
-                                                               const PerformanceTestConfig& test_config) {
+                                                               const PerformanceTestConfig& test_config,
+                                                               Ort::SyncStream* compute_stream) {
   if (test_config.registered_plugin_eps.empty()) {
     return {};
   }
@@ -197,6 +198,23 @@ std::vector<Ort::ConstEpDevice> AppendPluginExecutionProviders(Ort::Env& env,
   for (auto& ep_and_devices : added_ep_devices) {
     auto& ep = ep_and_devices.first;
     auto& devices = ep_and_devices.second;
+    // A user compute stream belongs to a single device, so only attach one when this EP was given exactly one
+    // device. Stream creation fails for CPU devices and EPs without stream support; those EPs are left unchanged.
+    if (compute_stream != nullptr && *compute_stream == nullptr && devices.size() == 1 &&
+        devices[0].Device().Type() == OrtDevice::GPU &&
+        devices[0].Device().VendorId() == OrtDevice::VendorIds::NVIDIA) {
+      OrtSyncStream* stream = nullptr;
+      Ort::Status status{Ort::GetApi().CreateSyncStreamForEpDevice(devices[0], nullptr, &stream)};
+      if (status.IsOK()) {
+        *compute_stream = Ort::SyncStream{stream};
+        ep_options_map[ep]["user_compute_stream"] =
+            std::to_string(reinterpret_cast<uintptr_t>(compute_stream->GetHandle()));
+        ep_options_map[ep]["has_user_compute_stream"] = "1";
+      } else {
+        fprintf(stdout, "[Plugin EP] %s: no user compute stream set (%s).\n", ep.c_str(),
+                status.GetErrorMessage().c_str());
+      }
+    }
     session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
     selected_ep_devices.insert(selected_ep_devices.end(), devices.begin(), devices.end());
   }
@@ -234,25 +252,6 @@ std::optional<PluginEpAllocatorSelection> GetPluginEpAllocator(Ort::Env& env,
   }
 
   return std::nullopt;
-}
-
-bool UsesNvidiaDevice(Ort::Env& env, const PerformanceTestConfig& test_config) {
-  const auto ep_devices = env.GetEpDevices();
-  const auto& plugin_eps = test_config.machine_config.plugin_provider_type_list;
-
-  const bool uses_nvidia_device = std::any_of(ep_devices.begin(), ep_devices.end(),
-                                              [&plugin_eps](const Ort::ConstEpDevice& ep_device) {
-                                                const std::string ep_name(ep_device.EpName());
-                                                if (std::find(plugin_eps.begin(), plugin_eps.end(), ep_name) == plugin_eps.end()) {
-                                                  return false;
-                                                }
-
-                                                const auto hardware_device = ep_device.Device();
-                                                return hardware_device.Type() == OrtDevice::GPU &&
-                                                       hardware_device.VendorId() == OrtDevice::VendorIds::NVIDIA;
-                                              });
-
-  return uses_nvidia_device;
 }
 
 }  // namespace utils

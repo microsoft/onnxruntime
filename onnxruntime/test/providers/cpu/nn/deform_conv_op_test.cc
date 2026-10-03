@@ -44,8 +44,7 @@ template <>
 struct DeformConvTestTraits<float> {
   static std::vector<float> Convert(const std::vector<float>& v) { return v; }
   static std::unordered_set<std::string> ExcludedProviders() {
-    return {kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kOpenVINOExecutionProvider,
-            kQnnExecutionProvider};
+    return {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider};
   }
   static constexpr float DefaultRtol() { return 1e-5f; }
   static constexpr float DefaultAtol() { return 1e-5f; }
@@ -55,7 +54,7 @@ template <>
 struct DeformConvTestTraits<MLFloat16> {
   static std::vector<MLFloat16> Convert(const std::vector<float>& v) { return FloatsToMLFloat16s(v); }
   static std::unordered_set<std::string> ExcludedProviders() {
-    return {kCpuExecutionProvider, kNvTensorRTRTXExecutionProvider, kTensorrtExecutionProvider,
+    return {kCpuExecutionProvider, kTensorrtExecutionProvider,
             kOpenVINOExecutionProvider, kQnnExecutionProvider};
   }
   static constexpr float DefaultRtol() { return 1e-2f; }
@@ -68,8 +67,7 @@ struct DeformConvTestTraits<double> {
     return std::vector<double>(v.begin(), v.end());
   }
   static std::unordered_set<std::string> ExcludedProviders() {
-    return {kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kOpenVINOExecutionProvider,
-            kQnnExecutionProvider};
+    return {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider};
   }
   static constexpr double DefaultRtol() { return 1e-8; }
   static constexpr double DefaultAtol() { return 1e-8; }
@@ -80,7 +78,7 @@ template <>
 struct DeformConvTestTraits<BFloat16> {
   static std::vector<BFloat16> Convert(const std::vector<float>& v) { return FloatsToBFloat16s(v); }
   static std::unordered_set<std::string> ExcludedProviders() {
-    return {kCpuExecutionProvider, kNvTensorRTRTXExecutionProvider, kTensorrtExecutionProvider,
+    return {kCpuExecutionProvider, kTensorrtExecutionProvider,
             kOpenVINOExecutionProvider, kQnnExecutionProvider};
   }
   static constexpr float DefaultRtol() { return 1e-2f; }
