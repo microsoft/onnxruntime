@@ -638,31 +638,51 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
 }
 
 OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor, size_t length, jobjectArray outputArray) {
+  if (length == 0) {
+    return ORT_OK;
+  }
+  if (outputArray == NULL) {
+    if (!(*jniEnv)->ExceptionCheck(jniEnv)) {
+      throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Output array must not be null");
+    }
+    return ORT_FAIL;
+  }
+
   size_t bufferSize = 16;
   char * tempBuffer = malloc(bufferSize);
   if (tempBuffer == NULL) {
     throwOrtException(jniEnv, 1, "Not enough memory");
     return ORT_FAIL;
   }
+  char * characterBuffer = NULL;
+  size_t * offsets = NULL;
   // Get the buffer size needed
   size_t totalStringLength = 0;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, &totalStringLength));
   if (code != ORT_OK) {
-    return code;
+    goto string_tensor_cleanup;
   }
 
   // Create the character and offset buffers
-  char * characterBuffer = malloc(sizeof(char)*(totalStringLength+length));
+  if (totalStringLength > (size_t)-1 - length) {
+    throwOrtException(jniEnv, 1, "String tensor is too large");
+    code = ORT_FAIL;
+    goto string_tensor_cleanup;
+  }
+  characterBuffer = malloc(sizeof(char)*(totalStringLength+length));
   if (characterBuffer == NULL) {
     throwOrtException(jniEnv, 1, "Not enough memory");
-    return ORT_FAIL;
+    code = ORT_FAIL;
+    goto string_tensor_cleanup;
   }
   // length + 1 as we need to write out the final offset
-  size_t * offsets = allocarray(sizeof(size_t), length+1);
+  offsets = allocarray(sizeof(size_t), length+1);
   if (offsets == NULL) {
     free((void*)characterBuffer);
+    characterBuffer = NULL;
     throwOrtException(jniEnv, 1, "Not enough memory");
-    return ORT_FAIL;
+    code = ORT_FAIL;
+    goto string_tensor_cleanup;
   }
 
   // Get a view on the String data
@@ -686,7 +706,16 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
         memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
         tempBuffer[curSize-1] = '\0';
         jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,tempBuffer);
+        if (tempString == NULL) {
+          code = ORT_FAIL;
+          goto string_tensor_cleanup;
+        }
         (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,safecast_size_t_to_jsize(i),tempString);
+        (*jniEnv)->DeleteLocalRef(jniEnv, tempString);
+        if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+          code = ORT_FAIL;
+          goto string_tensor_cleanup;
+        }
       }
     }
   }
@@ -718,10 +747,18 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
 
     // Create the java array
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
+    if (stringClazz == NULL) {
+        return NULL;
+    }
     jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(length), stringClazz, NULL);
+    (*jniEnv)->DeleteLocalRef(jniEnv, stringClazz);
+    if (outputArray == NULL) {
+        return NULL;
+    }
 
     code = copyStringTensorToArray(jniEnv, api, tensor, length, outputArray);
     if (code != ORT_OK) {
+        (*jniEnv)->DeleteLocalRef(jniEnv, outputArray);
         outputArray = NULL;
     }
 
