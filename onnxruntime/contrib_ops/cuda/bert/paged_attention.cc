@@ -7,6 +7,7 @@
 #include <tuple>
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/common/safeint.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
@@ -843,9 +844,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     decode_partial_sum_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
   }
 
-  // XQA scratch: semaphores + the multi-block (Flash Decoding) partials, the optional expanded page
-  // table and the fp32 attention sinks. A native 128-token block
-  // table is already in XQA page units and is passed through without an allocation.
+  // XQA scratch: semaphores + the multi-block (Flash Decoding) partials, the clamped page table and
+  // the fp32 attention sinks.
   IAllocatorUniquePtr<void> xqa_workspace_buffer;
   IAllocatorUniquePtr<void> xqa_page_table_buffer;
   IAllocatorUniquePtr<void> xqa_query_buffer;
@@ -871,11 +871,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                     int4_xqa_eligible ? XqaQuantType::kNone : xqa_kv_quant_type,
                                     std::is_same<T, BFloat16>::value);
     xqa_workspace_buffer = GetScratchBuffer<void>(xqa_workspace_bytes, GetComputeStream(context));
-    if (xqa_page_table_expanded) {
-      xqa_page_table_buffer = GetScratchBuffer<void>(
-          sizeof(int) * static_cast<size_t>(parameters.batch_size) * xqa_max_pages_per_seq,
-          GetComputeStream(context));
-    }
+    xqa_page_table_buffer = GetScratchBuffer<void>(
+        SafeInt<size_t>(sizeof(int)) * block_table->Shape().Size() * pages_per_block, GetComputeStream(context));
     if (parameters.use_smooth_softmax && head_sink != nullptr) {
       xqa_head_sink_buffer = GetScratchBuffer<void>(sizeof(float) * parameters.num_heads,
                                                     GetComputeStream(context));
@@ -911,6 +908,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   if (use_cudnn_paged) {
     cudnn_seqlens_kv_buffer = GetScratchBuffer<void>(
         sizeof(int) * static_cast<size_t>(parameters.batch_size), GetComputeStream(context));
+  }
+
+  IAllocatorUniquePtr<void> clamped_block_table_buffer;
+  if (use_cudnn_paged || (use_flash_attention && !kIsQuantizedCache)) {
+    clamped_block_table_buffer = GetScratchBuffer<void>(
+        SafeInt<size_t>(sizeof(int)) * block_table->Shape().Size(), GetComputeStream(context));
   }
 
   // Print debug info
@@ -1006,6 +1009,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
   }
 
+  data.clamped_block_table = reinterpret_cast<int*>(clamped_block_table_buffer.get());
   if (use_cudnn_paged) {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.cudnn_allocator));
     data.cudnn_handle = static_cast<void*>(GetCudnnHandle(context));
