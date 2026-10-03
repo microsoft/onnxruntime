@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <cmath>
 #include <iostream>
+#include <stdexcept>
 
 #include "core/session/onnxruntime_cxx_api.h"
-
-#include <google/protobuf/stubs/common.h>
 
 #include "dawn/native/DawnNative.h"
 
@@ -40,6 +41,7 @@ int main(int argc, char* argv[]) {
 
     Ort::SessionOptions session_options;
     session_options.DisableMemPattern();
+    session_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
     std::unordered_map<std::string, std::string> provider_options;
     if (!no_proc_table) {
       provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<size_t>(&dawn::native::GetProcs()));
@@ -51,8 +53,28 @@ int main(int argc, char* argv[]) {
       std::cerr << "DawnProcTable is not passing to ONNX Runtime, but no exception is thrown." << std::endl;
       retval = -1;
     } else {
-      // successfully initialized
-      std::cout << "Successfully initialized WebGPU EP." << std::endl;
+      const std::array<int64_t, 3> shape{3, 4, 5};
+      std::array<float, 60> input_data;
+      for (size_t index = 0; index < input_data.size(); ++index) {
+        input_data[index] = static_cast<float>(index) - 30.0f;
+      }
+      auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+      auto input = Ort::Value::CreateTensor<float>(
+          memory_info, input_data.data(), input_data.size(), shape.data(), shape.size());
+      const char* input_names[] = {"x"};
+      const char* output_names[] = {"y"};
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 1);
+      if (outputs.size() != 1 ||
+          outputs[0].GetTensorTypeAndShapeInfo().GetElementCount() != input_data.size()) {
+        throw std::runtime_error("Unexpected Abs output shape.");
+      }
+      const float* output_data = outputs[0].GetTensorData<float>();
+      for (size_t index = 0; index < input_data.size(); ++index) {
+        if (output_data[index] != std::abs(input_data[index])) {
+          throw std::runtime_error("Unexpected Abs output value.");
+        }
+      }
+      std::cout << "WebGPU Abs inference passed with CPU fallback disabled." << std::endl;
       retval = 0;
     }
   } catch (const std::exception& ex) {
@@ -67,6 +89,5 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }
