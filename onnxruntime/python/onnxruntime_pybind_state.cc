@@ -1473,6 +1473,11 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
         cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
 #endif
   } else if (type == kWebGpuExecutionProvider) {
+#if !defined(ORT_MINIMAL_BUILD)
+    if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
+      return ep_factory;
+    }
+#endif
 #if defined(USE_WEBGPU)
     return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
 #endif
