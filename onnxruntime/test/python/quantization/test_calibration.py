@@ -403,6 +403,76 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
                 tensors_range = calibrator.compute_data()
                 self.assertEqual(len(tensors_range.items()), num_tensors)  # A range for every tensor in the graph.
 
+    def test_histogram_quantization_with_variable_shapes(self):
+        model_path = Path(self._tmp_model_dir.name) / "dynamic_matmul.onnx"
+        weights = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=np.float32)
+        graph = helper.make_graph(
+            [helper.make_node("MatMul", ["input", "weights"], ["output"])],
+            "dynamic_matmul",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "sequence", 3])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "sequence", 2])],
+            [numpy_helper.from_array(weights, "weights")],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        onnx.checker.check_model(model, full_check=True)
+        onnx.save(model, model_path)
+
+        for shapes in (
+            ((1, 2, 3), (2, 2, 3)),
+            ((1, 1, 3), (1, 3, 3)),
+            ((1, 2, 3), (1, 2, 3)),
+        ):
+            inputs = [np.linspace(-1, 1, num=np.prod(shape), dtype=np.float32).reshape(shape) for shape in shapes]
+            flattened_inputs = [np.concatenate([data.reshape(-1, 3) for data in inputs]).reshape(1, -1, 3)]
+            for method, symmetric in (
+                (CalibrationMethod.Entropy, False),
+                (CalibrationMethod.Percentile, False),
+                (CalibrationMethod.Percentile, True),
+                (CalibrationMethod.Distribution, False),
+            ):
+                with self.subTest(shapes=shapes, method=method, symmetric=symmetric):
+                    quantized_models = []
+                    for name, calibration_inputs in (("variable", inputs), ("flattened", flattened_inputs)):
+                        data_reader = TestDataReader()
+                        data_reader.input_data_list = calibration_inputs
+                        output_path = Path(self._tmp_model_dir.name) / f"{name}_quantized.onnx"
+                        if method == CalibrationMethod.Distribution:
+                            calibrator = create_calibrator(
+                                model_path,
+                                ["MatMul"],
+                                augmented_model_path=output_path,
+                                calibrate_method=method,
+                            )
+                            calibrator.collect_data(data_reader)
+                            tensors_data = calibrator.compute_data()
+                            quantized_models.append(
+                                {
+                                    f"{tensor}.{attribute}": getattr(data, attribute)
+                                    for tensor, data in tensors_data.items()
+                                    for attribute in ("avg", "std", "hist", "hist_edges", "lowest", "highest")
+                                }
+                            )
+                            continue
+                        quantize_static(
+                            model_path,
+                            output_path,
+                            data_reader,
+                            calibrate_method=method,
+                            op_types_to_quantize=["MatMul"],
+                            extra_options={"CalibTensorRangeSymmetric": symmetric},
+                        )
+                        quantized_model = onnx.load(output_path)
+                        self.assertIn("QuantizeLinear", [node.op_type for node in quantized_model.graph.node])
+                        quantized_models.append(
+                            {value.name: numpy_helper.to_array(value) for value in quantized_model.graph.initializer}
+                        )
+                        session = onnxruntime.InferenceSession(str(output_path), providers=["CPUExecutionProvider"])
+                        for data in inputs:
+                            np.testing.assert_allclose(session.run(None, {"input": data})[0], data @ weights, atol=0.02)
+                    self.assertEqual(quantized_models[0].keys(), quantized_models[1].keys())
+                    for name, value in quantized_models[0].items():
+                        np.testing.assert_array_equal(value, quantized_models[1][name])
+
     def test_augment_graph_with_zero_value_dimension(self):
         """TEST_CONFIG_5"""
         #   Conv
