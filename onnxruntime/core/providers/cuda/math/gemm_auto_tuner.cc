@@ -104,6 +104,7 @@ size_t GemmTuneKeyHash::operator()(const GemmTuneKey& key) const {
   combine(static_cast<size_t>(key.k));
   combine(static_cast<size_t>(key.small_n_vectorized));
   combine(static_cast<size_t>(key.candidates));
+  combine(static_cast<size_t>(key.tinygemm2_b_is_constant));
   return seed;
 }
 

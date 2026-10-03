@@ -101,6 +101,10 @@ TEST(GemmAutoTunerTest, CacheKeepsFirstInsertion) {
   other = key;
   other.candidates = GemmKernelBit(GemmKernel::kTinyGemm2);
   EXPECT_FALSE(cache.Lookup(other).has_value());
+
+  other = key;
+  other.tinygemm2_b_is_constant = !key.tinygemm2_b_is_constant;
+  EXPECT_FALSE(cache.Lookup(other).has_value());
 }
 
 TEST(GemmAutoTunerTest, TimesAndSelectsFasterCandidate) {

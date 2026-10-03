@@ -54,7 +54,7 @@ bool PrepareKernel(const cudaDeviceProp& device_prop) {
 }  // namespace
 
 bool CanUseTinyGemm2(int64_t m, int64_t n, int64_t k, const void* a, const void* b) {
-  if (m < 1 || m > kMaxM || n < 1 || k < 1 || n * k > kMaxWeightElements) return false;
+  if (m < 1 || m > kMaxM || n < 1 || k < 1 || n > kMaxWeightElements / k) return false;
   if (n % 8 != 0 || k % 8 != 0) return false;
   return ((reinterpret_cast<uintptr_t>(a) | reinterpret_cast<uintptr_t>(b)) % 16) == 0;
 }
@@ -82,7 +82,7 @@ bool IsTinyGemm2Supported(const cudaDeviceProp& device_prop) {
 }
 
 template <typename T>
-Status LaunchTinyGemm2(cudaStream_t stream, const T* a, const T* b, T* c, int m, int n, int k) {
+Status LaunchTinyGemm2(cudaStream_t stream, const T* a, const T* b, T* c, int m, int n, int k, bool b_is_constant) {
   using namespace tinygemm2;
   ORT_RETURN_IF_NOT(CanUseTinyGemm2(m, n, k, a, b), "tinygemm2 does not support M=", m, " N=", n, " K=", k, ".");
   CUtensorMap weight_map{};
@@ -104,16 +104,20 @@ Status LaunchTinyGemm2(cudaStream_t stream, const T* a, const T* b, T* c, int m,
   cudaLaunchAttribute attribute{};
   attribute.id = cudaLaunchAttributeProgrammaticStreamSerialization;
   attribute.val.programmaticStreamSerializationAllowed = 1;
-  config.attrs = &attribute;
-  config.numAttrs = 1;
+  if (b_is_constant) {
+    config.attrs = &attribute;
+    config.numAttrs = 1;
+  }
+#else
+  ORT_UNUSED_PARAMETER(b_is_constant);
 #endif
   CUDA_RETURN_IF_ERROR(cudaLaunchKernelEx(&config, TinyGemm2Kernel<T>, c, m, n, k, weight_map, activation_map));
   return Status::OK();
 }
 
-template Status LaunchTinyGemm2<half>(cudaStream_t, const half*, const half*, half*, int, int, int);
+template Status LaunchTinyGemm2<half>(cudaStream_t, const half*, const half*, half*, int, int, int, bool);
 template Status LaunchTinyGemm2<nv_bfloat16>(cudaStream_t, const nv_bfloat16*, const nv_bfloat16*, nv_bfloat16*,
-                                             int, int, int);
+                                             int, int, int, bool);
 
 }  // namespace cuda
 }  // namespace onnxruntime

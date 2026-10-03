@@ -310,7 +310,7 @@ Status MatMul<T>::RunGemmKernel(OpKernelContext* ctx, GemmKernel kernel, const v
   using ElementT = std::conditional_t<std::is_same_v<T, MLFloat16>, half, nv_bfloat16>;
   if (kernel == GemmKernel::kTinyGemm2) {
     return LaunchTinyGemm2(Stream(ctx), static_cast<const ElementT*>(a), static_cast<const ElementT*>(b),
-                           static_cast<ElementT*>(c), m, n, k);
+                           static_cast<ElementT*>(c), m, n, k, b_is_constant_);
   }
   ORT_RETURN_IF_NOT(kernel == GemmKernel::kSmallNGemv, "Unexpected GEMM kernel ", GemmKernelName(kernel));
   auto counter = GetScratchBuffer<unsigned int>(SmallNGemvCounterElements(n), GetComputeStream(ctx));
@@ -333,6 +333,7 @@ Status MatMul<T>::SelectGemmKernel(OpKernelContext* ctx, const void* a, const vo
   key.k = k;
   key.small_n_vectorized = SmallNGemvUsesVectorizedKernel(n, k, a, b);
   key.candidates = candidates;
+  key.tinygemm2_b_is_constant = (candidates & GemmKernelBit(GemmKernel::kTinyGemm2)) && b_is_constant_;
 
   std::optional<GemmKernel> kernel = GemmAutoTuneCache::Instance().Lookup(key);
   if (!kernel.has_value()) {
@@ -366,7 +367,7 @@ Status MatMul<T>::SelectGemmKernel(OpKernelContext* ctx, const void* a, const vo
         tune_candidates.push_back({GemmKernel::kTinyGemm2, [&]() {
                                      return LaunchTinyGemm2(stream, static_cast<const ElementT*>(a),
                                                             static_cast<const ElementT*>(b),
-                                                            static_cast<ElementT*>(c), m, n, k);
+                                                            static_cast<ElementT*>(c), m, n, k, b_is_constant_);
                                    }});
       }
       GemmKernel tuned = GemmKernel::kCublas;
@@ -442,9 +443,13 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
         if (CanUseSmallNGemv(helper.M(), helper.N(), helper.K(), a, b, c)) {
           candidates |= GemmKernelBit(GemmKernel::kSmallNGemv);
         }
-        if (gemm_policy_ == GemmDispatchPolicy::kAutoTune && CanUseTinyGemm2(helper.M(), helper.N(), helper.K(), a, b) &&
-            IsTinyGemm2Supported(device_prop)) {
-          candidates |= GemmKernelBit(GemmKernel::kTinyGemm2);
+        if (gemm_policy_ == GemmDispatchPolicy::kAutoTune && CanUseTinyGemm2(helper.M(), helper.N(), helper.K(), a, b)) {
+          std::call_once(tinygemm2_init_flag_, [this]() {
+            tinygemm2_supported_ = IsTinyGemm2Supported(GetDeviceProp());
+          });
+          if (tinygemm2_supported_) {
+            candidates |= GemmKernelBit(GemmKernel::kTinyGemm2);
+          }
         }
         if (candidates != 0) {
           const int m = static_cast<int>(helper.M());

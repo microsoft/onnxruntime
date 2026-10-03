@@ -21,9 +21,10 @@ bool IsTinyGemm2Supported(const cudaDeviceProp& device_prop);
 
 // C[m, n] = A[m, k] * B[k, n] (row-major, T is half or nv_bfloat16) with the TMA/warp-specialized
 // tinygemm2 kernel from TensorRT-LLM, reading B in place. fp32 accumulation, deterministic.
-// Launched with programmatic dependent launch so the weight loads overlap the preceding kernel.
+// Programmatic dependent launch is enabled only for constant B, whose loads may overlap the preceding kernel.
 template <typename T>
-Status LaunchTinyGemm2(cudaStream_t stream, const T* a, const T* b, T* c, int m, int n, int k);
+Status LaunchTinyGemm2(cudaStream_t stream, const T* a, const T* b, T* c, int m, int n, int k,
+                       bool b_is_constant = false);
 
 }  // namespace cuda
 }  // namespace onnxruntime

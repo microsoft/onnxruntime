@@ -4,11 +4,13 @@
 #include "gtest/gtest.h"
 
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <type_traits>
 #include <vector>
 
+#include "core/common/common.h"
 #include "core/common/float16.h"
 #include "core/providers/cuda/math/tinygemm2.h"
 #include "test/util/include/asserts.h"
@@ -20,6 +22,21 @@ namespace {
 
 struct CudaDeviceMemoryDeleter {
   void operator()(void* p) const { cudaFree(p); }
+};
+
+struct CudaGraphResources {
+  CudaGraphResources() { CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking)); }
+  ~CudaGraphResources() {
+    cudaStreamSynchronize(stream);
+    if (graph_exec) cudaGraphExecDestroy(graph_exec);
+    if (graph) cudaGraphDestroy(graph);
+    cudaStreamDestroy(stream);
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaGraphResources);
+
+  cudaStream_t stream{};
+  cudaGraph_t graph{};
+  cudaGraphExec_t graph_exec{};
 };
 
 template <typename T>
@@ -38,10 +55,11 @@ bool TinyGemm2Available() {
 }
 
 template <typename HostT>
-void RunTinyGemm2Case(int m, int n, int k) {
+void RunTinyGemm2Case(int m, int n, int k, bool b_is_constant) {
   using DeviceT = std::conditional_t<std::is_same_v<HostT, MLFloat16>, half, nv_bfloat16>;
   SCOPED_TRACE(std::string(std::is_same_v<HostT, MLFloat16> ? "fp16" : "bf16") + " m=" + std::to_string(m) +
-               ", n=" + std::to_string(n) + ", k=" + std::to_string(k));
+               ", n=" + std::to_string(n) + ", k=" + std::to_string(k) +
+               ", constant_b=" + std::to_string(b_is_constant));
   std::vector<HostT> a(static_cast<size_t>(m) * k);
   std::vector<HostT> b(static_cast<size_t>(k) * n);
   for (size_t index = 0; index < a.size(); ++index) {
@@ -61,7 +79,7 @@ void RunTinyGemm2Case(int m, int n, int k) {
 
   ASSERT_STATUS_OK(LaunchTinyGemm2(nullptr, reinterpret_cast<const DeviceT*>(device_a.get()),
                                    reinterpret_cast<const DeviceT*>(device_b.get()),
-                                   reinterpret_cast<DeviceT*>(device_c.get()), m, n, k));
+                                   reinterpret_cast<DeviceT*>(device_c.get()), m, n, k, b_is_constant));
   CUDA_CALL_THROW(cudaDeviceSynchronize());
 
   std::vector<HostT> output(static_cast<size_t>(m) * n);
@@ -82,8 +100,68 @@ void RunTinyGemm2Case(int m, int n, int k) {
 }
 
 void RunTinyGemm2CaseAllTypes(int m, int n, int k) {
-  RunTinyGemm2Case<MLFloat16>(m, n, k);
-  RunTinyGemm2Case<BFloat16>(m, n, k);
+  for (const bool b_is_constant : {false, true}) {
+    RunTinyGemm2Case<MLFloat16>(m, n, k, b_is_constant);
+    RunTinyGemm2Case<BFloat16>(m, n, k, b_is_constant);
+  }
+}
+
+template <typename HostT>
+void RunProducedBChain(bool capture) {
+  using DeviceT = std::conditional_t<std::is_same_v<HostT, MLFloat16>, half, nv_bfloat16>;
+  SCOPED_TRACE((std::is_same_v<HostT, MLFloat16> ? "fp16" : "bf16"));
+  constexpr int m = 8;
+  constexpr int n = 1032;
+  constexpr int k = 64;
+  constexpr int producer_k = 5120;
+  const std::vector<HostT> producer_a(k * producer_k, HostT(1.0f));
+  const std::vector<HostT> producer_b(producer_k * n, HostT(1.0f));
+  const std::vector<HostT> a(m * k, HostT(1.0f / 1024.0f));
+  auto device_producer_a = AllocateDeviceMemory<HostT>(producer_a.size());
+  auto device_producer_b = AllocateDeviceMemory<HostT>(producer_b.size());
+  auto device_a = AllocateDeviceMemory<HostT>(a.size());
+  auto device_b = AllocateDeviceMemory<HostT>(k * n);
+  auto device_c = AllocateDeviceMemory<HostT>(m * n);
+  CUDA_CALL_THROW(cudaMemcpy(device_producer_a.get(), producer_a.data(), producer_a.size() * sizeof(HostT),
+                             cudaMemcpyHostToDevice));
+  CUDA_CALL_THROW(cudaMemcpy(device_producer_b.get(), producer_b.data(), producer_b.size() * sizeof(HostT),
+                             cudaMemcpyHostToDevice));
+  CUDA_CALL_THROW(cudaMemcpy(device_a.get(), a.data(), a.size() * sizeof(HostT), cudaMemcpyHostToDevice));
+
+  CudaGraphResources resources;
+  auto launch_chain = [&]() -> Status {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(device_b.get(), 0, k * n * sizeof(HostT), resources.stream));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(device_c.get(), 0xff, m * n * sizeof(HostT), resources.stream));
+    ORT_RETURN_IF_ERROR(LaunchTinyGemm2(resources.stream,
+                                        reinterpret_cast<const DeviceT*>(device_producer_a.get()),
+                                        reinterpret_cast<const DeviceT*>(device_producer_b.get()),
+                                        reinterpret_cast<DeviceT*>(device_b.get()), k, n, producer_k, true));
+    return LaunchTinyGemm2(resources.stream, reinterpret_cast<const DeviceT*>(device_a.get()),
+                           reinterpret_cast<const DeviceT*>(device_b.get()),
+                           reinterpret_cast<DeviceT*>(device_c.get()), m, n, k);
+  };
+  if (capture) {
+    CUDA_CALL_THROW(cudaStreamBeginCapture(resources.stream, cudaStreamCaptureModeThreadLocal));
+    const Status status = launch_chain();
+    CUDA_CALL_THROW(cudaStreamEndCapture(resources.stream, &resources.graph));
+    ASSERT_STATUS_OK(status);
+    CUDA_CALL_THROW(cudaGraphInstantiate(&resources.graph_exec, resources.graph, nullptr, nullptr, 0));
+  }
+
+  std::vector<HostT> output(m * n);
+  for (int replay = 0; replay < 3; ++replay) {
+    SCOPED_TRACE(replay);
+    if (capture) {
+      CUDA_CALL_THROW(cudaGraphLaunch(resources.graph_exec, resources.stream));
+    } else {
+      ASSERT_STATUS_OK(launch_chain());
+    }
+    CUDA_CALL_THROW(cudaStreamSynchronize(resources.stream));
+    CUDA_CALL_THROW(cudaMemcpy(output.data(), device_c.get(), output.size() * sizeof(HostT), cudaMemcpyDeviceToHost));
+    for (const HostT value : output) {
+      ASSERT_EQ(value.ToFloat(), static_cast<float>(producer_k * k) / 1024.0f);
+    }
+  }
 }
 
 TEST(TinyGemm2Test, Eligibility) {
@@ -92,6 +170,8 @@ TEST(TinyGemm2Test, Eligibility) {
   EXPECT_TRUE(CanUseTinyGemm2(64, 4096, 8192, aligned, aligned));
   EXPECT_FALSE(CanUseTinyGemm2(65, 48, 5120, aligned, aligned));
   EXPECT_FALSE(CanUseTinyGemm2(8, 4096, 8200, aligned, aligned));  // N * K above 32M
+  EXPECT_FALSE(CanUseTinyGemm2(8, std::numeric_limits<int64_t>::max() - 7, 8, aligned, aligned));
+  EXPECT_FALSE(CanUseTinyGemm2(8, 8, std::numeric_limits<int64_t>::max() - 7, aligned, aligned));
   EXPECT_FALSE(CanUseTinyGemm2(8, 44, 5120, aligned, aligned));
   EXPECT_FALSE(CanUseTinyGemm2(8, 48, 5124, aligned, aligned));
   EXPECT_FALSE(CanUseTinyGemm2(8, 48, 5120, reinterpret_cast<const void*>(uintptr_t{264}), aligned));
@@ -113,6 +193,22 @@ TEST(TinyGemm2Test, MatchesReference) {
   }
   RunTinyGemm2CaseAllTypes(4, 2880, 720);
   RunTinyGemm2CaseAllTypes(17, 48, 5120);
+}
+
+TEST(TinyGemm2Test, ProducedBChain) {
+  if (!TinyGemm2Available()) {
+    GTEST_SKIP() << "tinygemm2 needs an SM 9.0+ device with SM 9.0+ code in this build.";
+  }
+  RunProducedBChain<MLFloat16>(false);
+  RunProducedBChain<BFloat16>(false);
+}
+
+TEST(TinyGemm2Test, ProducedBChainCudaGraph) {
+  if (!TinyGemm2Available()) {
+    GTEST_SKIP() << "tinygemm2 needs an SM 9.0+ device with SM 9.0+ code in this build.";
+  }
+  RunProducedBChain<MLFloat16>(true);
+  RunProducedBChain<BFloat16>(true);
 }
 
 }  // namespace

@@ -26,7 +26,7 @@ enum class DispatchMode {
 };
 
 template <typename T>
-void RunMatMulOperatorCase(int m, int n, int k, DispatchMode mode) {
+void RunMatMulOperatorCase(int m, int n, int k, DispatchMode mode, bool b_is_constant = false) {
   SCOPED_TRACE(std::string(std::is_same_v<T, MLFloat16> ? "fp16" : "bf16") + " m=" + std::to_string(m) +
                " n=" + std::to_string(n) + " k=" + std::to_string(k) +
                (mode == DispatchMode::kAutoTune ? " auto-tune" : " forced"));
@@ -63,7 +63,7 @@ void RunMatMulOperatorCase(int m, int n, int k, DispatchMode mode) {
 
   OpTester test("MatMul", 14);
   test.AddInput<T>("A", {m, k}, a);
-  test.AddInput<T>("B", {k, n}, b);
+  test.AddInput<T>("B", {k, n}, b, b_is_constant);
   test.AddOutput<T>("Y", {m, n}, expected);
   // Kernels accumulate in different orders; allow two output ulps at the largest magnitude.
   const float ulp = std::is_same_v<T, MLFloat16> ? 1.0f / 1024.0f : 1.0f / 128.0f;
@@ -92,6 +92,11 @@ TEST(MatMulSmallNGemvOpTest, DispatchesEligibleShapesWhenForced) {
 TEST(MatMulSmallNGemvOpTest, AutoTunesEligibleShapes) {
   RunEligibleShapes<MLFloat16>(DispatchMode::kAutoTune);
   RunEligibleShapes<BFloat16>(DispatchMode::kAutoTune);
+}
+
+TEST(MatMulSmallNGemvOpTest, AutoTunesConstantWeights) {
+  RunMatMulOperatorCase<MLFloat16>(4, 2880, 720, DispatchMode::kAutoTune, true);
+  RunMatMulOperatorCase<BFloat16>(17, 1032, 1024, DispatchMode::kAutoTune, true);
 }
 
 TEST(MatMulSmallNGemvOpTest, FallsBackForIneligibleShapes) {

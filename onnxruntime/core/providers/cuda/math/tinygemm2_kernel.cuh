@@ -175,7 +175,7 @@ __global__ void __launch_bounds__(kThreads, 1)
       return;
     }
     const bool weight_warp = warp_id < 8;
-    // B is a constant weight, so only the activation load waits for the preceding kernel.
+    // The launch enables overlap only for constant B; dynamic B uses ordinary stream serialization.
     if (!weight_warp) {
       cudaGridDependencySynchronize();
       cudaTriggerProgrammaticLaunchCompletion();

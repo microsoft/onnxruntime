@@ -66,10 +66,12 @@ struct GemmTuneKey {
   bool small_n_vectorized{false};
   // GemmKernelBit of every candidate that was eligible, since alignment can change the set.
   uint8_t candidates{0};
+  bool tinygemm2_b_is_constant{false};
 
   bool operator==(const GemmTuneKey& other) const {
     return device_uuid == other.device_uuid && data_type == other.data_type && m == other.m && n == other.n &&
-           k == other.k && small_n_vectorized == other.small_n_vectorized && candidates == other.candidates;
+           k == other.k && small_n_vectorized == other.small_n_vectorized && candidates == other.candidates &&
+           tinygemm2_b_is_constant == other.tinygemm2_b_is_constant;
   }
 };
 
@@ -109,8 +111,8 @@ struct GemmTuneL2State {
 Status TimeGemmCandidates(cudaStream_t stream, const std::vector<GemmTuneCandidate>& candidates,
                           const GemmTuneL2State& l2, std::vector<float>& times_ms);
 
-// Process-wide map from shape/device to the selected kernel. The first insertion wins, so every
-// session in a process runs the same kernel for the same shape.
+// Process-wide map from shape/device and eligible launch configuration to the selected kernel.
+// The first insertion wins, so every caller with the same tuning key runs the same kernel.
 class GemmAutoTuneCache {
  public:
   static GemmAutoTuneCache& Instance();
