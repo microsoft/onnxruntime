@@ -1207,13 +1207,44 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   return Status::OK();
 }
 
+struct FunctionExpansionCost {
+  size_t node_count;
+  size_t proto_bytes;
+};
+
+enum class FunctionExpansionLimit {
+  kNone,
+  kNodes,
+  kProtoBytes,
+};
+
+static Status GetFunctionExpansionCost(const Node& node,
+                                       size_t remaining_node_budget,
+                                       size_t remaining_byte_budget,
+                                       FunctionExpansionCost& cost);
+
+static FunctionExpansionLimit TryChargeFunctionExpansion(const FunctionExpansionCost& cost,
+                                                         size_t node_limit,
+                                                         size_t& expanded_node_count,
+                                                         size_t byte_limit,
+                                                         size_t& expanded_proto_bytes);
+
 // expand any nodes that have an ONNX function definition but no matching ORT kernel
-static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* layering_index) {
+static Status InlineNodes(Graph& graph,
+                          bool& modified_graph,
+                          LayeringIndex* layering_index,
+                          const logging::Logger& logger,
+                          size_t expansion_node_limit,
+                          size_t& expanded_node_count,
+                          size_t expansion_byte_limit,
+                          size_t& expanded_proto_bytes) {
   // recurse into nested graphs first so we process from bottom up
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph, layering_index));
+      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph, layering_index, logger,
+                                      expansion_node_limit, expanded_node_count,
+                                      expansion_byte_limit, expanded_proto_bytes));
     }
   }
 
@@ -1233,6 +1264,25 @@ static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* lay
   InlinedVector<NodeIndex> new_node_indices;
 
   for (auto* node : nodes_to_inline) {
+    FunctionExpansionCost expansion_cost{};
+    ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(
+        *node, expansion_node_limit - expanded_node_count,
+        expansion_byte_limit - expanded_proto_bytes, expansion_cost));
+    const auto limit_exceeded = TryChargeFunctionExpansion(expansion_cost,
+                                                           expansion_node_limit,
+                                                           expanded_node_count,
+                                                           expansion_byte_limit,
+                                                           expanded_proto_bytes);
+    if (limit_exceeded != FunctionExpansionLimit::kNone) {
+      const auto function_id =
+          function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "Function inlining exceeded the configured cumulative ",
+          limit_exceeded == FunctionExpansionLimit::kNodes ? "node" : "protobuf",
+          " expansion limit while expanding '", function_id, "'.");
+    }
+
     // Check for an effective layering assignment: either from an explicit annotation
     // on the node, or from an inherited assignment via the LayeringIndex (e.g., a function
     // call node inside an annotated If/Loop subgraph that inherited its parent's rule).
@@ -1277,6 +1327,318 @@ static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* lay
   return Status::OK();
 }
 
+constexpr size_t kDefaultFunctionExpansionNodeLimit = 1'000'000;
+constexpr size_t kDefaultFunctionExpansionByteLimit = 1024ULL * 1024ULL * 1024ULL;
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::GraphProto& graph);
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::AttributeProto& attribute) {
+  SafeInt<size_t> node_count = 0;
+  if (attribute.has_g()) {
+    node_count += CountNodesIncludingSubgraphs(attribute.g());
+  }
+  for (const auto& attribute_graph : attribute.graphs()) {
+    node_count += CountNodesIncludingSubgraphs(attribute_graph);
+  }
+
+  return node_count;
+}
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::GraphProto& graph) {
+  SafeInt<size_t> node_count = graph.node_size();
+  for (const auto& node : graph.node()) {
+    for (const auto& attribute : node.attribute()) {
+      node_count += CountNodesIncludingSubgraphs(attribute);
+    }
+  }
+
+  return node_count;
+}
+
+static size_t EstimateNodeProtoBytes(const Node& node) {
+  constexpr size_t kFieldOverhead = 11;
+  SafeInt<size_t> proto_bytes = 0;
+  const auto add_string = [&proto_bytes](const std::string& value) {
+    proto_bytes += value.size() + kFieldOverhead;
+  };
+
+  add_string(node.Name());
+  add_string(node.OpType());
+  add_string(node.Description());
+  add_string(node.Domain());
+  for (const auto* input : node.InputDefs()) {
+    if (input != nullptr) {
+      add_string(input->Name());
+    }
+  }
+  for (const auto* output : node.OutputDefs()) {
+    if (output != nullptr) {
+      add_string(output->Name());
+    }
+  }
+  for (const auto& [name, attribute] : node.GetAttributes()) {
+    proto_bytes += name.size() + kFieldOverhead;
+    proto_bytes += attribute.ByteSizeLong() + kFieldOverhead;
+  }
+
+  return proto_bytes;
+}
+
+using FunctionNameBindings = InlinedHashMap<std::string_view, size_t>;
+
+static size_t SpecializedNameFieldCost(std::string_view name,
+                                       const FunctionNameBindings& name_bindings,
+                                       size_t prefix_overhead) {
+  constexpr size_t kFieldOverhead = 11;
+  const auto binding = name_bindings.find(name);
+  return SafeInt<size_t>(binding == name_bindings.end() ? name.size() + prefix_overhead
+                                                        : binding->second) +
+         kFieldOverhead;
+}
+
+static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
+                                        const FunctionNameBindings& name_bindings,
+                                        size_t prefix_overhead,
+                                        SafeInt<size_t>& proto_bytes);
+
+static void AddSpecializedAttributeNameCost(const ONNX_NAMESPACE::AttributeProto& attribute,
+                                            const FunctionNameBindings& name_bindings,
+                                            size_t prefix_overhead,
+                                            SafeInt<size_t>& proto_bytes) {
+  if (attribute.has_g()) {
+    AddSpecializedGraphNameCost(attribute.g(), name_bindings, prefix_overhead, proto_bytes);
+  }
+  for (const auto& graph : attribute.graphs()) {
+    AddSpecializedGraphNameCost(graph, name_bindings, prefix_overhead, proto_bytes);
+  }
+}
+
+static void AddSpecializedNodeNameCost(const ONNX_NAMESPACE::NodeProto& node,
+                                       const FunctionNameBindings& name_bindings,
+                                       size_t prefix_overhead,
+                                       SafeInt<size_t>& proto_bytes) {
+  if (!node.name().empty()) {
+    proto_bytes += SafeInt<size_t>(node.name().size()) + prefix_overhead + 11;
+  }
+  for (const auto& input : node.input()) {
+    proto_bytes += SpecializedNameFieldCost(input, name_bindings, prefix_overhead);
+  }
+  for (const auto& output : node.output()) {
+    proto_bytes += SpecializedNameFieldCost(output, name_bindings, prefix_overhead);
+  }
+  for (const auto& attribute : node.attribute()) {
+    AddSpecializedAttributeNameCost(attribute, name_bindings, prefix_overhead, proto_bytes);
+  }
+}
+
+static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
+                                        const FunctionNameBindings& name_bindings,
+                                        size_t prefix_overhead,
+                                        SafeInt<size_t>& proto_bytes) {
+  FunctionNameBindings scoped_name_bindings = name_bindings;
+  const auto add_local_binding = [&scoped_name_bindings, prefix_overhead](const std::string& name) {
+    scoped_name_bindings.insert_or_assign(name, SafeInt<size_t>(name.size()) + prefix_overhead);
+  };
+  for (const auto& input : graph.input()) {
+    add_local_binding(input.name());
+    proto_bytes += SpecializedNameFieldCost(input.name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& output : graph.output()) {
+    add_local_binding(output.name());
+    proto_bytes += SpecializedNameFieldCost(output.name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& initializer : graph.initializer()) {
+    add_local_binding(initializer.name());
+    proto_bytes += SpecializedNameFieldCost(initializer.name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& initializer : graph.sparse_initializer()) {
+    add_local_binding(initializer.values().name());
+    proto_bytes += SpecializedNameFieldCost(initializer.values().name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& node : graph.node()) {
+    AddSpecializedNodeNameCost(node, scoped_name_bindings, prefix_overhead, proto_bytes);
+  }
+}
+
+static Status AddBoundAttributeCost(
+    const ONNX_NAMESPACE::AttributeProto& attribute,
+    const InlinedHashMap<std::string_view, const ONNX_NAMESPACE::AttributeProto*>& attribute_bindings,
+    const FunctionNameBindings& name_bindings,
+    size_t prefix_overhead,
+    InlinedHashSet<std::string_view>& resolving_attribute_bindings,
+    size_t remaining_node_budget,
+    size_t remaining_byte_budget,
+    SafeInt<size_t>& node_count,
+    SafeInt<size_t>& proto_bytes) {
+  if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+    return Status::OK();
+  }
+  const ONNX_NAMESPACE::AttributeProto* effective_attribute = &attribute;
+  bool bound_attribute = false;
+  if (!attribute.ref_attr_name().empty()) {
+    const auto binding = attribute_bindings.find(attribute.ref_attr_name());
+    if (binding != attribute_bindings.end()) {
+      ORT_RETURN_IF_NOT(resolving_attribute_bindings.insert(binding->first).second,
+                        "Recursive function attribute binding '", binding->first, "' is not supported.");
+      node_count += CountNodesIncludingSubgraphs(*binding->second);
+      proto_bytes += binding->second->ByteSizeLong();
+      effective_attribute = binding->second;
+      bound_attribute = true;
+    }
+  }
+
+  if (bound_attribute) {
+    AddSpecializedAttributeNameCost(*effective_attribute, name_bindings, prefix_overhead, proto_bytes);
+  }
+
+  const auto process_graph = [&](const ONNX_NAMESPACE::GraphProto& graph) -> Status {
+    for (const auto& node : graph.node()) {
+      for (const auto& nested_attribute : node.attribute()) {
+        ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
+            nested_attribute, attribute_bindings, name_bindings, prefix_overhead,
+            resolving_attribute_bindings, remaining_node_budget, remaining_byte_budget,
+            node_count, proto_bytes));
+        if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+          return Status::OK();
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  if (effective_attribute->has_g()) {
+    ORT_RETURN_IF_ERROR(process_graph(effective_attribute->g()));
+  }
+  for (const auto& graph : effective_attribute->graphs()) {
+    ORT_RETURN_IF_ERROR(process_graph(graph));
+  }
+
+  if (bound_attribute) {
+    resolving_attribute_bindings.erase(attribute.ref_attr_name());
+  }
+  return Status::OK();
+}
+
+static Status GetFunctionExpansionCost(const Node& node,
+                                       size_t remaining_node_budget,
+                                       size_t remaining_byte_budget,
+                                       FunctionExpansionCost& cost) {
+  if (const auto* function_body = node.GetFunctionBody()) {
+    const auto& body = function_body->Body();
+    SafeInt<size_t> proto_bytes = 0;
+    SafeInt<size_t> node_count = 0;
+    constexpr size_t kRenamedFieldOverhead = 64;
+    for (const auto& function_node : body.Nodes()) {
+      ++node_count;
+      proto_bytes += EstimateNodeProtoBytes(function_node);
+      if (!function_node.Name().empty()) {
+        proto_bytes += kRenamedFieldOverhead;
+      }
+      for (const auto& [name, attribute] : function_node.GetAttributes()) {
+        ORT_UNUSED_PARAMETER(name);
+        node_count += CountNodesIncludingSubgraphs(attribute);
+      }
+    }
+    for (const auto& [name, initializer] : body.GetAllInitializedTensors()) {
+      proto_bytes += initializer->ByteSizeLong();
+      proto_bytes += name.size() + kRenamedFieldOverhead;
+    }
+    cost = {node_count, proto_bytes};
+    return Status::OK();
+  }
+
+  ONNX_NAMESPACE::FunctionProto function_proto;
+  ORT_RETURN_IF_NOT(node.TryGetFunctionProto(function_proto),
+                    "Unable to get function body for node '", node.Name(), "'.");
+
+  InlinedHashMap<std::string_view, const ONNX_NAMESPACE::AttributeProto*> attribute_bindings;
+  attribute_bindings.reserve(node.GetAttributes().size() + function_proto.attribute_proto_size());
+  for (const auto& [name, attribute] : node.GetAttributes()) {
+    attribute_bindings.emplace(name, &attribute);
+  }
+  for (const auto& attribute : function_proto.attribute_proto()) {
+    attribute_bindings.emplace(attribute.name(), &attribute);
+  }
+
+  FunctionNameBindings name_bindings;
+  const auto add_name_bindings = [&name_bindings](const auto& formal_names, const auto& actual_defs) {
+    const size_t binding_count = std::min(static_cast<size_t>(formal_names.size()), actual_defs.size());
+    for (size_t i = 0; i < binding_count; ++i) {
+      if (actual_defs[i] != nullptr) {
+        name_bindings.emplace(formal_names.Get(static_cast<int>(i)), actual_defs[i]->Name().size());
+      }
+    }
+  };
+  add_name_bindings(function_proto.input(), node.InputDefs());
+  add_name_bindings(function_proto.output(), node.OutputDefs());
+
+  const size_t prefix_overhead = SafeInt<size_t>(node.OpType().size()) + 42;
+  SafeInt<size_t> node_count = function_proto.node_size();
+  SafeInt<size_t> proto_bytes = 0;
+  InlinedHashSet<std::string_view> resolving_attribute_bindings;
+  for (const auto& function_node : function_proto.node()) {
+    proto_bytes += function_node.ByteSizeLong();
+    AddSpecializedNodeNameCost(function_node, name_bindings, prefix_overhead, proto_bytes);
+    for (const auto& attribute : function_node.attribute()) {
+      node_count += CountNodesIncludingSubgraphs(attribute);
+      ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
+          attribute, attribute_bindings, name_bindings, prefix_overhead,
+          resolving_attribute_bindings, remaining_node_budget, remaining_byte_budget,
+          node_count, proto_bytes));
+      if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+        break;
+      }
+    }
+  }
+  cost = {node_count, proto_bytes};
+  return Status::OK();
+}
+
+static FunctionExpansionLimit TryChargeFunctionExpansion(const FunctionExpansionCost& cost,
+                                                         size_t node_limit,
+                                                         size_t& expanded_node_count,
+                                                         size_t byte_limit,
+                                                         size_t& expanded_proto_bytes) {
+  if (cost.node_count > node_limit - expanded_node_count) {
+    return FunctionExpansionLimit::kNodes;
+  }
+  if (cost.proto_bytes > byte_limit - expanded_proto_bytes) {
+    return FunctionExpansionLimit::kProtoBytes;
+  }
+
+  expanded_node_count += cost.node_count;
+  expanded_proto_bytes += cost.proto_bytes;
+  return FunctionExpansionLimit::kNone;
+}
+
+static Status InitializeFunctionExpansionLimits(const ConfigOptions& config_options,
+                                                bool& initialized,
+                                                size_t& node_limit,
+                                                size_t& byte_limit) {
+  if (initialized) {
+    return Status::OK();
+  }
+
+  const auto parse_limit = [&config_options](const char* config_key,
+                                             size_t default_value,
+                                             size_t& value) -> Status {
+    const auto config_value = config_options.GetConfigOrDefault(config_key, std::to_string(default_value));
+    if (!TryParseStringWithClassicLocale<size_t>(config_value, value) || value == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid positive integer value '", config_value,
+                             "' for session configuration '", config_key, "'.");
+    }
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(parse_limit(kOrtSessionOptionsFunctionExpansionNodeLimit,
+                                  kDefaultFunctionExpansionNodeLimit, node_limit));
+  ORT_RETURN_IF_ERROR(parse_limit(kOrtSessionOptionsFunctionExpansionByteLimit,
+                                  kDefaultFunctionExpansionByteLimit, byte_limit));
+  initialized = true;
+  return Status::OK();
+}
+
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
@@ -1284,7 +1646,11 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                      const logging::Logger& logger,
                                      const CheckLoadCancellationFn& check_load_cancellation_fn,
                                      InlinedHashSet<std::string>& not_inlined,
-                                     size_t& inlined_count) {
+                                     size_t& inlined_count,
+                                     size_t expansion_node_limit,
+                                     size_t& expanded_node_count,
+                                     size_t expansion_byte_limit,
+                                     size_t& expanded_proto_bytes) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -1302,7 +1668,11 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                                  logger,
                                                  check_load_cancellation_fn,
                                                  not_inlined,
-                                                 inlined_count));
+                                                 inlined_count,
+                                                 expansion_node_limit,
+                                                 expanded_node_count,
+                                                 expansion_byte_limit,
+                                                 expanded_proto_bytes));
     }
   }
 
@@ -1355,6 +1725,25 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     auto* node = graph.GetNode(node_index);
     if (node != nullptr) {
       if (claimed_by_ep.count(node_index) == 0) {
+        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
+        FunctionExpansionCost expansion_cost{};
+        ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(
+            *node, expansion_node_limit - expanded_node_count,
+            expansion_byte_limit - expanded_proto_bytes, expansion_cost));
+        const auto limit_exceeded = TryChargeFunctionExpansion(expansion_cost,
+                                                               expansion_node_limit,
+                                                               expanded_node_count,
+                                                               expansion_byte_limit,
+                                                               expanded_proto_bytes);
+        if (limit_exceeded != FunctionExpansionLimit::kNone) {
+          LOGS(logger, WARNING) << "AOT function inlining reached the cumulative "
+                                << (limit_exceeded == FunctionExpansionLimit::kNodes ? "node" : "protobuf")
+                                << " expansion limit. "
+                                << "Retaining function call '" << function_id
+                                << "' for execution-provider partitioning.";
+          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(function_id));
+          continue;
+        }
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
         ++inlined_count;
       } else {
@@ -1526,7 +1915,11 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger, bool disable_model_compile) {  // Added arg
+                                       const logging::Logger& logger, bool disable_model_compile,
+                                       size_t expansion_node_limit,
+                                       size_t& expanded_node_count,
+                                       size_t expansion_byte_limit,
+                                       size_t& expanded_proto_bytes) {  // Added arg
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -1573,7 +1966,9 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
     modified_graph = false;
-    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph, partition_params.layering_index));
+    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph, partition_params.layering_index, logger,
+                                    expansion_node_limit, expanded_node_count,
+                                    expansion_byte_limit, expanded_proto_bytes));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {
@@ -1733,6 +2128,7 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager,
+                                            const ConfigOptions& config_options,
                                             const logging::Logger& logger) const {
   const auto local_functions_num = model.GetModelLocalFunctionTemplates().size();
   const bool is_there_local_functions = local_functions_num > 0;
@@ -1743,6 +2139,11 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
   }
 
   auto check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+  ORT_RETURN_IF_ERROR(InitializeFunctionExpansionLimits(
+      config_options,
+      function_expansion_limits_initialized_,
+      function_expansion_node_limit_,
+      function_expansion_byte_limit_));
 
   auto& graph = model.MainGraph();
   InlinedHashSet<std::string> not_inlined;
@@ -1755,7 +2156,11 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                                logger,
                                                check_load_cancellation_fn,
                                                not_inlined,
-                                               inlined_count));
+                                               inlined_count,
+                                               function_expansion_node_limit_,
+                                               expanded_function_node_count_,
+                                               function_expansion_byte_limit_,
+                                               expanded_function_proto_bytes_));
 
     if (inlined_count == 0) {
       break;
@@ -1851,11 +2256,20 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     // The map is empty if not created if not enabled
     std::optional<ResourceAccountantMap> ep_acc_map;
     ORT_RETURN_IF_ERROR(CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
+    ORT_RETURN_IF_ERROR(InitializeFunctionExpansionLimits(
+        config_options,
+        function_expansion_limits_initialized_,
+        function_expansion_node_limit_,
+        function_expansion_byte_limit_));
 
     bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
-                                                 disable_model_compile));  // Pass param
+                                                 disable_model_compile,
+                                                 function_expansion_node_limit_,
+                                                 expanded_function_node_count_,
+                                                 function_expansion_byte_limit_,
+                                                 expanded_function_proto_bytes_));  // Pass param
 
     if (ep_acc_map.has_value()) {
       for (const auto& [ep_type, accountant] : *ep_acc_map) {
