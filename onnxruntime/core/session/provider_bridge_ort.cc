@@ -1942,6 +1942,7 @@ struct ProviderSharedLibrary {
     void (*PProvider_SetHost)(void*);
     auto status = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
     if (!status.IsOK()) {
+      LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       Unload();
       return status;
     }
