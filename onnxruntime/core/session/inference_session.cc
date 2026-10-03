@@ -154,14 +154,14 @@ PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_op
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 // Parse a spin backoff max config value (exponential-backoff cap). Defaults to
-// 1 (no backoff, one SpinPause() per iteration). Values >= 2 enable backoff.
+// 2 (one level of exponential backoff). Values >= 2 enable backoff; 1 = no backoff.
 unsigned int ParseSpinBackoffMax(std::string_view str, const char* config_key,
                                  const logging::Logger& logger) {
-  unsigned int backoff = 1U;
+  unsigned int backoff = 2U;
   if (!TryParseStringWithClassicLocale(str, backoff)) {
     LOGS(logger, WARNING) << "Invalid value for " << config_key
-                          << ": \"" << str << "\", using default (no backoff)";
-    return 1U;
+                          << ": \"" << str << "\", using default (2)";
+    return 2U;
   }
   if (backoff == 0U) {
     LOGS(logger, WARNING) << config_key << " is set to 0; treating as 1 (no backoff). "
@@ -580,11 +580,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
               session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinDurationUs, "-1"),
               kOrtSessionOptionsConfigIntraOpSpinDurationUs, *session_logger_);
           to.spin_backoff_max = ParseSpinBackoffMax(
-              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, "1"),
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, "2"),
               kOrtSessionOptionsConfigIntraOpSpinBackoffMax, *session_logger_);
         } else {
           to.spin_duration_us = concurrency::kSpinDurationDefault;
-          to.spin_backoff_max = 1U;
+          to.spin_backoff_max = 2U;
         }
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
@@ -638,11 +638,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
               session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinDurationUs, "-1"),
               kOrtSessionOptionsConfigInterOpSpinDurationUs, *session_logger_);
           to.spin_backoff_max = ParseSpinBackoffMax(
-              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinBackoffMax, "1"),
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinBackoffMax, "2"),
               kOrtSessionOptionsConfigInterOpSpinBackoffMax, *session_logger_);
         } else {
           to.spin_duration_us = concurrency::kSpinDurationDefault;
-          to.spin_backoff_max = 1U;
+          to.spin_backoff_max = 2U;
         }
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
 
