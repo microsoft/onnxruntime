@@ -310,9 +310,8 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::storePersistentCache(
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
     GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
-  // Teardown path: stage only (no disk write). Every MatMulNBits kernel destructor calls this, so
-  // flushing here would rewrite the whole cache file once per node. The staged tactics are written
-  // to disk once at CUDA EP teardown (FlushMatMulNBitsTacticCaches in matmul_nbits.cc).
+  // Lazy-profiling path: stage only (no disk write). The staged tactics are written to disk once at
+  // CUDA EP teardown (FlushMatMulNBitsTacticCaches in matmul_nbits.cc).
   stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
 }
 }  // namespace onnxruntime::llm::kernels::weight_only

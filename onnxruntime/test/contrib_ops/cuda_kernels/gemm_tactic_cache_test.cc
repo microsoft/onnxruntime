@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
+#include "contrib_ops/cuda/llm/gemm_profiler.h"
 
 namespace onnxruntime {
 namespace test {
@@ -349,6 +350,21 @@ TEST(GemmTacticCacheTest, FlushMergesConcurrentRows) {
   EXPECT_TRUE(reloaded.Get(key, 64).has_value());
 
   CleanUp(file);
+}
+
+// The process-global profile map must not share tactics across variants that the persistent key separates.
+TEST(GemmTacticCacheTest, GemmIdCoreSeparatesQuantVariants) {
+  using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+  using onnxruntime::llm::kernels::weight_only::GemmIdCoreHash;
+  const auto dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+  const GemmIdCore base(1024, 4096, dtype, 80, 4, 64, false, true);
+
+  EXPECT_EQ(base, GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true));
+  EXPECT_EQ(GemmIdCoreHash{}(base), GemmIdCoreHash{}(GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true)));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 8, 64, false, true));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 128, false, true));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, true, true));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, false));
 }
 
 }  // namespace test
