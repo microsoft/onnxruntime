@@ -992,7 +992,7 @@ def write_calibration_table(calibration_cache, dir="."):
 
     json_data = json.dumps(calibration_cache, cls=CalibrationCacheEncoder)
 
-    with open(os.path.join(dir, "calibration.json"), "w") as file:
+    with open(os.path.join(dir, "calibration.json"), "w", encoding="utf-8") as file:
         file.write(json_data)  # use `json.loads` to do the reverse
 
     # Serialize data using FlatBuffers
@@ -1043,7 +1043,7 @@ def write_calibration_table(calibration_cache, dir="."):
             logging.info(key_value.Value())
 
     # write plain text
-    with open(os.path.join(dir, "calibration.cache"), "w") as file:
+    with open(os.path.join(dir, "calibration.cache"), "w", encoding="utf-8") as file:
         for key in sorted(calibration_cache.keys()):
             values = calibration_cache[key]
             d_values = values.to_dict()
