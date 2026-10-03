@@ -44,6 +44,11 @@ constexpr int kWeightTileBytes = kTileK * kTileN * 2;
 constexpr int kActivationTileBytes = kTileM * kTileK * 2;
 constexpr int kDynamicSmemBytes = kStages * kStageUnroll * (kWeightTileBytes + kActivationTileBytes);
 
+struct TensorMaps {
+  CUtensorMap weight;
+  CUtensorMap activation;
+};
+
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
 
 __device__ __forceinline__ uint32_t SmemAddr(const void* ptr) {
@@ -139,9 +144,10 @@ __device__ __forceinline__ __half FromFloat<__half>(float v) { return __float2ha
 // shared-memory address, which the ldmatrix addressing below reproduces.
 template <typename T>
 __global__ void __launch_bounds__(kThreads, 1)
-    TinyGemm2Kernel(T* __restrict__ output, int m, int n, int k, const __grid_constant__ CUtensorMap weight_map,
-                    const __grid_constant__ CUtensorMap activation_map) {
+    TinyGemm2Kernel(T* __restrict__ output, int m, int n, int k, const __grid_constant__ TensorMaps maps) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  const CUtensorMap& weight_map = maps.weight;
+  const CUtensorMap& activation_map = maps.activation;
   extern __shared__ __align__(128) char smem[];
   char* sh_weights = smem;
   char* sh_activations = smem + kStages * kStageUnroll * kWeightTileBytes;
