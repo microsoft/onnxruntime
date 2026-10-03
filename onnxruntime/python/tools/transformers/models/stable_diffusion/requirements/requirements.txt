@@ -1,21 +1,22 @@
-huggingface_hub==0.25.2
-diffusers==0.28.0
-transformers==4.50.0
+huggingface_hub==0.36.0
+diffusers==0.38.0
+# optimum-onnx==0.1.0 requires transformers>=4.36,<4.58, so this cannot be upgraded to Transformers 5 yet.
+transformers==4.57.6
 numpy>=1.24.1
 accelerate
-onnx==1.18.0
+onnx==1.22.0
 packaging
-# Use newer version of protobuf might cause crash
-protobuf==4.25.8
+protobuf==6.33.6
 psutil
 sympy
-nvtx==0.2.5
-torchvision==0.15.2
-tensorrt==8.5.1.7
+nvtx==0.2.16
+torchvision==0.22.0
+tensorrt==10.13.3.9.post1
 mediapipe
 controlnet_aux==0.0.9
 # The following are for SDXL
-optimum==1.20.0
+optimum==2.1.0
+optimum-onnx==0.1.0
 safetensors
 invisible_watermark
 opencv-python-headless
