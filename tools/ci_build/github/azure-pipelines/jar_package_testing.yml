@@ -1,3 +1,12 @@
+parameters:
+- name: CudaVersion
+  displayName: CUDA version used to build the packages
+  type: string
+  default: '13.0'
+  values:
+  - '12.8'
+  - '13.0'
+
 resources:
   pipelines:
   - pipeline: build
@@ -63,3 +72,5 @@ extends:
         PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
 
     - template: templates/final-jar-testing-gpu.yml
+      parameters:
+        CudaVersion: ${{ parameters.CudaVersion }}

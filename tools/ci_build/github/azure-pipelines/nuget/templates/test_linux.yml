@@ -66,6 +66,8 @@ stages:
             "
           ${{ else }}:
             DockerBuildArgs: "
+            --build-arg BASEIMAGE=nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04
+            --build-arg TRT_VERSION=${{ replace(variables.linux_trt_version_cuda13, '-1.', '-1+') }}
             --build-arg BUILD_UID=$( id -u )
             "
           Repository: onnxruntimepackagestest
