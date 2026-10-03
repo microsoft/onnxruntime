@@ -46,16 +46,15 @@ PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR / "Microsoft.ML.OnnxRuntime.EP.WebGpu"
 CSPROJ = PROJECT_DIR / "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
-MIN_ORT_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
 REPO_ROOT = SCRIPT_DIR.parents[1]
 
 # License-related files to bundle into the .nupkg. Sourced from the repo root and copied into
 # the staging directory so the staged csproj can reference them by simple relative paths.
 LICENSE_FILES: tuple[Path, ...] = (REPO_ROOT / "LICENSE", REPO_ROOT / "ThirdPartyNotices.txt")
 
-# Import the shared template helper from _packaging_utils.py in the parent directory.
+# Import the shared packaging helpers from the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import gen_file_from_template  # noqa: E402  (path setup must precede import)
+from _packaging_utils import gen_file_from_template, get_ort_version_substitutions  # noqa: E402
 
 
 class PackError(RuntimeError):
@@ -291,8 +290,8 @@ def do_pack(
         print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
 
 
-def render_readme(staging_dir: Path, min_ort_version: str) -> None:
-    """Substitute the minimum ORT version into the staged README in place."""
+def render_readme(staging_dir: Path) -> None:
+    """Substitute the supported ORT versions into the staged README in place."""
     readme = staging_dir / "README.md"
     if not readme.is_file():
         raise PackError(f"staged README not found: {readme}")
@@ -300,13 +299,13 @@ def render_readme(staging_dir: Path, min_ort_version: str) -> None:
         gen_file_from_template(
             readme,
             readme,
-            {"min_onnxruntime_version": min_ort_version},
+            get_ort_version_substitutions(SCRIPT_DIR.parent),
         )
-    except ValueError as e:
+    except (OSError, ValueError) as e:
         raise PackError(str(e)) from e
 
 
-def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_file: Path) -> None:
+def run_in_staging(args: argparse.Namespace, staging_dir: Path) -> None:
     staged_csproj = staging_dir / "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -320,10 +319,7 @@ def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_
         stage_sources(staging_dir)
         stage_license_files(staging_dir)
         stage_binaries(staging_dir, args, required_platforms)
-        min_ort_version = min_ort_version_file.read_text(encoding="utf-8").strip()
-        if not min_ort_version:
-            raise PackError(f"{min_ort_version_file} is empty")
-        render_readme(staging_dir, min_ort_version)
+        render_readme(staging_dir)
 
     if args.build_only:
         do_build(staged_csproj, staging_dir, args)
@@ -338,26 +334,22 @@ def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_
 def run(args: argparse.Namespace) -> None:
     if not CSPROJ.is_file():
         raise PackError(f"project file not found: {CSPROJ}")
-    if not MIN_ORT_VERSION_FILE.is_file():
-        raise PackError(f"MIN_ONNXRUNTIME_VERSION file not found: {MIN_ORT_VERSION_FILE}")
     if args.nuget_config and not args.nuget_config.is_file():
         raise PackError(f"NuGet.config not found: {args.nuget_config}")
 
     if (args.build_only or args.pack_only) and not args.staging_dir:
         raise PackError("--staging-dir is required when using --build-only or --pack-only.")
 
-    min_ort_version_file = MIN_ORT_VERSION_FILE.resolve()
-
     if args.staging_dir:
         staging_dir: Path = args.staging_dir
         staging_dir.mkdir(parents=True, exist_ok=True)
-        run_in_staging(args, staging_dir, min_ort_version_file)
+        run_in_staging(args, staging_dir)
         return
 
     # Full build+pack flow with no caller-managed staging dir: use a temp dir that
     # is cleaned up automatically (including on exception).
     with tempfile.TemporaryDirectory(prefix="webgpu_pack_") as tmp:
-        run_in_staging(args, Path(tmp), min_ort_version_file)
+        run_in_staging(args, Path(tmp))
 
 
 def main() -> int:
