@@ -36,6 +36,10 @@ Status GetInputNodeUnits(const GraphViewer& graph_viewer,
 
   // input must be of a valid type.
   for (auto input_edge_iter = node.InputEdgesBegin(); input_edge_iter != node.InputEdgesEnd(); ++input_edge_iter) {
+    if (input_edge_iter->IsControlEdge()) {
+      continue;
+    }
+
     auto& input_node = (*input_edge_iter).GetNode();
     if (graph_viewer.GetNode(input_node.Index()) == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input node not exists in graph.");
@@ -69,6 +73,10 @@ Status GetOutputNodeUnits(const GraphViewer& graph_viewer,
 
   // Child must be of a valid type.
   for (auto output_edge_iter = node.OutputEdgesBegin(); output_edge_iter != node.OutputEdgesEnd(); ++output_edge_iter) {
+    if (output_edge_iter->IsControlEdge()) {
+      continue;
+    }
+
     auto& output_node = (*output_edge_iter).GetNode();
     if (graph_viewer.GetNode(output_node.Index()) == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output node not exists in graph.");

@@ -1493,6 +1493,10 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
     // be also added to the subgraph's output list
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        if (it->IsControlEdge()) {
+          continue;
+        }
+
         const auto& node_idx = it->GetNode().Index();
         const onnxruntime::NodeArg* output;
         // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.

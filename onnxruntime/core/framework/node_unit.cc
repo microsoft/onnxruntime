@@ -105,6 +105,10 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
   auto end = is_input ? target_node.InputEdgesEnd() : target_node.OutputEdgesEnd();
 
   for (; cur != end; ++cur) {
+    if (cur->IsControlEdge()) {
+      continue;
+    }
+
     const Node& node = cur->GetNode();
 
     // If we can find the node index in the dq or q nodes this is a quantized input/output
@@ -150,6 +154,12 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
   }
 
   return io_defs;
+}
+
+size_t GetDataInputEdgeCount(const Node& node) {
+  return static_cast<size_t>(std::count_if(
+      node.InputEdgesBegin(), node.InputEdgesEnd(),
+      [](const Node::EdgeEnd& edge) { return !edge.IsControlEdge(); }));
 }
 
 }  // namespace
@@ -205,6 +215,10 @@ Status QDQ::NodeGroup::CanCreateNodeGroup(const GraphViewer& graph_viewer,
     std::vector<const Node*> output_consumers(target_node.OutputDefs().size(), nullptr);
 
     for (; cur_edge != end_edge; ++cur_edge) {
+      if (cur_edge->IsControlEdge()) {
+        continue;
+      }
+
       auto output_idx = cur_edge->GetSrcArgIndex();
       const Node& this_consumer = cur_edge->GetNode();
       const Node* existing_consumer = output_consumers[output_idx];
@@ -252,7 +266,7 @@ NodeUnit::NodeUnit(const Node& node)
     : target_node_(node),
       redundant_clip_node_(nullptr),
       type_(Type::SingleNode),
-      input_edge_count_(node.GetInputEdgesCount()) {
+      input_edge_count_(GetDataInputEdgeCount(node)) {
   InitForSingleNode();
 }
 
@@ -270,12 +284,13 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   ORT_THROW_IF_ERROR(
       QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, target_node_, redundant_clip_node_, dq_nodes_, q_nodes_));
 
-  input_edge_count_ = std::accumulate(dq_nodes_.cbegin(), dq_nodes_.cend(), size_t(0),
-                                      [](size_t acc, const Node* node) { return acc + node->GetInputEdgesCount(); });
+  input_edge_count_ = std::accumulate(
+      dq_nodes_.cbegin(), dq_nodes_.cend(), size_t(0),
+      [](size_t acc, const Node* node) { return acc + GetDataInputEdgeCount(*node); });
 
   // add edges for inputs that are not from DQ nodes. there is one edge to each DQ node.
   // other inputs could come from initializers or graph inputs (no edges) or other nodes (edge).
-  input_edge_count_ += target_node_.GetInputEdgesCount() - dq_nodes_.size();
+  input_edge_count_ += GetDataInputEdgeCount(target_node_) - dq_nodes_.size();
 
   // create output edges. each target node output either goes to Q node/s or non-Q node/s.
   // ValidateNodeGroupQDQNodes ensures this.
@@ -284,6 +299,10 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   auto cur_edge = output_producer.OutputEdgesBegin();
   auto end_edge = output_producer.OutputEdgesEnd();
   for (; cur_edge != end_edge; ++cur_edge) {
+    if (cur_edge->IsControlEdge()) {
+      continue;
+    }
+
     const Node& node = cur_edge->GetNode();
 
     // if node is in q_nodes we hide the Q node.
@@ -292,6 +311,10 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
       auto q_cur_edge = node.OutputEdgesBegin();
       auto q_end_edge = node.OutputEdgesEnd();
       for (; q_cur_edge != q_end_edge; ++q_cur_edge) {
+        if (q_cur_edge->IsControlEdge()) {
+          continue;
+        }
+
         output_edges_.insert(Node::EdgeEnd{q_cur_edge->GetNode(), src_idx, q_cur_edge->GetDstArgIndex()});
       }
     } else {

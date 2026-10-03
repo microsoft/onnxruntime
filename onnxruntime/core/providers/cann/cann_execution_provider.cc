@@ -1186,6 +1186,10 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
     // be also added to the subgraph's output list
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        if (it->IsControlEdge()) {
+          continue;
+        }
+
         const auto& node_idx = it->GetNode().Index();
         const onnxruntime::NodeArg* output;
         if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {

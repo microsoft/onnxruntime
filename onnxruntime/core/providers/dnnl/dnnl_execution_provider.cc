@@ -218,6 +218,10 @@ std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapabi
 
       // if output connects to a node not in this subgraph we need to produce it
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        if (it->IsControlEdge()) {
+          continue;
+        }
+
         if (node_set.count(it->GetNode().Index()) == 0) {
           const auto* output_def = output_defs[it->GetSrcArgIndex()];
           if (subgraph_outputs.count(output_def) == 0 && graph_outputs.count(output_def) == 0) {

@@ -111,6 +111,25 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   // nodes that will be processed when considering the next partition node group
   std::deque<const Node*> nodes_to_process_with_next_group{};
 
+  const auto get_external_control_input_count = [](const NodeUnit& node_unit) {
+    const auto unit_nodes = node_unit.GetAllNodesInGroup();
+    InlinedHashSet<NodeIndex> unit_node_indices;
+    unit_node_indices.reserve(unit_nodes.size());
+    for (const auto* unit_node : unit_nodes) {
+      unit_node_indices.insert(unit_node->Index());
+    }
+
+    size_t control_input_count = 0;
+    for (const auto* unit_node : unit_nodes) {
+      for (auto edge = unit_node->InputEdgesBegin(); edge != unit_node->InputEdgesEnd(); ++edge) {
+        if (edge->IsControlEdge() && !Contains(unit_node_indices, edge->GetNode().Index())) {
+          ++control_input_count;
+        }
+      }
+    }
+    return control_input_count;
+  };
+
   // initialize in-degrees and find root nodes
   for (const auto& node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto& node = *graph_viewer.GetNode(node_index);
@@ -124,6 +143,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       }
 
       node_input_edge_count = node_unit->InputEdgeCount();
+      node_input_edge_count += get_external_control_input_count(*node_unit);
     }
 
     in_degree.insert({node.Index(), node_input_edge_count});
@@ -240,6 +260,26 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
                       process_downstream_node(output);
                     });
+
+      if (is_qdq_node_unit) {
+        const auto unit_nodes = node_unit->GetAllNodesInGroup();
+        InlinedHashSet<NodeIndex> unit_node_indices;
+        unit_node_indices.reserve(unit_nodes.size());
+        for (const auto* unit_node : unit_nodes) {
+          unit_node_indices.insert(unit_node->Index());
+        }
+
+        for (const auto* unit_node : unit_nodes) {
+          for (auto edge = unit_node->OutputEdgesBegin(); edge != unit_node->OutputEdgesEnd(); ++edge) {
+            if (!edge->IsControlEdge() || Contains(unit_node_indices, edge->GetNode().Index())) {
+              continue;
+            }
+
+            const NodeUnit& downstream_node_unit = *node_unit_map->at(&edge->GetNode());
+            process_downstream_node(downstream_node_unit.GetNode());
+          }
+        }
+      }
     } else {
       std::for_each(node.OutputNodesBegin(), node.OutputNodesEnd(), process_downstream_node);
     }
@@ -346,6 +386,10 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     // if output connects to a node not in this subgraph we need to add it
     // unless it was already added as an overall graph output,
     for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+      if (it->IsControlEdge()) {
+        continue;
+      }
+
       if (!Contains(node_set, &it->GetNode())) {
         const auto* output_def = output_defs[it->GetSrcArgIndex()];
         if (!Contains(graph_outputs, output_def) && subgraph_outputs.insert(output_def).second) {
