@@ -50,6 +50,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #endif
 #ifdef USE_TENSORRT
@@ -76,6 +77,7 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
@@ -2510,6 +2512,1160 @@ static void CreateFuseOpModel(const PathString& model_file_name) {
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
 }
+
+TEST(InferenceSessionTests, PartitionedCudaGraphRequiresCaptureProvider) {
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "CUDA EP with enable_cuda_graph=1");
+}
+
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING) && !defined(DISABLE_ML_OPS)
+TEST(InferenceSessionTests, PartitionedCudaGraphRejectsMoeInstrumentation) {
+  for (const char* key : {kOrtSessionOptionsConfigEnableMoeExpertCounting,
+                          kOrtSessionOptionsConfigEnableMoeExpertStatistics}) {
+    for (const char* partitioned : {"0", "1"}) {
+      SCOPED_TRACE(MakeString(key, ", partitioned=", partitioned));
+      OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.enable_cuda_graph = 1;
+      auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+      if (!cuda) {
+        GTEST_SKIP() << "CUDA execution provider is unavailable.";
+      }
+      const bool is_plugin = cuda->GetOrtEp() != nullptr;
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+      ASSERT_TRUE(is_plugin);
+#endif
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, partitioned));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(key, "1"));
+      InferenceSession session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+      ASSERT_STATUS_OK(session.Load(MODEL_URI));
+      const auto status = session.Initialize();
+      ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+          status, is_plugin ? "not supported by the CUDA plugin execution provider"
+                            : "not supported when graph capture is enabled");
+    }
+  }
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphRejectsCpuSequenceIntermediates) {
+  Model model("partition_cpu_sequence", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}, {kMLDomain, 2}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& sequence = graph.GetOrCreateNodeArg("sequence", nullptr);
+  auto& a = graph.GetOrCreateNodeArg("A", &type);
+  auto& b = graph.GetOrCreateNodeArg("B", &type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &type);
+  TensorProto index;
+  index.set_name("index");
+  index.set_data_type(TensorProto_DataType_INT64);
+  index.add_int64_data(0);
+  graph.AddInitializedTensor(index);
+  auto& index_arg = graph.GetOrCreateNodeArg("index", nullptr);
+  graph.AddNode("cpu_construct", "SequenceConstruct", "", {&x}, {&sequence});
+  graph.AddNode("cpu_at", "SequenceAt", "", {&sequence, &index_arg}, {&a});
+  auto& encoder = graph.AddNode("gpu_encoder", "LabelEncoder", "", {&a}, {&b}, nullptr, kMLDomain);
+  encoder.AddAttribute("keys_floats", std::vector<float>{1.0f, 2.0f});
+  encoder.AddAttribute("values_floats", std::vector<float>{10.0f, 20.0f});
+  graph.AddNode("cpu_suffix", "Neg", "", {&b}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+
+  for (bool capture : {false, true}) {
+    SCOPED_TRACE(capture);
+    OrtCUDAProviderOptionsV2 cuda_options;
+    cuda_options.enable_cuda_graph = capture ? 1 : 0;
+    auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+    if (!cuda) {
+      GTEST_SKIP() << "CUDA execution provider is unavailable.";
+    }
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+    ASSERT_NE(cuda->GetOrtEp(), nullptr);
+#endif
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsEnablePartitionedCudaGraph, capture ? "1" : "0"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+    InferenceSession session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+    ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+    if (capture) {
+      const auto status = session.Initialize();
+      ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "Partitioned CUDA capture requires tensor node outputs");
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Node 'cpu_construct' output 'sequence'"));
+    } else {
+      ASSERT_STATUS_OK(session.Initialize());
+      OrtValue input;
+      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, {1.0f}, &input);
+      const std::array<std::string, 1> input_names{"X"}, output_names{"Y"};
+      const std::array<OrtValue, 1> feeds{input};
+      for (float value : {1.0f, 2.0f}) {
+        input.GetMutable<Tensor>()->MutableData<float>()[0] = value;
+        std::vector<OrtValue> fetches;
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, input_names, feeds, output_names, &fetches));
+        EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -10.0f * value);
+      }
+    }
+  }
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphSelectsWholeSessionForEligiblePlacement) {
+  for (bool cpu_shape_node : {false, true}) {
+    for (bool memory_pattern : {false, true}) {
+      SCOPED_TRACE(MakeString("cpu_shape_node=", cpu_shape_node, ", memory_pattern=", memory_pattern));
+      OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.enable_cuda_graph = 1;
+      auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+      if (!cuda) {
+        GTEST_SKIP() << "CUDA execution provider is unavailable.";
+      }
+      auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+      ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Default;
+      options.enable_mem_pattern = memory_pattern;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+
+      Model model("whole_session_capture", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  {{kOnnxDomain, 13}, {kMLDomain, 2}}, {}, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
+      TypeProto type;
+      type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+      type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("batch");
+      auto& x = graph.GetOrCreateNodeArg("X", &type);
+      auto& y = graph.GetOrCreateNodeArg("Y", &type);
+      auto& encoder = graph.AddNode("gpu_encoder", "LabelEncoder", "", {&x}, {&y}, nullptr, kMLDomain);
+      encoder.AddAttribute("keys_floats", std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f});
+      encoder.AddAttribute("values_floats", std::vector<float>{10.0f, 20.0f, 30.0f, 40.0f});
+      std::vector<NodeArg*> inputs{&x};
+      std::vector<NodeArg*> outputs{&y};
+      if (cpu_shape_node) {
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+            kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+        auto& shape_input = graph.GetOrCreateNodeArg("shape_input", &type);
+        auto& shape_output = graph.GetOrCreateNodeArg("shape_output", nullptr);
+        graph.AddNode("cpu_shape", "Shape", "", {&shape_input}, {&shape_output});
+        inputs.push_back(&shape_input);
+        outputs.push_back(&shape_output);
+      }
+      graph.SetInputs(inputs);
+      graph.SetOutputs(outputs);
+      ASSERT_STATUS_OK(graph.Resolve());
+      const auto bytes = model.ToProto().SerializeAsString();
+
+      InferenceSession session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+      ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      EXPECT_EQ(session.GetSessionOptions().enable_mem_pattern, memory_pattern);
+      EXPECT_EQ(session.GetSessionState().GetEnableMemoryPattern(), memory_pattern);
+      ASSERT_EQ(session.GetSessionState().GetGraphViewer().NumberOfNodes(), cpu_shape_node ? 2 : 1);
+      for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+        ASSERT_EQ(node.GetExecutionProviderType(),
+                  node.Name() == "cpu_shape" ? kCpuExecutionProvider : kCudaExecutionProvider);
+      }
+
+      const auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+      const auto gpu_allocator = session.GetSessionState().GetAllocator(
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+      ASSERT_NE(gpu_allocator, nullptr);
+      OrtValue input_cpu, output_cpu, input_gpu, output_gpu;
+      CreateMLValue<float>(cpu_allocator, {2}, {1.0f, 2.0f}, &input_cpu);
+      const std::array<int64_t, 1> dims{2};
+      AllocateMLValue<float>(cpu_allocator, dims, &output_cpu);
+      AllocateMLValue<float>(gpu_allocator, dims, &input_gpu);
+      AllocateMLValue<float>(gpu_allocator, dims, &output_gpu);
+      std::vector<std::string> input_names{"X"}, output_names{"Y"};
+      std::vector<OrtValue> feeds{input_gpu}, fetches{output_gpu};
+      if (cpu_shape_node) {
+        OrtValue shape_output;
+        CreateMLValue<int64_t>(cpu_allocator, {1}, {0}, &shape_output);
+        input_names.push_back("shape_input");
+        output_names.push_back("shape_output");
+        feeds.push_back(input_cpu);
+        fetches.push_back(shape_output);
+      }
+
+      RunOptions run_options;
+      ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "37"));
+      const auto& transfers = session.GetSessionState().GetDataTransferMgr();
+      for (int iteration = 0; iteration < 3; ++iteration) {
+        auto* input = input_cpu.GetMutable<Tensor>()->MutableData<float>();
+        input[0] = static_cast<float>(iteration + 1);
+        input[1] = static_cast<float>(iteration + 2);
+        ASSERT_STATUS_OK(transfers.CopyTensor(input_cpu.Get<Tensor>(), *input_gpu.GetMutable<Tensor>()));
+        ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+        // RunImpl completes the warm-up/capture retries within the first user-visible Run.
+        // Whole-session capture uses the user graph ID; the partition executor remaps IDs starting at zero.
+        ASSERT_TRUE(cuda_ep->IsGraphCaptured(37));
+        ASSERT_FALSE(cuda_ep->IsGraphCaptured(0));
+        ASSERT_STATUS_OK(transfers.CopyTensor(fetches[0].Get<Tensor>(), *output_cpu.GetMutable<Tensor>()));
+        EXPECT_FLOAT_EQ(output_cpu.Get<Tensor>().Data<float>()[0], 10.0f * input[0]);
+        EXPECT_FLOAT_EQ(output_cpu.Get<Tensor>().Data<float>()[1], 10.0f * input[1]);
+        if (cpu_shape_node) {
+          EXPECT_EQ(fetches[1].Get<Tensor>().Data<int64_t>()[0], 2);
+        }
+      }
+    }
+  }
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphSelectsWholeSessionForEmptyGraph) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsPartitionedCudaGraphMaxIds, "1"));
+  Model model("empty_capture", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TensorProto value;
+  value.set_name("Y");
+  value.set_data_type(TensorProto_DataType_FLOAT);
+  value.add_dims(1);
+  value.add_float_data(42.0f);
+  graph.AddInitializedTensor(value);
+  graph.SetOutputs({&graph.GetOrCreateNodeArg("Y", nullptr)});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_EQ(session.GetSessionState().GetGraphViewer().NumberOfNodes(), 0);
+  ASSERT_TRUE(session.GetSessionOptions().enable_mem_pattern);
+  RunOptions run_options;
+  const std::array<std::string, 0> input_names{};
+  const std::array<OrtValue, 0> feeds{};
+  const std::array<std::string, 1> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  for (int graph_id : {37, 38, 37}) {
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(
+        kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str()));
+    ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+    // Internal warm-up completes before Run returns; the partitioned ID limit does not apply here.
+    ASSERT_TRUE(cuda_ep->IsGraphCaptured(graph_id));
+    ASSERT_FALSE(cuda_ep->IsGraphCaptured(0));
+    EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], 42.0f);
+  }
+}
+
+static void RunPartitionedCudaGraphIndependentCpuBranchTest(bool run_profiling) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+  Model model("independent_cpu_branch", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}, {kMLDomain, 2}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  TypeProto index_type;
+  index_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  index_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& x_cpu = graph.GetOrCreateNodeArg("X_cpu", &type);
+  auto& index = graph.GetOrCreateNodeArg("index", &index_type);
+  auto& y_cpu = graph.GetOrCreateNodeArg("Y_cpu", nullptr);
+  auto& x_gpu = graph.GetOrCreateNodeArg("X_gpu", &type);
+  auto& y_gpu = graph.GetOrCreateNodeArg("Y_gpu", &type);
+  graph.AddNode("cpu_gather", "Gather", "", {&x_cpu, &index}, {&y_cpu});
+  auto& encoder = graph.AddNode("gpu_encoder", "LabelEncoder", "", {&x_gpu}, {&y_gpu}, nullptr, kMLDomain);
+  encoder.AddAttribute("keys_floats", std::vector<float>{1.0f, 2.0f});
+  encoder.AddAttribute("values_floats", std::vector<float>{10.0f, 20.0f});
+  graph.SetInputs({&x_cpu, &index, &x_gpu});
+  graph.SetOutputs({&y_cpu, &y_gpu});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_FALSE(session.GetSessionState().GetEnableMemoryPattern());
+  ASSERT_EQ(session.GetSessionState().GetGraphViewer().NumberOfNodes(), 2);
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    ASSERT_EQ(node.GetExecutionProviderType(),
+              node.Name() == "cpu_gather" ? kCpuExecutionProvider : kCudaExecutionProvider);
+  }
+
+  const auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  const auto gpu_allocator = session.GetSessionState().GetAllocator(
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  ASSERT_NE(gpu_allocator, nullptr);
+  OrtValue input_cpu, indices, input_gpu, output_cpu, output_gpu, gpu_result;
+  CreateMLValue<float>(cpu_allocator, {2}, {1.0f, 2.0f}, &input_cpu);
+  CreateMLValue<int64_t>(cpu_allocator, {1}, {0}, &indices);
+  const std::array<int64_t, 1> dims{2};
+  AllocateMLValue<float>(gpu_allocator, dims, &input_gpu);
+  AllocateMLValue<float>(gpu_allocator, dims, &output_gpu);
+  AllocateMLValue<float>(cpu_allocator, dims, &gpu_result);
+  CreateMLValue<float>(cpu_allocator, {1}, {0.0f}, &output_cpu);
+  const auto& transfers = session.GetSessionState().GetDataTransferMgr();
+  ASSERT_STATUS_OK(transfers.CopyTensor(input_cpu.Get<Tensor>(), *input_gpu.GetMutable<Tensor>()));
+  const std::array<std::string, 3> input_names{"X_cpu", "index", "X_gpu"};
+  const std::array<std::string, 2> output_names{"Y_cpu", "Y_gpu"};
+  const std::array<OrtValue, 3> feeds{input_cpu, indices, input_gpu};
+  std::vector<OrtValue> fetches{output_cpu, output_gpu};
+  RunOptions run_options;
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "37"));
+  size_t prior_cpu_events = 0, prior_gpu_events = 0;
+  for (int iteration = 0; iteration < 3; ++iteration) {
+    SCOPED_TRACE(MakeString("run_profiling=", run_profiling, ", iteration=", iteration));
+    auto* values = input_cpu.GetMutable<Tensor>()->MutableData<float>();
+    values[0] = static_cast<float>(iteration + 3);
+    values[1] = static_cast<float>(iteration + 7);
+    indices.GetMutable<Tensor>()->MutableData<int64_t>()[0] = iteration % 2;
+    const auto prefix = MakeString("partition_profile_",
+                                   std::chrono::steady_clock::now().time_since_epoch().count());
+    std::string profile_file;
+    auto cleanup = gsl::finally([&]() {
+      if (!profile_file.empty()) {
+        std::filesystem::remove(profile_file);
+      }
+    });
+    run_options.enable_profiling = run_profiling;
+    if (run_profiling) {
+      run_options.profile_file_prefix = std::filesystem::path(prefix).native();
+    } else {
+      session.StartProfiling(prefix);
+    }
+    ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+    ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+    ASSERT_FALSE(cuda_ep->IsGraphCaptured(37));
+    EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], values[iteration % 2]);
+    ASSERT_STATUS_OK(transfers.CopyTensor(fetches[1].Get<Tensor>(), *gpu_result.GetMutable<Tensor>()));
+    EXPECT_FLOAT_EQ(gpu_result.Get<Tensor>().Data<float>()[0], 10.0f);
+    EXPECT_FLOAT_EQ(gpu_result.Get<Tensor>().Data<float>()[1], 20.0f);
+    if (run_profiling) {
+      for (const auto& entry : std::filesystem::directory_iterator(".")) {
+        if (entry.path().filename().string().find(prefix) == 0 && entry.path().extension() == ".json") {
+          ASSERT_TRUE(profile_file.empty());
+          profile_file = entry.path().string();
+        }
+      }
+    } else {
+      profile_file = session.EndProfiling();
+    }
+    ASSERT_FALSE(profile_file.empty());
+    std::ifstream profile(profile_file);
+    ASSERT_TRUE(profile.good());
+    nlohmann::json events;
+    profile >> events;
+    size_t cpu_events = 0, gpu_events = 0;
+    for (const auto& event : events) {
+      if (event.value("name", "") == "cpu_gather_kernel_time") {
+        ++cpu_events;
+        EXPECT_EQ(event["args"]["provider"], kCpuExecutionProvider);
+        EXPECT_TRUE(event["args"].contains("mem_bytes_in_use"));
+      } else if (event.value("name", "") == "gpu_encoder_kernel_time") {
+        ++gpu_events;
+        EXPECT_EQ(event["args"]["provider"], kCudaExecutionProvider);
+      }
+    }
+    if (iteration == 0) {
+      EXPECT_GE(cpu_events, 3u);
+      EXPECT_EQ(gpu_events, cpu_events);
+    } else {
+      EXPECT_EQ(cpu_events, prior_cpu_events + 1);
+      EXPECT_EQ(gpu_events, prior_gpu_events);  // Replay does not invoke the captured kernels.
+    }
+    if (!run_profiling) {
+      // Restarting the session profiler preserves its previously recorded events.
+      prior_cpu_events = cpu_events;
+      prior_gpu_events = gpu_events;
+    }
+  }
+
+  run_options.enable_profiling = false;
+  indices.GetMutable<Tensor>()->MutableData<int64_t>()[0] = 2;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches),
+      "while running Gather node. Name:'cpu_gather'");
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphProfilesIndependentCpuBranch) {
+  RunPartitionedCudaGraphIndependentCpuBranchTest(false);
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphRunProfilesIndependentCpuBranch) {
+  RunPartitionedCudaGraphIndependentCpuBranchTest(true);
+}
+
+static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1, bool test_termination = false) {
+  auto create_provider = [&]() {
+    if (plugin_warmup_count >= 0) {
+      ConfigOptions config;
+      ORT_THROW_IF_ERROR(config.AddConfigEntry("enable_cuda_graph", "1"));
+      ORT_THROW_IF_ERROR(config.AddConfigEntry(
+          "min_num_runs_before_cuda_graph_capture", std::to_string(plugin_warmup_count).c_str()));
+      return dynamic_plugin_ep_infra::MakeEp(nullptr, &config);
+    }
+    OrtCUDAProviderOptionsV2 cuda_options;
+    cuda_options.enable_cuda_graph = 1;
+    return CudaExecutionProviderWithOptions(&cuda_options);
+  };
+  auto cuda = create_provider();
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+  RunOptions run_options;
+  RunOptions* terminate_on_replay = nullptr;
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  if (test_termination) {
+    options.session_log_severity_level = static_cast<int>(Severity::kINFO);
+    options.user_logging_param = &terminate_on_replay;
+    options.user_logging_function = [](void* param, OrtLoggingLevel, const char*, const char*, const char*,
+                                       const char* message) {
+      auto* active_run = *static_cast<RunOptions**>(param);
+      if (active_run && std::string_view(message).find("Replaying CUDA partition") != std::string_view::npos) {
+        // Inject termination deterministically between the first replay and the following CPU partition.
+        active_run->terminate = true;
+      }
+    };
+  }
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+
+  // Two user IDs are allowed, even though each captures two internal CUDA graphs.
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsPartitionedCudaGraphMaxIds, "2"));
+  Model model("partitioned_capture", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}, {kMLDomain, 2}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("batch");
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& a = graph.GetOrCreateNodeArg("a", &type);
+  auto& b = graph.GetOrCreateNodeArg("b", &type);
+  auto& c = graph.GetOrCreateNodeArg("c", &type);
+  auto& d = graph.GetOrCreateNodeArg("d", &type);
+  auto& e = graph.GetOrCreateNodeArg("e", &type);
+  auto& f = graph.GetOrCreateNodeArg("f", &type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &type);
+  auto add_initializer = [&](const char* name, std::initializer_list<int64_t> dims,
+                             std::initializer_list<float> values) -> NodeArg& {
+    TensorProto tensor;
+    tensor.set_name(name);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    for (auto dim : dims) tensor.add_dims(dim);
+    for (auto value : values) tensor.add_float_data(value);
+    graph.AddInitializedTensor(tensor);
+    return graph.GetOrCreateNodeArg(name, nullptr);
+  };
+  auto& one = add_initializer("one", {1}, {1.0f});
+  auto add_cuda_scale = [&](const char* name, NodeArg& input, NodeArg& output, float scale) {
+    auto& node = graph.AddNode(name, "LabelEncoder", "", {&input}, {&output}, nullptr, kMLDomain);
+    std::vector<float> keys;
+    std::vector<float> values;
+    for (int i = -64; i <= 64; ++i) {
+      keys.push_back(static_cast<float>(i));
+      values.push_back(static_cast<float>(i) * scale);
+    }
+    node.AddAttribute("keys_floats", keys);
+    node.AddAttribute("values_floats", values);
+  };
+  graph.AddNode("cpu_prefix", "Add", "", {&x, &one}, {&a});
+  // LabelEncoder is available even in the minimal CUDA build used for this regression.
+  add_cuda_scale("gpu_scale1", a, b, 2.0f);
+  add_cuda_scale("gpu_identity", b, c, 1.0f);
+  graph.AddNode("cpu_middle", "Neg", "", {&c}, {&d});
+  add_cuda_scale("gpu_negate", d, e, -1.0f);
+  add_cuda_scale("gpu_scale2", e, f, 2.0f);
+  graph.AddNode("cpu_suffix", "Add", "", {&f, &one}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string bytes = model.ToProto().SerializeAsString();
+
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_FALSE(session.GetSessionOptions().enable_mem_pattern);
+  ASSERT_FALSE(session.GetSessionState().GetEnableMemoryPattern());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name().find("cpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+    }
+    if (node.Name().find("gpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    }
+  }
+
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       std::vector<int64_t>{3, 2}, std::vector<float>(6, 1.0f), &input);
+  const std::array<std::string, 1> input_names{"X"};
+  const std::array<std::string, 1> output_names{"Y"};
+  std::array<OrtValue, 1> feeds{input};
+  std::vector<OrtValue> fetches;
+  if (plugin_warmup_count >= 8) {
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "8 capture attempts");
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+    return;
+  }
+  for (int iteration = 0; iteration < 4; ++iteration) {
+    auto* values = input.GetMutable<Tensor>()->MutableData<float>();
+    for (size_t i = 0; i < 6; ++i) {
+      values[i] = static_cast<float>(iteration) + static_cast<float>(i);
+    }
+    ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+    ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+    ASSERT_TRUE(cuda_ep->IsGraphCaptured(1));
+    for (size_t i = 0; i < 6; ++i) {
+      EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[i], 4.0f * values[i] + 5.0f);
+    }
+  }
+
+  OrtValue other_input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       std::vector<int64_t>{1, 2}, std::vector<float>{10.0f, 11.0f}, &other_input);
+  feeds[0] = other_input;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "Use a new gpu_graph_id");
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "7"));
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], 45.0f);
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(2));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(3));
+
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+  feeds[0] = input;
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "0"));
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], 17.0f);
+
+  Status other_thread_status;
+  std::thread other_thread([&]() {
+    std::vector<OrtValue> other_fetches;
+    other_thread_status = session.Run(run_options, input_names, feeds, output_names, &other_fetches);
+  });
+  other_thread.join();
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(other_thread_status, "thread that captured them");
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+
+  if (test_termination) {
+    run_options.terminate = true;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "terminated");
+    run_options.terminate = false;
+    ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+
+    terminate_on_replay = &run_options;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "terminated");
+    ASSERT_TRUE(run_options.terminate);
+    terminate_on_replay = nullptr;
+    run_options.terminate = false;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+  }
+
+  SessionOptions legacy_options = options;
+  ASSERT_STATUS_OK(legacy_options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "0"));
+  InferenceSession legacy_session(legacy_options, GetEnvironment());
+  ASSERT_STATUS_OK(legacy_session.RegisterExecutionProvider(create_provider()));
+  ASSERT_STATUS_OK(legacy_session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(legacy_session.Initialize(), "all compute graph nodes have not been partitioned");
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphReexecutesCpuBetweenCudaPartitions) {
+  RunPartitionedCudaGraphTest();
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphInvalidatesAfterPartialTermination) {
+  RunPartitionedCudaGraphTest(-1, true);
+}
+
+static void RunPartitionedCudaGraphIdLimitTest(const char* configured_limit, int expected_limit) {
+  SCOPED_TRACE(configured_limit ? configured_limit : "default");
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+  if (configured_limit) {
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsPartitionedCudaGraphMaxIds, configured_limit));
+  }
+  Model model("partition_id_limit", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}, {kMLDomain, 2}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& a = graph.GetOrCreateNodeArg("a", &type);
+  auto& b = graph.GetOrCreateNodeArg("b", &type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &type);
+  graph.AddNode("cpu_prefix", "Neg", "", {&x}, {&a});
+  auto& encoder = graph.AddNode("gpu_encoder", "LabelEncoder", "", {&a}, {&b}, nullptr, kMLDomain);
+  encoder.AddAttribute("keys_floats", std::vector<float>{-1.0f, -2.0f});
+  encoder.AddAttribute("values_floats", std::vector<float>{-10.0f, -20.0f});
+  graph.AddNode("cpu_suffix", "Neg", "", {&b}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  const auto status = session.Initialize();
+  if (expected_limit == 0) {
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, kOrtSessionOptionsPartitionedCudaGraphMaxIds);
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("decimal integer in [1, 2147483647]"));
+    return;
+  }
+  ASSERT_STATUS_OK(status);
+  ASSERT_FALSE(session.GetSessionState().GetEnableMemoryPattern());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name() == "gpu_encoder") {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    } else if (node.Name().find("cpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+    }
+  }
+
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {2}, {1.0f, 2.0f}, &input);
+  const std::array<std::string, 1> input_names{"X"}, output_names{"Y"};
+  const std::array<OrtValue, 1> feeds{input};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  auto run = [&](int graph_id) {
+    ORT_THROW_IF_ERROR(run_options.config_options.AddConfigEntry(
+        kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str()));
+    return session.Run(run_options, input_names, feeds, output_names, &fetches);
+  };
+  ASSERT_STATUS_OK(run(-1));
+  ASSERT_FALSE(cuda_ep->IsGraphCaptured(0));
+  const auto gpu_allocator = session.GetSessionState().GetAllocator(
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  ASSERT_NE(gpu_allocator, nullptr);
+  auto reject_negative_ids = [&]() {
+    AllocatorStats before{}, after{};
+    gpu_allocator->GetStats(&before);
+    auto* output = fetches[0].GetMutable<Tensor>()->MutableData<float>();
+    output[0] = -777.0f;
+    for (int id : {-2, std::numeric_limits<int>::min()}) {
+      ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(run(id), "requires a nonnegative gpu_graph_id");
+      EXPECT_EQ(fetches[0].Get<Tensor>().Data<float>(), output);
+      EXPECT_FLOAT_EQ(output[0], -777.0f);
+    }
+    gpu_allocator->GetStats(&after);
+    EXPECT_EQ(after.num_allocs, before.num_allocs);
+    EXPECT_EQ(after.bytes_in_use, before.bytes_in_use);
+  };
+  reject_negative_ids();
+  ASSERT_FALSE(cuda_ep->IsGraphCaptured(0));
+  for (int i = 0; i < expected_limit; ++i) {
+    SCOPED_TRACE(i);
+    fetches.clear();
+    ASSERT_STATUS_OK(run(37 + i));
+    ASSERT_TRUE(cuda_ep->IsGraphCaptured(i));
+    EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], 10.0f);
+    EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[1], 20.0f);
+  }
+
+  reject_negative_ids();
+  AllocatorStats before{};
+  gpu_allocator->GetStats(&before);
+  auto* output = fetches[0].GetMutable<Tensor>()->MutableData<float>();
+  output[0] = -777.0f;
+  for (int i = 0; i < 3; ++i) {
+    const auto rejected = run(37 + expected_limit + i);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        rejected, MakeString("Partitioned CUDA graph ID limit (", expected_limit, ") reached"));
+    EXPECT_THAT(rejected.ErrorMessage(), testing::HasSubstr(kOrtSessionOptionsPartitionedCudaGraphMaxIds));
+    EXPECT_EQ(fetches[0].Get<Tensor>().Data<float>(), output);
+    EXPECT_FLOAT_EQ(output[0], -777.0f);
+    EXPECT_FLOAT_EQ(output[1], 20.0f);
+    ASSERT_FALSE(cuda_ep->IsGraphCaptured(expected_limit));
+  }
+  AllocatorStats after{};
+  gpu_allocator->GetStats(&after);
+  EXPECT_EQ(after.num_allocs, before.num_allocs);
+  EXPECT_EQ(after.bytes_in_use, before.bytes_in_use);
+  EXPECT_EQ(after.total_allocated_bytes, before.total_allocated_bytes);
+
+  input.GetMutable<Tensor>()->MutableData<float>()[0] = 2.0f;
+  input.GetMutable<Tensor>()->MutableData<float>()[1] = 1.0f;
+  for (int i = -1; i < expected_limit; ++i) {
+    SCOPED_TRACE(i);
+    fetches.clear();
+    ASSERT_STATUS_OK(run(i == -1 ? -1 : 37 + i));
+    EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], 20.0f);
+    EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[1], 10.0f);
+  }
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphLimitsRetainedIds) {
+  RunPartitionedCudaGraphIdLimitTest(nullptr, 16);
+  RunPartitionedCudaGraphIdLimitTest("1", 1);
+  RunPartitionedCudaGraphIdLimitTest("2", 2);
+  RunPartitionedCudaGraphIdLimitTest("17", 17);
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphRejectsInvalidIdLimits) {
+  for (const char* limit : {"", "0", "-1", "abc", "2.5", "1x", "2147483648"}) {
+    RunPartitionedCudaGraphIdLimitTest(limit, 0);
+  }
+}
+
+#ifndef USE_CUDA_MINIMAL
+TEST(InferenceSessionTests, PartitionedCudaGraphReexecutesCudaHostOutputNodes) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+  Model model("partition_cuda_host_output", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("rows");
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& a = graph.GetOrCreateNodeArg("a", nullptr);
+  auto& b = graph.GetOrCreateNodeArg("b", nullptr);
+  auto& shape = graph.GetOrCreateNodeArg("shape", nullptr);
+  auto& c = graph.GetOrCreateNodeArg("c", nullptr);
+  auto& d = graph.GetOrCreateNodeArg("d", nullptr);
+  auto& y = graph.GetOrCreateNodeArg("Y", nullptr);
+  graph.AddNode("cpu_prefix", "Neg", "", {&x}, {&a});
+  graph.AddNode("gpu_negate", "Neg", "", {&a}, {&b});
+  graph.AddNode("gpu_shape", "Shape", "", {&b}, {&shape});
+  graph.AddNode("gpu_reshape", "Reshape", "", {&b, &shape}, {&c});
+  graph.AddNode("gpu_add", "Add", "", {&c, &c}, {&d});
+  graph.AddNode("cpu_suffix", "Neg", "", {&d}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&shape, &y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name().find("gpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    }
+  }
+
+  const auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue input, other_input;
+  CreateMLValue<float>(allocator, {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f}, &input);
+  CreateMLValue<float>(allocator, {3, 2}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}, &other_input);
+  const std::array<std::string, 1> input_names{"X"};
+  const std::array<std::string, 2> output_names{"shape", "Y"};
+  for (int graph_id : {0, -1, 7, 0}) {
+    SCOPED_TRACE(graph_id);
+    std::array<OrtValue, 1> feeds{graph_id == 0 ? input : other_input};
+    auto& tensor = *feeds[0].GetMutable<Tensor>();
+    RunOptions run_options;
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(
+        kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str()));
+    std::vector<OrtValue> fetches;
+    for (int iteration = 0; iteration < 3; ++iteration) {
+      SCOPED_TRACE(iteration);
+      auto* values = tensor.MutableData<float>();
+      for (int64_t i = 0; i < tensor.Shape().Size(); ++i) {
+        values[i] = static_cast<float>(i + iteration + graph_id);
+      }
+      ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+      ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+      ASSERT_TRUE(cuda_ep->IsGraphCaptured(1));
+      auto& shape_tensor = *fetches[0].GetMutable<Tensor>();
+      ASSERT_TRUE(shape_tensor.Location().device.UsesCpuMemory());
+      ASSERT_EQ(shape_tensor.Shape(), TensorShape({2}));
+      EXPECT_EQ(shape_tensor.Data<int64_t>()[0], tensor.Shape()[0]);
+      EXPECT_EQ(shape_tensor.Data<int64_t>()[1], 2);
+      const auto& output = fetches[1].Get<Tensor>();
+      ASSERT_EQ(output.Shape(), tensor.Shape());
+      for (int64_t i = 0; i < tensor.Shape().Size(); ++i) {
+        EXPECT_FLOAT_EQ(output.Data<float>()[i], -2.0f * values[i]);
+      }
+      // The next run must recompute Shape on the host rather than replaying an empty graph for it.
+      shape_tensor.MutableData<int64_t>()[0] = -1;
+    }
+  }
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(2));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(3));
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphRetainsUnequalConcatStagingBuffers) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+  Model model("partition_concat_staging", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("length");
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& a = graph.GetOrCreateNodeArg("a", nullptr);
+  auto& b = graph.GetOrCreateNodeArg("b", nullptr);
+  auto& c = graph.GetOrCreateNodeArg("c", nullptr);
+  auto& d = graph.GetOrCreateNodeArg("d", nullptr);
+  auto& y = graph.GetOrCreateNodeArg("Y", nullptr);
+  auto add_tail = [&](const char* name, float value) -> NodeArg& {
+    TensorProto tensor;
+    tensor.set_name(name);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.add_dims(1);
+    tensor.add_float_data(value);
+    graph.AddInitializedTensor(tensor);
+    return graph.GetOrCreateNodeArg(name, nullptr);
+  };
+  auto& tail1 = add_tail("tail1", 10.0f);
+  auto& tail2 = add_tail("tail2", 20.0f);
+  graph.AddNode("cpu_prefix", "Neg", "", {&x}, {&a});
+  // Unequal input lengths require CudaAsyncBuffer's pinned host staging, unlike equal-size Concat.
+  graph.AddNode("gpu_concat1", "Concat", "", {&a, &tail1}, {&b}).AddAttribute("axis", int64_t{0});
+  graph.AddNode("cpu_middle", "Neg", "", {&b}, {&c});
+  graph.AddNode("gpu_concat2", "Concat", "", {&c, &tail2}, {&d}).AddAttribute("axis", int64_t{0});
+  graph.AddNode("cpu_suffix", "Neg", "", {&d}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name().find("gpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    } else if (node.Name().find("cpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+    }
+  }
+
+  const auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue input, other_input;
+  CreateMLValue<float>(allocator, {2}, {1.0f, 2.0f}, &input);
+  CreateMLValue<float>(allocator, {4}, {3.0f, 4.0f, 5.0f, 6.0f}, &other_input);
+  const std::array<std::string, 1> input_names{"X"}, output_names{"Y"};
+  DeviceStreamCollection* pooled_collection = nullptr;
+  InlinedVector<Stream*> pooled_streams;
+  {
+    DeviceStreamCollectionHolder holder(&session.GetSessionState());
+    ASSERT_NE(holder.p_, nullptr);
+    pooled_collection = holder.p_.get();
+    for (size_t i = 0; i < holder.p_->NumStreams(); ++i) {
+      pooled_streams.push_back(holder.p_->GetStream(i));
+    }
+  }
+  for (int graph_id : {0, -1, 7, 0, -1, 7, -1, 0}) {
+    SCOPED_TRACE(graph_id);
+    std::array<OrtValue, 1> feeds{graph_id == 0 ? input : other_input};
+    auto& tensor = *feeds[0].GetMutable<Tensor>();
+    RunOptions run_options;
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(
+        kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str()));
+    for (int iteration = 0; iteration < 3; ++iteration) {
+      SCOPED_TRACE(iteration);
+      auto* values = tensor.MutableData<float>();
+      const auto count = tensor.Shape().Size();
+      for (int64_t i = 0; i < count; ++i) {
+        values[i] = static_cast<float>(i + iteration + graph_id);
+      }
+      std::vector<OrtValue> fetches;
+      if (iteration % 2 == 0) {
+        ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+      } else {
+        IOBinding binding(session.GetSessionState());
+        ASSERT_STATUS_OK(binding.BindInput("X", feeds[0]));
+        ASSERT_STATUS_OK(binding.BindOutput("Y"));
+        ASSERT_STATUS_OK(session.Run(run_options, binding));
+        fetches = binding.GetOutputs();
+      }
+      {
+        // A second wrapper over the plugin's graph stream would give deferred pinned frees a different owner.
+        DeviceStreamCollectionHolder holder(&session.GetSessionState());
+        ASSERT_EQ(holder.p_.get(), pooled_collection);
+        ASSERT_EQ(holder.p_->NumStreams(), pooled_streams.size());
+        for (size_t i = 0; i < pooled_streams.size(); ++i) {
+          EXPECT_EQ(holder.p_->GetStream(i), pooled_streams[i]);
+        }
+      }
+      ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+      ASSERT_TRUE(cuda_ep->IsGraphCaptured(1));
+      const auto& output = fetches[0].Get<Tensor>();
+      ASSERT_EQ(output.Shape(), TensorShape({count + 2}));
+      for (int64_t i = 0; i < count; ++i) {
+        EXPECT_FLOAT_EQ(output.Data<float>()[i], -values[i]);
+      }
+      EXPECT_FLOAT_EQ(output.Data<float>()[count], 10.0f);
+      EXPECT_FLOAT_EQ(output.Data<float>()[count + 1], -20.0f);
+    }
+  }
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(2));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(3));
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphInvalidatesAfterControlInputChanges) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+  Model model("partition_control_input", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type, shape_type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  shape_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  shape_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& shape = graph.GetOrCreateNodeArg("shape", &shape_type);
+  auto& a = graph.GetOrCreateNodeArg("A", &type);
+  auto& b = graph.GetOrCreateNodeArg("B", nullptr);
+  auto& y = graph.GetOrCreateNodeArg("Y", nullptr);
+  graph.AddNode("cpu_prefix", "Neg", "", {&x}, {&a});
+  graph.AddNode("gpu_reshape", "Reshape", "", {&a, &shape}, {&b});
+  graph.AddNode("cpu_suffix", "Neg", "", {&b}, {&y});
+  graph.SetInputs({&x, &shape});
+  graph.SetOutputs({&a, &y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name() == "gpu_reshape") {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    } else if (node.Name().find("cpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+    }
+  }
+  const auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue input, shape_input;
+  CreateMLValue<float>(cpu_allocator, {4}, {1.0f, 2.0f, 3.0f, 4.0f}, &input);
+  CreateMLValue<int64_t>(cpu_allocator, {2}, {2, 2}, &shape_input);
+  const std::array<std::string, 2> input_names{"X", "shape"}, output_names{"A", "Y"};
+  const std::array<OrtValue, 2> feeds{input, shape_input};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -1.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
+
+  input.GetMutable<Tensor>()->MutableData<float>()[0] = 9.0f;
+  auto* shape_data = shape_input.GetMutable<Tensor>()->MutableData<int64_t>();
+  shape_data[0] = 1;
+  shape_data[1] = 4;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "CPU control input");
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -9.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
+  shape_data[0] = 2;
+  shape_data[1] = 2;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "7"));
+  fetches.clear();
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+}
+#endif
+
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+TEST(InferenceSessionTests, PartitionedCudaGraphPluginWarmupCounts) {
+  for (int warmup_count : {0, 1, 4, 7, 8}) {
+    SCOPED_TRACE(warmup_count);
+    RunPartitionedCudaGraphTest(warmup_count);
+  }
+}
+
+TEST(InferenceSessionTests, PartitionedCudaGraphPluginRetainsKernelScratch) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA plugin execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+  Model model("plugin_scratch_capture", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  // Full, sorted double TopK takes the CUB radix-sort path with five scratch allocations.
+  constexpr int64_t count = 8192;
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_DOUBLE);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(count);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& a = graph.GetOrCreateNodeArg("a", &type);
+  auto& b = graph.GetOrCreateNodeArg("b", &type);
+  auto& c = graph.GetOrCreateNodeArg("c", &type);
+  auto& d = graph.GetOrCreateNodeArg("d", &type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &type);
+  TensorProto k_tensor;
+  k_tensor.set_name("K");
+  k_tensor.set_data_type(TensorProto_DataType_INT64);
+  k_tensor.add_dims(1);
+  k_tensor.add_int64_data(count);
+  graph.AddInitializedTensor(k_tensor);
+  auto& k = graph.GetOrCreateNodeArg("K", nullptr);
+  auto& indices1 = graph.GetOrCreateNodeArg("indices1", nullptr);
+  auto& indices2 = graph.GetOrCreateNodeArg("indices2", nullptr);
+  graph.AddNode("cpu_prefix", "Neg", "", {&x}, {&a});
+  graph.AddNode("gpu_sort1", "TopK", "", {&a, &k}, {&b, &indices1}).AddAttribute("largest", int64_t{0});
+  graph.AddNode("cpu_middle", "Neg", "", {&b}, {&c});
+  graph.AddNode("gpu_sort2", "TopK", "", {&c, &k}, {&d, &indices2}).AddAttribute("largest", int64_t{0});
+  graph.AddNode("cpu_suffix", "Neg", "", {&d}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name().find("gpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    } else if (node.Name().find("cpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+    }
+  }
+  const auto allocator = session.GetSessionState().GetAllocator(
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  ASSERT_NE(allocator, nullptr);
+  AllocatorStats before{};
+  allocator->GetStats(&before);
+  OrtValue input;
+  CreateMLValue<double>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                        {count}, std::vector<double>(count), &input);
+  const std::array<std::string, 1> input_names{"X"}, output_names{"Y"};
+  const std::array<OrtValue, 1> feeds{input};
+  std::vector<OrtValue> fetches;
+  for (int graph_id : {0, -1, 7, 0}) {
+    RunOptions run_options;
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(
+        kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str()));
+    for (int iteration = 0; iteration < 3; ++iteration) {
+      auto* values = input.GetMutable<Tensor>()->MutableData<double>();
+      for (int64_t i = 0; i < count; ++i) {
+        values[i] = static_cast<double>(i + iteration + graph_id);
+      }
+      fetches.clear();
+      ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+      ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+      ASSERT_TRUE(cuda_ep->IsGraphCaptured(1));
+      for (int64_t i = 0; i < count; ++i) {
+        ASSERT_DOUBLE_EQ(fetches[0].Get<Tensor>().Data<double>()[i], -values[i]);
+      }
+      AllocatorStats after{};
+      allocator->GetStats(&after);
+      // Six device tensors alone cannot account for this much live memory.
+      EXPECT_GT(after.bytes_in_use - before.bytes_in_use, 10 * count * static_cast<int64_t>(sizeof(double)));
+    }
+  }
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(2));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(3));
+}
+#endif
+#endif
 
 TEST(ExecutionProviderTest, FunctionTest) {
   PathString model_file_name = ORT_TSTR("execution_provider_test_graph.onnx");
