@@ -816,6 +816,11 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
   prepack_allocator_.reset();
   session_buffer_pool_.reset();
+  if (context_.Device()) {
+    // A failed Run may leave an unsubmitted recording in the context-shared pools.
+    context_.BufferManager().DiscardPendingBuffers(*recording_);
+    context_.InitializerBufferManager().DiscardPendingBuffers(*recording_);
+  }
   recording_.reset();
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   pix_frame_generator_.reset();
@@ -996,7 +1001,7 @@ Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
 }
 
 webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
-  if (graph_buffer_mgr_active_) {
+  if (IsGraphCaptureEnabled() && graph_buffer_mgr_active_) {
     auto it = per_graph_buffer_mgrs_.find(current_graph_annotation_id_);
     if (it != per_graph_buffer_mgrs_.end()) {
       return *it->second;
