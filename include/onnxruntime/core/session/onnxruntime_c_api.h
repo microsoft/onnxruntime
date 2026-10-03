@@ -7716,7 +7716,8 @@ struct OrtCustomOp {
 /**
  * \brief The OrtModelEditorApi struct provides functions to create or edit an ONNX model.
  *
- * See onnxruntime/test/shared_lib/test_model_editor_api.cc for example usage.
+ * See docs/design/Model_Editor_API.md for an overview and onnxruntime/test/shared_lib/test_model_builder_api.cc for
+ * complete examples.
  *
  * \since Version 1.22.
  */
@@ -7823,7 +7824,8 @@ struct OrtModelEditorApi {
    *
    * Create an OrtNode.
    *
-   * Create attributes with CreateOpAttr. OrtOpAttr instances are copied.
+   * Create attributes with CreateOpAttr. On success, the OrtNode takes ownership of every OrtOpAttr in `attributes`
+   * and each entry in the array is reset to nullptr. The caller must not release them.
    *
    * \param[in] operator_name The name of the operator.
    * \param[in] domain_name The domain of the operator. Use an empty string for ONNX operators.
@@ -8033,8 +8035,8 @@ struct OrtModelEditorApi {
    * Graph inputs/outputs should be updated with SetGraphInputs() and SetGraphOutputs() as needed to reflect changes made
    * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
    *
-   * Add the new information from the OrtModel to the original model using ApplyModelToSession(), and prepare the
-   * session for inferencing by calling FinalizeModelEditorSession().
+   * Add the new information from the OrtModel to the original model using ApplyModelToModelEditorSession(), and
+   * prepare the session for inferencing by calling FinalizeModelEditorSession().
    *
    * \param{in} env The OrtEnv instance.
    * \param{in} model_path The path to the existing ONNX model to augment.
@@ -8059,8 +8061,8 @@ struct OrtModelEditorApi {
    * Graph inputs/outputs should be updated with SetGraphInputs() and SetGraphOutputs() as needed to reflect changes made
    * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
    *
-   * Add the new information from the OrtModel to the original model using ApplyModelToSession(), and prepare the
-   * session for inferencing by calling FinalizeModelEditorSession().
+   * Add the new information from the OrtModel to the original model using ApplyModelToModelEditorSession(), and
+   * prepare the session for inferencing by calling FinalizeModelEditorSession().
    *
    * \param{in} env The OrtEnv instance.
    * \param{in} model_data The model data for the existing model to augment.
