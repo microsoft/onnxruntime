@@ -227,8 +227,8 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     else:
         # Quantizes data for all integer types.
         #
-        # For int4 types, the quantized data is returned as either np.int8 or np.uint8,
-        # which matches the python reference ONNX implementation of QuantizeLinear.
+        # For int4 types, the quantized data is returned as either ml_dtypes.int4 or
+        # ml_dtypes.uint4, which matches the python reference ONNX implementation of QuantizeLinear.
         # This data can be packed into 4-bit elements by using pack_bytes_to_4bit().
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False)

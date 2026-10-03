@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import onnx
 import onnx.numpy_helper
+from ml_dtypes import int4, uint4
 
 try:
     from onnx.reference.op_run import to_array_extended
@@ -344,7 +345,7 @@ class BaseQuantizer:
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
             elif qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                if q_weight_data.dtype not in (np.int8, np.uint8):
+                if q_weight_data.dtype not in (int4, uint4):
                     raise RuntimeError(
                         f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
                     )
@@ -482,7 +483,7 @@ class BaseQuantizer:
 
         if not keep_float_weight:
             if weight_qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                if quantized_weights.dtype not in (np.int8, np.uint8):
+                if quantized_weights.dtype not in (int4, uint4):
                     raise RuntimeError(
                         f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
                     )
