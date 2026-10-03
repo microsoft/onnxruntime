@@ -253,18 +253,13 @@ class GemmPluginProfiler {
 
   // Optional persistent (disk) tactic cache hooks. Default implementations are no-ops, which
   // preserves the in-process-only behavior. Subclasses may override them to load matching
-  // tactics before the M sweep (populating `map` so profiling is skipped) and to persist the
-  // profiled tactics afterwards. Both are invoked while holding the profile-map writer lock.
+  // tactics before the M sweep (populating `map` so profiling is skipped) and to stage profiled
+  // tactics in memory. Both are invoked while holding the profile-map writer lock. Staged tactics
+  // reach disk only when the session closes (CUDA EP teardown), never during session creation or
+  // inference.
   virtual void loadPersistentCache(GemmIdType const& /*gemmId*/, MProfileMap& /*map*/,
                                    bool /*hasWeightOnlyCudaKernel*/) {}
 
-  // Called from the construction-time sweep: stage the profiled tactics AND write them to disk
-  // immediately (so the file exists while the session is alive, e.g. for the offline tuning tool).
-  virtual void storePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
-                                    bool /*hasWeightOnlyCudaKernel*/) {}
-
-  // Called after a lazily profiled bucket is inserted: stage the tactics into the in-memory cache
-  // WITHOUT writing to disk, so any later flush point (e.g. CUDA EP teardown) persists them.
   virtual void stagePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 
@@ -418,8 +413,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   }
   CUDA_CALL_THROW(cudaStreamDestroy(stream));
 
-  // Persist any newly profiled tactics to the disk cache (if configured).
-  storePersistentCache(gemmId, *mProfileMap, hasWeightOnlyCudaKernel);
+  stagePersistentCache(gemmId, *mProfileMap, hasWeightOnlyCudaKernel);
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>

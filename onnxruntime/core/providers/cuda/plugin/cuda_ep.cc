@@ -258,6 +258,11 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
     return nullptr;
   }
 
+  if (auto model_path = graph.GetModelPath(); !model_path.empty()) {
+    onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(static_cast<const void*>(ep->EpImpl()))
+        ->SetModelPath(std::filesystem::path(model_path));
+  }
+
   // Three-phase filtering determines which graph nodes run on this EP:
   // Phase 1: Collect tentative nodes that have a registered CUDA kernel.
   // Phase 2: Filter out CPU-preferred nodes (cheap ops where device-to-host

@@ -256,9 +256,23 @@ unit-testable.
 - Sidecars use the same cache prefix scheme:
   - `"<model_path>.matmulnbits_fpa_intb.tsv"`
   - `"<model_path>.qmoe_gemm.tsv"`
-- Writing is opt-in via session config or env var. Because C++ kernels do not always have a reliable
-  model path (for example, models loaded from bytes), the core implementation should prefer an
-  explicit cache prefix and let the offline Python tool derive `<model_path>.*.tsv` when possible.
+- Writing is opt-in via session config or env var (`ep.cuda.gemm_tactic_cache_to_model` /
+  `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL`). The CUDA EP records the model path it sees in
+  `GetCapability` (`GraphViewer::ModelPath()` for the built-in EP, `Graph_GetModelPath` for the plugin
+  EP), and kernels use it as the cache prefix. Models loaded from bytes have no path, so the explicit
+  prefix/dir settings still apply to them.
+
+### Phase 4b — Load on create, save on close *(depends on 2)*
+- Kernel construction loads matching rows before profiling and re-reads the file first if it changed
+  since this process last read or wrote it (last-write time + size).
+- Every tuned tactic (construction sweep and lazy buckets) is only staged in memory. The single disk
+  write happens when the session closes (CUDA EP teardown), with a last-chance write at process exit
+  for sessions that are never released.
+- `ep.cuda.gemm_tactic_cache_mode` / `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` selects `load_save` (default),
+  `load` (read-only), or `save` (re-tune and overwrite).
+- Session close writes every dirty cache in the process, not only the closing session's caches. The
+  write is dirty-guarded and merges with the file, so writing another live session's rows early is
+  harmless.
 
 ### Phase 5 — Offline tuning tool *(depends on 4)*
 - `onnxruntime/python/tools/fpa_intb_tune.py` (+ CLI): `--model`, `--output-prefix`, `--m-values`,
@@ -280,10 +294,13 @@ unit-testable.
 |---|---|
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | Directory for persistent cache files. Unset means persistent cache disabled. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | Explicit file prefix. Writes `<prefix>.matmulnbits_fpa_intb.tsv` and/or `<prefix>.qmoe_gemm.tsv`. |
-| `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `1` → offline/tooling may derive model sidecar prefix when a model path is known. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `1` → store the cache next to the model as `<model_path>.<table>.tsv` when the model path is known. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | `load_save` (default), `load` (read-only), or `save` (re-tune and overwrite). |
 | `ORT_FPA_INTB_PROFILE_M` | Comma-separated M buckets to profile (overrides the default set for MatMulNBits/fpA_intB). |
 | `ep.cuda.gemm_tactic_cache_dir` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_DIR`. |
 | `ep.cuda.gemm_tactic_cache_prefix` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX`. |
+| `ep.cuda.gemm_tactic_cache_to_model` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL`. |
+| `ep.cuda.gemm_tactic_cache_mode` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_MODE`. |
 
 ## 10. Files to add / modify
 
