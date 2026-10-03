@@ -34,19 +34,6 @@ constexpr uint64_t kBufferAlignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT
 constexpr DWORD kInitialCancellationPollMilliseconds = 1;
 constexpr DWORD kMaximumCancellationPollMilliseconds = 10;
 
-struct WindowsPathLess {
-  bool operator()(const std::wstring& left,
-                  const std::wstring& right) const noexcept {
-    const int result = CompareStringOrdinal(
-        left.data(), static_cast<int>(left.size()),
-        right.data(), static_cast<int>(right.size()), TRUE);
-    if (result == 0) {
-      return left < right;
-    }
-    return result == CSTR_LESS_THAN;
-  }
-};
-
 common::Status HResultError(const char* operation, HRESULT hr) {
   return ORT_MAKE_STATUS(
       ONNXRUNTIME, FAIL, operation, " failed with HRESULT 0x",
@@ -160,6 +147,8 @@ struct D3D12FileBufferLoader::Impl {
       const CancellationToken& cancellation);
 
  private:
+  friend class D3D12FileBufferLoader;
+
   common::Status AllocateDestinations(
       const std::vector<uint64_t>& sizes,
       Batch& batch);
@@ -204,8 +193,12 @@ struct D3D12FileBufferLoader::Impl {
   common::Status WaitForFence(
       uint64_t value,
       const CancellationToken& cancellation);
+  common::Status SignalSubmittedWork(uint64_t value);
   void WaitForFenceUncancelled(uint64_t value) noexcept;
   void DrainActiveReads() noexcept;
+  bool MustRetainUntrackedSubmission() const noexcept {
+    return retain_untracked_submission_;
+  }
 
   ComPtr<ID3D12Device> device_;
   Config config_;
@@ -213,7 +206,9 @@ struct D3D12FileBufferLoader::Impl {
   ComPtr<ID3D12Fence> copy_fence_;
   wil::unique_handle fence_event_;
   std::vector<UploadSlot> slots_;
+  Batch untracked_batch_;
   uint64_t next_fence_value_ = 0;
+  bool retain_untracked_submission_ = false;
   std::mutex load_mutex_;
 };
 
@@ -334,6 +329,9 @@ common::Status D3D12FileBufferLoader::Impl::Load(
   std::lock_guard<std::mutex> lock(load_mutex_);
   result.Clear();
 
+  ORT_RETURN_IF(
+      retain_untracked_submission_,
+      "D3D12 file buffer loader cannot be reused after an untracked command submission.");
   if (ranges.empty()) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
@@ -569,7 +567,7 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
     std::vector<PreparedFile>& files) {
   // Group ranges by source file so each file is opened once. Later, aligned
   // overlapping ranges are merged to avoid redundant unbuffered reads.
-  std::map<std::wstring, size_t, WindowsPathLess> file_indices;
+  std::map<std::wstring, size_t> file_indices;
   for (size_t range_index = 0;
        range_index < ranges.size(); ++range_index) {
     const auto& range = ranges[range_index];
@@ -972,14 +970,17 @@ common::Status D3D12FileBufferLoader::Impl::SubmitCopies(
       slot.command_list.Get()};
   copy_queue_->ExecuteCommandLists(1, command_lists);
 
-  slot.fence_value = ++next_fence_value_;
-  last_submitted_fence = slot.fence_value;
-  hr = copy_queue_->Signal(
-      copy_fence_.Get(), slot.fence_value);
-  if (FAILED(hr)) {
-    return HResultError(
-        "ID3D12CommandQueue::Signal", hr);
+  const uint64_t fence_value = ++next_fence_value_;
+  const auto signal_status =
+      SignalSubmittedWork(fence_value);
+  if (!signal_status.IsOK()) {
+    if (retain_untracked_submission_) {
+      untracked_batch_ = std::move(batch);
+    }
+    return signal_status;
   }
+  slot.fence_value = fence_value;
+  last_submitted_fence = fence_value;
   return common::Status::OK();
 }
 
@@ -1033,15 +1034,43 @@ common::Status D3D12FileBufferLoader::Impl::TransitionToCommon(
       slot.command_list.Get()};
   copy_queue_->ExecuteCommandLists(1, command_lists);
 
-  last_submitted_fence = ++next_fence_value_;
-  hr = copy_queue_->Signal(
-      copy_fence_.Get(), last_submitted_fence);
-  if (FAILED(hr)) {
-    return HResultError(
-        "ID3D12CommandQueue::Signal(transition)", hr);
+  const uint64_t fence_value = ++next_fence_value_;
+  const auto signal_status =
+      SignalSubmittedWork(fence_value);
+  if (!signal_status.IsOK()) {
+    if (retain_untracked_submission_) {
+      untracked_batch_ = std::move(batch);
+    }
+    return signal_status;
   }
+  last_submitted_fence = fence_value;
   return WaitForFence(
       last_submitted_fence, cancellation);
+}
+
+common::Status D3D12FileBufferLoader::Impl::SignalSubmittedWork(
+    uint64_t value) {
+  // ExecuteCommandLists has no status return. Once work has been submitted,
+  // its resources must stay alive until either a fence is queued behind it or
+  // the device is removed. If Signal fails while the device is still live,
+  // the submission cannot be tracked safely; retain the loader and submitted
+  // resources for process lifetime rather than hanging or releasing them.
+  const HRESULT signal_result =
+      copy_queue_->Signal(copy_fence_.Get(), value);
+  if (SUCCEEDED(signal_result)) {
+    return common::Status::OK();
+  }
+  const HRESULT removal_reason =
+      device_->GetDeviceRemovedReason();
+  if (FAILED(removal_reason)) {
+    return HResultError(
+        "D3D12 device removed after command submission",
+        removal_reason);
+  }
+  retain_untracked_submission_ = true;
+  return HResultError(
+      "ID3D12CommandQueue::Signal after command submission",
+      signal_result);
 }
 
 common::Status D3D12FileBufferLoader::Impl::WaitForFence(
@@ -1152,7 +1181,15 @@ D3D12FileBufferLoader::D3D12FileBufferLoader(
     : impl_(std::move(impl)) {
 }
 
-D3D12FileBufferLoader::~D3D12FileBufferLoader() = default;
+D3D12FileBufferLoader::~D3D12FileBufferLoader() {
+  if (impl_ && impl_->MustRetainUntrackedSubmission()) {
+    // A live device has accepted work but rejected the fence that would prove
+    // its completion. Releasing the referenced resources would be unsafe.
+    // This catastrophic path intentionally retains the loader for process
+    // lifetime; normal and device-removed paths destroy it normally.
+    (void)impl_.release();
+  }
+}
 
 common::Status D3D12FileBufferLoader::Create(
     ID3D12Device* device,
