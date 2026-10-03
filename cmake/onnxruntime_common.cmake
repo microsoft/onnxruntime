@@ -94,7 +94,10 @@ else()
 endif()
 
 # platform-specific device discovery files
-if (WIN32)
+if (onnxruntime_DISABLE_DEVICE_DISCOVERY)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
+elseif (WIN32)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
 elseif (LINUX)
