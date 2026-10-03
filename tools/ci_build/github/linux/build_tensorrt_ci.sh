@@ -63,6 +63,9 @@ if command -v ccache &> /dev/null; then
 fi
 
 if [[ " ${BUILD_ARGS[*]} " == *" --enable_cuda_minimal_build "* ]]; then
-    ! nm -D --undefined-only "${BUILD_DIR}/Release/libonnxruntime_providers_cuda.so" |
-        c++filt | grep -q 'EstimateMatMulNBitsWorkspace'
+    undefined_symbols=$(
+        set -o pipefail
+        nm -D --undefined-only "${BUILD_DIR}/Release/libonnxruntime_providers_cuda.so" | c++filt
+    )
+    ! grep -q 'EstimateMatMulNBitsWorkspace' <<< "${undefined_symbols}"
 fi
