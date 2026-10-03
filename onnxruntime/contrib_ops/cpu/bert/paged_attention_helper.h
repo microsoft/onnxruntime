@@ -525,6 +525,9 @@ Status CheckInputs(const T* query,
   // Check block table and slot mappings
   int max_num_blocks_per_seq = 0;
   ORT_RETURN_IF_ERROR(CheckBlockTable(block_table, batch_size, max_num_blocks_per_seq));
+  // Backends that cannot skip a block redirect invalid entries to block 0, which must exist.
+  ORT_RETURN_IF(num_blocks == 0 && block_table->Shape().Size() > 0,
+                "Input 'key_cache' has zero blocks but 'block_table' is not empty.");
   if (slot_mapping != nullptr) {
     ORT_RETURN_IF_ERROR(CheckSlotMapping(slot_mapping, token_count));
   }

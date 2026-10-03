@@ -383,7 +383,8 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
   return CUDA_CALL(cudaGetLastError());
 }
 
-// FlashAttention and cuDNN cannot skip a block, so invalid entries read block 0 instead of out of bounds.
+// FlashAttention and cuDNN cannot skip a block. A -1 is only legal where the mask already excludes it
+// (below the window or past kv_len), so redirecting invalid entries to block 0 keeps reads in bounds.
 __global__ void ClampBlockTable(int* __restrict__ clamped_block_table, const int* __restrict__ block_table,
                                 const int num_blocks, const int64_t total_entries) {
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;

@@ -90,10 +90,8 @@ struct IoBindingCase {
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
   std::string expected_error;
-  // Out-of-range block_ids are never written and are excluded from the softmax,
-  // or read as block 0 (FlashAttention, cuDNN, XQA) when reads_block_zero is set.
+  // Out-of-range block_ids are never written and are excluded from the softmax.
   bool allow_out_of_range_block_table = false;
-  bool out_of_range_reads_block_zero = false;
 };
 
 // Masked positions get zero probability. Uses fp32 throughout to establish a
@@ -769,7 +767,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     if (block_id >= 0 && block_id < num_blocks) {
       return block_id;
     }
-    return c.out_of_range_reads_block_zero ? 0 : -1;
+    return -1;
   };
   const size_t run_count = c.replay_past_seqlens.empty() ? 1 : c.replay_past_seqlens.size();
   RunOptions run_options;
@@ -1829,7 +1827,22 @@ TEST(PagedAttention, Cuda_OutOfRangeBlockTableSkipsCacheWrite) {
   }
 }
 
-// FlashAttention reads an out-of-range block as block 0.
+// Every route needs at least one physical block to redirect invalid entries to.
+TEST(PagedAttention, Cuda_ZeroBlockCacheRejected) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.num_blocks = 0;
+  c.past_seqlen = 0;
+  c.block_table = {-1};
+  c.allow_out_of_range_block_table = true;
+  c.expected_error = "zero blocks";
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+// FlashAttention never dereferences a block below the sliding window, so an invalid entry there is masked.
 TEST(PagedAttention, Cuda_OutOfRangeBlockTableFlashEligible) {
 #if defined(USE_FLASH_ATTENTION)
   ScopedEnvironmentVariables scoped_env_vars{
@@ -1851,11 +1864,11 @@ TEST(PagedAttention, Cuda_OutOfRangeBlockTableFlashEligible) {
     c.head_size = 64;
     c.block_size = 256;
     c.num_blocks = 3;
-    c.max_num_blocks_per_seq = 2;
-    c.past_seqlen = 256;
-    c.block_table = {sentinel, 1};
+    c.max_num_blocks_per_seq = 3;
+    c.past_seqlen = 512;
+    c.local_window_size = 64;
+    c.block_table = {sentinel, 1, 2};
     c.allow_out_of_range_block_table = true;
-    c.out_of_range_reads_block_zero = true;
 
     testing::internal::CaptureStdout();
     RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
@@ -1867,7 +1880,7 @@ TEST(PagedAttention, Cuda_OutOfRangeBlockTableFlashEligible) {
 #endif
 }
 
-// Same for XQA with pages_per_block == 1; skips if XQA is unavailable.
+// XQA with an invalid entry past kv_len (pages_per_block == 1); skips if XQA is unavailable.
 TEST(PagedAttention, Cuda_OutOfRangeBlockTableXqaEligible) {
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{
@@ -1892,11 +1905,10 @@ TEST(PagedAttention, Cuda_OutOfRangeBlockTableXqaEligible) {
     c.head_size = 256;
     c.block_size = 128;  // pages_per_block == 1 (kXqaTokensPerPage == 128).
     c.num_blocks = 3;
-    c.max_num_blocks_per_seq = 2;
+    c.max_num_blocks_per_seq = 3;
     c.past_seqlen = 128;
-    c.block_table = {sentinel, 1};
+    c.block_table = {2, 1, sentinel};
     c.allow_out_of_range_block_table = true;
-    c.out_of_range_reads_block_zero = true;
     c.attention_metadata = {1, 256};
     return c;
   };
@@ -2187,7 +2199,7 @@ TEST(PagedAttention, Cuda_CudnnPagedDispatchWhenEnabled) {
 // either crash the capture or silently fall back to FlashAttention on replays. RunIoBindingCase's
 // per-Run softmax(QK^T)V reference (2e-3 tolerance, checked per batch x token x head x dim)
 // covers numerical corruption of the captured graph.
-// Same for cuDNN paged SDPA.
+// cuDNN paged SDPA with an invalid entry past kv_len.
 TEST(PagedAttention, Cuda_CudnnPagedOutOfRangeBlockTable) {
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{
@@ -2203,9 +2215,9 @@ TEST(PagedAttention, Cuda_CudnnPagedOutOfRangeBlockTable) {
 
   for (int32_t sentinel : {-1, 99}) {
     IoBindingCase c = MakeCudnnPagedDecodeCase();
-    c.block_table = {sentinel, 1};
+    c.max_num_blocks_per_seq = 3;
+    c.block_table = {0, 1, sentinel};
     c.allow_out_of_range_block_table = true;
-    c.out_of_range_reads_block_zero = true;
 
     testing::internal::CaptureStdout();
     RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
