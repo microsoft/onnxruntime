@@ -3,12 +3,17 @@
 
 #pragma once
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 #include <set>
 
-#include "core/providers/shared_library/provider_api.h"
+#include "onnxruntime_config.h"
+#include "onnxruntime_cxx_api.h"
 #include "openvino/openvino.hpp"
 
 namespace onnxruntime {
@@ -103,6 +108,9 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
   // Constants
   static constexpr const char* vendor_ = "Intel";
   static constexpr uint32_t vendor_id_{0x8086};  // Intel's PCI vendor ID
+  static constexpr bool IsHardwareDeviceEligible(OrtHardwareDeviceType type, uint32_t vendor_id) {
+    return type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU || vendor_id == vendor_id_;
+  }
   static constexpr const char* ov_device_key_ = "ov_device";
   static constexpr const char* ov_meta_device_key_ = "ov_meta_device";
   static constexpr const char* provider_name_ = "OpenVINOExecutionProvider";
