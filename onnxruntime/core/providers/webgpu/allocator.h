@@ -30,11 +30,12 @@ class GpuBufferAllocator : public IAllocator {
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
   // Read-only initializers skip cached-buffer clears and can be mapped at creation on UMA.
-  // should_submit_zero_initialize is used only by built-in WebGPU; plugin builds ignore it.
+  // should_submit_zero_initialize is used by built-in WebGPU and legacy plugin mode; modern plugins ignore it.
   // TODO: Remove this callback once built-in WebGPU can distinguish external allocators used outside Run
   // from internal allocators used during Run.
-  // Plugin Alloc submits independent clears; a matching AllocOnStream defers them on the Session stream.
-  // Only the plugin Env allocator omits recording_getter, as it never uses a Session stream.
+  // Modern plugin Alloc submits independent clears; a matching AllocOnStream defers them on the Session stream.
+  // Only the modern plugin Env allocator omits recording_getter, as it never uses a Session stream.
+  // Legacy allocators share a context recording; an omitted submission policy defaults to false.
   GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
                      std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,

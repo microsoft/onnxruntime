@@ -520,6 +520,29 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
+    if (webgpu::ep::UseLegacyRecording()) {
+      // Legacy copies must follow the clears and kernels already recorded on the shared timeline,
+      // even if the host dropped the stream. Keep this path separate from modern per-call recording.
+      auto& recording = *impl.context_->LegacyRecording();
+      auto& buffer_manager = impl.context_->LegacyBufferManager();
+      DataTransferImpl data_transfer{buffer_manager, recording};
+      for (size_t idx = 0; idx < num_tensors; ++idx) {
+        Ort::ConstValue src_value{src_tensors[idx]};
+        Ort::UnownedValue dst_value{dst_tensors[idx]};
+        const bool src_is_gpu = src_value.GetTensorMemoryInfo().GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+        const bool dst_is_gpu = dst_value.GetTensorMemoryInfo().GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+        auto status = data_transfer.CopyTensor(src_value.GetTensorRawData(), src_is_gpu,
+                                               dst_value.GetTensorMutableRawData(), dst_is_gpu,
+                                               src_value.GetTensorSizeInBytes());
+        if (!status.IsOK()) {
+          return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
+        }
+        if (src_is_gpu && dst_is_gpu && (streams == nullptr || streams[idx] == nullptr)) {
+          ORT_THROW_IF_ERROR(impl.context_->Flush(buffer_manager, recording));
+        }
+      }
+      return nullptr;
+    }
     // Plugin streamless calls may overlap. Each call submits its own recording before returning;
     // explicit streams use their Session's recording instead.
     CommandRecordingState recording;

@@ -44,6 +44,26 @@ nuget.org, or the ORT-Nightly feed. Publishing to public feeds is handled by sep
 
 ## Usage
 
+### Runtime compatibility and concurrency
+
+The minimum runtime is ORT 1.24.4. ORT versions before 1.31 use the serial compatibility path:
+serialize all WebGPU operations on the same device, including operations on different Sessions,
+I/O binding, Env copies, allocation, and Session creation/destruction. Use sequential graph
+execution. Multiple Sessions can be used in sequence; overlapping Runs are rejected.
+
+ORT 1.31 and later use Session-owned command recordings and support independent Sessions running
+concurrently. This does not permit overlapping I/O binding and Run on the same Session.
+Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` before registering the plugin to test the serial path on a newer
+runtime. This process-wide override cannot enable concurrency on older runtimes.
+
+Both paths retain cached-buffer clearing and dispatch batching. The serial path does not submit
+after every kernel. Public Session/Env ordinary allocations submit cached-buffer clears before
+returning under the serial calling contract: legacy Session allocations defer only during Run,
+and Env allocations always submit. Kernels reuse the Session allocator for temporary space;
+modern scratch uses an explicit stream, and legacy scratch uses Run-state-based deferral.
+See the [execution design](../onnxruntime/core/providers/webgpu/ep/README.md)
+for the stream and allocator contracts.
+
 Once installed, the plugin EP is registered at runtime. Example in Python:
 
 ```python

@@ -5,6 +5,10 @@
 #include "core/framework/tensor.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/sync_stream.h"
+#endif
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -37,6 +41,10 @@ Tensor ComputeContext::CreateGPUTensor(MLDataType data_type, const TensorShape& 
   AllocatorPtr allocator;
   ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  if (ep::UseLegacyRecording()) {
+    // Old hosts lack GetSyncStream. The serial Session allocator defers clears during Run.
+    return {data_type, shape, allocator};
+  }
   const size_t bytes = Tensor::CalculateTensorStorageSize(data_type, shape);
   // For performance, use the kernel's stream: plain Alloc during Run immediately flushes cached-buffer
   // clears, causing frequent submissions when scratch allocations reuse cached buffers.
