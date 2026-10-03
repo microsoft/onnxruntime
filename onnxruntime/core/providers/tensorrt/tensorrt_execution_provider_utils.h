@@ -553,9 +553,20 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
   }
 
-  // fingerprint current graph by hashing graph inputs
+  // Fingerprint graph inputs, including their shapes. The engine cache must not reuse an
+  // engine built for a model with different static input shapes.
   for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     hash_str(node_arg->Name());
+    if (const auto* shape = node_arg->Shape()) {
+      std::string shape_string = "[";
+      for (const auto& dim : shape->dim()) {
+        // Symbolic names and dimension denotations do not change the static shape.
+        shape_string += dim.has_dim_value() ? std::to_string(dim.dim_value()) : "?";
+        shape_string += ",";
+      }
+      shape_string += "]";
+      hash_str(shape_string);
+    }
   }
 
   // hashing output of each node
