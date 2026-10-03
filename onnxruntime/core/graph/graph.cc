@@ -1384,6 +1384,47 @@ Graph::Graph(const Model& owning_model,
     }
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+  // Sparse initializer storage is also valid for ordinary dense tensor values.
+  // Prefer explicit value types; infer a sparse value only when its consumer
+  // requires sparse tensors.
+  std::unordered_map<std::string, bool> declared_sparse_types;
+  std::unordered_set<std::string> sparse_consumer_inputs;
+  if (!sparse_tensor_names_.empty()) {
+    const auto record_declared_types = [&](const auto& values) {
+      for (const auto& value : values) {
+        if (value.type().has_tensor_type() || value.type().has_sparse_tensor_type()) {
+          declared_sparse_types[value.name()] = value.type().has_sparse_tensor_type();
+        }
+      }
+    };
+    record_declared_types(graph_proto_->input());
+    record_declared_types(graph_proto_->output());
+    record_declared_types(graph_proto_->value_info());
+
+    for (const auto& node : graph_proto_->node()) {
+      const auto& domain = node.domain() == kOnnxDomainAlias ? kOnnxDomain : node.domain();
+      const auto version = domain_to_version_.find(domain);
+      if (version == domain_to_version_.end()) {
+        continue;
+      }
+      const auto* schema = schema_registry_->GetSchema(node.op_type(), version->second, domain);
+      if (schema == nullptr) {
+        continue;
+      }
+      const auto& inputs = schema->inputs();
+      for (size_t i = 0; i < inputs.size() && i < static_cast<size_t>(node.input_size()); ++i) {
+        const auto& types = inputs[i].GetTypes();
+        if (!types.empty() && std::all_of(types.begin(), types.end(), [](const auto* type) {
+              return type->find("sparse_tensor(") == 0;
+            })) {
+          sparse_consumer_inputs.insert(node.input(static_cast<int>(i)));
+        }
+      }
+    }
+  }
+#endif
+
   // Copy initial tensors to a map.
   for (auto& tensor : graph_proto_->initializer()) {
     // ORT in-memory address markers are an in-process sentinel: they can only be planted by ORT
@@ -1403,9 +1444,25 @@ Graph::Graph(const Model& owning_model,
     }
 
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
-    TypeProto t{utils::TypeProtoFromTensorProto(tensor)};
+    TypeProto t;
+#if !defined(DISABLE_SPARSE_TENSORS)
+    const auto declared_type = declared_sparse_types.find(tensor.name());
+    const bool requires_sparse_tensor = declared_type != declared_sparse_types.end()
+                                            ? declared_type->second
+                                            : sparse_consumer_inputs.count(tensor.name()) != 0;
+    if (IsSparseInitializer(tensor.name()) && requires_sparse_tensor) {
+      auto* sparse_tensor_type = t.mutable_sparse_tensor_type();
+      sparse_tensor_type->set_elem_type(tensor.data_type());
+      for (const auto dim : tensor.dims()) {
+        sparse_tensor_type->mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+    } else
+#endif
+    {
+      t = utils::TypeProtoFromTensorProto(tensor);
+    }
 
-    if (!utils::HasElemType(t.tensor_type())) {
+    if (!utils::HasElementType(t)) {
       ORT_THROW("This is an invalid model. Tensor does not have type information.");
     }
 
@@ -3496,7 +3553,15 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
     if (nullptr != node_arg) {
       const TensorProto* tensor_proto = initializer_pair.second;
       TypeProto tensor_type;
-      tensor_type.mutable_tensor_type()->set_elem_type(tensor_proto->data_type());
+#if !defined(DISABLE_SPARSE_TENSORS)
+      if (IsSparseInitializer(name) && node_arg->TypeAsProto() != nullptr &&
+          node_arg->TypeAsProto()->has_sparse_tensor_type()) {
+        tensor_type.mutable_sparse_tensor_type()->set_elem_type(tensor_proto->data_type());
+      } else
+#endif
+      {
+        tensor_type.mutable_tensor_type()->set_elem_type(tensor_proto->data_type());
+      }
       auto initializer_type = DataTypeUtils::ToType(tensor_type);
       auto nodearg_type = node_arg->Type();
       if (nullptr == nodearg_type)
