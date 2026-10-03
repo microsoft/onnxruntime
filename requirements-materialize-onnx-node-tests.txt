@@ -12,4 +12,4 @@
 # the Python MIN pins. Bump here and in cmake/deps.txt + the numpy MIN pins together.
 onnx==1.23.0
 numpy==2.2.6; python_version < "3.11"
-numpy==2.4.2; python_version >= "3.11"
+numpy==2.4.6; python_version >= "3.11"
