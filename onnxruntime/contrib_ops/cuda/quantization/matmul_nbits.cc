@@ -138,8 +138,8 @@ GlobalTacticCacheRegistry& GetGlobalTacticCacheRegistry() {
 // first use). Sessions configured with different cache directories/prefixes each get their own cache.
 // Returns nullptr when persistence is not configured, or when the location is already bound to a
 // different GPU's signature (e.g. one explicit prefix shared by heterogeneous devices). During a
-// session, kernel destructors only STAGE lazily-discovered tactics into these in-memory caches; the
-// single disk write happens in FlushMatMulNBitsTacticCaches() at CUDA EP teardown.
+// session, lazily profiled tactics are only staged into these in-memory caches; the disk write
+// happens in FlushMatMulNBitsTacticCaches() at CUDA EP teardown.
 static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCache(
     const std::string& config_dir, const std::string& config_prefix, const cudaDeviceProp& device_prop) {
   using onnxruntime::llm::gemm_cache::HardwareSignature;
@@ -172,11 +172,9 @@ static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> Get
 }
 
 // Flushes every registered tactic cache to disk. This is the single place lazily-discovered tactics
-// reach disk (kernel destructors only stage them in memory), which avoids the
-// O(number-of-MatMulNBits-nodes) full-file rewrites a per-node flush would cause. Best-effort and
-// dirty-guarded (Flush() is a no-op when nothing new was staged), so calling it once per CUDA EP
-// teardown is cheap even when several sessions share the process. Safe to call from a destructor:
-// never throws.
+// reach disk, which keeps file I/O off the inference path. Best-effort and dirty-guarded (Flush() is
+// a no-op when nothing new was staged), so calling it once per CUDA EP teardown is cheap even when
+// several sessions share the process. Safe to call from a destructor: never throws.
 void FlushMatMulNBitsTacticCaches() {
   auto& registry = GetGlobalTacticCacheRegistry();
   std::lock_guard<std::mutex> lock(registry.mutex);
@@ -187,7 +185,9 @@ void FlushMatMulNBitsTacticCaches() {
     }
     try {
       auto status = cache->Flush();
-      static_cast<void>(status);  // best-effort at EP teardown
+      if (!status.IsOK()) {
+        ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+      }
     } catch (...) {
       // Swallow: cache persistence is best-effort and must not escape EP teardown.
     }
@@ -713,11 +713,10 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
-  } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
-  }
+  const auto dtype = std::is_same_v<T, BFloat16> ? onnxruntime::llm::nvinfer::DataType::kBF16
+                                                 : onnxruntime::llm::nvinfer::DataType::kHALF;
+  gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), dtype, kernel_sm, static_cast<int>(nbits_),
+                       static_cast<int>(block_size_), has_zero_points_, hasWeightOnlyCudaKernel);
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);

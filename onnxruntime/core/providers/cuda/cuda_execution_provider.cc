@@ -417,9 +417,8 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp([[maybe_
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  // Persist any fpA_intB MatMulNBits tactics staged in memory during this session to disk. This is
-  // best-effort and dirty-guarded, and covers both the built-in CUDA EP and the plugin EP (which
-  // wraps a CUDAExecutionProvider). No-op in builds without onnxruntime_USE_FPA_INTB_GEMM.
+  // Persist fpA_intB MatMulNBits tactics staged in memory to disk (best-effort, dirty-guarded).
+  // No-op in builds without onnxruntime_USE_FPA_INTB_GEMM. The plugin EP flushes from ~CudaEp.
   onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
 
   // clean up thread local context caches

@@ -9,12 +9,10 @@ namespace cuda {
 
 // Flushes all process-global MatMulNBits fpA_intB tactic caches to disk (best-effort, dirty-guarded).
 //
-// During a session, MatMulNBits kernel destructors only STAGE lazily-discovered tactics into the
-// in-memory caches (no disk I/O); this function performs the single deterministic disk write. It is
-// invoked at CUDA EP teardown (CUDAExecutionProvider destructor), which covers both the built-in EP
-// and the CUDA plugin EP (CudaEp wraps a CUDAExecutionProvider), so tuned tactics are persisted at
-// session end. In builds without onnxruntime_USE_FPA_INTB_GEMM there is no tactic cache and this is
-// a no-op.
+// During a session, lazily profiled tactics are only staged into the in-memory caches (no disk I/O);
+// this function performs the disk write. It is invoked at CUDA EP teardown: ~CUDAExecutionProvider for
+// the built-in EP and ~CudaEp for the CUDA plugin EP. In builds without onnxruntime_USE_FPA_INTB_GEMM
+// there is no tactic cache and this is a no-op.
 #if USE_FPA_INTB_GEMM && !defined(DISABLE_CONTRIB_OPS)
 void FlushMatMulNBitsTacticCaches();
 #else
