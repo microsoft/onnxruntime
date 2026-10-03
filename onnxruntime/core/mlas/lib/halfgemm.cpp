@@ -60,6 +60,24 @@ MlasFp16AccelerationSupported()
 #endif
 }
 
+bool
+MLASCALL
+MlasHalfGemmDecodeSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    )
+{
+#if defined(MLAS_TARGET_AMD64)
+    return TransA == CblasNoTrans &&
+        (TransB == CblasNoTrans || TransB == CblasTrans) &&
+        GetMlasPlatform().HalfGemmDecodeSupported_;
+#else
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    return false;
+#endif
+}
+
 bool MLASCALL
 MlasHalfGemmAccelerationSupported(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
@@ -666,6 +684,52 @@ HGemmOperation(
     }
 }
 
+static void
+MlasHalfGemmDecodeBatch(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+#if defined(MLAS_TARGET_AMD64)
+    if (ThreadPool == nullptr) {
+        for (size_t gemm_i = 0; gemm_i < BatchSize; ++gemm_i) {
+            MlasHalfGemmDecodeKernelAvx2(TransB, N, K, &Data[gemm_i], 0, N);
+        }
+        return;
+    }
+
+    const double Complexity = double(N) * double(K) * double(BatchSize);
+    ptrdiff_t TargetThreadCount =
+        ptrdiff_t(Complexity / double(MLAS_HGEMM_THREAD_COMPLEXITY)) + 1;
+    TargetThreadCount = std::min(TargetThreadCount, MlasGetMaximumThreadCount(ThreadPool));
+
+    ptrdiff_t ThreadsPerGemm = std::max<ptrdiff_t>(TargetThreadCount / BatchSize, 1);
+    constexpr size_t ColumnAlignment = 64;
+    size_t StrideN = MlasDivRoundup(N, static_cast<size_t>(ThreadsPerGemm));
+    StrideN = std::min(N, MlasDivRoundup(StrideN, ColumnAlignment) * ColumnAlignment);
+    const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
+
+    MlasTrySimpleParallel(ThreadPool, ThreadCountN * BatchSize, [&](ptrdiff_t tid) {
+        const size_t gemm_i = static_cast<size_t>(tid) / ThreadCountN;
+        const size_t thread_i = static_cast<size_t>(tid) % ThreadCountN;
+        const size_t StartN = thread_i * StrideN;
+        const size_t CountN = std::min(N - StartN, StrideN);
+        MlasHalfGemmDecodeKernelAvx2(TransB, N, K, &Data[gemm_i], StartN, CountN);
+    });
+#else
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(N);
+    MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(Data);
+    MLAS_UNREFERENCED_PARAMETER(BatchSize);
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+#endif
+}
+
 void
 MLASCALL
 MlasGemmBatch(
@@ -678,6 +742,12 @@ MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
 ) {
+    if (M == 1 && N != 0 && K != 0 && BatchSize != 0 &&
+        MlasHalfGemmDecodeSupported(TransA, TransB)) {
+        MlasHalfGemmDecodeBatch(TransB, N, K, Data, BatchSize, ThreadPool);
+        return;
+    }
+
     if (!ThreadPool) {
         for (size_t gemm_i = 0; gemm_i < BatchSize; gemm_i++) {
             HGemmOperation(TransA, TransB, K, &Data[gemm_i], 0, M, 0, N);
