@@ -17,6 +17,7 @@ limitations under the License.
 #include "core/platform/env.h"
 #include "core/platform/windows/telemetry.h"
 #include "core/common/inlined_containers.h"
+#include <string>
 #include <Windows.h>
 #include <filesystem>
 
@@ -40,6 +41,12 @@ to be present during affinity setup.
 */
 using GlobalProcessorInfoMap = InlinedHashMap<int, ProcessorInfo>;
 
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+// Returns whether the given ORT_ARM64_USE_ALL_CORES value selects performance cores only.
+// An empty value or "0" keeps the performance-core default; anything else opts out.
+bool Arm64ParseUseAllCores(const std::string& value);
+#endif
+
 class WindowsEnv : public Env {
  public:
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -56,6 +63,7 @@ class WindowsEnv : public Env {
   static int DefaultNumCores();
   int GetNumPhysicalCpuCores() const override;
   std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override;
+  bool ShouldPinDefaultThreadAffinities() const override;
   int GetL2CacheSize() const override;
   static WindowsEnv& Instance();
   PIDType GetSelfPid() const override;
@@ -120,6 +128,12 @@ class WindowsEnv : public Env {
    * }
    */
   std::vector<LogicalProcessors> cores_;
+
+  /*
+   * "performance_cores_" holds the subset of "cores_" that Windows reports as
+   * belonging to the highest EfficiencyClass
+   */
+  std::vector<LogicalProcessors> performance_cores_;
 
   int l2_cache_size_;
   /*
