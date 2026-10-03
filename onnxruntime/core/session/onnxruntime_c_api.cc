@@ -151,6 +151,11 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type,
   if (std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(), [](int64_t v) { return v < 0; })) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
+  if (utils::IsDataTypeString(ml_type)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Can not use strings in pre-allocated memory."
+                                 " Use CreateTensorAsOrtValue() to allocate memory inside and copy");
+  }
 
   size_t size_to_allocate = 0;
   Status status = Tensor::CalculateTensorStorageSize(ml_type, tensor_shape, 0 /*alignment*/, size_to_allocate);
