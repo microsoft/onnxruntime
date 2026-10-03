@@ -16,6 +16,7 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "1ES.ImageOverride=onnxruntime-win2025-nvme-x64",
       "JobId=build_x64_release_vitisai-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
