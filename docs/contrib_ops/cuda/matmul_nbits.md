@@ -546,13 +546,12 @@ sessions, and the first-time tuning cost is reduced. Design details:
 single bucket is profiled lazily on first use and kept in the in-process map for
 the rest of the session. Lazy buckets are intentionally **not** written to disk
 on the hot path (that would put file I/O on inference latency); instead each
-`MatMulNBits` kernel **stages** its lazily-discovered buckets into the
-process-global in-memory cache at teardown, and the cache is written to disk a
-**single time** at CUDA EP teardown (`~CUDAExecutionProvider`, which covers both
-the built-in and the CUDA plugin EP). (A per-node disk flush would rewrite the
-whole cache file once per node, since there is one kernel object per node.) Disk
+lazily profiled bucket is **staged** into the process-global in-memory cache
+right after it is profiled, and the cache is written to disk at CUDA EP
+teardown (`~CUDAExecutionProvider` for the built-in EP, `~CudaEp` for the CUDA
+plugin EP). Disk
 persistence therefore covers the construction-time sweep (flushed eagerly so the
-file exists while the session runs), the offline tuning tool, and the single
+file exists while the session runs), the offline tuning tool, and the
 EP-teardown flush of lazily-discovered buckets. Lazy profiling is also skipped
 while a CUDA graph is being captured (profiling kernels/events/allocations are
 illegal during capture), so run a
@@ -658,7 +657,7 @@ present. `ComputeInternal` then:
 | `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. Session-config equivalent: `ep.cuda.fpa_intb_profile_m`. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | path, unset | Directory for the persistent fpA_intB tactic cache (§6.1). Unset means the cache is in-process only. Session-config equivalent: `ep.cuda.gemm_tactic_cache_dir`. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | path prefix, unset | Explicit cache file prefix (§6.1); writes `<prefix>.matmulnbits_fpa_intb.tsv`. Session-config equivalent: `ep.cuda.gemm_tactic_cache_prefix`. |
-| `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
+| `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic, and bypass the fpA_intB M-chunking size condition (§6.2). |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 | `ORT_MATMULNBITS_M_CHUNK_SIZE` | int, `0` | Max rows of `A` per fpA_intB launch (§6.2). `0` disables M chunking. Overridden by the `ep.cuda.matmul_nbits_m_chunk_size` session config entry. Also applies to the CUDA plugin EP. |
 

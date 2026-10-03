@@ -103,6 +103,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mArch = arch;
   }
 
+  void setL2CacheBytes(size_t l2CacheBytes) {
+    mL2CacheBytes = l2CacheBytes;
+  }
+
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
   // in-process-only behavior (no disk reads/writes).
   void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
@@ -147,6 +151,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mGroupSize;
   KernelType mCudaKernelType;
   int mArch;
+  size_t mL2CacheBytes = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
   std::vector<int> mProfileMOverride;
 };
