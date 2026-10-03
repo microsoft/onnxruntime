@@ -233,7 +233,7 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
     GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
-  if (mCache == nullptr) {
+  if (mCache == nullptr || !mCacheAccess.load) {
     return;
   }
   auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
@@ -279,40 +279,19 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
   }
 }
 
-bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
-    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
-  if (mCache == nullptr) {
-    return false;
-  }
-  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
-  bool added = false;
-  for (auto const& [m, config] : map) {
-    // Only stage buckets that are not already recorded (skips re-staging cache hits).
-    if (!mCache->Get(key, m).has_value()) {
-      mCache->Put(key, m, config);
-      added = true;
-    }
-  }
-  return added;
-}
-
-void WeightOnlyGroupwiseQuantGemmPluginProfiler::storePersistentCache(
-    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
-  // Construction-time sweep: stage and flush immediately so the cache file exists while the session
-  // is alive (the offline tuning tool reads it before the process exits).
-  if (stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel)) {
-    auto status = mCache->Flush();
-    if (!status.IsOK()) {
-      ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
-    }
-  }
-}
-
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
     GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
-  // Lazy-profiling path: stage only (no disk write). The staged tactics are written to disk once at
-  // CUDA EP teardown (FlushMatMulNBitsTacticCaches in matmul_nbits.cc).
-  stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
+  if (mCache == nullptr || !mCacheAccess.save) {
+    return;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  for (auto const& [m, config] : map) {
+    // Re-staging an unchanged bucket would mark the cache dirty and rewrite the file for nothing.
+    auto cached = mCache->Get(key, m);
+    if (!cached.has_value() || !onnxruntime::llm::gemm_cache::SameTactic(*cached, config)) {
+      mCache->Put(key, m, config);
+    }
+  }
 }
 }  // namespace onnxruntime::llm::kernels::weight_only
 #endif

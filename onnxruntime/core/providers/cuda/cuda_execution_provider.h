@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <set>
 #include <vector>
 
@@ -130,9 +131,16 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // by a later run.  Held until the provider is destroyed.
   void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const;
 
+  // Path of the model this provider partitioned, recorded in GetCapability. Empty for models loaded
+  // from bytes, or before partitioning.
+  std::filesystem::path GetSessionModelPath() const;
+
  private:
   mutable std::mutex captured_host_buffers_mutex_;
   mutable std::vector<std::shared_ptr<void>> captured_host_buffers_;
+
+  mutable std::mutex model_path_mutex_;
+  mutable std::filesystem::path model_path_;
 
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
