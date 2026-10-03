@@ -61,6 +61,44 @@ static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t ran
   return true;
 }
 
+// Compares two shape dimensions for provable equality. dim_value() is 0 when a dim only
+// carries a dim_param, so symbolic dims must be compared via dim_param() instead.
+static bool AreDimsProvablyEqual(const TensorShapeProto::Dimension& a, const TensorShapeProto::Dimension& b) {
+  if (a.has_dim_value() && b.has_dim_value()) {
+    return a.dim_value() == b.dim_value();
+  }
+  return a.has_dim_param() && b.has_dim_param() && !a.dim_param().empty() && a.dim_param() == b.dim_param();
+}
+
+// Returns true when broadcasting 'shape' against 'reference_shape' may expand the reference
+// shape. LayerNormalization preserves the normalized input shape, so a trailing Mul/Add whose
+// broadcast could expand it must not be fused. Only a dim of 1 or a dim provably equal to the
+// reference dim is known safe: an unproven symbolic or unknown dim may still differ at runtime
+// (e.g. scale [2] against input [N] expands under Mul when N == 1, while LayerNormalization
+// preserves the input shape and the ORT kernel rejects the mismatched scale).
+static bool BroadcastMayExpandShape(const TensorShapeProto& shape, const TensorShapeProto& reference_shape) {
+  if (shape.dim_size() > reference_shape.dim_size()) {
+    return true;
+  }
+
+  const int offset = reference_shape.dim_size() - shape.dim_size();
+  for (int i = 0; i < shape.dim_size(); ++i) {
+    const auto& dim = shape.dim(i);
+    const auto& ref_dim = reference_shape.dim(offset + i);
+    if (dim.has_dim_value() && dim.dim_value() == 1) {
+      continue;  // 1 broadcasts against any dim without expanding the reference shape.
+    }
+    if (AreDimsProvablyEqual(dim, ref_dim)) {
+      continue;
+    }
+    // Anything else is unsafe: a concrete mismatch provably changes the shape, and a symbolic
+    // or unknown dim that cannot be proven equal may still differ at runtime.
+    return true;
+  }
+
+  return false;
+}
+
 static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, const Graph& graph) {
   const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
   std::vector<int64_t> axes_values;
@@ -463,10 +501,12 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // Logically since we support input and scale/bias in different data types, those Cast Ops in sub-graph
     // can be removed. This is one possible place a Cast Op can exist, that is between Div and Mul nodes.
     // div --> mul or div --> cast --> mul
+    NodeArg* normalized_output = div_node.MutableOutputDefs()[0];
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       nodes_to_remove.push_back(*next_node);
+      normalized_output = next_node->MutableOutputDefs()[0];
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
     // Apex O2 pattern specific match ends...
@@ -518,43 +558,62 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
-    // because SkipLayerNorm kernel, for example, has dependency on single dim size
+    // because SkipLayerNorm kernel, for example, has dependency on single dim size.
+    // Select scale and bias by graph connectivity (the Mul/Add input that is not the
+    // normalized data path) rather than by rank alone: rank alone can pick the wrong
+    // operand when both Mul inputs share the rank (e.g. rank-1 input with Mul(scale, div_out))
+    // and cannot detect expanding broadcasts.
     NodeArg* scale = nullptr;
-    NodeArg* bias = nullptr;
-    for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
-        continue;
-      }
-      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        scale = mul_node.MutableInputDefs()[i];
+    for (NodeArg* input : mul_node.MutableInputDefs()) {
+      if (input->Name() != normalized_output->Name()) {
+        scale = input;
+        break;
       }
     }
 
-    for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
-      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
-        continue;
-      }
-      if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        bias = last_add_node.MutableInputDefs()[i];
+    NodeArg* bias = nullptr;
+    NodeArg* mul_output = mul_node.MutableOutputDefs()[0];
+    for (NodeArg* input : last_add_node.MutableInputDefs()) {
+      if (input->Name() != mul_output->Name()) {
+        bias = input;
+        break;
       }
     }
-    if (scale == nullptr || bias == nullptr) {
+
+    if (scale == nullptr || scale->Shape() == nullptr || bias == nullptr || bias->Shape() == nullptr) {
       continue;
     }
 
-    // Scale and bias must have the same shape.
+    if (scale->Shape()->dim_size() != static_cast<int>(axes_values.size()) ||
+        bias->Shape()->dim_size() != static_cast<int>(axes_values.size())) {
+      continue;
+    }
+
+    // Scale and bias must have the same shape. Compare symbolic dims via dim_param():
+    // dim_value() is 0 for a dim that only has a dim_param, so a plain dim_value()
+    // comparison would wrongly treat different symbolic dims as equal.
     bool same_dim = true;
     for (int i = 0; i < scale->Shape()->dim_size(); i++) {
-      if (scale->Shape()->dim(i).dim_value() != bias->Shape()->dim(i).dim_value()) {
+      if (!AreDimsProvablyEqual(scale->Shape()->dim(i), bias->Shape()->dim(i))) {
         same_dim = false;
         break;
       }
     }
-    if (!same_dim)
+    if (!same_dim) {
       continue;
+    }
 
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
                                         : reduce_mean_node.MutableInputDefs()[0];
+
+    // LayerNormalization preserves the normalized input shape, so the trailing Mul/Add
+    // broadcast must not expand it. Reject unless every scale/bias dim is 1 or provably equal
+    // to the input dim: an unproven symbolic or unknown dim may still expand at runtime.
+    if (x_input->Shape() != nullptr &&
+        (BroadcastMayExpandShape(*scale->Shape(), *x_input->Shape()) ||
+         BroadcastMayExpandShape(*bias->Shape(), *x_input->Shape()))) {
+      continue;
+    }
 
     // CPU doesn't support fp16
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
