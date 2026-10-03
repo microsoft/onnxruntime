@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "core/common/status.h"
 #include "core/common/common.h"
 #include "core/framework/external_data_loader.h"
@@ -21,6 +23,16 @@ class ExternalDataLoaderManager {
 
   // Release initialization-only loaders without invalidating SessionState references to this manager.
   void Clear() noexcept { external_data_loaders_.clear(); }
+
+  const IExternalDataLoader* GetExternalDataLoader(
+      const OrtMemoryInfo& target_memory_info, int32_t tensor_data_type) const;
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  const IExternalDataLoader* GetTensorCreator(
+      const OrtDevice& target_device, int32_t tensor_data_type) const;
+  common::Status BeginLoad() const;
+  common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const;
+  void AbortLoad() const noexcept;
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExternalDataLoaderManager);

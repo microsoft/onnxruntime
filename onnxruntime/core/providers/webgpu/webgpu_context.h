@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -15,6 +16,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -22,15 +24,20 @@
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include <d3d12.h>
+#include <wrl/client.h>
+#endif
+
 namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
+
 class WebGpuContext;
 class ComputeContextBase;
 class ComputeContext;
 class ProgramBase;
-
 // PendingKernelInfo stores profiling information for a kernel execution
 struct PendingKernelInfo {
   PendingKernelInfo(std::string_view kernel_name,
@@ -119,6 +126,9 @@ struct CommandRecordingState {
   // across Sessions, so has_unsubmitted_work and pending_buffers can be removed from this state.
   bool has_unsubmitted_work = false;
   std::vector<wgpu::Buffer> pending_buffers;
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  std::vector<std::function<void()>> pending_release_callbacks;
+#endif
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
@@ -161,6 +171,8 @@ struct WebGpuContextConfig {
   };
   bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
+  WeightLoadAccelerationMode weight_load_acceleration_mode{
+      WeightLoadAccelerationMode::Off};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
   bool compile_only{false};
@@ -248,6 +260,8 @@ class WebGpuContext final {
   static constexpr uint64_t kWebGpuGuaranteedMaxStorageBufferBindingSize =
       128ULL * 1024 * 1024;
 
+  ~WebGpuContext();
+
   Status Wait(wgpu::Future f);
 
   const wgpu::Instance& Instance() const { return instance_; }
@@ -315,6 +329,15 @@ class WebGpuContext final {
   // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
   inline bool HasDevice() const { return device_ != nullptr; }
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  ID3D12Device* WeightLoadingD3D12Device() const;
+  bool D3D12SharedResourceFeaturesAvailable() const {
+    return d3d12_shared_resource_features_available_;
+  }
+  wgpu::BackendType SelectedBackendType() const {
+    return selected_backend_type_;
+  }
+#endif
 
   //
   // Get Split-K configuration.
@@ -479,6 +502,13 @@ class WebGpuContext final {
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
   bool preserve_device_;
+  WeightLoadAccelerationMode weight_load_acceleration_mode_{
+      WeightLoadAccelerationMode::Off};
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  Microsoft::WRL::ComPtr<ID3D12Device> weight_loading_d3d12_device_;
+  bool d3d12_shared_resource_features_available_ = false;
+  wgpu::BackendType selected_backend_type_ = wgpu::BackendType::Undefined;
+#endif
   uint64_t max_storage_buffer_binding_size_;
   uint32_t max_storage_buffers_per_shader_stage_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

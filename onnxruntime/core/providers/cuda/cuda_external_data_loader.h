@@ -76,8 +76,10 @@ class ExternalDataLoader final : public IExternalDataLoader {
 
   common::Status LoadTensor(const Env& env,
                             const std::filesystem::path& data_file_path,
+                            std::string_view tensor_name,
                             FileOffsetType data_offset,
                             SafeInt<size_t> data_length,
+                            const std::shared_ptr<IAllocator>& allocator,
                             Tensor& tensor) const override;
 
  private:

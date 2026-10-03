@@ -99,13 +99,27 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
   const auto device = memory_info.device;
 
-  if (utils::HasExternalData(tensor_proto)) {
-    auto external_data_loader = external_data_loader_mgr.GetExternalDataLoader(memory_info);
+  if (utils::HasExternalData(tensor_proto) &&
+      !utils::HasExternalDataInMemory(tensor_proto)) {
+    auto external_data_loader =
+        external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
     if (external_data_loader) {
-      // if custom external data loader is used, always allocate memory on device
-      ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+#if defined(ENABLE_D3D12_FILE_LOADING)
+      if (external_data_loader->CreatesTensorForDevice(device)) {
+        ORT_RETURN_IF(memory_buffer != nullptr,
+                      "An external data loader that creates tensors cannot use a preallocated buffer.");
+        ORT_RETURN_IF(alloc == nullptr,
+                      "An external data loader that creates tensors requires a device allocator.");
+        tensor = Tensor{type, tensor_shape, nullptr, alloc};
+      } else
+#endif
+      {
+        // if custom external data loader is used, always allocate memory on device
+        ORT_RETURN_IF_ERROR(
+            AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+      }
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
-                                                                    *external_data_loader, tensor));
+                                                                    *external_data_loader, alloc, tensor));
       ORT_RETURN_IF_ERROR(utils::LoadPrepackedWeightsFromExternalData(env, proto_path, tensor_proto,
                                                                       prepacked_for_graph));
 
@@ -330,8 +344,18 @@ common::Status SaveInitializedTensors(
     // - Values that are external and mapped from disk. We let the OS manage the memory.
     // - we do not trace values that are in memory because they may be sitting on top of the user allocated
     //   memory.
-    const bool trace_allocation = (exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
-                                  !utils::HasExternalData(*tensor_proto);
+#if defined(ENABLE_D3D12_FILE_LOADING)
+    const bool loader_creates_tensor =
+        utils::HasExternalData(*tensor_proto) &&
+        !utils::HasExternalDataInMemory(*tensor_proto) &&
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(ort_value_index), tensor_proto->data_type()) != nullptr;
+#else
+    constexpr bool loader_creates_tensor = false;
+#endif
+    const bool trace_allocation = !loader_creates_tensor &&
+                                  ((exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
+                                   !utils::HasExternalData(*tensor_proto));
 
     if (trace_allocation) {
       // can not trace string tensor, and they exist only on CPU
@@ -350,6 +374,14 @@ common::Status SaveInitializedTensors(
       // do not trace string tensor
       continue;
     }
+#if defined(ENABLE_D3D12_FILE_LOADING)
+    if (utils::HasExternalData(*entry.second) &&
+        !utils::HasExternalDataInMemory(*entry.second) &&
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(entry.first), entry.second->data_type()) != nullptr) {
+      continue;
+    }
+#endif
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
 
@@ -374,6 +406,39 @@ common::Status SaveInitializedTensors(
   const bool use_device_allocator_for_initializers =
       session_options.config_options.GetConfigOrDefault(
           kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
+  bool external_data_load_finalized = false;
+  auto abort_external_data_load = gsl::finally([&]() {
+    if (!external_data_load_finalized) {
+      external_data_loader_mgr.AbortLoad();
+    }
+  });
+
+  for (const auto& entry : id_to_initialized_tensor) {
+    if (user_supplied_initializer_ids.contains(entry.first) ||
+        !utils::HasExternalData(*entry.second) ||
+        utils::HasExternalDataInMemory(*entry.second)) {
+      continue;
+    }
+
+    if (session_options.IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Preparing session state weights is canceled due to user request.");
+    }
+
+    const auto* tensor_creator = external_data_loader_mgr.GetTensorCreator(
+        exec_plan.GetLocation(entry.first), entry.second->data_type());
+    if (tensor_creator != nullptr) {
+      ORT_RETURN_IF_ERROR(
+          utils::PrepareExtDataForTensorFromTensorProto(env, graph_loc, *entry.second, *tensor_creator));
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
+      [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
+#endif
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
@@ -462,6 +527,13 @@ common::Status SaveInitializedTensors(
 #endif
   }
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  // AbortLoad is also the idempotent end-of-batch cleanup hook. All claimed
+  // allocations have transferred ownership, so this only releases metadata
+  // and any unclaimed resources left by a successful batch.
+  external_data_loader_mgr.AbortLoad();
+  external_data_load_finalized = true;
+#endif
   LOGS(logger, INFO) << "Done saving initialized tensors";
   return common::Status::OK();
 }

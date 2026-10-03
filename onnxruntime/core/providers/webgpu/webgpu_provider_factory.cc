@@ -45,6 +45,37 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 
 namespace {
 
+constexpr const char* WeightLoadAccelerationModeName(
+    WeightLoadAccelerationMode mode) {
+  switch (mode) {
+    case WeightLoadAccelerationMode::Off:
+      return kWeightLoadAcceleration_Off;
+    case WeightLoadAccelerationMode::Preferred:
+      return kWeightLoadAcceleration_Preferred;
+    case WeightLoadAccelerationMode::Required:
+      return kWeightLoadAcceleration_Required;
+  }
+  return "unknown";
+}
+
+WeightLoadAccelerationMode ParseWeightLoadAccelerationMode(
+    const ConfigOptions& config_options) {
+  std::string value;
+  if (!config_options.TryGetConfigEntry(kWeightLoadAcceleration, value) ||
+      value == kWeightLoadAcceleration_Off) {
+    return WeightLoadAccelerationMode::Off;
+  }
+  if (value == kWeightLoadAcceleration_Preferred) {
+    return WeightLoadAccelerationMode::Preferred;
+  }
+  if (value == kWeightLoadAcceleration_Required) {
+    return WeightLoadAccelerationMode::Required;
+  }
+  ORT_THROW(
+      "Invalid weightLoadAcceleration value: ", value,
+      ". Must be \"off\", \"preferred\", or \"required\".");
+}
+
 WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options) {
   WebGpuExecutionProviderConfig webgpu_ep_config{};
 
@@ -69,6 +100,9 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       ORT_THROW("Invalid enable graph capture: ", enable_graph_capture_str);
     }
   }
+
+  webgpu_ep_config.weight_load_acceleration_mode =
+      ParseWeightLoadAccelerationMode(config_options);
 
   if (std::string pool_generations_str;
       config_options.TryGetConfigEntry(kSessionBufferPoolGenerations, pool_generations_str)) {
@@ -165,6 +199,8 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP preferred layout: " << int(webgpu_ep_config.data_layout);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP weight load acceleration mode: "
+                        << WeightLoadAccelerationModeName(webgpu_ep_config.weight_load_acceleration_mode);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable int64: " << webgpu_ep_config.enable_int64;
@@ -176,6 +212,9 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
 
 WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options) {
   WebGpuContextConfig config{};
+
+  config.weight_load_acceleration_mode =
+      ParseWeightLoadAccelerationMode(config_options);
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {

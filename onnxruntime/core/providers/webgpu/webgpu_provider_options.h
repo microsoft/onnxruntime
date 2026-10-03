@@ -5,12 +5,28 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+enum class WeightLoadAccelerationMode {
+  Off,
+  Preferred,
+  Required,
+};
+
+constexpr bool IsWeightLoadAccelerationEnabled(WeightLoadAccelerationMode mode) {
+  return mode != WeightLoadAccelerationMode::Off;
+}
+
+constexpr bool IsWeightLoadAccelerationRequired(WeightLoadAccelerationMode mode) {
+  return mode == WeightLoadAccelerationMode::Required;
+}
+
 namespace options {
 
 // The following are the options that can be set in the WebGPU provider options.
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
+constexpr const char* kWeightLoadAcceleration = "ep.webgpuexecutionprovider.weightLoadAcceleration";
 // Number of generations of buffers to retain in the per-session pool for reuse
 // across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
 // generator's worth of intermediate buffers.
@@ -76,6 +92,10 @@ constexpr const char* kPreferredLayout_NHWC = "NHWC";
 
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
+
+constexpr const char* kWeightLoadAcceleration_Off = "off";
+constexpr const char* kWeightLoadAcceleration_Preferred = "preferred";
+constexpr const char* kWeightLoadAcceleration_Required = "required";
 
 constexpr const char* kEnableInt64_ON = "1";
 constexpr const char* kEnableInt64_OFF = "0";

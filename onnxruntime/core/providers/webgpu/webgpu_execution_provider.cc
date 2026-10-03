@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include "core/providers/webgpu/d3d12_external_data_loader.h"
+#endif
 
 #include <mutex>
 #include <string_view>
@@ -617,11 +620,38 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
+#endif
       recording_{std::make_unique<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
-          /*device_free=*/!context.HasDevice(),
+          !context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode) &&
+      context_.HasDevice()) {
+    accelerated_initializer_allocator_ =
+        CreateD3D12AcceleratedWebGpuAllocator(
+            context_,
+            [this]() -> webgpu::CommandRecordingState& { return Recording(); },
+            accelerated_initializer_state_);
+  }
+#else
+  if (webgpu::IsWeightLoadAccelerationRequired(
+          config.weight_load_acceleration_mode)) {
+    ORT_THROW(
+        "The requested weightLoadAcceleration mode requires a supported "
+        "disk-to-GPU weight loading implementation.");
+  }
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode)) {
+    LOGS_DEFAULT(WARNING)
+        << "Accelerated weight loading is unavailable in this build; using "
+           "the ordinary WebGPU initializer loading path.";
+  }
+#endif
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -641,11 +671,17 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = !context_.HasDevice();
   return {
-      // allocator for initializers
-      CreateWebGpuAllocator(
-          device_free,
-          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
-          [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
+  // allocator for initializers
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      context_.HasDevice() &&
+              accelerated_initializer_allocator_ != nullptr
+          ? accelerated_initializer_allocator_
+          :
+#endif
+          CreateWebGpuAllocator(
+              device_free,
+              [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+              [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
       // default allocator
       CreateWebGpuAllocator(
           device_free,
@@ -766,6 +802,16 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
 #if defined(__wasm__)
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<webgpu::ExternalDataLoader>();
+}
+#elif defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
+  if (accelerated_initializer_state_ == nullptr) {
+    return nullptr;
+  }
+
+  return std::make_unique<webgpu::D3D12AcceleratedExternalDataLoader>(
+      context_, accelerated_initializer_state_,
+      weight_load_acceleration_mode_);
 }
 #endif
 

@@ -54,7 +54,7 @@ common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,
     FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
   return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
-      env, path, offset, length, *static_cast<Tensor*>(tensor));
+      env, path, {}, offset, length, {}, *static_cast<Tensor*>(tensor));
 }
 
 }  // namespace onnxruntime::test
