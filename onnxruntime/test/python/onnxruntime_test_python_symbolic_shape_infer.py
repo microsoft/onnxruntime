@@ -711,6 +711,62 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_dynamic_sparse_attention_unshaped_past_keeps_capacity_unknown(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionUnshapedPast",
+            inputs,
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+                helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+                helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+            ],
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [2])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        for output in inferred.graph.output[1:]:
+            dims = output.type.tensor_type.shape.dim
+            self.assertEqual(len(dims), 4)
+            self.assertEqual(dims[0].dim_param, "b")
+            self.assertEqual(dims[1].dim_value, 2)
+            self.assertFalse(dims[2].HasField("dim_value"))
+            self.assertEqual(dims[3].dim_value, 8)
+
     def test_dynamic_sparse_attention_invalid_widths_are_not_truncated(self):
         def infer(query_width, packed):
             input_names = ["query", "", ""]
