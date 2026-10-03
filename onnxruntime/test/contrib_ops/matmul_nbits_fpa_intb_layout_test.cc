@@ -30,7 +30,7 @@ namespace {
 // the first tile. N is a multiple of 128 so 2-bit weights are fpA_intB-eligible.
 constexpr int64_t kN = 128, kK = 256;
 
-void ExpectExactDequantizedWeights(int64_t bits) {
+void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false) {
   SCOPED_TRACE("bits=" + std::to_string(bits));
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
@@ -83,6 +83,7 @@ void ExpectExactDequantizedWeights(int64_t bits) {
   eps.emplace_back(DefaultCudaExecutionProvider());
   SessionOptions session_options;
   session_options.use_per_session_threads = false;
+  session_options.use_deterministic_compute = deterministic;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   test.Config(session_options);
   test.ConfigEps(std::move(eps));
@@ -99,6 +100,13 @@ TEST(MatMulNBitsFpAIntBLayout, Int4WeightsRoundTripExactly) {
 TEST(MatMulNBitsFpAIntBLayout, Int2WeightsRoundTripExactly) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "fpA_intB layout test requires SM80+";
   ExpectExactDequantizedWeights(2);
+}
+
+TEST(MatMulNBitsFpAIntBLayout, DeterministicWeightsRoundTripExactly) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "fpA_intB layout test requires SM80+";
+  for (int64_t bits : {2, 4, 8}) {
+    ExpectExactDequantizedWeights(bits, true);
+  }
 }
 
 }  // namespace test

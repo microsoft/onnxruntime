@@ -52,7 +52,8 @@ static bool IsSupportedRouterGemvShape(const uint8_t* zero_points, int m, int n,
   if (k % block_size != 0) {
     return false;
   }
-  return n == kGptOssRouterN && k == kGptOssRouterK;  // gpt-oss-20b
+  return (n == kGptOssRouterN && k == kGptOssRouterK) ||
+         (n == 248320 && k == 2560 && block_size == 32);
 }
 
 // Reduces kUnroll groups of kPerIter elements per step, advancing the packed-weight pointer, scale

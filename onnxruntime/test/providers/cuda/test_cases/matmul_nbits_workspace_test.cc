@@ -79,6 +79,49 @@ bool CheckDefault(int32_t elem_type = kFp16, int64_t N = 256, int64_t K = 1024,
 }
 }  // namespace
 
+TEST(MatMulNBitsWorkspace, DeterministicTacticsIgnoreProfiledCache) {
+  using namespace onnxruntime::llm::cutlass_extensions;
+  using namespace onnxruntime::llm::kernels::weight_only;
+  using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+  using Runner = CutlassFpAIntBGemmRunner<half, uint8_t,
+                                        cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+
+  class TestProfiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    TestProfiler() {
+      mRunner = std::make_shared<Runner>();
+      mRunner->setArch(80);
+    }
+  } profiler;
+
+  const GemmIdCore gemm_id(640, 2560, onnxruntime::llm::nvinfer::DataType::kHALF, 80);
+  auto cache = std::make_shared<TestProfiler::MNKProfileMap>();
+  cache->createMProfileMap(gemm_id);
+  profiler.setSelectionTactics(cache);
+
+  const auto decode = profiler.getDeterministicConfig(1);
+  const auto prefill = profiler.getDeterministicConfig(77);
+  ASSERT_TRUE(decode.has_value());
+  ASSERT_TRUE(prefill.has_value());
+  EXPECT_TRUE(decode->enableCudaKernel);
+  EXPECT_FALSE(prefill->enableCudaKernel);
+  EXPECT_EQ(prefill->split_k_style, SplitKStyle::NO_SPLIT_K);
+  EXPECT_EQ(prefill->split_k_factor, 1);
+
+  for (int split_k : {2, 5}) {
+    const CutlassGemmConfig timed(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
+                                 SplitKStyle::SPLIT_K_SERIAL, split_k, 3);
+    for (int rows : {1, 77}) {
+      (*cache->getMProfileMap(gemm_id))[rows] = timed;
+      ASSERT_TRUE(profiler.getBestConfig(rows, gemm_id).has_value());
+      EXPECT_EQ(profiler.getBestConfig(rows, gemm_id)->split_k_factor, split_k);
+      const auto selected = profiler.getDeterministicConfig(rows);
+      ASSERT_TRUE(selected.has_value());
+      EXPECT_EQ(selected->toString(), (rows == 1 ? decode : prefill)->toString());
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared workspace-size formula (ComputeFpAIntBGemmWorkspaceSize).
 // The non-SM90 branch is device-independent so it can be asserted with exact values.
