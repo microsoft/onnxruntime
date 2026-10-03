@@ -5,8 +5,29 @@
 
 namespace onnxruntime::contrib::cuda {
 
-inline int PickGenericFp8MmaKSplit(int n, int windows) {
+constexpr int kFp8MmaOutputColumnsPerBlock = 16;
+
+inline int Fp8MmaOutputBlocks(int n) {
+  return (n + kFp8MmaOutputColumnsPerBlock - 1) / kFp8MmaOutputColumnsPerBlock;
+}
+
+inline int PickGenericFp8MmaKSplit(int n, int m, int windows, int sm_count,
+                                   int compute_capability_major, int compute_capability_minor) {
   int k_split = (n >= 8192) ? 8 : 16;
+  const int output_blocks = Fp8MmaOutputBlocks(n);
+  const bool qualified_rtx4090 = compute_capability_major == 8 && compute_capability_minor == 9 &&
+                                 sm_count == 128 && m <= 8 && windows >= 16 && windows <= 96 &&
+                                 output_blocks > 3 * sm_count;
+  // The 2-SM-wave crossover is qualified only on the measured 36-SM SM120 configuration.
+  // A 170-SM SM120 GPU did not reproduce it; its winner varied with M and K instead.
+  const bool qualified_sm120_36sm = compute_capability_major == 12 && compute_capability_minor == 0 &&
+                                    sm_count == 36 && m <= 8 && windows >= 40 && windows <= 96 &&
+                                    output_blocks > 2 * sm_count;
+  // SM90/132 SMs qualified here on standalone timings, then regressed 16-18% per call when
+  // measured inside a live decode stream. See section 6.7 of the experiments doc.
+  if (qualified_rtx4090 || qualified_sm120_36sm) {
+    k_split = 8;
+  }
   if (windows < k_split) {
     k_split = (windows >= 8) ? 8 : 4;
   }
@@ -15,14 +36,14 @@ inline int PickGenericFp8MmaKSplit(int n, int windows) {
 
 inline int PickFp8MmaKSplit(int n, int m, int windows, int sm_count,
                             int compute_capability_major, int compute_capability_minor) {
-  int k_split = PickGenericFp8MmaKSplit(n, windows);
+  int k_split = PickGenericFp8MmaKSplit(n, m, windows, sm_count,
+                                        compute_capability_major, compute_capability_minor);
 
-  constexpr int kOutputColumnsPerBlock = 16;
   constexpr int kWideOutputMinBlocks = 1024;
   constexpr int kLongReductionMinBlocks = 320;
   constexpr int kWideOutputMinWindows = 80;
   constexpr int kLongReductionMinWindows = 128;
-  const int output_blocks = (n + kOutputColumnsPerBlock - 1) / kOutputColumnsPerBlock;
+  const int output_blocks = Fp8MmaOutputBlocks(n);
 
   // The qualified 48-SM SM121 GPU benefits from KSplit32 in two measured low-M regimes:
   // wide outputs with substantial K and narrower outputs with very long reductions.
@@ -51,9 +72,9 @@ inline int PickFp8MmaKSplit(int n, int m, int windows, int sm_count,
 //   * a grid above 3 blocks per SM stays multi-wave either way;
 //   * pre-SM89 devices lack native FP8 tensor-core support and lose about 1% from the register
 //     cap even inside the target grid window;
-//   * 8-warp blocks (KSplit 8, taken from N >= 8192) must not carry the attribute at all --
-//     declaring it replaces nvcc's implicit bounds and costs 1.05-1.08x even when the register
-//     cap is unchanged, and KSplit 32 cannot host 3 blocks per SM at all;
+//   * 8-warp blocks must not carry the attribute at all -- declaring it replaces nvcc's implicit
+//     bounds and costs 1.05-1.08x even when the register cap is unchanged, and KSplit 32 cannot
+//     host 3 blocks per SM at all;
 //   * only one row tile fits the 40-register cap that 3 blocks per SM imply. M = 16 (two tiles)
 //     measures 0.74x and M = 32 (four tiles) 0.24x, both from spills.
 inline bool Fp8MmaGemvPinsResidency(int n, int k_split, int m_tiles, int sm_count,
@@ -63,7 +84,7 @@ inline bool Fp8MmaGemvPinsResidency(int n, int k_split, int m_tiles, int sm_coun
       k_split != 16 || m_tiles != 1) {
     return false;
   }
-  const int col_blocks = (n + 15) / 16;
+  const int col_blocks = Fp8MmaOutputBlocks(n);
   return col_blocks > 2 * sm_count && col_blocks <= 3 * sm_count;
 }
 
