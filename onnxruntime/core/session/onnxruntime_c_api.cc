@@ -3761,6 +3761,10 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name) {
+  if (OrtEnv::ShouldSkipShutdownCleanup()) {
+    return nullptr;
+  }
+
   API_IMPL_BEGIN
   ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().UnregisterExecutionProviderLibrary(registration_name));
   return nullptr;
