@@ -43,13 +43,9 @@ void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamed
   ASSERT_ORTSTATUS_OK(set_read_func(session_options, read_func, state));
 }
 
-// Invokes the experimental EPContext write setter on the public C API.
 void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, OrtWriteNamedBufferFunc write_func,
                                void* state) {
-  auto* set_write_func =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
-          &Ort::GetApi());
-  ASSERT_ORTSTATUS_OK(set_write_func(compile_options, write_func, state));
+  ASSERT_NO_THROW(compile_options.SetEpContextDataWriteFunc(write_func, state));
 }
 
 void LoadModelProtoFromFile(const ORTCHAR_T* model_file, ONNX_NAMESPACE::ModelProto& model_proto) {

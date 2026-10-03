@@ -13,7 +13,6 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
@@ -71,6 +70,14 @@ class ModelCompilationOptions {
   /// <param name="external_initializer_size_threshold">Initializers that exceed this threshold are external</param>
   void SetOutputModelExternalInitializersFile(const std::filesystem::path& external_initializers_path,
                                               size_t external_initializer_size_threshold);
+
+  void SetOutputModelExternalInitializersBuffer(const std::filesystem::path& logical_file_name,
+                                                size_t external_initializer_size_threshold,
+                                                onnxruntime::AllocatorPtr allocator,
+                                                void** output_buffer_ptr,
+                                                size_t* output_buffer_size_ptr);
+
+  void SetOutputModelExternalInitializersAlignment(size_t alignment, size_t minimum_size);
 
   /// <summary>
   /// Sets a pointer to the buffer that will contained the output/compiled ONNX model bytes.

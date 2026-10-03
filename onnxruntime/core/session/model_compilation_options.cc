@@ -106,6 +106,27 @@ void ModelCompilationOptions::SetOutputModelExternalInitializersFile(
   };
 }
 
+void ModelCompilationOptions::SetOutputModelExternalInitializersBuffer(
+    const std::filesystem::path& logical_file_name,
+    size_t external_initializer_size_threshold,
+    onnxruntime::AllocatorPtr allocator,
+    void** output_buffer_ptr,
+    size_t* output_buffer_size_ptr) {
+  session_options_.value.ep_context_gen_options.initializers_location = epctx::ExternalInitializerBufferInfo{
+      logical_file_name,
+      external_initializer_size_threshold,
+      std::move(allocator),
+      output_buffer_ptr,
+      output_buffer_size_ptr,
+  };
+}
+
+void ModelCompilationOptions::SetOutputModelExternalInitializersAlignment(size_t alignment, size_t minimum_size) {
+  auto& options = session_options_.value.ep_context_gen_options;
+  options.external_initializers_alignment = alignment;
+  options.external_initializers_alignment_threshold = minimum_size;
+}
+
 Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr allocator,
                                                      void** output_model_buffer_ptr,
                                                      size_t* output_model_buffer_size_ptr) {
@@ -331,6 +352,22 @@ Status ModelCompilationOptions::Check() const {
     if (model_path_cstr && model_path_cstr[0] != ORT_TSTR('\0')) {
       can_derive_output_path = true;
     }
+  }
+
+  const epctx::ExternalInitializerBufferInfo* external_buffer_info =
+      ep_context_gen_options.TryGetExternalInitializerBufferInfo();
+  if (external_buffer_info != nullptr &&
+      (external_buffer_info->logical_file_name.empty() || external_buffer_info->logical_file_name.is_absolute())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External initializer logical file name must be a non-empty relative path");
+  }
+
+  if (external_buffer_info != nullptr &&
+      (external_buffer_info->buffer_allocator == nullptr || external_buffer_info->buffer_ptr == nullptr ||
+       external_buffer_info->buffer_size_ptr == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External initializer buffer requires a non-null allocator, output buffer pointer, and "
+                           "output buffer size pointer");
   }
 
   if (has_no_output_model_location && can_derive_output_path) {

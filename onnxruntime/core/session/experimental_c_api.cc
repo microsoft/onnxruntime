@@ -12,6 +12,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ep_context_options.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ep_context_config.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/session/ort_apis.h"
@@ -19,16 +20,6 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/model_compilation_options.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-// Backing definition of the OrtEpContextConfig handle used by the experimental OrtEpApi_* EPContext data functions.
-// Holds copies of the application's EPContext read/write callbacks and opaque state extracted from an
-// OrtSessionOptions instance.
-struct OrtEpContextConfig {
-  OrtWriteNamedBufferFunc write_func = nullptr;
-  void* write_state = nullptr;
-  OrtReadNamedBufferFunc read_func = nullptr;
-  void* read_state = nullptr;
-};
 
 // ---------------------------------------------------------------------------
 // Experimental function implementations

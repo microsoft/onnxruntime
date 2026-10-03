@@ -185,6 +185,8 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+  ep_context_data_write_requested_ =
+      session_options.value.GetEpContextGenerationOptions().TryGetEpContextDataWriteFunc() != nullptr;
 
   // Record if the app requested weightless mode. Validation is deferred to Compile().
   weightless_requested_ =
@@ -586,6 +588,19 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->Compile == nullptr, "OrtEp for ", Type(), " did not provide a valid Compile() function");
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
+
+  if (ep_context_data_write_requested_) {
+    ORT_RETURN_IF(ort_ep_->ort_version_supported < 30 || ort_ep_->GetEpContextDataSupport == nullptr,
+                  "An EPContext data write callback was configured, but EP '", Type(),
+                  "' does not implement GetEpContextDataSupport");
+
+    uint32_t support_flags = OrtEpContextDataSupportFlags_NONE;
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        ort_ep_->GetEpContextDataSupport(ort_ep_.get(), &support_flags)));
+    ORT_RETURN_IF((support_flags & OrtEpContextDataSupportFlags_WRITE) == 0,
+                  "An EPContext data write callback was configured, but EP '", Type(),
+                  "' does not support writing EPContext data");
+  }
 
   // Validate EP weightless support if the app requested it.
   if (weightless_requested_) {

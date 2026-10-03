@@ -658,6 +658,7 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -786,6 +787,7 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
+struct EpContextConfig;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1739,6 +1741,18 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
+/** \brief Move-only owner for EPContext callback configuration used by plugin EPs. */
+struct EpContextConfig : detail::Base<OrtEpContextConfig> {
+  using Base = detail::Base<OrtEpContextConfig>;
+  using Base::Base;
+
+  explicit EpContextConfig(std::nullptr_t) noexcept {}
+  explicit EpContextConfig(const SessionOptions& session_options);
+  explicit EpContextConfig(ConstSessionOptions session_options);
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
+  void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;
+};
+
 /** \brief Options object used when compiling a model.
  *
  * Wraps ::OrtModelCompilationOptions object and methods
@@ -1759,6 +1773,12 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                   size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+  ModelCompilationOptions& SetOutputModelExternalInitializersBuffer(const ORTCHAR_T* logical_file_name,
+                                                                    size_t initializer_size_threshold,
+                                                                    OrtAllocator* allocator,
+                                                                    void** output_buffer_ptr,
+                                                                    size_t* output_buffer_size_ptr);
+  ModelCompilationOptions& SetOutputModelExternalInitializersAlignment(size_t alignment, size_t minimum_size);
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc
   ModelCompilationOptions& SetOutputModelGetInitializerLocationFunc(
@@ -1770,6 +1790,8 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state = nullptr);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
