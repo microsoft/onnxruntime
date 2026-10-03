@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_workgroup_config.h"
 
 #include <limits>
 
@@ -156,6 +157,55 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
                        /*is_channels_last=*/true, compute_cache_, b_is_constant_);
 }
 
+void SelectMatMulWorkgroupConfig(uint32_t subgroup_min_size,
+                                 uint32_t max_compute_workgroup_size_y,
+                                 uint32_t max_compute_invocations_per_workgroup,
+                                 bool is_nvidia,
+                                 uint32_t target_workgroup_size,
+                                 bool is_channels_last,
+                                 bool is_vec4,
+                                 uint32_t dim_a_outer,
+                                 uint32_t& workgroup_size_y,
+                                 int64_t& elements_per_thread_y) {
+  constexpr uint32_t kTileRows = 32;
+  constexpr uint32_t kWorkgroupSizeX = MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X;
+  constexpr uint32_t kDefaultWorkgroupSizeY = MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y;
+
+  // Start with the existing configuration as the fallback.
+  workgroup_size_y = kDefaultWorkgroupSizeY;
+  elements_per_thread_y = kTileRows / kDefaultWorkgroupSizeY;
+
+  // Narrow outputs use one row per thread.
+  if (dim_a_outer <= kDefaultWorkgroupSizeY) {
+    elements_per_thread_y = 1;
+    return;
+  }
+
+  if (!is_channels_last || !is_vec4 || !is_nvidia || subgroup_min_size == 0) {
+    return;
+  }
+
+  // The requested workgroup must contain whole subgroups and whole X rows.
+  if (target_workgroup_size % subgroup_min_size != 0 ||
+      target_workgroup_size % kWorkgroupSizeX != 0 ||
+      target_workgroup_size > max_compute_invocations_per_workgroup) {
+    return;
+  }
+
+  const uint32_t subgroups_per_workgroup = target_workgroup_size / subgroup_min_size;
+  const uint32_t candidate_workgroup_size_y =
+      subgroup_min_size * subgroups_per_workgroup / kWorkgroupSizeX;
+
+  // Preserve the 32-row tile so the dispatch grid remains unchanged.
+  if (candidate_workgroup_size_y > max_compute_workgroup_size_y ||
+      kTileRows % candidate_workgroup_size_y != 0) {
+    return;
+  }
+
+  workgroup_size_y = candidate_workgroup_size_y;
+  elements_per_thread_y = kTileRows / candidate_workgroup_size_y;
+}
+
 Status ComputeMatMul(ComputeContext* context,
                      const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
                      MatMulOptImplCache& cache,
@@ -263,16 +313,24 @@ Status ComputeMatMul(ComputeContext* context,
 
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
-  InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
-                                                   ? InlinedVector<int64_t>({4, 1, 1})
-                                                   : InlinedVector<int64_t>({4, 4, 1});
+  // 32 subgroup lanes x 4 NVIDIA warp schedulers, so every scheduler on an SM gets a warp.
+  constexpr uint32_t kTargetWorkgroupSize = 128;
+  uint32_t workgroup_size_y = 0;
+  int64_t elements_per_thread_y = 0;
+  const auto& adapter_info = context->AdapterInfo();
+  const auto& limits = context->DeviceLimits();
+  SelectMatMulWorkgroupConfig(adapter_info.subgroupMinSize, limits.maxComputeWorkgroupSizeY,
+                              limits.maxComputeInvocationsPerWorkgroup, IsNvidiaAdapter(adapter_info),
+                              kTargetWorkgroupSize, is_channels_last, is_vec4, dim_a_outer,
+                              workgroup_size_y, elements_per_thread_y);
+  InlinedVector<int64_t> elements_per_thread{4, elements_per_thread_y, 1};
 
-  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
-                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
-  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
-                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
-  uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
-                                         (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
+                                               (MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
+  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + workgroup_size_y * elements_per_thread[1] - 1) /
+                                               (workgroup_size_y * elements_per_thread[1]));
+  uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
+                                         (MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
@@ -329,7 +387,7 @@ Status ComputeMatMul(ComputeContext* context,
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
-      .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
+      .SetWorkgroupSize(MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X, workgroup_size_y, MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddOutput(std::move(output));
   // Activation uniforms must remain last because definitions and values are matched by index.
   AppendActivationUniformsData(activation, matmul_program);
