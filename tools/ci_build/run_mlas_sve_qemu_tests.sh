@@ -70,7 +70,10 @@ vl_bits = int(sys.argv[1])
 if libc.prctl(PR_SVE_SET_VL, PR_SVE_VL_INHERIT | (vl_bits // 8)) == -1:
     raise OSError(ctypes.get_errno(), "prctl(PR_SVE_SET_VL) failed for %d bits" % vl_bits)
 actual = libc.prctl(PR_SVE_GET_VL, 0)
-print("SVE vector length: %d bits (requested %d)" % (actual & 0xFFFF, vl_bits), flush=True)
+actual_bits = (actual & 0xFFFF) * 8
+if actual_bits != vl_bits:
+    raise OSError("prctl(PR_SVE_GET_VL) returned %d bits, requested %d bits" % (actual_bits, vl_bits))
+print("SVE vector length: %d bits (requested %d)" % (actual_bits, vl_bits), flush=True)
 os.execv(sys.argv[2], sys.argv[2:])
 PYEOF
 
@@ -78,11 +81,11 @@ WRAPPER_PY="$(mktemp /tmp/sve_vl_wrapper_XXXXXX.py)"
 printf '%s\n' "${VL_WRAPPER_PY}" > "${WRAPPER_PY}"
 trap 'rm -f "${WRAPPER_PY}"' EXIT
 
-PYTHON3="$(command -v python3)"
-if [[ -z "${PYTHON3}" ]]; then
+if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 not found (needed for the prctl wrapper)" >&2
   exit 1
 fi
+PYTHON3="$(command -v python3)"
 
 echo "Running MLAS tests under qemu-aarch64 -cpu max (SVE enabled)"
 echo "Test binary: ${TEST_BIN}"
