@@ -131,5 +131,9 @@ jobs:
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON onnxruntime_RUN_MLAS_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: build-linux-arm64-release
+      # Run the MLAS test subset a second time under QEMU with SVE enabled: the SVE
+      # kernels are compiled but their tests skip on runners without SVE hardware.
+      # See https://github.com/microsoft/onnxruntime/issues/33069.
+      run_mlas_sve_qemu_tests: true
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

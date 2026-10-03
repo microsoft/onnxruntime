@@ -53,6 +53,11 @@ on:
         required: false
         type: boolean
         default: true
+      run_mlas_sve_qemu_tests:
+        description: 'Run the MLAS unit-test subset under QEMU user-mode emulation with SVE enabled (arm64 only). The SVE kernels are compiled but never executed on CI runners without SVE hardware; see issue #33069.'
+        required: false
+        type: boolean
+        default: false
       run_go_tests:
         description: 'Whether to run the Go binding race tests against the built shared library'
         required: false
@@ -153,6 +158,25 @@ jobs:
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
           extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
           python_path_prefix: ${{ inputs.python_path_prefix }}
+
+      # ------------- MLAS SVE Tests under QEMU (arm64) -------------
+      # build.py enables onnxruntime_USE_SVE unless --no_sve, so the SVE kernels are
+      # compiled on every build, but the tests covering them skip on CI runners because
+      # no runner has SVE hardware (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() is false).
+      # Run the MLAS test subset a second time under qemu-aarch64 with SVE enabled so
+      # the SVE code paths are actually executed. See issue #33069.
+      - name: Run MLAS SVE tests under QEMU (arm64)
+        id: mlas_sve_qemu_test_step
+        if: inputs.architecture == 'arm64' && inputs.run_mlas_sve_qemu_tests == true
+        run: |
+          docker run --rm \
+            --entrypoint /bin/bash \
+            --volume ${{ github.workspace }}:/onnxruntime_src \
+            --volume ${{ runner.temp }}:/onnxruntime_src/build \
+            --workdir /onnxruntime_src \
+            --user root \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            /onnxruntime_src/tools/ci_build/run_mlas_sve_qemu_tests.sh /onnxruntime_src/build/${{ inputs.build_config }}
 
       - name: Set up Go
         if: inputs.run_go_tests == true
