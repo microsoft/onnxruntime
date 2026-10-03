@@ -595,6 +595,30 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      - name: Build package-backed WebGPU plugin
+        shell: pwsh
+        run: |
+          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu shared_lib --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-mode ORT build failed" }
+          cmake --build dawn-package-build\RelWithDebInfo --config RelWithDebInfo --target onnxruntime_providers_webgpu --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed WebGPU plugin build failed" }
+          if (Test-Path dawn-package-build\RelWithDebInfo\_deps\dawn-src) { throw "Plugin package mode configured native Dawn" }
+          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
+          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll external-dawn-inputs\host
+
+      - name: Run package-backed WebGPU plugin tests
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
+        run: |
+          $plugin = Join-Path $PWD "onnxruntime_providers_webgpu.dll"
+          .\onnxruntime_webgpu_external_dawn_test.exe --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed host inference failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --plugin $plugin --no_proc_table
+          if ($LASTEXITCODE -ne 0) { throw "Plugin missing-proc-table rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --no_proc_table --plugin "$plugin.missing"
+          if ($LASTEXITCODE -eq 0) { throw "An unrelated plugin-load error passed the missing-proc-table test" }
+          $global:LASTEXITCODE = 0
+
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: [
         "self-hosted",
