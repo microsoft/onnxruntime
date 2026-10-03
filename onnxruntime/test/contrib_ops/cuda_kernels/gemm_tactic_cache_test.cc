@@ -352,6 +352,69 @@ TEST(GemmTacticCacheTest, FlushMergesConcurrentRows) {
   CleanUp(file);
 }
 
+TEST(GemmTacticCacheTest, SelectionVersionMismatchRejected) {
+  const std::string prefix = UniqueTempPrefix("selversion");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::HardwareSignature sig = MakeSignature();
+  const gc::MatMulNBitsKey key = MakeKey();
+  {
+    gc::MatMulNBitsTacticCache cache(file, sig);
+    cache.Put(key, 1, MakeSm80Config());
+    ASSERT_TRUE(cache.Flush().IsOK());
+  }
+
+  std::vector<std::string> lines;
+  {
+    std::ifstream in(file);
+    std::string line;
+    while (std::getline(in, line)) {
+      if (line.rfind("# tactic_selection_version\t", 0) == 0) {
+        line = "# tactic_selection_version\tstale";
+      }
+      lines.push_back(line);
+    }
+  }
+  {
+    std::ofstream out(file, std::ios::trunc);
+    for (const auto& l : lines) {
+      out << l << '\n';
+    }
+  }
+
+  gc::MatMulNBitsTacticCache reloaded(file, sig);
+  ASSERT_TRUE(reloaded.Load().IsOK());
+  EXPECT_FALSE(reloaded.Get(key, 1).has_value());
+
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, FlushCreatesMissingDirectory) {
+  const auto dir = std::filesystem::temp_directory_path() / "ort_gemm_tactic_cache_test_newdir";
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+  const std::string file = (dir / "nested" / "cache.matmulnbits_fpa_intb.tsv").string();
+  const gc::HardwareSignature sig = MakeSignature();
+  const gc::MatMulNBitsKey key = MakeKey();
+  {
+    gc::MatMulNBitsTacticCache cache(file, sig);
+    cache.Put(key, 1, MakeSm80Config());
+    ASSERT_TRUE(cache.Flush().IsOK());
+  }
+
+  gc::MatMulNBitsTacticCache reloaded(file, sig);
+  ASSERT_TRUE(reloaded.Load().IsOK());
+  EXPECT_TRUE(reloaded.Get(key, 1).has_value());
+
+  // Only the cache and its lock file remain; per-writer temp files are renamed away.
+  size_t entries = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(dir / "nested")) {
+    static_cast<void>(entry);
+    ++entries;
+  }
+  EXPECT_EQ(entries, 2u);
+  std::filesystem::remove_all(dir, ec);
+}
+
 // The process-global profile map must not share tactics across variants that the persistent key separates.
 TEST(GemmTacticCacheTest, GemmIdCoreSeparatesQuantVariants) {
   using onnxruntime::llm::kernels::weight_only::GemmIdCore;

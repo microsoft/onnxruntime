@@ -42,6 +42,9 @@ using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 constexpr const char* kCacheMagic = "ort_cuda_gemm_tactic_cache";
 constexpr const char* kCacheFormatVersion = "v1";
 
+// Bump whenever profiling or tactic selection changes which tactic wins, so stale caches are rejected.
+constexpr const char* kTacticSelectionVersion = "1";
+
 constexpr const char* kTableMatMulNBits = "matmulnbits_fpa_intb";
 
 // Environment variables (see docs section 9).
