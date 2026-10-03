@@ -33,6 +33,7 @@
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
@@ -1657,6 +1658,15 @@ struct ProviderHostImpl : ProviderHost {
   }
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
+  }
+  void MlasHalfGemmBatch__Run(
+      size_t M, size_t N, size_t K, size_t batch_size,
+      const void* data, concurrency::ThreadPool* thread_pool) override {
+    MlasHalfGemmBatch(M, N, K, batch_size,
+                      static_cast<const MLAS_HALF_GEMM_DATA_PARAMS*>(data), thread_pool);
+  }
+  concurrency::ThreadPool* OpKernelContext__GetOperatorThreadPool(const OpKernelContext* p) override {
+    return p->GetOperatorThreadPool();
   }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }

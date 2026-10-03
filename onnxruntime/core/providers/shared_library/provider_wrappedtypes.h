@@ -1365,6 +1365,9 @@ struct OpKernelContext final {
   KernelPilot* GetKernelPilot() const {
     return g_host->OpKernelContext__GetKernelPilot(this);
   }
+  concurrency::ThreadPool* GetOperatorThreadPool() const {
+    return g_host->OpKernelContext__GetOperatorThreadPool(this);
+  }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };

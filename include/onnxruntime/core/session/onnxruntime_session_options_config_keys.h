@@ -43,6 +43,12 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 
+// Number of FP16 MoE experts to offload to CPU memory across the session.
+// The remaining experts execute from CUDA. The value must be a non-negative integer no greater than the number of
+// experts owned by CUDA MoE nodes. The default is 0, which disables CPU offloading.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
+    "session.moe_cpu_offload_experts";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";

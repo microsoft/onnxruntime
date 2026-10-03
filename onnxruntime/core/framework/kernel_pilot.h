@@ -21,6 +21,12 @@ class KernelPilot {
   IKernelPilotMoeExpertSelection& Moe() noexcept { return moe_; }
   const IKernelPilotMoeExpertSelection& Moe() const noexcept { return moe_; }
 
+  // Returns the local expert IDs selected for static CUDA residency. An empty span is valid.
+  Status GetMoeCudaExperts(gsl::span<const int>& expert_ids) const {
+    expert_ids = moe_cuda_experts_;
+    return Status::OK();
+  }
+
   // Commits data collected by this pilot after a successful kernel invocation. A pilot that
   // was only queried, without starting an invocation, has nothing to commit.
   Status RecordUsage();
@@ -28,10 +34,14 @@ class KernelPilot {
  private:
   friend class KernelPilotMoeExpertState;
   void FinishRegistration() noexcept;
+  void SetMoeCudaExperts(gsl::span<const int> expert_ids) noexcept {
+    moe_cuda_experts_ = expert_ids;
+  }
 
   KernelPilotMoeExpertState& moe_expert_state_;
   const OpKernel* kernel_;
   KernelPilotMoeExpertSelection moe_;
+  gsl::span<const int> moe_cuda_experts_;
 };
 
 }  // namespace onnxruntime

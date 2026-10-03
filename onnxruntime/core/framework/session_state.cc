@@ -1630,6 +1630,23 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpe
   }
   return Status::OK();
 }
+
+Status SessionState::InitializeKernelPilots() {
+  for (const auto& node : graph_.Nodes()) {
+    auto* kernel = GetMutableKernel(node.Index());
+    if (kernel != nullptr) {
+      ORT_RETURN_IF_ERROR(kernel->InitializeKernelPilot(GetKernelPilot(kernel)));
+    }
+  }
+  for (auto& [node_index, subgraphs] : subgraph_session_states_) {
+    ORT_UNUSED_PARAMETER(node_index);
+    for (auto& [attribute, subgraph] : subgraphs) {
+      ORT_UNUSED_PARAMETER(attribute);
+      ORT_RETURN_IF_ERROR(subgraph->InitializeKernelPilots());
+    }
+  }
+  return Status::OK();
+}
 #endif
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
@@ -1674,7 +1691,16 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
   const bool enable_moe_expert_statistics =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
-  if (enable_moe_expert_counting || enable_moe_expert_statistics) {
+  const auto cpu_offload_expert_count_value =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t cpu_offload_expert_count = -1;
+  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(cpu_offload_expert_count_value, cpu_offload_expert_count) &&
+                        cpu_offload_expert_count >= 0,
+                    "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                    " value: ", cpu_offload_expert_count_value,
+                    ". Expected a non-negative integer.");
+  const bool enable_moe_cpu_offload = cpu_offload_expert_count > 0;
+  if (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload) {
     double alpha = 0.0;
     double beta = 0.0;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
@@ -1687,6 +1713,10 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
     ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
+    if (enable_moe_cpu_offload) {
+      ORT_RETURN_IF_ERROR(
+          state->SetCpuOffloadExpertCount(static_cast<size_t>(cpu_offload_expert_count)));
+    }
     ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::move(state), "main"));
     const auto state_file =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
@@ -1696,6 +1726,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
     }
     ORT_RETURN_IF_ERROR(moe_expert_state_->FinalizeInitialization());
+    ORT_RETURN_IF_ERROR(InitializeKernelPilots());
   }
 #endif
   return status;
@@ -1876,6 +1907,89 @@ static void AccumulateAllNestedSubgraphsInfo(
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static bool IsCudaFp16MoeNode(const Node& node) {
+  if (node.Domain() != kMSDomain || node.OpType() != "MoE" ||
+      node.GetExecutionProviderType() != kCudaExecutionProvider ||
+      node.InputDefs().empty()) {
+    return false;
+  }
+
+  const auto* input_type = node.InputDefs()[0]->TypeAsProto();
+  return input_type != nullptr && input_type->has_tensor_type() &&
+         input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+}
+
+static bool IsMoeExpertInput(const Node& node, const NodeArg& input) {
+  if (!IsCudaFp16MoeNode(node)) {
+    return false;
+  }
+
+  const auto& input_defs = node.InputDefs();
+  bool found_expert_input = false;
+  for (size_t input_idx = 0; input_idx < input_defs.size(); ++input_idx) {
+    if (input_defs[input_idx] != &input) {
+      continue;
+    }
+    if (input_idx < 2 || input_idx >= 8) {
+      return false;
+    }
+    found_expert_input = true;
+  }
+
+  return found_expert_input;
+}
+
+static Status PlaceMoeCpuOffloadInitializersOnCpu(
+    const GraphViewer& graph,
+    const SessionOptions& session_options,
+    const OrtValueNameIdxMap& ort_value_name_idx_map,
+    SequentialExecutionPlan& execution_plan) {
+  const auto offload_count_value = session_options.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t offload_count = -1;
+  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(offload_count_value, offload_count) &&
+                        offload_count >= 0,
+                    "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                    " value: ", offload_count_value, ". Expected a non-negative integer.");
+  if (offload_count == 0) {
+    return Status::OK();
+  }
+
+  // MoE::PrePack retains these constants on CPU and uploads only the selected resident experts.
+  // Override their planned location before SaveInitializedTensors materializes them on CUDA.
+  for (const auto& node : graph.Nodes()) {
+    if (!IsCudaFp16MoeNode(node)) {
+      continue;
+    }
+
+    const auto& input_defs = node.InputDefs();
+    for (size_t input_idx = 2; input_idx < std::min<size_t>(input_defs.size(), 8); ++input_idx) {
+      const NodeArg* input = input_defs[input_idx];
+      if (!input->Exists() ||
+          !graph.IsConstantInitializer(input->Name(), /*check_outer_scope*/ false)) {
+        continue;
+      }
+
+      for (const Node* consumer : graph.GetConsumerNodes(input->Name())) {
+        ORT_RETURN_IF_NOT(
+            IsMoeExpertInput(*consumer, *input),
+            "FP16 MoE CPU offload requires expert initializer ", input->Name(),
+            " to be used only as an expert input of CUDA FP16 MoE nodes.");
+      }
+
+      int ort_value_index = -1;
+      ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(input->Name(), ort_value_index));
+      execution_plan.SetLocation(
+          static_cast<size_t>(ort_value_index),
+          OrtDevice{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0});
+    }
+  }
+
+  return Status::OK();
+}
+#endif
+
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               const KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
@@ -1980,6 +2094,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Uncomment the below to dump the allocation plan to std::cout
   // std::cout << std::make_pair(&*p_seq_exec_plan_, this);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(PlaceMoeCpuOffloadInitializersOnCpu(
+      *graph_viewer_, session_options, ort_value_name_idx_map_, *p_seq_exec_plan_));
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
@@ -1988,6 +2107,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // For inference it is enabled by default, but users can choose to disable it via session options.
   const bool disable_prepacking =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto moe_cpu_offload_experts = session_options.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t moe_cpu_offload_expert_count = -1;
+  ORT_RETURN_IF_NOT(
+      TryParseStringWithClassicLocale(moe_cpu_offload_experts, moe_cpu_offload_expert_count) &&
+          moe_cpu_offload_expert_count >= 0,
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+      " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
+  ORT_RETURN_IF(disable_prepacking && moe_cpu_offload_expert_count > 0,
+                kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                " requires prepacking to remain enabled.");
+#endif
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
   // Further more, in training scenarios NCCL kernels require initializers to be allocated

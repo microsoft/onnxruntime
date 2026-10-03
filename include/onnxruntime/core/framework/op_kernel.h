@@ -29,12 +29,12 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-namespace onnxruntime {
-class OpKernelContext;
-}
 #endif
 
 namespace onnxruntime {
+
+class KernelPilot;
+class OpKernelContext;
 
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info);
 
@@ -167,6 +167,12 @@ class OpKernel {
                                            int /*input_idx*/,
                                            /*out*/ bool& used_shared_buffers) {
     used_shared_buffers = false;
+    return Status::OK();
+  }
+
+  // Called after session-global piloting state is finalized and all constant inputs have been offered to PrePack().
+  // Kernels may use this hook to materialize resources selected by the pilot before session initialization returns.
+  virtual Status InitializeKernelPilot(KernelPilot* /*pilot*/) {
     return Status::OK();
   }
 

@@ -4271,6 +4271,351 @@ TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
   EXPECT_EQ(event["node_type"], "MoE");
 }
 
+TEST(MoETest, MoECudaFp16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider_probe = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider_probe, nullptr);
+  if (execution_provider_probe->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+
+  std::vector<float> fc1_weights(
+      static_cast<size_t>(num_experts * inter_size * hidden_size), 0.0f);
+  std::vector<float> fc2_weights(
+      static_cast<size_t>(num_experts * hidden_size * inter_size), 0.0f);
+  std::vector<float> fc1_bias(static_cast<size_t>(num_experts * inter_size));
+  std::vector<float> fc2_bias(static_cast<size_t>(num_experts * hidden_size));
+  for (int expert = 0; expert < num_experts; ++expert) {
+    std::fill_n(fc1_bias.begin() + expert * inter_size, inter_size,
+                0.5f * static_cast<float>(expert + 1));
+    std::fill_n(fc2_bias.begin() + expert * hidden_size, hidden_size,
+                0.25f * static_cast<float>(expert + 1));
+    for (int column = 0; column < hidden_size; ++column) {
+      fc1_weights[static_cast<size_t>(expert * inter_size * hidden_size +
+                                      column * hidden_size + column)] = 1.0f;
+      fc2_weights[static_cast<size_t>(expert * hidden_size * inter_size +
+                                      column * inter_size + column)] =
+          static_cast<float>(expert + 1);
+    }
+  }
+
+  std::vector<float> expected(hidden_size, 1.75f);
+  expected.insert(expected.end(), hidden_size, 4.5f);
+
+  for (int cpu_offload_expert_count = -1; cpu_offload_expert_count <= num_experts;
+       ++cpu_offload_expert_count) {
+    SCOPED_TRACE(MakeString("cpu_offload_expert_count=", cpu_offload_expert_count));
+    OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 1);
+    tester.AddAttribute<std::string>("activation_type", "relu");
+    tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+    tester.AddInput<MLFloat16>("input", {num_rows, hidden_size},
+                               ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
+    tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
+                               ToFloat16({4.0f, 0.0f, 0.0f, 4.0f}));
+    tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, inter_size, hidden_size},
+                               ToFloat16(fc1_weights), cpu_offload_expert_count > 0);
+    tester.AddInput<MLFloat16>("fc1_experts_bias", {num_experts, inter_size},
+                               ToFloat16(fc1_bias), cpu_offload_expert_count > 0);
+    tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
+                               ToFloat16(fc2_weights), cpu_offload_expert_count > 0);
+    tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size},
+                               ToFloat16(fc2_bias), cpu_offload_expert_count > 0);
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+    tester.SetOutputTolerance(0.01f);
+
+    SessionOptions session_options;
+    session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+    if (cpu_offload_expert_count >= 0) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+          cpu_offload_expert_count == 0 ? "00" : MakeString(cpu_offload_expert_count).c_str()));
+    }
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    RunOptions run_options;
+    run_options.run_tag = MakeString("fp16 static offload ", cpu_offload_expert_count);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    testing::internal::CaptureStderr();
+    tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {},
+               &run_options, &execution_providers);
+    const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
+    ASSERT_EQ(routing_events.size(), 1U);
+    EXPECT_EQ(routing_events[0]["selected_experts"], nlohmann::json({0, 1}));
+    EXPECT_EQ(routing_events[0]["counters"], nlohmann::json({0.1, 0.1}));
+  }
+}
+
+TEST(MoETest, MoECudaFp16StaticCpuOffloadCombinesCpuAndCudaExpertsForOneToken) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  std::vector<float> fc1_weights(
+      static_cast<size_t>(num_experts * inter_size * hidden_size), 0.0f);
+  std::vector<float> fc2_weights(
+      static_cast<size_t>(num_experts * hidden_size * inter_size), 0.0f);
+  for (int expert = 0; expert < num_experts; ++expert) {
+    for (int column = 0; column < hidden_size; ++column) {
+      fc1_weights[static_cast<size_t>(expert * inter_size * hidden_size +
+                                      column * hidden_size + column)] = 1.0f;
+      fc2_weights[static_cast<size_t>(expert * hidden_size * inter_size +
+                                      column * inter_size + column)] =
+          static_cast<float>(expert + 1);
+    }
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 2);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<MLFloat16>("input", {1, hidden_size},
+                             std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("router_probs", {1, num_experts}, ToFloat16({0.0f, 0.0f}));
+  tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, inter_size, hidden_size},
+                             ToFloat16(fc1_weights), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
+                             ToFloat16(fc2_weights), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {1, hidden_size},
+                              std::vector<MLFloat16>(hidden_size, MLFloat16(1.5f)));
+  tester.SetOutputTolerance(0.01f);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {},
+             nullptr, &execution_providers);
+}
+
+TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsLegacyInterleavedSwiGLU) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider_probe = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider_probe, nullptr);
+  if (execution_provider_probe->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  constexpr int fc1_size = 2 * inter_size;
+
+  std::vector<float> fc1_weights(
+      static_cast<size_t>(num_experts * fc1_size * hidden_size), 0.0f);
+  std::vector<float> fc2_weights(
+      static_cast<size_t>(num_experts * hidden_size * inter_size), 0.0f);
+  for (int expert = 0; expert < num_experts; ++expert) {
+    for (int column = 0; column < hidden_size; ++column) {
+      const size_t fc1_base = static_cast<size_t>(expert * fc1_size * hidden_size);
+      fc1_weights[fc1_base + static_cast<size_t>(2 * column * hidden_size + column)] = 1.0f;
+      fc1_weights[fc1_base + static_cast<size_t>((2 * column + 1) * hidden_size + column)] = 1.0f;
+      fc2_weights[static_cast<size_t>(expert * hidden_size * inter_size +
+                                      column * inter_size + column)] =
+          static_cast<float>(expert + 1);
+    }
+  }
+
+  constexpr float silu_one = 0.7310586f;
+  std::vector<float> expected(hidden_size, silu_one);
+  expected.insert(expected.end(), hidden_size, 2.0f * silu_one);
+
+  for (int cpu_offload_expert_count : {1, 2}) {
+    SCOPED_TRACE(MakeString("cpu_offload_expert_count=", cpu_offload_expert_count));
+    OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 1);
+    tester.AddAttribute<std::string>("activation_type", "swiglu");
+    tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+    tester.AddInput<MLFloat16>("input", {num_rows, hidden_size},
+                               ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
+    tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
+                               ToFloat16({4.0f, 0.0f, 0.0f, 4.0f}));
+    tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, fc1_size, hidden_size},
+                               ToFloat16(fc1_weights), true);
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
+                               ToFloat16(fc2_weights), true);
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+    tester.SetOutputTolerance(0.01f);
+
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+        MakeString(cpu_offload_expert_count).c_str()));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {},
+               nullptr, &execution_providers);
+  }
+}
+
+TEST(MoETest, MoECudaFp16ConstantFc3RunsWithoutCpuOffload) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  std::vector<float> identity(static_cast<size_t>(hidden_size * inter_size), 0.0f);
+  for (int column = 0; column < hidden_size; ++column) {
+    identity[static_cast<size_t>(column * hidden_size + column)] = 1.0f;
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "silu");
+  tester.AddInput<MLFloat16>("input", {1, hidden_size},
+                             std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("router_probs", {1, 1}, ToFloat16({1.0f}));
+  tester.AddInput<MLFloat16>("fc1_experts_weights", {1, inter_size, hidden_size},
+                             ToFloat16(identity), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<MLFloat16>("fc2_experts_weights", {1, hidden_size, inter_size},
+                             ToFloat16(identity), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<MLFloat16>("fc3_experts_weights", {1, inter_size, hidden_size},
+                             ToFloat16(identity), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {1, hidden_size},
+                              std::vector<MLFloat16>(hidden_size, MLFloat16(0.7310586f)));
+  tester.SetOutputTolerance(0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsDynamicOptionalExpertInputs) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddInput<MLFloat16>("input", {1, hidden_size},
+                             std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("router_probs", {1, num_experts},
+                             ToFloat16({1.0f, 0.0f}));
+  tester.AddInput<MLFloat16>(
+      "fc1_experts_weights", {num_experts, inter_size, hidden_size},
+      std::vector<MLFloat16>(num_experts * inter_size * hidden_size), true);
+  tester.AddInput<MLFloat16>(
+      "fc1_experts_bias", {num_experts, inter_size},
+      std::vector<MLFloat16>(num_experts * inter_size), false);
+  tester.AddInput<MLFloat16>(
+      "fc2_experts_weights", {num_experts, hidden_size, inter_size},
+      std::vector<MLFloat16>(num_experts * hidden_size * inter_size), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {1, hidden_size},
+                              std::vector<MLFloat16>(hidden_size));
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "optional expert input 3 to be constant or absent", {},
+             nullptr, &execution_providers);
+}
+
+TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsFc3BiasWithoutFc3Weights) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddInput<MLFloat16>("input", {1, hidden_size},
+                             std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("router_probs", {1, num_experts},
+                             ToFloat16({1.0f, 0.0f}));
+  tester.AddInput<MLFloat16>(
+      "fc1_experts_weights", {num_experts, inter_size, hidden_size},
+      std::vector<MLFloat16>(num_experts * inter_size * hidden_size), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<MLFloat16>(
+      "fc2_experts_weights", {num_experts, hidden_size, inter_size},
+      std::vector<MLFloat16>(num_experts * hidden_size * inter_size), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<MLFloat16>(
+      "fc3_experts_bias", {num_experts, inter_size},
+      std::vector<MLFloat16>(num_experts * inter_size), true);
+  tester.AddOutput<MLFloat16>("output", {1, hidden_size},
+                              std::vector<MLFloat16>(hidden_size));
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "does not yet support separate FC3 weights or bias", {},
+             nullptr, &execution_providers);
+}
+
 TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
