@@ -4997,25 +4997,63 @@ void InferenceSession::LogAllSessions() {
       continue;
     }
 
-    auto model = session->model_;
-    if (nullptr != model) {
-      onnxruntime::Graph& graph = model->MainGraph();
-      std::filesystem::path model_path = graph.ModelPath();
-      std::string model_file_name = PathToUTF8String(model_path.filename().native());
-      bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
-      std::string model_weight_type = session->GetWeightDataType();
-      std::string model_graph_hash = session->GetGraphHash();
-      std::string model_weight_hash = session->GetWeightHash();
-      env.GetTelemetryProvider().LogSessionCreation(
-          session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
-          graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(),
-          session->telemetry_.ep_device_types_summary_, session->telemetry_.ep_device_vendor_ids_summary_,
-          session->telemetry_.ep_versions_summary_,
-          model_has_fp16_inputs, true);
+    std::function<void()> log_snapshot;
+    {
+      std::unique_lock<std::mutex> session_lock(session->session_mutex_, std::try_to_lock);
+      if (!session_lock.owns_lock()) {
+        continue;
+      }
+
+      const auto session_options = session->session_options_;
+      const auto* session_logger = session->session_logger_;
+      auto model = session->model_;
+      if (nullptr != model) {
+        const onnxruntime::Graph& graph = model->MainGraph();
+        auto provider_options = session->execution_providers_.GetProviderOptionsSnapshot();
+        std::vector<std::string> provider_ids;
+        provider_ids.reserve(provider_options.size());
+        for (auto& [provider_id, options] : provider_options) {
+          ORT_UNUSED_PARAMETER(options);
+          provider_ids.push_back(std::move(provider_id));
+        }
+
+        log_snapshot = [&env,
+                        session_options,
+                        session_logger,
+                        session_id = session->session_id_,
+                        ir_version = model->IrVersion(),
+                        producer_name = model->ProducerName(),
+                        producer_version = model->ProducerVersion(),
+                        domain = model->Domain(),
+                        domain_to_version = graph.DomainToVersionMap(),
+                        model_file_name = PathToUTF8String(graph.ModelPath().filename().native()),
+                        graph_name = graph.Name(),
+                        model_weight_type = session->GetWeightDataType(),
+                        model_graph_hash = session->GetGraphHash(),
+                        model_weight_hash = session->GetWeightHash(),
+                        model_metadata = model->MetaData(),
+                        event_name = session->telemetry_.event_name_,
+                        provider_ids = std::move(provider_ids),
+                        ep_device_types_summary = session->telemetry_.ep_device_types_summary_,
+                        ep_device_vendor_ids_summary = session->telemetry_.ep_device_vendor_ids_summary_,
+                        ep_versions_summary = session->telemetry_.ep_versions_summary_,
+                        model_has_fp16_inputs = ModelHasFP16Inputs(graph)]() {
+          env.GetTelemetryProvider().LogSessionCreation(
+              session_id, ir_version, producer_name, producer_version, domain,
+              domain_to_version, model_file_name, graph_name, model_weight_type, model_graph_hash, model_weight_hash,
+              model_metadata, event_name, provider_ids,
+              ep_device_types_summary, ep_device_vendor_ids_summary, ep_versions_summary,
+              model_has_fp16_inputs, true);
+          InferenceSession::TraceSessionOptions(session_options, true, *session_logger);
+        };
+      } else {
+        log_snapshot = [session_options, session_logger]() {
+          InferenceSession::TraceSessionOptions(session_options, true, *session_logger);
+        };
+      }
     }
 
-    InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);
+    log_snapshot();
   }
 }
 #endif
