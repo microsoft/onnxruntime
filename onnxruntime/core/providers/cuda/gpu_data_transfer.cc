@@ -59,7 +59,12 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
     CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
   } else {
     // copying between cpu memory
-    ORT_ENFORCE(dst_data != src_data);
+    if (dst_data == src_data) {
+      // No copy needed: source and destination are the same physical buffer. This can happen
+      // when a retained in-memory OrtValue initializer is scheduled for a device copy (GH #29713).
+      // Matches CPUDataTransfer::CopyTensor and the device->device branch above.
+      return Status::OK();
+    }
     memcpy(dst_data, src_data, bytes);
   }
 
@@ -96,12 +101,19 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost,
                                          static_cast<cudaStream_t>(stream.GetHandle())));
   } else {
+    // No copy needed: source and destination are the same physical buffer. This can happen when a
+    // retained in-memory OrtValue initializer is scheduled for a device copy (GH #29713). Return
+    // early *before* the HOST_ACCESSIBLE stream sync below, which is illegal during CUDA-graph
+    // capture. Matches CPUDataTransfer::CopyTensor and the device->device branch above.
+    if (dst_data == src_data) {
+      return Status::OK();
+    }
+
     if (src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
       // sync the stream first to make sure the data arrived
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream.GetHandle())));
     }
 
-    ORT_ENFORCE(dst_data != src_data);
     memcpy(dst_data, src_data, bytes);
   }
 
