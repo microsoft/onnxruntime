@@ -196,6 +196,7 @@ static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
 static Status LoadTensorShapeOrtFormat(const fbs::Shape& fbs_shape, TensorShapeProto& shape_proto) {
   auto fbs_dims = fbs_shape.dim();
   if (fbs_dims) {
+    ORT_RETURN_IF_ERROR(ValidateRequiredTableOffsets(fbs_dims, "dimension"));
     auto dims = shape_proto.mutable_dim();
     dims->Reserve(fbs_dims->size());
     for (const auto fbs_dim : *fbs_dims) {
@@ -282,6 +283,7 @@ Status LoadValueInfoOrtFormat(const fbs::ValueInfo& fbs_value_info,
 Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
                                 std::unordered_map<std::string, int>& domain_to_version) {
   ORT_RETURN_IF(nullptr == fbs_op_set_ids, "Model must have opset imports. Invalid ORT format model.");
+  ORT_RETURN_IF_ERROR(ValidateRequiredTableOffsets(fbs_op_set_ids, "opset import"));
 
   domain_to_version.clear();
   domain_to_version.reserve(fbs_op_set_ids->size());
