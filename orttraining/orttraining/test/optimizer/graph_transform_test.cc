@@ -1383,33 +1383,43 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionPre13Requi
 
 TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionRejectsSharedIntermediates) {
   enum class SharedValue {
+    DirectLogSoftmaxOutput,
     LogSoftmaxOutput,
     CastOutput,
   };
 
-  for (const auto shared_value : {SharedValue::LogSoftmaxOutput, SharedValue::CastOutput}) {
+  for (const auto shared_value :
+       {SharedValue::DirectLogSoftmaxOutput, SharedValue::LogSoftmaxOutput, SharedValue::CastOutput}) {
     auto build_test_case = [shared_value](ModelTestBuilder& builder) {
-      auto* scores = builder.MakeInput<MLFloat16>({{2, 3}});
+      const bool use_cast = shared_value != SharedValue::DirectLogSoftmaxOutput;
+      auto* scores = use_cast ? builder.MakeInput<MLFloat16>({{2, 3}}) : builder.MakeInput<float>({{2, 3}});
       auto* labels = builder.MakeInput<int64_t>({{2}});
-      auto* log_prob = builder.MakeIntermediate<MLFloat16>({{2, 3}});
-      auto* cast_log_prob = builder.MakeIntermediate<float>({{2, 3}});
+      auto* log_prob = use_cast ? builder.MakeIntermediate<MLFloat16>({{2, 3}})
+                                : builder.MakeIntermediate<float>({{2, 3}});
+      NodeArg* nll_input = log_prob;
+      NodeArg* cast_log_prob = nullptr;
       auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
       auto* shared_output = builder.MakeOutput();
 
       builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{-1});
-      builder.AddNode("Cast", {log_prob}, {cast_log_prob})
-          .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
-      builder.AddNode("NegativeLogLikelihoodLossInternal", {cast_log_prob, labels}, {loss}, kMSDomain)
+      if (use_cast) {
+        cast_log_prob = builder.MakeIntermediate<float>({{2, 3}});
+        builder.AddNode("Cast", {log_prob}, {cast_log_prob})
+            .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+        nll_input = cast_log_prob;
+      }
+      builder.AddNode("NegativeLogLikelihoodLossInternal", {nll_input, labels}, {loss}, kMSDomain)
           .AddAttribute("reduction", "mean");
       builder.AddNode("Identity",
-                      {shared_value == SharedValue::LogSoftmaxOutput ? log_prob : cast_log_prob},
+                      {shared_value == SharedValue::CastOutput ? cast_log_prob : log_prob},
                       {shared_output});
     };
 
-    auto check_unchanged = [](Graph& graph) {
+    auto check_unchanged = [shared_value](Graph& graph) {
       const auto op_count = CountOpsInGraph(graph);
       TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == 1);
-      TEST_RETURN_IF_NOT(OpCount(op_count, "Cast") == 1);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "Cast") ==
+                         (shared_value == SharedValue::DirectLogSoftmaxOutput ? 0 : 1));
       TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
       TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") == 0);
       return Status::OK();
