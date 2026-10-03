@@ -103,7 +103,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
         {std::string{migraphx_provider_option::kGpuExternalAlloc}, MakeStringWithClassicLocale(external_alloc_)},
         {std::string{migraphx_provider_option::kGpuExternalFree}, MakeStringWithClassicLocale(external_free_)},
         {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache_)},
-        {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)}};
+        {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)},
+        {std::string{migraphx_provider_option::kHasUserComputeStream}, MakeStringWithClassicLocale(external_stream_)},
+        {std::string{migraphx_provider_option::kUserComputeStream}, MakeStringWithClassicLocale(reinterpret_cast<std::uintptr_t>(external_stream_ ? stream_ : nullptr))}};
   }
 
  private:
@@ -123,6 +125,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   migraphx::target t_;
   std::mutex mgx_mu_;
   hipStream_t stream_ = nullptr;
+  bool external_stream_ = false;
   hipDeviceProp_t device_prop_{};
   bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_{};

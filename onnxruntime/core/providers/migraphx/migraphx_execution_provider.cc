@@ -162,6 +162,19 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   HIP_CALL_THROW(hipSetDevice(device_id_));
   HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, device_id_));
 
+  // Use the HIP stream provided by the user, if any, instead of creating new streams.
+  if (info.has_user_compute_stream) {
+    external_stream_ = true;
+    stream_ = static_cast<hipStream_t>(info.user_compute_stream);
+
+    // The user stream must belong to the device used by the execution provider.
+    hipDevice_t stream_device{};
+    HIP_CALL_THROW(hipStreamGetDevice(stream_, &stream_device));
+    ORT_ENFORCE(stream_device == device_id_,
+                "MIGraphX: the user compute stream belongs to device ", stream_device,
+                ", while the execution provider uses device ", device_id_);
+  }
+
   // Overwrite initialized values with values from environment variables.
 
   LOGS_DEFAULT(WARNING) << "[MIGraphX EP] MIGraphX ENV Override Variables Set:";
@@ -1622,7 +1635,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
                                                        AllocatorMap& allocators) const {
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
-  RegisterMIGraphXStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/);
+  RegisterMIGraphXStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_);
 }
 
 OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
@@ -1635,6 +1648,13 @@ OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
 }
 
 Status MIGraphXExecutionProvider::Sync() const {
+  if (external_stream_) {
+    // The work is submitted to the user stream, which is not synchronised with the null stream if it was created
+    // with the hipStreamNonBlocking flag.
+    HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream_));
+    return Status::OK();
+  }
+
   HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
 
   auto status = hipStreamQuery(stream_);
@@ -1648,7 +1668,16 @@ Status MIGraphXExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*ru
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
+Status MIGraphXExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
+  if (external_stream_) {
+    // Synchronise the user stream only if requested: the user may want to keep submitting work to it
+    // asynchronously, e.g. by setting the "disable_synchronize_execution_providers" run option.
+    if (sync_stream) {
+      HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream_));
+    }
+    return Status::OK();
+  }
+
   auto status = hipStreamQuery(stream_);
 
   if (status != hipSuccess) {
