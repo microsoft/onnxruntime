@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import tempfile
 
 import onnx
 from onnx import version_converter
 
 import onnxruntime as ort
+
+# A serialized ModelProto must stay under the 2GB protobuf message limit. Models at or above it can only
+# be handled by the onnx APIs that take file paths and keep the initializer data outside the proto.
+PROTOBUF_SIZE_LIMIT = 2147483648
 
 
 def iterate_graph_per_node_func(graph, per_node_func, **func_args):
@@ -231,6 +236,33 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape:
     )
 
 
+def _infer_shapes(model: onnx.ModelProto) -> onnx.ModelProto:
+    """
+    Run shape inference on a model and check the result.
+    :param model: Model to run shape inference on. It is not modified.
+    :return: A copy of the model with shape inferencing info added.
+    """
+
+    if model.ByteSize() < PROTOBUF_SIZE_LIMIT:
+        m2 = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(m2)
+        return m2
+
+    # onnx.shape_inference.infer_shapes and onnx.checker.check_model both serialize the model into a single
+    # protobuf, which a model of this size cannot fit into. Their path based counterparts write the initializer
+    # data to a separate file instead, so round trip through a temporary directory to reach them.
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = pathlib.Path(temp_dir)
+        model_path = temp_path / "model.onnx"
+        inferred_path = temp_path / "model.inferred.onnx"
+        onnx.save_model(model, str(model_path), save_as_external_data=True, location="model.onnx.data")
+        onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_path))
+        onnx.checker.check_model(str(inferred_path))
+
+        # only the shapes are needed, so leave the initializer data on disk rather than doubling memory usage.
+        return onnx.load_model(str(inferred_path), load_external_data=False)
+
+
 def fix_output_shapes(model: onnx.ModelProto):
     """
     Update the output shapesof a model where the input shape/s were made fixed, if possible.
@@ -239,8 +271,7 @@ def fix_output_shapes(model: onnx.ModelProto):
     """
 
     # get a version of the model with shape inferencing info in it. this will provide fixed output shapes if possible.
-    m2 = onnx.shape_inference.infer_shapes(model)
-    onnx.checker.check_model(m2)
+    m2 = _infer_shapes(model)
 
     for idx, o in enumerate(model.graph.output):
         if not is_fixed_size_tensor(o):
