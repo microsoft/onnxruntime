@@ -32,8 +32,8 @@ class DeviceStreamCollectionImpl {
     }
   }
 
-  Status CleanUp(bool sync_streams) {
-    if (sync_streams) {
+  Status CleanUp(bool sync_streams, bool clean_up_streams) {
+    if (sync_streams || clean_up_streams) {
       for (size_t i = 0, lim = device_streams_.size(); i < lim; ++i) {
         Stream* device_stream = device_streams_[i];
         if (stream_override_ && i == stream_override_->first) {
@@ -41,7 +41,7 @@ class DeviceStreamCollectionImpl {
         }
         if (device_stream) {
           ORT_RETURN_IF_ERROR(device_stream->CleanUpOnRunEnd());
-          if (is_main_graph_) {
+          if (sync_streams && is_main_graph_) {
             device_stream->Flush();
           }
         }
@@ -167,8 +167,8 @@ size_t DeviceStreamCollection::NumStreams() const {
   return impl_->NumStreams();
 }
 
-Status DeviceStreamCollection::CleanUp(bool sync_streams) {
-  return impl_->CleanUp(sync_streams);
+Status DeviceStreamCollection::CleanUp(bool sync_streams, bool clean_up_streams) {
+  return impl_->CleanUp(sync_streams, clean_up_streams);
 }
 
 Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {

@@ -3,6 +3,7 @@
 #include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/cudnn_loader.h"
 #include "core/common/spin_pause.h"
 
@@ -96,8 +97,26 @@ CudaStream::CudaStream(cudaStream_t stream,
 #endif
 }
 
+void CudaStream::ReleaseCaptureRetainedCpuBuffers() {
+  if (capture_retained_cpu_buffers_.empty()) {
+    return;
+  }
+
+  // Any captured graph that referenced these buffers is required to be destroyed before the
+  // session. Drain the stream first so nothing still in flight can read them.
+  auto* handle = static_cast<cudaStream_t>(GetHandle());
+  if (handle != nullptr && !CUDAGraphManager::IsStreamCapturing(handle)) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(handle)));
+  }
+  for (auto* buffer : capture_retained_cpu_buffers_) {
+    cpu_allocator_->Free(buffer);
+  }
+  capture_retained_cpu_buffers_.clear();
+}
+
 CudaStream::~CudaStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
+  ReleaseCaptureRetainedCpuBuffers();
 #ifndef USE_CUDA_MINIMAL
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
@@ -118,7 +137,9 @@ std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t
 void CudaStream::Flush() {
   // A temp fix: when use cuda graph, we can't flush it before cuda graph capture end
   // only flush when we own the stream (not external, not EP unified stream)
-  if (own_stream_)
+  // Also never synchronize while the caller is capturing a device graph on this stream:
+  // cudaStreamSynchronize is rejected on a capturing stream.
+  if (own_stream_ && !CUDAGraphManager::IsStreamCapturing(static_cast<cudaStream_t>(GetHandle())))
     CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(GetHandle())));
 }
 
@@ -163,6 +184,30 @@ static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
 Status CudaStream::CleanUpOnRunEnd() {
   if (deferred_cpu_buffers_.empty())
     return Status::OK();
+
+  // Ownership contract for staging buffers recorded into a caller-initiated capture.
+  //
+  // A kernel that calls AddDeferredReleaseCPUPtr issues cudaMemcpyAsync from a pinned host buffer.
+  // When the caller is capturing, that copy becomes a graph node that keeps the *host address* for
+  // the lifetime of the caller's executable graph: every replay reads it again. Reclaiming such a
+  // buffer at any later run end - even a non-capturing one - would leave the caller's graph
+  // reading freed or reused pinned memory on its next replay.
+  //
+  // These buffers are therefore transferred to capture_retained_cpu_buffers_ and owned until this
+  // stream (and so the session that owns it) is destroyed. The caller must destroy its captured
+  // graphs before the session, which it must do anyway because the graph also references the
+  // session's device allocations.
+  //
+  // The retained set is bounded by the number of capture passes, not by the number of runs:
+  // replays do not re-enter ORT, so a caller that captures a handful of graphs retains a handful of
+  // staging buffers.
+  if (CUDAGraphManager::IsStreamCapturing(static_cast<cudaStream_t>(GetHandle()))) {
+    capture_retained_cpu_buffers_.insert(capture_retained_cpu_buffers_.end(),
+                                         deferred_cpu_buffers_.begin(), deferred_cpu_buffers_.end());
+    deferred_cpu_buffers_.clear();
+    return Status::OK();
+  }
+
   // Release the ownership of cpu_buffers_info so that the underlying
   // object will keep alive until the end of ReleaseCpuBufferCallback.
   if (release_cpu_buffer_on_cuda_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {

@@ -47,7 +47,9 @@ class DeviceStreamCollection {
 
   // Since the collection may be reused for future iteration,
   // This API is used to cleanup some resources at the end of an iteration.
-  Status CleanUp(bool sync_streams);
+  // `clean_up_streams` runs stream cleanup without flushing. This is needed when a caller-owned
+  // device graph is capturing: CUDA streams must retain deferred host buffers, but cannot sync.
+  Status CleanUp(bool sync_streams, bool clean_up_streams = false);
 
   Stream* GetStreamForDevice(const OrtDevice& device) const;
 
