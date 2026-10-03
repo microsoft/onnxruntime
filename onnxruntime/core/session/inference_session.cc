@@ -152,14 +152,24 @@ PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_op
   return ToPathString(external_data_folder_path + "/virtual_model.onnx");
 }
 
-bool HasEpContextNode(const Model& model) {
-  for (const auto& node : model.MainGraph().Nodes()) {
+bool HasEpContextNode(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "EPContext" && node.Domain() == kMSDomain) {
       return true;
+    }
+
+    for (const auto& subgraph_entry : node.GetAttributeNameToSubgraphMap()) {
+      if (HasEpContextNode(*subgraph_entry.second)) {
+        return true;
+      }
     }
   }
 
   return false;
+}
+
+bool HasEpContextNode(const Model& model) {
+  return HasEpContextNode(model.MainGraph());
 }
 
 Status SetDefaultEpContextFilePathForExternalInitializers(ConfigOptions& config_options,
