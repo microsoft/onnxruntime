@@ -33,6 +33,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sgemm.cpp
   ${MLAS_SRC_DIR}/halfgemm.cpp
   ${MLAS_SRC_DIR}/halfconv.cpp
+  ${MLAS_SRC_DIR}/hgemm.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
@@ -201,6 +202,10 @@ function(setup_mlas_source_for_windows)
         )
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/qgemm_mmla_sve_asm.S)
+        list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/halfgemm_sve_asm.S)
+        list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/halfgemv_sve_asm.S)
+        list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
+        set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/linear_attention_sve_asm.S)
         mlas_add_private_compile_definitions(MLAS_USE_SVE)
       endif()
@@ -630,6 +635,19 @@ else()
             list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp)
             set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm -fno-stack-protector ${ORT_SVE_ABI_FLAGS} ")
           endif()
+          option(onnxruntime_SVE_HGEMM_ASM
+                 "Build the portable machine-code SVE HGEMM kernels instead of the intrinsics reference" ON)
+          if (onnxruntime_SVE_HGEMM_ASM)
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/halfgemm_sve_asm.S)
+          else()
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp)
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 -fno-tree-loop-distribute-patterns ${ORT_SVE_ABI_FLAGS} ")
+          endif()
+          if (onnxruntime_SVE_HGEMM_ASM)
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/halfgemv_sve_asm.S)
+          else()
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/halfgemv_kernel_sve.cpp)
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/halfgemv_kernel_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ${ORT_SVE_ABI_FLAGS} ")
           # SVE LinearAttention: the driver is plain C++ (no SVE compiler
           # support required); the compute kernel comes from either the
           # generated KleidiAI-style machine code (portable, production
