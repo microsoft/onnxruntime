@@ -4277,6 +4277,7 @@ struct OrtApi {
    *      -# "69"
    *      -# "73"
    *      -# "75"
+   *      -# "79"
    *      -# "81"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
