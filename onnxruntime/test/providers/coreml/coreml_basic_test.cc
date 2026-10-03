@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "core/common/logging/logging.h"
@@ -626,13 +628,23 @@ TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
   TemporaryDirectory tmp_dir(ORT_TSTR("coreml_external_data_gemm_test"));
   const auto model_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx");
   const auto external_data_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx_data");
+  const auto cache_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("cache");
+  ASSERT_TRUE(std::filesystem::create_directory(cache_path));
 
-  // Gemm: Y = X * W + B, where X is {2,3}, W is {3,4}, B is {4}
-  // Weight W: 3*4 = 12 floats, Bias B: 4 floats -> 16 floats total in external data
-  const std::vector<float> weight_data = {0.1f, 0.2f, 0.3f, 0.4f,
-                                          0.5f, 0.6f, 0.7f, 0.8f,
-                                          0.9f, 1.0f, 1.1f, 1.2f};
-  const std::vector<float> bias_data = {0.01f, 0.02f, 0.03f, 0.04f};
+  // Use a weight large enough that an inline ASCII representation in model.mil is larger than the raw tensor.
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kInputSize = 256;
+  constexpr int64_t kOutputSize = 256;
+  std::vector<float> weight_data(kInputSize * kOutputSize);
+  std::vector<float> bias_data(kOutputSize);
+  for (int64_t k = 0; k < kInputSize; ++k) {
+    for (int64_t n = 0; n < kOutputSize; ++n) {
+      weight_data[k * kOutputSize + n] = static_cast<float>((k * 17 + n * 13) % 101 - 50) / 100.0f;
+    }
+  }
+  for (int64_t n = 0; n < kOutputSize; ++n) {
+    bias_data[n] = static_cast<float>(n % 11 - 5) / 100.0f;
+  }
 
   // Write external data file: weight followed by bias
   {
@@ -659,30 +671,30 @@ TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
     auto* graph_proto = model_proto.mutable_graph();
     graph_proto->set_name("test_external_data_gemm");
 
-    // Input X: {2,3} float tensor
+    // Input X: {batch_size, K} float tensor
     auto* input = graph_proto->add_input();
     input->set_name("X");
     auto* input_type = input->mutable_type()->mutable_tensor_type();
     input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     auto* input_shape = input_type->mutable_shape();
-    input_shape->add_dim()->set_dim_value(2);
-    input_shape->add_dim()->set_dim_value(3);
+    input_shape->add_dim()->set_dim_value(kBatchSize);
+    input_shape->add_dim()->set_dim_value(kInputSize);
 
-    // Output Y: {2,4} float tensor
+    // Output Y: {batch_size, N} float tensor
     auto* output = graph_proto->add_output();
     output->set_name("Y");
     auto* output_type = output->mutable_type()->mutable_tensor_type();
     output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     auto* output_shape = output_type->mutable_shape();
-    output_shape->add_dim()->set_dim_value(2);
-    output_shape->add_dim()->set_dim_value(4);
+    output_shape->add_dim()->set_dim_value(kBatchSize);
+    output_shape->add_dim()->set_dim_value(kOutputSize);
 
-    // Initializer W {3,4} with external data
+    // Initializer W {K,N} with external data
     auto* w_init = graph_proto->add_initializer();
     w_init->set_name("W");
     w_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    w_init->add_dims(3);
-    w_init->add_dims(4);
+    w_init->add_dims(kInputSize);
+    w_init->add_dims(kOutputSize);
     w_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
     {
       auto* ext = w_init->add_external_data();
@@ -696,11 +708,11 @@ TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
       ext->set_value(std::to_string(weight_byte_size));
     }
 
-    // Initializer B {4} with external data (offset after W)
+    // Initializer B {N} with external data (offset after W)
     auto* b_init = graph_proto->add_initializer();
     b_init->set_name("B");
     b_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    b_init->add_dims(4);
+    b_init->add_dims(kOutputSize);
     b_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
     {
       auto* ext = b_init->add_external_data();
@@ -714,7 +726,7 @@ TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
       ext->set_value(std::to_string(bias_byte_size));
     }
 
-    // Gemm node: Y = X * W + B (transB=0 by default, so W is {K,N} = {3,4})
+    // Gemm node: Y = X * W + B (transB=0 by default, so W is {K,N})
     auto* node = graph_proto->add_node();
     node->set_op_type("Gemm");
     node->add_input("X");
@@ -729,9 +741,11 @@ TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
     ofs.close();
   }
 
-  // Input data: {2,3}
-  std::vector<int64_t> dims = {2, 3};
-  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> dims = {kBatchSize, kInputSize};
+  std::vector<float> input_data(kBatchSize * kInputSize);
+  for (int64_t i = 0; i < kBatchSize * kInputSize; ++i) {
+    input_data[i] = static_cast<float>((i * 3) % 29 - 14) / 10.0f;
+  }
   OrtValue ml_value_x;
   AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
@@ -743,32 +757,216 @@ TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
   run_options.run_tag = "ExternalDataGemm";
   std::vector<std::string> output_names = {"Y"};
 
+#if defined(__APPLE__)
+  std::vector<float> expected(kBatchSize * kOutputSize);
+  for (int64_t batch = 0; batch < kBatchSize; ++batch) {
+    for (int64_t n = 0; n < kOutputSize; ++n) {
+      float value = bias_data[n];
+      for (int64_t k = 0; k < kInputSize; ++k) {
+        value += input_data[batch * kInputSize + k] * weight_data[k * kOutputSize + n];
+      }
+      expected[batch * kOutputSize + n] = value;
+    }
+  }
+
+  auto verify_session_output = [&](InferenceSessionWrapper& session) {
+    const auto& provider_types = session.GetRegisteredProviderTypes();
+    EXPECT_NE(std::find(provider_types.begin(), provider_types.end(), kCoreMLExecutionProvider), provider_types.end());
+
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+    ASSERT_EQ(fetches.size(), 1u);
+
+    const auto& output_tensor = fetches[0].Get<Tensor>();
+    auto output_data = output_tensor.DataAsSpan<float>();
+    ASSERT_EQ(static_cast<size_t>(output_data.size()), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(output_data[i], expected[i], 1e-3f) << "Mismatch at index " << i;
+    }
+  };
+#endif  // defined(__APPLE__)
+
+  // Preserve coverage of the NeuralNetwork path, including external weight transposition and bias unpacking.
+  SessionOptions neural_network_so;
+  neural_network_so.session_logid = "ExternalDataGemmNeuralNetwork";
+  InferenceSessionWrapper neural_network_session{neural_network_so, GetEnvironment()};
+  ASSERT_STATUS_OK(neural_network_session.RegisterExecutionProvider(MakeCoreMLExecutionProvider()));
+  ASSERT_STATUS_OK(neural_network_session.Load(model_path.native()));
+  ASSERT_STATUS_OK(neural_network_session.Initialize());
+#if defined(__APPLE__)
+  verify_session_output(neural_network_session);
+#endif  // defined(__APPLE__)
+
   SessionOptions so;
-  so.session_logid = "ExternalDataGemm";
+  so.session_logid = "ExternalDataGemmMLProgram";
   InferenceSessionWrapper session{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(MakeCoreMLExecutionProvider()));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", PathToUTF8String(cache_path.native()))));
   ASSERT_STATUS_OK(session.Load(model_path.native()));
   ASSERT_STATUS_OK(session.Initialize());
 
+  // Gemm's transB=0 path converts W from {K,N} to CoreML linear's {N,K}. Verify that the generated
+  // constant is in a package weight.bin instead of being left as an immediate value.
+  std::vector<float> transposed_weight(weight_data.size());
+  for (int64_t k = 0; k < kInputSize; ++k) {
+    for (int64_t n = 0; n < kOutputSize; ++n) {
+      transposed_weight[n * kInputSize + k] = weight_data[k * kOutputSize + n];
+    }
+  }
+
+  const char* transposed_begin = reinterpret_cast<const char*>(transposed_weight.data());
+  const char* transposed_end = transposed_begin + transposed_weight.size() * sizeof(float);
+  bool found_transposed_weight = false;
+  std::vector<std::filesystem::path> model_mil_paths;
+  const std::filesystem::path compiled_model_dir_name{ORT_TSTR("compiled_model.mlmodelc")};
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(cache_path)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+
+    const bool is_compiled_model_artifact =
+        std::find(entry.path().begin(), entry.path().end(), compiled_model_dir_name) != entry.path().end();
+    if (entry.path().filename() == ORT_TSTR("weight.bin") && !is_compiled_model_artifact) {
+      std::ifstream weights_stream(entry.path(), std::ios::binary);
+      ASSERT_TRUE(weights_stream.is_open());
+      const std::vector<char> weights_data{std::istreambuf_iterator<char>(weights_stream),
+                                           std::istreambuf_iterator<char>()};
+      if (std::search(weights_data.begin(), weights_data.end(), transposed_begin, transposed_end) !=
+          weights_data.end()) {
+        found_transposed_weight = true;
+      }
+    } else if (entry.path().filename() == ORT_TSTR("model.mil")) {
+      model_mil_paths.push_back(entry.path());
+    }
+  }
+  EXPECT_TRUE(found_transposed_weight) << "The transposed Gemm weight was not written to weight.bin";
+
 #if defined(__APPLE__)
-  const auto& provider_types = session.GetRegisteredProviderTypes();
-  EXPECT_NE(std::find(provider_types.begin(), provider_types.end(), kCoreMLExecutionProvider), provider_types.end());
+  ASSERT_EQ(model_mil_paths.size(), 1u);
+  const auto model_mil_size = std::filesystem::file_size(model_mil_paths.front());
+  EXPECT_LT(model_mil_size, weight_byte_size)
+      << "model.mil is large enough to contain the generated weight as an inline ASCII tensor";
+  verify_session_output(session);
+#endif  // defined(__APPLE__)
+}
+
+// Verify that a generated FLOAT16 constant uses FLOAT16 blob metadata and bytes in weight.bin.
+TEST(CoreMLExecutionProviderTest, GeneratedFloat16GemmWeightUsesWeightsFile) {
+  TemporaryDirectory tmp_dir(ORT_TSTR("coreml_generated_fp16_gemm_weight_test"));
+  const auto model_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx");
+  const auto cache_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("cache");
+  ASSERT_TRUE(std::filesystem::create_directory(cache_path));
+
+  constexpr int64_t kBatchSize = 1;
+  constexpr int64_t kInputSize = 3;
+  constexpr int64_t kOutputSize = 4;
+  const std::vector<float> weight_values = {
+      -0.75f, -0.5f, -0.25f, 0.0f,
+      0.25f, 0.5f, 0.75f, 1.0f,
+      -1.0f, 0.125f, -0.125f, 0.625f};
+  std::vector<MLFloat16> weight_data;
+  weight_data.reserve(weight_values.size());
+  for (float value : weight_values) {
+    weight_data.emplace_back(value);
+  }
+
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_generated_fp16_gemm_weight");
+
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  auto* input_shape = input_type->mutable_shape();
+  input_shape->add_dim()->set_dim_value(kBatchSize);
+  input_shape->add_dim()->set_dim_value(kInputSize);
+
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  auto* output_shape = output_type->mutable_shape();
+  output_shape->add_dim()->set_dim_value(kBatchSize);
+  output_shape->add_dim()->set_dim_value(kOutputSize);
+
+  auto* weight_initializer = graph_proto->add_initializer();
+  weight_initializer->set_name("W");
+  weight_initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  weight_initializer->add_dims(kInputSize);
+  weight_initializer->add_dims(kOutputSize);
+  weight_initializer->set_raw_data(weight_data.data(), weight_data.size() * sizeof(MLFloat16));
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("Gemm");
+  node->add_input("X");
+  node->add_input("W");
+  node->add_output("Y");
+
+  {
+    std::ofstream ofs(model_path, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open());
+    ASSERT_TRUE(model_proto.SerializeToOstream(&ofs));
+  }
+
+  SessionOptions so;
+  so.session_logid = "GeneratedFloat16GemmWeightUsesWeightsFile";
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", PathToUTF8String(cache_path.native()))));
+  ASSERT_STATUS_OK(session.Load(model_path.native()));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  std::vector<MLFloat16> transposed_weight(weight_data.size());
+  for (int64_t k = 0; k < kInputSize; ++k) {
+    for (int64_t n = 0; n < kOutputSize; ++n) {
+      transposed_weight[n * kInputSize + k] = weight_data[k * kOutputSize + n];
+    }
+  }
+
+  const char* transposed_begin = reinterpret_cast<const char*>(transposed_weight.data());
+  const char* transposed_end = transposed_begin + transposed_weight.size() * sizeof(MLFloat16);
+  bool found_transposed_weight = false;
+  const std::filesystem::path compiled_model_dir_name{ORT_TSTR("compiled_model.mlmodelc")};
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(cache_path)) {
+    const bool is_compiled_model_artifact =
+        std::find(entry.path().begin(), entry.path().end(), compiled_model_dir_name) != entry.path().end();
+    if (entry.is_regular_file() && entry.path().filename() == ORT_TSTR("weight.bin") &&
+        !is_compiled_model_artifact) {
+      std::ifstream weights_stream(entry.path(), std::ios::binary);
+      ASSERT_TRUE(weights_stream.is_open());
+      const std::vector<char> weights_data{std::istreambuf_iterator<char>(weights_stream),
+                                           std::istreambuf_iterator<char>()};
+      if (std::search(weights_data.begin(), weights_data.end(), transposed_begin, transposed_end) !=
+          weights_data.end()) {
+        found_transposed_weight = true;
+      }
+    }
+  }
+  EXPECT_TRUE(found_transposed_weight) << "The generated FLOAT16 Gemm weight was not written to weight.bin";
+
+#if defined(__APPLE__)
+  std::vector<MLFloat16> input_data = {MLFloat16(0.5f), MLFloat16(-1.0f), MLFloat16(0.25f)};
+  OrtValue ml_value_x;
+  CreateMLValue<MLFloat16>(CPUAllocator::DefaultInstance(), {kBatchSize, kInputSize}, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
   std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
-
-  // Compute expected: Y = X * W + B
-  // Row 0: [1*0.1+2*0.5+3*0.9+0.01, 1*0.2+2*0.6+3*1.0+0.02, 1*0.3+2*0.7+3*1.1+0.03, 1*0.4+2*0.8+3*1.2+0.04]
-  //       = [3.81, 4.42, 5.03, 5.64]
-  // Row 1: [4*0.1+5*0.5+6*0.9+0.01, 4*0.2+5*0.6+6*1.0+0.02, 4*0.3+5*0.7+6*1.1+0.03, 4*0.4+5*0.8+6*1.2+0.04]
-  //       = [8.31, 9.82, 11.33, 12.84]
-  const std::vector<float> expected = {3.81f, 4.42f, 5.03f, 5.64f, 8.31f, 9.82f, 11.33f, 12.84f};
-
+  const std::vector<std::string> output_names = {"Y"};
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &fetches));
   ASSERT_EQ(fetches.size(), 1u);
-  const auto& output_tensor = fetches[0].Get<Tensor>();
-  auto output_data = output_tensor.DataAsSpan<float>();
+
+  const std::vector<float> expected = {-0.875f, -0.71875f, -0.90625f, -0.84375f};
+  const auto output_data = fetches[0].Get<Tensor>().DataAsSpan<MLFloat16>();
   ASSERT_EQ(static_cast<size_t>(output_data.size()), expected.size());
   for (size_t i = 0; i < expected.size(); ++i) {
-    EXPECT_NEAR(output_data[i], expected[i], 1e-5f) << "Mismatch at index " << i;
+    EXPECT_NEAR(output_data[i].ToFloat(), expected[i], 1e-2f) << "Mismatch at index " << i;
   }
 #endif  // defined(__APPLE__)
 }
