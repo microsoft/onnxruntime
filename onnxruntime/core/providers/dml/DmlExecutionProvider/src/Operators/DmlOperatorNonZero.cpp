@@ -18,6 +18,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1);
 
         std::vector<DimensionType> inputShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
+        m_outputRank = static_cast<DimensionType>(inputShape.size());
 
         // Scalars have a rank of 0, but DML only supports 1 and more, which is the same
         if (inputShape.empty())
@@ -117,14 +118,14 @@ public:
         }
 
         // Create the final output tensor, which is cropped to the actual number of nonzero elements
-        std::vector<uint32_t> outputSizes({m_rank, nonzeroElementCount});
+        std::vector<uint32_t> outputSizes({m_outputRank, nonzeroElementCount});
         auto outputTensor = kernelContext.GetOutputTensor(0, outputSizes);
 
-        if (!m_emptyInput && nonzeroElementCount > 0)
+        if (!m_emptyInput && m_outputRank > 0 && nonzeroElementCount > 0)
         {
             // TODO: Remove this hack when DML supports native int64 for NonZero
             // We use the int64/uint32 stride hack here, so zero out the data before writing to it
-            uint64_t tensorSizeInBytes = uint64_t(m_rank) * uint64_t(nonzeroElementCount) * sizeof(int64_t);
+            uint64_t tensorSizeInBytes = uint64_t(m_outputRank) * uint64_t(nonzeroElementCount) * sizeof(int64_t);
             ComPtr<IDMLCompiledOperator> zeroOperator = InitializeZeroInt64Tensor(tensorSizeInBytes);
 
             // TODO: Remove this hack when DML supports native int64 for NonZero
@@ -185,6 +186,7 @@ private:
     onnxruntime::TensorShape m_outputCoordinatesShape;
     bool m_emptyInput = false;
     uint32_t m_rank = 0;
+    uint32_t m_outputRank = 0;
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(NonZero, DmlOperatorNonZero);
