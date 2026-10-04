@@ -88,21 +88,29 @@ struct GraphOptions {
   int64_t total_tokens = 5;
   int64_t num_heads = 2;
   int64_t head_size = 8;
-  int64_t rotary_width = 8;
+  int64_t rotary_width = 4;
   int64_t compress_ratio = 2;
   int64_t state_capacity = 6;
+  int64_t input_state_capacity = -1;
   int64_t token_budget = 4;
+  int64_t key_total_tokens = -1;
+  int64_t kv_buffer_capacity = -1;
+  int64_t gate_buffer_width = -1;
+  bool packed_qk = false;
   bool add_index_topk = false;
   bool add_csa_inputs = false;
   bool add_position_ids = false;
+  bool add_capture_count = false;
+  bool add_state_update_active = false;
+  int64_t state_update_capacity = 0;
   int output_count = psai::kFixedOutputCount;
   std::string policy_mode = psai::kPolicyModeQsa;
 };
 
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
-// Builds a fixed 15-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 10) is optional for "qsa" and forced on for "csa".
+// Builds a fixed 16-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
+// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
@@ -111,8 +119,13 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 
   std::vector<NodeArg*> inputs{
       builder.MakeInput<float>(
-          std::vector<int64_t>{options.total_tokens, options.num_heads, options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.total_tokens, width}),
+          std::vector<int64_t>{options.total_tokens,
+                               (options.num_heads + (options.packed_qk ? 1 : 0)) * options.head_size}),
+      options.packed_qk
+          ? &empty
+          : builder.MakeInput<float>(std::vector<int64_t>{
+                options.key_total_tokens >= 0 ? options.key_total_tokens : options.total_tokens, width}),
+      builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{64, options.rotary_width}),
       builder.MakeInput<float>(std::vector<int64_t>{64, options.rotary_width}),
@@ -133,16 +146,29 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   } else {
     inputs.push_back(&empty);
   }
+  const int64_t input_state_capacity =
+      options.input_state_capacity >= 0 ? options.input_state_capacity : options.state_capacity;
   inputs.push_back(
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.state_capacity, options.head_size}));
+      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, input_state_capacity, options.head_size}));
   inputs.push_back(
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, buffer_capacity, width}));
+      builder.MakeInput<float>(std::vector<int64_t>{
+          options.batch_size, options.kv_buffer_capacity >= 0 ? options.kv_buffer_capacity : buffer_capacity, width}));
   if (is_csa) {
-    inputs.push_back(builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, buffer_capacity, width}));
+    inputs.push_back(builder.MakeInput<float>(
+        std::vector<int64_t>{options.batch_size, buffer_capacity,
+                             options.gate_buffer_width >= 0 ? options.gate_buffer_width : width}));
   } else {
     inputs.push_back(&empty);
   }
   inputs.push_back(builder.MakeInput<int32_t>(std::vector<int64_t>{options.batch_size, 2}));
+  if (options.add_capture_count || options.add_state_update_active) {
+    inputs.push_back(options.add_capture_count
+                         ? builder.MakeInput<int32_t>(std::vector<int64_t>{options.batch_size})
+                         : &empty);
+  }
+  if (options.add_state_update_active) {
+    inputs.push_back(builder.MakeInput<int32_t>(std::vector<int64_t>{1}));
+  }
 
   std::vector<NodeArg*> outputs;
   for (int i = 0; i < options.output_count; ++i) {
@@ -152,6 +178,9 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   node.AddAttribute("policy_mode", options.policy_mode);
   node.AddAttribute("compress_ratio", options.compress_ratio);
   node.AddAttribute("state_capacity", options.state_capacity);
+  if (options.state_update_capacity != 0) {
+    node.AddAttribute("state_update_capacity", options.state_update_capacity);
+  }
   if (is_csa || options.add_index_topk) {
     node.AddAttribute("index_topk", static_cast<int64_t>(3));
   } else {
@@ -179,6 +208,34 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersFixedCapacityAndSt
               {options.batch_size, BufferCapacity(options.compress_ratio), options.head_size});
   ExpectShape(graph, node.OutputDefs()[psai::kPresentStateLengths]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_INT32, {options.batch_size, 2});
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaAcceptsPackedQueryKey) {
+  GraphOptions options;
+  options.packed_qk = true;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+
+  const Node& node = *model->MainGraph().Nodes().begin();
+  EXPECT_FALSE(node.InputDefs()[psai::kKey]->Exists());
+  ExpectShape(model->MainGraph(), node.OutputDefs()[psai::kPresentKeyState]->Name(),
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+              {options.batch_size, options.state_capacity, options.head_size});
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersStateUpdate) {
+  GraphOptions options;
+  options.state_update_capacity = 4;
+  options.add_capture_count = true;
+  options.add_state_update_active = true;
+  options.output_count = psai::kOutputCount;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+
+  const Graph& graph = model->MainGraph();
+  const Node& node = *graph.Nodes().begin();
+  ExpectShape(graph, node.OutputDefs()[psai::kStateUpdate]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+              {options.batch_size, options.state_update_capacity, options.head_size});
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndState) {
@@ -218,6 +275,35 @@ void ExpectResolveFailure(const std::function<void(ModelTestBuilder& builder)>& 
 
 }  // namespace
 
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateCapacityShapeMismatch) {
+  GraphOptions options;
+  options.input_state_capacity = options.state_capacity + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "past_key_state dimension 1 must equal state_capacity");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMismatchedKeyTokenCount) {
+  GraphOptions options;
+  options.key_total_tokens = options.total_tokens + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "key dimension 0 must equal query dimension 0");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongKvBufferCapacity) {
+  GraphOptions options;
+  options.kv_buffer_capacity = BufferCapacity(options.compress_ratio) + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "past_kv_buffer dimension 1 must equal 2 * compress_ratio - 1");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMismatchedCsaGateBufferWidth) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.gate_buffer_width = 2 * options.head_size + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "past_gate_buffer dimension 2 must equal 2 * head_size");
+}
+
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsUnknownPolicyMode) {
   GraphOptions options;
   options.policy_mode = "qsa_v2";
@@ -236,7 +322,15 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsZeroNumHeads) {
   GraphOptions options;
   options.num_heads = 0;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "num_heads must be > 0");
+                       "query width must contain at least one query head");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsGenericBufferCapacityOverflow) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.compress_ratio = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 2;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "generic buffer capacity no greater than INT_MAX");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaTokenBudgetNotDivisibleByCompressRatio) {
@@ -274,8 +368,9 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionId
         const int64_t width = 2 * local.head_size;
         const int64_t buffer_capacity = BufferCapacity(local.compress_ratio);
         std::vector<NodeArg*> inputs{
-            builder.MakeInput<float>(std::vector<int64_t>{local.total_tokens, local.num_heads, local.head_size}),
+            builder.MakeInput<float>(std::vector<int64_t>{local.total_tokens, local.num_heads * local.head_size}),
             builder.MakeInput<float>(std::vector<int64_t>{local.total_tokens, width}),
+            builder.MakeInput<float>(std::vector<int64_t>{local.head_size}),
             builder.MakeInput<float>(std::vector<int64_t>{local.head_size}),
             builder.MakeInput<float>(std::vector<int64_t>{64, local.rotary_width}),
             builder.MakeInput<float>(std::vector<int64_t>{64, local.rotary_width}),
@@ -310,7 +405,25 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongOutputCount) {
   GraphOptions options;
   options.output_count = 4;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "exactly 6 declared outputs");
+                       "output size 4 not in range [min=6, max=7]");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateUpdateCapacityWithoutCaptureCount) {
+  GraphOptions options;
+  options.state_update_capacity = 4;
+  options.output_count = psai::kOutputCount;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "state_update_capture_count is required");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaStateUpdateCapture) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.state_update_capacity = 4;
+  options.add_capture_count = true;
+  options.output_count = psai::kOutputCount;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "only valid for policy_mode 'qsa'");
 }
 
 #endif  // ORT_NO_EXCEPTIONS
@@ -375,6 +488,20 @@ std::vector<float> RoundTrip(const std::vector<float>& data) {
     }
     return result;
   }
+}
+
+template <typename T>
+std::vector<float> CopyTensorToFloat(const Tensor& tensor) {
+  const auto values = tensor.DataAsSpan<T>();
+  std::vector<float> result(values.size());
+  for (size_t i = 0; i < values.size(); ++i) {
+    if constexpr (std::is_same_v<T, float>) {
+      result[i] = values[i];
+    } else {
+      result[i] = values[i].ToFloat();
+    }
+  }
+  return result;
 }
 
 // Split-half rotary over the leading rotary_width channels.
@@ -450,9 +577,13 @@ struct QsaPackedProblem {
   int max_position = 64;
   float epsilon = 1.0e-6f;
   std::optional<float> scale;
+  int state_update_capacity = 0;
+  std::vector<int32_t> state_update_capture_count;
+  std::optional<int32_t> state_update_active;
 
   std::vector<float> query;
   std::vector<float> key;
+  std::vector<float> query_norm_weight;
   std::vector<float> key_norm_weight;
   std::vector<float> cos_cache;  // shared: [max_position, rotary_width]
   std::vector<float> sin_cache;
@@ -470,6 +601,7 @@ struct QsaPackedResult {
   std::vector<float> present_key_state;
   std::vector<float> present_kv_buffer;
   std::vector<int32_t> present_state_lengths;
+  std::vector<float> state_update;
 };
 
 void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
@@ -481,10 +613,13 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
   const int capacity = p.Capacity();
 
   out.present_key_state = p.past_key_state;
-  out.present_kv_buffer.assign(static_cast<size_t>(p.batch_size) * buffer_capacity * head_size, 0.0f);
-  out.present_state_lengths.assign(static_cast<size_t>(p.batch_size) * 2, 0);
+  out.present_kv_buffer = p.past_kv_buffer;
+  out.present_state_lengths = p.past_state_lengths;
+  out.state_update.assign(
+      static_cast<size_t>(p.batch_size) * p.state_update_capacity * p.head_size, 0.0f);
 
   std::vector<int> key_len_after(static_cast<size_t>(p.batch_size));
+  std::vector<bool> overflowed(static_cast<size_t>(p.batch_size), false);
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
@@ -494,8 +629,14 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
     const int old_buf_len =
         std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 1], 0, p.compress_ratio - 1);
     const int pending = old_buf_len + req_len;
-    const int new_block_count = std::min(pending / p.compress_ratio, std::max(p.state_capacity - old_key_len, 0));
-    const int new_buf_len = new_block_count < pending / p.compress_ratio ? 0 : pending % p.compress_ratio;
+    const int full_new_block_count = pending / p.compress_ratio;
+    overflowed[static_cast<size_t>(b)] = full_new_block_count > std::max(p.state_capacity - old_key_len, 0);
+    if (overflowed[static_cast<size_t>(b)]) {
+      key_len_after[static_cast<size_t>(b)] = old_key_len;
+      continue;
+    }
+    const int new_block_count = full_new_block_count;
+    const int new_buf_len = pending % p.compress_ratio;
 
     auto raw_value = [&](int virtual_pos, int d) -> float {
       return virtual_pos < old_buf_len
@@ -530,11 +671,38 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
     out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len + new_block_count;
     out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = new_buf_len;
     key_len_after[static_cast<size_t>(b)] = old_key_len + new_block_count;
+
+    const bool capture_active = p.state_update_capacity > 0 && !p.state_update_capture_count.empty() &&
+                                (!p.state_update_active.has_value() || *p.state_update_active != 0);
+    const int capture_count = capture_active
+                                  ? std::clamp(p.state_update_capture_count[static_cast<size_t>(b)], 0,
+                                               std::min(req_len, p.state_update_capacity))
+                                  : 0;
+    for (int t = 0; t < capture_count; ++t) {
+      const bool completes_block = (old_buf_len + t + 1) % p.compress_ratio == 0;
+      for (int d = 0; d < head_size; ++d) {
+        const size_t capture_offset =
+            (static_cast<size_t>(b) * p.state_update_capacity + t) * head_size + d;
+        if (completes_block) {
+          const int block = (old_buf_len + t + 1) / p.compress_ratio - 1;
+          out.state_update[capture_offset] =
+              out.present_key_state[(static_cast<size_t>(b) * p.state_capacity + old_key_len + block) *
+                                        head_size +
+                                    d];
+        } else {
+          out.state_update[capture_offset] =
+              p.key[(static_cast<size_t>(req_start) + t) * head_size + d];
+        }
+      }
+    }
   }
 
   out.selected_indices.assign(static_cast<size_t>(total_tokens) * capacity, -1);
   out.selected_counts.assign(static_cast<size_t>(total_tokens), 0);
   for (int b = 0; b < p.batch_size; ++b) {
+    if (overflowed[static_cast<size_t>(b)]) {
+      continue;
+    }
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
     for (int token = req_start; token < req_end; ++token) {
@@ -547,6 +715,7 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
       for (int h = 0; h < p.num_heads; ++h) {
         const size_t base = (static_cast<size_t>(token) * p.num_heads + h) * head_size;
         std::vector<float> head(p.query.begin() + base, p.query.begin() + base + head_size);
+        head = RmsNormalize(head, p.query_norm_weight, p.epsilon);
         const int clamped_position = std::min(std::max(position, 0), p.max_position - 1);
         rotated_query[static_cast<size_t>(h)] =
             LeadingRope(head, p.rotary_width, p.cos_cache.data() + clamped_position * p.rotary_width,
@@ -605,6 +774,7 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
   problem.query =
       MakeWave(static_cast<size_t>(total_tokens) * problem.num_heads * problem.head_size, 0.35f, 0.41f);
   problem.key = MakeWave(static_cast<size_t>(total_tokens) * problem.head_size, 1.10f, 0.29f);
+  problem.query_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 1.30f, 0.23f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.70f, 0.17f);
   problem.cos_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 0.20f, 0.13f);
   problem.sin_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 0.90f, 0.19f);
@@ -617,7 +787,8 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 
 template <typename T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
-                      ProviderKind provider_kind = ProviderKind::Cuda) {
+                      ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
+                      bool packed_qk = false) {
   auto provider = CreateProvider(provider_kind);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -626,6 +797,7 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
 
   problem.query = RoundTrip<T>(problem.query);
   problem.key = RoundTrip<T>(problem.key);
+  problem.query_norm_weight = RoundTrip<T>(problem.query_norm_weight);
   problem.key_norm_weight = RoundTrip<T>(problem.key_norm_weight);
   problem.cos_cache = RoundTrip<T>(problem.cos_cache);
   problem.sin_cache = RoundTrip<T>(problem.sin_cache);
@@ -645,11 +817,29 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   test.AddAttribute("compress_ratio", static_cast<int64_t>(problem.compress_ratio));
   test.AddAttribute("state_capacity", static_cast<int64_t>(problem.state_capacity));
   test.AddAttribute("token_budget", static_cast<int64_t>(problem.token_budget));
+  if (problem.state_update_capacity > 0) {
+    test.AddAttribute("state_update_capacity", static_cast<int64_t>(problem.state_update_capacity));
+  }
   if (problem.scale.has_value()) {
     test.AddAttribute("scale", *problem.scale);
   }
-  test.AddInput<T>("query", {total_tokens, problem.num_heads, head_size}, ToElementType<T>(problem.query));
-  test.AddInput<T>("key", {total_tokens, head_size}, ToElementType<T>(problem.key));
+  if (packed_qk) {
+    const int64_t query_width = problem.num_heads * head_size;
+    const int64_t packed_width = query_width + head_size;
+    std::vector<float> query_key(static_cast<size_t>(total_tokens * packed_width));
+    for (int64_t token = 0; token < total_tokens; ++token) {
+      std::copy_n(problem.query.begin() + token * query_width, query_width,
+                  query_key.begin() + token * packed_width);
+      std::copy_n(problem.key.begin() + token * head_size, head_size,
+                  query_key.begin() + token * packed_width + query_width);
+    }
+    test.AddInput<T>("query_key", {total_tokens, packed_width}, ToElementType<T>(query_key));
+    test.AddOptionalInputEdge<T>();
+  } else {
+    test.AddInput<T>("query", {total_tokens, problem.num_heads * head_size}, ToElementType<T>(problem.query));
+    test.AddInput<T>("key", {total_tokens, head_size}, ToElementType<T>(problem.key));
+  }
+  test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
   test.AddInput<T>("cos_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
   test.AddInput<T>("sin_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
@@ -665,6 +855,12 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
                    ToElementType<T>(problem.past_kv_buffer));
   test.AddOptionalInputEdge<T>();  // past_gate_buffer
   test.AddInput<int32_t>("past_state_lengths", {batch_size, 2}, problem.past_state_lengths);
+  if (problem.state_update_capacity > 0) {
+    test.AddInput<int32_t>("state_update_capture_count", {batch_size}, problem.state_update_capture_count);
+    if (problem.state_update_active.has_value()) {
+      test.AddInput<int32_t>("state_update_active", {1}, {*problem.state_update_active});
+    }
+  }
 
   test.AddOutput<int32_t>("selected_indices", {total_tokens, problem.Capacity()}, expected.selected_indices);
   test.AddOutput<int32_t>("selected_counts", {total_tokens}, expected.selected_counts);
@@ -674,7 +870,18 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
                     ToElementType<T>(expected.present_kv_buffer), false, 0.0f, tolerance);
   test.AddOptionalOutputEdge<T>();  // present_gate_buffer
   test.AddOutput<int32_t>("present_state_lengths", {batch_size, 2}, expected.present_state_lengths);
+  if (problem.state_update_capacity > 0) {
+    test.AddOutput<T>("state_update", {batch_size, problem.state_update_capacity, head_size},
+                      ToElementType<T>(expected.state_update), false, 0.0f, tolerance);
+  }
   RunOnProvider(test, std::move(provider));
+  if (actual != nullptr) {
+    const auto& fetches = test.GetFetches();
+    actual->present_key_state = CopyTensorToFloat<T>(fetches[2].Get<Tensor>());
+    actual->present_kv_buffer = CopyTensorToFloat<T>(fetches[3].Get<Tensor>());
+    actual->present_state_lengths.assign(fetches[4].Get<Tensor>().DataAsSpan<int32_t>().begin(),
+                                         fetches[4].Get<Tensor>().DataAsSpan<int32_t>().end());
+  }
 }
 
 }  // namespace
@@ -685,13 +892,30 @@ TEST(PackedSparseAttentionIndexerTest, QsaFloat16) { RunQsaPackedTest<MLFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, QsaBFloat16) { RunQsaPackedTest<BFloat16>(2.0e-2f); }
 
-// Prefill followed by decode: request 0 continues an existing 3-token history, request 1 starts
-// fresh; the two requests keep independent block/tail state.
+TEST(PackedSparseAttentionIndexerTest, QsaPackedQueryKey) {
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::Cuda, nullptr, true);
+}
+
 TEST(PackedSparseAttentionIndexerTest, QsaPrefillThenDecodeIndependentState) {
-  QsaPackedProblem problem;
-  problem.cumulative_sequence_lengths = {0, 1, 4};
-  problem.past_sequence_lengths = {5, 0};
-  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  QsaPackedProblem prefill;
+  prefill.cumulative_sequence_lengths = {0, 3, 5};
+  prefill.past_sequence_lengths = {0, 0};
+  QsaPackedResult prefill_outputs;
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(prefill)), ProviderKind::Cuda,
+                          &prefill_outputs);
+
+  QsaPackedProblem decode;
+  decode.cumulative_sequence_lengths = {0, 1, 3};
+  decode.past_sequence_lengths = {3, 2};
+  decode = MakeQsaPackedProblem(std::move(decode));
+  decode.past_key_state = std::move(prefill_outputs.present_key_state);
+  decode.past_kv_buffer = std::move(prefill_outputs.present_kv_buffer);
+  decode.past_state_lengths = std::move(prefill_outputs.present_state_lengths);
+  RunQsaPackedTest<float>(1.0e-5f, std::move(decode));
 }
 
 // A zero-token request row (repeated cumulative offset) must not affect the other request and
@@ -705,7 +929,7 @@ TEST(PackedSparseAttentionIndexerTest, QsaZeroTokenRequestRow) {
 }
 
 // state_capacity smaller than what the incoming tokens would naturally produce: the update must
-// deterministically drop the overflowing blocks rather than corrupt memory.
+// reject the request's step without partially changing its state.
 TEST(PackedSparseAttentionIndexerTest, QsaStateCapacityOverflowIsSafe) {
   QsaPackedProblem problem;
   problem.cumulative_sequence_lengths = {0, 6};
@@ -715,6 +939,119 @@ TEST(PackedSparseAttentionIndexerTest, QsaStateCapacityOverflowIsSafe) {
   problem.past_state_lengths = {2, 0};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
 }
+
+TEST(PackedSparseAttentionIndexerTest, QsaStateUpdateCapturesRawAndBlockTransitions) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 3};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::Cuda);
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaStateUpdateActiveZeroClearsAllSlots) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 5};
+  problem.state_update_active = 0;
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::Cuda);
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaStateUpdateActiveOneCapturesRawAndBlockTransitions) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 5};
+  problem.state_update_active = 1;
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::Cuda);
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaBoundedTopKMaximum) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {1040};
+  problem.compress_ratio = 2;
+  problem.token_budget = 1024;
+  problem.state_capacity = 520;
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTopK) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {8204};
+  problem.head_size = 128;
+  problem.num_heads = 4;
+  problem.rotary_width = 64;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem.state_capacity = 2051;
+  problem = MakeQsaPackedProblem(std::move(problem));
+  std::fill(problem.query.begin(), problem.query.end(), 1.0f);
+  std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+  for (int block = 0; block < problem.state_capacity; ++block) {
+    const float value = static_cast<float>(block + 1) / problem.state_capacity;
+    std::fill_n(problem.past_key_state.begin() + static_cast<size_t>(block) * problem.head_size,
+                problem.head_size, value);
+  }
+  RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 65};
+  problem.past_sequence_lengths = {1024};
+  problem.head_size = 128;
+  problem.num_heads = 4;
+  problem.rotary_width = 64;
+  problem.compress_ratio = 4;
+  problem.token_budget = 128;
+  problem.state_capacity = 512;
+  problem.max_position = 2048;
+  problem = MakeQsaPackedProblem(std::move(problem));
+  std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+  RunQsaPackedTest<float>(1.0e-4f, std::move(problem));
+}
+
+#ifdef USE_WEBGPU
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat16) {
+  RunQsaPackedTest<MLFloat16>(2.0e-3f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPackedQueryKey) {
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, true);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 6};
+  problem.past_sequence_lengths = {4};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {2, 0};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+#endif
 
 namespace {
 
@@ -736,6 +1073,7 @@ struct CsaPackedProblem {
 
   std::vector<float> query;
   std::vector<float> key;
+  std::vector<float> query_norm_weight;
   std::vector<float> key_norm_weight;
   std::vector<float> cos_cache;
   std::vector<float> sin_cache;
@@ -771,10 +1109,11 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
   const float head_weight_scale = p.head_weight_scale.value_or(1.0f / std::sqrt(static_cast<float>(p.num_heads)));
 
   out.present_key_state = p.past_key_state;
-  out.present_kv_buffer.assign(static_cast<size_t>(p.batch_size) * buffer_capacity * width, 0.0f);
-  out.present_gate_buffer.assign(static_cast<size_t>(p.batch_size) * buffer_capacity * width, 0.0f);
-  out.present_state_lengths.assign(static_cast<size_t>(p.batch_size) * 2, 0);
+  out.present_kv_buffer = p.past_kv_buffer;
+  out.present_gate_buffer = p.past_gate_buffer;
+  out.present_state_lengths = p.past_state_lengths;
   std::vector<int> key_len_after(static_cast<size_t>(p.batch_size));
+  std::vector<bool> overflowed(static_cast<size_t>(p.batch_size), false);
 
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
@@ -788,21 +1127,22 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
     const int leftover_length = old_buf_len - overlap_length;
     const int pending = leftover_length + req_len;
     const int full_new_window_count = pending / p.compress_ratio;
-    const int new_window_count =
-        std::min(full_new_window_count, std::max(p.state_capacity - old_key_len, 0));
-    const bool overflowed = new_window_count < full_new_window_count;
+    overflowed[static_cast<size_t>(b)] = full_new_window_count > std::max(p.state_capacity - old_key_len, 0);
+    if (overflowed[static_cast<size_t>(b)]) {
+      key_len_after[static_cast<size_t>(b)] = old_key_len;
+      continue;
+    }
+    const int new_window_count = full_new_window_count;
     int present_buffer_length = 0;
     int present_buffer_start = 0;
-    if (!overflowed) {
-      if (new_window_count > 0) {
-        present_buffer_length = p.compress_ratio + pending % p.compress_ratio;
-        present_buffer_start = overlap_length + (new_window_count - 1) * p.compress_ratio;
-      } else {
-        present_buffer_length = old_buf_len + req_len;
-        present_buffer_start = 0;
-      }
-      present_buffer_length = std::min(present_buffer_length, buffer_capacity);
+    if (new_window_count > 0) {
+      present_buffer_length = p.compress_ratio + pending % p.compress_ratio;
+      present_buffer_start = overlap_length + (new_window_count - 1) * p.compress_ratio;
+    } else {
+      present_buffer_length = old_buf_len + req_len;
+      present_buffer_start = 0;
     }
+    present_buffer_length = std::min(present_buffer_length, buffer_capacity);
 
     auto extended_key = [&](int virtual_pos, int channel) -> float {
       return virtual_pos < old_buf_len
@@ -874,6 +1214,9 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
   out.selected_indices.assign(static_cast<size_t>(total_tokens) * capacity, -1);
   out.selected_counts.assign(static_cast<size_t>(total_tokens), 0);
   for (int b = 0; b < p.batch_size; ++b) {
+    if (overflowed[static_cast<size_t>(b)]) {
+      continue;
+    }
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
     for (int token = req_start; token < req_end; ++token) {
@@ -885,6 +1228,7 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
       for (int h = 0; h < p.num_heads; ++h) {
         const size_t base = (static_cast<size_t>(token) * p.num_heads + h) * head_size;
         std::vector<float> head(p.query.begin() + base, p.query.begin() + base + head_size);
+        head = RmsNormalize(head, p.query_norm_weight, p.epsilon);
         const int clamped_position = std::min(std::max(position, 0), p.max_position - 1);
         rotated_query[static_cast<size_t>(h)] =
             TrailingRope(head, p.rotary_width, p.cos_cache.data() + clamped_position * p.rotary_width,
@@ -930,6 +1274,7 @@ CsaPackedProblem MakeCsaPackedProblem(CsaPackedProblem problem = {}) {
 
   problem.query = MakeWave(static_cast<size_t>(total_tokens) * problem.num_heads * problem.head_size, 0.25f, 0.37f);
   problem.key = MakeWave(static_cast<size_t>(total_tokens) * width, 0.60f, 0.21f);
+  problem.query_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 1.25f, 0.19f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.45f, 0.31f);
   problem.cos_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 0.15f, 0.27f);
   problem.sin_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 1.05f, 0.33f);
@@ -956,7 +1301,7 @@ CsaPackedProblem MakeCsaPackedProblem(CsaPackedProblem problem = {}) {
 
 template <typename T>
 void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
-                      ProviderKind provider_kind = ProviderKind::Cuda) {
+                      ProviderKind provider_kind = ProviderKind::Cuda, CsaPackedResult* actual = nullptr) {
   auto provider = CreateProvider(provider_kind);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -966,6 +1311,7 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
   CsaPackedProblem problem = base;
   problem.query = RoundTrip<T>(problem.query);
   problem.key = RoundTrip<T>(problem.key);
+  problem.query_norm_weight = RoundTrip<T>(problem.query_norm_weight);
   problem.key_norm_weight = RoundTrip<T>(problem.key_norm_weight);
   problem.cos_cache = RoundTrip<T>(problem.cos_cache);
   problem.sin_cache = RoundTrip<T>(problem.sin_cache);
@@ -993,8 +1339,9 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
   if (problem.scale.has_value()) test.AddAttribute("scale", *problem.scale);
   if (problem.head_weight_scale.has_value()) test.AddAttribute("head_weight_scale", *problem.head_weight_scale);
 
-  test.AddInput<T>("query", {total_tokens, problem.num_heads, head_size}, ToElementType<T>(problem.query));
+  test.AddInput<T>("query", {total_tokens, problem.num_heads * head_size}, ToElementType<T>(problem.query));
   test.AddInput<T>("key", {total_tokens, width}, ToElementType<T>(problem.key));
+  test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
   test.AddInput<T>("cos_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
   test.AddInput<T>("sin_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
@@ -1021,6 +1368,14 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
                     ToElementType<T>(expected.present_gate_buffer), false, 0.0f, tolerance);
   test.AddOutput<int32_t>("present_state_lengths", {batch_size, 2}, expected.present_state_lengths);
   RunOnProvider(test, std::move(provider));
+  if (actual != nullptr) {
+    const auto& fetches = test.GetFetches();
+    actual->present_key_state = CopyTensorToFloat<T>(fetches[2].Get<Tensor>());
+    actual->present_kv_buffer = CopyTensorToFloat<T>(fetches[3].Get<Tensor>());
+    actual->present_gate_buffer = CopyTensorToFloat<T>(fetches[4].Get<Tensor>());
+    actual->present_state_lengths.assign(fetches[5].Get<Tensor>().DataAsSpan<int32_t>().begin(),
+                                         fetches[5].Get<Tensor>().DataAsSpan<int32_t>().end());
+  }
 }
 
 }  // namespace
@@ -1031,14 +1386,57 @@ TEST(PackedSparseAttentionIndexerTest, CsaFloat16) { RunCsaPackedTest<MLFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, CsaBFloat16) { RunCsaPackedTest<BFloat16>(MakeCsaPackedProblem(), 3.0e-2f); }
 
-// Prefill followed by decode: continues a previously compressed entry and a partially filled
-// buffer for one request, while another request starts fresh.
 TEST(PackedSparseAttentionIndexerTest, CsaPrefillThenDecodeIndependentState) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  CsaPackedProblem prefill;
+  prefill.cumulative_sequence_lengths = {0, 3, 5};
+  prefill.past_sequence_lengths = {0, 0};
+  CsaPackedResult prefill_outputs;
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(prefill)), 1.0e-5f, ProviderKind::Cuda,
+                          &prefill_outputs);
+
+  CsaPackedProblem decode;
+  decode.cumulative_sequence_lengths = {0, 1, 3};
+  decode.past_sequence_lengths = {3, 2};
+  decode.position_ids = {3, 2, 3};
+  decode = MakeCsaPackedProblem(std::move(decode));
+  decode.past_key_state = std::move(prefill_outputs.present_key_state);
+  decode.past_kv_buffer = std::move(prefill_outputs.present_kv_buffer);
+  decode.past_gate_buffer = std::move(prefill_outputs.present_gate_buffer);
+  decode.past_state_lengths = std::move(prefill_outputs.present_state_lengths);
+  RunCsaPackedTest<float>(decode, 1.0e-5f);
+}
+
+TEST(PackedSparseAttentionIndexerTest, CsaStateCapacityOverflowIsRejected) {
   CsaPackedProblem problem;
-  problem.cumulative_sequence_lengths = {0, 1, 4};
-  problem.past_state_lengths = {1, 1, 0, 0};
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 4};
+  problem.state_capacity = 1;
+  problem.past_state_lengths = {1, 0};
   RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
 }
+
+#ifdef USE_WEBGPU
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat16) {
+  RunCsaPackedTest<MLFloat16>(MakeCsaPackedProblem(), 4.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 4};
+  problem.state_capacity = 1;
+  problem.past_state_lengths = {1, 0};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

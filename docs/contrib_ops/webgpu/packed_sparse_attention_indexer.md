@@ -32,6 +32,8 @@ into workgroup-shared arrays, both to keep every kernel correct without relying 
 sized by a runtime (uniform) `head_size`, and to keep the packed kernel's structure directly
 comparable to the CUDA implementation's per-request/per-token update and score/select stages. All
 reductions and softmax calculations accumulate in FP32, including for FP16 inputs.
+Raw flattened queries are RMS-normalized per logical head with `query_norm_weight` before the
+policy-specific rotary embedding, matching the CUDA implementation.
 
 Per-request quantities (`cumulative_sequence_lengths`, `past_sequence_lengths`,
 `past_state_lengths`) are read directly from device buffers inside the shaders — never on the

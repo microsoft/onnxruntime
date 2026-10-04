@@ -20,6 +20,8 @@ struct PackedSparseAttentionIndexerParams {
   int total_tokens = 0;
   int num_heads = 0;
   int head_size = 0;
+  int query_row_stride = 0;
+  int key_row_stride = 0;
   int rotary_width = 0;            // cos_cache.shape[-1]
   int max_rotary_length = 0;       // cos_cache.shape[-2]
   bool cos_cache_batched = false;  // cos_cache rank: 3 = [batch, pos, rot], 2 = [pos, rot]
@@ -33,6 +35,7 @@ struct PackedSparseAttentionIndexerParams {
 
   // policy_mode = "qsa"
   int block_topk = 0;  // token_budget / compress_ratio
+  int state_update_capacity = 0;
 
   // policy_mode = "csa"
   int index_topk = 0;
@@ -56,6 +59,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const PackedSparseAttentionIndexerParams& params,
     const T* query,
     const T* key,
+    const T* query_norm_weight,
     const T* key_norm_weight,
     const T* cos_cache,
     const T* sin_cache,
@@ -65,11 +69,14 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const T* past_key_state,
     const T* past_kv_buffer,
     const int32_t* past_state_lengths,
+    const int32_t* state_update_capture_count,
+    bool state_update_active,
     int32_t* selected_indices,
     int32_t* selected_counts,
     T* present_key_state,
     T* present_kv_buffer,
     int32_t* present_state_lengths,
+    T* state_update,
     float* float_workspace,
     int32_t* overflow_flags);
 
@@ -79,6 +86,7 @@ Status LaunchCsaPackedSparseAttentionIndexer(
     const PackedSparseAttentionIndexerParams& params,
     const T* query,
     const T* key,
+    const T* query_norm_weight,
     const T* key_norm_weight,
     const T* cos_cache,
     const T* sin_cache,

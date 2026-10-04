@@ -25,6 +25,7 @@ namespace cuda {
 namespace {
 
 constexpr int64_t kSaiMaxGridDimX = 2147483647;
+constexpr int kSaiFastTopKMax = 32;
 
 __device__ __forceinline__ float SaiNegativeInfinity() { return -CUDART_INF_F; }
 
@@ -91,6 +92,77 @@ __device__ __forceinline__ void SaiScanForNext(const float* scores, int count, f
       *best_value = value;
       *best_index = candidate;
     }
+  }
+}
+
+__device__ __forceinline__ bool SaiTopKBetter(float lhs_value, int lhs_index, float rhs_value, int rhs_index) {
+  return lhs_index >= 0 &&
+         (rhs_index < 0 || lhs_value > rhs_value || (lhs_value == rhs_value && lhs_index < rhs_index));
+}
+
+// Finds up to kSaiFastTopKMax entries with one global read of each score. Each thread first keeps
+// a sorted local list, then adjacent threads merge their lists in shared memory. The final list is
+// ordered by score descending and index ascending, matching SaiScanForNext/SaiBlockArgMax.
+__device__ __forceinline__ void SaiBlockTopK(const float* scores, int count, int top_k,
+                                             float* shared_value, int* shared_index) {
+  float local_value[kSaiFastTopKMax];
+  int local_index[kSaiFastTopKMax];
+  for (int rank = 0; rank < top_k; ++rank) {
+    local_value[rank] = 0.0f;
+    local_index[rank] = -1;
+  }
+
+  for (int candidate = static_cast<int>(threadIdx.x); candidate < count;
+       candidate += static_cast<int>(blockDim.x)) {
+    const float value = scores[candidate];
+    if (!SaiTopKBetter(value, candidate, local_value[top_k - 1], local_index[top_k - 1])) {
+      continue;
+    }
+    int rank = top_k - 1;
+    while (rank > 0 && SaiTopKBetter(value, candidate, local_value[rank - 1], local_index[rank - 1])) {
+      local_value[rank] = local_value[rank - 1];
+      local_index[rank] = local_index[rank - 1];
+      --rank;
+    }
+    local_value[rank] = value;
+    local_index[rank] = candidate;
+  }
+
+  const int thread_offset = static_cast<int>(threadIdx.x) * top_k;
+  for (int rank = 0; rank < top_k; ++rank) {
+    shared_value[thread_offset + rank] = local_value[rank];
+    shared_index[thread_offset + rank] = local_index[rank];
+  }
+  __syncthreads();
+
+  for (int stride = 1; stride < static_cast<int>(blockDim.x); stride <<= 1) {
+    if ((static_cast<int>(threadIdx.x) % (2 * stride)) == 0) {
+      const int right_offset = (static_cast<int>(threadIdx.x) + stride) * top_k;
+      for (int rank = 0; rank < top_k; ++rank) {
+        local_value[rank] = shared_value[thread_offset + rank];
+        local_index[rank] = shared_index[thread_offset + rank];
+      }
+
+      int left_rank = 0;
+      int right_rank = 0;
+      for (int rank = 0; rank < top_k; ++rank) {
+        const bool take_right =
+            right_rank < top_k &&
+            (left_rank == top_k ||
+             SaiTopKBetter(shared_value[right_offset + right_rank], shared_index[right_offset + right_rank],
+                           local_value[left_rank], local_index[left_rank]));
+        if (take_right) {
+          shared_value[thread_offset + rank] = shared_value[right_offset + right_rank];
+          shared_index[thread_offset + rank] = shared_index[right_offset + right_rank];
+          ++right_rank;
+        } else {
+          shared_value[thread_offset + rank] = local_value[left_rank];
+          shared_index[thread_offset + rank] = local_index[left_rank];
+          ++left_rank;
+        }
+      }
+    }
+    __syncthreads();
   }
 }
 

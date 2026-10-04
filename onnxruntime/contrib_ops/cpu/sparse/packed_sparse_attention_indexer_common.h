@@ -30,25 +30,28 @@ using sparse_attention_indexer::SelectedCapacity;
 using sparse_attention_indexer::TryComputeCsaWindowPlan;
 using sparse_attention_indexer::TryParsePolicy;
 
-// Fixed input slots. Slots 7-9 belong to policy_mode="csa" only; slot 10 (position_ids) is
+// Fixed input slots. Slots 8-10 belong to policy_mode="csa" only; slot 11 (position_ids) is
 // optional for "qsa" and required for "csa". Every other slot is required for both policies.
 enum InputIndex : int {
-  kQuery = 0,                      // [total_tokens, num_heads, head_size]
+  kQuery = 0,                      // [total_tokens, num_heads * head_size]
   kKey = 1,                        // qsa: [total_tokens, head_size]; csa: [total_tokens, 2 * head_size]
-  kKeyNormWeight = 2,              // [head_size]
-  kCosCache = 3,                   // [max_position, rotary_width] or [batch_size, max_position, rotary_width]
-  kSinCache = 4,                   // same shape as cos_cache
-  kCumulativeSequenceLengths = 5,  // [batch_size + 1], int32
-  kPastSequenceLengths = 6,        // [batch_size], int32
-  kGate = 7,                       // csa only: [total_tokens, 2 * head_size]
-  kPositionBias = 8,               // csa only: [compress_ratio, 2 * head_size]
-  kHeadWeights = 9,                // csa only: [total_tokens, num_heads]
-  kPositionIds = 10,               // optional (qsa) / required (csa): [total_tokens], int64
-  kPastKeyState = 11,              // generic: [batch_size, state_capacity, head_size]
-  kPastKvBuffer = 12,              // generic: [batch_size, 2 * compress_ratio - 1, width]
-  kPastGateBuffer = 13,            // csa only: same shape as past_kv_buffer
-  kPastStateLengths = 14,          // generic: [batch_size, 2], int32
-  kInputCount = 15,
+  kQueryNormWeight = 2,            // [head_size]
+  kKeyNormWeight = 3,              // [head_size]
+  kCosCache = 4,                   // [max_position, rotary_width] or [batch_size, max_position, rotary_width]
+  kSinCache = 5,                   // same shape as cos_cache
+  kCumulativeSequenceLengths = 6,  // [batch_size + 1], int32
+  kPastSequenceLengths = 7,        // [batch_size], int32
+  kGate = 8,                       // csa only: [total_tokens, 2 * head_size]
+  kPositionBias = 9,               // csa only: [compress_ratio, 2 * head_size]
+  kHeadWeights = 10,               // csa only: [total_tokens, num_heads]
+  kPositionIds = 11,               // optional (qsa) / required (csa): [total_tokens], int64
+  kPastKeyState = 12,              // generic: [batch_size, state_capacity, head_size]
+  kPastKvBuffer = 13,              // generic: [batch_size, 2 * compress_ratio - 1, width]
+  kPastGateBuffer = 14,            // csa only: same shape as past_kv_buffer
+  kPastStateLengths = 15,          // generic: [batch_size, 2], int32
+  kStateUpdateCaptureCount = 16,   // qsa only, optional: [batch_size], int32
+  kStateUpdateActive = 17,         // qsa only, optional: [1], int32
+  kInputCount = 18,
 };
 
 // Fixed output slots. present_gate_buffer is declared (with an empty name) but not produced for
@@ -60,12 +63,14 @@ enum OutputIndex : int {
   kPresentKvBuffer = 3,      // same shape as past_kv_buffer
   kPresentGateBuffer = 4,    // csa only: same shape as past_gate_buffer
   kPresentStateLengths = 5,  // [batch_size, 2], int32
-  kOutputCount = 6,
+  kStateUpdate = 6,          // qsa only, optional: [batch_size, state_update_capacity, head_size]
+  kOutputCount = 7,
 };
 
 // Every PackedSparseAttentionIndexer node declares all 6 fixed outputs; present_gate_buffer is an
-// empty-name optional output for policy_mode="qsa".
-constexpr int kFixedOutputCount = kOutputCount;
+// empty-name optional output for policy_mode="qsa". State update capture is an optional appended
+// seventh output so existing nodes retain their output layout.
+constexpr int kFixedOutputCount = kStateUpdate;
 
 // Column layout of past_state_lengths / present_state_lengths.
 enum StateLengthColumn : int {
