@@ -15,6 +15,7 @@ namespace cuda {
 // Resolves the fp16/bf16 small-M kernel policy from ORT_ENABLE_SMALL_N_GEMV, the session config
 // ep.cuda.enable_gemm_auto_tune and ORT_CUDA_GEMM_AUTO_TUNE. The default is cuBLAS.
 GemmDispatchPolicy GetGemmDispatchPolicy(const OpKernelInfo& info);
+bool GetGemmGraphReplayTuning(const OpKernelInfo& info);
 
 template <typename T>
 class MatMul final : public CudaKernel {
@@ -28,7 +29,8 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
-        gemm_policy_{GetGemmDispatchPolicy(info)} {
+        gemm_policy_{GetGemmDispatchPolicy(info)},
+        graph_replay_tuning_{GetGemmGraphReplayTuning(info)} {
     const Tensor* constant_b = nullptr;
     b_is_constant_ = info.TryGetConstantInput(1, &constant_b);
   }
@@ -50,6 +52,7 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_a_;
   const bool trans_batch_b_;
   const GemmDispatchPolicy gemm_policy_;
+  const bool graph_replay_tuning_;
   bool b_is_constant_{false};
   mutable std::once_flag tinygemm2_init_flag_;
   mutable bool tinygemm2_supported_{false};
