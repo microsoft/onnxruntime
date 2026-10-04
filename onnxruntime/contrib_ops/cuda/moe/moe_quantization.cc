@@ -737,7 +737,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
              std::pair{6, fc2_scales}}) {
       ORT_RETURN_IF(scales && !(is_fp16_ ? scales->IsDataType<MLFloat16>() : scales->IsDataType<BFloat16>()),
                     "CUDA QMoE integer fc", input_idx == 3 ? 1 : 2,
-                    "_scales must match the FP16/BF16 activation type.");
+                    "_scales must match the activation type (FP16/BF16).");
     }
   }
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);

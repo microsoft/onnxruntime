@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <cstdio>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -22,8 +23,11 @@ struct CudaBuffer {
     CUDA_CALL_THROW(cudaMalloc(&data, bytes));
   }
 
-  ~CudaBuffer() noexcept(false) {
-    CUDA_CALL_THROW(cudaFree(data));
+  ~CudaBuffer() noexcept {
+    const cudaError_t status = cudaFree(data);
+    if (status != cudaSuccess) {
+      std::fprintf(stderr, "cudaFree failed during QMoE test cleanup: %s\n", cudaGetErrorString(status));
+    }
   }
 
   template <typename T>

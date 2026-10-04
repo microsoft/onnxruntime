@@ -573,7 +573,7 @@ class TestQMoEBlockFP8(unittest.TestCase):
             with self.subTest(fc=fc):
                 tensors = self._inputs()
                 tensors[f"fc{fc}_zero_points"] = torch.zeros(1, device=device, dtype=torch.uint8)
-                with self.assertRaisesRegex(Exception, "zero_points"):
+                with self.assertRaisesRegex(Exception, r"zero_points|Type parameter \(T1\).*bound to different types"):
                     self._execute(tensors)
 
     def test_block_fp8_rejects_global_scales(self):

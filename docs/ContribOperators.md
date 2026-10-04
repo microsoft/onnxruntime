@@ -5996,7 +5996,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         Partial edge blocks are allowed. No zero points or activation scales are used.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-
+  
         Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
         Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
   
@@ -8361,3 +8361,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
