@@ -249,14 +249,14 @@ __global__ void CompactVisibleKernel(const int64_t* mask, int32_t* visible_indic
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
     const int batch = static_cast<int>(row / params.sequence_length);
     const int query = static_cast<int>(row % params.sequence_length);
-    const int64_t* mask_row = mask + static_cast<int64_t>(batch) * params.total_sequence_length;
+    const int64_t* mask_row = mask == nullptr ? nullptr : mask + static_cast<int64_t>(batch) * params.total_sequence_length;
     int32_t* out_row = visible_indices + row * params.total_sequence_length;
     int32_t offset = 0;
     for (int64_t base = 0; base < params.total_sequence_length; base += blockDim.x) {
       const int64_t position = base + threadIdx.x;
       const int32_t flag =
           (position < params.total_sequence_length && position <= params.past_sequence_length + query &&
-           mask_row[position] != 0)
+            (mask_row == nullptr || mask_row[position] != 0))
               ? 1
               : 0;
       shared_scan[threadIdx.x] = flag;

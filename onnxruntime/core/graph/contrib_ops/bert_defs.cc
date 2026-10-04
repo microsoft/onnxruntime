@@ -2277,7 +2277,6 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
 
   // Strict policy input validation: every slot of the inactive policy must be omitted, and every
   // slot of the active policy must be provided.
-  constexpr int kQsaOnlyInputs[] = {sai::kMask};
   constexpr int kCsaOnlyInputs[] = {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                                     sai::kPositionIds, sai::kPastProjBuffer};
   for (int index = sai::kQuery; index <= sai::kSinCache; ++index) {
@@ -2291,12 +2290,8 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   if (!SparseAttentionIndexerHasInput(ctx, sai::kPastKey)) {
     fail_shape_inference("SparseAttentionIndexer: past_key is required for every policy_mode");
   }
-  for (int index : kQsaOnlyInputs) {
-    if (SparseAttentionIndexerHasInput(ctx, index) != is_qsa) {
-      fail_shape_inference("SparseAttentionIndexer: input ", index,
-                           is_qsa ? " is required when policy_mode is 'qsa'"
-                                  : " must be omitted when policy_mode is 'csa'");
-    }
+  if (!is_qsa && SparseAttentionIndexerHasInput(ctx, sai::kMask)) {
+    fail_shape_inference("SparseAttentionIndexer: mask must be omitted when policy_mode is 'csa'");
   }
   for (int index : kCsaOnlyInputs) {
     if (SparseAttentionIndexerHasInput(ctx, index) == is_qsa) {
@@ -2573,6 +2568,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "mask",
                "Only for policy_mode 'qsa': INT64 padding mask with shape "
                "(batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. "
+               "When omitted, all entries are visible subject to causal masking. "
                "total_sequence_length is past_sequence_length + sequence_length.",
                "TB",
                OpSchema::Optional)
