@@ -1503,7 +1503,6 @@ block()
     target_link_libraries(${onnxruntime_provider_test_target} PRIVATE openvino::runtime)
   endif()
 
-  onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
   if (NOT onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
     # Keep the public build target responsible for both runtime artifacts without
     # making the executable depend on the module that imports its symbols.
