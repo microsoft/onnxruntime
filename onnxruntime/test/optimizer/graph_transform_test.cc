@@ -7130,6 +7130,37 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithNodeProduced
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+// The Where's output feeds both the first Reshape's shape input and an Identity node; the
+// fusion keeps the Where because the Identity still consumes it.
+// See https://github.com/microsoft/onnxruntime/issues/32837.
+TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithSharedShapeProducer) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3}});
+    auto* cond_arg = builder.MakeInputBool({2});
+    auto* target_shape = builder.MakeInitializer<int64_t>({2}, {2, 3});
+    auto* final_shape = builder.MakeInitializer<int64_t>({1}, {6});
+    auto* where_out = builder.MakeIntermediate();
+    auto* reshape_out = builder.MakeIntermediate();
+    auto* shape_output_arg = builder.MakeOutput();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("Where", {cond_arg, target_shape, target_shape}, {where_out});
+    builder.AddNode("Identity", {where_out}, {shape_output_arg});
+    builder.AddNode("Reshape", {input_arg, where_out}, {reshape_out});
+    builder.AddNode("Reshape", {reshape_out, final_shape}, {output_arg});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 1);  // chain fused
+    TEST_RETURN_IF_NOT(op_to_count["Where"] == 1);    // shared producer kept
+    TEST_RETURN_IF_NOT(op_to_count["Identity"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
+}
+
 // Full-session test of a Reshape chain whose first shape input is produced by a Where node.
 // Initialization applies the Level1 optimizers (including ReshapeFusion); Run() returns the
 // input tensor reshaped to [6].
