@@ -127,7 +127,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   std::call_once(impl_init_flag_, [&]() {
     impl_ = CreateSubgroupMatrixGemmImpl(*this, context);
   });
-  if (impl_) {
+  if (impl_ && !A->IsDataType<MLFloat16>()) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
     if (handled) {

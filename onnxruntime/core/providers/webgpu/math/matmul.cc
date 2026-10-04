@@ -171,7 +171,8 @@ Status ComputeMatMul(ComputeContext* context,
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
-  MatMulOptImpl* subgroup_impl = cache.GetOrCreate(*context);
+  const bool requires_fp32_accumulation = a->IsDataType<MLFloat16>();
+  MatMulOptImpl* subgroup_impl = requires_fp32_accumulation ? nullptr : cache.GetOrCreate(*context);
   if (subgroup_impl != nullptr) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(subgroup_impl->Compute(

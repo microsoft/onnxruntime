@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -240,6 +241,25 @@ TEST(ConvFp16Test, WebGpuConv2dMMPackedNhwc) {
     test.AddInput<MLFloat16>("W", {4, input_channels, 1, 3}, weights, true);
     test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, expected);
     test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  }
+}
+
+TEST(ConvFp16Test, WebGpuConv2dMMLongReduction) {
+  for (int64_t input_channels : {300, 299}) {
+    SCOPED_TRACE(input_channels);
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    ASSERT_NE(webgpu_ep, nullptr);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    const MLFloat16 value{0.1f};
+    const MLFloat16 expected{value.ToFloat() * value.ToFloat() * static_cast<float>(input_channels * 3)};
+    OpTester test("Conv", 11, onnxruntime::kMSInternalNHWCDomain);
+    test.AddAttribute("kernel_shape", vector<int64_t>{1, 3});
+    test.AddInput<MLFloat16>("X", {1, 1, 5, input_channels}, vector<MLFloat16>(5 * input_channels, value));
+    test.AddInput<MLFloat16>("W", {4, input_channels, 1, 3}, vector<MLFloat16>(12 * input_channels, value), true);
+    test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, vector<MLFloat16>(12, expected));
+    test.SetOutputAbsErr("Y", 0.01f);
+    test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
   }
 }
 

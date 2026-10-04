@@ -26,6 +26,9 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, 4, 1});
 
   const std::string data_type = "output_element_t";
+  const auto output_type = this->Outputs()[0].var_type;
+  const bool use_f32_accumulation = output_type == ProgramVariableDataType::Float16 ||
+                                    output_type == ProgramVariableDataType::Float16x4;
 
   if (need_handle_matmul_) {
     const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -34,9 +37,9 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_, use_f32_accumulation));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, 32, need_split_k, split_dim_inner_, use_f32_accumulation));
   }
 
   const ShaderVariableHelper* c = nullptr;
@@ -109,7 +112,7 @@ Status ApplyGemmPacked(const Tensor* a,
   uint32_t split_dim_inner = 1;
 
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
-  if (!context.KernelContext().GetUseDeterministicCompute()) {
+  if (!y->IsDataType<MLFloat16>() && !context.KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context.GetSplitKConfig();
     // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
     const bool output_is_vec4 = output_components == 4;
