@@ -50,6 +50,9 @@ capture completion restores the default manager.
 BufferManager tracks deferred releases by recording. Destroying one legacy Session must not
 discard the context-owned recording's pending entries, which may still belong to other Sessions
 or Env allocations. Modern Session-owned recordings are discarded on Session teardown.
+If replay fails, its unfinished encoder, replay state, pending releases, and incomplete profiling
+queries are discarded before the legacy Run gate is released. Already submitted GPU work is not
+rolled back. Both direct replay and the initial replay from `OnRunEnd` use this cleanup.
 
 Hosts from 1.31 use the Session-owned recording path described below. The conservative boundary
 includes all 1.30.x hosts in legacy mode because the single-copy stream-forwarding fix landed after
@@ -129,6 +132,8 @@ reuse, interleaved bindings across serialized Sessions, Env tensors surviving Se
 and serial graph capture/replay with multiple graph IDs. A legacy-only test verifies that a second
 Run is rejected while another Session is executing. Run serial tests with
 `ORT_WEBGPU_EP_FORCE_LEGACY=1`; the concurrent-success tests apply only to modern mode.
+The `onnxruntime_webgpu_legacy_test` CTest entry sets this environment variable before loading
+the plugin and runs a legacy-safe allowlist, including failed-replay recovery, in normal PR CI.
 Public allocation tests verify dirty-buffer reuse and read the raw buffer with an independent
 Dawn command encoder, so ORT's readback path cannot hide an unsubmitted clear. Submission counts
 are also checked before that external readback, including after a cancelled Run.

@@ -11,6 +11,8 @@
 #include <iostream>
 #include <optional>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -20,6 +22,7 @@
 #include "core/framework/allocator.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/platform/env.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
@@ -202,6 +205,29 @@ size_t free_failure_probes = 0;
 std::atomic<size_t> nonempty_queue_submissions{0};
 std::atomic<size_t> storage_buffer_clears{0};
 WGPUDevice public_allocation_device = nullptr;
+bool arm_replay_failure_after_submit = false;
+size_t replay_dispatches_until_failure = 0;
+size_t replay_dispatches_before_failure = 0;
+
+void FailLegacyReplayDispatch(WGPUComputePassEncoder pass, uint32_t x, uint32_t y, uint32_t z) {
+  if (replay_dispatches_until_failure != 0 && --replay_dispatches_until_failure == 0) {
+    // Throw from the test trampoline before entering Dawn, never from a Dawn callback holding its locks.
+    throw std::runtime_error("Injected legacy replay failure");
+  }
+  dawn::native::GetProcs().computePassEncoderDispatchWorkgroups(pass, x, y, z);
+  if (replay_dispatches_until_failure != 0) {
+    ++replay_dispatches_before_failure;
+  }
+}
+
+void ArmLegacyReplayFailureAfterSubmit(WGPUQueue queue, size_t count, const WGPUCommandBuffer* commands) {
+  dawn::native::GetProcs().queueSubmit(queue, count, commands);
+  if (arm_replay_failure_after_submit && count != 0) {
+    // The initial capture has submitted. OnRunEnd replays its captured commands next.
+    arm_replay_failure_after_submit = false;
+    replay_dispatches_until_failure = 2;
+  }
+}
 
 WGPUBuffer CapturePublicAllocationDevice(WGPUDevice device, const WGPUBufferDescriptor* descriptor) {
   public_allocation_device = device;
@@ -504,6 +530,133 @@ int VerifyInstanceNormScratchAllocationsStayBatched(Ort::Env& env, Ort::ConstEpD
   return 0;
 }
 
+int VerifyLegacyReplayFailureRecovery(Ort::Env& env, Ort::ConstEpDevice ep_device, bool fail_initial_replay) {
+  auto procs = dawn::native::GetProcs();
+  procs.deviceCreateBuffer = CapturePublicAllocationDevice;
+  procs.computePassEncoderDispatchWorkgroups = FailLegacyReplayDispatch;
+  procs.queueSubmit = ArmLegacyReplayFailureAfterSubmit;
+  dawnProcSetProcs(&procs);
+  auto reset_failure = gsl::finally([] {
+    arm_replay_failure_after_submit = false;
+    replay_dispatches_until_failure = 0;
+  });
+
+  constexpr std::array<int64_t, 1> shape{8};
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model.add_opset_import()->set_version(18);
+  auto* graph = model.mutable_graph();
+  graph->set_name("legacy_replay_failure");
+  auto* input = graph->add_input();
+  input->set_name("X");
+  for (const char* name : {"Y0", "Y1"}) {
+    auto* output = graph->add_output();
+    output->set_name(name);
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(shape[0]);
+    auto* node = graph->add_node();
+    node->set_name(name);
+    node->set_op_type("Neg");
+    node->add_input("X");
+    node->add_output(name);
+  }
+  *input->mutable_type() = graph->output(0).type();
+  const auto bytes = model.SerializeAsString();
+  const auto proc_address = std::to_string(reinterpret_cast<uintptr_t>(&procs));
+  Ort::SessionOptions capture_options;
+  capture_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  capture_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  capture_options.AppendExecutionProvider_V2(
+      env, {ep_device}, {{"enableGraphCapture", "1"}, {"maxNumPendingDispatches", "4096"}, {"dawnProcTable", proc_address}});
+  Ort::Session capture_session(env, bytes.data(), bytes.size(), capture_options);
+  Ort::SessionOptions ordinary_options;
+  ordinary_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  ordinary_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  ordinary_options.AppendExecutionProvider_V2(env, {ep_device}, {{"dawnProcTable", proc_address}});
+  Ort::Session ordinary_session(env, bytes.data(), bytes.size(), ordinary_options);
+
+  const auto gpu_memory = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  Ort::Allocator capture_allocator(capture_session, gpu_memory);
+  Ort::Allocator ordinary_allocator(ordinary_session, gpu_memory);
+  auto gpu_input = Ort::Value::CreateTensor<float>(capture_allocator, shape.data(), shape.size());
+  std::array<Ort::Value, 2> capture_outputs{
+      Ort::Value::CreateTensor<float>(capture_allocator, shape.data(), shape.size()),
+      Ort::Value::CreateTensor<float>(capture_allocator, shape.data(), shape.size())};
+  std::array<Ort::Value, 2> ordinary_outputs{
+      Ort::Value::CreateTensor<float>(ordinary_allocator, shape.data(), shape.size()),
+      Ort::Value::CreateTensor<float>(ordinary_allocator, shape.data(), shape.size())};
+  Ort::IoBinding capture_binding(capture_session);
+  Ort::IoBinding ordinary_binding(ordinary_session);
+  capture_binding.BindInput("X", gpu_input);
+  ordinary_binding.BindInput("X", gpu_input);
+  capture_binding.BindOutput("Y0", capture_outputs[0]);
+  capture_binding.BindOutput("Y1", capture_outputs[1]);
+  ordinary_binding.BindOutput("Y0", ordinary_outputs[0]);
+  ordinary_binding.BindOutput("Y1", ordinary_outputs[1]);
+
+  std::array<float, 8> input_data;
+  input_data.fill(3.0f);
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), shape.data(), shape.size());
+  Ort::ThrowOnError(env.CopyTensor(cpu_input, gpu_input, nullptr));
+  if (!fail_initial_replay) {
+    capture_session.Run(Ort::RunOptions{nullptr}, capture_binding);
+  }
+
+  replay_dispatches_before_failure = 0;
+  arm_replay_failure_after_submit = fail_initial_replay;
+  replay_dispatches_until_failure = fail_initial_replay ? 0 : 2;
+  Ort::RunOptions run_options;
+  Ort::Status failure{Ort::GetApi().RunWithBinding(capture_session, run_options, capture_binding)};
+  arm_replay_failure_after_submit = false;
+  replay_dispatches_until_failure = 0;
+  if (failure.IsOK() || failure.GetErrorMessage().find("Injected legacy replay failure") == std::string::npos ||
+      replay_dispatches_before_failure != 1) {
+    std::fprintf(stderr, "Expected failure after one replay dispatch, got %zu dispatches: %s\n",
+                 replay_dispatches_before_failure, failure.GetErrorMessage().c_str());
+    return 11;
+  }
+
+  // Do not call ORT CopyTensor here: it could submit the abandoned encoder before the sentinel write.
+  wgpu::Device device{public_allocation_device};
+  std::array<float, 8> sentinel;
+  sentinel.fill(99.0f);
+  for (auto& output : capture_outputs) {
+    device.GetQueue().WriteBuffer(static_cast<WGPUBuffer>(output.GetTensorMutableRawData()),
+                                  0, sentinel.data(), sizeof(sentinel));
+  }
+  input_data.fill(7.0f);
+  device.GetQueue().WriteBuffer(static_cast<WGPUBuffer>(gpu_input.GetTensorMutableRawData()),
+                                0, input_data.data(), sizeof(input_data));
+
+  ordinary_session.Run(Ort::RunOptions{nullptr}, ordinary_binding);
+  for (auto& output : capture_outputs) {
+    if (ReadPublicBufferWithDawn(static_cast<WGPUBuffer>(output.GetTensorMutableRawData())) != sentinel) {
+      std::fputs("Another Session submitted commands abandoned by the failed replay\n", stderr);
+      return 12;
+    }
+  }
+  std::array<float, 8> expected;
+  expected.fill(-7.0f);
+  for (auto& output : ordinary_outputs) {
+    if (ReadPublicBufferWithDawn(static_cast<WGPUBuffer>(output.GetTensorMutableRawData())) != expected) {
+      std::fputs("The next Session did not recover after failed replay\n", stderr);
+      return 13;
+    }
+  }
+  capture_session.Run(Ort::RunOptions{nullptr}, capture_binding);
+  for (auto& output : capture_outputs) {
+    if (ReadPublicBufferWithDawn(static_cast<WGPUBuffer>(output.GetTensorMutableRawData())) != expected) {
+      std::fputs("The captured Session could not replay after recovery\n", stderr);
+      return 14;
+    }
+  }
+  std::fputs("Failed legacy replay did not contaminate another Session\n", stderr);
+  return 0;
+}
+
 WGPUBufferMapState InjectMappedBufferOnFree(WGPUBuffer buffer) {
   if (buffer == free_failure_buffer) {
     ++free_failure_probes;
@@ -622,6 +775,32 @@ TEST_F(WebGpuSessionAllocatorDeathTest, WarmedInstanceNormalizationScratchAlloca
   ASSERT_EXIT(
       std::_Exit(VerifyInstanceNormScratchAllocationsStayBatched(Env(), EpDevice())),
       ::testing::ExitedWithCode(0), "Warmed InstanceNormalization scratch allocations retained a single Run submission");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, LegacyReplayFailureDoesNotContaminateAnotherSession) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "This test requires the replaceable Dawn proc table.";
+#else
+  if (onnxruntime::Env::Default().GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY") != "1") {
+    GTEST_SKIP() << "Requires ORT_WEBGPU_EP_FORCE_LEGACY=1 before loading the plugin.";
+  }
+  ASSERT_EXIT(
+      std::_Exit(VerifyLegacyReplayFailureRecovery(Env(), EpDevice(), false)),
+      ::testing::ExitedWithCode(0), "Failed legacy replay did not contaminate another Session");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, LegacyInitialReplayFailureDoesNotContaminateAnotherSession) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "This test requires the replaceable Dawn proc table.";
+#else
+  if (onnxruntime::Env::Default().GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY") != "1") {
+    GTEST_SKIP() << "Requires ORT_WEBGPU_EP_FORCE_LEGACY=1 before loading the plugin.";
+  }
+  ASSERT_EXIT(
+      std::_Exit(VerifyLegacyReplayFailureRecovery(Env(), EpDevice(), true)),
+      ::testing::ExitedWithCode(0), "Failed legacy replay did not contaminate another Session");
 #endif
 }
 #endif
