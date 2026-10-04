@@ -29,7 +29,7 @@
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
 const kQuantizationBlockSize : u32 = 32;
-const kValuesPerPack : u32 = 8;  // K-values dequantized per pack (mat2x4 = 8 elements), both n_bits
+const kValuesPerPack : u32 = 8;  // K-values dequantized per pack, both n_bits
 const kU32sPerBPack : u32 = 4;   // Packs per quantization block, both n_bits
 
 #if n_bits == 4
@@ -98,76 +98,25 @@ fn get_scale_offset() -> u32 {
 // NOT the same as uniforms.zero_blocks_per_col (that's padded to a zero-point byte boundary).
 fn load_scale(row : u32, block_idx : u32, scale_offset : u32) -> output_element_t {
   let blocks_per_col = uniforms.K / kQuantizationBlockSize;
-  if (row < uniforms.N && block_idx < blocks_per_col) {
-    let offset = row * blocks_per_col + block_idx + scale_offset;
-    return scales_b.getByOffset(offset);
-  }
-  return output_element_t();
+  let offset = row * blocks_per_col + block_idx + scale_offset;
+  return scales_b.getByOffset(offset);
 }
 
 // Fetches a single pack of raw B data (one u32 word for n_bits=4, one
 // vec2<u32> for n_bits=8), addressed by its flat pack index within the row
 // (row * packs_per_row + pack_idx), offset by weight_offset (in block units,
-// scaled up to pack units here). Spreads the Load Phase across the full
-// workgroup (kU32sPerBPack packs per quantization block, cycled by all
-// workgroup_size_x threads -- see main() below) instead of a single thread
-// reading the whole block in one wide transaction.
+// scaled up to pack units here).
 fn load_b(row : u32, pack_idx : u32, weight_offset : u32) -> BPackT {
   let k_of_b = uniforms.K / kQuantizationBlockSize;
   let packs_per_row = k_of_b * kU32sPerBPack;
-  if (row < uniforms.N && pack_idx < packs_per_row) {
-    let offset = row * packs_per_row + pack_idx + weight_offset * kU32sPerBPack;
-    return input_b.getByOffset(offset);
-  }
-  return BPackT();
+  let offset = row * packs_per_row + pack_idx + weight_offset * kU32sPerBPack;
+  return input_b.getByOffset(offset);
 }
-
-#if n_bits == 4
-fn dequantize(packed_data : u32,
-              zero_point : output_element_t,
-              scale : output_element_t) -> mat2x4<output_element_t> {
-  let lower : vec4<u32> = unpack4xU8(packed_data & 0x0F0F0F0Fu);
-  let upper : vec4<u32> = unpack4xU8((packed_data >> 4u) & 0x0F0F0F0Fu);
-
-  let zero_mat : mat2x4<output_element_t> = mat2x4<output_element_t>(
-                     zero_point, zero_point, zero_point, zero_point,
-                     zero_point, zero_point, zero_point, zero_point);
-
-  var val : mat2x4<output_element_t> = mat2x4<output_element_t>(
-                output_element_t(lower[0]), output_element_t(upper[0]),
-                output_element_t(lower[1]), output_element_t(upper[1]),
-                output_element_t(lower[2]), output_element_t(upper[2]),
-                output_element_t(lower[3]), output_element_t(upper[3]));
-
-  return (val - zero_mat) * scale;
-}
-#endif
-
-#if n_bits == 8
-fn dequantize(packed_data : vec2<u32>,
-              zero_point : output_element_t,
-              scale : output_element_t) -> mat2x4<output_element_t> {
-  let lower : vec4<u32> = unpack4xU8(packed_data.x);
-  let upper : vec4<u32> = unpack4xU8(packed_data.y);
-
-  let zero_mat : mat2x4<output_element_t> = mat2x4<output_element_t>(
-                     zero_point, zero_point, zero_point, zero_point,
-                     zero_point, zero_point, zero_point, zero_point);
-
-  var val : mat2x4<output_element_t> = mat2x4<output_element_t>(
-                output_element_t(lower[0]), output_element_t(lower[1]),
-                output_element_t(lower[2]), output_element_t(lower[3]),
-                output_element_t(upper[0]), output_element_t(upper[1]),
-                output_element_t(upper[2]), output_element_t(upper[3]));
-
-  return (val - zero_mat) * scale;
-}
-#endif
 
 // --- Main Compute ---
 
 $MAIN {
-  // Resolve the (possibly indirect) weight index once per workgroup, not once per K-tile iteration.
+  // Resolve the (possibly indirect) weight index once per workgroup.
   let scale_offset = get_scale_offset();
   // In block units; load_b scales this up to pack units (kU32sPerBPack is the
   // same pack-per-block count for both n_bits).
@@ -183,26 +132,44 @@ $MAIN {
 
   var sg_mat_acc : array<SgMatResult, kSgMatCountN>;
   for (var k_idx : u32 = 0; k_idx < uniforms.K; k_idx += kChunkSizeK) {
-    // Load Phase: every thread in the workgroup (not just kTileN of them)
-    // cycles through single-pack load units, narrowing each storage
-    // transaction to one pack (u32 for n_bits=4, vec2<u32> for n_bits=8)
-    // instead of one thread reading a whole quantization block at once.
-    // This trades fewer, wider loads for full thread occupancy. Shared
-    // verbatim across both n_bits.
-    let b_col = k_idx / kQuantizationBlockSize;
+    let k_block_idx = k_idx / kQuantizationBlockSize;
     for (var load_unit = local_idx; load_unit < kTileN * kU32sPerBPack; load_unit += workgroup_size_x) {
       let n_idx = load_unit / kU32sPerBPack;
       let pack_idx = load_unit % kU32sPerBPack;
       let global_n = global_base_n + n_idx;
+      let tile_b_offset = n_idx * kChunkSizeK + pack_idx * kValuesPerPack;
 
-      let packed = load_b(global_n, b_col * kU32sPerBPack + pack_idx, weight_offset);
-      let scale = load_scale(global_n, b_col, scale_offset);
-      let zero_point = mm_read_zero(global_n, b_col, uniforms.N, uniforms.zero_blocks_per_col);
-      let tile_b_base = n_idx * kChunkSizeK + pack_idx * kValuesPerPack;
-
-      let b_dequantized = dequantize(packed, zero_point, scale);
-      for (var elem_idx = 0u; elem_idx < kValuesPerPack; elem_idx++) {
-        tile_b[tile_b_base + elem_idx] = b_dequantized[elem_idx / 4u][elem_idx % 4u];
+      if (global_n < uniforms.N) {
+        let packed = load_b(global_n, k_block_idx * kU32sPerBPack + pack_idx, weight_offset);
+        let scale = load_scale(global_n, k_block_idx, scale_offset);
+        let zero_point = mm_read_zero(global_n, k_block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+#if n_bits == 4
+        let lower =
+            (vec4<output_element_t>(unpack4xU8(packed & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero_point)) * scale;
+        let upper =
+            (vec4<output_element_t>(unpack4xU8((packed >> 4u) & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero_point)) * scale;
+        tile_b[tile_b_offset] = lower[0];
+        tile_b[tile_b_offset + 1u] = upper[0];
+        tile_b[tile_b_offset + 2u] = lower[1];
+        tile_b[tile_b_offset + 3u] = upper[1];
+        tile_b[tile_b_offset + 4u] = lower[2];
+        tile_b[tile_b_offset + 5u] = upper[2];
+        tile_b[tile_b_offset + 6u] = lower[3];
+        tile_b[tile_b_offset + 7u] = upper[3];
+#elif n_bits == 8
+        let lower =
+            (vec4<output_element_t>(unpack4xU8(packed.x)) - vec4<output_element_t>(zero_point)) * scale;
+        let upper =
+            (vec4<output_element_t>(unpack4xU8(packed.y)) - vec4<output_element_t>(zero_point)) * scale;
+        tile_b[tile_b_offset] = lower[0];
+        tile_b[tile_b_offset + 1u] = lower[1];
+        tile_b[tile_b_offset + 2u] = lower[2];
+        tile_b[tile_b_offset + 3u] = lower[3];
+        tile_b[tile_b_offset + 4u] = upper[0];
+        tile_b[tile_b_offset + 5u] = upper[1];
+        tile_b[tile_b_offset + 6u] = upper[2];
+        tile_b[tile_b_offset + 7u] = upper[3];
+#endif
       }
     }
     workgroupBarrier();

@@ -52,8 +52,8 @@ constexpr SubgroupMatrixMatMulNBitsTiling GetSubgroupMatrixMatMulNBitsTiling(
     if (M >= 256 && N % 128 == 0) {
       return {128, 128, 512, 1, 128, 32};
     }
-    // Default: 128x64 tile size, 512 thread.
-    return {128, 64, 512, 1, 64, 32};
+    // Default: 64x64 tile size, 256 thread.
+    return {64, 64, 256, 1, 64, 32};
   }
   if (config.Is(16, 16, 16)) {
     return {128, 128, 128, 1, 1, 32};
