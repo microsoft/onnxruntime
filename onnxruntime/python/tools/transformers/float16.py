@@ -422,6 +422,8 @@ def convert_float_to_float16(
                     f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"
                 )
 
+    cast_output_names: dict[tuple[str, int], str] = {}
+
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.
     for node in mixed_float_type_node_list:
         for i, input_name in enumerate(node.input):
@@ -429,18 +431,21 @@ def convert_float_to_float16(
                 continue
             for value_info in value_info_list:
                 if input_name == value_info.name:
-                    # create new value_info for current node's new input name
-                    new_value_info = model.graph.value_info.add()
-                    new_value_info.CopyFrom(value_info)
-                    output_name = input_name + "_cast_to_fp32"
-                    new_value_info.name = output_name
-                    new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
-                    # add Cast node (from tensor(float16) to tensor(float) before current node
-                    node_name = input_name + "_cast_to_fp32_node"
-                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
-                    model.graph.node.extend(new_node)
+                    cast_key = (input_name, TensorProto.FLOAT)
+                    if cast_key not in cast_output_names:
+                        # create new value_info for the shared Cast output
+                        new_value_info = model.graph.value_info.add()
+                        new_value_info.CopyFrom(value_info)
+                        output_name = input_name + "_cast_to_fp32"
+                        new_value_info.name = output_name
+                        new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
+                        # add Cast node (from tensor(float16) to tensor(float) before current node
+                        node_name = input_name + "_cast_to_fp32_node"
+                        new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
+                        model.graph.node.extend(new_node)
+                        cast_output_names[cast_key] = output_name
                     # change current node's input name
-                    node.input[i] = output_name
+                    node.input[i] = cast_output_names[cast_key]
                     break
 
     accuracy_type = TensorProto.BFLOAT16 if use_bfloat16_as_blocked_nodes_dtype else TensorProto.FLOAT
@@ -453,18 +458,23 @@ def convert_float_to_float16(
             input_name = node.input[i]
             for value_info in value_info_list:
                 if input_name == value_info.name:
-                    # create new value_info for current node's new input name
-                    new_value_info = model.graph.value_info.add()
-                    new_value_info.CopyFrom(value_info)
-                    output_name = input_name + "_cast_to_fp32"
-                    new_value_info.name = output_name
-                    new_value_info.type.tensor_type.elem_type = accuracy_type
-                    # add Cast node (from tensor(float16) to tensor(float) before current node
-                    node_name = input_name + "_cast_to_fp32_node"
-                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=accuracy_type, name=node_name)]
-                    model.graph.node.extend(new_node)
+                    cast_key = (input_name, accuracy_type)
+                    if cast_key not in cast_output_names:
+                        # create new value_info for the shared Cast output
+                        new_value_info = model.graph.value_info.add()
+                        new_value_info.CopyFrom(value_info)
+                        output_name = input_name + "_cast_to_fp32"
+                        new_value_info.name = output_name
+                        new_value_info.type.tensor_type.elem_type = accuracy_type
+                        # add Cast node (from tensor(float16) to tensor(float) before current node
+                        node_name = input_name + "_cast_to_fp32_node"
+                        new_node = [
+                            helper.make_node("Cast", [input_name], [output_name], to=accuracy_type, name=node_name)
+                        ]
+                        model.graph.node.extend(new_node)
+                        cast_output_names[cast_key] = output_name
                     # change current node's input name
-                    node.input[i] = output_name
+                    node.input[i] = cast_output_names[cast_key]
                     break
         # if output's name is in the value_info_list meaning output is tensor(float16) type, insert a float to
         # float16 Cast node after the node, change current node's output name and create new value_info for the new name
