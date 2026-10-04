@@ -1181,8 +1181,8 @@ static Status CheckMsRotaryEmbeddingGQAFused(Graph& graph, int64_t expected_inte
   return Status::OK();
 }
 
-// Verifies the fusion is skipped when the GQA node uses an optional input beyond sin_cache (e.g. position_ids),
-// which the fusion does not preserve. Fusing would drop the input and produce an invalid graph.
+// Verifies the fusion is skipped when the GQA node has input slots beyond sin_cache (e.g. position_ids),
+// including empty placeholders that would leave stale input-argument counts if dropped.
 static void TestGQAFusionNotApplied(const std::basic_string<ORTCHAR_T>& file_path,
                                     bool use_empty_placeholders,
                                     logging::Logger* logger) {
@@ -1190,16 +1190,19 @@ static void TestGQAFusionNotApplied(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
 
+  NodeArg* empty_input = &graph.GetOrCreateNodeArg("", nullptr);
   NodeArg* optional_input = use_empty_placeholders
-                                ? &graph.GetOrCreateNodeArg("", nullptr)
+                                ? empty_input
                                 : graph.GetNodeArg("position_ids");
   ASSERT_NE(optional_input, nullptr);
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "GroupQueryAttention") {
+      node.MutableInputDefs().resize(9, empty_input);
       node.MutableInputDefs().push_back(optional_input);
-      node.MutableInputArgsCount().push_back(1);
+      node.MutableInputArgsCount().resize(10, 1);
     }
   }
+  ASSERT_STATUS_OK(graph.Resolve());
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
@@ -1405,7 +1408,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 
-  // GQA nodes carrying an optional input beyond sin_cache must not be fused.
+  // GQA nodes with input slots beyond sin_cache must not be fused.
   TestGQAFusionNotApplied(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", false, logger_.get());
   TestGQAFusionNotApplied(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", true, logger_.get());
 }

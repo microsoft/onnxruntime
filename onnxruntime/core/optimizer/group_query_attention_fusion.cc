@@ -441,20 +441,12 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     }
 
     // The fusion rewrites the GQA node's inputs to a fixed 9-element list (up to sin_cache, input #8).
-    // If the node uses any optional input beyond sin_cache -- position_ids (#9), attention_bias (#10),
-    // or head_sink (#11) -- those inputs would be silently dropped and the input-arg-count array would
-    // no longer match the input defs, producing an invalid graph at resolve time. Skip fusion in that case.
+    // Any extra input slots, including empty optional placeholders, would be dropped while the
+    // input-arg-count array retains its old entries, producing an invalid graph at resolve time.
+    // Bound inputs beyond sin_cache would also lose their semantics, so skip fusion in either case.
     const auto& node_input_defs = node.InputDefs();
-    bool has_unsupported_optional_input = false;
-    for (size_t i = 9; i < node_input_defs.size(); ++i) {
-      if (node_input_defs[i] != nullptr && node_input_defs[i]->Exists()) {
-        has_unsupported_optional_input = true;
-        break;
-      }
-    }
-
-    if (has_unsupported_optional_input) {
-      DEBUG_LOG("Skipping GroupQueryAttention fusion because the node uses an optional input beyond sin_cache.");
+    if (node_input_defs.size() > 9) {
+      DEBUG_LOG("Skipping GroupQueryAttention fusion because the node has input slots beyond sin_cache.");
       continue;
     }
 
