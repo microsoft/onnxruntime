@@ -4723,7 +4723,9 @@ transaction-safe only when the whole operator call is unconditionally committed;
 may select a prefix or roll back must preserve initial_state and replay the compact state update.
 
 When state_update_capacity is positive, capture_count is required with shape (batch_size), and
-state_update has shape (batch_size, state_update_capacity, channels).
+state_update has shape (batch_size, state_update_capacity, channels). The optional CPU int32
+state_update_active input has shape (1). When present and zero, state_update remains all zero;
+when omitted or nonzero, capture proceeds normally.
 For request b, slots [0, clamp(capture_count[b], 0,
 min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
 These values represent the append component of each shift-left-and-append state transition.
@@ -4799,6 +4801,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and state_update_capacity. Required exactly when state_update_capacity is positive.",
                "M",
                OpSchema::Optional)
+        .Input(6,
+               "state_update_active",
+               "Optional CPU int32 tensor with shape (1). Zero disables compact state update "
+               "capture for this call; omitted or nonzero enables capture.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "Token-major convolution output with the same shape as input.",
@@ -4819,7 +4827,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("M",
                         {"tensor(int32)"},
-                        "Constrain cumulative_sequence_length and capture_count to device int32 tensors.")
+                        "Constrain cumulative_sequence_length and capture_count to device int32 tensors, "
+                        "and state_update_active to a CPU int32 tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
@@ -4878,6 +4887,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               if (cu_dim.has_dim_value() && capture_count_shape.dim(0).has_dim_value() &&
                   capture_count_shape.dim(0).dim_value() != cu_dim.dim_value() - 1) {
                 fail_shape_inference("VarlenCausalConvWithState: capture_count must have shape (batch_size)");
+              }
+            }
+            if (hasInputShape(ctx, 6)) {
+              auto& state_update_active_shape = getInputShape(ctx, 6);
+              if (state_update_active_shape.dim_size() != 1 ||
+                  (state_update_active_shape.dim(0).has_dim_value() &&
+                   state_update_active_shape.dim(0).dim_value() != 1)) {
+                fail_shape_inference("VarlenCausalConvWithState: state_update_active must have shape (1)");
               }
             }
 
