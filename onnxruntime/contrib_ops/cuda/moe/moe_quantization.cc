@@ -754,7 +754,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
              std::pair{6, fc2_scales}}) {
       ORT_RETURN_IF(scales && !(is_fp16_ ? scales->IsDataType<MLFloat16>() : scales->IsDataType<BFloat16>()),
                     "CUDA QMoE integer fc", input_idx == 3 ? 1 : 2,
-                    "_scales must match the FP16/BF16 activation type.");
+                    "_scales must match the activation type (FP16/BF16).");
     }
   }
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);
@@ -1265,7 +1265,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const qmoe::RowTilePlan row_tile_plan =
       qmoe::MakeRowTilePlan(
           moe_params.num_rows, effective_row_tile_size,
-          effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int);
+          effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int_gemv);
   const bool use_nvfp4_compaction = is_nvfp4 && !route_native_fp4 && !use_fp4_gemv;
   const bool use_expert_compaction = is_block_fp8 || use_nvfp4_compaction;
   const int runner_num_experts =
