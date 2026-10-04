@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <limits>
 
+#include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -25,7 +26,7 @@ namespace {
 
 // The block reductions below halve the active thread count, so this must stay a power of two.
 constexpr int kThreads = 128;
-constexpr int64_t kMaxGridDimX = 2147483647;
+constexpr int64_t kMaxGridDimX = kSaiMaxGridDimX;
 
 template <typename Kernel>
 Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* kernel_name) {
@@ -42,53 +43,14 @@ Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* ker
 
 __device__ __forceinline__ float NegativeInfinity() { return -CUDART_INF_F; }
 
-int GridForElements(int64_t count) {
-  const int64_t blocks = (count + kThreads - 1) / kThreads;
-  return static_cast<int>(std::clamp<int64_t>(blocks, 1, 65535));
-}
+int GridForElements(int64_t count) { return SaiGridForElements(count, kThreads); }
 
-// ---------------------------------------------------------------------------------------------
-// Shared device helpers
-// ---------------------------------------------------------------------------------------------
+__device__ __forceinline__ float BlockSum(float value, float* shared) { return SaiBlockSum(value, shared); }
 
-__device__ __forceinline__ float BlockSum(float value, float* shared) {
-  shared[threadIdx.x] = value;
-  __syncthreads();
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      shared[threadIdx.x] += shared[threadIdx.x + stride];
-    }
-    __syncthreads();
-  }
-  const float total = shared[0];
-  __syncthreads();
-  return total;
-}
-
-// Reduces (value, index) pairs to the largest value, breaking ties towards the smaller index.
-// A negative index marks an empty slot. shared_value/shared_index must already be filled and synced.
 __device__ __forceinline__ void BlockArgMax(float* shared_value, int* shared_index) {
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      const int other_index = shared_index[threadIdx.x + stride];
-      if (other_index >= 0) {
-        const int this_index = shared_index[threadIdx.x];
-        const float other_value = shared_value[threadIdx.x + stride];
-        const float this_value = shared_value[threadIdx.x];
-        if (this_index < 0 || other_value > this_value ||
-            (other_value == this_value && other_index < this_index)) {
-          shared_value[threadIdx.x] = other_value;
-          shared_index[threadIdx.x] = other_index;
-        }
-      }
-    }
-    __syncthreads();
-  }
+  SaiBlockArgMax(shared_value, shared_index);
 }
 
-// Per-thread scan for the best entry that comes strictly after (previous_score, previous_index) in
-// the total order "score descending, then index ascending". Entries already emitted are therefore
-// skipped without needing a visited bitmap.
 __device__ __forceinline__ void ScanForNext(const float* scores, int count, float previous_score,
                                             int previous_index, float* best_value, int* best_index) {
   *best_index = -1;
@@ -107,34 +69,18 @@ __device__ __forceinline__ void ScanForNext(const float* scores, int count, floa
   }
 }
 
-// Split-half rotary over the leading `rotary_width` channels (the convention used by the qsa
-// reference). Channels beyond `rotary_width` pass through unchanged.
 template <typename T>
 __device__ __forceinline__ float LeadingRope(const float* value, int rotary_width, const T* cos_row,
                                              const T* sin_row, int d) {
-  if (d >= rotary_width) {
-    return value[d];
-  }
-  const int half = rotary_width / 2;
-  const float paired = (d < half) ? -value[d + half] : value[d - half];
-  return value[d] * to_float<T>(cos_row[d]) + paired * to_float<T>(sin_row[d]);
+  return SaiLeadingRope<T>(value, rotary_width, cos_row, sin_row, d);
 }
 
-// Interleaved rotary over the trailing 2 * rotary_width channels (the convention used by the csa
-// reference). Each cos/sin entry covers one channel pair, matching repeat_interleave(2).
 template <typename T>
 __device__ __forceinline__ float TrailingRope(const float* value, int head_size, int rotary_width,
                                               const T* cos_row, const T* sin_row, int d) {
-  const int base = head_size - 2 * rotary_width;
-  if (d < base) {
-    return value[d];
-  }
-  const int offset = d - base;
-  const float paired = ((offset & 1) == 0) ? -value[d + 1] : value[d - 1];
-  return value[d] * to_float<T>(cos_row[offset >> 1]) + paired * to_float<T>(sin_row[offset >> 1]);
+  return SaiTrailingRope<T>(value, head_size, rotary_width, cos_row, sin_row, d);
 }
 
-// Highest compressed entry a query at `position` may attend to, matching (position + 1) // ratio.
 __device__ __forceinline__ int64_t CausalThreshold(int64_t position, int compress_ratio) {
   if (position < 0) {
     return 0;
@@ -145,11 +91,7 @@ __device__ __forceinline__ int64_t CausalThreshold(int64_t position, int compres
 }
 
 __device__ __forceinline__ int ClampPosition(int64_t position, int max_rotary_length) {
-  if (position < 0) {
-    return 0;
-  }
-  const int64_t limit = max_rotary_length - 1;
-  return static_cast<int>(position < limit ? position : limit);
+  return SaiClampPosition(position, max_rotary_length);
 }
 
 // ---------------------------------------------------------------------------------------------
