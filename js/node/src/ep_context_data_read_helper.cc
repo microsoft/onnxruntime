@@ -459,9 +459,9 @@ Napi::Value TestEpContextDataReadCallback(const Napi::CallbackInfo& info) {
 
   const double maxDataSize = info[1].As<Napi::Number>().DoubleValue();
   ORT_NAPI_THROW_RANGEERROR_IF(!std::isfinite(maxDataSize) || std::floor(maxDataSize) != maxDataSize ||
-                               maxDataSize < 1 || maxDataSize > kMaxSafeInteger ||
-                               maxDataSize >= static_cast<double>(std::numeric_limits<size_t>::max()),
-                           env, "maxDataSize must be a positive safe integer.");
+                                   maxDataSize < 1 || maxDataSize > kMaxSafeInteger ||
+                                   maxDataSize >= static_cast<double>(std::numeric_limits<size_t>::max()),
+                               env, "maxDataSize must be a positive safe integer.");
 
   auto state = EpContextDataReadState::Create(env, info[0].As<Napi::Function>(), static_cast<size_t>(maxDataSize));
   auto worker = new EpContextDataReadTestWorker(env, std::move(state), info[2].As<Napi::String>().Utf8Value());
