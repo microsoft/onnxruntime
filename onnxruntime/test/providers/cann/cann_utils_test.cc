@@ -134,4 +134,15 @@ TEST_F(CannUtilsTest, SaveFileAtomicallyDoesNotPublishAfterSaveFailure) {
   EXPECT_TRUE(cann::MatchFile(file_name).empty());
 }
 
+TEST_F(CannUtilsTest, SaveFileAtomicallyFailsWhenNoFileIsProduced) {
+  const std::string file_name = "dummy_model";
+
+  auto status = cann::detail::SaveFileAtomically(file_name, [](const std::string&) {
+    return Status::OK();
+  });
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_TRUE(cann::MatchFile(file_name).empty());
+}
+
 }  // namespace onnxruntime::test

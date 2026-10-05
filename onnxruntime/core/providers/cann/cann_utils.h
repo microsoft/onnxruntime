@@ -51,11 +51,15 @@ Status SaveFileAtomically(const std::string& file_name, F&& save_fn) {
     const auto tmp_file_name = (tmp_dir / fs::path(file_name).filename()).string();
     ORT_RETURN_IF_ERROR(std::forward<F>(save_fn)(tmp_file_name));
 
+    bool published = false;
     for (const auto& entry : fs::directory_iterator(tmp_dir)) {
       if (entry.is_regular_file() && entry.path().extension() == ".om") {
         fs::rename(entry.path(), file_dir / entry.path().filename());
+        published = true;
       }
     }
+
+    ORT_RETURN_IF_NOT(published, "No .om file produced for ", file_name);
   } catch (const std::exception& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to save file: ", e.what());
   }
