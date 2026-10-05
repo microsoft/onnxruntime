@@ -146,7 +146,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     fc1_params.A = gathered.data();
     fc1_params.lda = static_cast<size_t>(hidden_size);
     fc1_params.B = fc1_weights.data() + expert * fc1_output_size * hidden_size;
-    fc1_params.ldb = static_cast<size_t>(hidden_size);
+    fc1_params.ldb = static_cast<size_t>(fc1_output_size);
     fc1_params.C = fc1_output.data();
     fc1_params.ldc = static_cast<size_t>(fc1_output_size);
     RunMoeCpuOffloadHalfGemm(route_count, static_cast<size_t>(fc1_output_size),
@@ -180,7 +180,8 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
         }
       }
     } else {
-      for (size_t index = 0; index < activated.size(); ++index) {
+      const size_t activated_element_count = route_count * static_cast<size_t>(inter_size);
+      for (size_t index = 0; index < activated_element_count; ++index) {
         activated[index] = MLFloat16(ApplyMoeCpuOffloadActivation(
             fc1_output[index].ToFloat(), parameters.activation_type));
       }
@@ -190,7 +191,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     fc2_params.A = activated.data();
     fc2_params.lda = static_cast<size_t>(inter_size);
     fc2_params.B = fc2_weights.data() + expert * hidden_size * inter_size;
-    fc2_params.ldb = static_cast<size_t>(inter_size);
+    fc2_params.ldb = static_cast<size_t>(hidden_size);
     fc2_params.C = expert_output.data();
     fc2_params.ldc = static_cast<size_t>(hidden_size);
     RunMoeCpuOffloadHalfGemm(route_count, static_cast<size_t>(hidden_size),

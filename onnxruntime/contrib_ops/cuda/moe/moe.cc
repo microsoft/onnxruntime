@@ -56,8 +56,8 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
     int64_t cpu_offload_expert_count = -1;
     ORT_ENFORCE(TryParseStringWithClassicLocale(cpu_offload_experts, cpu_offload_expert_count) &&
                     cpu_offload_expert_count >= 0,
-                "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadExperts,
-                " value: ", cpu_offload_experts);
+                kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                " must be a non-negative integer. Received: \"", cpu_offload_experts, "\".");
     cpu_offload_enabled_ = cpu_offload_expert_count > 0;
     if (cpu_offload_enabled_) {
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&input_copy_stream_, cudaStreamNonBlocking));
@@ -192,6 +192,20 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
           reinterpret_cast<const char*>(packed.cpu_data.data()) +
               static_cast<size_t>(cuda_experts_[index]) * expert_bytes,
           expert_bytes, cudaMemcpyHostToDevice));
+    }
+  }
+
+  for (int input_idx : {2, 4}) {
+    auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+    const size_t output_size = static_cast<size_t>(packed.shape[1]);
+    const size_t input_size = static_cast<size_t>(packed.shape[2]);
+    const size_t expert_element_count = output_size * input_size;
+    packed.cpu_gemm_data.resize(packed.cpu_data.size());
+    for (size_t expert = 0; expert < num_experts; ++expert) {
+      MlasTranspose(
+          reinterpret_cast<const MLAS_FP16*>(packed.cpu_data.data() + expert * expert_element_count),
+          reinterpret_cast<MLAS_FP16*>(packed.cpu_gemm_data.data() + expert * expert_element_count),
+          output_size, input_size, nullptr);
     }
   }
 
@@ -415,10 +429,22 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<float> host_expert_scales;
   cudaEvent_t input_ready = nullptr;
   cudaEvent_t input_copy_ready = nullptr;
+  cudaEvent_t routing_copy_ready = nullptr;
   bool input_copy_complete = false;
+  bool routing_copy_pending = false;
+  bool routing_copy_recorded = false;
+  bool routing_copy_complete = false;
   auto release_input_copy_events = gsl::finally([&]() {
+    if (routing_copy_pending && !routing_copy_complete) {
+      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(routing_copy_recorded
+                                            ? cudaEventSynchronize(routing_copy_ready)
+                                            : cudaStreamSynchronize(stream)));
+    }
     if (!input_copy_complete && input_copy_stream_ != nullptr) {
       ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(input_copy_stream_)));
+    }
+    if (routing_copy_ready != nullptr) {
+      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventDestroy(routing_copy_ready)));
     }
     if (input_copy_ready != nullptr) {
       ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventDestroy(input_copy_ready)));
@@ -438,10 +464,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&input_ready, cudaEventDisableTiming));
     CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&input_copy_ready, cudaEventDisableTiming));
+    CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&routing_copy_ready, cudaEventDisableTiming));
     {
       std::lock_guard<std::mutex> input_copy_lock(input_copy_mutex_);
       CUDA_RETURN_IF_ERROR(cudaEventRecord(input_ready, stream));
-      CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(input_copy_stream_, input_ready));
+      CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(input_copy_stream_, input_ready, 0));
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_input.get(), input->DataRaw(),
                                            input->SizeInBytes(), cudaMemcpyDeviceToHost,
                                            input_copy_stream_));
@@ -538,9 +565,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
                                          indices_bytes, cudaMemcpyDeviceToHost, stream));
+    routing_copy_pending = true;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_scales.get(), expert_scales,
                                          scales_bytes, cudaMemcpyDeviceToHost, stream));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(routing_copy_ready, stream));
+    routing_copy_recorded = true;
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(routing_copy_ready));
+    routing_copy_complete = true;
     CUDA_RETURN_IF_ERROR(cudaEventSynchronize(input_copy_ready));
     input_copy_complete = true;
     ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(host_expert_indices.get(), expanded_rows)));
@@ -567,13 +598,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                                "Unsupported FP16 MoE CPU-offload activation.");
     }
 
-    auto host_weights = [&](int input_idx) {
+    auto host_data = [&](int input_idx) {
       const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-      return gsl::make_span(packed.cpu_data);
+      return gsl::make_span(packed.cpu_gemm_data.empty() ? packed.cpu_data : packed.cpu_gemm_data);
     };
-    auto optional_host_weights = [&](int input_idx) -> gsl::span<const MLFloat16> {
+    auto optional_host_data = [&](int input_idx) -> gsl::span<const MLFloat16> {
       const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-      return packed.present ? host_weights(input_idx) : gsl::span<const MLFloat16>{};
+      return packed.present ? host_data(input_idx) : gsl::span<const MLFloat16>{};
     };
 
     const size_t host_element_count =
@@ -586,7 +617,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         gsl::make_span(host_input.get(), host_element_count),
         gsl::make_span(host_expert_indices.get(), expanded_rows),
         gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
-        host_weights(2), optional_host_weights(3), host_weights(4), optional_host_weights(5),
+        host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
         moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
         cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
         context->GetOperatorThreadPool()));

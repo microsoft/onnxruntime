@@ -1696,9 +1696,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   int64_t cpu_offload_expert_count = -1;
   ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(cpu_offload_expert_count_value, cpu_offload_expert_count) &&
                         cpu_offload_expert_count >= 0,
-                    "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadExperts,
-                    " value: ", cpu_offload_expert_count_value,
-                    ". Expected a non-negative integer.");
+                    kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                    " must be a non-negative integer. Received: \"",
+                    cpu_offload_expert_count_value, "\".");
   const bool enable_moe_cpu_offload = cpu_offload_expert_count > 0;
   if (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload) {
     double alpha = 0.0;
@@ -1950,8 +1950,9 @@ static Status PlaceMoeCpuOffloadInitializersOnCpu(
   int64_t offload_count = -1;
   ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(offload_count_value, offload_count) &&
                         offload_count >= 0,
-                    "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadExperts,
-                    " value: ", offload_count_value, ". Expected a non-negative integer.");
+                    kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                    " must be a non-negative integer. Received: \"",
+                    offload_count_value, "\".");
   if (offload_count == 0) {
     return Status::OK();
   }

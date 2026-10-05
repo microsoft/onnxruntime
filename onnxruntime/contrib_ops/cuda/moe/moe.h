@@ -34,6 +34,7 @@ class MoE final : public CudaKernel, public MoEBase {
   struct PackedTensor {
     TensorShape shape;
     std::vector<MLFloat16> cpu_data;
+    std::vector<MLFloat16> cpu_gemm_data;
     IAllocatorUniquePtr<void> cuda_data;
     size_t bytes{0};
     bool present{false};
