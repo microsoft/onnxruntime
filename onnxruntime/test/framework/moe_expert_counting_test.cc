@@ -460,7 +460,7 @@ TEST(MoeExpertCountingTest, CudaQMoEPackedIntGemv) {
   if (provider->GetOrtEp() != nullptr) {
     GTEST_SKIP() << "MoE expert counting is not supported by the CUDA plugin execution provider.";
   }
-  ScopedEnvironmentVariables env_vars{{{"ORT_ENABLE_QMOE_INT2_GEMV", "1"}}};
+  ScopedEnvironmentVariables env_vars{{{"ORT_DISABLE_MOE_GEMV", "0"}}};
   auto options = CountingOptions();
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   // Dense dequantization cannot fit: successful inference proves packed-INT GEMV dispatch.

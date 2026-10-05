@@ -92,6 +92,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_RUN_MLAS_TESTS "Run a targeted subset of MLAS unit tests with CTest" OFF)
 # Declare both prerequisites before evaluating this dependent option on a fresh configure.
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
 # OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
@@ -182,6 +183,15 @@ option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C+
 option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP shared library using EP API adapters" OFF)
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
+set(onnxruntime_DAWN_PREBUILT_DIR "" CACHE PATH "Directory containing Dawn headers and standalone proc sources for external Dawn")
+if(onnxruntime_DAWN_PREBUILT_DIR)
+  if(NOT onnxruntime_USE_WEBGPU OR NOT onnxruntime_USE_EXTERNAL_DAWN)
+    message(FATAL_ERROR "onnxruntime_DAWN_PREBUILT_DIR requires onnxruntime_USE_WEBGPU and onnxruntime_USE_EXTERNAL_DAWN")
+  endif()
+  if(NOT EXISTS "${onnxruntime_DAWN_PREBUILT_DIR}/include")
+    message(FATAL_ERROR "onnxruntime_DAWN_PREBUILT_DIR is missing include/: ${onnxruntime_DAWN_PREBUILT_DIR}")
+  endif()
+endif()
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
 # The following 2 options are only for Windows

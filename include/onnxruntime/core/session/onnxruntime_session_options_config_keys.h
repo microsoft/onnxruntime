@@ -478,9 +478,10 @@ static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_in
 static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
 
 /// Enables per-shape GEMM kernel auto-tuning for CUDA fp16/bf16 MatMul: "1" enables, "0" (default) disables.
-/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS and a small-N
-/// GEMV for small M) on the current device and caches the fastest for the process. Tuning is skipped
-/// while a CUDA graph is being captured, so run at least one warm-up inference before capture.
+/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS, a small-N
+/// GEMV, and on SM 9.0+ the TMA-based tinygemm2) on the current device and caches the fastest for the
+/// process. Tuning is skipped while a CUDA graph is being captured, so run at least one warm-up inference
+/// before capture.
 /// When disabled, cuBLAS is used. Overrides the ORT_CUDA_GEMM_AUTO_TUNE environment variable;
 /// ORT_ENABLE_SMALL_N_GEMV=1/0, when set, forces the small-N GEMV on/off and bypasses tuning.
 static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.enable_gemm_auto_tune";

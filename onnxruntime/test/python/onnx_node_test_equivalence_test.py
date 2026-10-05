@@ -30,8 +30,9 @@ becomes the sole source of the node tree, and the permanent min-count tripwire
 backstop.
 
 Version parity: the materialized model.onnx opset/IR is stamped from the
-compiled onnx schema registry, so this test asserts the installed onnx exactly
-equals the ``cmake/deps.txt`` pin. numpy parity is NOT asserted -- the core
+compiled onnx schema registry, so this test asserts the installed onnx equals
+the ``cmake/deps.txt`` pin (compared on the release base, so a pre-release rcN/.dev
+wheel of the pinned tag is accepted). numpy parity is NOT asserted -- the core
 treats numpy as an informational soft-warning, and recomputed float outputs that
 differ by within a small ULP band are accepted as Class A numpy-gen skew.
 """
@@ -61,14 +62,14 @@ def _repo_root() -> str:
 
 
 def _expected_onnx_version() -> str | None:
-    """Parse the ONNX_VERSION metadata paired with the archive pin in cmake/deps.txt."""
+    """Parse the onnx pin (archive tag) from cmake/deps.txt."""
     deps = os.path.join(_repo_root(), "cmake", "deps.txt")
     if not os.path.isfile(deps):
         return None
     with open(deps) as f:
         for line in f:
-            if line.startswith("# ONNX_VERSION="):
-                m = re.search(r"ONNX_VERSION=([0-9]+\.[0-9]+\.[0-9]+)", line)
+            if line.startswith("onnx;"):
+                m = re.search(r"/tags/v([0-9]+\.[0-9]+\.[0-9]+)\.zip", line)
                 if m:
                     return m.group(1)
     return None
@@ -137,11 +138,12 @@ class NodeTestEquivalence(unittest.TestCase):
         except ImportError as exc:  # pragma: no cover
             self.skipTest(f"onnx not importable: {exc}")
 
-        if expected_onnx and onnx.__version__ != expected_onnx:
+        if expected_onnx and mat._release_base(onnx.__version__) != mat._release_base(expected_onnx):
             self.skipTest(
                 f"installed onnx=={onnx.__version__} != cmake/deps.txt pin "
                 f"{expected_onnx}; cannot certify equivalence under version skew. "
-                "Install the pinned onnx to run this check."
+                f"Install the pinned onnx to run this check. (A pre-release rcN/.dev "
+                f"of the same release base is accepted.)"
             )
 
         with tempfile.TemporaryDirectory(prefix="ort_node_mat_") as tmp:
