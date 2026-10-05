@@ -28,6 +28,10 @@ inline int OnnxTensorProtoTypeFromApiElementType(ONNXTensorElementDataType eleme
       return ONNX_NAMESPACE::TensorProto_DataType_INT2;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0:
       return ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3:
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2:
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2;
     default:
       return static_cast<int>(element_type);
   }
