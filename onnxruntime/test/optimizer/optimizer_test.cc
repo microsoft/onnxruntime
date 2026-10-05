@@ -126,6 +126,11 @@ NodeArg& AddScalarTypedArg(Graph& graph, const std::string& name, TensorProto_Da
   // An empty shape (no dims) is how a rank-0 tensor type is expressed.
   scalar_type.mutable_tensor_type()->mutable_shape();
 
+  // Create the NodeArg with the scalar type before registering the initializer.
+  // AddInitializedTensor() only fills in a NodeArg itself when one doesn't already exist, using a
+  // shapeless TypeProto; creating it here first keeps the rank-0 shape so IsScalar() sees a scalar.
+  NodeArg& node_arg = graph.GetOrCreateNodeArg(name, &scalar_type);
+
   if (add_initializer) {
     TensorProto tensor_proto;
     tensor_proto.set_name(name);
@@ -136,7 +141,7 @@ NodeArg& AddScalarTypedArg(Graph& graph, const std::string& name, TensorProto_Da
     graph.AddInitializedTensor(tensor_proto);
   }
 
-  return graph.GetOrCreateNodeArg(name, &scalar_type);
+  return node_arg;
 }
 }  // namespace
 
@@ -163,11 +168,15 @@ TEST(OptimizerTest, ScalarInitializerLookupHandlesMissingAndEmptyTensors) {
   EXPECT_FALSE(optimizer_utils::GetScalarInitializerValue<float>(graph, missing_float, scalar_value, false));
 
   // Initializer present, but it declares zero elements while the NodeArg type says scalar.
+  // Confirm the NodeArg is actually seen as a scalar first, otherwise the checks below would
+  // trivially pass via the unrelated "not a scalar" rejection instead of the element-count guard.
   NodeArg& empty_int = AddScalarTypedArg(graph, "empty_int", TensorProto_DataType_INT64, true, {0});
+  ASSERT_TRUE(optimizer_utils::IsScalar(empty_int));
   EXPECT_FALSE(optimizer_utils::IsInitializerWithExpectedValue(graph, empty_int, int64_t{0}, true));
   EXPECT_FALSE(optimizer_utils::IsInitializerWithExpectedValue(graph, empty_int, int64_t{0}, false));
 
   NodeArg& empty_float = AddScalarTypedArg(graph, "empty_float", TensorProto_DataType_FLOAT, true, {0});
+  ASSERT_TRUE(optimizer_utils::IsScalar(empty_float));
   EXPECT_FALSE(optimizer_utils::IsInitializerWithExpectedValue(graph, empty_float, 0.0f, true));
   EXPECT_FALSE(optimizer_utils::IsInitializerWithExpectedValue(graph, empty_float, 0.0f, false));
   EXPECT_FALSE(optimizer_utils::GetScalarInitializerValue<float>(graph, empty_float, scalar_value, true));
