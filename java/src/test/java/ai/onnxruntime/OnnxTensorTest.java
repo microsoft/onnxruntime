@@ -46,8 +46,8 @@ public class OnnxTensorTest {
         InvocationTargetException invocation =
             assertThrows(
                 InvocationTargetException.class, () -> getter.invoke(receiver, apiHandle, 0L, 0L));
-        OrtException exception =
-            Assertions.assertInstanceOf(OrtException.class, invocation.getCause());
+        Assertions.assertTrue(invocation.getCause() instanceof OrtException);
+        OrtException exception = (OrtException) invocation.getCause();
         Assertions.assertEquals(
             OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT, exception.getCode());
         Assertions.assertTrue(exception.getMessage().contains("Java array limit"));
