@@ -24,7 +24,8 @@
     "webpack-cli": "^5.1.4"
   },
   "overrides": {
-    "terser": "5.49.0"
+    "terser": "5.49.0",
+    "typed-query-selector": "2.12.2"
   },
   "scripts": {
     "build:w:esmjs": "webpack --mode=production --config webpack.config.esm-js.js",
