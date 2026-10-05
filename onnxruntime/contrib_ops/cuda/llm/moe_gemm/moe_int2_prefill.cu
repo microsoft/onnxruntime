@@ -76,10 +76,7 @@ void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
   }
   ORT_ENFORCE(weight_bits == 4, "Packed INT prefill requires INT2 or INT4 weights");
   GroupedGemmInput<ElementType, cutlass::uint4b_t, ElementType, ElementType> gemm{
-      activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights),
-      static_cast<const ElementType*>(scales), nullptr, nullptr, output, nullptr, nullptr,
-      ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts,
-      params.block_size, true, false, params.stream, {}, {}};
+      activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights), static_cast<const ElementType*>(scales), nullptr, nullptr, output, nullptr, nullptr, ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
   gemm.gemm_config = cutlass_extensions::CutlassGemmConfig(
       cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
       cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);

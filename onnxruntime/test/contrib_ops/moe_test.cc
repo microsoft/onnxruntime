@@ -2694,15 +2694,15 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillBlockSizes) {
         for (bool scale_initializers : {false, true}) {
           for (int64_t row_tile_size : {0, 16}) {
             SCOPED_TRACE(testing::Message() << "rows=" << num_rows
-                                           << " scale_initializers=" << scale_initializers
-                                           << " row_tile_size=" << row_tile_size);
+                                            << " scale_initializers=" << scale_initializers
+                                            << " row_tile_size=" << row_tile_size);
             RunQMoEPackedPrefillRoutingTest<MLFloat16>(num_rows, 512, 256, 2, false,
-                                                     scale_initializers, row_tile_size, block_size,
-                                                     weight_bits.first, weight_bits.second);
+                                                       scale_initializers, row_tile_size, block_size,
+                                                       weight_bits.first, weight_bits.second);
 #if defined(ENABLE_BF16)
             RunQMoEPackedPrefillRoutingTest<BFloat16>(num_rows, 512, 256, 4, true,
-                                                    scale_initializers, row_tile_size, block_size,
-                                                    weight_bits.first, weight_bits.second);
+                                                      scale_initializers, row_tile_size, block_size,
+                                                      weight_bits.first, weight_bits.second);
 #endif
           }
         }
@@ -2793,6 +2793,7 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeFallback) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
   RunQMoEMixedWidthCudaIdentityTest(
       2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
       /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/64, /*inter_size=*/64,
