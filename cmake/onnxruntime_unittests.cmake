@@ -1391,7 +1391,8 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
 endif()
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
-   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
+  AND NOT CMAKE_SYSTEM_NAME STREQUAL "AIX")
   foreach(fixture IN ITEMS shared valid missing_export)
     set(probe_fixture onnxruntime_optional_probe_${fixture}_fixture)
     onnxruntime_add_shared_library(${probe_fixture}
@@ -1401,9 +1402,6 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
     target_compile_definitions(${probe_fixture} PRIVATE ORT_TEST_OPTIONAL_PROVIDER_${fixture})
     set_target_properties(${probe_fixture} PROPERTIES FOLDER "ONNXRuntimeTest")
-    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-      set_target_properties(${probe_fixture} PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
-    endif()
   endforeach()
   foreach(mode IN ITEMS normal no_exceptions)
     set(probe_target onnxruntime_optional_provider_probe_${mode}_test)
