@@ -240,6 +240,23 @@ struct PyEpSelectionRegistration {
 
 // Thin wrapper over internal C OrtSessionOptions to store additional state.
 struct PySessionOptions : public OrtSessionOptions {
+  PySessionOptions() = default;
+
+  PySessionOptions(const PySessionOptions& other)
+      : OrtSessionOptions(static_cast<const OrtSessionOptions&>(other)) {
+    std::lock_guard<std::mutex> lock{other.py_callback_mutex};
+    py_ep_selection_registration = other.py_ep_selection_registration;
+    py_ep_context_data_read_registration = other.py_ep_context_data_read_registration;
+
+    if (py_ep_selection_registration) {
+      value.ep_selection_policy.state = py_ep_selection_registration.get();
+    }
+
+    if (py_ep_context_data_read_registration) {
+      value.ep_context_data_read_state = py_ep_context_data_read_registration.get();
+    }
+  }
+
   mutable std::mutex py_callback_mutex;
   std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration;
   std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration;
