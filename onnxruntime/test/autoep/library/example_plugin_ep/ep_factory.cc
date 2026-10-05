@@ -311,6 +311,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string ep_context_embed_mode;
   std::string ep_context_output_model_path;
   std::string weightless_ep_context_nodes_enable;
+  std::string test_read_ep_context_during_compile;
   std::string advertise_ep_context_data_support;
   std::string test_ort_version;
   std::string use_default_cpu_allocator;
@@ -322,6 +323,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                  ep_context_output_model_path));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
                                                  "0", weightless_ep_context_nodes_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.example.test_read_ep_context_during_compile",
+                                                 "0", test_read_ep_context_during_compile));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestEpContextDataSupport, "1",
                                                  advertise_ep_context_data_support));
 
@@ -343,6 +346,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
+  config.test_read_ep_context_during_compile = test_read_ep_context_during_compile == "1";
   config.advertise_ep_context_data_support = advertise_ep_context_data_support == "1";
   config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
 

@@ -335,16 +335,20 @@ assert events == ["read", "selection", "write"], events
             read_context_for_compile_ref = weakref.ref(read_context_for_compile)
             source_compile_options.set_ep_context_data_read_func(read_context_for_compile, len(context_payload))
             source_compile_options.add_provider_for_devices([ep_device], {})
+            source_compile_options.add_session_config_entry("ep.example.test_read_ep_context_during_compile", "1")
             retained_compiler: ModelCompiler = onnxrt.ModelCompiler(
-                source_compile_options, input_model_path, embed_compiled_data_into_model=True
+                source_compile_options, compiled_model, embed_compiled_data_into_model=True
             )
             source_compile_options.clear_ep_context_data_read_func()
             del source_compile_options, read_context_for_compile
             gc.collect()
 
             self.assertIsNotNone(read_context_for_compile_ref())
-            self.assertTrue(retained_compiler.compile_to_bytes())
-            self.assertEqual(compile_read_count, 0)
+            # The example EP reads the existing context but does not return a replacement node.
+            with self.assertRaises(Fail) as context:
+                retained_compiler.compile_to_bytes()
+            self.assertIn("returned a NULL EPContext node", str(context.exception))
+            self.assertEqual(compile_read_count, 1)
             self.assertFalse(os.path.exists(context_name))
 
             del retained_compiler
