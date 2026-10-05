@@ -716,7 +716,8 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   const auto dtype = std::is_same_v<T, BFloat16> ? onnxruntime::llm::nvinfer::DataType::kBF16
                                                  : onnxruntime::llm::nvinfer::DataType::kHALF;
   gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), dtype, kernel_sm, static_cast<int>(nbits_),
-                       static_cast<int>(block_size_), has_zero_points_, hasWeightOnlyCudaKernel);
+                       static_cast<int>(block_size_), has_zero_points_, hasWeightOnlyCudaKernel, has_bias_,
+                       this->GetDeviceProp().name);
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);

@@ -428,6 +428,58 @@ TEST(GemmTacticCacheTest, GemmIdCoreSeparatesQuantVariants) {
   EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 128, false, true));
   EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, true, true));
   EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, false));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true, true));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true, false, "NVIDIA RTX 4090"));
+
+  // Same packing SM, different GPU: the process-global map must not mix their tactics.
+  const GemmIdCore rtx4090(1024, 4096, dtype, 80, 4, 64, false, true, false, "NVIDIA RTX 4090");
+  const GemmIdCore rtx4060(1024, 4096, dtype, 80, 4, 64, false, true, false, "NVIDIA RTX 4060");
+  EXPECT_FALSE(rtx4090 == rtx4060);
+  EXPECT_EQ(rtx4090, GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true, false, "NVIDIA RTX 4090"));
+}
+
+TEST(GemmTacticCacheTest, BiasIsPartOfPersistentKey) {
+  const std::string prefix = UniqueTempPrefix("bias");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::HardwareSignature sig = MakeSignature();
+  gc::MatMulNBitsKey no_bias = MakeKey();
+  gc::MatMulNBitsKey with_bias = MakeKey();
+  with_bias.has_bias = true;
+
+  {
+    gc::MatMulNBitsTacticCache cache(file, sig);
+    cache.Put(no_bias, 1, MakeSm80Config());
+    cache.Put(with_bias, 1, MakeSm90Config());
+    ASSERT_TRUE(cache.Flush().IsOK());
+  }
+
+  gc::MatMulNBitsTacticCache reloaded(file, sig);
+  ASSERT_TRUE(reloaded.Load().IsOK());
+  auto biasless = reloaded.Get(no_bias, 1);
+  auto biasful = reloaded.Get(with_bias, 1);
+  ASSERT_TRUE(biasless.has_value() && biasless->has_value());
+  ASSERT_TRUE(biasful.has_value() && biasful->has_value());
+  ExpectConfigEqual(MakeSm80Config(), **biasless);
+  ExpectConfigEqual(MakeSm90Config(), **biasful);
+
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, FlushFailsWhenFileLockUnavailable) {
+  const std::string prefix = UniqueTempPrefix("lockfail");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::HardwareSignature sig = MakeSignature();
+
+  // A directory at the lock path makes lock acquisition fail on every platform.
+  std::error_code ec;
+  ASSERT_TRUE(std::filesystem::create_directory(file + ".lock", ec)) << ec.message();
+
+  gc::MatMulNBitsTacticCache cache(file, sig);
+  cache.Put(MakeKey(), 1, MakeSm80Config());
+  EXPECT_FALSE(cache.Flush().IsOK());
+  EXPECT_FALSE(std::filesystem::exists(file));
+
+  CleanUp(file);
 }
 
 }  // namespace test

@@ -30,6 +30,18 @@
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
+namespace {
+// Compares tactics by their persisted representation, which is exactly what a cache hit stores.
+bool SameConfigColumns(const std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& a,
+                       const std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& b) {
+  std::vector<std::string> columns_a;
+  std::vector<std::string> columns_b;
+  onnxruntime::llm::gemm_cache::AppendConfigColumns(columns_a, a);
+  onnxruntime::llm::gemm_cache::AppendConfigColumns(columns_b, b);
+  return columns_a == columns_b;
+}
+}  // namespace
+
 namespace onnxruntime::llm::kernels::weight_only {
 
 std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
@@ -227,6 +239,7 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
   key.has_zero_points = mHasZeros;
   key.zero_point_dtype = mHasZeros ? key.weight_type : "none";
   key.gemv_enabled = hasWeightOnlyCudaKernel;
+  key.has_bias = mHasBiases;
   key.packing_sm = mArch;
   return key;
 }
@@ -242,12 +255,12 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
     return;
   }
 
-  // Validate CUTLASS tactics loaded from disk against the tactics this runner can actually
-  // dispatch. A parseable-but-incompatible cache row (e.g. hand-edited, or written by a build
-  // whose signature happens to match but whose tactic set differs) would otherwise be handed
-  // straight to the kernel. Non-matching CUTLASS tactics are dropped so the bucket is re-profiled.
-  // The synthetic CUDA-GEMV tactic (enableCudaKernel) is not part of getConfigs(); its validity
-  // is already keyed by gemv_enabled in the cache key, so it is accepted as-is.
+  // Validate tactics loaded from disk against the tactics this runner can actually dispatch. A
+  // parseable-but-incompatible cache row (e.g. hand-edited, or written by a build whose signature
+  // happens to match but whose tactic set differs) would otherwise be handed straight to the kernel.
+  // Rejected rows are dropped so the bucket is re-profiled (and the stale row overwritten on staging).
+  // The CUDA-GEMV tactic is only dispatchable when this runner has a GEMV kernel, so it is rejected
+  // otherwise, regardless of what the row's key claims.
   auto const valid_configs = getTactics(0, gemmId.n, gemmId.k);
   auto is_valid_cutlass = [&valid_configs](Config const& c) {
     for (auto const& v : valid_configs) {
@@ -269,6 +282,10 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
         ORT_LLM_LOG_WARNING("Dropping unsupported cached fpA_intB tactic from the tactic cache; re-profiling.");
         continue;
       }
+      if (config->enableCudaKernel && !hasWeightOnlyCudaKernel) {
+        ORT_LLM_LOG_WARNING("Dropping cached fpA_intB CUDA-GEMV tactic: no GEMV kernel is available; re-profiling.");
+        continue;
+      }
       if (!config->enableCudaKernel && !is_valid_cutlass(*config)) {
         ORT_LLM_LOG_WARNING("Dropping incompatible cached fpA_intB tactic from the tactic cache; re-profiling.");
         continue;
@@ -287,11 +304,14 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
   auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
   bool added = false;
   for (auto const& [m, config] : map) {
-    // Only stage buckets that are not already recorded (skips re-staging cache hits).
-    if (!mCache->Get(key, m).has_value()) {
-      mCache->Put(key, m, config);
-      added = true;
+    // Skip buckets already recorded with the same tactic (cache hits). A row rejected on load is still
+    // in the cache, so it must be overwritten by the freshly profiled tactic.
+    auto const cached = mCache->Get(key, m);
+    if (cached.has_value() && SameConfigColumns(*cached, config)) {
+      continue;
     }
+    mCache->Put(key, m, config);
+    added = true;
   }
   return added;
 }
