@@ -400,10 +400,30 @@ public class CompileApiTests
                         allocator.FreeMemory(outputBuffer);
                     }
                 }
+
+                IntPtr replacementOutputBuffer = IntPtr.Zero;
+                UIntPtr replacementOutputBufferSize = UIntPtr.Zero;
+                reentrantCompileOptions.SetOutputModelBuffer(
+                    allocator, ref replacementOutputBuffer, ref replacementOutputBufferSize);
+                try
+                {
+                    reentrantCompileOptions.CompileModel();
+                    Assert.NotEqual(IntPtr.Zero, replacementOutputBuffer);
+                    Assert.NotEqual(UIntPtr.Zero, replacementOutputBufferSize);
+                }
+                finally
+                {
+                    if (replacementOutputBuffer != IntPtr.Zero)
+                    {
+                        allocator.FreeMemory(replacementOutputBuffer);
+                    }
+                }
+
             }
+
             Assert.Equal(TaskStatus.RanToCompletion, replacementTask.Status);
             Assert.Equal(2, originalWriteCount);
-            Assert.Equal(0, replacementWriteCount);
+            Assert.True(replacementWriteCount > 0);
 
             Task reentrantClearTask = null;
             using (var reentrantLoadOptions = new SessionOptions())
@@ -639,8 +659,7 @@ public class EpContextDataWriteLifetimeTests
         int compileCount = 0;
         try
         {
-            // Substitute only the native compile entry point to control replacements before its snapshot.
-            // Set/Clear still use the real native API. This test checks managed lifetime accounting.
+            // Substitution holds one compile active while registrations are replaced and cleared.
             compileApi.OrtCompileModel = (_, _) =>
             {
                 if (Interlocked.Increment(ref compileCount) == 1)

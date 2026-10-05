@@ -50,6 +50,10 @@ namespace Microsoft.ML.OnnxRuntime
         {
             lock (_epContextDataWriteRegistrationLock)
             {
+                if (_activeCompileCount == 0)
+                {
+                    ApplyPendingEpContextDataWriteRegistration();
+                }
                 ++_activeCompileCount;
             }
 
@@ -64,11 +68,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     if (--_activeCompileCount == 0)
                     {
-                        foreach (var registration in _retiredEpContextDataWriteRegistrations)
-                        {
-                            registration.Dispose();
-                        }
-                        _retiredEpContextDataWriteRegistrations.Clear();
+                        ApplyPendingEpContextDataWriteRegistration();
                     }
                 }
                 GC.KeepAlive(this);
@@ -212,14 +212,25 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 lock (_epContextDataWriteRegistrationLock)
                 {
-                    NativeApiStatus.VerifySuccess(
-                        NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
-                            _handle,
-                            newRegistration.FunctionPointer,
-                            newRegistration.State));
-                    var previousRegistration = _epContextDataWriteRegistration;
-                    _epContextDataWriteRegistration = newRegistration;
-                    RetireEpContextDataWriteRegistration(previousRegistration);
+                    if (_activeCompileCount > 0)
+                    {
+                        var previousRegistration = _epContextDataWriteRegistration;
+                        _epContextDataWriteRegistration = newRegistration;
+                        RetireEpContextDataWriteRegistration(previousRegistration);
+                        _epContextDataWriteRegistrationUpdatePending = true;
+                    }
+                    else
+                    {
+                        ApplyPendingEpContextDataWriteRegistration();
+                        var previousRegistration = _epContextDataWriteRegistration;
+                        NativeApiStatus.VerifySuccess(
+                            NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
+                                _handle,
+                                newRegistration.FunctionPointer,
+                                newRegistration.State));
+                        _epContextDataWriteRegistration = newRegistration;
+                        RetireEpContextDataWriteRegistration(previousRegistration);
+                    }
                 }
             }
             catch
@@ -236,13 +247,46 @@ namespace Microsoft.ML.OnnxRuntime
         {
             lock (_epContextDataWriteRegistrationLock)
             {
-                NativeApiStatus.VerifySuccess(
-                    NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
-                        _handle, IntPtr.Zero, IntPtr.Zero));
-                var previousRegistration = _epContextDataWriteRegistration;
-                _epContextDataWriteRegistration = null;
-                RetireEpContextDataWriteRegistration(previousRegistration);
+                if (_activeCompileCount > 0)
+                {
+                    var previousRegistration = _epContextDataWriteRegistration;
+                    _epContextDataWriteRegistration = null;
+                    RetireEpContextDataWriteRegistration(previousRegistration);
+                    _epContextDataWriteRegistrationUpdatePending = true;
+                }
+                else
+                {
+                    ApplyPendingEpContextDataWriteRegistration();
+                    var previousRegistration = _epContextDataWriteRegistration;
+                    NativeApiStatus.VerifySuccess(
+                        NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
+                            _handle, IntPtr.Zero, IntPtr.Zero));
+                    _epContextDataWriteRegistration = null;
+                    RetireEpContextDataWriteRegistration(previousRegistration);
+                }
             }
+        }
+
+        private void ApplyPendingEpContextDataWriteRegistration()
+        {
+            if (!_epContextDataWriteRegistrationUpdatePending)
+            {
+                return;
+            }
+
+            var registration = _epContextDataWriteRegistration;
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
+                    _handle,
+                    registration?.FunctionPointer ?? IntPtr.Zero,
+                    registration?.State ?? IntPtr.Zero));
+
+            _epContextDataWriteRegistrationUpdatePending = false;
+            foreach (var retiredRegistration in _retiredEpContextDataWriteRegistrations)
+            {
+                retiredRegistration.Dispose();
+            }
+            _retiredEpContextDataWriteRegistrations.Clear();
         }
 
         private void RetireEpContextDataWriteRegistration(EpContextDataWriteRegistration registration)
@@ -680,6 +724,11 @@ namespace Microsoft.ML.OnnxRuntime
                 var writeRegistration = _epContextDataWriteRegistration;
                 _epContextDataWriteRegistration = null;
                 RetireEpContextDataWriteRegistration(writeRegistration);
+                foreach (var retiredRegistration in _retiredEpContextDataWriteRegistrations)
+                {
+                    retiredRegistration.Dispose();
+                }
+                _retiredEpContextDataWriteRegistrations.Clear();
             }
 
             if (disposing)
@@ -721,6 +770,7 @@ namespace Microsoft.ML.OnnxRuntime
         private readonly object _epContextDataWriteRegistrationLock = new object();
         private EpContextDataWriteRegistration _epContextDataWriteRegistration = null;
         private int _activeCompileCount;
+        private bool _epContextDataWriteRegistrationUpdatePending;
         private readonly List<EpContextDataWriteRegistration> _retiredEpContextDataWriteRegistrations =
             new List<EpContextDataWriteRegistration>();
 
