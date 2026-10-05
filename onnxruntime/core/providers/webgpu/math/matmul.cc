@@ -11,6 +11,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -280,16 +281,15 @@ Status ComputeMatMul(ComputeContext* context,
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  ProgramOutput output(output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components);
+  Tensor split_k_output;
+  ProgramOutput output(output_tensor, ProgramTensorMetadataDependency::TypeAndRank, output_shape_temp, components);
   const Tensor* bias = has_bias ? inputs[2] : nullptr;
   bool use_bias_in_matmul = has_bias;
   uint32_t split_dim_inner = 1;
   uint32_t splits_per_batch = 1;
 
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
-  // Disable FP16 Split-K because partial sums are converted to FP16 before atomic reduction,
-  // losing FP32 accumulation precision and potentially overflowing even when the final result fits.
-  if (!output_tensor->IsDataType<MLFloat16>() && !context->KernelContext().GetUseDeterministicCompute()) {
+  if (!context->KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context->GetSplitKConfig();
     const bool need_split_k = split_k_config.UseSplitK(
         is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer,
@@ -301,8 +301,14 @@ Status ComputeMatMul(ComputeContext* context,
         ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
       }
 
-      // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp, narrow<uint32_t>(batch_size));
+      Tensor* reduction_output = output_tensor;
+      if (output_tensor->IsDataType<MLFloat16>()) {
+        split_k_output = context->CreateGPUTensor(DataTypeImpl::GetType<float>(), output_tensor->Shape());
+        reduction_output = &split_k_output;
+        output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::TypeAndRank, output_shape_temp, components);
+      }
+
+      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, reduction_output, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp, narrow<uint32_t>(batch_size));
       ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
 
       // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
@@ -343,7 +349,20 @@ Status ComputeMatMul(ComputeContext* context,
     matmul_program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
   }
 
-  return context->RunProgram(matmul_program);
+  ORT_RETURN_IF_ERROR(context->RunProgram(matmul_program));
+  if (split_dim_inner > 1 && output_tensor->IsDataType<MLFloat16>()) {
+    const uint32_t output_size = narrow<uint32_t>(output_tensor->Shape().Size());
+    const uint32_t vec_size = output_size / 4;
+    CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, false, true, false, false};
+    cast_program
+        .AddInput({&split_k_output, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+        .SetDispatchGroupSize(CeilDiv(vec_size, static_cast<uint32_t>(WORKGROUP_SIZE)))
+        .AddUniformVariables({{vec_size}, {output_size}})
+        .CacheHint(std::to_string(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    return context->RunProgram(cast_program);
+  }
+  return Status::OK();
 }
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(

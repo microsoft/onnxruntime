@@ -233,7 +233,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   uint32_t split_dim_inner,
                                   bool use_f32_accumulation) {
   const std::string accumulation_type = use_f32_accumulation ? "f32" : data_type;
-  const std::string write_type = MakeScalarOrVectorType(output_components, data_type);
+  const std::string write_type = split_k ? "output_value_t" : MakeScalarOrVectorType(output_components, data_type);
 
   std::string write_data_to_sub_a_vec4_snippet =
       transpose_a ? std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, kStart + inputRow, globalRowStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"

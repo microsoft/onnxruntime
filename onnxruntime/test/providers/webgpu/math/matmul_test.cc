@@ -87,11 +87,6 @@ TEST(MathOpTest, MatMulSubgroupMatrixFp16LongReductionCancellation) {
 }
 
 TEST(MathOpTest, MatMulPackedFp16SplitKEligibleCancellationKeepsFloat32Precision) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not available";
-  }
-
   constexpr int64_t rows = 3;
   constexpr int64_t reduction_size = 1028;
   constexpr int64_t output_columns = 4;
@@ -107,16 +102,44 @@ TEST(MathOpTest, MatMulPackedFp16SplitKEligibleCancellationKeepsFloat32Precision
     weights[(reduction_size - 1) * output_columns + column] = MLFloat16(1.0f);
   }
 
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  for (const bool deterministic : {false, true}) {
+    for (const int64_t batch_size : {1, 2}) {
+      for (const bool batched_weights : {false, true}) {
+        SCOPED_TRACE(deterministic);
+        SCOPED_TRACE(batch_size);
+        SCOPED_TRACE(batched_weights);
+        auto webgpu_ep = DefaultWebGpuExecutionProvider();
+        ASSERT_NE(webgpu_ep, nullptr);
 
-  OpTester test("MatMul", 14);
-  test.AddInput<MLFloat16>("A", {rows, reduction_size},
-                           std::vector<MLFloat16>(rows * reduction_size, MLFloat16(1.0f)));
-  test.AddInput<MLFloat16>("B", {reduction_size, output_columns}, weights);
-  test.AddOutput<MLFloat16>("Y", {rows, output_columns},
-                            std::vector<MLFloat16>(rows * output_columns, MLFloat16(1.0f)));
-  test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+        std::vector<int64_t> a_shape{rows, reduction_size};
+        std::vector<int64_t> b_shape{reduction_size, output_columns};
+        std::vector<int64_t> y_shape{rows, output_columns};
+        if (batch_size > 1 || batched_weights) {
+          a_shape.insert(a_shape.begin(), batch_size);
+          y_shape.insert(y_shape.begin(), batch_size);
+        }
+        std::vector<MLFloat16> batched_b = weights;
+        if (batched_weights) {
+          b_shape.insert(b_shape.begin(), batch_size);
+          for (int64_t batch = 1; batch < batch_size; ++batch) {
+            batched_b.insert(batched_b.end(), weights.begin(), weights.end());
+          }
+        }
+
+        SessionOptions session_options;
+        session_options.use_deterministic_compute = deterministic;
+        ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+        OpTester test("MatMul", 14);
+        test.AddInput<MLFloat16>("A", a_shape,
+                                 std::vector<MLFloat16>(batch_size * rows * reduction_size, MLFloat16(1.0f)));
+        test.AddInput<MLFloat16>("B", b_shape, batched_b);
+        test.AddOutput<MLFloat16>("Y", y_shape,
+                                  std::vector<MLFloat16>(batch_size * rows * output_columns, MLFloat16(1.0f)));
+        test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+      }
+    }
+  }
 }
 
 TEST(MathOpTest, MatMulPackedScalarFp16LongReductionUsesFloat32Accumulator) {
