@@ -362,7 +362,7 @@ assert events == ["read", "selection", "write"], events
             )
             callback_started = threading.Event()
             release_callback = threading.Event()
-            compile_errors: list[BaseException] = []
+            compile_errors: list[Exception] = []
             concurrent_compiler_ref = weakref.ref(concurrent_compiler)
 
             def blocking_write(_name: str, _data: onnxrt.OrtEpContextData):
@@ -375,7 +375,7 @@ assert events == ["read", "selection", "write"], events
                     if model_compiler is None:
                         raise RuntimeError("ModelCompiler was released before compilation started")
                     model_compiler.compile_to_bytes()
-                except BaseException as exception:
+                except Exception as exception:
                     compile_errors.append(exception)
 
             concurrent_compiler.set_ep_context_data_write_func(blocking_write)

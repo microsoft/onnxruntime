@@ -314,6 +314,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string advertise_ep_context_data_support;
   std::string test_ort_version;
   std::string use_default_cpu_allocator;
+  std::string test_read_ep_context_during_compile;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
@@ -337,6 +338,13 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   }
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
                                                  "0", use_default_cpu_allocator));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options,
+                                                 "ep.example.test_read_ep_context_during_compile", "0",
+                                                 test_read_ep_context_during_compile));
+  if (test_read_ep_context_during_compile != "0" && test_read_ep_context_during_compile != "1") {
+    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "Example EP test read EPContext during compile option must be '0' or '1'.");
+  }
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
@@ -345,6 +353,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
   config.advertise_ep_context_data_support = advertise_ep_context_data_support == "1";
   config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
+  config.test_read_ep_context_during_compile = test_read_ep_context_during_compile == "1";
 
   // The EpContextConfig wrapper captures a stable snapshot of the EPContext callbacks from the session options and
   // owns the snapshot handle. EXCEPTION_TO_RETURNED_STATUS_END converts extraction failures into an OrtStatus.
