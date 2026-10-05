@@ -126,6 +126,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         tind: TensorProto.DataType,
         vocab_size: int = 545,
         embedding_len: int = 228,
+        opset: int = 19,
+        ir_version: int = 9,
     ) -> None:
         #      (input)
         #         |
@@ -172,8 +174,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
             initializer=initializers,
         )
         # QDQ and gather requires op set >= 21. The tool should automatically update the opset.
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 19)])
-        model.ir_version = 9  # use stable onnx ir version
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+        model.ir_version = ir_version
 
         onnx.save(model, output_model_path)
 
@@ -239,6 +241,10 @@ class TestOpMatMul4Bits(unittest.TestCase):
             for op in quant.model.opset_import():
                 if op.domain in [None, "", "ai.onnx"] and op.version < 21:
                     self.fail(f"In QDQ format {op.domain} opset should be >= 21")
+
+        if use_qdq or "Gather" in op_types_to_quantize:
+            # INT4/UINT4 tensors are only valid from IR version 10 on.
+            self.assertGreaterEqual(onnx.load(model_int4_path).ir_version, 10)
 
         data_reader.rewind()
 
@@ -330,6 +336,16 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_gather(model_fp32_path, False, TensorProto.FLOAT16, TensorProto.INT64)
         data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int64)
         # cover rounding error
+        self.quant_test(model_fp32_path, data_reader, 32, False, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
+
+    def test_quantize_gather_int4_updates_ir_version(self):
+        # Opset 21 already, but an older IR version: the quantizer must still raise the IR version,
+        # since the INT4/UINT4 weights it writes require IR version 10.
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("gather_fp32_ir8.onnx").absolute())
+        self.construct_model_gather(
+            model_fp32_path, False, TensorProto.FLOAT, TensorProto.INT64, opset=21, ir_version=8
+        )
+        data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int64)
         self.quant_test(model_fp32_path, data_reader, 32, False, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
 
     def test_quantize_matmul_int4_symmetric_qdq(self):
