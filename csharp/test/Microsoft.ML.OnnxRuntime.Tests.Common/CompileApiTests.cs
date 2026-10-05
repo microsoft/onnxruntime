@@ -275,6 +275,25 @@ public class CompileApiTests
         Assert.False(retainedCallbackTargetReference.IsAlive);
     }
 
+    [Fact]
+    public void EpContextReadBufferRequiresCpuAccessibleAllocator()
+    {
+        using var cpuMemoryInfo = new OrtMemoryInfo(
+            "Cpu", OrtMemoryInfoDeviceType.CPU, 0, 0, OrtDeviceMemoryType.DEFAULT, 0,
+            OrtAllocatorType.DeviceAllocator);
+        using var deviceMemoryInfo = new OrtMemoryInfo(
+            "TestGpu", OrtMemoryInfoDeviceType.GPU, 0, 0, OrtDeviceMemoryType.DEFAULT, 0,
+            OrtAllocatorType.DeviceAllocator);
+        using var hostAccessibleMemoryInfo = new OrtMemoryInfo(
+            "TestGpuPinned", OrtMemoryInfoDeviceType.GPU, 0, 0, OrtDeviceMemoryType.HOST_ACCESSIBLE, 0,
+            OrtAllocatorType.DeviceAllocator);
+
+        OrtEpContextDataBuffer.EnsureCpuAccessibleAllocator(cpuMemoryInfo);
+        OrtEpContextDataBuffer.EnsureCpuAccessibleAllocator(hostAccessibleMemoryInfo);
+        Assert.Throws<InvalidOperationException>(() =>
+            OrtEpContextDataBuffer.EnsureCpuAccessibleAllocator(deviceMemoryInfo));
+    }
+
     [SkippableFact]
     public void ExternalEpContextDataUsesCallbacks()
     {
@@ -314,25 +333,6 @@ public class CompileApiTests
                 var exception = Assert.Throws<OnnxRuntimeException>(() => failureCompileOptions.CompileModel());
                 Assert.Contains("synthetic C# EPContext write failure", exception.Message);
                 Assert.False(File.Exists(modelName));
-            }
-
-            [Fact]
-            public void EpContextReadBufferRequiresCpuAccessibleAllocator()
-            {
-                using var cpuMemoryInfo = new OrtMemoryInfo(
-                    "Cpu", OrtMemoryInfoDeviceType.CPU, 0, 0, OrtDeviceMemoryType.DEFAULT, 0,
-                    OrtAllocatorType.DeviceAllocator);
-                using var deviceMemoryInfo = new OrtMemoryInfo(
-                    "TestGpu", OrtMemoryInfoDeviceType.GPU, 0, 0, OrtDeviceMemoryType.DEFAULT, 0,
-                    OrtAllocatorType.DeviceAllocator);
-                using var hostAccessibleMemoryInfo = new OrtMemoryInfo(
-                    "TestGpuPinned", OrtMemoryInfoDeviceType.GPU, 0, 0, OrtDeviceMemoryType.HOST_ACCESSIBLE, 0,
-                    OrtAllocatorType.DeviceAllocator);
-
-                OrtEpContextDataBuffer.EnsureCpuAccessibleAllocator(cpuMemoryInfo);
-                OrtEpContextDataBuffer.EnsureCpuAccessibleAllocator(hostAccessibleMemoryInfo);
-                Assert.Throws<InvalidOperationException>(() =>
-                    OrtEpContextDataBuffer.EnsureCpuAccessibleAllocator(deviceMemoryInfo));
             }
 
             byte[] compiledModel;
