@@ -2353,10 +2353,13 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   const bool ep_context_data_write_callback_registered = ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr;
   if (ep_context_data_write_callback_registered) {
     registered_ep_context_data_callbacks |= OrtEpContextDataCallbackSupportFlags_WRITE;
+    // Some EPs may produce external EPContext data as a side effect of GetCapability() itself (e.g. a
+    // direct-assignment path that compiles before Compile() is ever called), so this WRITE-support check must
+    // happen before GetCapability() is invoked on any provider.
+    const GraphViewer graph_viewer(graph);
     for (const auto& ep : providers_) {
-      if (ep->MayProduceExternalEpContextDataWithoutCompilation()) {
-        ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(*ep, OrtEpContextDataCallbackSupportFlags_WRITE));
-      }
+      ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(
+          *ep, ep->GetEpContextDataCallbackRequirements(graph_viewer) & OrtEpContextDataCallbackSupportFlags_WRITE));
     }
   }
   const bool ep_context_data_write_callback_required =
