@@ -3,6 +3,7 @@
 
 #include "EpContextDataReadCallback.h"
 #include "EpContextDataReadPolicy.h"
+#include "AsyncWorker.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -45,7 +46,96 @@ bool toViewIndex(double value, size_t& result) noexcept {
   return true;
 }
 
+class EpContextDataReadTestWorker final : public AsyncWorker {
+ public:
+  EpContextDataReadTestWorker(
+      Runtime& runtime, std::shared_ptr<Env> env,
+      std::shared_ptr<EpContextDataReadCallback> callback, std::string name)
+      : AsyncWorker(runtime, std::move(env)),
+        callback_(std::move(callback)),
+        name_(std::move(name)) {}
+
+  ~EpContextDataReadTestWorker() override { abortAndJoin(); }
+
+ protected:
+  void execute() override {
+    Ort::AllocatorWithDefaultOptions allocator;
+    void* buffer = nullptr;
+    size_t dataSize = 0;
+    OrtStatus* status = EpContextDataReadCallback::read(
+        callback_.get(), name_.c_str(), allocator, &buffer, &dataSize);
+    if (status != nullptr) {
+      const char* message = Ort::GetApi().GetErrorMessage(status);
+      std::string error = message == nullptr ? "EPContext callback failed." : message;
+      Ort::GetApi().ReleaseStatus(status);
+      throw std::runtime_error(error);
+    }
+
+    try {
+      if (dataSize > 0) {
+        const auto* bytes = static_cast<const uint8_t*>(buffer);
+        data_.assign(bytes, bytes + dataSize);
+      }
+    } catch (...) {
+      if (buffer != nullptr) {
+        allocator.Free(buffer);
+      }
+      throw;
+    }
+    if (buffer != nullptr) {
+      allocator.Free(buffer);
+    }
+  }
+
+  Value onResolve(Runtime& runtime) override {
+    callback_->invalidate();
+    ArrayBuffer buffer(runtime, data_.size());
+    if (!data_.empty()) {
+      std::memcpy(buffer.data(runtime), data_.data(), data_.size());
+    }
+    auto uint8Array = runtime.global().getPropertyAsFunction(runtime, "Uint8Array");
+    return uint8Array.callAsConstructor(runtime, Value(runtime, std::move(buffer)));
+  }
+
+  Value onReject(Runtime& runtime, const std::string& error) override {
+    callback_->invalidate();
+    return String::createFromUtf8(runtime, error);
+  }
+
+ private:
+  std::shared_ptr<EpContextDataReadCallback> callback_;
+  std::string name_;
+  std::vector<uint8_t> data_;
+};
+
 }  // namespace
+
+Value EpContextDataReadCallback::testCallbackBridge(
+    Runtime& runtime, const Value* arguments, size_t count,
+    const std::shared_ptr<Env>& env) {
+  if (count != 3 || !arguments[0].isObject() ||
+      !arguments[0].asObject(runtime).isFunction(runtime) ||
+      !arguments[1].isNumber() || !arguments[2].isString()) {
+    throw JSError(runtime,
+                  "Expected callback, maxDataSize, and name for the test bridge");
+  }
+  const double rawMaxDataSize = arguments[1].asNumber();
+  if (!std::isfinite(rawMaxDataSize) || rawMaxDataSize < 1 ||
+      std::trunc(rawMaxDataSize) != rawMaxDataSize ||
+      rawMaxDataSize >=
+          static_cast<double>(std::numeric_limits<size_t>::max())) {
+    throw JSError(runtime, "maxDataSize must be a positive integer");
+  }
+
+  auto callback = std::make_shared<Function>(
+      arguments[0].asObject(runtime).asFunction(runtime));
+  auto state = std::make_shared<EpContextDataReadCallback>(
+      env, runtime, std::move(callback),
+      static_cast<size_t>(rawMaxDataSize));
+  auto worker = std::make_shared<EpContextDataReadTestWorker>(
+      runtime, env, std::move(state), arguments[2].asString(runtime).utf8(runtime));
+  return worker->toPromise(runtime);
+}
 
 bool EpContextDataReadCallback::PendingCall::isFinished() noexcept {
   std::lock_guard<std::mutex> lock(mutex);

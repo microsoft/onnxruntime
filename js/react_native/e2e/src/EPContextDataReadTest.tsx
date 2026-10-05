@@ -7,6 +7,14 @@ import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { Buffer } from 'buffer';
 import RNFS from 'react-native-fs';
 
+declare const OrtApi: {
+  __testEpContextDataReadCallback(
+    callback: (name: string) => unknown,
+    maxDataSize: number,
+    name: string,
+  ): Promise<Uint8Array>;
+};
+
 interface TestResult {
   name: string;
   status: 'pending' | 'running' | 'success' | 'error';
@@ -34,6 +42,8 @@ const CHECK_NAMES = [
   'Valid option loads and runs a session',
   'Repeated create/release keeps the callback alive',
   'Failed load releases the callback state',
+  'Callback bridge marshals sliced Uint8Array data on the JS thread',
+  'Callback bridge rejects invalid callback results',
 ];
 
 const styles = StyleSheet.create({
@@ -308,6 +318,77 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     }
   };
 
+  runCallbackBridgeCheck = async (index: number): Promise<void> => {
+    this.updateTestResult(index, { status: 'running' });
+    try {
+      const expectedName = 'context/data.bin';
+      const result = await OrtApi.__testEpContextDataReadCallback(
+        (name) => {
+          if (name !== expectedName) {
+            throw new Error(`Unexpected callback name: ${name}`);
+          }
+          return new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4);
+        },
+        3,
+        expectedName,
+      );
+      if (result.length !== 3 || result[0] !== 1 || result[1] !== 2 || result[2] !== 3) {
+        throw new Error(`Unexpected callback bytes: ${Array.from(result).join(',')}`);
+      }
+
+      this.updateTestResult(index, {
+        status: 'success',
+        message: 'Callback name and sliced Uint8Array bytes were delivered across the native bridge',
+      });
+    } catch (err) {
+      this.updateTestResult(index, {
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  runCallbackBridgeFailureCheck = async (index: number): Promise<void> => {
+    this.updateTestResult(index, { status: 'running' });
+    try {
+      for (const callback of [
+        () => new Uint8Array(2),
+        () => ({ not: 'bytes' }),
+        () => {
+          throw new Error('test callback failure');
+        },
+      ]) {
+        let rejected = false;
+        try {
+          await OrtApi.__testEpContextDataReadCallback(callback, 1, 'failure.bin');
+        } catch {
+          rejected = true;
+        }
+        if (!rejected) {
+          throw new Error('Invalid callback result unexpectedly succeeded');
+        }
+      }
+      const empty = await OrtApi.__testEpContextDataReadCallback(
+        () => new Uint8Array(0),
+        1,
+        'empty.bin',
+      );
+      if (empty.length !== 0) {
+        throw new Error('Expected an empty callback result');
+      }
+
+      this.updateTestResult(index, {
+        status: 'success',
+        message: 'Oversized, invalid, throwing, and empty callback results were handled',
+      });
+    } catch (err) {
+      this.updateTestResult(index, {
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   runAllTests = async (): Promise<void> => {
     this.setState({
       isRunning: true,
@@ -338,6 +419,8 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       await this.runValidOptionCheck(modelBytes, 8);
       await this.runLifecycleCheck(modelBytes, 9);
       await this.runFailedLoadCheck(modelBytes, 10);
+      await this.runCallbackBridgeCheck(11);
+      await this.runCallbackBridgeFailureCheck(12);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.setState((prevState) => ({

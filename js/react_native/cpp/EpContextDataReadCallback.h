@@ -58,6 +58,10 @@ class EpContextDataReadCallback
                     const std::shared_ptr<Env>& env,
                     Ort::SessionOptions& sessionOptions);
 
+  static facebook::jsi::Value testCallbackBridge(
+      facebook::jsi::Runtime& runtime, const facebook::jsi::Value* arguments,
+      size_t count, const std::shared_ptr<Env>& env);
+
   /**
    * @brief OrtReadNamedBufferFunc entry point. No exception ever crosses the C ABI.
    */

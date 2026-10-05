@@ -106,6 +106,36 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
     await session.release();
   });
 
+  it('dispatches callback data through the native worker-thread bridge', async () => {
+    const callbackName = 'context/data.bin';
+    const backing = new Uint8Array([9, 1, 2, 3, 8]);
+    let receivedName: string | undefined;
+    const result = await binding.__testEpContextDataReadCallback(
+      (name) => {
+        receivedName = name;
+        return backing.subarray(1, 4);
+      },
+      3,
+      callbackName,
+    );
+
+    assert.strictEqual(receivedName, callbackName);
+    assert.deepStrictEqual(result, Buffer.from([1, 2, 3]));
+  });
+
+  it('supports empty callback data through the native worker-thread bridge', async () => {
+    const result = await binding.__testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
+    assert.strictEqual(result.byteLength, 0);
+  });
+
+  it('rejects oversized, wrong-type, and throwing callback results through the native bridge', async () => {
+    await assert.rejects(binding.__testEpContextDataReadCallback(() => new Uint8Array(2), 1, 'large.bin'), /exceeds/);
+    await assert.rejects(binding.__testEpContextDataReadCallback(() => new Uint8Array(1).buffer, 4, 'wrong.bin'), /Uint8Array/);
+    await assert.rejects(binding.__testEpContextDataReadCallback(() => {
+      throw new Error('test callback failure');
+    }, 4, 'throw.bin'), /test callback failure/);
+  });
+
   it('the callback is not invoked for a model without EPContext data', async function () {
     // eslint-disable-next-line no-invalid-this
     this.timeout(60000);

@@ -1,5 +1,6 @@
 #include "JsiMain.h"
 #include "InferenceSessionHostObject.h"
+#include "EpContextDataReadCallback.h"
 #include "JsiHelper.h"
 #include "SessionUtils.h"
 #include <memory>
@@ -63,6 +64,17 @@ install(Runtime& runtime,
                   std::placeholders::_3, std::placeholders::_4));
     ortApi.setProperty(runtime, "createInferenceSession",
                        createInferenceSessionMethod);
+
+    auto testEpContextDataReadCallback = Function::createFromHostFunction(
+        runtime,
+        PropNameID::forAscii(runtime, "__testEpContextDataReadCallback"), 3,
+        [env](Runtime& runtime, const Value&, const Value* arguments,
+              size_t count) -> Value {
+          return EpContextDataReadCallback::testCallbackBridge(
+              runtime, arguments, count, env);
+        });
+    ortApi.setProperty(runtime, "__testEpContextDataReadCallback",
+                       testEpContextDataReadCallback);
 
     auto listSupportedBackendsMethod = Function::createFromHostFunction(
         runtime, PropNameID::forAscii(runtime, "listSupportedBackends"), 0,

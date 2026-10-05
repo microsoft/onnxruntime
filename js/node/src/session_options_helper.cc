@@ -393,13 +393,16 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
           size = data.As<Napi::Buffer<char>>().Length();
         } else {
           auto typedArray = data.As<Napi::TypedArray>();
-          source = reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset();
+          auto* arrayBufferData = reinterpret_cast<char*>(typedArray.ArrayBuffer().Data());
+          source = typedArray.ByteOffset() == 0 ? arrayBufferData : arrayBufferData + typedArray.ByteOffset();
           size = typedArray.ByteLength();
         }
         if (externalDataBuffers != nullptr) {
           externalDataBuffers->emplace_back();
           if (size != 0) {
             externalDataBuffers->back().assign(source, source + size);
+          } else {
+            externalDataBuffers->back().push_back(0);
           }
           buffs.push_back(externalDataBuffers->back().data());
         } else {

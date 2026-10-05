@@ -11,6 +11,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "common.h"
 #include "ep_context_data_read_helper.h"
@@ -374,4 +375,93 @@ void ParseEpContextDataReadOptions(const Napi::Object options, Ort::SessionOptio
     state->Release();
   }
   state = std::move(newState);
+}
+
+namespace {
+
+class EpContextDataReadTestWorker final : public Napi::AsyncWorker {
+ public:
+  EpContextDataReadTestWorker(Napi::Env env, std::shared_ptr<EpContextDataReadState> state, std::string name)
+      : Napi::AsyncWorker{env, "onnxruntime.epContextDataRead.test"},
+        state_{std::move(state)},
+        name_{std::move(name)},
+        deferred_{Napi::Promise::Deferred::New(env)} {}
+
+  Napi::Promise Promise() const { return deferred_.Promise(); }
+
+  void Execute() override {
+    try {
+      Ort::AllocatorWithDefaultOptions allocator;
+      void* buffer = nullptr;
+      size_t dataSize = 0;
+      OrtStatus* status = EpContextDataReadState::ReadNamedBuffer(
+          state_.get(), name_.c_str(), allocator, &buffer, &dataSize);
+      if (status != nullptr) {
+        const char* message = Ort::GetApi().GetErrorMessage(status);
+        SetError(message == nullptr ? "EPContext callback failed." : message);
+        Ort::GetApi().ReleaseStatus(status);
+        return;
+      }
+
+      try {
+        if (dataSize > 0) {
+          const auto* bytes = static_cast<const uint8_t*>(buffer);
+          data_.assign(bytes, bytes + dataSize);
+        }
+      } catch (...) {
+        if (buffer != nullptr) {
+          allocator.Free(buffer);
+        }
+        throw;
+      }
+      if (buffer != nullptr) {
+        allocator.Free(buffer);
+      }
+    } catch (const std::exception& error) {
+      SetError(error.what());
+    } catch (...) {
+      SetError("Unknown error while reading EPContext callback data.");
+    }
+  }
+
+  void OnOK() override {
+    state_->Release();
+    if (data_.empty()) {
+      deferred_.Resolve(Napi::Buffer<uint8_t>::New(Env(), 0));
+    } else {
+      deferred_.Resolve(Napi::Buffer<uint8_t>::Copy(Env(), data_.data(), data_.size()));
+    }
+  }
+
+  void OnError(const Napi::Error& error) override {
+    state_->Release();
+    deferred_.Reject(error.Value());
+  }
+
+ private:
+  std::shared_ptr<EpContextDataReadState> state_;
+  std::string name_;
+  std::vector<uint8_t> data_;
+  Napi::Promise::Deferred deferred_;
+};
+
+}  // namespace
+
+Napi::Value TestEpContextDataReadCallback(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() != 3 || !info[0].IsFunction() || !info[1].IsNumber() ||
+                                  !info[2].IsString(),
+                              env, "Expected callback, maxDataSize, and name.");
+
+  const double maxDataSize = info[1].As<Napi::Number>().DoubleValue();
+  ORT_NAPI_THROW_RANGEERROR_IF(!std::isfinite(maxDataSize) || std::floor(maxDataSize) != maxDataSize ||
+                               maxDataSize < 1 || maxDataSize > kMaxSafeInteger ||
+                               maxDataSize >= static_cast<double>(std::numeric_limits<size_t>::max()),
+                           env, "maxDataSize must be a positive safe integer.");
+
+  auto state = EpContextDataReadState::Create(env, info[0].As<Napi::Function>(), static_cast<size_t>(maxDataSize));
+  auto worker = new EpContextDataReadTestWorker(env, std::move(state), info[2].As<Napi::String>().Utf8Value());
+  Napi::Promise promise = worker->Promise();
+  worker->Queue();
+  return promise;
 }

@@ -101,3 +101,5 @@ class EpContextDataReadState final {
  */
 void ParseEpContextDataReadOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
                                    std::shared_ptr<EpContextDataReadState>& state);
+
+Napi::Value TestEpContextDataReadCallback(const Napi::CallbackInfo& info);
