@@ -24,6 +24,9 @@ metadata or execution-provider configuration used for inference. Android context
 also account for the 1DS JNI bridge's modified-UTF-8 encoding; HTTP transport data is not
 treated as a free-form event property.
 
+QNN profiling trace-event strings are scrubbed with `ScrubStringForTelemetry` before emission
+to remove filesystem paths. Local QNN CSV and profiling-log output is unchanged.
+
 **Windows apps and components.** The Windows provider used the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
 **Other builds with telemetry (Windows, Linux, macOS, Android, iOS).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.

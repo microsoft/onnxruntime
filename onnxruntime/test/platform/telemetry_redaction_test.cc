@@ -127,5 +127,31 @@ TEST(TelemetryRedactionTest, LengthCapDoesNotSplitUtf8Codepoint) {
   EXPECT_EQ(ScrubStringForTelemetry(exact_boundary), exact_boundary);
 }
 
+TEST(TelemetryRedactionTest, QnnProfilingStringsScrubbedBeforeStorage) {
+  telemetry_detail::TelemetryStrings strings;
+  const char* message = strings.Utf8(ScrubStringForTelemetry("Load C:\\Users\\First Last\\model.bin"));
+  const char* value = strings.Utf8(ScrubStringForTelemetry("/home/alice/models/context.bin"));
+  const char* identifier = strings.Utf8(
+      ScrubStringForTelemetry(telemetry_detail::TelemetryCStringView("\\\\server\\share\\model.bin")));
+  const char* unit = strings.Utf8(ScrubStringForTelemetry("US"));
+  const char* timing_source = strings.Utf8(ScrubStringForTelemetry("BACKEND"));
+  const char* event_level = strings.Utf8(ScrubStringForTelemetry("SUB-EVENT"));
+
+  EXPECT_STREQ(message, "Load [path]");
+  EXPECT_STREQ(value, "[path]");
+  EXPECT_STREQ(identifier, "[path]");
+  EXPECT_STREQ(unit, "US");
+  EXPECT_STREQ(timing_source, "BACKEND");
+  EXPECT_STREQ(event_level, "SUB-EVENT");
+}
+
+TEST(TelemetryRedactionTest, BoundedQnnIdentifierRetainsTruncationForScrubbing) {
+  const std::string identifier = "alice/" + std::string(kMaxTelemetryStringLength, 'x') + "/model.bin";
+  const auto view = telemetry_detail::TelemetryCStringView(identifier.c_str());
+  EXPECT_EQ(view.size(), kMaxTelemetryStringLength + 1);
+  EXPECT_EQ(ScrubStringForTelemetry(view), "[path]");
+  EXPECT_EQ(ScrubStringForTelemetry(telemetry_detail::TelemetryCStringView(nullptr)), "");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
