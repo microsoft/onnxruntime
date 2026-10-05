@@ -1088,7 +1088,7 @@ endif()
 # 1DS SDK (cpp_client_telemetry) is the default cross-platform telemetry backend.
 if(onnxruntime_USE_1DS_TELEMETRY)
   if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
+    message(FATAL_ERROR "onnxruntime_USE_1DS_TELEMETRY / telemetry is not supported for WebAssembly/Emscripten builds: "
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
   endif()
   set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE OFF)
