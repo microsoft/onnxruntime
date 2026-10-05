@@ -367,7 +367,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       Node& sub_node_dup = *graph.GetNode(p_sub_node_dup->Index());
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub_node_dup, "Sub", {7, 13, 14}) ||
           sub_node_dup.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
-          !optimizer_utils::CheckOutputEdges(graph, sub_node, 1) ||
+          !optimizer_utils::CheckOutputEdges(graph, sub_node_dup, 1) ||
           !IsSupportedDataType(sub_node_dup)) {
         continue;
       }
