@@ -26,18 +26,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getMaps(JNIEnv* 
   size_t count;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetValueCount(sequence, &count));
   if (code == ORT_OK) {
-    jsize countJava;
-    if (!safecast_size_t_to_jsize(jniEnv, count, &countJava)) {
-      return NULL;
-    }
     jclass tensorClazz = (*jniEnv)->FindClass(jniEnv, "ai/onnxruntime/OnnxMap");
-    if (tensorClazz == NULL) {
-      return NULL;
-    }
-    outputArray = (*jniEnv)->NewObjectArray(jniEnv, countJava, tensorClazz, NULL);
-    if (outputArray == NULL) {
-      return NULL;
-    }
+    outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(count), tensorClazz, NULL);
     for (size_t i = 0; i < count; i++) {
       // Extract element
       OrtValue* element;
@@ -78,18 +68,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getTensors(JNIEn
   size_t count;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetValueCount(sequence, &count));
   if (code == ORT_OK) {
-    jsize countJava;
-    if (!safecast_size_t_to_jsize(jniEnv, count, &countJava)) {
-      return NULL;
-    }
     jclass tensorClazz = (*jniEnv)->FindClass(jniEnv, "ai/onnxruntime/OnnxTensor");
-    if (tensorClazz == NULL) {
-      return NULL;
-    }
-    outputArray = (*jniEnv)->NewObjectArray(jniEnv, countJava, tensorClazz, NULL);
-    if (outputArray == NULL) {
-      return NULL;
-    }
+    outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(count), tensorClazz, NULL);
     for (size_t i = 0; i < count; i++) {
       // Extract element
       OrtValue* element;

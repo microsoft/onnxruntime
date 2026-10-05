@@ -65,15 +65,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxRuntime_getAvailableProvi
     // Convert to Java String Array
     char* stringClassName = "java/lang/String";
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
-    if (stringClazz == NULL) {
-      api->ReleaseAvailableProviders(providers, numProviders);
-      return NULL;
-    }
     providerArray = (*jniEnv)->NewObjectArray(jniEnv, numProviders, stringClazz, NULL);
-    if (providerArray == NULL) {
-      api->ReleaseAvailableProviders(providers, numProviders);
-      return NULL;
-    }
 
     for (int i = 0; i < numProviders; i++) {
       // Read out the provider name and convert it to a java.lang.String

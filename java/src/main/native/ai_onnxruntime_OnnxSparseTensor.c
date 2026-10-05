@@ -238,17 +238,8 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesSh
   }
 
   // Create the long array for the shape.
-  jsize numDimJava;
-  if (!safecast_size_t_to_jsize(jniEnv, numDim, &numDimJava)) {
-    free(dimensions);
-    return NULL;
-  }
-  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, numDimJava);
-  if (shape == NULL) {
-    free(dimensions);
-    return NULL;
-  }
-  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, numDimJava, (jlong*)dimensions);
+  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(numDim));
+  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
 
   // Free the dimensions array
   free((void*)dimensions);
@@ -321,17 +312,8 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
   }
 
   // Create the long array for the shape.
-  jsize numDimJava;
-  if (!safecast_size_t_to_jsize(jniEnv, numDim, &numDimJava)) {
-    free(dimensions);
-    return NULL;
-  }
-  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, numDimJava);
-  if (shape == NULL) {
-    free(dimensions);
-    return NULL;
-  }
-  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, numDimJava, (jlong*)dimensions);
+  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(numDim));
+  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
   // Free the dimensions array
   free((void*)dimensions);
 
@@ -378,17 +360,8 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesShape
   }
 
   // Create the long array for the shape.
-  jsize numDimJava;
-  if (!safecast_size_t_to_jsize(jniEnv, numDim, &numDimJava)) {
-    free(dimensions);
-    return NULL;
-  }
-  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, numDimJava);
-  if (shape == NULL) {
-    free(dimensions);
-    return NULL;
-  }
-  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, numDimJava, (jlong*)dimensions);
+  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(numDim));
+  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
 
   // Free the dimensions array
   free((void*)dimensions);

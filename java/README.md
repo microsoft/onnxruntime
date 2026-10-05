@@ -71,10 +71,3 @@ Then the corresponding C files in `./src/main/native/ai_onnxruntime*.c` may be u
 ### Dependencies
 
 The Java API does not have any runtime or compile dependencies.
-
-### Native JNI Tests
-
-Native desktop builds with Java and unit tests enabled also build `onnxruntime_java_jni_test`.
-Run it with `ctest -R '^onnxruntime_java_jni_test$' --output-on-failure` from the CMake build directory.
-These tests use a real JVM with `-Xcheck:jni` and a small heap to check array-size conversions,
-exception propagation, and allocation failures without allocating large tensors.
