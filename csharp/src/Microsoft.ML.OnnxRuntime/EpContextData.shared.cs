@@ -27,6 +27,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Returns all data as a read-only span. For data larger than <see cref="int.MaxValue"/>,
         /// use <see cref="GetSpan(ulong, int)"/> to process it in chunks.
         /// </summary>
+        /// <returns>A read-only span over the data.</returns>
         public ReadOnlySpan<byte> GetSpan()
         {
             ThrowIfInvalid();
@@ -43,6 +44,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="offset">Byte offset into the data.</param>
         /// <param name="length">Number of bytes in the returned span.</param>
+        /// <returns>A read-only span over the requested range.</returns>
         public unsafe ReadOnlySpan<byte> GetSpan(ulong offset, int length)
         {
             ThrowIfInvalid();
@@ -156,6 +158,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// For buffers larger than <see cref="int.MaxValue"/>, use <see cref="Allocate(ulong)"/>
         /// followed by chunked calls to <see cref="GetSpan(ulong, int)"/>.
         /// </summary>
+        /// <returns>A writable span over the allocated buffer.</returns>
         public Span<byte> Allocate(int size)
         {
             if (size < 0)
@@ -202,6 +205,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Returns the entire allocated buffer as a writable span.
         /// </summary>
+        /// <returns>A writable span over the allocated buffer.</returns>
         public Span<byte> GetSpan()
         {
             if (Size > int.MaxValue)
@@ -215,6 +219,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Returns a writable span for a range of the allocated buffer.
         /// </summary>
+        /// <param name="offset">Byte offset into the allocated buffer.</param>
+        /// <param name="length">Number of bytes in the returned span.</param>
+        /// <returns>A writable span over the requested range.</returns>
         public unsafe Span<byte> GetSpan(ulong offset, int length)
         {
             ThrowIfDisposed();
