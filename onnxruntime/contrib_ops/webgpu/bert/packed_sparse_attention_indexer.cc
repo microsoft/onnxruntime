@@ -48,11 +48,40 @@ namespace {
 
 constexpr uint32_t kWorkgroupSize = 64;
 
+uint32_t StorageBindingSegments(const Tensor* tensor, uint64_t max_binding_size) {
+  if (tensor == nullptr) {
+    return 0;
+  }
+  const uint64_t bytes = tensor->SizeInBytes();
+  if (max_binding_size == 0 || bytes <= max_binding_size) {
+    return 1;
+  }
+  return static_cast<uint32_t>((bytes + max_binding_size - 1) / max_binding_size);
+}
+
 Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<int64_t> expected) {
   ORT_RETURN_IF(tensor == nullptr, "PackedSparseAttentionIndexer: ", name, " is required");
   const TensorShape expected_shape(expected);
   ORT_RETURN_IF_NOT(tensor->Shape() == expected_shape, "PackedSparseAttentionIndexer: ", name, " must have shape ",
                     expected_shape.ToString(), ", got ", tensor->Shape().ToString());
+  return Status::OK();
+}
+
+Status CheckStorageBindingLimit(const onnxruntime::webgpu::ComputeContext& context,
+                                const char* program_name,
+                                std::initializer_list<const Tensor*> tensors) {
+  const auto& limits = context.DeviceLimits();
+  uint32_t binding_count = 0;
+  for (const Tensor* tensor : tensors) {
+    ORT_RETURN_IF(tensor == nullptr, "PackedSparseAttentionIndexer: missing tensor for ", program_name);
+    binding_count += StorageBindingSegments(tensor, limits.maxStorageBufferBindingSize);
+  }
+  if (binding_count > limits.maxStorageBuffersPerShaderStage) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PackedSparseAttentionIndexer (WebGPU): ", program_name, " requires ", binding_count,
+                           " storage-buffer bindings after segmentation, but this adapter supports only ",
+                           limits.maxStorageBuffersPerShaderStage, " per shader stage.");
+  }
   return Status::OK();
 }
 
@@ -865,7 +894,15 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
     }
   }
 
+  if (total_tokens == 0) {
+    return Status::OK();
+  }
+
   if (batch_size > 0) {
+    ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
+        context, "QSA update",
+        {key, norm, &rotary_cache, cu_seqlens, past_seqlens, present_key_state, present_kv_buffer,
+         present_state_lengths, &overflow_flags}));
     PackedSparseAttentionIndexerQsaUpdateProgram update{rotary.batched};
     update.CacheHint(rotary.batched)
         .SetWorkgroupSize(kWorkgroupSize)
@@ -891,10 +928,10 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
     ORT_RETURN_IF_ERROR(context.RunProgram(update));
   }
 
-  if (total_tokens == 0) {
-    return Status::OK();
-  }
-
+  ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
+      context, "QSA selection",
+      {query, query_norm, present_key_state, &rotary_cache, cu_seqlens, past_seqlens, present_state_lengths,
+       &overflow_flags, selected_indices, selected_counts}));
   PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched};
   select.CacheHint(rotary.batched)
       .SetWorkgroupSize(kWorkgroupSize)
@@ -993,20 +1030,6 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(CheckShape(past_state_lengths, "past_state_lengths",
                                  {batch_size, psai::kStateLengthColumns}));
 
-  Tensor key_gate =
-      context.CreateGPUTensor(key->DataType(), TensorShape({key->Shape().Size() + gate->Shape().Size()}));
-  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *key, *gate, key_gate));
-  Tensor rotary_cache =
-      context.CreateGPUTensor(cos_cache->DataType(), TensorShape({2 * cos_cache->Shape().Size()}));
-  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *cos_cache, *sin_cache, rotary_cache));
-  Tensor sequence_metadata = context.CreateGPUTensor(
-      cu_seqlens->DataType(), TensorShape({cu_seqlens->Shape().Size() + past_seqlens->Shape().Size()}));
-  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *cu_seqlens, *past_seqlens, sequence_metadata));
-  // Keep the CSA selection shader within Metal's 10-storage-buffer-per-stage limit.
-  Tensor query_metadata = context.CreateGPUTensor(
-      query_norm->DataType(), TensorShape({query_norm->Shape().Size() + head_weights->Shape().Size()}));
-  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *query_norm, *head_weights, query_metadata));
-
   const int64_t capacity = psai::SelectedCapacity(psai::Policy::kCsa, token_budget_, index_topk_, compress_ratio_);
   Tensor* selected_indices = context.Output(psai::kSelectedIndices, TensorShape({total_tokens, capacity}));
   Tensor* selected_counts = context.Output(psai::kSelectedCounts, TensorShape({total_tokens}));
@@ -1040,7 +1063,28 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(copy_if_needed(past_gate_buffer, present_gate_buffer));
   ORT_RETURN_IF_ERROR(copy_if_needed(past_state_lengths, present_state_lengths));
 
+  if (total_tokens == 0) {
+    return Status::OK();
+  }
+
+  Tensor key_gate =
+      context.CreateGPUTensor(key->DataType(), TensorShape({key->Shape().Size() + gate->Shape().Size()}));
+  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *key, *gate, key_gate));
+  Tensor rotary_cache =
+      context.CreateGPUTensor(cos_cache->DataType(), TensorShape({2 * cos_cache->Shape().Size()}));
+  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *cos_cache, *sin_cache, rotary_cache));
+  Tensor sequence_metadata = context.CreateGPUTensor(
+      cu_seqlens->DataType(), TensorShape({cu_seqlens->Shape().Size() + past_seqlens->Shape().Size()}));
+  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *cu_seqlens, *past_seqlens, sequence_metadata));
+  Tensor query_metadata = context.CreateGPUTensor(
+      query_norm->DataType(), TensorShape({query_norm->Shape().Size() + head_weights->Shape().Size()}));
+  ORT_RETURN_IF_ERROR(PackTwoTensors(context, *query_norm, *head_weights, query_metadata));
+
   if (batch_size > 0) {
+    ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
+        context, "CSA update",
+        {&key_gate, norm, &rotary_cache, position_bias, &sequence_metadata, present_key_state, present_kv_buffer,
+         present_gate_buffer, present_state_lengths, &overflow_flags}));
     PackedSparseAttentionIndexerCsaUpdateProgram update{rotary.batched};
     update.CacheHint(rotary.batched)
         .SetWorkgroupSize(kWorkgroupSize)
@@ -1067,10 +1111,10 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
     ORT_RETURN_IF_ERROR(context.RunProgram(update));
   }
 
-  if (total_tokens == 0) {
-    return Status::OK();
-  }
-
+  ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
+      context, "CSA selection",
+      {query, &query_metadata, present_key_state, position_ids, &rotary_cache, cu_seqlens, present_state_lengths,
+       &overflow_flags, selected_indices, selected_counts}));
   PackedSparseAttentionIndexerCsaSelectProgram select{rotary.batched};
   select.CacheHint(rotary.batched)
       .SetWorkgroupSize(kWorkgroupSize)

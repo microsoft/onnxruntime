@@ -99,6 +99,8 @@ struct GraphOptions {
   bool add_index_topk = false;
   bool add_csa_inputs = false;
   bool add_position_ids = false;
+  bool add_qsa_gate_output = false;
+  bool omit_csa_gate_output = false;
   int output_count = psai::kFixedOutputCount;
   std::string policy_mode = psai::kPolicyModeQsa;
 };
@@ -157,7 +159,10 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 
   std::vector<NodeArg*> outputs;
   for (int i = 0; i < options.output_count; ++i) {
-    outputs.push_back(i == psai::kPresentGateBuffer && !is_csa ? &empty : builder.MakeOutput());
+    const bool omit_gate_output =
+        i == psai::kPresentGateBuffer &&
+        ((is_csa && options.omit_csa_gate_output) || (!is_csa && !options.add_qsa_gate_output));
+    outputs.push_back(omit_gate_output ? &empty : builder.MakeOutput());
   }
   Node& node = builder.AddNode("PackedSparseAttentionIndexer", inputs, outputs, kMSDomain);
   node.AddAttribute("policy_mode", options.policy_mode);
@@ -371,6 +376,21 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongOutputCount) {
   options.output_count = 4;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
                        "output size 4 not in range [min=6, max=6]");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaPresentGateBuffer) {
+  GraphOptions options;
+  options.add_qsa_gate_output = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "present_gate_buffer) must be omitted");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMissingCsaPresentGateBuffer) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.omit_csa_gate_output = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "present_gate_buffer) is required");
 }
 
 #endif  // ORT_NO_EXCEPTIONS
@@ -856,6 +876,15 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat16) {
   RunQsaPackedTest<MLFloat16>(2.0e-3f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
 }
 
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaAllEmptyBatchPreservesState) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 0};
+  problem.past_sequence_lengths = {5};
+  problem.past_state_lengths = {2, 1};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected) {
   QsaPackedProblem problem;
   problem.batch_size = 1;
@@ -1220,6 +1249,17 @@ TEST(PackedSparseAttentionIndexerTest, CsaFloat16) { RunCsaPackedTest<MLFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, CsaBFloat16) { RunCsaPackedTest<BFloat16>(MakeCsaPackedProblem(), 3.0e-2f); }
 
+TEST(PackedSparseAttentionIndexerTest, CsaAliasedBufferCompaction) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.compress_ratio = 64;
+  problem.cumulative_sequence_lengths = {0, 64};
+  problem.past_sequence_lengths = {65};
+  problem.state_capacity = 4;
+  problem.past_state_lengths = {0, 65};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
+}
+
 TEST(PackedSparseAttentionIndexerTest, CsaPrefillThenDecodeIndependentState) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA execution provider is not available";
@@ -1270,6 +1310,15 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat16) {
   RunCsaPackedTest<MLFloat16>(MakeCsaPackedProblem(), 4.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaAllEmptyBatchPreservesState) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 0};
+  problem.past_sequence_lengths = {3};
+  problem.past_state_lengths = {1, 1};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected) {

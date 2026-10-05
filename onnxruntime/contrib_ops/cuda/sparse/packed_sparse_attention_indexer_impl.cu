@@ -590,10 +590,13 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
     // (from the baseline copy in the Launch function below), which is exactly the prior valid
     // buffer this rejected step must preserve.
     if (!rejected) {
-      for (int t = static_cast<int>(threadIdx.x); t < present_buffer_length; t += static_cast<int>(blockDim.x)) {
+      // Process slots in ascending order with a barrier between slots. When past and present alias,
+      // the destination slot precedes its source slot, so this is the device-wide equivalent of
+      // a forward memmove and prevents one thread from overwriting another thread's source.
+      for (int t = 0; t < present_buffer_length; ++t) {
         const int virtual_pos = present_buffer_start + t;
         const int64_t out_base = (static_cast<int64_t>(b) * params.buffer_capacity + t) * width;
-        for (int c = 0; c < width; ++c) {
+        for (int c = static_cast<int>(threadIdx.x); c < width; c += static_cast<int>(blockDim.x)) {
           const float key_value =
               virtual_pos < old_buf_len
                   ? to_float<T>(
@@ -608,9 +611,9 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
           present_kv_buffer[out_base + c] = from_float<T>(key_value);
           present_gate_buffer[out_base + c] = from_float<T>(gate_value);
         }
+        __syncthreads();
       }
     }
-    __syncthreads();
   }
 }
 
