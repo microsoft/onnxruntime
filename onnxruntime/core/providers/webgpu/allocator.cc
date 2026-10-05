@@ -50,11 +50,8 @@ void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording
   }
 
   const auto& buffer_manager = buffer_manager_getter_();
-  if (!mapped_at_creation_.has_value()) {
-    mapped_at_creation_ = is_read_only_allocator_ && buffer_manager.SupportsUMA();
-  }
-  wgpu::BufferUsage usage = *mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
-                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
+  wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
+                                                : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
   auto buffer = buffer_manager.Create(recording, size, usage, initialize_to_zero_, submit_zero_initialize);
   num_allocs_.fetch_add(1, std::memory_order_relaxed);

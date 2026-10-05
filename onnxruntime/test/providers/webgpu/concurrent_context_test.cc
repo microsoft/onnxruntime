@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <atomic>
 #include <barrier>
 #include <chrono>
 #include <filesystem>
@@ -8,6 +10,7 @@
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -19,7 +22,11 @@
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
+#include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_external_header.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/inference_session.h"
 
@@ -31,6 +38,98 @@
 
 namespace onnxruntime {
 namespace test {
+namespace {
+
+void BuildAddChainModel(int chain_len, int64_t num_elements, std::string& model_bytes) {
+  const std::unordered_map<std::string, int> domain_to_version{{"", 13}};
+  Model model("webgpu_concurrent_ctx", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_1d;
+  float_1d.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_1d.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(num_elements);
+
+  const std::vector<float> weight_values(static_cast<size_t>(num_elements), 0.5f);
+
+  NodeArg* prev = &graph.GetOrCreateNodeArg("X", &float_1d);
+  for (int i = 0; i < chain_len; ++i) {
+    const std::string w_name = "W" + std::to_string(i);
+    ONNX_NAMESPACE::TensorProto w_tensor;
+    w_tensor.set_name(w_name);
+    w_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    w_tensor.add_dims(num_elements);
+    w_tensor.set_raw_data(weight_values.data(), weight_values.size() * sizeof(float));
+    graph.AddInitializedTensor(w_tensor);
+
+    NodeArg* w_arg = &graph.GetOrCreateNodeArg(w_name, &float_1d);
+    const std::string out_name = (i == chain_len - 1) ? "Y" : ("H" + std::to_string(i));
+    NodeArg* out_arg = &graph.GetOrCreateNodeArg(out_name, &float_1d);
+    graph.AddNode("add" + std::to_string(i), "Add", "", {prev, w_arg}, {out_arg});
+    prev = out_arg;
+  }
+
+  graph.SetOutputs({prev});
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+}
+
+constexpr const char* kUnaryOps[] = {
+    "Abs", "Neg", "Floor", "Ceil", "Reciprocal", "Sqrt", "Exp", "Erf", "Sigmoid",
+    "Sin", "Cos", "Tan", "Atan", "Sinh", "Cosh", "Tanh", "HardSigmoid", "HardSwish"};
+
+void BuildUnaryFanOutModel(int64_t num_elements, std::string& model_bytes) {
+  const std::unordered_map<std::string, int> domain_to_version{{"", 14}};
+  Model model("webgpu_concurrent_ctx_cold", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_1d;
+  float_1d.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_1d.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(num_elements);
+
+  NodeArg* x_arg = &graph.GetOrCreateNodeArg("X", &float_1d);
+  std::vector<const NodeArg*> outputs;
+  outputs.reserve(std::size(kUnaryOps));
+  for (size_t i = 0; i < std::size(kUnaryOps); ++i) {
+    NodeArg* out_arg = &graph.GetOrCreateNodeArg("Y" + std::to_string(i), &float_1d);
+    graph.AddNode("op" + std::to_string(i), kUnaryOps[i], "", {x_arg}, {out_arg});
+    outputs.push_back(out_arg);
+  }
+
+  graph.SetOutputs(outputs);
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+}
+
+class ErrorSink {
+ public:
+  void Record(const std::string& message) {
+    bool expected = false;
+    if (failed_.compare_exchange_strong(expected, true)) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      first_error_ = message;
+    }
+  }
+
+  bool Failed() const {
+    return failed_.load();
+  }
+
+  std::string FirstError() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return first_error_;
+  }
+
+ private:
+  std::atomic<bool> failed_{false};
+  mutable std::mutex mutex_;
+  std::string first_error_;
+};
 
 TEST(WebGpuConcurrentContextTestStandalone, ShaderDumpWritesRemainComplete) {
   TemporaryDirectory temp_dir{ORT_TSTR("webgpu_shader_dump_test")};
@@ -646,5 +745,6 @@ TEST(WebGpuPoolMemory, DISABLED_MultiSessionSameShape) {
   std::this_thread::sleep_for(std::chrono::milliseconds(hold_ms));
 }
 
+}  // namespace
 }  // namespace test
 }  // namespace onnxruntime

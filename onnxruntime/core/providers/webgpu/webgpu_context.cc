@@ -1453,10 +1453,14 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
   device_queue_.Submit(1, &command_buffer);
   refresh_pending_buffers();
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
-  for (auto& release : recording.pending_release_callbacks) {
+  std::vector<std::function<void()>> pending_release_callbacks;
+  {
+    std::lock_guard<std::mutex> lock{recording.pending_release_callbacks_mutex};
+    pending_release_callbacks.swap(recording.pending_release_callbacks);
+  }
+  for (auto& release : pending_release_callbacks) {
     release();
   }
-  recording.pending_release_callbacks.clear();
 #endif
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;

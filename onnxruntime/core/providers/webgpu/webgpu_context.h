@@ -130,6 +130,7 @@ struct CommandRecordingState {
   // BufferManager clears it under its cache lock after submission or abandonment.
   std::atomic<bool> has_unsubmitted_work{false};
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  std::mutex pending_release_callbacks_mutex;
   std::vector<std::function<void()>> pending_release_callbacks;
 #endif
   std::vector<CapturedCommandInfo> deferred_dispatches;

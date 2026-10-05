@@ -27,8 +27,16 @@ class ExternalDataLoaderManager {
   const IExternalDataLoader* GetExternalDataLoader(
       const OrtMemoryInfo& target_memory_info, int32_t tensor_data_type) const;
 #if defined(ENABLE_D3D12_FILE_LOADING)
-  const IExternalDataLoader* GetTensorCreator(
-      const OrtDevice& target_device, int32_t tensor_data_type) const;
+  common::Status GetTensorCreator(
+      const OrtDevice& target_device,
+      int32_t tensor_data_type,
+      const std::shared_ptr<IAllocator>& allocator,
+      const IExternalDataLoader*& tensor_creator) const;
+  common::Status GetExternalDataLoader(
+      const OrtMemoryInfo& target_memory_info,
+      int32_t tensor_data_type,
+      const std::shared_ptr<IAllocator>& allocator,
+      const IExternalDataLoader*& external_data_loader) const;
   common::Status BeginLoad() const;
   common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const;
   void AbortLoad() const noexcept;

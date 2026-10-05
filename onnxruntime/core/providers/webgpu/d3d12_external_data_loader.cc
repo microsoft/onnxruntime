@@ -407,8 +407,6 @@ class D3D12AcceleratedWebGpuAllocator final
         wgpu::BufferUsage::CopyDst |
         wgpu::BufferUsage::Indirect;
     auto& recording = recording_getter_();
-    std::lock_guard<std::recursive_mutex> lock{
-        recording.mutex};
     return context_.InitializerBufferManager().Create(
         recording, size, usage);
   }
@@ -419,8 +417,6 @@ class D3D12AcceleratedWebGpuAllocator final
     }
 
     auto& recording = recording_getter_();
-    std::lock_guard<std::recursive_mutex>
-        recording_lock{recording.mutex};
     std::unique_ptr<ImportedAllocation> imported;
     {
       std::lock_guard<std::mutex> lock{
@@ -437,17 +433,26 @@ class D3D12AcceleratedWebGpuAllocator final
     }
 
     if (imported) {
-      if (recording.has_unsubmitted_work) {
+      if (recording.has_unsubmitted_work.load(
+              std::memory_order_acquire)) {
         std::shared_ptr<ImportedAllocation> deferred{
             imported.release(),
             [](ImportedAllocation* allocation) {
               EndAccessNoThrow(*allocation);
               delete allocation;
             }};
-        recording.pending_release_callbacks.emplace_back(
-            [deferred = std::move(deferred)]() mutable {
-              deferred.reset();
-            });
+        {
+          std::lock_guard<std::mutex> lock{
+              recording.pending_release_callbacks_mutex};
+          if (recording.has_unsubmitted_work.load(
+                  std::memory_order_acquire)) {
+            recording.pending_release_callbacks.emplace_back(
+                [deferred]() mutable {
+                  deferred.reset();
+                });
+          }
+        }
+        deferred.reset();
       } else {
         EndAccessNoThrow(*imported);
       }
@@ -455,7 +460,7 @@ class D3D12AcceleratedWebGpuAllocator final
     }
 
     context_.InitializerBufferManager().Release(
-        recording, static_cast<WGPUBuffer>(p));
+        static_cast<WGPUBuffer>(p), &recording);
   }
 
  private:
@@ -584,6 +589,29 @@ bool D3D12AcceleratedExternalDataLoader::
   return target_device == WebGpuDevice &&
          (impl_->enabled ||
           IsWeightLoadAccelerationRequired(impl_->mode));
+}
+
+common::Status ResolveWeightLoadAccelerationAllocator(
+    WeightLoadAccelerationMode mode,
+    const IAllocator* accelerated_allocator,
+    const std::shared_ptr<IAllocator>& selected_allocator,
+    bool& compatible) {
+  compatible = selected_allocator != nullptr &&
+               selected_allocator.get() == accelerated_allocator;
+  ORT_RETURN_IF(
+      !compatible && IsWeightLoadAccelerationRequired(mode),
+      "weightLoadAcceleration=\"required\" is incompatible with the selected "
+      "WebGPU initializer allocator.");
+  return common::Status::OK();
+}
+
+common::Status D3D12AcceleratedExternalDataLoader::
+    CanCreateTensorWithAllocator(
+        const std::shared_ptr<IAllocator>& allocator,
+        bool& can_create_tensor) const {
+  return ResolveWeightLoadAccelerationAllocator(
+      impl_->mode, impl_->state->impl_->allocator,
+      allocator, can_create_tensor);
 }
 
 common::Status
