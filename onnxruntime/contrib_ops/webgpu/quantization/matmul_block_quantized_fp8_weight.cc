@@ -159,8 +159,8 @@ Status MatMulBlockQuantizedFp8Weight::ComputeInternal(onnxruntime::webgpu::Compu
     qdq_program.SetWorkgroupSize(64);
     qdq_program.SetDispatchGroupSize((narrow<uint32_t>(a_shape.Size()) + 63u) / 64u);
     qdq_program.AddInputs({{a, ProgramTensorMetadataDependency::Type},
-                           {a_scale, ProgramTensorMetadataDependency::None}})
-        .AddOutput({&qdq, ProgramTensorMetadataDependency::None})
+                           {a_scale, ProgramTensorMetadataDependency::Type}})
+        .AddOutput({&qdq, ProgramTensorMetadataDependency::Type})
         .AddUniformVariables({{narrow<uint32_t>(a_shape.Size())}});
     ORT_RETURN_IF_ERROR(context.RunProgram(qdq_program));
     activation = &qdq;
