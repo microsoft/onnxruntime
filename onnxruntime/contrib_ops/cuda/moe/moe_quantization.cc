@@ -386,8 +386,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
-  enable_int2_prefill_ = quant_type_ == "int" && sm_ >= 80 && block_size_ == 64 &&
-                         fc1_expert_weight_bits_ == 2 && fc2_expert_weight_bits_ == 4 &&
+  enable_int2_prefill_ = quant_type_ == "int" && sm_ >= 80 &&
+                         (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
+                         (fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4) &&
+                         (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4) &&
+                         (fc1_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 2) &&
                          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 1) != 0;
 
   fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
@@ -1838,6 +1841,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.unpermuted_to_permuted = unpermuted_row_to_permuted_row;
     params.hidden_size = static_cast<int>(moe_params.hidden_size);
     params.inter_size = static_cast<int>(moe_params.inter_size);
+    params.block_size = static_cast<int>(block_size_);
+    params.fc1_weight_bits = static_cast<int>(fc1_expert_weight_bits_);
+    params.fc2_weight_bits = static_cast<int>(fc2_expert_weight_bits_);
     params.num_experts = static_cast<int>(moe_params.num_experts);
     params.top_k = static_cast<int>(k_);
     params.sm = sm_;
@@ -2550,7 +2556,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   const auto int_weight_supports_packed_execution = [&](int64_t weight_bits) {
     if ((!enable_int2_gemv_ && !enable_int2_prefill_) ||
         activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
-        swiglu_fusion_ != 1 || (block_size_ != 64 && block_size_ != 128)) {
+        swiglu_fusion_ != 1 || (block_size_ != 32 && block_size_ != 64 && block_size_ != 128)) {
       return false;
     }
 
@@ -2567,9 +2573,11 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       return true;
     }
 
-    return enable_int2_gemv_ && onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
-                                    sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
-                                    static_cast<int>(weight_bits), static_cast<int>(block_size_));
+    // Block size 32 is served only by packed prefill; ComputeInternal's packed GEMV accepts 64 and 128.
+    return enable_int2_gemv_ && (block_size_ == 64 || block_size_ == 128) &&
+           onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
+               sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
+               static_cast<int>(weight_bits), static_cast<int>(block_size_));
   };
 
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
