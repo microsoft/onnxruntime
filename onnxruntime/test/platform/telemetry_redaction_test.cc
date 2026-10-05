@@ -153,5 +153,26 @@ TEST(TelemetryRedactionTest, BoundedQnnIdentifierRetainsTruncationForScrubbing) 
   EXPECT_EQ(ScrubStringForTelemetry(telemetry_detail::TelemetryCStringView(nullptr)), "");
 }
 
+TEST(TelemetryRedactionTest, QnnBackendPathDiagnosticScrubbedBeforeEtwStorage) {
+  const std::string message = "Using backend path: C:\\Users\\First Last\\QnnHtp.dll";
+  telemetry_detail::TelemetryStrings strings;
+  const char* scrubbed_message = strings.Utf8(ScrubStringForTelemetry(std::string_view(message)));
+  const char* logger = strings.Utf8(ScrubStringForTelemetry("session C:\\Users\\First Last\\model.onnx"));
+  const char* category = strings.Utf8(
+      ScrubStringForTelemetry(telemetry_detail::TelemetryCStringView("backend /home/alice/qnn")));
+
+  EXPECT_STREQ(scrubbed_message, "Using backend path: [path]");
+  EXPECT_STREQ(logger, "session [path]");
+  EXPECT_STREQ(category, "backend [path]");
+  EXPECT_EQ(message, "Using backend path: C:\\Users\\First Last\\QnnHtp.dll");
+}
+
+TEST(TelemetryRedactionTest, EtwFunctionPathScrubbedBeforeLocationTruncation) {
+  const std::string function = "function alice/" + std::string(kMaxTelemetryStringLength, 'x') + "/model";
+  std::string location = "qnn_execution_provider.cc:377 ";
+  telemetry_detail::AppendTelemetryString(location, ScrubStringForTelemetry(function));
+  EXPECT_EQ(location, "qnn_execution_provider.cc:377 function [path]");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -3,6 +3,7 @@
 
 // EtwSink.h must come before the windows includes
 #include "core/platform/windows/logging/etw_sink.h"
+#include "core/platform/telemetry_redaction.h"
 #include "core/platform/telemetry_strings.h"
 
 #ifdef ETW_TRACE_LOGGING_SUPPORTED
@@ -221,16 +222,18 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
   telemetry_detail::AppendTelemetryString(location_text, ":");
   telemetry_detail::AppendTelemetryString(location_text, std::to_string(location.line_num));
   telemetry_detail::AppendTelemetryString(location_text, " ");
-  telemetry_detail::AppendTelemetryString(location_text, location.function);
+  telemetry_detail::AppendTelemetryString(location_text, ScrubStringForTelemetry(location.function));
 #define ETW_EVENT_NAME "ONNXRuntimeLogEvent"
 #define TRACE_LOG_WRITE(level)                                                                                      \
   TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME,                                                            \
                     TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)), \
                     TraceLoggingLevel(level),                                                                       \
-                    TraceLoggingString(strings.Utf8(logger_id), "logger"),                                          \
-                    TraceLoggingString(strings.Utf8(message.Category()), "category"),                               \
-                    TraceLoggingString(strings.Utf8(location_text), "location"),                                    \
-                    TraceLoggingString(strings.Utf8(message.MessageView()), "message"))
+                    TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(logger_id)), "logger"),                 \
+                    TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(                                        \
+                                           telemetry_detail::TelemetryCStringView(message.Category()))),            \
+                                       "category"),                                                                 \
+                    TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(location_text)), "location"),           \
+                    TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(message.MessageView())), "message"))
 
   const auto severity{message.Severity()};
 
