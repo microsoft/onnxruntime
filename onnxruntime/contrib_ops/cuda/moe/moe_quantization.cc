@@ -655,6 +655,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 #endif
   }  // end integer quantization
 
+  nvfp4_weights_row_major_ = quant_type_ == "nvfp4" && weights_prepacked_mode == 1;
+  if (nvfp4_weights_row_major_) {
+    nvfp4_gemv_raw_layout_ = true;
+    enable_fp4_gemv_autotune_ = false;
+  }
+
   ORT_ENFORCE(m_moe_runner != nullptr,
               "QMoE: failed to construct MoE runner for quant_type='", quant_type_,
               "', expert_weight_bits=", expert_weight_bits_,
@@ -1069,6 +1075,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           : static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(k_);
   const bool route_native_fp4 =
       fp4_native_available &&
+      (!nvfp4_weights_row_major_ || (packed_fp4_fc1_block_scales_ != nullptr &&
+                                     packed_fp4_fc2_block_scales_ != nullptr)) &&
       (fp4_native_max_tokens_per_expert_ <= 0 || avg_tokens_per_expert <= fp4_native_max_tokens_per_expert_) &&
       // Native FP4xFP4 is underfilled for decode (small M) and quantizes activations to NVFP4;
       // keep NVFP4 decode shapes (num_rows < prefill threshold) off the native runner so they route
@@ -1137,8 +1145,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               (fc2_gemv_sm80_layout ? gemv_fp4_fc2_weights_ != nullptr : gemv_fp4_fc2_weights_decode_ != nullptr))
            : (gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr)) &&
       (use_raw_nvfp4_gemv
-           ? (packed_fp4_fc1_block_scales_ != nullptr && packed_fp4_fc2_block_scales_ != nullptr &&
-              packed_fc1_global_scale_ != nullptr && packed_fc2_global_scale_ != nullptr)
+           ? (nvfp4_weights_row_major_
+                  ? (context->Input<Tensor>(3) != nullptr && context->Input<Tensor>(6) != nullptr &&
+                     context->Input<Tensor>(15) != nullptr && context->Input<Tensor>(16) != nullptr)
+                  : (packed_fp4_fc1_block_scales_ != nullptr && packed_fp4_fc2_block_scales_ != nullptr &&
+                     packed_fc1_global_scale_ != nullptr && packed_fc2_global_scale_ != nullptr))
            : (gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr));
   bool use_fp4_gemv = false;
   if (is_fp4_family && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu &&
@@ -1825,19 +1836,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                                     : gemv_fp4_fc2_weights_)
                                                    .get());
     const uint8_t* gemv_fc1_raw_block_scales =
-        is_nvfp4 ? static_cast<const uint8_t*>((gemv_fp4_fc1_block_raw_ ? gemv_fp4_fc1_block_raw_
-                                                                        : packed_fp4_fc1_block_scales_)
-                                                   .get())
-                 : nullptr;
+        nvfp4_weights_row_major_ ? static_cast<const uint8_t*>(context->Input<Tensor>(3)->DataRaw())
+        : is_nvfp4               ? static_cast<const uint8_t*>((gemv_fp4_fc1_block_raw_ ? gemv_fp4_fc1_block_raw_
+                                                                                        : packed_fp4_fc1_block_scales_)
+                                                                   .get())
+                                 : nullptr;
     const uint8_t* gemv_fc2_raw_block_scales =
-        is_nvfp4 ? static_cast<const uint8_t*>((gemv_fp4_fc2_block_raw_ ? gemv_fp4_fc2_block_raw_
-                                                                        : packed_fp4_fc2_block_scales_)
-                                                   .get())
-                 : nullptr;
+        nvfp4_weights_row_major_ ? static_cast<const uint8_t*>(context->Input<Tensor>(6)->DataRaw())
+        : is_nvfp4               ? static_cast<const uint8_t*>((gemv_fp4_fc2_block_raw_ ? gemv_fp4_fc2_block_raw_
+                                                                                        : packed_fp4_fc2_block_scales_)
+                                                                   .get())
+                                 : nullptr;
     const float* gemv_fc1_raw_global_scales =
-        is_nvfp4 ? static_cast<const float*>(packed_fc1_global_scale_.get()) : nullptr;
+        nvfp4_weights_row_major_ ? context->Input<Tensor>(15)->Data<float>()
+                                 : (is_nvfp4 ? static_cast<const float*>(packed_fc1_global_scale_.get()) : nullptr);
     const float* gemv_fc2_raw_global_scales =
-        is_nvfp4 ? static_cast<const float*>(packed_fc2_global_scale_.get()) : nullptr;
+        nvfp4_weights_row_major_ ? context->Input<Tensor>(16)->Data<float>()
+                                 : (is_nvfp4 ? static_cast<const float*>(packed_fc2_global_scale_.get()) : nullptr);
     auto p_r2u_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
     auto p_exp_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
     auto p_efto_buf = GetScratchBuffer<int64_t>(num_experts + 1, GetComputeStream(context));
@@ -1933,7 +1948,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             gemv_fc1_raw_global_scales,
             static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
             p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
-            fc1_gemv_sm80_layout, use_raw_nvfp4_gemv, skip_expand ? p_r2u : nullptr, num_rows, stream);
+            fc1_gemv_sm80_layout, use_raw_nvfp4_gemv, skip_expand ? p_r2u : nullptr, num_rows, stream,
+            nvfp4_weights_row_major_);
       };
       auto launch_fc2 = [&](MoeGemvConfig cfg) {
         gemv::launch_moe_gemv_fp4_symmetric<T>(
@@ -1943,7 +1959,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             gemv_fc2_raw_global_scales,
             static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
             p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
-            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream);
+            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_);
       };
 
       if (do_tune) {
@@ -2075,14 +2091,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // ``session.disable_prepacking`` is set) the repacked buffers stay null and
     // falling through to the raw initializer bytes would feed a non-CUTLASS
     // layout to the runner, producing silently wrong output. Fail loudly.
-    if (packed_fp4_fc1_weights_ == nullptr || packed_fp4_fc2_weights_ == nullptr) {
+    if (!nvfp4_weights_row_major_ && (packed_fp4_fc1_weights_ == nullptr || packed_fp4_fc2_weights_ == nullptr)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "QMoE native FP4 requires PrePack to run, but the repacked FP4 weight "
                              "buffers were not produced (is session.disable_prepacking set?). "
                              "Enable prepacking to use the native FP4 path.");
     }
-    fc1_weight_data = packed_fp4_fc1_weights_.get();
-    fc2_weight_data = packed_fp4_fc2_weights_.get();
+    if (!nvfp4_weights_row_major_) {
+      fc1_weight_data = packed_fp4_fc1_weights_.get();
+      fc2_weight_data = packed_fp4_fc2_weights_.get();
+    }
   } else if (int_weights_consumed_by_prepack) {
     // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
     // layout that the runner consumes and freed the source initializer
@@ -2200,7 +2218,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           if (is_nvfp4) {
             LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream,
                                              compact_to_expert.get(), bias ? static_cast<const half*>(bias->DataRaw()) : nullptr,
-                                             static_cast<half*>(output_bias));
+                                             static_cast<half*>(output_bias), nvfp4_weights_row_major_);
           } else {
             LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream);
           }
@@ -2209,7 +2227,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           if (is_nvfp4) {
             LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream,
                                              compact_to_expert.get(), bias ? static_cast<const __nv_bfloat16*>(bias->DataRaw()) : nullptr,
-                                             static_cast<__nv_bfloat16*>(output_bias));
+                                             static_cast<__nv_bfloat16*>(output_bias), nvfp4_weights_row_major_);
           } else {
             LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream);
           }
@@ -2440,6 +2458,10 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
+  if (nvfp4_weights_row_major_ && (input_idx == 2 || input_idx == 5 ||
+                                   (use_fp4_dequant_fallback_ && (input_idx == 3 || input_idx == 6)))) {
+    return Status::OK();
+  }
   if (quant_type_ == "int" && (input_idx == 3 || input_idx == 6)) {
     ORT_RETURN_IF_NOT(is_fp16_ ? tensor.IsDataType<MLFloat16>() : tensor.IsDataType<BFloat16>(),
                       "QMoE integer fc", input_idx == 3 ? 1 : 2, "_scales must match the activation type.");
@@ -2612,7 +2634,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       // SM100 WFP4AFP8 path; byte-level swizzle is format-agnostic). Keep a raw E4M3 copy in
       // gemv_fp4_fc1_block_raw_ for the GEMV decode and dequant fallback paths.
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
-      if (enable_fp4_gemv_ && tensor.Shape().NumDimensions() == 3) {
+      if (enable_fp4_gemv_ && !nvfp4_weights_row_major_ && tensor.Shape().NumDimensions() == 3) {
         bool raw_packed = false;
         PrePackCopyToGpu(tensor, stream, alloc, gemv_fp4_fc1_block_raw_, raw_packed);
         gemv_fp4_fc1_scale_e_ = tensor.Shape()[0];
@@ -2657,7 +2679,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     }
     if (quant_type_ == "nvfp4" && !use_fp4_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
-      if (enable_fp4_gemv_ && tensor.Shape().NumDimensions() == 3) {
+      if (enable_fp4_gemv_ && !nvfp4_weights_row_major_ && tensor.Shape().NumDimensions() == 3) {
         bool raw_packed = false;
         PrePackCopyToGpu(tensor, stream, alloc, gemv_fp4_fc2_block_raw_, raw_packed);
         gemv_fp4_fc2_scale_e_ = tensor.Shape()[0];

@@ -91,6 +91,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // layout on every GPU, so -1 and 1 are currently equivalent for the CUDA EP;
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
   bool weights_prepacked_ = true;
+  bool nvfp4_weights_row_major_ = false;
   // Cached source weight shapes captured at PrePack time. When the
   // PrePack hook consumed and released the original int4/int8 or MXFP4
   // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
