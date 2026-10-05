@@ -165,7 +165,7 @@ public class CompileApiTest {
               worker.join(5000);
               Assertions.assertFalse(
                   worker.isAlive(), "Write callback reentry must not block on compilation");
-              Assertions.assertInstanceOf(IllegalStateException.class, workerResult.get());
+              Assertions.assertTrue(workerResult.get() instanceof IllegalStateException);
               Assertions.assertThrows(IllegalStateException.class, compileOptions::close);
               Assertions.assertThrows(
                   IllegalStateException.class,
