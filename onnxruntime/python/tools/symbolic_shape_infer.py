@@ -2692,7 +2692,8 @@ class SymbolicShapeInference:
             divisor = num_heads + 2 * kv_num_heads if packed else num_heads
             if query_shape[2] % divisor == 0:
                 head_size = query_shape[2] // divisor
-                total_length = self._try_get_value(node, 10)
+                past_inputs_omitted = len(node.input) <= 4 or (not node.input[3] and not node.input[4])
+                total_length = self._try_get_value(node, 10) if past_inputs_omitted else None
                 cache_length = (
                     as_scalar(total_length)
                     if total_length is not None

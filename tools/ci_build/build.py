@@ -149,13 +149,6 @@ def run_subprocess(
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
-def get_onnx_backend_test_environment(_use_cuda):
-    return {
-        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
-        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
-    }
-
-
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
@@ -582,6 +575,10 @@ def generate_build_tree(
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
+        # The WebGPU EP library kind selects these. Emit them unconditionally, including the OFF case, so that
+        # reusing a build directory cannot leak a previous build's setting in via the CMake cache.
+        "-Donnxruntime_USE_EP_API_ADAPTERS=" + ("ON" if args.use_webgpu in ("shared_lib", "static_plugin") else "OFF"),
+        "-Donnxruntime_WEBGPU_STATIC_PLUGIN=" + ("ON" if args.use_webgpu == "static_plugin" else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         "-DDAWN_USE_AGILITY_SDK=" + ("ON" if args.use_dawn_agility_sdk else "OFF"),
         # Training related flags
@@ -998,7 +995,6 @@ def generate_build_tree(
                 )
     elif args.use_webgpu == "shared_lib":
         # Shared library build (plugin EP)
-        cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
 
@@ -2073,13 +2069,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
-                        # Set the opset policy explicitly so the child process does not inherit the CI default.
-                        run_subprocess(
-                            [sys.executable, "onnx_backend_test_series.py"],
-                            cwd=cwd,
-                            dll_path=dll_path,
-                            env=get_onnx_backend_test_environment(args.use_cuda),
-                        )
+                        run_subprocess([sys.executable, "onnx_backend_test_series.py"], cwd=cwd, dll_path=dll_path)
 
             if not args.skip_keras_test:
                 try:
