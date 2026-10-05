@@ -136,6 +136,21 @@ struct AttributeBindingContext {
   DomainToVersionMap domain_to_version;
 };
 
+bool CanContainGraph(const BoundAttribute& attribute) {
+  if (attribute.graph != nullptr) {
+    return true;
+  }
+
+  if (attribute.proto == nullptr) {
+    return false;
+  }
+
+  return attribute.proto->has_g() ||
+         !attribute.proto->graphs().empty() ||
+         attribute.proto->type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH ||
+         attribute.proto->type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS;
+}
+
 using ModelLocalFunctions =
     std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>;
 
@@ -329,7 +344,14 @@ Status ValidateFunctionCallDepth(
               return lhs.name < rhs.name;
             });
 
-  FunctionValidationState validation_state{&function_proto, call_depth, bindings};
+  AttributeBindings graph_bindings;
+  for (const auto& binding : bindings) {
+    if (CanContainGraph(binding.attribute)) {
+      graph_bindings.push_back(binding);
+    }
+  }
+
+  FunctionValidationState validation_state{&function_proto, call_depth, std::move(graph_bindings)};
   if (!validated_states.insert(std::move(validation_state)).second) {
     return Status::OK();
   }
@@ -361,7 +383,7 @@ Status ValidateProtoNodesCallDepth(
       for (const auto& attr : node.attribute()) {
         auto resolved_attr = ResolveAttribute(attr, bindings);
         if (resolved_attr.proto != nullptr) {
-          if (resolved_attr.context == nullptr) {
+          if (resolved_attr.context == nullptr && CanContainGraph(resolved_attr)) {
             // FunctionProto attributes are specialized in the caller's binding environment.
             resolved_attr.context = context;
           }
