@@ -63,7 +63,7 @@ export const binding =
     InferenceSession: Binding.InferenceSessionConstructor;
     listSupportedBackends: () => Binding.SupportedBackend[];
     initOrtOnce: (logLevel: number, tensorConstructor: TensorConstructor, isMainThread: boolean) => void;
-    __testEpContextDataReadCallback: (callback: (name: string) => unknown, maxDataSize: number, name: string) => Promise<Buffer>;
+    testEpContextDataReadCallback: (callback: (name: string) => unknown, maxDataSize: number, name: string) => Promise<Buffer>;
   };
 
 let ortInitialized = false;

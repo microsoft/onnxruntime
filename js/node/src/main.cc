@@ -8,7 +8,7 @@
 
 Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
   InferenceSessionWrap::Init(env, exports);
-  exports.Set("__testEpContextDataReadCallback",
+  exports.Set("testEpContextDataReadCallback",
               Napi::Function::New(env, TestEpContextDataReadCallback));
   return exports;
 }

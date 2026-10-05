@@ -110,7 +110,7 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
     const callbackName = 'context/data.bin';
     const backing = new Uint8Array([9, 1, 2, 3, 8]);
     let receivedName: string | undefined;
-    const result = await binding.__testEpContextDataReadCallback(
+    const result = await binding.testEpContextDataReadCallback(
       (name) => {
         receivedName = name;
         return backing.subarray(1, 4);
@@ -124,14 +124,14 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
   });
 
   it('supports empty callback data through the native worker-thread bridge', async () => {
-    const result = await binding.__testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
+    const result = await binding.testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
     assert.strictEqual(result.byteLength, 0);
   });
 
   it('rejects oversized, wrong-type, and throwing callback results through the native bridge', async () => {
-    await assert.rejects(binding.__testEpContextDataReadCallback(() => new Uint8Array(2), 1, 'large.bin'), /exceeds/);
-    await assert.rejects(binding.__testEpContextDataReadCallback(() => new Uint8Array(1).buffer, 4, 'wrong.bin'), /Uint8Array/);
-    await assert.rejects(binding.__testEpContextDataReadCallback(() => {
+    await assert.rejects(binding.testEpContextDataReadCallback(() => new Uint8Array(2), 1, 'large.bin'), /exceeds/);
+    await assert.rejects(binding.testEpContextDataReadCallback(() => new Uint8Array(1).buffer, 4, 'wrong.bin'), /Uint8Array/);
+    await assert.rejects(binding.testEpContextDataReadCallback(() => {
       throw new Error('test callback failure');
     }, 4, 'throw.bin'), /test callback failure/);
   });
