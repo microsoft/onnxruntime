@@ -36,9 +36,9 @@ __global__ void ValidateTokenOffsetKernel(
     const int32_t* token_offset,
     int32_t token_offset_count,
     int32_t* validation_flag) {
-  for (int32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        i < token_offset_count;
-       i += blockDim.x * gridDim.x) {
+       i = AdvanceTokenOffsetValidationIndex(i, gridDim.x, blockDim.x)) {
     const int32_t offset = token_offset[i];
     if (offset < 0 || offset >= token_offset_count) {
       atomicExch(validation_flag, 1);

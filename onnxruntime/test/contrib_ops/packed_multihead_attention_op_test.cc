@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <limits>
 #include <sstream>
 #include <type_traits>
 
@@ -20,6 +21,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/test_environment.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cuda/bert/packed_multihead_attention_impl.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
 namespace onnxruntime {
@@ -469,6 +471,15 @@ TEST(PackedMultiHeadAttentionTest, InvalidTokenOffset_Unfused_CUDA) {
           {}, nullptr, &execution_providers);
     }
   }
+}
+
+TEST(PackedMultiHeadAttentionTest, TokenOffsetValidationIndexProgressionUsesInt64) {
+  constexpr int64_t index = 2147221504;
+  constexpr int64_t next_index =
+      AdvanceTokenOffsetValidationIndex(index, 1024, 256);
+
+  EXPECT_EQ(next_index, 2147483648LL);
+  EXPECT_GT(next_index, std::numeric_limits<int32_t>::max());
 }
 
 TEST(PackedMultiHeadAttentionTest, ValidTokenOffset_UnfusedCudaGraphCaptureAndReplay) {
