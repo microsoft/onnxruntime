@@ -704,8 +704,10 @@ public class OrtSession implements AutoCloseable {
     /**
      * Supplies external EPContext data during session initialization.
      *
-     * <p>The returned array is copied into memory owned by ONNX Runtime and may be reused by the
-     * application after this method returns. Returning {@code null} or throwing an exception fails
+     * <p>The returned array is copied into memory owned by ONNX Runtime during the enclosing
+     * native operation. Do not modify or reuse its contents until that operation completes;
+     * concurrent modification can change the data being copied. Return a fresh array when the
+     * callback uses mutable shared storage. Returning {@code null} or throwing an exception fails
      * the ONNX Runtime operation without falling back to filesystem access.
      *
      * <p>ONNX Runtime may invoke this callback concurrently from multiple threads. Implementations

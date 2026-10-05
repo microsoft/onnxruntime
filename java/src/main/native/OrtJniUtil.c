@@ -95,7 +95,11 @@ static OrtStatus* getCallbackEnv(
         return createCallbackStatus(state, ORT_FAIL, "Failed to access the JVM for an EPContext callback");
     }
 
+#ifdef __ANDROID__
+    result = (*state->jvm)->AttachCurrentThread(state->jvm, jniEnv, NULL);
+#else
     result = (*state->jvm)->AttachCurrentThread(state->jvm, (void**)jniEnv, NULL);
+#endif
     if (result != JNI_OK) {
         return createCallbackStatus(state, ORT_FAIL, "Failed to attach an EPContext callback thread to the JVM");
     }
