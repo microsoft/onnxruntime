@@ -52,7 +52,7 @@ class Model;
 struct ModelSavingOptions;
 class OpSignature;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
 #endif
 
@@ -295,7 +295,7 @@ class Node {
   std::vector<NodeArg*>& MutableOutputDefs() noexcept {
     return definitions_.output_defs;
   }
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /** Struct to provide sorting between EdgeEnd instances based on NodeIndex first, and NodeArg::Name second. */
   struct EdgeEndCompare {
@@ -1245,14 +1245,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index, int dst_arg_index);
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  bool HasOrtFormatControlEdge(NodeIndex node_index) const;
+
+#if !defined(ORT_MINIMAL_BUILD)
   /**
   Add a control edge between two Nodes in this Graph.
   The source Node does not produce output that is directly consumed by the destination Node, however the
   destination Node must execute after the source node. The control edge allows this ordering to occur.
   */
   bool AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Mark the Graph as needing Resolve() to be called.
   This should be done after modifying any aspect of the Graph that changes the Nodes or relationships between them. */
@@ -1907,7 +1909,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
 
-  bool HasOrtFormatControlEdge(NodeIndex node_index) const;
   void RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
   void UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
   void RestoreOrtFormatControlEdges();

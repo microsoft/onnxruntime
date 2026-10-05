@@ -32,30 +32,12 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
   return safe;
 }
 
-bool HasBoundaryControlEdge(gsl::span<Node* const> nodes_to_replace) {
-  InlinedHashSet<const Node*> replacement_set;
-  replacement_set.reserve(nodes_to_replace.size());
+bool HasControlEdge(const Graph& graph, gsl::span<Node* const> nodes_to_replace) {
   for (const Node* node : nodes_to_replace) {
-    if (node != nullptr) {
-      replacement_set.insert(node);
+    if (node != nullptr && graph.HasOrtFormatControlEdge(node->Index())) {
+      return true;
     }
   }
-
-  for (const Node* node : replacement_set) {
-    for (auto edge = node->InputEdgesBegin(); edge != node->InputEdgesEnd(); ++edge) {
-      if (edge->IsControlEdge() &&
-          replacement_set.find(&edge->GetNode()) == replacement_set.end()) {
-        return true;
-      }
-    }
-    for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
-      if (edge->IsControlEdge() &&
-          replacement_set.find(&edge->GetNode()) == replacement_set.end()) {
-        return true;
-      }
-    }
-  }
-
   return false;
 }
 
@@ -101,7 +83,7 @@ Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) con
 }
 
 Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  if (HasBoundaryControlEdge(selected_nodes.AllNodes())) {
+  if (HasControlEdge(graph, selected_nodes.AllNodes())) {
     return Status::OK();
   }
 
@@ -158,7 +140,7 @@ static Status CreateReplacementNode(Graph& graph,
 }
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  if (HasBoundaryControlEdge(selected_nodes.AllNodes())) {
+  if (HasControlEdge(graph, selected_nodes.AllNodes())) {
     return Status::OK();
   }
 
