@@ -2776,6 +2776,23 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDisabled) {
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, true, 33);
 }
 
+TEST(MoETest, QMoETest_MixedWidthCudaBlock32DenseFallbackWithoutPrefill) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
+  for (const auto& weight_bits : {std::pair<int64_t, int64_t>{2, 4}, {2, 2}, {4, 2}}) {
+    SCOPED_TRACE(testing::Message() << "fc1_bits=" << weight_bits.first << " fc2_bits=" << weight_bits.second);
+    for (int64_t num_rows : {1, 33}) {
+      SCOPED_TRACE(num_rows);
+      RunQMoEMixedWidthCudaIdentityTest(
+          weight_bits.first, weight_bits.second, /*max_scratch_bytes=*/0, /*fused_swiglu=*/true,
+          /*with_zero_points=*/false, /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/512,
+          /*inter_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true, num_rows);
+    }
+  }
+}
+
 TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";

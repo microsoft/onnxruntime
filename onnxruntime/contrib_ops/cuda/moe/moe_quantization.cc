@@ -2573,9 +2573,11 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       return true;
     }
 
-    return enable_int2_gemv_ && onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
-                                    sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
-                                    static_cast<int>(weight_bits), static_cast<int>(block_size_));
+    // Block size 32 is served only by packed prefill; ComputeInternal's packed GEMV accepts 64 and 128.
+    return enable_int2_gemv_ && (block_size_ == 64 || block_size_ == 128) &&
+           onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
+               sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
+               static_cast<int>(weight_bits), static_cast<int>(block_size_));
   };
 
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
