@@ -151,6 +151,38 @@ bool CanContainGraph(const BoundAttribute& attribute) {
          attribute.proto->type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS;
 }
 
+void CollectReferencedAttributeNames(
+    const ONNX_NAMESPACE::FunctionProto& function_proto,
+    InlinedHashSet<std::string_view>& referenced_attribute_names) {
+  InlinedVector<NodeRange> pending_node_ranges{&function_proto.node()};
+
+  const auto process_attribute = [&](const ONNX_NAMESPACE::AttributeProto& attribute) {
+    if (!attribute.ref_attr_name().empty()) {
+      referenced_attribute_names.insert(attribute.ref_attr_name());
+    }
+    if (attribute.has_g()) {
+      pending_node_ranges.push_back(&attribute.g().node());
+    }
+    for (const auto& graph : attribute.graphs()) {
+      pending_node_ranges.push_back(&graph.node());
+    }
+  };
+
+  for (const auto& attribute : function_proto.attribute_proto()) {
+    process_attribute(attribute);
+  }
+
+  while (!pending_node_ranges.empty()) {
+    const auto* nodes = pending_node_ranges.back();
+    pending_node_ranges.pop_back();
+    for (const auto& node : *nodes) {
+      for (const auto& attribute : node.attribute()) {
+        process_attribute(attribute);
+      }
+    }
+  }
+}
+
 using ModelLocalFunctions =
     std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>;
 
@@ -344,9 +376,13 @@ Status ValidateFunctionCallDepth(
               return lhs.name < rhs.name;
             });
 
+  InlinedHashSet<std::string_view> referenced_attribute_names;
+  CollectReferencedAttributeNames(function_proto, referenced_attribute_names);
+
   AttributeBindings graph_bindings;
   for (const auto& binding : bindings) {
-    if (CanContainGraph(binding.attribute)) {
+    if (CanContainGraph(binding.attribute) &&
+        referenced_attribute_names.find(binding.name) != referenced_attribute_names.end()) {
       graph_bindings.push_back(binding);
     }
   }

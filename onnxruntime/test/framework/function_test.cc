@@ -748,25 +748,46 @@ static ONNX_NAMESPACE::ModelProto CreateLocalFunctionChainModel(size_t call_dept
 
 static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t call_depth) {
   auto model_proto = CreateLocalFunctionChainModel(call_depth);
+  const auto populate_graph_attribute = [](ONNX_NAMESPACE::AttributeProto& attribute) {
+    attribute.set_name("tag");
+    attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* graph = attribute.mutable_g();
+    graph->set_name("tag");
+    auto* identity = graph->add_node();
+    identity->set_op_type("Identity");
+    identity->add_input("x");
+    identity->add_output("tag_output");
+    auto* output = graph->add_output();
+    output->set_name("tag_output");
+    output->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  };
   const auto add_scalar_attribute = [](ONNX_NAMESPACE::NodeProto& node) {
     auto* attribute = node.add_attribute();
     attribute->set_name("alpha");
     attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
     attribute->set_f(0.1f);
   };
+  const auto add_graph_attribute = [&populate_graph_attribute](ONNX_NAMESPACE::NodeProto& node) {
+    populate_graph_attribute(*node.add_attribute());
+  };
 
   for (auto& function : *model_proto.mutable_functions()) {
-    function->add_attribute("alpha");
-    auto* default_attribute = function->add_attribute_proto();
-    default_attribute->set_name("alpha");
-    default_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
-    default_attribute->set_f(0.1f);
+    function.add_attribute("alpha");
+    auto* default_scalar_attribute = function.add_attribute_proto();
+    default_scalar_attribute->set_name("alpha");
+    default_scalar_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+    default_scalar_attribute->set_f(0.1f);
+
+    function.add_attribute("tag");
+    populate_graph_attribute(*function.add_attribute_proto());
   }
 
   for (int i = 0; i + 1 < model_proto.functions_size(); ++i) {
     auto* function = model_proto.mutable_functions(i);
     function->mutable_node(0)->set_output(0, "unused");
     add_scalar_attribute(*function->mutable_node(0));
+    add_graph_attribute(*function->mutable_node(0));
 
     auto* repeated_call = function->add_node();
     repeated_call->set_domain("local");
@@ -774,6 +795,7 @@ static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t
     repeated_call->add_input("x");
     repeated_call->add_output("y");
     add_scalar_attribute(*repeated_call);
+    add_graph_attribute(*repeated_call);
   }
 
   return model_proto;
