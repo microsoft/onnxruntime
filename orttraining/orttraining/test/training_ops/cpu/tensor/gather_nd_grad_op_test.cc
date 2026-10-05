@@ -117,7 +117,7 @@ TEST(GatherNDGradOpTest, GatherNDGrad_batch_dims_two_negative_indices) {
 }
 
 #ifdef USE_CUDA
-TEST(GatherNDGradOpTest, GatherNDGrad_invalid_index_cuda_error) {
+TEST(GatherNDGradOpTest, GatherNDGrad_invalid_index_cuda_skips_update) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
@@ -131,8 +131,8 @@ TEST(GatherNDGradOpTest, GatherNDGrad_invalid_index_cuda_error) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
   cuda_only_ep.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "invalid index found in CUDA GatherND",
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+           "",
            {},
            nullptr,
            &cuda_only_ep);

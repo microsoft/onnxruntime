@@ -312,17 +312,17 @@ TEST_F(CudaPluginUserStreamGraphTest, GatherNDCudaGraphZeroFillsInvalidIndicesAc
     return output;
   };
 
-  for (int i = 0; i < 3; ++i) {
-    const auto output = run_and_read_output();
-    EXPECT_FLOAT_EQ(output[0], 3.0f) << "mismatch at valid-index iteration " << i;
-    EXPECT_FLOAT_EQ(output[1], 4.0f) << "mismatch at valid-index iteration " << i;
-  }
+  auto output = run_and_read_output();
+  EXPECT_FLOAT_EQ(output[0], 3.0f);
+  EXPECT_FLOAT_EQ(output[1], 4.0f);
 
   indices[0] = 2;
   ASSERT_EQ(cudaSuccess, cudaMemcpy(indices_gpu, indices.data(), indices_bytes, cudaMemcpyHostToDevice));
-  const auto output = run_and_read_output();
-  EXPECT_FLOAT_EQ(output[0], 0.0f);
-  EXPECT_FLOAT_EQ(output[1], 0.0f);
+  for (int i = 0; i < 3; ++i) {
+    output = run_and_read_output();
+    EXPECT_FLOAT_EQ(output[0], 0.0f) << "mismatch at invalid-index iteration " << i;
+    EXPECT_FLOAT_EQ(output[1], 0.0f) << "mismatch at invalid-index iteration " << i;
+  }
 
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
