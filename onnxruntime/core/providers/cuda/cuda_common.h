@@ -8,9 +8,8 @@
 // The following lines were originally copied from ABSL
 // cutlass needs them, because cutlass uses "and"/"or" keywords
 #ifdef __cplusplus
-// MSVC requires the include even when selected language level is C++20;
-// it does not recognize "or" as a keyword. According to Microsoft documentation:
-// In Microsoft C++, the /permissive or /Za compiler option is required to enable the alternative spelling.
+// The CUDA target uses MSVC's /permissive option, which disables alternative tokens even in C++20;
+// include <ciso646> to restore them as macros.
 #if defined(_MSVC_LANG) || (__cplusplus < 202002L)
 #include <ciso646>
 #endif
