@@ -5,7 +5,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <mutex>
 #include <optional>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/status.h"
@@ -22,6 +25,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #endif
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
@@ -115,6 +119,80 @@ using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
+
+namespace {
+// Process-global registry of persistent tactic caches, keyed by their resolved file location so that
+// identical shapes are tuned once and reused across sessions and nodes that share a location.
+struct GlobalTacticCacheRegistry {
+  std::mutex mutex;
+  std::unordered_map<std::string, std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
+};
+
+GlobalTacticCacheRegistry& GetGlobalTacticCacheRegistry() {
+  static GlobalTacticCacheRegistry registry;
+  return registry;
+}
+}  // namespace
+
+// Returns the process-global cache for the resolved location (creating, loading, and registering it on
+// first use). Sessions configured with different cache directories/prefixes each get their own cache.
+// Returns nullptr when persistence is not configured, or when the location is already bound to a
+// different GPU's signature (e.g. one explicit prefix shared by heterogeneous devices). During a
+// session, lazily profiled tactics are only staged into these in-memory caches; the disk write
+// happens in FlushMatMulNBitsTacticCaches() at CUDA EP teardown.
+static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCache(
+    const std::string& config_dir, const std::string& config_prefix, const cudaDeviceProp& device_prop) {
+  using onnxruntime::llm::gemm_cache::HardwareSignature;
+  using onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache;
+  HardwareSignature signature = HardwareSignature::FromDevice(
+      device_prop.name, device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
+  std::string file_path = MatMulNBitsTacticCache::ResolveFilePath(config_dir, config_prefix, signature);
+  if (file_path.empty()) {
+    return nullptr;
+  }
+
+  auto& registry = GetGlobalTacticCacheRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  auto it = registry.caches.find(file_path);
+  if (it != registry.caches.end()) {
+    if (!it->second->Signature().StrictMatches(signature)) {
+      ORT_LLM_LOG_WARNING("fpA_intB tactic cache " + file_path +
+                          " is already used by a different GPU in this process; persistence is disabled for " +
+                          signature.device_name);
+      return nullptr;
+    }
+    return it->second;
+  }
+
+  auto cache = std::make_shared<MatMulNBitsTacticCache>(file_path, std::move(signature));
+  auto status = cache->Load();
+  static_cast<void>(status);  // A missing/mismatched file simply yields an empty cache.
+  registry.caches.emplace(std::move(file_path), cache);
+  return cache;
+}
+
+// Flushes every registered tactic cache to disk. This is the single place lazily-discovered tactics
+// reach disk, which keeps file I/O off the inference path. Best-effort and dirty-guarded (Flush() is
+// a no-op when nothing new was staged), so calling it once per CUDA EP teardown is cheap even when
+// several sessions share the process. Safe to call from a destructor: never throws.
+void FlushMatMulNBitsTacticCaches() {
+  auto& registry = GetGlobalTacticCacheRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  for (auto& [key, cache] : registry.caches) {
+    static_cast<void>(key);
+    if (cache == nullptr) {
+      continue;
+    }
+    try {
+      auto status = cache->Flush();
+      if (!status.IsOK()) {
+        ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+      }
+    } catch (...) {
+      // Swallow: cache persistence is best-effort and must not escape EP teardown.
+    }
+  }
+}
 
 constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
 constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
@@ -615,6 +693,14 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
 
+  // Resolve the persistent tactic cache location from session config (falls back to env vars).
+  const auto& config_options = this->Info().GetConfigOptions();
+  const std::string cache_dir =
+      config_options.GetConfigOrDefault(onnxruntime::llm::gemm_cache::kSessionConfigCacheDir, "");
+  const std::string cache_prefix =
+      config_options.GetConfigOrDefault(onnxruntime::llm::gemm_cache::kSessionConfigCachePrefix, "");
+  gemmProfiler_->setPersistentCache(GetGlobalMatMulNBitsTacticCache(cache_dir, cache_prefix, this->GetDeviceProp()));
+
   auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
   gemmProfiler_->setAllocator(allocator);
 }
@@ -627,11 +713,11 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
-  } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
-  }
+  const auto dtype = std::is_same_v<T, BFloat16> ? onnxruntime::llm::nvinfer::DataType::kBF16
+                                                 : onnxruntime::llm::nvinfer::DataType::kHALF;
+  gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), dtype, kernel_sm, static_cast<int>(nbits_),
+                       static_cast<int>(block_size_), has_zero_points_, hasWeightOnlyCudaKernel, has_bias_,
+                       this->GetDeviceProp().name);
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
