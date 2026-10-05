@@ -116,7 +116,7 @@ struct GraphOptions {
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
 // Builds a fixed-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
+// requires. position_ids (slot 11) is omitted for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
@@ -368,11 +368,11 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
                        "must be omitted when policy_mode is 'qsa'");
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, AllowsQsaWithPositionIds) {
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIds) {
   GraphOptions options;
   options.add_position_ids = true;
-  std::unique_ptr<Model> model;
-  EXPECT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "must be omitted when policy_mode is 'qsa'");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionIds) {
@@ -950,12 +950,6 @@ TEST(PackedSparseAttentionIndexerTest, QsaBFloat16) { RunQsaPackedTest<BFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, QsaPackedQueryKey) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::Cuda, nullptr, true);
-}
-
-TEST(PackedSparseAttentionIndexerTest, QsaPositionIds) {
-  QsaPackedProblem problem = MakeQsaPackedProblem();
-  problem.position_ids = {7, 9, 3, 4, 8};
-  RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaPrefillThenDecodeIndependentState) {

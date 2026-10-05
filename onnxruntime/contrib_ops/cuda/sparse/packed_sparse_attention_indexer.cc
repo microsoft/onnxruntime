@@ -160,9 +160,9 @@ Status PackedSparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context
   }
   const bool position_ids_provided =
       psai::kPositionIds < context->InputCount() && context->Input<Tensor>(psai::kPositionIds) != nullptr;
-  ORT_RETURN_IF(!is_qsa && !position_ids_provided,
-                "PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                " (position_ids) is required for policy_mode 'csa'");
+  ORT_RETURN_IF(position_ids_provided == is_qsa,
+                "PackedSparseAttentionIndexer: position_ids is required for "
+                "policy_mode 'csa' and must be omitted for policy_mode 'qsa'");
   const bool gate_buffer_provided =
       psai::kPastGateBuffer < context->InputCount() && context->Input<Tensor>(psai::kPastGateBuffer) != nullptr;
   ORT_RETURN_IF(gate_buffer_provided != !is_qsa, "PackedSparseAttentionIndexer: input ", psai::kPastGateBuffer,

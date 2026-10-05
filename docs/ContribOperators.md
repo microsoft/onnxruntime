@@ -5046,9 +5046,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-      incomplete block. QSA uses position_ids when provided; otherwise positions are the
-      request-local logical cache positions derived from past_sequence_lengths and
-      cumulative_sequence_lengths.
+      incomplete block. QSA positions are the request-local logical cache positions derived from
+      past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
   
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -5137,7 +5136,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>head_weights</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': per-head score weights with shape (total_tokens, num_heads).</dd>
 <dt><tt>position_ids</tt> (optional) : I</dt>
-<dd>Absolute position of every packed query, with shape (total_tokens). Required for policy_mode 'csa' and optional for policy_mode 'qsa'.</dd>
+<dd>Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).</dd>
 <dt><tt>past_key_state</tt> : T</dt>
 <dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls.</dd>
 <dt><tt>past_kv_buffer</tt> : T</dt>
