@@ -1411,11 +1411,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   };
 
   if (use_fp8_fused) {
+    Tensor* output = context->Output(0, input->Shape());
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
     const int num_experts = narrow<int>(moe_params.num_experts);
     const int hidden = narrow<int>(moe_params.hidden_size);
     const int inter = narrow<int>(moe_params.inter_size);
-    const int fusion = split_fp8_fc1 ? 1 : (is_fused_swiglu ? swiglu_fusion : 0);
+    const int fusion = split_fp8_fc1 ? 1 : (is_fused_swiglu ? static_cast<int>(std::max<int64_t>(1, swiglu_fusion_)) : 0);
     const int fc1_n = inter * (fusion ? 2 : 1);
     const int max_routes = narrow<int>(row_tile_plan.rows_per_tile * k_);
     const size_t element_size = input->DataType()->Size();
