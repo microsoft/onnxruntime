@@ -700,6 +700,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
             ? (packed_inputs_[5].present ? static_cast<const CudaT*>(packed_inputs_[5].cuda_data.get()) : nullptr)
             : (fc2_experts_bias_optional == nullptr ? nullptr : packed_cuda_data(5, fc2_experts_bias_optional));
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (run_cpu_experts) {
+      // MayInplace(0, 0) lets the runner overwrite input while the separate stream copies it to the host.
+      CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, input_copy_ready, 0));
+    }
+#endif
     moe_runner.runMoe(
         reinterpret_cast<const CudaT*>(input->template Data<T>()),
         nullptr,

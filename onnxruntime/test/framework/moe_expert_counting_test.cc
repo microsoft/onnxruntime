@@ -850,6 +850,97 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
   }
 }
 
+TEST(MoeExpertCountingTest, StaticCpuOffloadPreservesAliasedInputDuringHostCopy) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int64_t rows = 4096;
+  ModelProto numerical_model;
+  ASSERT_TRUE(numerical_model.ParseFromString(MakeCountingModel(false, true, false, rows)));
+  auto& graph = *numerical_model.mutable_graph();
+  for (auto& tensor : *graph.mutable_initializer()) {
+    std::vector<MLFloat16> weights(static_cast<size_t>(kExperts * kWidth * kWidth), MLFloat16(0.0f));
+    for (int64_t expert = 0; expert < kExperts; ++expert) {
+      for (int64_t column = 0; column < kWidth; ++column) {
+        weights[static_cast<size_t>(expert * kWidth * kWidth + column * kWidth + column)] =
+            MLFloat16(tensor.name() == "w1" ? 1.0f : 2.0f);
+      }
+    }
+    tensor.set_raw_data(weights.data(), weights.size() * sizeof(MLFloat16));
+  }
+  for (auto& node : *graph.mutable_node()) {
+    auto* attribute = node.add_attribute();
+    attribute->set_name("normalize_routing_weights");
+    attribute->set_type(AttributeProto_AttributeType_INT);
+    attribute->set_i(1);
+  }
+  // Keep the second MoE output internal so MayInplace can reuse its input allocation.
+  graph.mutable_node(1)->set_output(0, "mixed_output");
+  SetValue(*graph.add_value_info(), "mixed_output", TensorProto_DataType_FLOAT16, {rows, kWidth});
+  auto* identity = graph.add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("mixed_output");
+  identity->add_output("output");
+
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "4"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  const auto model = numerical_model.SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& state = session.GetSessionState();
+  auto* expert_state = state.GetMoeExpertState();
+  ASSERT_NE(expert_state, nullptr);
+  for (int node = 0; node < 2; ++node) {
+    EXPECT_EQ(CudaExperts(*expert_state, state.GetKernel(node)), (InlinedVector<int>{0, 1}));
+  }
+  int input_index = -1;
+  int output_index = -1;
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("intermediate", input_index));
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("mixed_output", output_index));
+  const auto* plan = state.GetExecutionPlan();
+  ASSERT_NE(plan, nullptr);
+  const auto& output_allocation = plan->allocation_plan[static_cast<size_t>(output_index)];
+  ASSERT_EQ(output_allocation.alloc_kind, AllocKind::kReuse);
+  ASSERT_EQ(output_allocation.reused_buffer, input_index);
+
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  std::vector<MLFloat16> values(static_cast<size_t>(rows * kWidth));
+  std::vector<MLFloat16> routing(static_cast<size_t>(rows * kExperts), MLFloat16(0.0f));
+  for (int64_t row = 0; row < rows; ++row) {
+    routing[static_cast<size_t>(row * kExperts + (row % 2 == 0 ? 0 : 3))] = MLFloat16(9.0f);
+    for (int64_t column = 0; column < kWidth; ++column) {
+      values[static_cast<size_t>(row * kWidth + column)] = MLFloat16(static_cast<float>(1 + column % 4));
+    }
+  }
+  OrtValue input, router;
+  CreateMLValue<MLFloat16>(allocator, {rows, kWidth}, values, &input);
+  CreateMLValue<MLFloat16>(allocator, {rows, kExperts}, routing, &router);
+  NameMLValMap feeds{{"input", input}, {"router", router}};
+  const std::array<std::string, 1> output_names{"output"};
+  for (int iteration = 0; iteration < 3; ++iteration) {
+    SCOPED_TRACE(iteration);
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+    ASSERT_EQ(outputs.size(), 1U);
+    const auto result = outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+    ASSERT_EQ(result.size(), values.size());
+    for (size_t index = 0; index < result.size(); ++index) {
+      ASSERT_NEAR(result[index].ToFloat(), 4.0f * values[index].ToFloat(), 0.01f) << "index=" << index;
+    }
+  }
+}
+
 TEST(MoeExpertCountingTest, StaticCpuOffloadRejectsCountAboveEligibleExperts) {
   auto provider = DefaultCudaExecutionProvider();
   if (!provider) {

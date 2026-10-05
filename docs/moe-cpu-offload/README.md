@@ -273,6 +273,8 @@ Implemented initially for the built-in CUDA FP16 `MoE` path:
   CUDA storage. All-CUDA nodes retain the original host weights; nodes with CPU experts retain the GEMM-layout weights.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
 - Dispatch CUDA-resident routes through CUTLASS and CPU-resident routes through MLAS FP16 GEMMs.
+- Complete the host input copy before CUDA expert kernels can overwrite an aliased input/output buffer, then overlap
+  CPU and CUDA expert GEMMs.
 - Combine CPU and CUDA expert results on CUDA without changing the exported `MoE` model contract.
 - Continue collecting complete routing selections and updating counters.
 - Preserve dynamic FP16 weights and the existing CUDA implementation when offloading is disabled.
