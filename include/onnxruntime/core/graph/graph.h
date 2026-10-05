@@ -2126,8 +2126,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   bool graph_proto_sync_needed_ = false;
 
-  std::set<std::pair<NodeIndex, NodeIndex>> ort_format_control_edges_;
-  InlinedHashMap<NodeIndex, size_t> ort_format_control_edge_node_counts_;
+  std::vector<std::pair<NodeIndex, NodeIndex>> ort_format_control_edges_;
 
   // The topological order of node index used to do node and op match verification temporarily.
   std::vector<NodeIndex> nodes_in_topological_order_;

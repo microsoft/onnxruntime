@@ -2065,29 +2065,19 @@ struct VisitorPriorityQueue {
 };
 
 void Graph::RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
-  if (!ort_format_control_edges_.emplace(src_node_index, dst_node_index).second) {
-    return;
+  const std::pair<NodeIndex, NodeIndex> edge{src_node_index, dst_node_index};
+  if (std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), edge) ==
+      ort_format_control_edges_.end()) {
+    ort_format_control_edges_.push_back(edge);
   }
-
-  ++ort_format_control_edge_node_counts_[src_node_index];
-  ++ort_format_control_edge_node_counts_[dst_node_index];
 }
 
 void Graph::UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
-  if (ort_format_control_edges_.erase({src_node_index, dst_node_index}) == 0) {
-    return;
+  const std::pair<NodeIndex, NodeIndex> edge{src_node_index, dst_node_index};
+  const auto it = std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), edge);
+  if (it != ort_format_control_edges_.end()) {
+    ort_format_control_edges_.erase(it);
   }
-
-  const auto decrement_node_count = [this](NodeIndex node_index) {
-    const auto it = ort_format_control_edge_node_counts_.find(node_index);
-    ORT_ENFORCE(it != ort_format_control_edge_node_counts_.end());
-    if (--it->second == 0) {
-      ort_format_control_edge_node_counts_.erase(it);
-    }
-  };
-
-  decrement_node_count(src_node_index);
-  decrement_node_count(dst_node_index);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -3859,8 +3849,11 @@ Status Graph::VerifyInputAndInitializerNames() {
 }
 
 bool Graph::HasOrtFormatControlEdge(NodeIndex node_index) const {
-  return ort_format_control_edge_node_counts_.find(node_index) !=
-         ort_format_control_edge_node_counts_.end();
+  return std::any_of(
+      ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
+      [node_index](const auto& edge) {
+        return edge.first == node_index || edge.second == node_index;
+      });
 }
 
 void Graph::RestoreOrtFormatControlEdges() {
@@ -5123,14 +5116,13 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
 
-  for (auto it = ort_format_control_edges_.begin(); it != ort_format_control_edges_.end();) {
-    if (it->first == p_index || it->second == p_index) {
-      const auto control_edge = *it++;
-      UnregisterOrtFormatControlEdge(control_edge.first, control_edge.second);
-    } else {
-      ++it;
-    }
-  }
+  ort_format_control_edges_.erase(
+      std::remove_if(
+          ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
+          [p_index](const auto& edge) {
+            return edge.first == p_index || edge.second == p_index;
+          }),
+      ort_format_control_edges_.end());
 
   return ReleaseNode(p_index);
 }
