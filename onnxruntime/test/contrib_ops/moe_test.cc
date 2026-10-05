@@ -4464,6 +4464,99 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadCombinesCpuAndCudaExpertsForOneToken) {
              nullptr, &execution_providers);
 }
 
+TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsAllActivationsAndSwiGLUParameters) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr float alpha = 0.5f;
+  constexpr float beta = 1.0f;
+  constexpr float limit = 2.0f;
+  const std::vector<float> input_values{-4.0f, -1.0f, 0.0f, 1.0f, 4.0f};
+
+  for (const std::string activation : {"relu", "gelu", "silu", "identity", "swiglu"}) {
+    const bool fused_swiglu = activation == "swiglu";
+    const int fc1_size = fused_swiglu ? 2 * hidden_size : hidden_size;
+    std::vector<float> input(hidden_size);
+    std::vector<float> expected(hidden_size);
+    for (size_t column = 0; column < input.size(); ++column) {
+      const float value = input_values[column % input_values.size()];
+      input[column] = value;
+      float activated = value;
+      if (activation == "relu") {
+        activated = std::max(0.0f, value);
+      } else if (activation == "gelu") {
+        activated = 0.5f * value *
+                    (1.0f + std::tanh(std::sqrt(2.0f / 3.14159265358979323846f) *
+                                      (value + 0.044715f * value * value * value)));
+      } else if (activation == "silu") {
+        activated = value / (1.0f + std::exp(-value));
+      } else if (fused_swiglu) {
+        const float gate = std::min(value, limit);
+        const float linear = std::clamp(-value, -limit, limit);
+        activated = gate / (1.0f + std::exp(-alpha * gate)) * (linear + beta);
+      }
+      expected[column] = 1.5f * activated;
+    }
+
+    std::vector<float> fc1_weights(static_cast<size_t>(num_experts * fc1_size * hidden_size), 0.0f);
+    std::vector<float> fc2_weights(static_cast<size_t>(num_experts * hidden_size * hidden_size), 0.0f);
+    for (int expert = 0; expert < num_experts; ++expert) {
+      for (int column = 0; column < hidden_size; ++column) {
+        const size_t fc1_base = static_cast<size_t>(expert * fc1_size * hidden_size);
+        const int gate_row = fused_swiglu ? 2 * column : column;
+        fc1_weights[fc1_base + static_cast<size_t>(gate_row * hidden_size + column)] = 1.0f;
+        if (fused_swiglu) {
+          fc1_weights[fc1_base + static_cast<size_t>((gate_row + 1) * hidden_size + column)] = -1.0f;
+        }
+        fc2_weights[static_cast<size_t>(expert * hidden_size * hidden_size +
+                                        column * hidden_size + column)] = static_cast<float>(expert + 1);
+      }
+    }
+
+    for (int cpu_experts : {1, 2}) {
+      SCOPED_TRACE(MakeString("activation=", activation, ", cpu_experts=", cpu_experts));
+      OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+      tester.AddAttribute<int64_t>("k", 2);
+      tester.AddAttribute<std::string>("activation_type", activation);
+      tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+      if (fused_swiglu) {
+        tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+        tester.AddAttribute<float>("activation_alpha", alpha);
+        tester.AddAttribute<float>("activation_beta", beta);
+        tester.AddAttribute<float>("swiglu_limit", limit);
+      }
+      tester.AddInput<MLFloat16>("input", {1, hidden_size}, ToFloat16(input));
+      tester.AddInput<MLFloat16>("router_probs", {1, num_experts}, ToFloat16({0.0f, 0.0f}));
+      tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, fc1_size, hidden_size},
+                                 ToFloat16(fc1_weights), true);
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, hidden_size},
+                                 ToFloat16(fc2_weights), true);
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddOutput<MLFloat16>("output", {1, hidden_size}, ToFloat16(expected));
+      tester.SetOutputTolerance(0.01f);
+
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigMoeCpuOffloadExperts, MakeString(cpu_experts).c_str()));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
 TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsLegacyInterleavedSwiGLU) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
