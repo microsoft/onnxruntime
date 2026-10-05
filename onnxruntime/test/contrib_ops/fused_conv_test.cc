@@ -350,6 +350,27 @@ TEST(FusedConvTest, Conv2D_Bias_Relu) {
 
 #if defined(USE_CUDA)
 
+TEST(FusedConvTest, MissingBiasWithZCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("FusedConv", 1, kMSDomain);
+  test.AddAttribute("activation", "Relu");
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("W", {1, 1, 1, 1}, {2.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("Z", {1, 1, 2, 2}, {1.f, 1.f, 1.f, 1.f});
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {3.f, 5.f, 7.f, 9.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad

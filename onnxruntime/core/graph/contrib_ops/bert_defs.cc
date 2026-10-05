@@ -544,8 +544,9 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
         ONNX_NAMESPACE::TensorShapeProto present_shape;
         *present_shape.add_dim() = query_dims[0];
         present_shape.add_dim()->set_dim_value(kv_num_heads);
+        const bool past_inputs_omitted = ctx.getInputType(3) == nullptr && ctx.getInputType(4) == nullptr;
         const auto* total_length_data = ctx.getInputData(10);
-        if (total_length_data != nullptr) {
+        if (past_inputs_omitted && total_length_data != nullptr) {
           const auto total_lengths = ParseData<int32_t>(total_length_data);
           if (total_lengths.size() != 1) {
             fail_shape_inference("total_sequence_length must contain exactly one element");
