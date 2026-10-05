@@ -1491,6 +1491,10 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       Partial edge blocks are allowed. No zero points or activation scales are used.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+      These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+      Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
+      Other activation types and unsupported routing sizes retain the fallback.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
