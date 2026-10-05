@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/env.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -41,6 +42,26 @@
 
 namespace onnxruntime {
 namespace test {
+
+TEST(GroupQueryAttentionTest, RequiresEqualQueryKeyValueHeadSizes) {
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  Tensor query(DataTypeImpl::GetType<float>(), TensorShape{1, 1, 16}, allocator);
+  Tensor key(DataTypeImpl::GetType<float>(), TensorShape{1, 1, 8}, allocator);
+  Tensor value(DataTypeImpl::GetType<float>(), TensorShape{1, 1, 8}, allocator);
+  Tensor wider_value(DataTypeImpl::GetType<float>(), TensorShape{1, 1, 16}, allocator);
+  int batch_size = 0, sequence_length = 0, kv_sequence_length = 0;
+  int q_hidden_size = 0, kv_hidden_size = 0, head_size = 0;
+  auto check_value = [&](const Tensor& input_value) {
+    return contrib::group_query_attention_helper::Check_Q_K_V(
+        &query, &key, &input_value, 2, 1, batch_size, sequence_length, kv_sequence_length,
+        q_hidden_size, kv_hidden_size, head_size);
+  };
+  ASSERT_STATUS_OK(check_value(value));
+  EXPECT_EQ(head_size, 8);
+  const auto status = check_value(wider_value);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.ErrorMessage(), "Input 'value' is expected to have same hidden size as key.");
+}
 
 // Selects which EP backs a GQA test helper. Modeled as a single enum (rather
 // than two bools) so adding a new EP later does not silently fall through to
@@ -3868,6 +3889,152 @@ TEST(GroupQueryAttentionTest, CudaWindowedStagingFlashUsesEffectiveKvLength) {
   GTEST_SKIP() << "FlashAttention is not compiled";
 #endif
 }
+
+template <typename CacheT>
+static void RunGQAXqaOmittedBitWidthTest() {
+  ScopedEnvironmentVariables scoped_env_vars{{
+      {"ORT_ENABLE_XQA", "1"},
+      {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
+  }};
+  constexpr int minimum_sm = std::is_same_v<CacheT, int8_t> ? 800 : 890;
+  if (!HasCudaEnvironment(minimum_sm)) {
+    GTEST_SKIP() << "Quantized XQA requires SM" << minimum_sm / 10 << " or later";
+  }
+
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 64;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int cache_capacity = 2;
+  for (bool omit_bit_width : {false, true}) {
+    SCOPED_TRACE(omit_bit_width ? "omitted bit width" : "explicit eight-bit width");
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (!cuda_ep) {
+      GTEST_SKIP() << "CUDA EP not available";
+    }
+
+    Model model("gqa_xqa_bit_width", true, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
+                {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+    auto& graph = model.MainGraph();
+    ONNX_NAMESPACE::TypeProto fp16_type, cache_type, int32_type, scale_type;
+    fp16_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    cache_type.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<CacheT>());
+    int32_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    scale_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    std::vector<NodeArg*> inputs;
+    for (const char* name : {"query", "key", "value"}) {
+      inputs.push_back(&graph.GetOrCreateNodeArg(name, &fp16_type));
+    }
+    for (const char* name : {"past_key", "past_value"}) {
+      inputs.push_back(&graph.GetOrCreateNodeArg(name, &cache_type));
+    }
+    for (const char* name : {"seqlens_k", "total_sequence_length"}) {
+      inputs.push_back(&graph.GetOrCreateNodeArg(name, &int32_type));
+    }
+    for (int index = 7; index < 12; ++index) {
+      inputs.push_back(&graph.GetOrCreateNodeArg("", nullptr));
+    }
+    for (const char* name : {"k_scale", "v_scale"}) {
+      inputs.push_back(&graph.GetOrCreateNodeArg(name, &scale_type));
+    }
+    std::vector<NodeArg*> outputs{
+        &graph.GetOrCreateNodeArg("output", &fp16_type),
+        &graph.GetOrCreateNodeArg("present_key", &cache_type),
+        &graph.GetOrCreateNodeArg("present_value", &cache_type)};
+    auto& node = graph.AddNode("gqa", "GroupQueryAttention", "", inputs, outputs, nullptr, kMSDomain);
+    node.AddAttribute("num_heads", int64_t{num_heads});
+    node.AddAttribute("kv_num_heads", int64_t{kv_num_heads});
+    node.AddAttribute("k_quant_type", std::string{"PER_TENSOR"});
+    node.AddAttribute("v_quant_type", std::string{"PER_TENSOR"});
+    if (!omit_bit_width) {
+      node.AddAttribute("kv_cache_bit_width", int64_t{8});
+    }
+    ASSERT_STATUS_OK(graph.Resolve());
+    std::string model_data;
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    InferenceSession session(options, GetEnvironment());
+    IExecutionProvider* ep = cuda_ep.get();
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+    std::istringstream model_stream(model_data);
+    ASSERT_STATUS_OK(session.Load(model_stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    auto gpu_allocators = ep->CreatePreferredAllocators();
+    auto gpu_allocator = std::find_if(gpu_allocators.begin(), gpu_allocators.end(), [](const auto& allocator) {
+      return allocator->Info().device.Type() == OrtDevice::GPU &&
+             allocator->Info().mem_type == OrtMemTypeDefault;
+    });
+    ASSERT_NE(gpu_allocator, gpu_allocators.end());
+    auto allocator = session.GetAllocator((*gpu_allocator)->Info());
+    ASSERT_NE(allocator, nullptr);
+    auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+    auto make_gpu_value = [&](const auto& values, const TensorShape& shape) {
+      using Element = typename std::decay_t<decltype(values)>::value_type;
+      Tensor cpu_tensor(DataTypeImpl::GetType<Element>(), shape,
+                        const_cast<Element*>(values.data()), cpu_allocator->Info());
+      Tensor gpu_tensor(DataTypeImpl::GetType<Element>(), shape, allocator);
+      ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+      OrtValue result;
+      Tensor::InitOrtValue(std::move(gpu_tensor), result);
+      return result;
+    };
+    auto query = make_gpu_value(std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)), {1, 1, hidden_size});
+    auto key = make_gpu_value(std::vector<MLFloat16>(head_size, MLFloat16(0.0f)), {1, 1, head_size});
+    auto value = make_gpu_value(std::vector<MLFloat16>(head_size, MLFloat16(1.0f)), {1, 1, head_size});
+    const TensorShape cache_shape{1, kv_num_heads, cache_capacity, head_size};
+    auto past_key = make_gpu_value(std::vector<CacheT>(cache_shape.Size(), CacheT{}), cache_shape);
+    auto past_value = make_gpu_value(std::vector<CacheT>(cache_shape.Size(), CacheT(1.0f)), cache_shape);
+    auto seqlens = make_gpu_value(std::vector<int32_t>{1}, {1});
+    auto scale = make_gpu_value(std::vector<float>{1.0f}, {1});
+    std::vector<int32_t> total_length_data{2};
+    OrtValue total_length;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{1}, total_length_data.data(),
+                         cpu_allocator->Info(), total_length);
+    std::unique_ptr<IOBinding> binding;
+    ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+    ASSERT_STATUS_OK(binding->BindInput("query", query));
+    ASSERT_STATUS_OK(binding->BindInput("key", key));
+    ASSERT_STATUS_OK(binding->BindInput("value", value));
+    ASSERT_STATUS_OK(binding->BindInput("past_key", past_key));
+    ASSERT_STATUS_OK(binding->BindInput("past_value", past_value));
+    ASSERT_STATUS_OK(binding->BindInput("seqlens_k", seqlens));
+    ASSERT_STATUS_OK(binding->BindInput("total_sequence_length", total_length));
+    ASSERT_STATUS_OK(binding->BindInput("k_scale", scale));
+    ASSERT_STATUS_OK(binding->BindInput("v_scale", scale));
+    ASSERT_STATUS_OK(binding->BindOutput("output", allocator->Info().device));
+    ASSERT_STATUS_OK(binding->BindOutput("present_key", past_key));
+    ASSERT_STATUS_OK(binding->BindOutput("present_value", past_value));
+    ASSERT_STATUS_OK(binding->SynchronizeInputs());
+    testing::internal::CaptureStdout();
+    const auto status = session.Run(RunOptions{}, *binding);
+    const std::string kernel_log = testing::internal::GetCapturedStdout();
+    ASSERT_STATUS_OK(status);
+    ASSERT_NE(kernel_log.find("SdpaKernel=XQA"), std::string::npos) << kernel_log;
+    ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+    ASSERT_EQ(binding->GetOutputs().size(), 3u);
+    const auto& output = binding->GetOutputs()[0].Get<Tensor>();
+    ASSERT_EQ(output.Shape(), (TensorShape{1, 1, hidden_size}));
+    Tensor cpu_output(DataTypeImpl::GetType<MLFloat16>(), output.Shape(), cpu_allocator);
+    ASSERT_STATUS_OK(ep->GetDataTransfer()->CopyTensor(output, cpu_output));
+    for (MLFloat16 element : cpu_output.DataAsSpan<MLFloat16>()) {
+      EXPECT_NEAR(element.ToFloat(), 1.0f, 0.002f);
+    }
+  }
+}
+
+TEST(GroupQueryAttentionTest, CudaXqaInt8SupportsOmittedBitWidth) {
+  RunGQAXqaOmittedBitWidthTest<int8_t>();
+}
+
+#ifdef USE_FP8_KV_CACHE
+TEST(GroupQueryAttentionTest, CudaXqaFp8SupportsOmittedBitWidth) {
+  RunGQAXqaOmittedBitWidthTest<Float8E4M3FN>();
+}
+#endif
 #endif
 
 #ifdef USE_WEBGPU

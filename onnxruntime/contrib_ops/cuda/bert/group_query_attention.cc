@@ -589,7 +589,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   workspace_problem.kv_num_heads = parameters.kv_num_heads;
   workspace_problem.head_size = parameters.head_size;
   workspace_problem.present_kv_cache_capacity = original_present_kv_cache_capacity;
-  workspace_problem.kv_cache_bit_width = parameters.kv_cache_bit_width;
+  // XQA derives eight-bit INT8/FP8 storage from U even when legacy models omit the bit-width attribute.
+  // Normalize only the recipe input; preserve the original attribute for other runtime paths.
+  workspace_problem.kv_cache_bit_width =
+      parameters.kv_cache_bit_width == 0 && is_inputs_quantized && (is_int8 || is_fp8)
+          ? 8
+          : parameters.kv_cache_bit_width;
   workspace_problem.k_quantization =
       k_quant_type_ == KVQuantizationType::PER_TENSOR
           ? GQAKvQuantizationType::PerTensor
@@ -962,11 +967,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
     data.use_unfused = true;
 
-    // The unfused fallback's Q/Y materialization buffers and FP32 QK/softmax scratch layout
-    // come from the shared unfused workspace recipe. The recipe reproduces the previous inline
-    // math exactly: 256-byte-aligned Q and Y regions (GQA guarantees head_size == v_head_size)
-    // followed by the two GetUnfusedAttentionWorkspaceSize-equivalent QK/softmax regions. The
-    // KV extent is the same resident/staged cache bound passed to the unfused kernel.
+    // CheckInputs validates equal Q/K/V head sizes; v_head_size == 0 means use head_size.
+    // Enforce the UnfusedGqaAttention invariant before sizing its Q/Y buffers.
+    ORT_RETURN_IF_NOT(parameters.v_head_size == 0 || parameters.v_head_size == parameters.head_size,
+                      "UnfusedGqaAttention requires head_size == v_head_size");
+    // The recipe retains the aligned Q/Y and FP32 QK/softmax layout, using the same
+    // resident/staged KV extent passed to the unfused kernel.
     const auto unfused = GetGQAUnfusedWorkspaceRecipe(workspace_problem, effective_workspace_kv_length);
     ORT_RETURN_IF_NOT(unfused.status.IsOK(),
                       "GQA unfused attention workspace sizing failed: ", unfused.status.message);
