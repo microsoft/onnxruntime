@@ -700,25 +700,6 @@ string_tensor_cleanup:
   return code;
 }
 
-static OrtErrorCode checkedTensorArrayLength(JNIEnv *jniEnv, uint64_t length, jsize *lengthJava) {
-  if (length > INT32_MAX) {
-    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT),
-                      "Tensor element count exceeds the Java array limit of 2147483647");
-    return ORT_INVALID_ARGUMENT;
-  }
-  *lengthJava = (jsize)length;
-  return ORT_OK;
-}
-
-JNIEXPORT jint JNICALL Java_ai_onnxruntime_TensorInfo_getArrayLength(JNIEnv *jniEnv, jclass clazz, jlong length) {
-  (void)clazz;
-  jsize lengthJava;
-  if (checkedTensorArrayLength(jniEnv, (uint64_t)length, &lengthJava) != ORT_OK) {
-    return 0;
-  }
-  return lengthJava;
-}
-
 static OrtErrorCode getTensorArrayLength(JNIEnv *jniEnv, const OrtApi *api,
                                         const OrtTensorTypeAndShapeInfo *tensorInfo, jsize *lengthJava) {
   size_t length = 0;
@@ -726,7 +707,13 @@ static OrtErrorCode getTensorArrayLength(JNIEnv *jniEnv, const OrtApi *api,
   if (code != ORT_OK) {
     return code;
   }
-  return checkedTensorArrayLength(jniEnv, length, lengthJava);
+  if (length > INT32_MAX) {
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT),
+                      "Tensor element count exceeds the Java array limit of 2147483647");
+    return ORT_INVALID_ARGUMENT;
+  }
+  *lengthJava = (jsize)length;
+  return ORT_OK;
 }
 
 jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {

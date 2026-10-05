@@ -317,15 +317,6 @@ public class TensorInfo implements ValueInfo {
   }
 
   /**
-   * Checks the native conversion of an element count to a Java array length, without allocating.
-   *
-   * @param numElements The number of elements.
-   * @return The checked Java array length.
-   * @throws OrtException If the element count exceeds the Java array limit.
-   */
-  static native int getArrayLength(long numElements) throws OrtException;
-
-  /**
    * Constructs an array the right shape and type to hold this tensor.
    *
    * <p>Note for String tensors, this carrier is a single dimensional array with enough space for

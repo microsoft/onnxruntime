@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import ai.onnxruntime.platform.Fp16Conversions;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -19,24 +21,41 @@ import java.util.Collections;
 import java.util.List;
 import java.util.SplittableRandom;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 public class OnnxTensorTest {
   private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
-  public void testNativeArrayCapacity() throws OrtException {
-    for (long length : new long[] {0, 1, Integer.MAX_VALUE}) {
-      Assertions.assertEquals((int) length, TensorInfo.getArrayLength(length));
-    }
-    for (long length :
-        new long[] {(long) Integer.MAX_VALUE + 1, 3_000_000_000L, 1L << 32, Long.MAX_VALUE}) {
-      OrtException exception =
-          assertThrows(OrtException.class, () -> TensorInfo.getArrayLength(length));
-      Assertions.assertEquals(OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT, exception.getCode());
-      Assertions.assertTrue(exception.getMessage().contains("Java array limit"));
+  public void testNativeArrayCapacity() throws ReflectiveOperationException {
+    Assumptions.assumeFalse(
+        OnnxRuntime.isAndroid(), "The custom-op test library is not packaged for Android");
+    System.load(
+        TestHelpers.getResourcePath("/" + System.mapLibraryName("custom_op_library")).toString());
+    OnnxMap receiver = new OnnxMap(0, 0, new MapInfo(0, OnnxJavaType.INT64, OnnxJavaType.FLOAT));
+    String[] getters = {"getLongValues", "getFloatValues", "getDoubleValues", "getStringValues"};
+    for (int type = 0; type < getters.length; type++) {
+      Method getter =
+          OnnxMap.class.getDeclaredMethod(getters[type], long.class, long.class, long.class);
+      getter.setAccessible(true);
+      for (long length :
+          new long[] {(long) Integer.MAX_VALUE + 1, 3_000_000_000L, 1L << 32, Long.MAX_VALUE}) {
+        long apiHandle = getCapacityTestApi(length, type);
+        Assertions.assertNotEquals(0L, apiHandle, "Unsupported native fixture type");
+        InvocationTargetException invocation =
+            assertThrows(
+                InvocationTargetException.class, () -> getter.invoke(receiver, apiHandle, 0L, 0L));
+        OrtException exception =
+            Assertions.assertInstanceOf(OrtException.class, invocation.getCause());
+        Assertions.assertEquals(
+            OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT, exception.getCode());
+        Assertions.assertTrue(exception.getMessage().contains("Java array limit"));
+      }
     }
   }
+
+  private static native long getCapacityTestApi(long length, int type);
 
   @Test
   public void testScalarCreation() throws OrtException {
