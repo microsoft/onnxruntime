@@ -425,15 +425,19 @@ class EpContextDataReadTestWorker final : public Napi::AsyncWorker {
   }
 
   void OnOK() override {
+    Napi::Env env = Env();
+    Napi::HandleScope scope{env};
     state_->Release();
     if (data_.empty()) {
-      deferred_.Resolve(Napi::Buffer<uint8_t>::New(Env(), 0));
+      deferred_.Resolve(Napi::Buffer<uint8_t>::New(env, 0));
     } else {
-      deferred_.Resolve(Napi::Buffer<uint8_t>::Copy(Env(), data_.data(), data_.size()));
+      deferred_.Resolve(Napi::Buffer<uint8_t>::Copy(env, data_.data(), data_.size()));
     }
   }
 
   void OnError(const Napi::Error& error) override {
+    Napi::Env env = Env();
+    Napi::HandleScope scope{env};
     state_->Release();
     deferred_.Reject(error.Value());
   }
