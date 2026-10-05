@@ -117,10 +117,13 @@ Status GatherNDBase::PrepareCompute(
   input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, alloc_stream);
 
   TArray<int64_t> input_dims(input_shape.GetDims());
+  const bool gpu_indices = indices_tensor->Location().device.Type() == OrtDevice::GPU;
+  IAllocatorUniquePtr<int32_t> invalid_index_found;
+  if (gpu_indices) {
+    invalid_index_found = GetScratchBuffer<int32_t>(1, alloc_stream);
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(invalid_index_found.get(), 0, sizeof(int32_t), cuda_stream));
+  }
 
-  // GPU-resident validation deliberately stays asynchronous: returning a data-dependent error
-  // here would require synchronizing the compute stream and would be incompatible with graph
-  // capture. Invalid slices receive a -1 offset and are zero-filled by GatherNDImpl.
   ComputeSliceOffsetsImpl(
       cuda_stream,
       batch_dims,
@@ -131,7 +134,25 @@ Status GatherNDBase::PrepareCompute(
       num_slice_dims,
       sizes_from_slice_dims,
       indices_data,
-      input_slice_offsets_buffer.get());
+      input_slice_offsets_buffer.get(),
+      invalid_index_found.get());
+
+  if (gpu_indices) {
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(cuda_stream, &capture_status));
+    if (capture_status == cudaStreamCaptureStatusNone) {
+      int32_t host_invalid_index_found = 0;
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&host_invalid_index_found,
+                                           invalid_index_found.get(),
+                                           sizeof(int32_t),
+                                           cudaMemcpyDeviceToHost,
+                                           cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+      if (host_invalid_index_found != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found in CUDA GatherND");
+      }
+    }
+  }
 
   return Status::OK();
 }

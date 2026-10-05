@@ -402,7 +402,7 @@ TEST(GatherNDOpTest, GatherND_zero_dim_error) {
 }
 
 #ifdef USE_CUDA
-TEST(GatherNDOpTest, GatherND_invalid_index_cuda_zero_filled) {
+TEST(GatherNDOpTest, GatherND_invalid_index_cuda_error) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
@@ -415,14 +415,14 @@ TEST(GatherNDOpTest, GatherND_invalid_index_cuda_zero_filled) {
   std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
   cuda_only_ep.push_back(DefaultCudaExecutionProvider());
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-           "",
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "invalid index found in CUDA GatherND",
            {},
            nullptr,
            &cuda_only_ep);
 }
 
-TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_zero_filled) {
+TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_error) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
@@ -435,8 +435,8 @@ TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_zero_filled) {
   std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cuda_only_ep;
   cuda_only_ep.push_back(DefaultCudaExecutionProvider());
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-           "",
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "invalid index found in CUDA GatherND",
            {},
            nullptr,
            &cuda_only_ep);
@@ -461,8 +461,8 @@ TEST(GatherNDOpTest, GatherNDCudaGraphCaptureSupportsBoundsCheck) {
 
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.AddInput<int64_t>("indices", {1, 1}, {2});
-  test.AddOutput<float>("output", {1, 2}, {0.0f, 0.0f});
+  test.AddInput<int64_t>("indices", {1, 1}, {1});
+  test.AddOutput<float>("output", {1, 2}, {3.0f, 4.0f});
 
   test.ConfigEp(std::move(cuda_ep));
   test.RunWithConfig();
