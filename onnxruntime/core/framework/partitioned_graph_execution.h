@@ -29,6 +29,8 @@ class PartitionedGraphExecution {
   ~PartitionedGraphExecution();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PartitionedGraphExecution);
 
+  Status CheckForPreviousFailure() const;
+
   Status Run(const RunOptions& run_options, int graph_id,
              FeedsFetchesManager& feeds_fetches_manager,
              gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,

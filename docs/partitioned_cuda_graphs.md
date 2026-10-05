@@ -142,9 +142,11 @@ capture requirements instead.
 - Capture warm-up executes CPU computation repeatedly, so stateful CPU operators
   are not an appropriate workload.
 - Individual graph retirement is not implemented. After an execution/capture
-  failure, including termination between partitions, recreate the session. Input
-  binding validation errors and termination detected before execution do not
-  invalidate already captured buckets.
+  failure, including termination between partitions, recreate the session.
+  All subsequent runs are rejected, including eager `gpu_graph_id=-1` calls,
+  before provider run callbacks or node execution. Input binding validation errors
+  and termination detected before execution do not invalidate the session;
+  existing buckets and eager execution remain usable.
 
 This is not a claim that a particular 27B model fits in 12 or 24 GB. That requires
 measurement with its actual quantization, context length, KV cache, placement, and
@@ -192,6 +194,9 @@ coverage for configurable warm-up counts and scratch retention across the alloca
 C ABI boundary. Failure regressions check that scratch retained by a kernel during
 a rejected replay is freed only by that kernel, and that partial replay failures
 invalidate every captured bucket while pre-execution validation remains recoverable.
+Post-start failures also reject eager execution, including IOBinding runs, without
+modifying output buffers. Coverage includes partial termination, changed host
+control inputs, and capture-attempt exhaustion.
 Graph-ID limit coverage checks the default and configured bounds, invalid settings,
 repeated rejection without new device allocations or changed outputs, and continued
 replay/eager execution at capacity. Whole-session routing remains exempt from the limit.

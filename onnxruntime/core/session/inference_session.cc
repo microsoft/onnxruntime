@@ -3926,6 +3926,13 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         sequential_run_lock.emplace(session_mutex_);
       }
 
+#if !defined(ORT_MINIMAL_BUILD)
+      if (partitioned_graph_execution_) {
+        // Partial execution may have changed shared state; eager runs cannot bypass session invalidation.
+        ORT_RETURN_IF_ERROR_SESSIONID_(partitioned_graph_execution_->CheckForPreviousFailure());
+      }
+#endif
+
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_) {

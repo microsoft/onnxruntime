@@ -229,7 +229,6 @@ struct PartitionedGraphExecution::Impl {
     ORT_RETURN_IF(graph_id < 0,
                   "Partitioned CUDA capture requires a nonnegative gpu_graph_id; "
                   "use gpu_graph_id=-1 for eager execution.");
-    ORT_RETURN_IF(failed, "A previous partitioned CUDA execution failed; recreate the session.");
     ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
     ORT_RETURN_IF(options.only_execute_path_to_fetches || options.sync_stream != nullptr,
                   "Partitioned CUDA capture does not support partial execution or per-run stream overrides.");
@@ -346,10 +345,18 @@ PartitionedGraphExecution::PartitionedGraphExecution(const SessionState& state, 
 
 PartitionedGraphExecution::~PartitionedGraphExecution() = default;
 
+Status PartitionedGraphExecution::CheckForPreviousFailure() const {
+#ifdef ORT_ENABLE_STREAM
+  ORT_RETURN_IF(impl_->failed, "A previous partitioned CUDA execution failed; recreate the session.");
+#endif
+  return Status::OK();
+}
+
 Status PartitionedGraphExecution::Run(const RunOptions& options, int graph_id, FeedsFetchesManager& manager,
                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                       const logging::Logger& logger, profiling::Profiler* run_profiler) {
 #ifdef ORT_ENABLE_STREAM
+  ORT_RETURN_IF_ERROR(CheckForPreviousFailure());
   return impl_->Run(options, graph_id, manager, feeds, fetches, logger, run_profiler);
 #else
   ORT_UNUSED_PARAMETER(options);

@@ -2752,6 +2752,9 @@ static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1, bool test_
         session.Run(run_options, input_names, feeds, output_names, &fetches), "8 capture attempts");
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
         session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
     return;
   }
   for (int iteration = 0; iteration < 4; ++iteration) {
@@ -2803,6 +2806,9 @@ static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1, bool test_
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
         session.Run(run_options, input_names, feeds, output_names, &fetches), "terminated");
     run_options.terminate = false;
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+    ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "0"));
     ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
 
     terminate_on_replay = &run_options;
@@ -2813,6 +2819,23 @@ static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1, bool test_
     run_options.terminate = false;
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
         session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+
+    input.GetMutable<Tensor>()->MutableData<float>()[0] = 11.0f;
+    auto* output = fetches[0].GetMutable<Tensor>()->MutableData<float>();
+    output[0] = -777.0f;
+    for (const char* id : {"-1", "0", "7", "8"}) {
+      SCOPED_TRACE(id);
+      ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, id));
+      ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+          session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+      EXPECT_EQ(fetches[0].Get<Tensor>().Data<float>(), output);
+      EXPECT_FLOAT_EQ(output[0], -777.0f);
+      IOBinding binding(session.GetSessionState());
+      ASSERT_STATUS_OK(binding.BindInput("X", input));
+      ASSERT_STATUS_OK(binding.BindOutput("Y", fetches[0]));
+      ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(run_options, binding), "recreate the session");
+      EXPECT_FLOAT_EQ(output[0], -777.0f);
+    }
   }
 
   SessionOptions legacy_options = options;
@@ -3266,6 +3289,12 @@ TEST(InferenceSessionTests, PartitionedCudaGraphInvalidatesAfterControlInputChan
   shape_data[1] = 2;
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+  input.GetMutable<Tensor>()->MutableData<float>()[0] = 11.0f;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -9.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
   ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "7"));
   fetches.clear();
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
