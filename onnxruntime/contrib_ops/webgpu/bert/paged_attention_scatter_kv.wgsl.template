@@ -40,26 +40,35 @@ $MAIN {
   let kv_head_idx = (global_idx / uniforms.head_size) % uniforms.kv_num_heads;
   let token_idx = global_idx / (uniforms.kv_num_heads * uniforms.head_size);
 
-  var seq_idx: u32 = 0u;
+  var seq_idx: u32 = uniforms.batch_size;
   for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
-    let hi = u32(cumulative_sequence_length.getByOffset(i + 1u));
-    if (token_idx < hi) {
+    let hi = cumulative_sequence_length.getByOffset(i + 1u);
+    if (hi >= 0 && token_idx < u32(hi)) {
       seq_idx = i;
       break;
     }
   }
 
-  let cum_lo = u32(cumulative_sequence_length.getByOffset(seq_idx));
-  let local_tok = token_idx - cum_lo;
-  let past_len = u32(past_seqlens.getByOffset(seq_idx));
-  let abs_slot = past_len + local_tok;
-  let block_off = abs_slot / uniforms.block_size;
-  let slot_in_bk = abs_slot % uniforms.block_size;
-  let block_id = u32(block_table.getByIndices(vec2<u32>(seq_idx, block_off)));
-
-  let src_col = kv_head_idx * uniforms.head_size + dim_idx;
-  let k_val = key.getByIndices(vec2<u32>(token_idx, src_col));
-  let v_val = value.getByIndices(vec2<u32>(token_idx, src_col));
-  key_cache.setByIndices(vec4<u32>(block_id, slot_in_bk, kv_head_idx, dim_idx), k_val);
-  value_cache.setByIndices(vec4<u32>(block_id, slot_in_bk, kv_head_idx, dim_idx), v_val);
+  if (seq_idx < uniforms.batch_size) {
+    let cum_lo = cumulative_sequence_length.getByOffset(seq_idx);
+    let past_len = past_seqlens.getByOffset(seq_idx);
+    if (cum_lo >= 0 && past_len >= 0 && token_idx >= u32(cum_lo)) {
+      let local_tok = token_idx - u32(cum_lo);
+      if (u32(past_len) <= 0xffffffffu - local_tok) {
+        let abs_slot = u32(past_len) + local_tok;
+        let block_off = abs_slot / uniforms.block_size;
+        if (block_off < uniforms.max_num_blocks_per_seq) {
+          let block_id = block_table.getByIndices(vec2<u32>(seq_idx, block_off));
+          if (block_id >= 0 && u32(block_id) < uniforms.num_blocks) {
+            let slot_in_bk = abs_slot % uniforms.block_size;
+            let src_col = kv_head_idx * uniforms.head_size + dim_idx;
+            let k_val = key.getByIndices(vec2<u32>(token_idx, src_col));
+            let v_val = value.getByIndices(vec2<u32>(token_idx, src_col));
+            key_cache.setByIndices(vec4<u32>(u32(block_id), slot_in_bk, kv_head_idx, dim_idx), k_val);
+            value_cache.setByIndices(vec4<u32>(u32(block_id), slot_in_bk, kv_head_idx, dim_idx), v_val);
+          }
+        }
+      }
+    }
+  }
 }
