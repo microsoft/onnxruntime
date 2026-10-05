@@ -200,6 +200,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Registers a delegate that receives external EPContext data when embed mode is disabled.
         /// </summary>
+        /// <param name="writeDelegate">Delegate invoked by ORT to receive external EPContext data.</param>
         public void SetEpContextDataWriteDelegate(WriteEpContextDataDelegate writeDelegate)
         {
             if (writeDelegate == null)
