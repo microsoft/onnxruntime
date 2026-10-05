@@ -60,13 +60,13 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
 
   Value get(Runtime& runtime, const PropNameID& name) override {
     const std::string property = name.utf8(runtime);
-    if (property == "cancel") {
+    if (property == "abort") {
       auto self = std::static_pointer_cast<EpContextDataReadTestWorker>(
           shared_from_this());
       return Function::createFromHostFunction(
           runtime, name, 0,
           [self](Runtime&, const Value&, const Value*, size_t) {
-            self->onAbort();
+            self->requestAbort();
             return Value::undefined();
           });
     }
@@ -178,7 +178,10 @@ Value EpContextDataReadCallback::testCallbackBridge(
   env->addTeardownListener(state);
   auto worker = std::make_shared<EpContextDataReadTestWorker>(
       runtime, env, std::move(state), arguments[2].asString(runtime).utf8(runtime));
-  return worker->toPromise(runtime);
+  auto promise = worker->toPromise(runtime);
+  promise.asObject(runtime).setProperty(
+      runtime, "testWorker", Object::createFromHostObject(runtime, worker));
+  return promise;
 }
 
 bool EpContextDataReadCallback::PendingCall::isFinished() noexcept {

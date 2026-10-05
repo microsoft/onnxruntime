@@ -71,6 +71,11 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
   }
 
  protected:
+  void requestAbort() {
+    cancel_ = true;
+    onAbort();
+  }
+
   /**
    * @brief Stop and join the worker while the derived object is still alive.
    *
@@ -80,11 +85,10 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
   void abortAndJoin() noexcept {
     if (worker_.joinable()) {
       if (worker_.get_id() != std::this_thread::get_id()) {
-        cancel_ = true;
         // Runs from a destructor, so an escaping exception would terminate the process. Ort calls
         // made by an onAbort() override (e.g. RunOptions::SetTerminate) can throw.
         try {
-          onAbort();
+          requestAbort();
         } catch (...) {
         }
         worker_.join();

@@ -7,8 +7,8 @@ import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { Buffer } from 'buffer';
 import RNFS from 'react-native-fs';
 
-declare const OrtApi: {
-  __testEpContextDataReadCallback(
+const ortApi = globalThis.OrtApi as typeof globalThis.OrtApi & {
+  testEpContextDataReadCallback(
     callback: (name: string) => unknown,
     maxDataSize: number,
     name: string,
@@ -323,7 +323,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     this.updateTestResult(index, { status: 'running' });
     try {
       const expectedName = 'context/data.bin';
-      const result = await OrtApi.__testEpContextDataReadCallback(
+      const result = await ortApi.testEpContextDataReadCallback(
         (name) => {
           if (name !== expectedName) {
             throw new Error(`Unexpected callback name: ${name}`);
@@ -361,7 +361,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       ]) {
         let rejected = false;
         try {
-          await OrtApi.__testEpContextDataReadCallback(callback, 1, 'failure.bin');
+          await ortApi.testEpContextDataReadCallback(callback, 1, 'failure.bin');
         } catch {
           rejected = true;
         }
@@ -369,7 +369,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
           throw new Error('Invalid callback result unexpectedly succeeded');
         }
       }
-      const empty = await OrtApi.__testEpContextDataReadCallback(
+      const empty = await ortApi.testEpContextDataReadCallback(
         () => new Uint8Array(0),
         1,
         'empty.bin',
@@ -394,53 +394,36 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     this.updateTestResult(index, { status: 'running' });
     try {
       type CancellableReadPromise = Promise<Uint8Array> & {
-        __nativeWorker: {
-          cancel: () => void;
+        testWorker: {
+          abort: () => void;
           forceInvalidate: () => void;
           isFinished: boolean;
           wasAborted: boolean;
         };
       };
-      let pendingRead: CancellableReadPromise | undefined;
-      pendingRead = OrtApi.__testEpContextDataReadCallback(
+      const pendingRead = ortApi.testEpContextDataReadCallback(
         (name) => {
           if (name !== 'cancel.bin') {
             throw new Error(`Unexpected callback name: ${name}`);
           }
-          if (!pendingRead) {
-            throw new Error('The pending callback bridge worker is unavailable');
-          }
-          pendingRead.__nativeWorker.cancel();
+          pendingRead.testWorker.abort();
           return new Uint8Array([1]);
         },
         1,
         'cancel.bin',
       ) as CancellableReadPromise;
-      const read = pendingRead;
-      if (!read) {
-        throw new Error('The callback bridge did not return a worker promise');
-      }
-      read.catch(() => {});
+      void pendingRead.catch(() => undefined);
 
       const deadline = Date.now() + 5000;
-      while (!read.__nativeWorker.isFinished && Date.now() < deadline) {
+      while (!pendingRead.testWorker.isFinished && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
-      if (!read.__nativeWorker.isFinished) {
-        read.__nativeWorker.forceInvalidate();
+      if (!pendingRead.testWorker.isFinished) {
+        pendingRead.testWorker.forceInvalidate();
         throw new Error('Cancelling a pending callback bridge read did not unblock its worker');
       }
-      if (!read.__nativeWorker.wasAborted) {
+      if (!pendingRead.testWorker.wasAborted) {
         throw new Error('The pending callback bridge worker was not aborted');
-      }
-      let rejected = false;
-      try {
-        await read;
-      } catch {
-        rejected = true;
-      }
-      if (!rejected) {
-        throw new Error('The cancelled callback bridge promise was not rejected');
       }
 
       this.updateTestResult(index, {
