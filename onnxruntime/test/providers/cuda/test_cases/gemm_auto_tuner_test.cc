@@ -105,6 +105,80 @@ TEST(GemmAutoTunerTest, CacheKeepsFirstInsertion) {
   other = key;
   other.tinygemm2_b_is_constant = !key.tinygemm2_b_is_constant;
   EXPECT_FALSE(cache.Lookup(other).has_value());
+
+  other = key;
+  other.cuda_graph_replay = !key.cuda_graph_replay;
+  EXPECT_FALSE(cache.Lookup(other).has_value());
+}
+
+TEST(GemmAutoTunerTest, GraphReplaySelectsBeforeCaching) {
+  CudaStreamGuard stream;
+  GemmTuneKey key = MakeTestKey(1004);
+  key.cuda_graph_replay = true;
+  GemmKernel selected = GemmKernel::kCublas;
+  ASSERT_STATUS_OK(TuneGemmKernel(key, stream.get(),
+                                  {DelayCandidate(GemmKernel::kCublas, stream.get(), 200'000),
+                                   DelayCandidate(GemmKernel::kSmallNGemv, stream.get(), 20'000)},
+                                  GemmTuneL2State{}, selected));
+  EXPECT_EQ(selected, GemmKernel::kSmallNGemv);
+  EXPECT_EQ(GemmAutoTuneCache::Instance().Lookup(key), std::optional<GemmKernel>{selected});
+  key.cuda_graph_replay = false;
+  EXPECT_FALSE(GemmAutoTuneCache::Instance().Lookup(key).has_value());
+}
+
+TEST(GemmAutoTunerTest, FailedGraphCaptureDoesNotCacheOrLeaveStreamCapturing) {
+  CudaStreamGuard stream;
+  GemmTuneKey key = MakeTestKey(1005);
+  key.cuda_graph_replay = true;
+  const GemmTuneCandidate failing{GemmKernel::kCublas, [&]() {
+                                    bool capturing = false;
+                                    ORT_RETURN_IF_ERROR(IsCudaStreamCapturing(stream.get(), capturing));
+                                    return capturing ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "test capture failure")
+                                                     : LaunchGpuDelay(stream.get(), 1'000);
+                                  }};
+  GemmKernel selected = GemmKernel::kCublas;
+  EXPECT_FALSE(TuneGemmKernel(key, stream.get(), {failing}, GemmTuneL2State{}, selected).IsOK());
+  EXPECT_FALSE(GemmAutoTuneCache::Instance().Lookup(key).has_value());
+  bool capturing = true;
+  ASSERT_STATUS_OK(IsCudaStreamCapturing(stream.get(), capturing));
+  EXPECT_FALSE(capturing);
+  ASSERT_STATUS_OK(LaunchGpuDelay(stream.get(), 1'000));
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream.get()));
+}
+
+TEST(GemmAutoTunerTest, GraphReplayRejectsStreamTimingWinner) {
+  CudaStreamGuard stream;
+  const GemmTuneCandidate stream_winner{GemmKernel::kSmallNGemv, [&]() {
+                                          bool capturing = false;
+                                          ORT_RETURN_IF_ERROR(IsCudaStreamCapturing(stream.get(), capturing));
+                                          return LaunchGpuDelay(stream.get(), capturing ? 400'000 : 20'000);
+                                        }};
+  const std::vector<GemmTuneCandidate> candidates{
+      DelayCandidate(GemmKernel::kCublas, stream.get(), 200'000), stream_winner};
+  GemmTuneKey key = MakeTestKey(1006);
+  GemmKernel selected = GemmKernel::kCublas;
+  ASSERT_STATUS_OK(TuneGemmKernel(key, stream.get(), candidates, GemmTuneL2State{}, selected));
+  EXPECT_EQ(selected, GemmKernel::kSmallNGemv);
+  key.cuda_graph_replay = true;
+  ASSERT_STATUS_OK(TuneGemmKernel(key, stream.get(), candidates, GemmTuneL2State{}, selected));
+  EXPECT_EQ(selected, GemmKernel::kCublas);
+  EXPECT_EQ(GemmAutoTuneCache::Instance().Lookup(key), std::optional<GemmKernel>{GemmKernel::kCublas});
+}
+
+TEST(GemmAutoTunerTest, TimingRejectsExistingCaptureWithoutEndingIt) {
+  CudaStreamGuard stream;
+  CUDA_CALL_THROW(cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeThreadLocal));
+  std::vector<float> times_ms;
+  const Status status = TimeGemmCandidates(stream.get(),
+                                           {DelayCandidate(GemmKernel::kCublas, stream.get(), 1'000)},
+                                           GemmTuneL2State{}, times_ms, true);
+  bool capturing = false;
+  ASSERT_STATUS_OK(IsCudaStreamCapturing(stream.get(), capturing));
+  cudaGraph_t graph{};
+  CUDA_CALL_THROW(cudaStreamEndCapture(stream.get(), &graph));
+  CUDA_CALL_THROW(cudaGraphDestroy(graph));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_TRUE(capturing);
 }
 
 TEST(GemmAutoTunerTest, TimesAndSelectsFasterCandidate) {
@@ -164,8 +238,11 @@ TEST(GemmAutoTunerTest, FlushBufferIsSizedFromL2) {
   std::vector<float> times_ms;
   const Status status =
       TimeGemmCandidates(stream.get(), {DelayCandidate(GemmKernel::kCublas, stream.get(), 1'000)}, l2, times_ms);
+  const Status replay_status =
+      TimeGemmCandidates(stream.get(), {DelayCandidate(GemmKernel::kCublas, stream.get(), 1'000)}, l2, times_ms, true);
   cudaFree(buffer);
   ASSERT_STATUS_OK(status);
+  ASSERT_STATUS_OK(replay_status);
   EXPECT_EQ(times_ms.size(), 1u);
 }
 
