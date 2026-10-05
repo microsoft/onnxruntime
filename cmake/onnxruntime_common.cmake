@@ -104,6 +104,9 @@ elseif (LINUX)
 elseif (APPLE)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/emscripten/device_discovery.cc")
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
@@ -317,21 +320,12 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
     # Platform-specific system libraries required only for the Apple static-package path.
     if(APPLE AND NOT onnxruntime_BUILD_SHARED_LIB)
-      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        # mat already links the SDK's bundled sqlite3/zlib archives, so no system SQLite is needed here.
-        # A bare sqlite3 name would reach Xcode as -framework SQLite3, which the iOS SDK does not provide.
-        target_link_libraries(onnxruntime_common PRIVATE
-          "-framework CoreFoundation"
-          "-framework Security"
-        )
-      else()
-        target_link_libraries(onnxruntime_common PRIVATE
-          "-framework CoreFoundation"
-          "-framework Security"
-          z
-          sqlite3
-        )
-      endif()
+      target_link_libraries(onnxruntime_common PRIVATE
+        "-framework CoreFoundation"
+        "-framework Security"
+        "-lz"
+        "-lsqlite3"
+      )
     endif()
 
     if (NOT onnxruntime_BUILD_SHARED_LIB)

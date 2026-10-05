@@ -53,6 +53,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
       mul1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
       mul1_node.GetOutputEdgesCount() != 1 ||
+      graph.NodeProducesGraphOutput(mul1_node) ||
       !IsSupportedDataType(mul1_node)) {
     return matchResult;
   }
@@ -138,6 +139,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
       pow1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
       pow1_node.GetOutputEdgesCount() != 1 ||
+      graph.NodeProducesGraphOutput(pow1_node) ||
       !IsSupportedDataType(pow1_node)) {
     return matchResult;
   }
@@ -175,7 +177,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   if (p_cast1_node != nullptr) {
     Node& cast1_node = *graph.GetNode(p_cast1_node->Index());
     // this is fused Cast node, so expect 2 output edges
-    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast1_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
+    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast1_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
           cast1_node.InputDefs().size() == 1 &&
           CheckNode(graph, cast1_node, pow1_node.GetExecutionProviderType(), false)) ||
         cast1_node.GetOutputEdgesCount() != 2) {
@@ -291,7 +293,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
         if (p_cast3_node == nullptr) continue;
 
         Node& cast3_node = *graph.GetNode(p_cast3_node->Index());
-        if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast3_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
+        if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast3_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
               cast3_node.InputDefs().size() == 1 &&
               CheckNode(graph, cast3_node, node.GetExecutionProviderType(), true))) {
           continue;

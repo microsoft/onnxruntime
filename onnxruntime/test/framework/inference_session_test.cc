@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cfloat>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -15,6 +17,7 @@
 #include <random>
 #include <set>
 #include <thread>
+#include <tuple>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -341,6 +344,188 @@ Status RunModelWithValues(InferenceSession& session_object,
   return session_object.Run(run_options, feeds, output_names, &fetches);
 }
 
+namespace {
+enum class GraphCaptureOperation {
+  Check,
+  Run,
+  Replay,
+  Release
+};
+
+// Use CPU kernels for capture runs and simulate replay without an EP-internal lock.
+class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported)
+      : CPUExecutionProvider{CPUExecutionProviderInfo{}}, concurrent_run_supported_{concurrent_run_supported} {}
+
+  bool ConcurrentRunSupported() const override { return concurrent_run_supported_; }
+  bool IsGraphCaptureEnabled() const override { return true; }
+
+  bool IsGraphCaptured(int graph_annotation_id) const override {
+    Notify(GraphCaptureOperation::Check);
+    return graph_annotation_id != -1 && captured_.load();
+  }
+
+  Status OnRunStart(const RunOptions&) override {
+    Notify(GraphCaptureOperation::Run);
+    ++run_count;
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions& run_options) override {
+    if (run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "0") != "-1" &&
+        ++capture_run_count_ == 2) {
+      captured_ = true;
+    }
+    return Status::OK();
+  }
+
+  Status ReplayGraph(int, bool) override {
+    Notify(GraphCaptureOperation::Replay);
+    ++replay_count;
+    return fail_replay ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Replay failed for testing") : Status::OK();
+  }
+
+  Status ReleaseCapturedGraph(int) override {
+    Notify(GraphCaptureOperation::Release);
+    captured_ = false;
+    capture_run_count_ = 0;
+    return Status::OK();
+  }
+
+  std::function<void(GraphCaptureOperation)> on_operation;
+  std::atomic<int> run_count{0};
+  std::atomic<int> replay_count{0};
+  bool fail_replay = false;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphCaptureTestExecutionProvider);
+
+  void Notify(GraphCaptureOperation operation) const {
+    if (on_operation) {
+      on_operation(operation);
+    }
+  }
+
+  const bool concurrent_run_supported_;
+  std::atomic<bool> captured_{false};
+  std::atomic<int> capture_run_count_{0};
+};
+
+class GraphCaptureSessionTest : public ::testing::Test {
+ protected:
+  void CreateSession(bool concurrent_run_supported = false) {
+    SessionOptions options;
+    options.intra_op_param.thread_pool_size = 1;
+    options.inter_op_param.thread_pool_size = 1;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1"));
+    session_ = std::make_unique<InferenceSession>(options, GetEnvironment());
+    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported);
+    ep_ = ep.get();
+    ASSERT_STATUS_OK(session_->RegisterExecutionProvider(std::move(ep)));
+    ASSERT_STATUS_OK(session_->Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_->Initialize());
+  }
+
+  Status Execute(GraphCaptureOperation operation) {
+    if (operation == GraphCaptureOperation::Release) {
+      return session_->ReleaseCapturedGraph(0);
+    }
+    RunOptions options;
+    if (operation == GraphCaptureOperation::Run) {
+      ORT_RETURN_IF_ERROR(options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+    }
+    return RunModelWithValues(*session_, options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  }
+
+  std::unique_ptr<InferenceSession> session_;
+  GraphCaptureTestExecutionProvider* ep_ = nullptr;
+};
+}  // namespace
+
+TEST_F(GraphCaptureSessionTest, CaptureRetriesAndRecapture) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 2);
+  EXPECT_EQ(ep_->replay_count.load(), 0);
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->replay_count.load(), 1);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Release));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 4);
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->replay_count.load(), 2);
+}
+
+TEST_F(GraphCaptureSessionTest, ReplayFailureReleasesRunLock) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  ep_->fail_replay = true;
+  EXPECT_THAT(Execute(GraphCaptureOperation::Replay).ErrorMessage(), testing::HasSubstr("Replay failed for testing"));
+  ep_->fail_replay = false;
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Release));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 4);
+}
+
+class GraphCaptureRunSerializationTest
+    : public GraphCaptureSessionTest,
+      public ::testing::WithParamInterface<std::tuple<GraphCaptureOperation, GraphCaptureOperation, bool>> {};
+
+TEST_P(GraphCaptureRunSerializationTest, RespectsConcurrentRunSupport) {
+  const auto [first_operation, second_operation, concurrent_run_supported] = GetParam();
+  ASSERT_NO_FATAL_FAILURE(CreateSession(concurrent_run_supported));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+
+  std::promise<void> entered, resume, second_started;
+  auto entered_future = entered.get_future();
+  auto resume_future = resume.get_future().share();
+  auto second_started_future = second_started.get_future();
+  std::atomic<bool> block_claimed{false}, blocked{false}, overlapped{false};
+  ep_->on_operation = [&](GraphCaptureOperation operation) {
+    if (operation == first_operation && !block_claimed.exchange(true)) {
+      blocked = true;
+      entered.set_value();
+      EXPECT_EQ(resume_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+      blocked = false;
+    } else if (blocked.load()) {
+      // This also detects graph-state queries that bypass Run's serialization.
+      overlapped = true;
+    }
+  };
+
+  auto first = std::async(std::launch::async, [&]() { return Execute(first_operation); });
+  EXPECT_EQ(entered_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  auto second = std::async(std::launch::async, [&]() {
+    second_started.set_value();
+    return Execute(second_operation);
+  });
+  EXPECT_EQ(second_started_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  const auto second_status = second.wait_for(concurrent_run_supported ? std::chrono::milliseconds(5000)
+                                                                      : std::chrono::milliseconds(200));
+  resume.set_value();
+  const auto first_result = first.get();
+  const auto second_result = second.get();
+  ep_->on_operation = {};
+
+  ASSERT_STATUS_OK(first_result);
+  ASSERT_STATUS_OK(second_result);
+  EXPECT_EQ(second_status, concurrent_run_supported ? std::future_status::ready : std::future_status::timeout);
+  EXPECT_EQ(overlapped.load(), concurrent_run_supported);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    InferenceSession, GraphCaptureRunSerializationTest,
+    ::testing::Values(
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Run, false),
+        std::make_tuple(GraphCaptureOperation::Run, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Release, false),
+        std::make_tuple(GraphCaptureOperation::Release, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Check, GraphCaptureOperation::Release, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, true)));
+
 class ProfileEventCapturingSink final : public logging::ISink {
  public:
   void SendImpl(const Timestamp&, const std::string&, const Capture&) override {}
@@ -652,8 +837,10 @@ TEST(InferenceSessionTests, WebGpuCompileOnlyUsesNoOpAllocator) {
 // End-to-end via the public V2 API in the *plugin* WebGPU build: select the virtual WebGPU OrtEpDevice and run a
 // compile-only session.
 //
-// Relies on test_main.cc registering the WebGPU plugin EP under a ".virtual" name, whose suffix auto-enables the env
-// config "allow_virtual_devices" so the factory surfaces a virtual GPU OrtEpDevice.
+// Relies on test_main.cc arranging for the factory to surface a virtual GPU OrtEpDevice: in the shared-library
+// plugin build by registering the EP library under a ".virtual" name, whose suffix auto-enables the env config
+// "allow_virtual_devices"; in the static plugin build by setting that env config entry directly at environment
+// creation (ORT core, not the test, registers the statically linked EP, so there is no registration name to suffix).
 //
 // It exercises the accepted (device-free) path even on a host that has a real GPU: device-free is driven by
 // session.compile_only, not by which device is selected, so no Dawn device is created.
@@ -672,9 +859,10 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
       break;
     }
   }
-  // A virtual device must be present in this build (test_main.cc's ".virtual" registration enables it).
+  // A virtual device must be present in this build (see the comment above this test for how test_main.cc enables it).
   ASSERT_FALSE(selected.empty())
-      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+      << "Expected a virtual WebGPU EP device from test_main.cc's virtual device configuration, "
+         "but none was surfaced.";
 
   Ort::SessionOptions session_options;
   // session-level compile_only (NOT an EP option) -> drives the device-free context and stop-before-finalize.
@@ -691,7 +879,7 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
 // internal factory): selecting the virtual WebGPU device for a normal (non-compile-only) session must be rejected
 // up front by the *adapter* factory's CreateEp with ORT_INVALID_ARGUMENT, rather than proceeding into Dawn to fail
 // obscurely with no real GPU behind the virtual device. Exercises the adapter factory's copy of the enforcement
-// through the public V2 API. Depends on the same test_main.cc ".virtual" registration as
+// through the public V2 API. Depends on the same test_main.cc virtual device configuration as
 // WebGpuVirtualDeviceCompileOnlyEndToEnd above (that's what surfaces the virtual device to select).
 TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
   std::vector<Ort::ConstEpDevice> selected;
@@ -706,10 +894,11 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
       break;
     }
   }
-  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present from test_main.cc's .virtual
-  // registration in this build, so fail (not skip) if none was surfaced.
+  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present in this build, so fail (not skip)
+  // if none was surfaced.
   ASSERT_FALSE(selected.empty())
-      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+      << "Expected a virtual WebGPU EP device from test_main.cc's virtual device configuration, "
+         "but none was surfaced.";
 
   // Deliberately NOT setting session.compile_only -> a runnable session on a virtual device, which must be rejected.
   Ort::SessionOptions session_options;
@@ -1767,6 +1956,111 @@ TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
   thread1.join();
   thread2.join();
 }
+
+#ifdef _WIN32
+class BlockingGetCapabilityExecutionProvider : public IExecutionProvider {
+ public:
+  BlockingGetCapabilityExecutionProvider(std::promise<void>& entered,
+                                         std::atomic<bool>& entered_signaled,
+                                         std::shared_future<void> release)
+      : IExecutionProvider{"BlockingGetCapabilityExecutionProvider"},
+        entered_{entered},
+        entered_signaled_{entered_signaled},
+        release_{std::move(release)} {
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&,
+      const IKernelLookup&,
+      const GraphOptimizerRegistry&,
+      IResourceAccountant*) const override {
+    if (!entered_signaled_.exchange(true)) {
+      entered_.set_value();
+    }
+
+    release_.wait();
+    return {};
+  }
+
+ private:
+  std::promise<void>& entered_;
+  std::atomic<bool>& entered_signaled_;
+  std::shared_future<void> release_;
+};
+
+TEST(InferenceSessionTests, LogAllSessionsDoesNotWaitForInitialization) {
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+
+  std::promise<void> initialization_entered;
+  auto initialization_entered_future = initialization_entered.get_future();
+  std::atomic<bool> initialization_entered_signaled{false};
+  std::promise<void> release_initialization;
+  auto release_initialization_future = release_initialization.get_future().share();
+
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<BlockingGetCapabilityExecutionProvider>(
+          initialization_entered, initialization_entered_signaled, release_initialization_future)));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+
+  auto initialize = std::async(std::launch::async, [&session]() {
+    return session.Initialize();
+  });
+
+  const auto initialization_wait_status = initialization_entered_future.wait_for(std::chrono::seconds{5});
+  if (initialization_wait_status != std::future_status::ready) {
+    release_initialization.set_value();
+    const auto initialize_status = initialize.get();
+    ASSERT_STATUS_OK(initialize_status);
+    FAIL() << "Initialization did not enter the execution provider";
+  }
+
+  auto log_all_sessions = std::async(std::launch::async, []() {
+    InferenceSession::LogAllSessions();
+  });
+  const auto log_wait_status = log_all_sessions.wait_for(std::chrono::seconds{5});
+
+  release_initialization.set_value();
+  const auto initialize_status = initialize.get();
+  log_all_sessions.get();
+
+  EXPECT_EQ(log_wait_status, std::future_status::ready);
+  ASSERT_STATUS_OK(initialize_status);
+}
+
+TEST(InferenceSessionTests, LogAllSessionsAllowsReentrantModelMetadataLogging) {
+  struct LoggingContext {
+    InferenceSession* session = nullptr;
+    std::atomic<bool> metadata_read{false};
+  } context;
+
+  SessionOptions session_options;
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  session_options.user_logging_param = &context;
+  session_options.user_logging_function =
+      [](void* param, OrtLoggingLevel, const char*, const char*, const char*, const char*) {
+        auto& logging_context = *static_cast<LoggingContext*>(param);
+        if (logging_context.session != nullptr) {
+          const auto [status, metadata] = logging_context.session->GetModelMetadata();
+          if (status.IsOK() && metadata != nullptr) {
+            logging_context.metadata_read = true;
+          }
+        }
+      };
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+  context.session = &session;
+
+  auto log_all_sessions = std::async(std::launch::async, []() {
+    InferenceSession::LogAllSessions();
+  });
+  ASSERT_EQ(log_all_sessions.wait_for(std::chrono::seconds{5}), std::future_status::ready);
+  log_all_sessions.get();
+  EXPECT_TRUE(context.metadata_read.load());
+}
+#endif
 
 TEST(InferenceSessionTests, PreAllocateOutputVector) {
   SessionOptions so;
