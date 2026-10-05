@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <string>
 
 #include "gtest/gtest.h"
@@ -168,6 +169,100 @@ TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
 
     check_string(fbs_runtime_optimization_record->action_id(), sat::TestTransformer::kSelectorActionId);
   }
+}
+
+TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge) {
+  const auto logger = DefaultLoggingManager().CreateLogger("graph_runtime_optimization_control_edge_test");
+  const auto model_path = ORT_TSTR("testdata/transform/runtime_optimization/add_with_surrounding_identities.onnx");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+
+  Node* add_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Add") {
+      add_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(add_node, nullptr);
+  const auto input_identities = graph_utils::FindParentsByType(*add_node, "Identity");
+  ASSERT_FALSE(input_identities.empty());
+
+  const auto& graph_inputs = graph.GetInputs();
+  ASSERT_FALSE(graph_inputs.empty());
+  auto& control_output =
+      graph.GetOrCreateNodeArg("control_source_output", graph_inputs.front()->TypeAsProto());
+  std::array<NodeArg*, 1> control_inputs{graph_inputs.front()};
+  std::array<NodeArg*, 1> control_outputs{&control_output};
+  auto& control_source = graph.AddNode(
+      "control_source", "Identity", "",
+      control_inputs, control_outputs);
+  ASSERT_TRUE(graph.AddControlEdge(control_source.Index(), input_identities.front()->Index()));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+
+  {
+    auto transformer = std::make_unique<sat::TestTransformer>(SatRuntimeOptimizationSaveContext{});
+    GraphTransformerManager transformer_manager{/* steps */ 5};
+    ASSERT_STATUS_OK(transformer_manager.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  }
+
+  flatbuffers::FlatBufferBuilder builder;
+  flatbuffers::Offset<fbs::Model> fbs_model_offset;
+  ASSERT_STATUS_OK(model->SaveToOrtFormat(builder, fbs_model_offset));
+  const auto fbs_session_offset =
+      fbs::CreateInferenceSessionDirect(builder,
+                                        std::to_string(kOrtModelVersion).c_str(),
+                                        fbs_model_offset,
+                                        0);
+  builder.Finish(fbs_session_offset);
+
+  const auto* fbs_session = fbs::GetInferenceSession(builder.GetBufferPointer());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->model(), nullptr);
+
+  OrtFormatLoadOptions load_options;
+  std::unique_ptr<Model> replay_model;
+  ASSERT_STATUS_OK(Model::LoadFromOrtFormat(
+      *fbs_session->model(), nullptr, load_options, *logger, replay_model));
+  Graph& replay_graph = replay_model->MainGraph();
+  ASSERT_STATUS_OK(replay_graph.Resolve());
+
+  {
+    auto transformer = std::make_unique<sat::TestTransformer>(SatRuntimeOptimizationLoadContext{});
+    GraphTransformerManager transformer_manager{/* steps */ 5};
+    ASSERT_STATUS_OK(transformer_manager.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(
+        replay_graph, TransformerLevel::Level1, *logger));
+  }
+
+  const Node* replay_control_source = nullptr;
+  const Node* replacement = nullptr;
+  for (const auto& node : replay_graph.Nodes()) {
+    if (node.Name() == "control_source") {
+      replay_control_source = &node;
+    } else if (node.OpType() == "Add") {
+      replacement = &node;
+    }
+  }
+  ASSERT_NE(replay_control_source, nullptr);
+  ASSERT_NE(replacement, nullptr);
+
+  bool found_control_edge = false;
+  for (auto edge = replay_control_source->OutputEdgesBegin();
+       edge != replay_control_source->OutputEdgesEnd(); ++edge) {
+    if (edge->IsControlEdge() && edge->GetNode().Index() == replacement->Index()) {
+      found_control_edge = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_control_edge);
 }
 
 TEST(GraphRuntimeOptimizationTest, ReplaceWithNewTransfersWorkspaceReservations) {
