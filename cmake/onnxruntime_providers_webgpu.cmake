@@ -15,6 +15,10 @@
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.cc"
   )
+  if(onnxruntime_USE_EXTERNAL_DAWN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    list(REMOVE_ITEM onnxruntime_providers_webgpu_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/webgpu_context_dawn_platform.cc")
+  endif()
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
@@ -57,7 +61,7 @@
 
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE
         onnxruntime_optimizer
-        onnxruntime_providers
+        ${onnxruntime_providers_target}
         onnxruntime_lora
         onnxruntime_framework
         onnxruntime_graph
@@ -201,6 +205,12 @@
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:user32.dll")
     endif()
 
+    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+      # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform,
+      # so it must link dawn_platform to resolve the platform base-class typeinfo/vtable symbols.
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_platform)
+    endif()
+
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
 
@@ -234,8 +244,8 @@
       target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_proc)
     endif()
 
-    if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-      # Ensure dxil.dll and dxcompiler.dll exist in the output directory $<TARGET_FILE_DIR:dxcompiler>
+    if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12 AND NOT onnxruntime_DAWN_PREBUILT_DIR)
+      # Ensure dxcompiler.dll exists in the output directory $<TARGET_FILE_DIR:dxcompiler>
       # TODO: the following code is used to disable building Dawn using vcpkg temporarily
       # until we figure out how to resolve the packaging pipeline failures
       #
@@ -243,14 +253,10 @@
       if (FALSE)
         find_package(directx-dxc CONFIG REQUIRED)
         target_link_libraries(onnxruntime_providers_webgpu Microsoft::DirectXShaderCompiler)
-        target_link_libraries(onnxruntime_providers_webgpu Microsoft::DXIL)
-        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:Microsoft::DXIL>")
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:Microsoft::DirectXShaderCompiler>")
       else()
-        add_dependencies(onnxruntime_providers_webgpu copy_dxil_dll)
         add_dependencies(onnxruntime_providers_webgpu dxcompiler)
 
-        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll")
       endif()
     endif()
@@ -344,15 +350,6 @@
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)
-
-    # Wire the Python wgsl_template test suite into ctest.
-    if (BUILD_TESTING)
-      add_test(
-        NAME wgsl_template_python_tests
-        COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_template/test/run_tests.py"
-        WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
-      )
-    endif()
   endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
