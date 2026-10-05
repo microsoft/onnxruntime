@@ -1390,6 +1390,57 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
   endforeach()
 endif()
 
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
+   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  foreach(fixture IN ITEMS shared valid missing_export)
+    set(probe_fixture onnxruntime_optional_probe_${fixture}_fixture)
+    onnxruntime_add_shared_library(${probe_fixture}
+      "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test_library.cc")
+    target_include_directories(${probe_fixture} PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
+    target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    target_compile_definitions(${probe_fixture} PRIVATE ORT_TEST_OPTIONAL_PROVIDER_${fixture})
+    set_target_properties(${probe_fixture} PROPERTIES FOLDER "ONNXRuntimeTest")
+    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set_target_properties(${probe_fixture} PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+    endif()
+  endforeach()
+  foreach(mode IN ITEMS normal no_exceptions)
+    set(probe_target onnxruntime_optional_provider_probe_${mode}_test)
+    set(probe_sources "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test.cc" ${onnxruntime_unittest_main_src})
+    if(mode STREQUAL "no_exceptions")
+      list(APPEND probe_sources
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
+    endif()
+    AddTest(TARGET ${probe_target}
+      SOURCES ${probe_sources}
+      LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+      DEPENDS onnxruntime_optional_probe_shared_fixture onnxruntime_optional_probe_valid_fixture
+              onnxruntime_optional_probe_missing_export_fixture)
+    set_target_properties(${probe_target} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${probe_target}/$<CONFIG>")
+    foreach(fixture IN ITEMS shared valid missing_export)
+      target_compile_definitions(${probe_target} PRIVATE
+        ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE:onnxruntime_optional_probe_${fixture}_fixture>")
+    endforeach()
+    if(mode STREQUAL "no_exceptions")
+      target_compile_definitions(${probe_target} PRIVATE ORT_NO_EXCEPTIONS ONNX_NO_EXCEPTIONS)
+      if(MSVC)
+        target_compile_definitions(${probe_target} PRIVATE _HAS_EXCEPTIONS=0)
+        target_compile_options(${probe_target} PRIVATE /EHs-c-)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+          target_compile_options(${probe_target} PRIVATE /clang:-fno-exceptions)
+        endif()
+      else()
+        target_compile_options(${probe_target} PRIVATE -fno-exceptions)
+      endif()
+      target_include_directories(${probe_target} PRIVATE
+        $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
+    endif()
+  endforeach()
+endif()
+
 if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   # ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE is required so that test_main.cc initializes
   # the dynamic plugin EP infrastructure. onnxruntime_test_utils (which compiles default_providers.cc)
