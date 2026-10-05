@@ -2,12 +2,16 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <atomic>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -26,26 +30,43 @@ struct HostCache {
   size_t load_count = 0;
   size_t hit_count = 0;
   size_t store_count = 0;
+  std::atomic<bool> callback_failed{false};
+  bool simulate_allocation_failure = false;
 
-  size_t Load(std::span<const std::byte> key, std::span<std::byte> value) {
-    std::lock_guard<std::mutex> lock(mutex);
-    ++load_count;
-    const auto found = blobs.find(std::string(reinterpret_cast<const char*>(key.data()), key.size()));
-    if (found == blobs.end()) {
+  size_t Load(std::span<const std::byte> key, std::span<std::byte> value) noexcept {
+    try {
+      std::lock_guard<std::mutex> lock(mutex);
+      ++load_count;
+      if (simulate_allocation_failure) {
+        throw std::bad_alloc{};
+      }
+      const auto found = blobs.find(std::string(reinterpret_cast<const char*>(key.data()), key.size()));
+      if (found == blobs.end()) {
+        return 0;
+      }
+      if (value.size() >= found->second.size() && !value.empty()) {
+        std::memcpy(value.data(), found->second.data(), found->second.size());
+        ++hit_count;
+      }
+      return found->second.size();
+    } catch (...) {
+      callback_failed.store(true);
       return 0;
     }
-    if (value.size() >= found->second.size() && !value.empty()) {
-      std::memcpy(value.data(), found->second.data(), found->second.size());
-      ++hit_count;
-    }
-    return found->second.size();
   }
 
-  void Store(std::span<const std::byte> key, std::span<const std::byte> value) {
-    std::lock_guard<std::mutex> lock(mutex);
-    ++store_count;
-    blobs[std::string(reinterpret_cast<const char*>(key.data()), key.size())] =
-        std::vector<std::byte>(value.begin(), value.end());
+  void Store(std::span<const std::byte> key, std::span<const std::byte> value) noexcept {
+    try {
+      std::lock_guard<std::mutex> lock(mutex);
+      ++store_count;
+      if (simulate_allocation_failure) {
+        throw std::bad_alloc{};
+      }
+      blobs[std::string(reinterpret_cast<const char*>(key.data()), key.size())] =
+          std::vector<std::byte>(value.begin(), value.end());
+    } catch (...) {
+      callback_failed.store(true);
+    }
   }
 };
 }  // namespace
@@ -58,6 +79,7 @@ int main(int argc, char* argv[]) {
   bool no_proc_table = false;
   bool host_device_mode = false;
   bool no_implicit_sync = false;
+  bool cache_callback_failure = false;
   std::basic_string<ORTCHAR_T> plugin_path;
   int retval = 0;
   HostCache host_cache;
@@ -73,6 +95,10 @@ int main(int argc, char* argv[]) {
         host_device_mode = true;
       } else if (argument == ORT_TSTR("--no_implicit_sync")) {
         no_implicit_sync = true;
+      } else if (argument == ORT_TSTR("--cache_callback_failure")) {
+        host_device_mode = true;
+        cache_callback_failure = true;
+        host_cache.simulate_allocation_failure = true;
       } else if (argument == ORT_TSTR("--plugin") && argument_index + 1 < argc) {
         plugin_path = argv[++argument_index];
       } else {
@@ -142,12 +168,12 @@ int main(int argc, char* argv[]) {
       session_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
       std::unordered_map<std::string, std::string> provider_options;
       if (!no_proc_table) {
-        provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<size_t>(&dawn::native::GetProcs()));
+        provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<uintptr_t>(&dawn::native::GetProcs()));
       }
       if (host_device_mode) {
         provider_options["deviceId"] = std::to_string(cache_pass + 1);
-        provider_options["webgpuInstance"] = std::to_string(reinterpret_cast<size_t>(host_instance->Get()));
-        provider_options["webgpuDevice"] = std::to_string(reinterpret_cast<size_t>(host_device.Get()));
+        provider_options["webgpuInstance"] = std::to_string(reinterpret_cast<uintptr_t>(host_instance->Get()));
+        provider_options["webgpuDevice"] = std::to_string(reinterpret_cast<uintptr_t>(host_device.Get()));
         provider_options["preserveDevice"] = "1";
       }
       if (plugin_path.empty()) {
@@ -219,6 +245,9 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error("Host device was not usable after ORT session and environment teardown.");
           }
           std::cout << "Host-created WebGPU device remained usable after ORT teardown." << std::endl;
+          if (host_cache.callback_failed.load()) {
+            throw std::runtime_error("A host shader-cache callback failed before completing its operation.");
+          }
           std::lock_guard<std::mutex> cache_lock(host_cache.mutex);
           if (host_cache.load_count == 0 || host_cache.store_count == 0 || host_cache.blobs.empty()) {
             throw std::runtime_error("Host shader-cache callbacks were not exercised by GPU inference.");
@@ -245,6 +274,16 @@ int main(int argc, char* argv[]) {
                std::string(ex.what()).find("must enable ImplicitDeviceSynchronization") != std::string::npos) {
       std::cout << "A host device without ImplicitDeviceSynchronization was rejected as expected." << std::endl;
       retval = 0;
+    } else if (cache_callback_failure &&
+               std::string(ex.what()).find("A host shader-cache callback failed") != std::string::npos) {
+      std::lock_guard<std::mutex> cache_lock(host_cache.mutex);
+      if (host_cache.callback_failed.load() && host_cache.load_count > 0 && host_cache.store_count > 0) {
+        std::cout << "Host cache load/store allocation failures were contained and reported as expected." << std::endl;
+        retval = 0;
+      } else {
+        std::cerr << "The expected load/store callback failures were not both observed." << std::endl;
+        retval = -1;
+      }
     } else {
       std::cerr << "Unexpected exception." << std::endl;
       retval = -1;

@@ -2903,6 +2903,7 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::da
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+  target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
 endif()
 
 if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

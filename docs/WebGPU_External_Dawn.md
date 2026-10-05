@@ -73,5 +73,9 @@ disabled on three fresh devices: a cold cache, a warm cache with the same
 isolation key, and a separate isolation key. It checks actual cache reads and
 writes and device operations after session/environment teardown. The
 `--no_implicit_sync` negative mode verifies that omitting the required feature
-is rejected. Windows CI exercises these modes for source-based, package-backed,
+is rejected. The `--cache_callback_failure` mode injects allocation failures in
+both callbacks. The callbacks contain the exceptions as a cache miss/no-op and
+record a failure flag, which normal test code diagnoses after inference rather
+than allowing exceptions to escape or silently treating the failure as success.
+Windows CI exercises these modes for source-based, package-backed,
 and plugin builds; other native platforms have not been validated locally.
