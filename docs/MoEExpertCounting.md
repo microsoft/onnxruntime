@@ -146,6 +146,8 @@ GEMM-layout weights for nodes with CPU experts. The temporary original copy is r
 
 Offload requires prepacking to remain enabled and the input hidden dimension to be statically known. Connected
 FC1/FC2 biases must be constant, just like the expert weights.
+Expert-weight validation follows actual outer-scope captures into subgraphs; same-named local inputs and initializers
+are separate values and do not count as uses of the outer weights.
 
 Placement is static in this stage: counters continue to evolve, but no weight transfer, expert swap, or end-of-run
 redistribution occurs. Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, BF16, FP32, the CUDA

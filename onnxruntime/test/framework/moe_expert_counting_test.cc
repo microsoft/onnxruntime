@@ -733,6 +733,85 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadPlacesOuterScopeWeightsOnCpu) {
   }
 }
 
+TEST(MoeExpertCountingTest, StaticCpuOffloadIgnoresShadowedLoopValues) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  for (const std::string shadow : {"input", "initializer"}) {
+    SCOPED_TRACE(shadow);
+    ModelProto model;
+    ASSERT_TRUE(model.ParseFromString(MakeCountingModel(false, true)));
+    auto& graph = *model.mutable_graph();
+    auto* trips = graph.add_initializer();
+    trips->set_name("trips");
+    trips->set_data_type(TensorProto_DataType_INT64);
+    trips->add_int64_data(1);
+    auto* condition = graph.add_initializer();
+    condition->set_name("loop_condition");
+    condition->set_data_type(TensorProto_DataType_BOOL);
+    condition->add_int32_data(1);
+    SetValue(*graph.add_output(), "loop_output", TensorProto_DataType_FLOAT16, {3, kWidth});
+    auto* loop = graph.add_node();
+    loop->set_op_type("Loop");
+    loop->add_input("trips");
+    loop->add_input("loop_condition");
+    loop->add_input("input");
+    loop->add_output("loop_output");
+    auto* attribute = loop->add_attribute();
+    attribute->set_name("body");
+    attribute->set_type(AttributeProto_AttributeType_GRAPH);
+    auto& body = *attribute->mutable_g();
+    body.set_name("shadowed_weight");
+    SetValue(*body.add_input(), "iteration", TensorProto_DataType_INT64, {});
+    SetValue(*body.add_input(), "condition", TensorProto_DataType_BOOL, {});
+    SetValue(*body.add_input(), shadow == "input" ? "w1" : "loop_input",
+             TensorProto_DataType_FLOAT16, {3, kWidth});
+    SetValue(*body.add_output(), "condition_out", TensorProto_DataType_BOOL, {});
+    SetValue(*body.add_output(), "body_output", TensorProto_DataType_FLOAT16, {3, kWidth});
+    auto* condition_identity = body.add_node();
+    condition_identity->set_op_type("Identity");
+    condition_identity->add_input("condition");
+    condition_identity->add_output("condition_out");
+    if (shadow == "initializer") {
+      AddZeroInitializer(body, "w1", TensorProto_DataType_FLOAT16, {3, kWidth}, sizeof(MLFloat16));
+    }
+    auto* identity = body.add_node();
+    identity->set_op_type("Identity");
+    identity->add_input("w1");
+    identity->add_output("body_output");
+
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    const auto serialized = model.SerializeAsString();
+    ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const auto& state = session.GetSessionState();
+    int weight_index = -1;
+    ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("w1", weight_index));
+    ASSERT_NE(state.GetExecutionPlan(), nullptr);
+    EXPECT_EQ(state.GetExecutionPlan()->GetLocation(static_cast<size_t>(weight_index)).Type(), OrtDevice::CPU);
+    std::vector<OrtValue> outputs;
+    const std::array<std::string, 2> output_names{"output", "loop_output"};
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, CountingFeeds(), output_names, &outputs));
+    ASSERT_EQ(outputs.size(), 2U);
+    for (auto value : outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>()) {
+      EXPECT_EQ(value.ToFloat(), 0.0f);
+    }
+    for (auto value : outputs[1].Get<Tensor>().DataAsSpan<MLFloat16>()) {
+      EXPECT_EQ(value.ToFloat(), shadow == "initializer" ? 0.0f : 1.0f);
+    }
+  }
+}
+
 TEST(MoeExpertCountingTest, StaticCpuOffloadRunsNodeWithAllCudaExperts) {
   auto provider = DefaultCudaExecutionProvider();
   if (!provider) {

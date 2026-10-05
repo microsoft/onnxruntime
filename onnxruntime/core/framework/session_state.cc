@@ -1925,9 +1925,15 @@ static Status FindMoeCpuOffloadInitializerUses(
     const std::string& initializer_name,
     bool graph_owns_initializer,
     bool& found_moe_expert_use) {
-  if (!graph_owns_initializer &&
-      graph.GetAllInitializedTensors().find(initializer_name) != graph.GetAllInitializedTensors().end()) {
-    return Status::OK();
+  if (!graph_owns_initializer) {
+    const auto& inputs = graph.GetInputsIncludingInitializers();
+    // A parent's implicit inputs are shared by sibling subgraphs; local definitions still take precedence.
+    if (!graph.IsOuterScopeValue(initializer_name) ||
+        graph.GetAllInitializedTensors().find(initializer_name) != graph.GetAllInitializedTensors().end() ||
+        std::any_of(inputs.begin(), inputs.end(),
+                    [&](const NodeArg* input) { return input->Name() == initializer_name; })) {
+      return Status::OK();
+    }
   }
 
   for (const auto& node : graph.Nodes()) {
