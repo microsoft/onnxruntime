@@ -12,6 +12,7 @@ if (typeof window !== 'undefined') {
 }
 
 require('./backends/wasm/test-model-metadata');
+require('./backends/wasm/test-available-providers');
 
 require('./pool-output-shape');
 
