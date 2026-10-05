@@ -684,6 +684,55 @@ TEST(MoETest, QMoETest_WebGPU_BlockFp8_NumericalReferenceAndBiases) {
   RunWebGpuOnly(tester, std::move(webgpu_ep));
 }
 
+TEST(MoETest, QMoETest_WebGPU_BlockFp8_SeparateFc3SingleToken) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
+  constexpr int num_experts = 2;
+  constexpr int size = 3;
+  const std::vector<float> input{0.5f, 1.0f, 1.5f};
+  std::vector<Float8E4M3FN> weights(num_experts * size * size, Float8E4M3FN(0.0f));
+  for (int expert = 0; expert < num_experts; ++expert) {
+    for (int index = 0; index < size; ++index) {
+      weights[expert * size * size + index * size + index] = Float8E4M3FN(1.0f);
+    }
+  }
+
+  std::vector<float> expected;
+  for (float value : input) {
+    float result = 0.0f;
+    for (int expert = 0; expert < num_experts; ++expert) {
+      const float fc1 = MLFloat16(value * (expert == 0 ? 1.0f : 2.0f)).ToFloat();
+      const float fc3 = MLFloat16(value * (expert == 0 ? 3.0f : 4.0f)).ToFloat();
+      const float activated = MLFloat16((fc1 / (1.0f + std::exp(-fc1))) * fc3).ToFloat();
+      result += MLFloat16(activated * (expert == 0 ? 5.0f : 6.0f)).ToFloat() * 0.5f;
+    }
+    expected.push_back(result);
+  }
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 2);
+  tester.AddAttribute<std::string>("activation_type", "silu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 8);
+  tester.AddAttribute<int64_t>("block_size", 128);
+  tester.AddAttribute<std::string>("quant_type", "fp8");
+  tester.AddInput<MLFloat16>("input", {1, size}, ToFloat16(input));
+  tester.AddInput<MLFloat16>("router_probs", {1, num_experts}, ToFloat16({10.0f, 10.0f}));
+  tester.AddInput<Float8E4M3FN>("fc1_experts_weights", {num_experts, size, size}, weights);
+  tester.AddInput<float>("fc1_scales", {num_experts, 1, 1}, {1.0f, 2.0f});
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<Float8E4M3FN>("fc2_experts_weights", {num_experts, size, size}, weights);
+  tester.AddInput<float>("fc2_scales", {num_experts, 1, 1}, {5.0f, 6.0f});
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<Float8E4M3FN>("fc3_experts_weights", {num_experts, size, size}, weights);
+  tester.AddInput<float>("fc3_scales", {num_experts, 1, 1}, {3.0f, 4.0f});
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {1, size}, ToFloat16(expected));
+  tester.SetOutputTolerance(0.02f);
+
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
+}
+
 TEST(MoETest, QMoETest_WebGPU_BlockFp8_128x128) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
 
