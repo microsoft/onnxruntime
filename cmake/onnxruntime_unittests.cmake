@@ -6,6 +6,10 @@ endif()
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
+if(NOT CMAKE_CROSSCOMPILING)
+  add_test(NAME onnxruntime_public_exports_test
+    COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_gen_def.py")
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()

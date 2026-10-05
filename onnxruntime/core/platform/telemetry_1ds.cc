@@ -469,6 +469,10 @@ void OneDsTelemetry::Initialize() {
   config[CFG_BOOL_ENABLE_TRACE] = false;  // Disable SDK internal logging
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
+#if defined(_WIN32)
+  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
+  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
+#endif
 #if defined(__APPLE__)
   // Apple system SQLite is process-global. Multiple libraries may embed 1DS in the same process,
   // so let SQLite initialize lazily and never let an individual SDK copy shut it down.

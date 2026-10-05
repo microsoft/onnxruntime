@@ -3,6 +3,7 @@
 
 #ifdef USE_1DS_TELEMETRY
 
+#include <ILogConfiguration.hpp>
 #include <NullObjects.hpp>
 
 #include "core/platform/telemetry_1ds.h"
@@ -48,6 +49,10 @@ class OneDsTelemetryTest : public testing::Test {
     OneDsTelemetry::logger_.store(nullptr);
   }
 
+  Microsoft::Applications::Events::ILogConfiguration* GetSdkConfiguration() const {
+    return OneDsTelemetry::config_.get();
+  }
+
   OneDsTelemetry telemetry_;
   RecordingLogger logger_;
 
@@ -57,6 +62,15 @@ class OneDsTelemetryTest : public testing::Test {
   bool previous_disabled_ = false;
   bool previous_process_info_logged_ = false;
 };
+
+#if defined(_WIN32)
+TEST_F(OneDsTelemetryTest, WindowsNetworkDetectorIsDisabled) {
+  auto* config = GetSdkConfiguration();
+  ASSERT_NE(config, nullptr);
+  ASSERT_TRUE(config->HasConfig(Microsoft::Applications::Events::CFG_BOOL_ENABLE_NET_DETECT));
+  EXPECT_FALSE(static_cast<bool>((*config)[Microsoft::Applications::Events::CFG_BOOL_ENABLE_NET_DETECT]));
+}
+#endif
 
 TEST_F(OneDsTelemetryTest, DisabledProcessInfoIsNotEmittedOrConsumed) {
   ASSERT_TRUE(telemetry_.IsEnabled());
