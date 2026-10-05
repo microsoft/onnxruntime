@@ -596,6 +596,17 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                          opened_path, " allowed directory: ", model_dir_canonical);
 }
 
+[[maybe_unused]] static Status OpenValidatedExternalDataFile(
+    const Env& env,
+    const std::filesystem::path& model_path,
+    const PathString& external_data_file_path,
+    std::unique_ptr<RandomAccessFile>& external_data_file) {
+  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
+  PathString opened_path;
+  ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
+  return ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path});
+}
+
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            const std::filesystem::path& tensor_proto_dir,
                            std::basic_string<ORTCHAR_T>& external_file_path,
@@ -1837,10 +1848,8 @@ Status GetExtDataFromTensorProto(const Env& env,
 
 #else
     std::unique_ptr<RandomAccessFile> external_data_file;
-    ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
-    PathString opened_path;
-    ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
-    ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
+    ORT_RETURN_IF_ERROR(
+        OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
 
     uint64_t file_length = 0;
     ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
@@ -1921,10 +1930,8 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
                     external_data_file_path == kTensorProtoLittleEndianMemoryAddressTag,
                 "Pre-packed blobs cannot be restored from an in-memory external tensor.");
   std::unique_ptr<RandomAccessFile> external_data_file;
-  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
-  PathString opened_path;
-  ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
-  ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
+  ORT_RETURN_IF_ERROR(
+      OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
   uint64_t file_length = 0;
   ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
   return LoadPrepackedWeightsFromFile(*external_data_file, file_length, prepacked_infos, prepacked_info);
@@ -1960,10 +1967,8 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 #else
   std::unique_ptr<RandomAccessFile> external_data_file;
-  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
-  PathString opened_path;
-  ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
-  ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
+  ORT_RETURN_IF_ERROR(
+      OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
   return ext_data_loader.LoadTensor(*external_data_file, file_offset, raw_data_safe_len, tensor);
 #endif
 }
