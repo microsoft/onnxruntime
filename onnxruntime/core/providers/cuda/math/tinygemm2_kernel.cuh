@@ -142,7 +142,7 @@ __device__ __forceinline__ __nv_bfloat16 FromFloat<__nv_bfloat16>(float v) { ret
 template <>
 __device__ __forceinline__ __half FromFloat<__half>(float v) { return __float2half(v); }
 
-#endif // __CUDA_ARCH__ >= 900
+#endif  // __CUDA_ARCH__ >= 900
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 #define KERNEL_PARAM_MODIFIER __grid_constant__
