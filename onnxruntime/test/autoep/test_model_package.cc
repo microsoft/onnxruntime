@@ -880,27 +880,29 @@ TEST(ModelPackageTest, VariantSessionOption_ResolvesExternalInitializersFolder) 
   std::filesystem::remove_all(package_root, ec);
 }
 
-TEST(ModelPackageTest, VariantSessionOption_RejectsOptimizedModelPath) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_optimized_model_path";
-  std::vector<VariantSpec> variants;
-  variants.push_back(VariantSpec{
-      "variant_1", "example_ep", "cpu", "", "testdata/mul_1.onnx", std::unordered_map<std::string, std::string>{
-                                                                       {kOrtSessionOptionsConfigOptimizedModelFilePath, "optimized.onnx"},
-                                                                   },
-      {}});
-  BuildPackage(package_root, "model_1", variants);
-
+TEST(ModelPackageTest, VariantSessionOption_RejectsOutputFileOptions) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_output_file_options";
   const auto& pkg_api = GetModelPackageFns();
   ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
 
-  OrtModelPackageContext* raw_context = nullptr;
-  OrtStatus* status = pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_context);
-  EXPECT_NE(status, nullptr);
-  EXPECT_EQ(raw_context, nullptr);
-  if (status != nullptr) {
-    EXPECT_THAT(Ort::GetApi().GetErrorMessage(status),
-                ::testing::HasSubstr(kOrtSessionOptionsConfigOptimizedModelFilePath));
-    Ort::GetApi().ReleaseStatus(status);
+  for (const auto* option_key : {kDebugLayoutTransformation,
+                                 kOrtSessionOptionsCollectNodeMemoryStatsToFile,
+                                 kOrtSessionOptionsConfigEnableProfiling,
+                                 kOrtSessionOptionsConfigOptimizedModelFilePath}) {
+    SCOPED_TRACE(option_key);
+    std::vector<VariantSpec> variants;
+    variants.push_back(VariantSpec{
+        "variant_1", "example_ep", "cpu", "", "testdata/mul_1.onnx", std::unordered_map<std::string, std::string>{{option_key, "output_file"}}, {}});
+    BuildPackage(package_root, "model_1", variants);
+
+    OrtModelPackageContext* raw_context = nullptr;
+    OrtStatus* status = pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_context);
+    EXPECT_NE(status, nullptr);
+    EXPECT_EQ(raw_context, nullptr);
+    if (status != nullptr) {
+      EXPECT_THAT(Ort::GetApi().GetErrorMessage(status), ::testing::HasSubstr(option_key));
+      Ort::GetApi().ReleaseStatus(status);
+    }
   }
 
   std::error_code ec;
