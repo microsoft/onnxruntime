@@ -13,6 +13,7 @@ typedef void* cudnnStatus_t;
 #include "core/providers/tensorrt/nv_includes.h"
 
 #include <mutex>
+#include <optional>
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
 
@@ -375,6 +376,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string op_types_to_exclude_;
   std::vector<nvinfer1::PreviewFeature> preview_features_;
   bool load_user_initializer_ = false;
+  std::optional<nvinfer1::ProfilingVerbosity> profiling_verbosity_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
