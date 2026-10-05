@@ -842,6 +842,8 @@ TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true,
+                 num_outputs, true, {}, false);
 }
 
 TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {

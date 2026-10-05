@@ -20,6 +20,7 @@ export interface SplitAttributes extends AttributeWithCacheKey {
   readonly axis: number;
   readonly numOutputs: number;
   readonly splitSizes: number[];
+  readonly isUnevenSplitAllowed?: boolean;
 }
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
@@ -38,7 +39,12 @@ const createSplitAttributesFromInputs = (
     inputs[1].getBigInt64Array().forEach((v) => splitSizes.push(Number(v)));
     numOutputs = splitSizes.length;
   }
-  return createAttributeWithCacheKey({ numOutputs, axis: attributes.axis, splitSizes });
+  return createAttributeWithCacheKey({
+    numOutputs,
+    axis: attributes.axis,
+    splitSizes,
+    isUnevenSplitAllowed: attributes.isUnevenSplitAllowed,
+  });
 };
 
 const calculateOutputIndexImpl = (numberOfTensors: number): string => `
@@ -130,8 +136,37 @@ export const createSplitProgramInfo = (inputs: readonly TensorView[], attributes
 
 export const split = (context: ComputeContext, attributes: SplitAttributes): void => {
   validateInputs(context.inputs);
-  const updatedAttributes =
+  let updatedAttributes =
     context.inputs.length === 1 ? attributes : createSplitAttributesFromInputs(context.inputs, attributes);
+  if (updatedAttributes.splitSizes.length === 0) {
+    const inputShape = context.inputs[0].dims;
+    const axis = ShapeUtil.normalizeAxis(updatedAttributes.axis, inputShape.length);
+    const splitDim = inputShape[axis];
+    const numOutputs = updatedAttributes.numOutputs;
+    if (numOutputs < 1) {
+      throw new Error('numOutputs must be positive');
+    }
+    if (updatedAttributes.isUnevenSplitAllowed) {
+      if (numOutputs > splitDim) {
+        throw new Error('numOutputs must not exceed the size of the split dimension');
+      }
+    } else if (splitDim % numOutputs !== 0) {
+      throw new Error('The split dimension must be evenly divisible by the number of outputs');
+    }
+    const splitSize = Math.ceil(splitDim / numOutputs);
+    const lastSplitSize = splitDim - splitSize * (numOutputs - 1);
+    if (updatedAttributes.isUnevenSplitAllowed && lastSplitSize <= 0) {
+      throw new Error('numOutputs cannot produce the requested number of nonempty splits');
+    }
+    const splitSizes = new Array<number>(numOutputs).fill(splitSize);
+    splitSizes[numOutputs - 1] = lastSplitSize;
+    updatedAttributes = createAttributeWithCacheKey({
+      numOutputs,
+      axis: updatedAttributes.axis,
+      splitSizes,
+      isUnevenSplitAllowed: updatedAttributes.isUnevenSplitAllowed,
+    });
+  }
   context.compute(createSplitProgramInfo(context.inputs, updatedAttributes), { inputs: [0] });
 };
 
@@ -139,8 +174,9 @@ export const parseSplitAttributes = (attributes: Record<string, unknown>): Split
   const axis = attributes.axis as number;
   const splitSizes: number[] = attributes.splitSizes as number[];
   const numOutputs = (attributes.numOutputs as number) < 0 ? splitSizes.length : (attributes.numOutputs as number);
-  if (numOutputs !== splitSizes.length) {
+  const isUnevenSplitAllowed = !!attributes.isUnevenSplitAllowed;
+  if (splitSizes.length > 0 && numOutputs !== splitSizes.length) {
     throw new Error('numOutputs and splitSizes length must be equal');
   }
-  return createAttributeWithCacheKey({ axis, numOutputs, splitSizes });
+  return createAttributeWithCacheKey({ axis, numOutputs, splitSizes, isUnevenSplitAllowed });
 };
