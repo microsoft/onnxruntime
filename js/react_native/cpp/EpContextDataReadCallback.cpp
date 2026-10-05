@@ -5,6 +5,7 @@
 #include "EpContextDataReadPolicy.h"
 #include "AsyncWorker.h"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -57,8 +58,43 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
 
   ~EpContextDataReadTestWorker() override { abortAndJoin(); }
 
+  Value get(Runtime& runtime, const PropNameID& name) override {
+    const std::string property = name.utf8(runtime);
+    if (property == "cancel") {
+      auto self = std::static_pointer_cast<EpContextDataReadTestWorker>(
+          shared_from_this());
+      return Function::createFromHostFunction(
+          runtime, name, 0,
+          [self](Runtime&, const Value&, const Value*, size_t) {
+            self->requestAbort();
+            return Value::undefined();
+          });
+    }
+    if (property == "forceInvalidate") {
+      auto self = std::static_pointer_cast<EpContextDataReadTestWorker>(
+          shared_from_this());
+      return Function::createFromHostFunction(
+          runtime, name, 0,
+          [self](Runtime&, const Value&, const Value*, size_t) {
+            self->callback_->invalidate();
+            return Value::undefined();
+          });
+    }
+    if (property == "isFinished") {
+      return Value(finished_.load());
+    }
+    if (property == "wasAborted") {
+      return Value(aborted_.load());
+    }
+    return Value::undefined();
+  }
+
  protected:
   void execute() override {
+    struct CompletionGuard {
+      std::atomic<bool>& finished;
+      ~CompletionGuard() { finished.store(true); }
+    } completionGuard{finished_};
     Ort::AllocatorWithDefaultOptions allocator;
     void* buffer = nullptr;
     size_t dataSize = 0;
@@ -102,10 +138,17 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
     return String::createFromUtf8(runtime, error);
   }
 
+  void onAbort() override {
+    aborted_.store(true);
+    callback_->invalidate();
+  }
+
  private:
   std::shared_ptr<EpContextDataReadCallback> callback_;
   std::string name_;
   std::vector<uint8_t> data_;
+  std::atomic<bool> finished_{false};
+  std::atomic<bool> aborted_{false};
 };
 
 }  // namespace
@@ -132,6 +175,7 @@ Value EpContextDataReadCallback::testCallbackBridge(
   auto state = std::make_shared<EpContextDataReadCallback>(
       env, runtime, std::move(callback),
       static_cast<size_t>(rawMaxDataSize));
+  env->addTeardownListener(state);
   auto worker = std::make_shared<EpContextDataReadTestWorker>(
       runtime, env, std::move(state), arguments[2].asString(runtime).utf8(runtime));
   return worker->toPromise(runtime);

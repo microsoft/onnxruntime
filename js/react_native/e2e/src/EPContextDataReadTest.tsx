@@ -44,6 +44,7 @@ const CHECK_NAMES = [
   'Failed load releases the callback state',
   'Callback bridge marshals sliced Uint8Array data on the JS thread',
   'Callback bridge rejects invalid callback results',
+  'Pending callback bridge reads are cancelled without blocking',
 ];
 
 const styles = StyleSheet.create({
@@ -389,6 +390,62 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     }
   };
 
+  runCallbackBridgeCancellationCheck = async (index: number): Promise<void> => {
+    this.updateTestResult(index, { status: 'running' });
+    try {
+      type CancellableReadPromise = Promise<Uint8Array> & {
+        __nativeWorker: {
+          cancel: () => void;
+          forceInvalidate: () => void;
+          isFinished: boolean;
+          wasAborted: boolean;
+        };
+      };
+      let pendingRead: CancellableReadPromise | undefined;
+      pendingRead = OrtApi.__testEpContextDataReadCallback(
+        (name) => {
+          if (name !== 'cancel.bin') {
+            throw new Error(`Unexpected callback name: ${name}`);
+          }
+          if (!pendingRead) {
+            throw new Error('The pending callback bridge worker is unavailable');
+          }
+          pendingRead.__nativeWorker.cancel();
+          return new Uint8Array([1]);
+        },
+        1,
+        'cancel.bin',
+      ) as CancellableReadPromise;
+      const read = pendingRead;
+      if (!read) {
+        throw new Error('The callback bridge did not return a worker promise');
+      }
+      read.catch(() => {});
+
+      const deadline = Date.now() + 5000;
+      while (!read.__nativeWorker.isFinished && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (!read.__nativeWorker.isFinished) {
+        read.__nativeWorker.forceInvalidate();
+        throw new Error('Cancelling a pending callback bridge read did not unblock its worker');
+      }
+      if (!read.__nativeWorker.wasAborted) {
+        throw new Error('The pending callback bridge worker was not aborted');
+      }
+
+      this.updateTestResult(index, {
+        status: 'success',
+        message: 'A pending read was invalidated and its worker completed after cancellation',
+      });
+    } catch (err) {
+      this.updateTestResult(index, {
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   runAllTests = async (): Promise<void> => {
     this.setState({
       isRunning: true,
@@ -421,6 +478,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       await this.runFailedLoadCheck(modelBytes, 10);
       await this.runCallbackBridgeCheck(11);
       await this.runCallbackBridgeFailureCheck(12);
+      await this.runCallbackBridgeCancellationCheck(13);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.setState((prevState) => ({

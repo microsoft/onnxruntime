@@ -77,7 +77,7 @@ describe('OnnxruntimeModuleExample', () => {
     // The aggregate stays visible above the results list, so lower off-screen rows cannot make this
     // assertion pass accidentally. It reaches this exact text only after every check succeeds.
     await waitFor(element(by.label('ep-context-data-read-summary')))
-      .toHaveText('11/11 checks passed')
+      .toHaveText('14/14 checks passed')
       .withTimeout(120000);
   });
 });
