@@ -16,8 +16,10 @@
  */
 #pragma once
 
-#include <cassert>
 #include <cutlass/numeric_types.h>
+
+#include <algorithm>
+#include <cassert>
 #include <memory>
 #include <optional>
 #include <set>

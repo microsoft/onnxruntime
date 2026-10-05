@@ -505,7 +505,7 @@ class PluginKernelCollector {
 // which is initialized in CudaEpFactory::CudaEpFactory.
 
 #include <cstring>
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <limits>
 #include <memory>
 #include <mutex>

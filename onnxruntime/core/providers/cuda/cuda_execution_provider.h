@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <set>
 #include <vector>
 

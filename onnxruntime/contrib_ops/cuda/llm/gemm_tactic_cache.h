@@ -24,7 +24,7 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <map>
 #include <mutex>
 #include <optional>

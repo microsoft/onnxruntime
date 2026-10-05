@@ -19,8 +19,11 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
