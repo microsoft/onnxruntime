@@ -287,6 +287,7 @@ public class CompileApiTests
         const string epName = "csharp_ep_context";
         const string modelName = "csharp_ep_context.onnx";
         byte[] inputModel = TestDataLoader.LoadModelFromEmbeddedResource("mul_1.onnx");
+        using var inputModelPin = inputModel.AsMemory().Pin();
         byte[] contextPayload = null;
         string contextName = null;
         OrtEpContextData retainedWriteData = null;
