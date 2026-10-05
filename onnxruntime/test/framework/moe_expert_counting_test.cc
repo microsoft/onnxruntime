@@ -941,6 +941,41 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadPreservesAliasedInputDuringHostCopy)
   }
 }
 
+TEST(MoeExpertCountingTest, StaticCpuOffloadRequiresEnabledPrepacking) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  const auto model = MakeCountingModel(false, true);
+  for (const char* offload_count : {"0", "1"}) {
+    for (const char* disable_prepacking : {"0", "1"}) {
+      SCOPED_TRACE(MakeString("offload_count=", offload_count, ", disable_prepacking=", disable_prepacking));
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                                                             offload_count));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking,
+                                                             disable_prepacking));
+      InferenceSessionWrapper session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+      ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+      const auto status = session.Initialize();
+      if (offload_count[0] == '1' && disable_prepacking[0] == '1') {
+        ASSERT_FALSE(status.IsOK());
+        EXPECT_NE(status.ErrorMessage().find(
+                      MakeString(kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                                 " requires prepacking to remain enabled.")),
+                  std::string::npos);
+      } else {
+        ASSERT_STATUS_OK(status);
+      }
+    }
+  }
+}
+
 TEST(MoeExpertCountingTest, StaticCpuOffloadRejectsCountAboveEligibleExperts) {
   auto provider = DefaultCudaExecutionProvider();
   if (!provider) {
