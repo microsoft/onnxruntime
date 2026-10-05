@@ -2,17 +2,22 @@
 // Licensed under the MIT License.
 
 // Sequence-length-independent (seq-free) route-eligibility predicates for the CUDA
-// GroupQueryAttention operator. These factor the backend-selection math in
-// GroupQueryAttention::ComputeInternal so the runtime and (in a later change) the
-// Level-1 workspace estimator can share one definition of which attention backends a
-// given node may dispatch to, rather than maintaining two copies that can drift.
+// GroupQueryAttention operator. These factor the exact-geometry backend-selection
+// checks in GroupQueryAttention::ComputeInternal; they are not a bounded-domain
+// Level-1 workspace reachability implementation.
+//
+// Callers must supply exact, validated GQA geometry: positive dimensions that fit
+// the runtime's int32 parameters, with num_heads a multiple of nonzero kv_num_heads.
+// These predicates do not validate inputs or accept componentwise upper bounds.
+// Eligibility is not monotone in head size or group size: rejecting the maximum
+// geometry does not exclude a reachable route for smaller supported geometry.
 //
 // "Seq-free" means the predicate depends only on partition-time facts (geometry,
 // device capability, quantization, feature flags) and NOT on the per-step sequence
-// length or phase (prompt vs decode). The caller combines each seq-free core with the
-// remaining seq-dependent gates and dispatch priorities:
+// length, phase (prompt vs decode), or buffer aliasing. The caller combines each
+// seq-free core with the remaining runtime gates and dispatch priorities:
 //   - XQA:   phase gates (is_first_prompt / sequence_length == 1 / kv_sequence_length)
-//            and the per-node shared-memory capability probe.
+//            plus past/present buffer aliasing and the per-node shared-memory probe.
 //   - cuDNN: onnxruntime::cudnn_sdpa::is_stable() and is_supported(..., seq_len_q,
 //            seq_len_kv, ...), which are sequence-length dependent.
 //   - Flash/MEA: the !use_xqa / !use_cudnn_sdpa / !use_flash_attention dispatch order.
@@ -52,7 +57,6 @@ struct GQAXqaSeqFreeInputs {
   bool has_attention_bias = false;
   int device_major = 0;
   int device_minor = 0;
-  bool past_present_share_buffer = false;
   float softcap = 0.0f;
   bool qk_norm_ok = false;
   bool smooth_softmax_supported = false;
@@ -64,7 +68,7 @@ struct GQAXqaSeqFreeInputs {
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
 };
 
-// Whether the XQA kernel is eligible ignoring phase gates and the shared-memory probe.
+// Whether XQA is eligible ignoring phase gates, buffer aliasing, and the shared-memory probe.
 // U is the KV-cache element type; it selects which quantized XQA variant may run.
 template <typename U>
 inline bool IsGQAXqaEligibleSeqFree(const GQAXqaSeqFreeInputs& in) {
@@ -72,7 +76,6 @@ inline bool IsGQAXqaEligibleSeqFree(const GQAXqaSeqFreeInputs& in) {
         in.is_unidirectional &&
         !in.has_attention_bias &&
         in.device_major >= 8 &&
-        in.past_present_share_buffer &&
         in.softcap == 0.0f &&
         in.qk_norm_ok &&
         in.smooth_softmax_supported)) {

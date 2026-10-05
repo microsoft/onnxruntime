@@ -608,7 +608,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   xqa_inputs.has_attention_bias = has_attention_bias;
   xqa_inputs.device_major = device_prop.major;
   xqa_inputs.device_minor = device_prop.minor;
-  xqa_inputs.past_present_share_buffer = parameters.past_present_share_buffer;
   xqa_inputs.softcap = parameters.softcap;
   xqa_inputs.qk_norm_ok = xqa_qk_norm_ok;
   xqa_inputs.smooth_softmax_supported = is_xqa_smooth_softmax_supported;
@@ -619,14 +618,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   xqa_inputs.k_quant_type = k_quant_type_;
   xqa_inputs.v_quant_type = v_quant_type_;
 
-  // The XQA phase gates (decode step: not first prompt, single new query token, K/V to append)
-  // are sequence-length dependent and stay here; IsGQAXqaEligibleSeqFree holds the seq-free
-  // eligibility core, which already folds in the non-quantized / INT8 / FP8 variant support that
-  // used to be the terminal data.use_xqa OR.
+  // Phase and actual past/present buffer aliasing are per-Run facts, not partition-time inputs.
   const bool xqa_phase_ok = !parameters.is_first_prompt &&
                             parameters.sequence_length == 1 &&
                             parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
-  if (xqa_phase_ok && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
+  if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
     data.use_xqa = true;
 
     if (data.use_xqa) {
