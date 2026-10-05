@@ -7,7 +7,9 @@
 #include <sstream>
 #include <type_traits>
 
+#ifdef USE_CUDA
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#endif
 #include "core/graph/model.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
@@ -163,14 +165,16 @@ TEST(RestorePaddingTest, InvalidTokenOffset_CUDA) {
   }
 }
 
+#ifdef USE_CUDA
 TEST(RestorePaddingTest, TokenOffsetValidationIndexProgressionUsesInt64) {
   constexpr int64_t index = 2147221504;
   constexpr int64_t next_index =
-      AdvancePaddingTokenOffsetValidationIndex(index, 1024, 256);
+      contrib::cuda::AdvancePaddingTokenOffsetValidationIndex(index, 1024, 256);
 
   EXPECT_EQ(next_index, 2147483648LL);
   EXPECT_GT(next_index, std::numeric_limits<int32_t>::max());
 }
+#endif
 
 TEST(RestorePaddingTest, ValidTokenOffsetCudaGraphCaptureAndReplay) {
   if (!HasCudaEnvironment(0)) {
