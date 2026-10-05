@@ -189,6 +189,8 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge)
   ASSERT_NE(add_node, nullptr);
   const auto input_identities = graph_utils::FindParentsByType(*add_node, "Identity");
   ASSERT_FALSE(input_identities.empty());
+  const auto output_identities = graph_utils::FindChildrenByType(*add_node, "Identity");
+  ASSERT_FALSE(output_identities.empty());
 
   const auto& graph_inputs = graph.GetInputs();
   ASSERT_FALSE(graph_inputs.empty());
@@ -199,7 +201,14 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge)
   auto& control_source = graph.AddNode(
       "control_source", "Identity", "",
       control_inputs, control_outputs);
+  auto& control_sink_output =
+      graph.GetOrCreateNodeArg("control_sink_output", graph_inputs.front()->TypeAsProto());
+  std::array<NodeArg*, 1> control_sink_outputs{&control_sink_output};
+  auto& control_sink = graph.AddNode(
+      "control_sink", "Identity", "",
+      control_inputs, control_sink_outputs);
   ASSERT_TRUE(graph.AddControlEdge(control_source.Index(), input_identities.front()->Index()));
+  ASSERT_TRUE(graph.AddControlEdge(output_identities.front()->Index(), control_sink.Index()));
   ASSERT_STATUS_OK(graph.Resolve());
 
   for (auto& node : graph.Nodes()) {
@@ -243,26 +252,118 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge)
   }
 
   const Node* replay_control_source = nullptr;
+  const Node* replay_control_sink = nullptr;
   const Node* replacement = nullptr;
   for (const auto& node : replay_graph.Nodes()) {
     if (node.Name() == "control_source") {
       replay_control_source = &node;
+    } else if (node.Name() == "control_sink") {
+      replay_control_sink = &node;
     } else if (node.OpType() == "Add") {
       replacement = &node;
     }
   }
   ASSERT_NE(replay_control_source, nullptr);
+  ASSERT_NE(replay_control_sink, nullptr);
   ASSERT_NE(replacement, nullptr);
 
-  bool found_control_edge = false;
+  bool found_incoming_control_edge = false;
   for (auto edge = replay_control_source->OutputEdgesBegin();
        edge != replay_control_source->OutputEdgesEnd(); ++edge) {
     if (edge->IsControlEdge() && edge->GetNode().Index() == replacement->Index()) {
-      found_control_edge = true;
+      found_incoming_control_edge = true;
       break;
     }
   }
-  EXPECT_TRUE(found_control_edge);
+  EXPECT_TRUE(found_incoming_control_edge);
+
+  bool found_outgoing_control_edge = false;
+  for (auto edge = replacement->OutputEdgesBegin(); edge != replacement->OutputEdgesEnd(); ++edge) {
+    if (edge->IsControlEdge() && edge->GetNode().Index() == replay_control_sink->Index()) {
+      found_outgoing_control_edge = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_outgoing_control_edge);
+}
+
+TEST(GraphRuntimeOptimizationTest, SavedReplacementSkipsNonConvexSelection) {
+  const auto logger = DefaultLoggingManager().CreateLogger("graph_runtime_optimization_non_convex_test");
+  const auto model_path = ORT_TSTR("testdata/transform/runtime_optimization/add_with_surrounding_identities.onnx");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+
+  Node* add_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Add") {
+      add_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(add_node, nullptr);
+  const auto input_identities = graph_utils::FindParentsByType(*add_node, "Identity");
+  const auto output_identities = graph_utils::FindChildrenByType(*add_node, "Identity");
+  ASSERT_FALSE(input_identities.empty());
+  ASSERT_FALSE(output_identities.empty());
+
+  const auto& graph_inputs = graph.GetInputs();
+  ASSERT_FALSE(graph_inputs.empty());
+  auto& external_output =
+      graph.GetOrCreateNodeArg("external_path_output", graph_inputs.front()->TypeAsProto());
+  std::array<NodeArg*, 1> external_inputs{graph_inputs.front()};
+  std::array<NodeArg*, 1> external_outputs{&external_output};
+  auto& external_node = graph.AddNode(
+      "external_path", "Identity", "",
+      external_inputs, external_outputs);
+  ASSERT_TRUE(graph.AddControlEdge(input_identities.front()->Index(), external_node.Index()));
+  ASSERT_TRUE(graph.AddControlEdge(external_node.Index(), output_identities.front()->Index()));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  const auto original_ops = CountOpsInGraph(graph);
+
+  {
+    auto transformer = std::make_unique<sat::TestTransformer>(SatRuntimeOptimizationSaveContext{});
+    GraphTransformerManager transformer_manager{/* steps */ 5};
+    ASSERT_STATUS_OK(transformer_manager.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  }
+
+  flatbuffers::FlatBufferBuilder builder;
+  flatbuffers::Offset<fbs::Model> fbs_model_offset;
+  ASSERT_STATUS_OK(model->SaveToOrtFormat(builder, fbs_model_offset));
+  const auto fbs_session_offset =
+      fbs::CreateInferenceSessionDirect(builder,
+                                        std::to_string(kOrtModelVersion).c_str(),
+                                        fbs_model_offset,
+                                        0);
+  builder.Finish(fbs_session_offset);
+
+  const auto* fbs_session = fbs::GetInferenceSession(builder.GetBufferPointer());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->model(), nullptr);
+
+  OrtFormatLoadOptions load_options;
+  std::unique_ptr<Model> replay_model;
+  ASSERT_STATUS_OK(Model::LoadFromOrtFormat(
+      *fbs_session->model(), nullptr, load_options, *logger, replay_model));
+  Graph& replay_graph = replay_model->MainGraph();
+  ASSERT_STATUS_OK(replay_graph.Resolve());
+
+  {
+    auto transformer = std::make_unique<sat::TestTransformer>(SatRuntimeOptimizationLoadContext{});
+    GraphTransformerManager transformer_manager{/* steps */ 5};
+    ASSERT_STATUS_OK(transformer_manager.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(
+        replay_graph, TransformerLevel::Level1, *logger));
+  }
+
+  EXPECT_EQ(CountOpsInGraph(replay_graph), original_ops);
+  EXPECT_STATUS_OK(replay_graph.Resolve());
 }
 
 TEST(GraphRuntimeOptimizationTest, ReplaceWithNewTransfersWorkspaceReservations) {

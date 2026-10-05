@@ -33,6 +33,44 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
   return safe;
 }
 
+bool IsReplacementConvex(gsl::span<Node* const> nodes_to_replace) {
+  InlinedHashSet<const Node*> replacement_set;
+  replacement_set.reserve(nodes_to_replace.size());
+  for (const Node* node : nodes_to_replace) {
+    if (node != nullptr) {
+      replacement_set.insert(node);
+    }
+  }
+
+  InlinedHashSet<const Node*> visited_external_nodes;
+  InlinedVector<const Node*> pending_external_nodes;
+  for (const Node* node : replacement_set) {
+    for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
+      const Node* destination = &edge->GetNode();
+      if (replacement_set.find(destination) == replacement_set.end() &&
+          visited_external_nodes.insert(destination).second) {
+        pending_external_nodes.push_back(destination);
+      }
+    }
+  }
+
+  while (!pending_external_nodes.empty()) {
+    const Node* node = pending_external_nodes.back();
+    pending_external_nodes.pop_back();
+    for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
+      const Node* destination = &edge->GetNode();
+      if (replacement_set.find(destination) != replacement_set.end()) {
+        return false;
+      }
+      if (visited_external_nodes.insert(destination).second) {
+        pending_external_nodes.push_back(destination);
+      }
+    }
+  }
+
+  return true;
+}
+
 void RemapBoundaryControlEdges(
     Graph& graph,
     gsl::span<Node* const> nodes_to_replace,
@@ -122,6 +160,10 @@ Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) con
 }
 
 Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  if (!IsReplacementConvex(selected_nodes.AllNodes())) {
+    return Status::OK();
+  }
+
   const RuntimeState runtime_state{graph, selected_nodes};
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), ValueMoves(runtime_state),
                                       /* only_update_dest_definitions */ false));
@@ -176,6 +218,10 @@ static Status CreateReplacementNode(Graph& graph,
 }
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  if (!IsReplacementConvex(selected_nodes.AllNodes())) {
+    return Status::OK();
+  }
+
   const RuntimeState runtime_state{graph, selected_nodes};
   Node* replacement{};
   ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
