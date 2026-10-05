@@ -13,13 +13,15 @@ $MAIN {
   }
   let scale = input_scale.getByOffset(0u);
   let inverse = select(0.0, 1.0 / scale, scale != 0.0);
-  let v = f32(input_a.getByOffset(global_idx)) * inverse;
+  let input_value = f32(input_a.getByOffset(global_idx));
+  let v = input_value * inverse;
   let magnitude = min(abs(v), E4M3_MAX);
   let step = exp2(max(floor(log2(magnitude)), E4M3_MIN_NORMAL_EXP) - E4M3_MANTISSA_BITS);
   let units = magnitude / step;
   let lower = floor(units);
-  let fraction = units - lower;
-  let round_up = fraction > 0.5 || (fraction == 0.5 && (u32(lower) & 1u) != 0u);
+  let halfway_input = (lower + 0.5) * step * abs(scale);
+  let round_up = abs(input_value) > halfway_input ||
+                 (abs(input_value) == halfway_input && (u32(lower) & 1u) != 0u);
   let rounded = min((lower + select(0.0, 1.0, round_up)) * step, E4M3_MAX);
   let q = select(rounded, -rounded, v < 0.0);
   output.setByOffset(global_idx, f16(q * scale));
