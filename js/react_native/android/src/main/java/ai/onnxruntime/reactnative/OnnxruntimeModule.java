@@ -48,10 +48,11 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       System.loadLibrary("onnxruntimejsi");
       JavaScriptContextHolder jsContext = getReactApplicationContext().getJavaScriptContextHolder();
       CallInvokerHolderImpl jsCallInvokerHolder =
-        (CallInvokerHolderImpl) getReactApplicationContext().getCatalystInstance().getJSCallInvokerHolder();
+        (CallInvokerHolderImpl) getReactApplicationContext().getJSCallInvokerHolder();
       nativeInstall(jsContext.get(), jsCallInvokerHolder);
       return true;
     } catch (Exception e) {
+      android.util.Log.e("Onnxruntime", "install() failed", e);
       return false;
     }
   }
