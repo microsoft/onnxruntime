@@ -461,6 +461,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateDataTransferImpl(OrtEpFactory* t
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *data_transfer = factory.data_transfer_impl_.get();
 
+  if (ShouldFailCreateDataTransfer()) {
+    return factory.ort_api.CreateStatus(ORT_FAIL, "injected data transfer creation failure");
+  }
+
   return nullptr;
 }
 
