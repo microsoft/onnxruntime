@@ -831,6 +831,9 @@ static void RunQMoEWebGpuIntegerWidths(int num_rows, int num_experts, int k,
 
   constexpr int size = 64;
   const bool has_fc3 = fc3_bits != 0;
+  ASSERT_TRUE((fc1_bits == 2 || fc1_bits == 4) && (fc2_bits == 2 || fc2_bits == 4) &&
+              (!has_fc3 || fc3_bits == 2 || fc3_bits == 4))
+      << "This fixture only encodes 2-bit and 4-bit packed weights.";
   std::vector<uint8_t> fc1_weights(num_experts * size * size * fc1_bits / 8,
                                    fc1_bits == 2 ? 0xFF : 0x99);
   std::vector<uint8_t> fc2_weights(num_experts * size * size * fc2_bits / 8,
