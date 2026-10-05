@@ -290,6 +290,21 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                         (fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr),
                     "WebGPU QMoE does not support explicit zero points on the optimized single-token path.");
 
+  // MatMulNBits addresses packed rows and blocks as u32 words; partial words would drop weights.
+  const auto has_word_aligned_rows = [&](int64_t k, int64_t n, int64_t bits) {
+    const int64_t packed_block = block_size_ != 0 && block_size_ != k * n ? block_size_ : k;
+    return (k * bits) % 32 == 0 && (packed_block * bits) % 32 == 0;
+  };
+  ORT_RETURN_IF_NOT(has_word_aligned_rows(moe_params.hidden_size,
+                                          is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size,
+                                          fc1_expert_weight_bits_),
+                    "WebGPU QMoE FC1 packed rows and blocks must be 32-bit aligned.");
+  ORT_RETURN_IF_NOT(has_word_aligned_rows(moe_params.inter_size, moe_params.hidden_size, fc2_expert_weight_bits_),
+                    "WebGPU QMoE FC2 packed rows and blocks must be 32-bit aligned.");
+  ORT_RETURN_IF_NOT(fc3_experts_weights_optional == nullptr ||
+                        has_word_aligned_rows(moe_params.hidden_size, moe_params.inter_size, fc3_expert_weight_bits_),
+                    "WebGPU QMoE FC3 packed rows and blocks must be 32-bit aligned.");
+
   const auto& input_shape = hidden_state->Shape();
 
   // process tokens in chunks of max_tokens to put some cap on memory usage
