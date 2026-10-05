@@ -2755,6 +2755,15 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return &node_output_types_[index];
   }
 
+  bool hasOutput(size_t index) override {
+    if (index >= node_.OutputDefs().size()) {
+      return false;
+    }
+
+    const auto* node_arg = node_.OutputDefs()[index];
+    return node_arg != nullptr && node_arg->Exists();
+  }
+
   const TensorProto* getInputData(size_t index) const override {
     // A schema-optional input that's omitted (not even an empty placeholder) shrinks InputDefs(),
     // so callers can pass an index the node doesn't actually have.
