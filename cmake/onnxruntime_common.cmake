@@ -94,7 +94,10 @@ else()
 endif()
 
 # platform-specific device discovery files
-if (WIN32)
+if (onnxruntime_DISABLE_DEVICE_DISCOVERY)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
+elseif (WIN32)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
 elseif (LINUX)
@@ -104,6 +107,9 @@ elseif (LINUX)
 elseif (APPLE)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/emscripten/device_discovery.cc")
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")

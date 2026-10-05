@@ -22,6 +22,7 @@ namespace cuda {
 constexpr const char* kSmallNGemvEnvVar = "ORT_ENABLE_SMALL_N_GEMV";
 // Fallback for session config ep.cuda.enable_gemm_auto_tune.
 constexpr const char* kGemmAutoTuneEnvVar = "ORT_CUDA_GEMM_AUTO_TUNE";
+constexpr const char* kGemmGraphReplayTuneEnvVar = "ORT_CUDA_GEMM_GRAPH_REPLAY_TUNING";
 
 // A candidate other than the default (cuBLAS) must be at least this much faster to be selected.
 constexpr float kGemmAutoTuneMinSpeedup = 1.05f;
@@ -44,7 +45,10 @@ GemmDispatchPolicy ResolveGemmDispatchPolicy(const std::optional<std::string>& s
 enum class GemmKernel : uint8_t {
   kCublas = 0,
   kSmallNGemv = 1,
+  kTinyGemm2 = 2,
 };
+
+constexpr uint8_t GemmKernelBit(GemmKernel kernel) { return static_cast<uint8_t>(1u << static_cast<int>(kernel)); }
 
 const char* GemmKernelName(GemmKernel kernel);
 
@@ -61,10 +65,15 @@ struct GemmTuneKey {
   int k{0};
   // Operand alignment picks a different small-N kernel, so it is part of the key.
   bool small_n_vectorized{false};
+  // GemmKernelBit of every candidate that was eligible, since alignment can change the set.
+  uint8_t candidates{0};
+  bool tinygemm2_b_is_constant{false};
+  bool cuda_graph_replay{false};
 
   bool operator==(const GemmTuneKey& other) const {
     return device_uuid == other.device_uuid && data_type == other.data_type && m == other.m && n == other.n &&
-           k == other.k && small_n_vectorized == other.small_n_vectorized;
+           k == other.k && small_n_vectorized == other.small_n_vectorized && candidates == other.candidates &&
+           tinygemm2_b_is_constant == other.tinygemm2_b_is_constant && cuda_graph_replay == other.cuda_graph_replay;
   }
 };
 
@@ -98,14 +107,14 @@ struct GemmTuneL2State {
   size_t hot_bytes{0};
 };
 
-// Median time per run of every candidate, measured on `stream` from the L2 state described by `l2`.
-// The cost of an empty timed region is subtracted so fixed event overhead does not dilute the
-// difference between candidates. Synchronizes the stream.
+// Median time per run of every candidate from `l2`, using stream launches or CUDA graph replay.
+// Replay captures L2 conditioning outside the event-timed regions; the empty region's overhead is
+// subtracted in both modes. Synchronizes the stream and rejects an already-capturing stream.
 Status TimeGemmCandidates(cudaStream_t stream, const std::vector<GemmTuneCandidate>& candidates,
-                          const GemmTuneL2State& l2, std::vector<float>& times_ms);
+                          const GemmTuneL2State& l2, std::vector<float>& times_ms, bool cuda_graph_replay = false);
 
-// Process-wide map from shape/device to the selected kernel. The first insertion wins, so every
-// session in a process runs the same kernel for the same shape.
+// Process-wide map from shape/device and eligible launch configuration to the selected kernel.
+// The first insertion wins, so every caller with the same tuning key runs the same kernel.
 class GemmAutoTuneCache {
  public:
   static GemmAutoTuneCache& Instance();
