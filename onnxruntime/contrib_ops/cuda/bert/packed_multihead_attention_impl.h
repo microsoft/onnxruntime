@@ -13,6 +13,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+Status ValidatePackedMultiHeadAttentionTokenOffset(
+    const int32_t* token_offset,
+    int32_t token_offset_count,
+    int32_t* validation_flag,
+    cudaStream_t stream);
+
 template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,

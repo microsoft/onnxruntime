@@ -32,6 +32,53 @@ static constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
 #define ADD_BIAS(value, bias_value) (biases == nullptr) ? value : (value + bias_value)
 #define GET_BIAS(bias_value) (biases == nullptr) ? T{} : bias_value
 
+__global__ void ValidateTokenOffsetKernel(
+    const int32_t* token_offset,
+    int32_t token_offset_count,
+    int32_t* validation_flag) {
+  for (int32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+       i < token_offset_count;
+       i += blockDim.x * gridDim.x) {
+    const int32_t offset = token_offset[i];
+    if (offset < 0 || offset >= token_offset_count) {
+      atomicExch(validation_flag, 1);
+      return;
+    }
+  }
+}
+
+Status ValidatePackedMultiHeadAttentionTokenOffset(
+    const int32_t* token_offset,
+    int32_t token_offset_count,
+    int32_t* validation_flag,
+    cudaStream_t stream) {
+  if (token_offset_count == 0) {
+    return Status::OK();
+  }
+
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(validation_flag, 0, sizeof(int32_t), stream));
+  constexpr int32_t threads_per_block = 256;
+  const int32_t required_blocks =
+      static_cast<int32_t>((static_cast<int64_t>(token_offset_count) + threads_per_block - 1) /
+                           threads_per_block);
+  const int32_t blocks = required_blocks < 1024 ? required_blocks : 1024;
+  ValidateTokenOffsetKernel<<<blocks, threads_per_block, 0, stream>>>(
+      token_offset, token_offset_count, validation_flag);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  int32_t host_validation_flag = 0;
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&host_validation_flag, validation_flag, sizeof(int32_t),
+                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  if (host_validation_flag != 0) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "PackedMultiHeadAttention token_offset values must be in [0, B * S).");
+  }
+
+  return Status::OK();
+}
+
 // Grid: (S, B)
 // Block: 256
 // For unfused PackedMultiHeadAttention

@@ -406,6 +406,60 @@ TEST(PackedMultiHeadAttentionTest, EmptyTokensAndSequence_CUDA) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(PackedMultiHeadAttentionTest, InvalidTokenOffset_Unfused_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedMultiHeadAttention token offset validation requires a CUDA device.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+
+  constexpr int kTokenCount = 1;
+  constexpr int kBatchSize = 1;
+  constexpr int kSequenceLength = 2;
+  constexpr int kNumHeads = 1;
+  constexpr int kHeadSize = 8;
+
+  for (const bool use_packed_qkv : {false, true}) {
+    for (const std::vector<int32_t>& token_offset : {
+             std::vector<int32_t>{-1, 1},
+             std::vector<int32_t>{0, kBatchSize * kSequenceLength}}) {
+      SCOPED_TRACE(use_packed_qkv ? "packed QKV" : "separate Q/K/V");
+      SCOPED_TRACE(token_offset[0]);
+      SCOPED_TRACE(token_offset[1]);
+
+      OpTester tester("PackedMultiHeadAttention", 1, onnxruntime::kMSDomain);
+      tester.AddAttribute<int64_t>("num_heads", kNumHeads);
+      if (use_packed_qkv) {
+        tester.AddInput<float>("query", {kTokenCount, kNumHeads, 3, kHeadSize},
+                               std::vector<float>(kTokenCount * kNumHeads * 3 * kHeadSize));
+        tester.AddOptionalInputEdge<float>();
+        tester.AddOptionalInputEdge<float>();
+      } else {
+        tester.AddInput<float>("query", {kTokenCount, kHeadSize}, std::vector<float>(kHeadSize));
+        tester.AddInput<float>("key", {kTokenCount, kHeadSize}, std::vector<float>(kHeadSize));
+        tester.AddInput<float>("value", {kTokenCount, kHeadSize}, std::vector<float>(kHeadSize));
+      }
+      tester.AddOptionalInputEdge<float>();
+      tester.AddInput<int32_t>("token_offset", {kBatchSize, kSequenceLength}, token_offset);
+      tester.AddInput<int32_t>("cumulative_sequence_length", {kBatchSize + 1}, {0, kTokenCount});
+      tester.AddOutput<float>("output", {kTokenCount, kHeadSize}, std::vector<float>(kHeadSize));
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(
+          OpTester::ExpectResult::kExpectFailure,
+          "PackedMultiHeadAttention token_offset values must be in [0, B * S).",
+          {}, nullptr, &execution_providers);
+    }
+  }
+}
+
 TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding_NoBias_trt) {
   AttentionTestData data;
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
