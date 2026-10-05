@@ -742,7 +742,7 @@ static void RunQMoEWebGpuIntegerWidths(int num_rows, int num_experts, int k,
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("k", k);
-  tester.AddAttribute<std::string>("activation_type", has_fc3 ? "silu" : "identity");
+  tester.AddAttribute<std::string>("activation_type", has_fc3 ? "swiglu" : "identity");
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddAttribute<int64_t>("expert_weight_bits", base_bits);
   if (fc1_bits != base_bits) tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
@@ -827,7 +827,7 @@ TEST(MoETest, QMoETest_WebGPU_Int2RejectUnalignedFc3) {
   constexpr int inter_size = 64;
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("k", 1);
-  tester.AddAttribute<std::string>("activation_type", "silu");
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
   tester.AddAttribute<int64_t>("expert_weight_bits", 4);
   tester.AddAttribute<int64_t>("fc3_expert_weight_bits", 2);
   tester.AddInput<MLFloat16>("input", {1, hidden_size},
