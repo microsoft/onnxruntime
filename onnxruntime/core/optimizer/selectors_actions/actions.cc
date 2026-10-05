@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
 #include <tuple>
 
 #include "core/optimizer/selectors_actions/actions.h"
@@ -33,7 +32,7 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
   return safe;
 }
 
-bool IsReplacementConvex(gsl::span<Node* const> nodes_to_replace) {
+bool HasBoundaryControlEdge(gsl::span<Node* const> nodes_to_replace) {
   InlinedHashSet<const Node*> replacement_set;
   replacement_set.reserve(nodes_to_replace.size());
   for (const Node* node : nodes_to_replace) {
@@ -42,80 +41,22 @@ bool IsReplacementConvex(gsl::span<Node* const> nodes_to_replace) {
     }
   }
 
-  InlinedHashSet<const Node*> visited_external_nodes;
-  InlinedVector<const Node*> pending_external_nodes;
   for (const Node* node : replacement_set) {
-    for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
-      const Node* destination = &edge->GetNode();
-      if (replacement_set.find(destination) == replacement_set.end() &&
-          visited_external_nodes.insert(destination).second) {
-        pending_external_nodes.push_back(destination);
-      }
-    }
-  }
-
-  while (!pending_external_nodes.empty()) {
-    const Node* node = pending_external_nodes.back();
-    pending_external_nodes.pop_back();
-    for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
-      const Node* destination = &edge->GetNode();
-      if (replacement_set.find(destination) != replacement_set.end()) {
-        return false;
-      }
-      if (visited_external_nodes.insert(destination).second) {
-        pending_external_nodes.push_back(destination);
-      }
-    }
-  }
-
-  return true;
-}
-
-void RemapBoundaryControlEdges(
-    Graph& graph,
-    gsl::span<Node* const> nodes_to_replace,
-    Node& replacement) {
-  InlinedHashSet<const Node*> replacement_set;
-  replacement_set.reserve(nodes_to_replace.size());
-  replacement_set.insert(nodes_to_replace.begin(), nodes_to_replace.end());
-
-  InlinedVector<std::pair<NodeIndex, NodeIndex>> edges_to_remove;
-  InlinedVector<std::pair<NodeIndex, NodeIndex>> edges_to_add;
-  const auto append_unique = [](auto& edges, std::pair<NodeIndex, NodeIndex> edge) {
-    if (std::find(edges.begin(), edges.end(), edge) == edges.end()) {
-      edges.push_back(edge);
-    }
-  };
-
-  for (const Node* node : nodes_to_replace) {
-    if (node == nullptr || node == &replacement) {
-      continue;
-    }
-
     for (auto edge = node->InputEdgesBegin(); edge != node->InputEdgesEnd(); ++edge) {
-      if (edge->IsControlEdge() && replacement_set.find(&edge->GetNode()) == replacement_set.end()) {
-        append_unique(edges_to_remove, {edge->GetNode().Index(), node->Index()});
-        append_unique(edges_to_add, {edge->GetNode().Index(), replacement.Index()});
+      if (edge->IsControlEdge() &&
+          replacement_set.find(&edge->GetNode()) == replacement_set.end()) {
+        return true;
       }
     }
-
     for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
-      if (edge->IsControlEdge()) {
-        append_unique(edges_to_remove, {node->Index(), edge->GetNode().Index()});
-        if (replacement_set.find(&edge->GetNode()) == replacement_set.end()) {
-          append_unique(edges_to_add, {replacement.Index(), edge->GetNode().Index()});
-        }
+      if (edge->IsControlEdge() &&
+          replacement_set.find(&edge->GetNode()) == replacement_set.end()) {
+        return true;
       }
     }
   }
 
-  for (const auto& [src_node_index, dst_node_index] : edges_to_remove) {
-    graph.RemoveEdge(src_node_index, dst_node_index, INT_MAX, INT_MAX);
-  }
-  for (const auto& [src_node_index, dst_node_index] : edges_to_add) {
-    ORT_ENFORCE(graph.AddControlEdge(src_node_index, dst_node_index),
-                "Failed to remap control edge during node replacement.");
-  }
+  return false;
 }
 
 // remove nodes if it is 'safe' to do so according to the checks in CanSafelyRemoveNode.
@@ -160,14 +101,13 @@ Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) con
 }
 
 Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  if (!IsReplacementConvex(selected_nodes.AllNodes())) {
+  if (HasBoundaryControlEdge(selected_nodes.AllNodes())) {
     return Status::OK();
   }
 
   const RuntimeState runtime_state{graph, selected_nodes};
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), ValueMoves(runtime_state),
                                       /* only_update_dest_definitions */ false));
-  RemapBoundaryControlEdges(graph, selected_nodes.AllNodes(), selected_nodes.Target());
 
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), &selected_nodes.Target());
@@ -218,7 +158,7 @@ static Status CreateReplacementNode(Graph& graph,
 }
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  if (!IsReplacementConvex(selected_nodes.AllNodes())) {
+  if (HasBoundaryControlEdge(selected_nodes.AllNodes())) {
     return Status::OK();
   }
 
@@ -231,7 +171,6 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
                                             ValueMoves(runtime_state),
                                             /* only_update_dest_definitions */ false, &replacement));
   ORT_RETURN_IF_ERROR(ProcessNewNode(graph, selected_nodes, *replacement));
-  RemapBoundaryControlEdges(graph, selected_nodes.AllNodes(), *replacement);
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), nullptr);
   graph.NotifyNodeReplacement(removed_node_indices, replacement->Index());

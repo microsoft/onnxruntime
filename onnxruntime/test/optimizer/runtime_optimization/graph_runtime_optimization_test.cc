@@ -171,7 +171,7 @@ TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
   }
 }
 
-TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge) {
+TEST(GraphRuntimeOptimizationTest, SavedReplacementSkipsBoundaryControlEdges) {
   const auto logger = DefaultLoggingManager().CreateLogger("graph_runtime_optimization_control_edge_test");
   const auto model_path = ORT_TSTR("testdata/transform/runtime_optimization/add_with_surrounding_identities.onnx");
 
@@ -196,7 +196,9 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge)
   ASSERT_FALSE(graph_inputs.empty());
   auto& control_output =
       graph.GetOrCreateNodeArg("control_source_output", graph_inputs.front()->TypeAsProto());
-  std::array<NodeArg*, 1> control_inputs{graph_inputs.front()};
+  NodeArg* graph_input = graph.GetNodeArg(graph_inputs.front()->Name());
+  ASSERT_NE(graph_input, nullptr);
+  std::array<NodeArg*, 1> control_inputs{graph_input};
   std::array<NodeArg*, 1> control_outputs{&control_output};
   auto& control_source = graph.AddNode(
       "control_source", "Identity", "",
@@ -214,6 +216,7 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge)
   for (auto& node : graph.Nodes()) {
     node.SetExecutionProviderType(kCpuExecutionProvider);
   }
+  const auto original_ops = CountOpsInGraph(graph);
 
   {
     auto transformer = std::make_unique<sat::TestTransformer>(SatRuntimeOptimizationSaveContext{});
@@ -253,24 +256,21 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge)
 
   const Node* replay_control_source = nullptr;
   const Node* replay_control_sink = nullptr;
-  const Node* replacement = nullptr;
   for (const auto& node : replay_graph.Nodes()) {
     if (node.Name() == "control_source") {
       replay_control_source = &node;
     } else if (node.Name() == "control_sink") {
       replay_control_sink = &node;
-    } else if (node.OpType() == "Add") {
-      replacement = &node;
     }
   }
   ASSERT_NE(replay_control_source, nullptr);
   ASSERT_NE(replay_control_sink, nullptr);
-  ASSERT_NE(replacement, nullptr);
+  EXPECT_EQ(CountOpsInGraph(replay_graph), original_ops);
 
   bool found_incoming_control_edge = false;
   for (auto edge = replay_control_source->OutputEdgesBegin();
        edge != replay_control_source->OutputEdgesEnd(); ++edge) {
-    if (edge->IsControlEdge() && edge->GetNode().Index() == replacement->Index()) {
+    if (edge->IsControlEdge()) {
       found_incoming_control_edge = true;
       break;
     }
@@ -278,13 +278,15 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementPreservesBoundaryControlEdge)
   EXPECT_TRUE(found_incoming_control_edge);
 
   bool found_outgoing_control_edge = false;
-  for (auto edge = replacement->OutputEdgesBegin(); edge != replacement->OutputEdgesEnd(); ++edge) {
-    if (edge->IsControlEdge() && edge->GetNode().Index() == replay_control_sink->Index()) {
+  for (auto edge = replay_control_sink->InputEdgesBegin();
+       edge != replay_control_sink->InputEdgesEnd(); ++edge) {
+    if (edge->IsControlEdge()) {
       found_outgoing_control_edge = true;
       break;
     }
   }
   EXPECT_TRUE(found_outgoing_control_edge);
+  EXPECT_STATUS_OK(replay_graph.Resolve());
 }
 
 TEST(GraphRuntimeOptimizationTest, SavedReplacementSkipsNonConvexSelection) {
@@ -312,7 +314,9 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementSkipsNonConvexSelection) {
   ASSERT_FALSE(graph_inputs.empty());
   auto& external_output =
       graph.GetOrCreateNodeArg("external_path_output", graph_inputs.front()->TypeAsProto());
-  std::array<NodeArg*, 1> external_inputs{graph_inputs.front()};
+  NodeArg* graph_input = graph.GetNodeArg(graph_inputs.front()->Name());
+  ASSERT_NE(graph_input, nullptr);
+  std::array<NodeArg*, 1> external_inputs{graph_input};
   std::array<NodeArg*, 1> external_outputs{&external_output};
   auto& external_node = graph.AddNode(
       "external_path", "Identity", "",

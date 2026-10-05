@@ -5194,7 +5194,7 @@ void Graph::NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_
 #endif
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
 bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
   if (nodes_.size() <= src_node_index ||
       nodes_.size() <= dst_node_index ||
@@ -5211,9 +5211,7 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
 
   return true;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD)
 const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
   if (!GraphProtoSyncNeeded()) {
     return *graph_proto_;

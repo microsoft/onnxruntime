@@ -52,7 +52,7 @@ class Model;
 struct ModelSavingOptions;
 class OpSignature;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
 #endif
 
@@ -295,7 +295,7 @@ class Node {
   std::vector<NodeArg*>& MutableOutputDefs() noexcept {
     return definitions_.output_defs;
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Struct to provide sorting between EdgeEnd instances based on NodeIndex first, and NodeArg::Name second. */
   struct EdgeEndCompare {
