@@ -32,6 +32,13 @@ jobs:
           {"machine": "arm64", "target": "arm64", "build_config": "Release"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release", "xcode_version": "16"}
         ]
+      # onnxruntime_mlas_test is never registered with CTest (see the reusable workflow), so
+      # `build.py --test` never runs it anywhere. Run it explicitly here (on all 3 native arm64
+      # matrix entries above: Debug, Release, Release/Xcode16) -- the coreml/xnnpack/webgpu jobs
+      # below reuse the same workflow but don't opt in, since MLAS kernel coverage doesn't depend
+      # on those EPs and running it there too would just add duplicate machine-hours for
+      # identical coverage without adding any new signal.
+      run_mlas_tests: true
       python_version: "3.14"
 
   coreml:
