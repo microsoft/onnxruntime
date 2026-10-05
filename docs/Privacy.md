@@ -39,7 +39,7 @@ Telemetry can be disabled in any of these ways:
 
 - **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from all builds and disables the Microsoft telemetry configuration on Windows. Unsupported targets and exception-free builds never include telemetry.
 - **Disable all telemetry at runtime (non-Windows).** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. This prevents the uploader, events, and persistent device identifier from being created for the process lifetime.
-- **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
+- **Disable all telemetry events via the API.** The C API (and the C#, Python, and Java bindings) can suppress all telemetry events. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
 
 Shared ORT libraries use a public-symbol allowlist, so embedded telemetry dependencies such as curl are not exported. This applies regardless of whether telemetry is supplied through vcpkg, FetchContent, or a caller-provided SDK source tree. On Windows, the 1DS network detector is disabled to avoid a process-exit allocation left by `netprofm.dll`; HTTPS uploads remain enabled.
 
