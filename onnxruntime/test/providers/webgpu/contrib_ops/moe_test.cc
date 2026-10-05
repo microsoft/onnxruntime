@@ -831,12 +831,22 @@ static void RunQMoEWebGpuIntegerWidths(int num_rows, int num_experts, int k,
 
   constexpr int size = 64;
   const bool has_fc3 = fc3_bits != 0;
-  const std::vector<uint8_t> fc1_weights(num_experts * size * size * fc1_bits / 8,
-                                         fc1_bits == 2 ? 0xFF : 0x99);
-  const std::vector<uint8_t> fc2_weights(num_experts * size * size * fc2_bits / 8,
-                                         fc2_bits == 2 ? 0xFF : 0x99);
-  const std::vector<uint8_t> fc3_weights(has_fc3 ? num_experts * size * size * fc3_bits / 8 : 0,
-                                         fc3_bits == 2 ? 0xFF : 0x99);
+  std::vector<uint8_t> fc1_weights(num_experts * size * size * fc1_bits / 8,
+                                   fc1_bits == 2 ? 0xFF : 0x99);
+  std::vector<uint8_t> fc2_weights(num_experts * size * size * fc2_bits / 8,
+                                   fc2_bits == 2 ? 0xFF : 0x99);
+  std::vector<uint8_t> fc3_weights(has_fc3 ? num_experts * size * size * fc3_bits / 8 : 0,
+                                   fc3_bits == 2 ? 0xFF : 0x99);
+  if (num_experts > 1) {
+    std::fill(fc1_weights.begin() + size * size * fc1_bits / 8, fc1_weights.end(),
+              fc1_bits == 2 ? 0x55 : 0xAA);
+    std::fill(fc2_weights.begin() + size * size * fc2_bits / 8, fc2_weights.end(),
+              fc2_bits == 2 ? 0x55 : 0xAA);
+    if (has_fc3) {
+      std::fill(fc3_weights.begin() + size * size * fc3_bits / 8, fc3_weights.end(),
+                fc3_bits == 2 ? 0x55 : 0xAA);
+    }
+  }
   std::vector<float> input(num_rows * size), router_probs(num_rows * num_experts, 0.0f);
   std::vector<float> fc1_scales(num_experts * size), fc2_scales(num_experts * size);
   std::vector<float> fc3_scales(has_fc3 ? num_experts * size : 0);
@@ -857,13 +867,16 @@ static void RunQMoEWebGpuIntegerWidths(int num_rows, int num_experts, int k,
         continue;
       }
       router_probs[row * num_experts + expert] = 10.0f;
-      const float fc1 = MLFloat16(size * value * fc1_scales[expert * size]).ToFloat();
+      const float fc1_weight = expert == 0 ? 1.0f : (fc1_bits == 2 ? -1.0f : 2.0f);
+      const float fc2_weight = expert == 0 ? 1.0f : (fc2_bits == 2 ? -1.0f : 2.0f);
+      const float fc1 = MLFloat16(size * value * fc1_weight * fc1_scales[expert * size]).ToFloat();
       float activated = fc1;
       if (has_fc3) {
-        const float fc3 = MLFloat16(size * value * fc3_scales[expert * size]).ToFloat();
+        const float fc3_weight = expert == 0 ? 1.0f : (fc3_bits == 2 ? -1.0f : 2.0f);
+        const float fc3 = MLFloat16(size * value * fc3_weight * fc3_scales[expert * size]).ToFloat();
         activated = MLFloat16(fc1 / (1.0f + std::exp(-fc1)) * fc3).ToFloat();
       }
-      result += MLFloat16(size * activated * fc2_scales[expert * size]).ToFloat() / k;
+      result += MLFloat16(size * activated * fc2_weight * fc2_scales[expert * size]).ToFloat() / k;
     }
     std::fill_n(expected.begin() + row * size, size, result);
   }
