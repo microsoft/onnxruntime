@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <functional>
 
 #include "core/framework/allocator.h"
@@ -20,16 +21,20 @@ inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
                                         0};
 
 // Shared allocation implementation for native and plugin builds. Session getters borrow the EP;
-// plugin Env getters retain a context and an independent recording instead. The returned objects
-// must remain alive throughout allocator use and tensor frees. Plugin ABI wrappers live in ep/allocator.h.
+// plugin Env allocators have no Session recording. The returned objects
+// must remain alive throughout allocator use and tensor frees. BufferManager synchronizes deferred
+// releases when plugin Session allocators are used concurrently. Plugin ABI wrappers live in ep/allocator.h.
 class GpuBufferAllocator : public IAllocator {
  public:
   // Calls buffer_manager_getter on every Alloc/Free to obtain the current
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
   // Read-only initializers skip cached-buffer clears and can be mapped at creation on UMA.
-  // should_submit_zero_initialize controls plain Alloc; a matching plugin AllocOnStream
-  // instead defers clears on the supplied Session stream.
+  // should_submit_zero_initialize is used only by built-in WebGPU; plugin builds ignore it.
+  // TODO: Remove this callback once built-in WebGPU can distinguish external allocators used outside Run
+  // from internal allocators used during Run.
+  // Plugin Alloc submits independent clears; a matching AllocOnStream defers them on the Session stream.
+  // Only the plugin Env allocator omits recording_getter, as it never uses a Session stream.
   GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
                      std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
@@ -40,13 +45,13 @@ class GpuBufferAllocator : public IAllocator {
   void GetStats(AllocatorStats* stats) override;
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  bool IsStreamAware() const override { return true; }
+  bool IsStreamAware() const override { return static_cast<bool>(recording_getter_); }
   void* AllocOnStream(size_t size, Stream* stream) override;
 #endif
 
  private:
-  void* Allocate(size_t size, bool submit_zero_initialize);
-  AllocatorStats stats_;
+  void* Allocate(size_t size, CommandRecordingState& recording, bool submit_zero_initialize);
+  std::atomic<int64_t> num_allocs_{0};
   std::function<const BufferManager&()> buffer_manager_getter_;
   std::function<CommandRecordingState&()> recording_getter_;
   std::function<bool()> should_submit_zero_initialize_;
