@@ -1401,6 +1401,28 @@ static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
                                         size_t prefix_overhead,
                                         SafeInt<size_t>& proto_bytes);
 
+static FunctionNameBindings MakeScopedGraphNameBindings(const ONNX_NAMESPACE::GraphProto& graph,
+                                                        const FunctionNameBindings& name_bindings,
+                                                        size_t prefix_overhead) {
+  FunctionNameBindings scoped_name_bindings = name_bindings;
+  const auto add_local_binding = [&scoped_name_bindings, prefix_overhead](const std::string& name) {
+    scoped_name_bindings.insert_or_assign(name, SafeInt<size_t>(name.size()) + prefix_overhead);
+  };
+  for (const auto& input : graph.input()) {
+    add_local_binding(input.name());
+  }
+  for (const auto& output : graph.output()) {
+    add_local_binding(output.name());
+  }
+  for (const auto& initializer : graph.initializer()) {
+    add_local_binding(initializer.name());
+  }
+  for (const auto& initializer : graph.sparse_initializer()) {
+    add_local_binding(initializer.values().name());
+  }
+  return scoped_name_bindings;
+}
+
 static void AddSpecializedAttributeNameCost(const ONNX_NAMESPACE::AttributeProto& attribute,
                                             const FunctionNameBindings& name_bindings,
                                             size_t prefix_overhead,
@@ -1435,24 +1457,17 @@ static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
                                         const FunctionNameBindings& name_bindings,
                                         size_t prefix_overhead,
                                         SafeInt<size_t>& proto_bytes) {
-  FunctionNameBindings scoped_name_bindings = name_bindings;
-  const auto add_local_binding = [&scoped_name_bindings, prefix_overhead](const std::string& name) {
-    scoped_name_bindings.insert_or_assign(name, SafeInt<size_t>(name.size()) + prefix_overhead);
-  };
+  const auto scoped_name_bindings = MakeScopedGraphNameBindings(graph, name_bindings, prefix_overhead);
   for (const auto& input : graph.input()) {
-    add_local_binding(input.name());
     proto_bytes += SpecializedNameFieldCost(input.name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& output : graph.output()) {
-    add_local_binding(output.name());
     proto_bytes += SpecializedNameFieldCost(output.name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& initializer : graph.initializer()) {
-    add_local_binding(initializer.name());
     proto_bytes += SpecializedNameFieldCost(initializer.name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& initializer : graph.sparse_initializer()) {
-    add_local_binding(initializer.values().name());
     proto_bytes += SpecializedNameFieldCost(initializer.values().name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& node : graph.node()) {
@@ -1492,10 +1507,11 @@ static Status AddBoundAttributeCost(
   }
 
   const auto process_graph = [&](const ONNX_NAMESPACE::GraphProto& graph) -> Status {
+    const auto scoped_name_bindings = MakeScopedGraphNameBindings(graph, name_bindings, prefix_overhead);
     for (const auto& node : graph.node()) {
       for (const auto& nested_attribute : node.attribute()) {
         ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
-            nested_attribute, attribute_bindings, name_bindings, prefix_overhead,
+            nested_attribute, attribute_bindings, scoped_name_bindings, prefix_overhead,
             resolving_attribute_bindings, remaining_node_budget, remaining_byte_budget,
             node_count, proto_bytes));
         if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {

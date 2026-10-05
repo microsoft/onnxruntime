@@ -488,16 +488,15 @@ TEST(FunctionTest, AotInliningUsesLexicalScopeForShadowedSubgraphNames) {
     initializer->add_dims(1);
     initializer->add_float_data(1.0f);
 
-    std::string previous = "function_input";
     for (size_t i = 0; i < 16; ++i) {
       auto* identity = branch->add_node();
       identity->set_op_type("Identity");
-      identity->add_input(previous);
-      previous = "shadowed_" + std::to_string(i);
-      identity->add_output(previous);
+      identity->add_input("function_input");
+      const std::string output_name = "shadowed_" + std::to_string(i);
+      identity->add_output(output_name);
       if (i + 1 != 16) {
         auto* value_info = branch->add_value_info();
-        value_info->set_name(previous);
+        value_info->set_name(output_name);
         auto* value_type = value_info->mutable_type()->mutable_tensor_type();
         value_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         value_type->mutable_shape()->add_dim()->set_dim_value(1);
@@ -505,10 +504,102 @@ TEST(FunctionTest, AotInliningUsesLexicalScopeForShadowedSubgraphNames) {
     }
 
     auto* branch_output = branch->add_output();
-    branch_output->set_name(previous);
+    branch_output->set_name("shadowed_15");
     auto* output_type = branch_output->mutable_type()->mutable_tensor_type();
     output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     output_type->mutable_shape()->add_dim()->set_dim_value(1);
+  }
+
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = std::nullopt,
+       .byte_limit = 64 * 1024});
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+}
+
+TEST(FunctionTest, AotInliningUsesLexicalScopeForNestedBoundGraphCaptures) {
+  auto model = CreateFunctionExpansionModel(0, 1);
+  auto* function = model.mutable_functions(0);
+  const std::string long_input_name(4096, 'x');
+  model.mutable_graph()->mutable_input(0)->set_name(long_input_name);
+  model.mutable_graph()->mutable_node(0)->set_input(0, long_input_name);
+
+  function->add_attribute("nested_branch");
+  auto* nested_branch_attribute = function->add_attribute_proto();
+  nested_branch_attribute->set_name("nested_branch");
+  nested_branch_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* nested_branch = nested_branch_attribute->mutable_g();
+  nested_branch->set_name("nested_branch");
+  for (size_t i = 0; i < 32; ++i) {
+    auto* identity = nested_branch->add_node();
+    identity->set_op_type("Identity");
+    identity->add_input("function_input");
+    identity->add_output("nested_output_" + std::to_string(i));
+  }
+  auto* nested_branch_output = nested_branch->add_output();
+  nested_branch_output->set_name("nested_output_31");
+  auto* nested_branch_output_type = nested_branch_output->mutable_type()->mutable_tensor_type();
+  nested_branch_output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  nested_branch_output_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto* condition_node = function->add_node();
+  condition_node->set_op_type("Constant");
+  condition_node->add_output("condition");
+  auto* condition_attribute = condition_node->add_attribute();
+  condition_attribute->set_name("value");
+  condition_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  condition_attribute->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  condition_attribute->mutable_t()->add_int32_data(1);
+  auto* condition_value_info = function->add_value_info();
+  condition_value_info->set_name("condition");
+  condition_value_info->mutable_type()->mutable_tensor_type()->set_elem_type(
+      ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+  auto* if_node = function->add_node();
+  if_node->set_op_type("If");
+  if_node->add_input("condition");
+  if_node->add_output("function_output");
+  for (const char* attribute_name : {"then_branch", "else_branch"}) {
+    auto* attribute = if_node->add_attribute();
+    attribute->set_name(attribute_name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* branch = attribute->mutable_g();
+    branch->set_name(attribute_name);
+
+    auto* initializer = branch->add_initializer();
+    initializer->set_name("function_input");
+    initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    initializer->add_dims(1);
+    initializer->add_float_data(1.0f);
+
+    auto* nested_condition = branch->add_node();
+    nested_condition->set_op_type("Constant");
+    nested_condition->add_output("nested_condition");
+    auto* nested_condition_attribute = nested_condition->add_attribute();
+    nested_condition_attribute->set_name("value");
+    nested_condition_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    nested_condition_attribute->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    nested_condition_attribute->mutable_t()->add_int32_data(1);
+
+    auto* nested_if = branch->add_node();
+    nested_if->set_op_type("If");
+    nested_if->add_input("nested_condition");
+    nested_if->add_output("branch_output");
+    for (const char* nested_attribute_name : {"then_branch", "else_branch"}) {
+      auto* nested_attribute = nested_if->add_attribute();
+      nested_attribute->set_name(nested_attribute_name);
+      nested_attribute->set_ref_attr_name("nested_branch");
+      nested_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    }
+
+    auto* branch_output = branch->add_output();
+    branch_output->set_name("branch_output");
+    auto* branch_output_type = branch_output->mutable_type()->mutable_tensor_type();
+    branch_output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    branch_output_type->mutable_shape()->add_dim()->set_dim_value(1);
   }
 
   std::vector<std::string> log_messages;
