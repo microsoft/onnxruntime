@@ -19,6 +19,12 @@ void LaunchGetTokenOffset(int* token_count_buffer,
                           const int sequence_length,
                           cudaStream_t stream);
 
+Status ValidateTokenOffset(
+    const int* token_offset,
+    int token_offset_count,
+    int* validation_flag,
+    cudaStream_t stream);
+
 // Remove paddings from input.
 template <typename T>
 void LaunchRemovePadding(

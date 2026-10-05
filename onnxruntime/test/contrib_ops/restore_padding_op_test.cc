@@ -103,6 +103,53 @@ TEST(RestorePaddingTest, RestorePaddingBatch1_NoPadding) {
       total_tokens);
 }
 
+TEST(RestorePaddingTest, InvalidTokenOffset_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "RestorePadding token offset validation requires a CUDA device.";
+  }
+
+  constexpr int kBatchSize = 1;
+  constexpr int kSequenceLength = 2;
+  constexpr int kHiddenSize = 8;
+  constexpr int kTotalTokens = 1;
+  const std::vector<bool> use_float16_values =
+      HasCudaEnvironment(530) ? std::vector<bool>{false, true} : std::vector<bool>{false};
+
+  for (const bool use_float16 : use_float16_values) {
+    for (const std::vector<int32_t>& token_offset : {
+             std::vector<int32_t>{-1, 1},
+             std::vector<int32_t>{0, kBatchSize * kSequenceLength}}) {
+      SCOPED_TRACE(use_float16 ? "float16" : "float");
+      SCOPED_TRACE(token_offset[0]);
+      SCOPED_TRACE(token_offset[1]);
+
+      OpTester tester("RestorePadding", 1, onnxruntime::kMSDomain);
+      if (use_float16) {
+        tester.AddInput<MLFloat16>("input", {kTotalTokens, kHiddenSize},
+                                   std::vector<MLFloat16>(kHiddenSize));
+        tester.AddOutput<MLFloat16>(
+            "output", {kBatchSize, kSequenceLength, kHiddenSize},
+            std::vector<MLFloat16>(kBatchSize * kSequenceLength * kHiddenSize));
+      } else {
+        tester.AddInput<float>("input", {kTotalTokens, kHiddenSize},
+                               std::vector<float>(kHiddenSize));
+        tester.AddOutput<float>(
+            "output", {kBatchSize, kSequenceLength, kHiddenSize},
+            std::vector<float>(kBatchSize * kSequenceLength * kHiddenSize));
+      }
+      tester.AddInput<int32_t>(
+          "token_offset", {kBatchSize, kSequenceLength}, token_offset);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(
+          OpTester::ExpectResult::kExpectFailure,
+          "token_offset values must be in [0, batch_size * sequence_length).",
+          {}, nullptr, &execution_providers);
+    }
+  }
+}
+
 TEST(RestorePaddingTest, RestorePaddingBatch3_TwoWithPadding) {
   int batch_size = 3;
   int sequence_length = 4;
