@@ -25,6 +25,20 @@ public class OnnxTensorTest {
   private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
+  public void testNativeArrayCapacity() throws OrtException {
+    for (long length : new long[] {0, 1, Integer.MAX_VALUE}) {
+      Assertions.assertEquals((int) length, TensorInfo.getArrayLength(length));
+    }
+    for (long length :
+        new long[] {(long) Integer.MAX_VALUE + 1, 3_000_000_000L, 1L << 32, Long.MAX_VALUE}) {
+      OrtException exception =
+          assertThrows(OrtException.class, () -> TensorInfo.getArrayLength(length));
+      Assertions.assertEquals(OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT, exception.getCode());
+      Assertions.assertTrue(exception.getMessage().contains("Java array limit"));
+    }
+  }
+
+  @Test
   public void testScalarCreation() throws OrtException {
     String[] stringValues = new String[] {"true", "false"};
     for (String s : stringValues) {
