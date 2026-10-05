@@ -1920,20 +1920,24 @@ static bool IsCudaFp16MoeNode(const Node& node) {
          input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 }
 
+static bool IsMoeCpuOffloadOuterScopeValue(const Graph& graph, const std::string& name) {
+  // A parent's implicit inputs are shared by sibling subgraphs; local definitions still take precedence.
+  if (!graph.IsOuterScopeValue(name) ||
+      graph.GetAllInitializedTensors().find(name) != graph.GetAllInitializedTensors().end()) {
+    return false;
+  }
+  const auto& inputs = graph.GetInputsIncludingInitializers();
+  return std::none_of(inputs.begin(), inputs.end(),
+                      [&](const NodeArg* input) { return input->Name() == name; });
+}
+
 static Status FindMoeCpuOffloadInitializerUses(
     const Graph& graph,
     const std::string& initializer_name,
     bool graph_owns_initializer,
     bool& found_moe_expert_use) {
-  if (!graph_owns_initializer) {
-    const auto& inputs = graph.GetInputsIncludingInitializers();
-    // A parent's implicit inputs are shared by sibling subgraphs; local definitions still take precedence.
-    if (!graph.IsOuterScopeValue(initializer_name) ||
-        graph.GetAllInitializedTensors().find(initializer_name) != graph.GetAllInitializedTensors().end() ||
-        std::any_of(inputs.begin(), inputs.end(),
-                    [&](const NodeArg* input) { return input->Name() == initializer_name; })) {
-      return Status::OK();
-    }
+  if (!graph_owns_initializer && !IsMoeCpuOffloadOuterScopeValue(graph, initializer_name)) {
+    return Status::OK();
   }
 
   for (const auto& node : graph.Nodes()) {
@@ -1980,7 +1984,13 @@ static void CollectMoeCpuOffloadInitializerNames(
     }
 
     for (const Graph* subgraph : node.GetSubgraphs()) {
-      CollectMoeCpuOffloadInitializerNames(*subgraph, initializer_names);
+      InlinedHashSet<std::string> subgraph_initializer_names;
+      CollectMoeCpuOffloadInitializerNames(*subgraph, subgraph_initializer_names);
+      for (const auto& name : subgraph_initializer_names) {
+        if (IsMoeCpuOffloadOuterScopeValue(*subgraph, name)) {
+          initializer_names.insert(name);
+        }
+      }
     }
   }
 }
