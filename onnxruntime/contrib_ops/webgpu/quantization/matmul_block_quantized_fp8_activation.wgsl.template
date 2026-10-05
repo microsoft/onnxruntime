@@ -3,6 +3,10 @@
 
 #use .getByOffset .setByOffset
 
+const E4M3_MAX: f32 = 448.0;
+const E4M3_MIN_NORMAL_EXP: f32 = -6.0;
+const E4M3_MANTISSA_BITS: f32 = 3.0;
+
 $MAIN {
   if (global_idx >= uniforms.size) {
     return;
@@ -10,9 +14,13 @@ $MAIN {
   let scale = input_scale.getByOffset(0u);
   let inverse = select(0.0, 1.0 / scale, scale != 0.0);
   let v = f32(input_a.getByOffset(global_idx)) * inverse;
-  let magnitude = min(abs(v), 448.0);
-  let step = exp2(max(floor(log2(magnitude)), -6.0) - 3.0);
-  let rounded = min(round(magnitude / step) * step, 448.0);
+  let magnitude = min(abs(v), E4M3_MAX);
+  let step = exp2(max(floor(log2(magnitude)), E4M3_MIN_NORMAL_EXP) - E4M3_MANTISSA_BITS);
+  let units = magnitude / step;
+  let lower = floor(units);
+  let fraction = units - lower;
+  let round_up = fraction > 0.5 || (fraction == 0.5 && (u32(lower) & 1u) != 0u);
+  let rounded = min((lower + select(0.0, 1.0, round_up)) * step, E4M3_MAX);
   let q = select(rounded, -rounded, v < 0.0);
   output.setByOffset(global_idx, f16(q * scale));
 }

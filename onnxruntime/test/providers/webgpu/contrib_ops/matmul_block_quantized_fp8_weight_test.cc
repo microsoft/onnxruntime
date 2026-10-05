@@ -149,12 +149,15 @@ TEST(MatMulBlockQuantizedFp8WeightTest, ActivationQdqTieAndSaturation) {
   }
   OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
   test.AddAttribute("block_size", int64_t{1});
-  test.AddInput<MLFloat16>("A", {5, 1},
-                           ToFloat16({0.3984375f, -0.3984375f, 200.0f, -200.0f, 0.0f}));
+  test.AddInput<MLFloat16>("A", {7, 1},
+                           ToFloat16({0.3984375f, -0.3984375f, 0.4453125f, -0.4453125f,
+                                      200.0f, -200.0f, 0.0f}));
   test.AddInput<Float8E4M3FN>("B", {1, 1}, {Float8E4M3FN(1.0f, true)}, true);
   test.AddInput<float>("b_scale", {1, 1}, {1.0f});
   test.AddInput<float>("a_scale", {}, {0.375f});
-  test.AddOutput<MLFloat16>("Y", {5, 1}, ToFloat16({0.375f, -0.375f, 168.0f, -168.0f, 0.0f}));
+  test.AddOutput<MLFloat16>("Y", {7, 1},
+                            ToFloat16({0.375f, -0.375f, 0.46875f, -0.46875f,
+                                       168.0f, -168.0f, 0.0f}));
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> providers;

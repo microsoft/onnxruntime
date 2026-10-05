@@ -153,7 +153,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeInternal(onnxruntime::webgpu::Compu
   }
   const Tensor* activation = a;
   Tensor qdq;
-  if (a_scale && K != 0) {
+  if (a_scale) {
     qdq = context.CreateGPUTensor(a->DataType(), a_shape);
     Fp8ActivationProgram qdq_program;
     qdq_program.SetWorkgroupSize(64);
@@ -166,7 +166,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeInternal(onnxruntime::webgpu::Compu
     activation = &qdq;
   }
 
-  const bool use_matrix = M >= 8 && K != 0 &&
+  const bool use_matrix = M >= 8 &&
                           SelectSubgroupMatrixConfig(context, {{wgpu::SubgroupMatrixComponentType::F16,
                                                                 wgpu::SubgroupMatrixComponentType::F32,
                                                                 16, 16, 16, 32, false}})
@@ -176,6 +176,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeInternal(onnxruntime::webgpu::Compu
       WEBGPU_BUFFER,
       OrtDeviceAllocator,
       OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}};
+  // Tensor views require void*, but the alias only binds B as read-only storage; no copy or mutation occurs.
   Tensor weight_bytes(DataTypeImpl::GetType<uint8_t>(), b_shape, const_cast<void*>(b->DataRaw()), memory_info);
   Fp8MatMulProgram program{bias != nullptr, use_matrix};
   program.SetWorkgroupSize(use_matrix ? 128 : 32);
@@ -184,6 +185,8 @@ Status MatMulBlockQuantizedFp8Weight::ComputeInternal(onnxruntime::webgpu::Compu
   }
   program.SetDispatchGroupSize(use_matrix ? (N + 15u) / 16u : N,
                                use_matrix ? (M + 63u) / 64u : M);
+  // Flatten rounds the byte count up to u32 words; WebGPU buffers are 16-byte padded by BufferManager.
+  // The shader extracts only bytes whose offset is within N*K, even in the final partial word.
   program.AddInputs({{activation, ProgramTensorMetadataDependency::Type},
                      {&weight_bytes, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
                      {scales, ProgramTensorMetadataDependency::Type}})
