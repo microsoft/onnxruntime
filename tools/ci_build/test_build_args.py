@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import build_args
 
+import build
+
 
 class BuildArgsTest(unittest.TestCase):
     def _parse(self, *arguments: str, platform_name: str, machine: str = "x86_64"):
