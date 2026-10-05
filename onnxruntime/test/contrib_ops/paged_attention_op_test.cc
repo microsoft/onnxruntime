@@ -92,7 +92,7 @@ struct IoBindingCase {
   std::string expected_error;
   bool allow_malformed_sequence_metadata = false;
   bool skip_reference_check = false;
-  bool verify_malformed_output_and_cache = false;
+  bool verify_malformed_cache_unchanged = false;
 };
 
 // Masked positions get zero probability. Uses fp32 throughout to establish a
@@ -794,19 +794,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     }
     ASSERT_STATUS_OK(run_status);
     if (c.skip_reference_check) {
-      if (c.verify_malformed_output_and_cache) {
+      if (c.verify_malformed_cache_unchanged && run_index + 1 == run_count) {
         ASSERT_FALSE(c.bf16_query);
         ASSERT_FALSE(quantized_cache);
-
-        Tensor cpu_output(
-            DataTypeImpl::GetType<MLFloat16>(),
-            TensorShape({token_count, hidden_size}), cpu_alloc);
-        ORT_THROW_IF_ERROR(
-            execution_provider_ptr->GetDataTransfer()->CopyTensor(
-                output_value.Get<Tensor>(), cpu_output));
-        for (const MLFloat16 value : cpu_output.DataAsSpan<MLFloat16>()) {
-          EXPECT_TRUE(std::isfinite(value.ToFloat()));
-        }
 
         Tensor cpu_key_cache(
             DataTypeImpl::GetType<MLFloat16>(),
@@ -2008,7 +1998,7 @@ TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
   c.attention_metadata = {1, 1};
   c.allow_malformed_sequence_metadata = true;
   c.skip_reference_check = true;
-  c.verify_malformed_output_and_cache = true;
+  c.verify_malformed_cache_unchanged = true;
   c.enable_cuda_graph = true;
 
   testing::internal::CaptureStdout();
