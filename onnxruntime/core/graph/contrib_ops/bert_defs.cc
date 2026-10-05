@@ -3235,7 +3235,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "token_offset",
-               "Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)",
+               "Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length), "
+               "and values must be in [0, batch_size * sequence_length).",
                "M")
         .Output(0,
                 "output",

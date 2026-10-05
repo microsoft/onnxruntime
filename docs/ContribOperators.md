@@ -6783,7 +6783,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input</tt> : T</dt>
 <dd>Input tensor with shape (total_tokens, hidden_size)</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)</dd>
+<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length), and values must be in [0, batch_size * sequence_length).</dd>
 </dl>
 
 #### Outputs
