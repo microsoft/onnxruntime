@@ -92,6 +92,7 @@ struct IoBindingCase {
   std::string expected_error;
   bool allow_malformed_sequence_metadata = false;
   bool skip_reference_check = false;
+  bool verify_malformed_output_and_cache = false;
 };
 
 // Masked positions get zero probability. Uses fp32 throughout to establish a
@@ -793,6 +794,41 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     }
     ASSERT_STATUS_OK(run_status);
     if (c.skip_reference_check) {
+      if (c.verify_malformed_output_and_cache) {
+        ASSERT_FALSE(c.bf16_query);
+        ASSERT_FALSE(quantized_cache);
+
+        Tensor cpu_output(
+            DataTypeImpl::GetType<MLFloat16>(),
+            TensorShape({token_count, hidden_size}), cpu_alloc);
+        ORT_THROW_IF_ERROR(
+            execution_provider_ptr->GetDataTransfer()->CopyTensor(
+                output_value.Get<Tensor>(), cpu_output));
+        for (const MLFloat16 value : cpu_output.DataAsSpan<MLFloat16>()) {
+          EXPECT_TRUE(std::isfinite(value.ToFloat()));
+        }
+
+        Tensor cpu_key_cache(
+            DataTypeImpl::GetType<MLFloat16>(),
+            TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+        Tensor cpu_value_cache(
+            DataTypeImpl::GetType<MLFloat16>(),
+            TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+        ORT_THROW_IF_ERROR(
+            execution_provider_ptr->GetDataTransfer()->CopyTensor(
+                key_cache_value.Get<Tensor>(), cpu_key_cache));
+        ORT_THROW_IF_ERROR(
+            execution_provider_ptr->GetDataTransfer()->CopyTensor(
+                value_cache_value.Get<Tensor>(), cpu_value_cache));
+        const auto actual_key_cache = cpu_key_cache.DataAsSpan<MLFloat16>();
+        const auto actual_value_cache = cpu_value_cache.DataAsSpan<MLFloat16>();
+        ASSERT_EQ(actual_key_cache.size(), key_cache_data.size());
+        ASSERT_EQ(actual_value_cache.size(), value_cache_data.size());
+        for (size_t i = 0; i < key_cache_data.size(); ++i) {
+          EXPECT_EQ(actual_key_cache[i].ToFloat(), key_cache_data[i].ToFloat());
+          EXPECT_EQ(actual_value_cache[i].ToFloat(), value_cache_data[i].ToFloat());
+        }
+      }
       continue;
     }
 
@@ -1937,6 +1973,56 @@ TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
   c.allow_malformed_sequence_metadata = true;
   c.skip_reference_check = true;
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
+#if defined(USE_FLASH_ATTENTION)
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "FlashAttention requires a CUDA device with compute capability 8.0 or newer.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "0"},
+          {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"}}};
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.batch_size = 1;
+  c.token_count = 1;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 64;
+  c.block_size = 256;
+  c.num_blocks = 1;
+  c.max_num_blocks_per_seq = 1;
+  c.cumulative_seqlens_q = {0, 1};
+  c.replay_past_seqlens = {{0}, {0}, {0}, {0}};
+  c.block_table = {c.num_blocks};
+  c.attention_metadata = {1, 1};
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_output_and_cache = true;
+  c.enable_cuda_graph = true;
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(
+      CudaExecutionProviderWithOptions(&provider_options),
+      kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("SdpaKernel=FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "FlashAttention is not runnable in this build/device configuration.\n"
+                 << debug_output;
+  }
+#else
+  GTEST_SKIP() << "FlashAttention is not enabled in this build.";
+#endif
 }
 
 TEST(PagedAttention, Cuda_FlashSplitKvInt8Cache) {

@@ -627,9 +627,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool use_memory_efficient_attention =
       mea_eligible && !use_paged_decode && !use_cudnn_paged;
 
-  // Both gather-based backends need a dense KV staging buffer when the cache is quantized
-  // (FlashAttention cannot read a quantized page, and the CUTLASS kernel is not paged at all).
-  const bool needs_dense_kv = use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
+  // FlashAttention cannot safely consume the paged table directly because -1 is a valid unmapped
+  // sentinel and its native page loader does not mask negative page IDs. Stage all Flash inputs
+  // through the sentinel-aware dense gather, including the runtime fallback from native XQA.
+  const bool native_flash_fallback_possible =
+      use_paged_decode && !kIsQuantizedCache && flash_eligible &&
+      (fp16_xqa_eligible || native_spec_xqa_eligible);
+  const bool needs_dense_kv =
+      use_memory_efficient_attention || use_flash_attention || native_flash_fallback_possible;
   // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
   // GQA-expanded for the CUTLASS kernel.
   const int gathered_num_heads = use_memory_efficient_attention ? parameters.num_heads : parameters.kv_num_heads;
@@ -781,8 +786,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
   // checks pass. Restore Flash for ragged decode steps and unsupported devices instead of leaving
-  // them on the portable scalar paged-decode fallback. This is safe without dense KV staging
-  // because the native FP16/BF16 cache is already a Flash-supported dtype. Skip when cuDNN paged
+  // them on the portable scalar paged-decode fallback. Dense KV staging was reserved above for
+  // this fallback so unmapped pages remain masked. Skip when cuDNN paged
   // already won this step; the two selections would otherwise coexist for the corner case where
   // native XQA is opted in on a bf16 cache with head_size=256 / group_size=6 and max_query_len=1
   // (native_spec_xqa_eligible is a shape gate and stays true regardless of query length).
