@@ -144,6 +144,7 @@ def _summarize_cache(cache_path: str) -> None:
                 "block_size",
                 "has_zero_points",
                 "gemv_enabled",
+                "has_bias",
                 "packing_sm",
             ]
             key = tuple(fields[n_key_col[c]] for c in key_cols if c in n_key_col)

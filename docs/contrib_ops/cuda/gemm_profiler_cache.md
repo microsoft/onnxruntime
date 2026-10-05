@@ -99,7 +99,7 @@ punctuation) that make CSV quoting fragile.
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	matmulnbits_fpa_intb
-# tactic_selection_version	1
+# tactic_selection_version	2
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -108,9 +108,9 @@ punctuation) that make CSV quoting fragile.
 # ort_version	1.23.0
 # ort_git_commit	<git-sha-or-unknown>
 # ort_build_config	Release
-n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	packing_sm	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	80	1	1	80	23	0	0	0	0	1	1	3	0	0	0	0	1
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	80	64	1	80	17	0	0	0	0	0	-1	4	0	0	0	0	0
+n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	has_bias	packing_sm	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	1	1	80	23	0	0	0	0	1	1	3	0	0	0	0	1
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	64	1	80	17	0	0	0	0	0	-1	4	0	0	0	0	0
 ...
 ```
 
@@ -119,7 +119,7 @@ n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	qmoe_gemm
-# tactic_selection_version	1
+# tactic_selection_version	2
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -179,7 +179,7 @@ Use op-specific keys rather than a single sparse superset.
 ```
 matmulnbits_key = {
   n_16b, k, activation_dtype, weight_type, bits, block_size,
-  has_zero_points, zero_point_dtype, gemv_enabled, packing_sm
+  has_zero_points, zero_point_dtype, gemv_enabled, has_bias, packing_sm
 }
 
 qmoe_key = {
@@ -236,7 +236,7 @@ unit-testable.
 - *Strategy*: Wire the `gemm_tactic_cache` utility independently into `GemmPluginProfiler` and `MoeGemmProfiler` rather than attempting a large refactor. The shared cache utility provides a simple `GetConfig(...)` / `PutConfig(...)` API.
 - `gemm_profiler.h`: before the M sweep in `profileTactics`, load matching entries and skip if hit;
   after profiling, merge into the disk cache. Re-enable the serialize stubs.
-- `matmul_nbits.{h,cc}`: pass `bits / block_size / zero-point mode / gemv_enabled / packing_sm`
+- `matmul_nbits.{h,cc}`: pass `bits / block_size / zero-point mode / gemv_enabled / has_bias / packing_sm`
   into the MatMulNBits key.
 - `moe_quantization.cc` + `moe_gemm_profiler.{h,cc}`: use the same disk cache + key; QMoE gains
   cross-node dedup via the shared cache. Add a process-global MoE profiler manager
