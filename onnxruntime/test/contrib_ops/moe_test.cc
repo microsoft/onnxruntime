@@ -4638,41 +4638,71 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsNonSquareLegacyWeightLayout) {
 
   constexpr int hidden_size = kMoEMinCudaDim;
   constexpr int inter_size = 2 * kMoEMinCudaDim;
-  std::vector<float> fc1_weights(static_cast<size_t>(inter_size * hidden_size), 0.0f);
-  std::vector<float> fc2_weights(static_cast<size_t>(hidden_size * inter_size), 0.0f);
-  for (int column = 0; column < hidden_size; ++column) {
-    fc1_weights[static_cast<size_t>(column * hidden_size + column)] = 1.0f;
-    fc2_weights[static_cast<size_t>(column * inter_size + column)] = 1.0f;
+  constexpr int num_experts = 2;
+  constexpr int num_rows = 2;
+  std::vector<float> fc1_weights(static_cast<size_t>(num_experts * inter_size * hidden_size), 0.0f);
+  std::vector<float> fc2_weights(static_cast<size_t>(num_experts * hidden_size * inter_size), 0.0f);
+  for (int expert = 0; expert < num_experts; ++expert) {
+    for (int output = 0; output < inter_size; ++output) {
+      const int input = (3 * output + 1) % hidden_size;
+      fc1_weights[static_cast<size_t>(expert * inter_size * hidden_size + output * hidden_size + input)] = 1.0f;
+    }
+    for (int output = 0; output < hidden_size; ++output) {
+      const int input = (5 * output + 2) % inter_size;
+      fc2_weights[static_cast<size_t>(expert * hidden_size * inter_size + output * inter_size + input)] =
+          static_cast<float>(expert + 1);
+    }
   }
 
-  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("k", 1);
-  tester.AddAttribute<std::string>("activation_type", "relu");
-  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-  tester.AddInput<MLFloat16>("input", {1, hidden_size},
-                             std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
-  tester.AddInput<MLFloat16>("router_probs", {1, 1}, ToFloat16({1.0f}));
-  tester.AddInput<MLFloat16>("fc1_experts_weights", {1, hidden_size, inter_size},
-                             ToFloat16(fc1_weights), true);
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddInput<MLFloat16>("fc2_experts_weights", {1, inter_size, hidden_size},
-                             ToFloat16(fc2_weights), true);
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOutput<MLFloat16>("output", {1, hidden_size},
-                              std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
-  tester.SetOutputTolerance(0.01f);
+  std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
+  std::vector<float> expected(input.size());
+  for (int row = 0; row < num_rows; ++row) {
+    for (int column = 0; column < hidden_size; ++column) {
+      input[static_cast<size_t>(row * hidden_size + column)] = static_cast<float>(1 + row + column % 7);
+    }
+    for (int column = 0; column < hidden_size; ++column) {
+      const int intermediate = (5 * column + 2) % inter_size;
+      const int source = (3 * intermediate + 1) % hidden_size;
+      expected[static_cast<size_t>(row * hidden_size + column)] =
+          1.5f * input[static_cast<size_t>(row * hidden_size + source)];
+    }
+  }
 
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(execution_provider));
-  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {},
-             nullptr, &execution_providers);
+  for (bool legacy_shape : {false, true}) {
+    for (int cpu_experts : {0, 1, num_experts}) {
+      SCOPED_TRACE(MakeString("legacy_shape=", legacy_shape, ", cpu_experts=", cpu_experts));
+      OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+      tester.AddAttribute<int64_t>("k", 2);
+      tester.AddAttribute<std::string>("activation_type", "relu");
+      tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+      tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+      tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
+                                 std::vector<MLFloat16>(num_rows * num_experts, MLFloat16(0.0f)));
+      // Legacy dimensions differ from the physical column-major K x N layout consumed by CUTLASS.
+      tester.AddInput<MLFloat16>("fc1_experts_weights",
+                                 legacy_shape ? std::vector<int64_t>{num_experts, hidden_size, inter_size}
+                                              : std::vector<int64_t>{num_experts, inter_size, hidden_size},
+                                 ToFloat16(fc1_weights), true);
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddInput<MLFloat16>("fc2_experts_weights",
+                                 legacy_shape ? std::vector<int64_t>{num_experts, inter_size, hidden_size}
+                                              : std::vector<int64_t>{num_experts, hidden_size, inter_size},
+                                 ToFloat16(fc2_weights), true);
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+      tester.SetOutputTolerance(0.01f);
+
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigMoeCpuOffloadExperts, MakeString(cpu_experts).c_str()));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
 }
 
 TEST(MoETest, MoECudaFp16ConstantFc3RunsWithoutCpuOffload) {

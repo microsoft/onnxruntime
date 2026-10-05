@@ -231,6 +231,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
                           : packed.shape[1] == static_cast<int64_t>(output_size)),
         "FP16 MoE input ", input_idx, " has an invalid ",
         legacy_shape ? "legacy" : "standard", " expert weight shape.");
+    // Legacy shapes do not change CUTLASS's physical column-major K x N bytes; MLAS needs row-major K x N.
     packed.cpu_gemm_data.resize(packed.cpu_data.size());
     for (size_t expert = 0; expert < num_experts; ++expert) {
       const MLFloat16* source = packed.cpu_data.data() + expert * expert_element_count;
