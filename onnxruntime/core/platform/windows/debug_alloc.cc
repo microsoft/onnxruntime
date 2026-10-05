@@ -28,9 +28,13 @@ constexpr int c_callstack_limit = 32;  // Maximum depth of callstack in leak tra
 #pragma warning(disable : 26490)  // type.1 Don't use reinterpret_cast
 #pragma warning(disable : 26493)  // type.4 Don't use C-style casts
 
-#include <windows.h>
-#include <sstream>
+#include <algorithm>
+#include <array>
 #include <iostream>
+#include <sstream>
+#include <string_view>
+
+#include <windows.h>
 #include "debug_alloc.h"
 #include <DbgHelp.h>
 #pragma comment(lib, "Dbghelp.lib")
@@ -228,34 +232,45 @@ Memory_LeakCheck::~Memory_LeakCheck() {
 
     const std::string string = message.str();
 
-    // Google test has memory leaks that they haven't fixed. One such issue is tracked here: https://github.com/google/googletest/issues/692
-    //
-    // In gtest-port.cc in function: static ThreadIdToThreadLocals* GetThreadLocalsMapLocked()
-    //     static ThreadIdToThreadLocals* map = new ThreadIdToThreadLocals;
-    //
-    // In gtest-port.cc in Mutex::~Mutex() there is this comment:
-    //     "Static mutexes are leaked intentionally. It is not thread-safe to try to clean them up."
-    // Which explains this leak inside of: void Mutex::ThreadSafeLazyInit()
-    //     critical_section_ = new CRITICAL_SECTION;
-    //
-    // in google/re2 re2.cc initializes leaking singletons
-    //     std::call_once(empty_once, []() {
-    //     empty_string = new string;
-    //     empty_named_groups = new std::map<string, int>;
-    //     empty_group_names = new std::map<int, string>; });
-    if (string.find("RtlRunOnceExecuteOnce") == std::string::npos &&
-        string.find("re2::RE2::Init") == std::string::npos &&
-        string.find("dynamic initializer for 'FLAGS_") == std::string::npos &&
-        string.find("AbslFlagDefaultGenForgtest_") == std::string::npos &&
-        string.find("AbslFlagDefaultGenForundefok::Gen") == std::string::npos &&
-        string.find("::SetProgramUsageMessage") == std::string::npos &&
-        string.find("testing::internal::ParseGoogleTestFlagsOnly") == std::string::npos &&
-        string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
-        string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
-        string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos &&
-        string.find("PyInit_onnxruntime_pybind11_state") == std::string::npos &&
-        string.find("google::protobuf::internal::InitProtobufDefaultsSlow") == std::string::npos &&
-        string.find("EtwEventWriteNoRegistration") == std::string::npos) {
+    constexpr auto allow_list = std::to_array<std::string_view>({
+        "RtlRunOnceExecuteOnce",
+        // In google/re2 re2.cc initializes leaking singletons
+        //     std::call_once(empty_once, []() {
+        //     empty_string = new string;
+        //     empty_named_groups = new std::map<string, int>;
+        //     empty_group_names = new std::map<int, string>; });
+        "re2::RE2::Init",
+        "dynamic initializer for 'FLAGS_",
+        "AbslFlagDefaultGenForgtest_",
+        "AbslFlagDefaultGenForundefok::Gen",
+        "::SetProgramUsageMessage",
+        // Google test has memory leaks that they haven't fixed. One such issue is tracked here:
+        // https://github.com/google/googletest/issues/692
+        //
+        // In gtest-port.cc in function: static ThreadIdToThreadLocals* GetThreadLocalsMapLocked()
+        //     static ThreadIdToThreadLocals* map = new ThreadIdToThreadLocals;
+        //
+        // In gtest-port.cc in Mutex::~Mutex() there is this comment:
+        //     "Static mutexes are leaked intentionally. It is not thread-safe to try to clean them up."
+        // Which explains this leak inside of: void Mutex::ThreadSafeLazyInit()
+        //     critical_section_ = new CRITICAL_SECTION;
+        "testing::internal::ParseGoogleTestFlagsOnly",
+        "testing::internal::Mutex::ThreadSafeLazyInit",
+        "testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked",
+        "testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread",
+        "PyInit_onnxruntime_pybind11_state",
+        "google::protobuf::internal::InitProtobufDefaultsSlow",
+        "EtwEventWriteNoRegistration",
+#if defined(USE_WEBGPU)
+        // In onnxruntime/core/providers/webgpu/webgpu_context_dawn_platform.cc:GetDawnPlatform(), there is an
+        // intentional leak of a function-local static:
+        //     static DawnPlatform* platform = new DawnPlatform();
+        "onnxruntime::webgpu::`anonymous namespace'::GetDawnPlatform",
+#endif  // defined(USE_WEBGPU),
+    });
+
+    if (std::none_of(allow_list.begin(), allow_list.end(),
+                     [&string](std::string_view allowed) { return string.find(allowed) != std::string::npos; })) {
       if (leaked_bytes == 0)
         DebugPrint("\n-----Starting Heap Trace-----\n\n");
 
