@@ -30,6 +30,7 @@
 #include "contrib_ops/cpu/sparse/sparse_attention_indexer_common.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -625,12 +626,29 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
 // Numeric runners
 // ---------------------------------------------------------------------------------------------
 
-bool HasCudaProvider() { return DefaultCudaExecutionProvider() != nullptr; }
+enum class ProviderKind {
+  Cuda,
+  WebGpu,
+};
 
-void RunOnCuda(OpTester& test) {
+std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind) {
+  if (provider_kind == ProviderKind::Cuda) {
+    return DefaultCudaExecutionProvider();
+  }
+#ifdef USE_WEBGPU
+  return DefaultWebGpuExecutionProvider();
+#else
+  return nullptr;
+#endif
+}
+
+void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  providers.push_back(std::move(provider));
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Run(std::move(session_options), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
@@ -658,9 +676,12 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
 }
 
 template <typename T>
-void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(), bool packed_qk = false) {
-  if (!HasCudaProvider()) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
+void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
+                ProviderKind provider_kind = ProviderKind::Cuda, bool packed_qk = false) {
+  auto provider = CreateProvider(provider_kind);
+  if (provider == nullptr) {
+    GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
+                 << " execution provider is not available";
   }
 
   problem.query = RoundTrip<T>(problem.query);
@@ -722,7 +743,7 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(), bool pac
   test.AddOutput<int32_t>("selected_indices", {batch_size, sequence_length, problem.Capacity()}, selected);
   test.AddOutput<T>("present_key", {batch_size, problem.PresentKeyCapacity(), head_size},
                     ToElementType<T>(present_key), false, 0.0f, tolerance);
-  RunOnCuda(test);
+  RunOnProvider(test, std::move(provider));
 }
 
 CsaProblem MakeCsaProblem(CsaProblem problem = {}) {
@@ -760,9 +781,12 @@ CsaProblem MakeCsaProblem(CsaProblem problem = {}) {
 }
 
 template <typename T>
-void RunCsaTest(const CsaProblem& base, float tolerance) {
-  if (!HasCudaProvider()) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
+void RunCsaTest(const CsaProblem& base, float tolerance,
+                ProviderKind provider_kind = ProviderKind::Cuda) {
+  auto provider = CreateProvider(provider_kind);
+  if (provider == nullptr) {
+    GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
+                 << " execution provider is not available";
   }
 
   CsaProblem problem = base;
@@ -840,7 +864,7 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
   present_kv_buffer.insert(present_kv_buffer.end(), present_gate_buffer.begin(), present_gate_buffer.end());
   test.AddOutput<T>("present_proj_buffer", {2, batch_size, plan.present_buffer_length, width},
                     ToElementType<T>(present_kv_buffer), false, 0.0f, tolerance);
-  RunOnCuda(test);
+  RunOnProvider(test, std::move(provider));
 }
 
 // A call whose tokens do not close a window: the buffer only grows and the compressed state is
@@ -870,6 +894,14 @@ CsaProblem MakeCsaBufferOnlyProblem() {
   problem.past_kv_buffer = MakeWave(static_cast<size_t>(problem.past_buffer_length) * width, 0.97f, 0.20f);
   problem.past_gate_buffer = MakeWave(static_cast<size_t>(problem.past_buffer_length) * width, 1.48f, 0.24f);
   problem.position_ids = {8};
+  return problem;
+}
+
+CsaProblem MakeCsaNoCompressedEntryProblem() {
+  CsaProblem problem = MakeCsaBufferOnlyProblem();
+  problem.past_compressed_length = 0;
+  problem.past_compressed_key.clear();
+  problem.position_ids = {0};
   return problem;
 }
 
@@ -1096,7 +1128,7 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedCsaBuffer) {
 TEST(SparseAttentionIndexerTest, QsaFloat) { RunQsaTest<float>(1.0e-5f); }
 
 TEST(SparseAttentionIndexerTest, QsaPackedQkFloat) {
-  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), true);
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::Cuda, true);
 }
 
 TEST(SparseAttentionIndexerTest, QsaFloat16) { RunQsaTest<MLFloat16>(2.0e-3f); }
@@ -1183,6 +1215,10 @@ TEST(SparseAttentionIndexerTest, CsaFloat16ScoresNewKeysBeforeCacheRounding) {
 
 TEST(SparseAttentionIndexerTest, CsaBufferOnlyStep) { RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f); }
 
+TEST(SparseAttentionIndexerTest, CsaNoCompressedEntry) {
+  RunCsaTest<float>(MakeCsaNoCompressedEntryProblem(), 1.0e-5f);
+}
+
 TEST(SparseAttentionIndexerTest, CsaSharedCacheCapacity) {
   CsaProblem problem;
   problem.compressed_cache_capacity = 16;
@@ -1211,5 +1247,148 @@ TEST(SparseAttentionIndexerTest, CsaEmptyBatch) {
   RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f);
 }
 
+#ifdef USE_WEBGPU
+TEST(SparseAttentionIndexerWebGpuTest, QsaFloat) {
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaPackedQkFloat) {
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu, true);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaFloat16) {
+  RunQsaTest<MLFloat16>(4.0e-3f, MakeQsaProblem(), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaExplicitZeroScale) {
+  QsaProblem problem = MakeQsaProblem();
+  problem.scale = 0.0f;
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaInt64HighWordMask) {
+  QsaProblem problem = MakeQsaProblem();
+  for (int64_t& mask_value : problem.mask) {
+    if (mask_value != 0) {
+      mask_value = int64_t{1} << 32;
+    }
+  }
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat) {
+  RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16) {
+  RunCsaTest<MLFloat16>(MakeCsaProblem(), 6.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16ScoresNewKeysBeforeCacheRounding) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 1;
+  problem.index_topk = 2;
+  problem.past_compressed_length = 1;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 4;
+  problem.query = {1.0f, 3.0e-4f};
+  problem.key = {0.0f, 0.0f, 1.0f, 3.0e-4f};
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache.assign(4, 1.0f);
+  problem.sin_cache.assign(4, 0.0f);
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(4, 0.0f);
+  problem.head_weights = {1.0f};
+  problem.position_ids = {2};
+  problem.past_compressed_key =
+      RoundTrip<MLFloat16>(RmsNormalize({1.0f, 3.0e-4f}, problem.key_norm_weight, problem.epsilon));
+  RunCsaTest<MLFloat16>(problem, 2.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaBufferOnlyStep) {
+  RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaNoCompressedEntry) {
+  RunCsaTest<float>(MakeCsaNoCompressedEntryProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaExplicitZeroScales) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.scale = 0.0f;
+  problem.head_weight_scale = 0.0f;
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaInt64MaxPosition) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.position_ids[0] = std::numeric_limits<int64_t>::max();
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaInt64PositionVisibilityBoundary) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 2;
+  problem.index_topk = 1;
+  problem.past_compressed_length = 2;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 1;
+  problem.query = {1.0f, 0.0f};
+  problem.key.assign(4, 0.0f);
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache = {1.0f};
+  problem.sin_cache = {0.0f};
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(static_cast<size_t>(problem.compress_ratio) * 4, 0.0f);
+  problem.head_weights = {1.0f};
+  problem.position_ids = {int64_t{1} << 32};
+  problem.past_compressed_key = {1.0f, 0.0f, 2.0f, 0.0f};
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaMaskedCandidatesDoNotOutrankNegativeInfinity) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 1;
+  problem.index_topk = 1;
+  problem.past_compressed_length = 2;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 1;
+  problem.query = {1.0f, 0.0f};
+  problem.key.assign(4, 0.0f);
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache = {1.0f};
+  problem.sin_cache = {0.0f};
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(4, 0.0f);
+  problem.head_weights = {-std::numeric_limits<float>::infinity()};
+  problem.position_ids = {0};
+  problem.past_compressed_key = {1.0f, 0.0f, 2.0f, 0.0f};
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaNegativePosition) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.position_ids[0] = -1;
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime
