@@ -1021,7 +1021,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "token_offset",
-               "Offset of each token before packing, with shape (batch_size, sequence_length).",
+               "Offset of each token before packing, with shape (batch_size, sequence_length). "
+               "Values must be in [0, batch_size * sequence_length).",
                "M")
         .Input(5,
                "cumulative_sequence_length",

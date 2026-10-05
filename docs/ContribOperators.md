@@ -4990,7 +4990,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
+<dd>Offset of each token before packing, with shape (batch_size, sequence_length). Values must be in [0, batch_size * sequence_length).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
