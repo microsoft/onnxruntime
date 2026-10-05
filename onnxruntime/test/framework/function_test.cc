@@ -568,9 +568,6 @@ TEST(FunctionTest, AotInliningChargesNestedBoundGraphAttributeReferences) {
     value->set_name("value");
     value->set_ref_attr_name("payload");
     value->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
-    value->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    value->mutable_t()->add_dims(1);
-    value->mutable_t()->add_float_data(0.0f);
     if (i + 1 != 8) {
       auto* value_info = branch->add_value_info();
       value_info->set_name(output_name);
