@@ -39,15 +39,16 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(kCpuExecutionProvider, kOnnxD
                                                    int16_t, uint16_t, int8_t, uint8_t, MLFloat16);
 
 // Pow
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double,
+                                        MLFloat16);
 
 // Pow 12 and later has separate Base and Exponent types.
 // To reduce templatization we choose to support a subset of types for the base and exponent.
-// This gives us 16 permutations.
+// This gives us 25 permutations.
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
-                                        Input, 0, int32_t, int64_t, float, double);
+                                        Input, 0, int32_t, int64_t, float, double, MLFloat16);
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
-                                        Input, 1, int32_t, int64_t, float, double);
+                                        Input, 1, int32_t, int64_t, float, double, MLFloat16);
 }  // namespace op_kernel_type_control
 
 //
@@ -69,6 +70,23 @@ using EnabledPow12ExpTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionPr
                                                                  Pow, 12, Input, 1);
 
 namespace functors {
+template <>
+void Sqrt<MLFloat16>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+  constexpr size_t kChunk = 1024;
+  float buffer[kChunk];
+  const MLFloat16* in = this->input + first;
+  MLFloat16* out = this->output + first;
+  const size_t len = static_cast<size_t>(last - first);
+  for (size_t i = 0; i < len; i += kChunk) {
+    const size_t count = std::min(kChunk, len - i);
+    MlasConvertHalfToFloatBuffer(in + i, buffer, count);
+    for (size_t j = 0; j < count; j++) {
+      buffer[j] = std::sqrt(buffer[j]);
+    }
+    MlasConvertFloatToHalfBuffer(buffer, out + i, count);
+  }
+}
+
 template <>
 void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
   ptrdiff_t len = last - first;
@@ -304,6 +322,10 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, float, Sqrt);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, double, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, MLFloat16, Sqrt);
+REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, MLFloat16, Sqrt);
+#endif
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow,
                                       BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
@@ -596,20 +618,82 @@ Status Add<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-template <>
-Status Add<MLFloat16>::Compute(OpKernelContext* context) const {
+namespace {
+
+// Eigen::half math is scalar without +fp16, so convert chunks to float and compute there.
+constexpr size_t kFp16EltwiseChunk = 1024;
+
+struct Fp16AddOp {
+  float operator()(float a, float b) const { return a + b; }
+};
+struct Fp16SubOp {
+  float operator()(float a, float b) const { return a - b; }
+};
+struct Fp16MulOp {
+  float operator()(float a, float b) const { return a * b; }
+};
+struct Fp16DivOp {
+  float operator()(float a, float b) const { return a / b; }
+};
+
+template <bool AScalar, bool BScalar, typename Op>
+void Fp16BinaryChunked(const MLFloat16* a, const MLFloat16* b, MLFloat16* out, size_t n) {
+  float fa[kFp16EltwiseChunk];
+  float fb[kFp16EltwiseChunk];
+  const float sa = AScalar ? a[0].ToFloat() : 0.0f;
+  const float sb = BScalar ? b[0].ToFloat() : 0.0f;
+  const Op op{};
+  for (size_t i = 0; i < n; i += kFp16EltwiseChunk) {
+    const size_t count = std::min(kFp16EltwiseChunk, n - i);
+    if constexpr (!AScalar) MlasConvertHalfToFloatBuffer(a + i, fa, count);
+    if constexpr (!BScalar) MlasConvertHalfToFloatBuffer(b + i, fb, count);
+    for (size_t j = 0; j < count; j++) {
+      if constexpr (AScalar) {
+        fa[j] = op(sa, fb[j]);
+      } else if constexpr (BScalar) {
+        fa[j] = op(fa[j], sb);
+      } else {
+        fa[j] = op(fa[j], fb[j]);
+      }
+    }
+    MlasConvertFloatToHalfBuffer(fa, out + i, count);
+  }
+}
+
+template <typename Op>
+Status ComputeFp16Binary(OpKernelContext& context) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() + per_iter_bh.EigenInput1<Eigen::half>().array();
+        auto out = per_iter_bh.OutputSpan<MLFloat16>();
+        Fp16BinaryChunked<true, false, Op>(&per_iter_bh.ScalarInput0<MLFloat16>(),
+                                           per_iter_bh.SpanInput1<MLFloat16>().data(), out.data(), out.size());
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() + per_iter_bh.ScalarInput1<Eigen::half>();
+        auto out = per_iter_bh.OutputSpan<MLFloat16>();
+        Fp16BinaryChunked<false, true, Op>(per_iter_bh.SpanInput0<MLFloat16>().data(),
+                                           &per_iter_bh.ScalarInput1<MLFloat16>(), out.data(), out.size());
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>() + per_iter_bh.EigenInput1<Eigen::half>();
+        auto out = per_iter_bh.OutputSpan<MLFloat16>();
+        const MLFloat16* a = per_iter_bh.SpanInput0<MLFloat16>().data();
+        const MLFloat16* b = per_iter_bh.SpanInput1<MLFloat16>().data();
+        if constexpr (std::is_same_v<Op, Fp16AddOp>) {
+          if (MlasFp16AccelerationSupported()) {
+            MlasEltwiseAdd<MLAS_FP16>(a, b, out.data(), out.size());
+            return;
+          }
+        }
+        Fp16BinaryChunked<false, false, Op>(a, b, out.data(), out.size());
       }};
-  UntypedBroadcastTwo(*context, funcs, 1.0f);
+  UntypedBroadcastTwo(context, funcs, 1.0);
   return Status::OK();
+}
+
+}  // namespace
+
+template <>
+Status Add<MLFloat16>::Compute(OpKernelContext* context) const {
+  return ComputeFp16Binary<Fp16AddOp>(*context);
 }
 
 template <typename T>
@@ -631,18 +715,7 @@ Status Sub<T>::Compute(OpKernelContext* context) const {
 
 template <>
 Status Sub<MLFloat16>::Compute(OpKernelContext* context) const {
-  ProcessBroadcastSpanFuncs funcs{
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() - per_iter_bh.EigenInput1<Eigen::half>().array();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() - per_iter_bh.ScalarInput1<Eigen::half>();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>() - per_iter_bh.EigenInput1<Eigen::half>();
-      }};
-  UntypedBroadcastTwo(*context, funcs, 1.0);
-  return Status::OK();
+  return ComputeFp16Binary<Fp16SubOp>(*context);
 }
 
 template <typename T>
@@ -664,18 +737,7 @@ Status Mul<T>::Compute(OpKernelContext* context) const {
 
 template <>
 Status Mul<MLFloat16>::Compute(OpKernelContext* context) const {
-  ProcessBroadcastSpanFuncs funcs{
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() * per_iter_bh.EigenInput1<Eigen::half>().array();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() * per_iter_bh.ScalarInput1<Eigen::half>();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().cwiseProduct(per_iter_bh.EigenInput1<Eigen::half>());
-      }};
-  UntypedBroadcastTwo(*context, funcs, 1.0);
-  return Status::OK();
+  return ComputeFp16Binary<Fp16MulOp>(*context);
 }
 
 template <typename T>
@@ -710,56 +772,62 @@ Status Div<T>::Compute(OpKernelContext* context) const {
 }
 template <>
 Status Div<MLFloat16>::Compute(OpKernelContext* context) const {
-  ProcessBroadcastSpanFuncs funcs{
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() / per_iter_bh.EigenInput1<Eigen::half>().array();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() / per_iter_bh.ScalarInput1<Eigen::half>();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().cwiseQuotient(per_iter_bh.EigenInput1<Eigen::half>());
-      }};
-  UntypedBroadcastTwo(*context, funcs, 1.0);
-  return Status::OK();
+  return ComputeFp16Binary<Fp16DivOp>(*context);
 }
 
 namespace pow_internal {
+
+template <typename V>
+inline V PowArg(V v) { return v; }
+inline float PowArg(MLFloat16 v) { return v.ToFloat(); }
+
+template <typename T>
+struct PowOut {
+  template <typename R>
+  static T From(R r) { return static_cast<T>(r); }
+};
+template <>
+struct PowOut<MLFloat16> {
+  template <typename R>
+  static MLFloat16 From(R r) { return MLFloat16(static_cast<float>(r)); }
+};
 
 template <typename T, typename E>
 void PowImpl(OpKernelContext& context) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
-        const T X = per_iter_bh.ScalarInput0<T>();
+        const auto X = PowArg(per_iter_bh.ScalarInput0<T>());
         auto Y = per_iter_bh.SpanInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
         std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](E y) {
-                         return static_cast<T>(std::pow(X, y));
+                         return PowOut<T>::From(std::pow(X, PowArg(y)));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
-        const E Y = per_iter_bh.ScalarInput1<E>();
+        const auto Y = PowArg(per_iter_bh.ScalarInput1<E>());
         auto output = per_iter_bh.OutputSpan<T>();
 
         // optimize for X^2 and X^3
         if (Y == 2) {
           std::transform(X.begin(), X.end(), output.begin(),
                          [](T x) {
-                           return static_cast<T>(x * x);
+                           const auto v = PowArg(x);
+                           return PowOut<T>::From(v * v);
                          });
 
         } else if (Y == 3) {
           std::transform(X.begin(), X.end(), output.begin(),
                          [](T x) {
-                           return static_cast<T>(x * x * x);
+                           const auto v = PowArg(x);
+                           return PowOut<T>::From(v * v * v);
                          });
         } else {
           std::transform(X.begin(), X.end(), output.begin(),
                          [Y](T x) {
-                           return static_cast<T>(std::pow(x, Y));
+                           return PowOut<T>::From(std::pow(PowArg(x), Y));
                          });
         }
       },
@@ -770,7 +838,7 @@ void PowImpl(OpKernelContext& context) {
 
         std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, E y) {
-                         return static_cast<T>(std::pow(x, y));
+                         return PowOut<T>::From(std::pow(PowArg(x), PowArg(y)));
                        });
       }};
 
@@ -793,6 +861,9 @@ Status DispatchOnBase(OpKernelContext& context, const Tensor& Y) {
       break;
     case on::TensorProto_DataType_DOUBLE:
       PowImpl<B, double>(context);
+      break;
+    case on::TensorProto_DataType_FLOAT16:
+      PowImpl<B, MLFloat16>(context);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
@@ -825,6 +896,9 @@ Pow::Compute(OpKernelContext* context) const {
       break;
     case on::TensorProto_DataType_DOUBLE:
       s = DispatchOnBase<double>(*context, Y);
+      break;
+    case on::TensorProto_DataType_FLOAT16:
+      s = DispatchOnBase<MLFloat16>(*context, Y);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",

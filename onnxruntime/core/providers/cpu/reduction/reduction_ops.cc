@@ -7,6 +7,7 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/providers/common.h"
+#include "core/mlas/inc/mlas.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
@@ -1094,6 +1095,85 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   CommonReduce1Loop<ReduceAggregatorMean<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+// Computed in float, the sum overflows in fp16.
+template <>
+Status ReduceMean<MLFloat16>::Compute(OpKernelContext* ctx) const {
+  const Tensor* input = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape = input->Shape();
+  const size_t rank = input_shape.NumDimensions();
+
+  TensorShapeVector tmp_axes;
+  auto effective_axes = GetEffectiveAxes(ctx, axes_, tmp_axes);
+  if (effective_axes.empty() && noop_with_empty_axes_) {
+    Tensor* output = ctx->Output(0, input_shape);
+    if (input_shape.Size() > 0) {
+      memcpy(output->MutableDataRaw(), input->DataRaw(), input->SizeInBytes());
+    }
+    return Status::OK();
+  }
+
+  TensorShapeVector axes;
+  if (effective_axes.empty()) {
+    for (size_t d = 0; d < rank; ++d) {
+      axes.push_back(static_cast<int64_t>(d));
+    }
+  } else {
+    for (int64_t a : effective_axes) {
+      axes.push_back(HandleNegativeAxis(a, static_cast<int64_t>(rank)));
+    }
+    std::sort(axes.begin(), axes.end());
+    axes.erase(std::unique(axes.begin(), axes.end()), axes.end());
+  }
+
+  TensorShapeVector output_dims;
+  for (size_t d = 0; d < rank; ++d) {
+    if (!std::binary_search(axes.begin(), axes.end(), static_cast<int64_t>(d))) {
+      output_dims.push_back(input_shape[d]);
+    } else if (keepdims_) {
+      output_dims.push_back(1);
+    }
+  }
+  Tensor* output = ctx->Output(0, output_dims);
+  const size_t out_size = narrow<size_t>(output->Shape().Size());
+  if (out_size == 0) {
+    return Status::OK();
+  }
+  const size_t in_size = narrow<size_t>(input_shape.Size());
+  if (in_size == 0) {
+    std::fill_n(output->MutableData<MLFloat16>(), out_size,
+                MLFloat16(std::numeric_limits<float>::quiet_NaN()));
+    return Status::OK();
+  }
+
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  Tensor input_float(DataTypeImpl::GetType<float>(), input_shape, alloc);
+  Tensor output_float(DataTypeImpl::GetType<float>(), output->Shape(), alloc);
+  MlasConvertHalfToFloatBuffer(input->Data<MLFloat16>(), input_float.MutableData<float>(), in_size);
+  ResultsNoTransposePrepareForReduce last_results;
+  NoTransposeReduce1Loop<ReduceAggregatorMean<float>>(&output_float, input_shape, input_float, axes,
+                                                       ctx->GetOperatorThreadPool(), last_results);
+  MlasConvertFloatToHalfBuffer(output_float.Data<float>(), output->MutableData<MLFloat16>(), out_size);
+  return Status::OK();
+}
+
+// Must come after the Compute specialization above.
+#define REGISTER_REDUCE_MEAN_FP16_VERSIONED(startVer, endVer)                            \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                             \
+      ReduceMean, startVer, endVer, MLFloat16,                                          \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()), \
+      ReduceMean<MLFloat16>);
+REGISTER_REDUCE_MEAN_FP16_VERSIONED(1, 10)
+REGISTER_REDUCE_MEAN_FP16_VERSIONED(11, 12)
+REGISTER_REDUCE_MEAN_FP16_VERSIONED(13, 17)
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    ReduceMean, 18, MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    ReduceMean<MLFloat16>);
+#undef REGISTER_REDUCE_MEAN_FP16_VERSIONED
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 template <typename T>
 Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
