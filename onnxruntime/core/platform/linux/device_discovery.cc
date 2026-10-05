@@ -4,7 +4,9 @@
 #include "core/platform/device_discovery.h"
 #include "core/platform/linux/npu_device_discovery.h"
 #include "core/platform/linux/pci_device_discovery.h"
+#include "core/platform/linux/wsl_device_discovery.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -284,6 +286,9 @@ namespace {
 constexpr const char* kSysfsPciDevicesPath = "/sys/bus/pci/devices";
 constexpr const char* kSysfsAccelPath = "/sys/class/accel";
 
+// Vendor of the virtual display adapter WSL2 exposes in place of the real GPU.
+constexpr uint32_t kMicrosoftPciVendorId = 0x1414;
+
 Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   std::vector<GpuSysfsPathInfo> gpu_sysfs_path_infos{};
   ORT_RETURN_IF_ERROR(DetectGpuSysfsPaths(gpu_sysfs_path_infos));
@@ -319,6 +324,41 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
         LOGS_DEFAULT(WARNING) << MakeString("Failed to detect devices under ", gpu_pci_path_info.path, ": ", status.ErrorMessage());
         continue;
       }
+      gpu_devices.emplace_back(std::move(gpu_device));
+    }
+  }
+
+  // Under WSL2 the GPU is paravirtualized through /dev/dxg. The scans above can only see
+  // a Microsoft virtual display adapter standing in for it, which carries none of the
+  // underlying hardware's identifiers, so prefer the D3DKMT adapter enumeration and drop
+  // the placeholders it replaces.
+  std::vector<wsl_device_discovery::WslGpuInfo> wsl_gpu_infos{};
+  ORT_RETURN_IF_ERROR(wsl_device_discovery::GetGpuDevices(wsl_gpu_infos));
+
+  if (!wsl_gpu_infos.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "Found " << wsl_gpu_infos.size()
+                          << " GPU(s) via WSL D3DKMT adapter enumeration.";
+
+    gpu_devices.erase(std::remove_if(gpu_devices.begin(), gpu_devices.end(),
+                                     [](const OrtHardwareDevice& gpu_device) {
+                                       return gpu_device.vendor_id == kMicrosoftPciVendorId;
+                                     }),
+                      gpu_devices.end());
+
+    gpu_devices.reserve(gpu_devices.size() + wsl_gpu_infos.size());
+
+    for (const auto& wsl_gpu_info : wsl_gpu_infos) {
+      OrtHardwareDevice gpu_device{};
+      gpu_device.type = OrtHardwareDeviceType_GPU;
+      gpu_device.vendor_id = wsl_gpu_info.vendor_id;
+      gpu_device.device_id = wsl_gpu_info.device_id;
+      gpu_device.metadata.Add("LUID", MakeString(wsl_gpu_info.luid));
+
+      if (const auto is_gpu_discrete = IsGpuDiscrete(wsl_gpu_info.vendor_id, wsl_gpu_info.device_id);
+          is_gpu_discrete.has_value()) {
+        gpu_device.metadata.Add("Discrete", (*is_gpu_discrete ? "1" : "0"));
+      }
+
       gpu_devices.emplace_back(std::move(gpu_device));
     }
   }
