@@ -17,6 +17,18 @@ Abstract:
 
 #include "mlasi.h"
 
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+
+//
+// sve/sgemm_sve.h carries its own fallback definition of this so that
+// sve/sgemm_sve.cpp can be compiled standalone by sve/gen_sve_asm.py, without
+// mlasi.h. Here mlasi.h has already defined it, so the two can be compared.
+//
+static_assert(MLAS_SGEMM_STRIDEN_THREAD_ALIGN == 16,
+              "sve/sgemm_sve.h assumes MLAS_SGEMM_STRIDEN_THREAD_ALIGN == 16");
+#endif
+
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -25,6 +37,41 @@ Abstract:
 //
 
 #define MLAS_SGEMM_TRANSA_ROWS              12
+
+#if defined(MLAS_NEON_INTRINSICS)
+
+static inline void
+MlasStoreNeon4Lane(
+    float* D,
+    const float* b
+    )
+{
+    vst4q_f32(D, vld4q_f32(b));
+}
+
+static inline void
+MlasStoreNeonZero4Lane(
+    float* d,
+    const float32x4x4_t ZeroFloat32x4x4
+    )
+{
+    vst4q_f32(d, ZeroFloat32x4x4);
+}
+
+static inline void
+MlasNeonScatterStore4(
+    float* d,
+    const float* b
+    )
+{
+    MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
+    MlasStoreLaneFloat32x4<0>(&d[0], t0);
+    MlasStoreLaneFloat32x4<1>(&d[16], t0);
+    MlasStoreLaneFloat32x4<2>(&d[32], t0);
+    MlasStoreLaneFloat32x4<3>(&d[48], t0);
+}
+
+#endif
 
 //
 // Define the parameters to execute segments of a SGEMM operation on worker
@@ -216,7 +263,8 @@ MlasSgemmCopyPackB(
     const float* B,
     size_t ldb,
     size_t CountX,
-    size_t CountY
+    size_t CountY,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -248,6 +296,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && !defined(FORCE_GENERIC_ALGORITHMS)
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     if (GetMlasPlatform().GemmFloatKernel != nullptr) {
         MlasSgemmCopyPackBRvv(D, B, ldb, CountX, CountY);
         return;
@@ -265,10 +314,17 @@ Return Value:
         size_t y = CountY;
 
         do {
-
-#if defined(MLAS_NEON_INTRINSICS)
-            vst4q_f32(D, vld4q_f32(b));
+#if defined(MLAS_USE_SVE)
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                MlasSveLoadStore(D, b);
+            } else {
+                MlasStoreNeon4Lane(D, b);
+            }
+#elif defined(MLAS_NEON_INTRINSICS)
+            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+            MlasStoreNeon4Lane(D, b);
 #else
+            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);            
             MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
             MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[4]);
             MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&b[8]);
@@ -310,8 +366,14 @@ Return Value:
             float* d = D;
             const float* b = B;
 
-#if defined(MLAS_NEON_INTRINSICS)
-            vst4q_f32(d, ZeroFloat32x4x4);
+#if defined(MLAS_USE_SVE)
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                MlasSveZeroInitialize(d);
+            } else {
+                MlasStoreNeonZero4Lane(d, ZeroFloat32x4x4);
+            }
+#elif defined(MLAS_NEON_INTRINSICS)
+            MlasStoreNeonZero4Lane(d, ZeroFloat32x4x4);
 #else
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 4, ZeroFloat32x4);
@@ -438,7 +500,8 @@ MlasSgemmTransposePackB(
     const float* B,
     size_t ldb,
     size_t CountY,
-    size_t CountX
+    size_t CountX,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -480,7 +543,7 @@ Return Value:
         size_t x = CountX;
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* SgemmTransposePackB16x4Routine =
             GetMlasPlatform().TransposePackB16x4Routine;
 
@@ -493,8 +556,21 @@ Return Value:
             x -= 4;
         }
 
-#else
+#elif defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+            MlasSveTranspose(D, b, ldb, x);
+        } else {
+            while (x >= 4) {
 
+                MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
+
+                D += 16 * 4;
+                b += 4;
+                x -= 4;
+            }
+        }
+#else
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         while (x >= 4) {
 
             MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
@@ -571,8 +647,15 @@ Return Value:
             const float* b = B;
 
             if ((CountY & 8) != 0) {
-
+#if defined(MLAS_USE_SVE)
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                    MlasSveTransposePackB8x4(&d[0], &b[0], ldb);
+                } else {
+                    MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
+                }
+#else
                 MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
+#endif
 
                 d += 8;
                 b += ldb * 8;
@@ -590,8 +673,15 @@ Return Value:
             }
 
             if ((CountY & 4) != 0) {
-
+#if defined(MLAS_USE_SVE)
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                    MlasSveTransposePackB4x4(&d[0], &b[0], ldb);
+                } else {
+                    MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
+                }
+#else
                 MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
+#endif
 
                 d += 4;
                 b += ldb * 4;
@@ -637,14 +727,15 @@ Return Value:
             }
 
             if ((CountY & 1) != 0) {
+#if defined(MLAS_USE_SVE)
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                    MlasSveScatterStore(&d[0], &b[0]);
+                } else {
+                    MlasNeonScatterStore4(d, b);
+                }
+#elif defined(MLAS_NEON_INTRINSICS)
+                MlasNeonScatterStore4(d, b);
 
-#if defined(MLAS_NEON_INTRINSICS)
-                MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
-
-                MlasStoreLaneFloat32x4<0>(&d[0], t0);
-                MlasStoreLaneFloat32x4<1>(&d[16], t0);
-                MlasStoreLaneFloat32x4<2>(&d[32], t0);
-                MlasStoreLaneFloat32x4<3>(&d[48], t0);
 #else
                 d[0] = b[0];
                 d[16] = b[1];
@@ -963,7 +1054,8 @@ MlasSgemmKernelLoop(
     size_t lda,
     size_t ldc,
     float alpha,
-    bool ZeroMode
+    bool ZeroMode,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1006,12 +1098,12 @@ Return Value:
 --*/
 {
     while (CountM > 0) {
-
-        size_t RowsHandled;
-
+        size_t RowsHandled = 0;
 #if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #elif defined(MLAS_TARGET_RISCV64) && !defined(FORCE_GENERIC_ALGORITHMS)
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         if (GetMlasPlatform().GemmFloatKernel != nullptr) {
             RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
         } else if (ZeroMode) {
@@ -1020,12 +1112,41 @@ Return Value:
             RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
         }
 #else
-        if (ZeroMode) {
-            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-        } else {
-            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-        }
+#if defined(MLAS_USE_SVE)
+        //
+        // On 128-bit SVE the NEON kernels are used instead. That check used to live
+        // inside MlasSgemmKernelZero_sve/MlasSgemmKernelAdd_sve; it sits here now so
+        // those kernels contain nothing but SVE code.
+        //
+        const bool UseSveKernel =
+            MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() &&
+            (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm) &&
+            MlasSveVectorLengthWords() != 4;
+#else
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 #endif
+        if (ZeroMode) {
+#if defined(MLAS_USE_SVE)
+            if (UseSveKernel) {
+                RowsHandled = MlasSgemmKernelZero_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            } else {
+                RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            }
+#else
+            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+#endif
+        } else {
+#if defined(MLAS_USE_SVE)
+            if (UseSveKernel) {
+                RowsHandled = MlasSgemmKernelAdd_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            } else {
+                RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            }
+#else
+            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+#endif
+        }
+#endif  // platform check
 
         C += ldc * RowsHandled;
         A += lda * RowsHandled;
@@ -1049,7 +1170,8 @@ MlasSgemmOperation(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1170,6 +1292,47 @@ Return Value:
 
     }
 
+#if defined(MLAS_USE_SVE)
+
+    //
+    // Handle a small K with a dedicated SVE kernel. Packing B buys nothing
+    // there -- the block is built once and barely reused -- and the packed
+    // kernels lost to NEON below K == 16.
+    //
+    // The kernel reads B directly, so its rows must be contiguous across N:
+    // true for CblasNoTrans, and for a transposed B when K == 1 and ldb == 1.
+    // Anything else falls through to the packed path.
+    //
+
+    if (K <= MLAS_SGEMM_SVE_SMALLK_MAX && TransA == CblasNoTrans &&
+        ((TransB == CblasNoTrans) || (K == 1 && ldb == 1)) &&
+        MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() &&
+        (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+
+        const size_t VectorLength = MlasSveVectorLengthWords();
+
+        // Two vectors of N per pass, so below that width most lanes are
+        // predicated off and the packed path wins. 128-bit SVE stays on the
+        // NEON kernels throughout, as it does for the packed path.
+        //
+
+        if (VectorLength != 4 && N >= 2 * VectorLength) {
+
+            // Fold a general beta into C first, as the packed path does,
+            // and let the kernel accumulate on top.
+
+            if (beta != 0.0f && beta != 1.0f) {
+                MlasSgemmMultiplyBeta(C, M, N, ldc, beta);
+            }
+
+            MlasSgemmSmallKKernel_sve(A, lda, B, ldb, C, ldc, M, N, K, alpha,
+                                      beta == 0.0f);
+            return;
+        }
+    }
+
+#endif
+
     //
     // Compute the strides to step through slices of the input matrices.
     //
@@ -1230,9 +1393,9 @@ Return Value:
             //
 
             if (TransB == CblasNoTrans) {
-                MlasSgemmCopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK);
+                MlasSgemmCopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK, BackendKernelSelectorConfig);
             } else {
-                MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK);
+                MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK, BackendKernelSelectorConfig);
             }
 
             //
@@ -1243,7 +1406,7 @@ Return Value:
 
             if (TransA == CblasNoTrans) {
 
-                MlasSgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
+                MlasSgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode, BackendKernelSelectorConfig);
 
             } else {
 
@@ -1267,7 +1430,7 @@ Return Value:
                     // Step through the rows of the local buffer.
                     //
 
-                    c = MlasSgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
+                    c = MlasSgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode, BackendKernelSelectorConfig);
                 }
             }
 
@@ -1290,7 +1453,8 @@ MlasSgemmPackedOperation(
     size_t AlignedN,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1378,7 +1542,7 @@ Return Value:
 
             if (TransA == CblasNoTrans) {
 
-                MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
+                MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode, BackendKernelSelectorConfig);
 
             } else {
 
@@ -1402,7 +1566,7 @@ Return Value:
                     // Step through the rows of the local buffer.
                     //
 
-                    c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
+                    c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode, BackendKernelSelectorConfig);
                 }
             }
 
@@ -1422,7 +1586,8 @@ MlasSgemmThreaded(
     const size_t K,
 
     const MLAS_SGEMM_DATA_PARAMS* DataParams,
-    ptrdiff_t ThreadId
+    ptrdiff_t ThreadId,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1498,7 +1663,7 @@ Return Value:
 
         MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
             K, DataParams->alpha, A, lda, DataParams->B,
-            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, DataParams->beta, C, ldc);
+            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, DataParams->beta, C, ldc, BackendKernelSelectorConfig);
 
     } else {
 
@@ -1507,7 +1672,7 @@ Return Value:
         const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
 
         MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
-            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
+            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc, BackendKernelSelectorConfig);
     }
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1586,12 +1751,12 @@ MlasGemmBatch(
 
     MlasTrySimpleParallel(ThreadPool,
         ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize),
-        [=](ptrdiff_t tid)
+        [=](ptrdiff_t tid) 
     {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
         ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
         MlasSgemmThreaded(ThreadCountM, ThreadCountN,
-            TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
+            TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx, BackendKernelSelectorConfig);
     });
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1707,7 +1872,7 @@ Return Value:
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
+        TransA != CBLAS_TRANSPOSE::CblasTrans   &&
         GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
@@ -1730,9 +1895,9 @@ Return Value:
         CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
 
         if (TransB == CblasNoTrans) {
-            MlasSgemmCopyPackB((float*)PackedB, B + k * ldb, ldb, N, CountK);
+            MlasSgemmCopyPackB((float*)PackedB, B + k * ldb, ldb, N, CountK, BackendKernelSelectorConfig);
         } else {
-            MlasSgemmTransposePackB((float*)PackedB, B + k, ldb, N, CountK);
+            MlasSgemmTransposePackB((float*)PackedB, B + k, ldb, N, CountK, BackendKernelSelectorConfig);
         }
 
         PackedB = (float*)PackedB + AlignedN * CountK;
