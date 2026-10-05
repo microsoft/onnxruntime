@@ -483,6 +483,7 @@ std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind,
   return webgpu_options == nullptr ? DefaultWebGpuExecutionProvider()
                                    : WebGpuExecutionProviderWithOptions(*webgpu_options);
 #else
+  ORT_UNUSED_PARAMETER(webgpu_options);
   return nullptr;
 #endif
 }
