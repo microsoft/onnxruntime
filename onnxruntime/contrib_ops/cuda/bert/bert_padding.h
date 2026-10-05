@@ -10,6 +10,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+__host__ __device__ constexpr int64_t AdvancePaddingTokenOffsetValidationIndex(
+    int64_t index,
+    int32_t grid_dimension,
+    int32_t block_dimension) {
+  return index + static_cast<int64_t>(grid_dimension) * block_dimension;
+}
+
 // Build token indice for non-padding tokens and padding tokens.
 void LaunchGetTokenOffset(int* token_count_buffer,
                           int* token_offset,

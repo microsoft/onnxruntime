@@ -3,9 +3,11 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <limits>
 #include <sstream>
 #include <type_traits>
 
+#include "contrib_ops/cuda/bert/bert_padding.h"
 #include "core/graph/model.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
@@ -159,6 +161,15 @@ TEST(RestorePaddingTest, InvalidTokenOffset_CUDA) {
           {}, nullptr, &execution_providers);
     }
   }
+}
+
+TEST(RestorePaddingTest, TokenOffsetValidationIndexProgressionUsesInt64) {
+  constexpr int64_t index = 2147221504;
+  constexpr int64_t next_index =
+      AdvancePaddingTokenOffsetValidationIndex(index, 1024, 256);
+
+  EXPECT_EQ(next_index, 2147483648LL);
+  EXPECT_GT(next_index, std::numeric_limits<int32_t>::max());
 }
 
 TEST(RestorePaddingTest, ValidTokenOffsetCudaGraphCaptureAndReplay) {
