@@ -1342,6 +1342,13 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
         $<TARGET_FILE:onnxruntime_provider_bridge_valid_fixture>
         $<TARGET_FILE:onnxruntime_provider_bridge_missing_export_fixture>
         $<TARGET_FILE_DIR:${bridge_test_target}>)
+    if(onnxruntime_providers_webgpu_dll_deps)
+      add_custom_command(TARGET ${bridge_test_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${onnxruntime_providers_webgpu_dll_deps}" "$<TARGET_FILE_DIR:${bridge_test_target}>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+    endif()
     if(mode STREQUAL "no_exceptions")
       target_compile_definitions(${bridge_test_target} PRIVATE ORT_NO_EXCEPTIONS)
       target_include_directories(${bridge_test_target} PRIVATE
