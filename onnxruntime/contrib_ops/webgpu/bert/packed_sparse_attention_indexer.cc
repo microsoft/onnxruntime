@@ -426,7 +426,7 @@ Status PackedSparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHe
       << "  }\n"
       << "  return f32(" << query_metadata.GetByOffset("base + d")
       << ") * inverseSqrt(square_sum / f32(uniforms.head_size) + uniforms.epsilon) * f32("
-      << query_metadata.GetByOffset("uniforms.total_tokens * uniforms.num_heads * uniforms.head_size + d")
+      << query_metadata.GetByOffset("uniforms.query_norm_offset + d")
       << ");\n"
       << "}\n"
       << "fn query_value(token: u32, head: u32, d: u32, position: i32, b: u32) -> f32 {\n"
@@ -1154,6 +1154,7 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
                             {ToUint32(num_heads)},
                             {ToUint32(head_size)},
                             {ToUint32(query_shape[1])},
+                            {ToUint32(query_shape.Size())},
                             {ToUint32(rotary.rotary_width)},
                             {ToUint32(rotary.max_rotary_length)},
                             {ToUint32(compress_ratio_)},

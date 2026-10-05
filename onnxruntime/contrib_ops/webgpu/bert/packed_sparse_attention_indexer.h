@@ -75,6 +75,7 @@ class PackedSparseAttentionIndexerQsaSelectProgram final
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"query_row_stride", ProgramUniformVariableDataType::Uint32},
+      {"query_norm_offset", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
