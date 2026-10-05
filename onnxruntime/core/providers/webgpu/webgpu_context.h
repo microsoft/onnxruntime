@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -108,17 +109,19 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
-// State for one session's command recording timeline. WebGpuContext is shared across sessions,
-// but Dawn command encoders and deferred dispatch windows must not be.
+// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
+// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
+// releases from concurrent allocator callers separately from command recording.
 struct CommandRecordingState {
-  std::recursive_mutex mutex;
+  CommandRecordingState() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
+
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
-  // TODO: Make BufferManager defer reuse of buffers belonging to unsubmitted batches, including
-  // across Sessions, so has_unsubmitted_work and pending_buffers can be removed from this state.
-  bool has_unsubmitted_work = false;
-  std::vector<wgpu::Buffer> pending_buffers;
+  // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
+  // BufferManager clears it under its cache lock after submission or abandonment.
+  std::atomic<bool> has_unsubmitted_work{false};
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
@@ -261,7 +264,7 @@ class WebGpuContext final {
   const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
     if (!recording.command_encoder) {
       recording.command_encoder = device_.CreateCommandEncoder();
-      recording.has_unsubmitted_work = true;
+      recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
     }
     return recording.command_encoder;
   }
