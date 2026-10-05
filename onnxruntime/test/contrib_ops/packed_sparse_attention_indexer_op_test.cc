@@ -38,6 +38,10 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -406,12 +410,14 @@ enum class ProviderKind {
   WebGpu,
 };
 
-std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind) {
+std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind,
+                                                   const ConfigOptions* webgpu_options = nullptr) {
   if (provider_kind == ProviderKind::Cuda) {
     return DefaultCudaExecutionProvider();
   }
 #ifdef USE_WEBGPU
-  return DefaultWebGpuExecutionProvider();
+  return webgpu_options == nullptr ? DefaultWebGpuExecutionProvider()
+                                   : WebGpuExecutionProviderWithOptions(*webgpu_options);
 #else
   return nullptr;
 #endif
@@ -736,8 +742,9 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 
 template <typename T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
-                      ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr) {
-  auto provider = CreateProvider(provider_kind);
+                      ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
+                      const ConfigOptions* webgpu_options = nullptr) {
+  auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
                  << " execution provider is not available";
@@ -874,6 +881,12 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat16) {
   RunQsaPackedTest<MLFloat16>(2.0e-3f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPortableStorageBindingLimit) {
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, &config_options);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaAllEmptyBatchPreservesState) {
@@ -1164,8 +1177,9 @@ CsaPackedProblem MakeCsaPackedProblem(CsaPackedProblem problem = {}) {
 
 template <typename T>
 void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
-                      ProviderKind provider_kind = ProviderKind::Cuda, CsaPackedResult* actual = nullptr) {
-  auto provider = CreateProvider(provider_kind);
+                      ProviderKind provider_kind = ProviderKind::Cuda, CsaPackedResult* actual = nullptr,
+                      const ConfigOptions* webgpu_options = nullptr) {
+  auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
                  << " execution provider is not available";
@@ -1310,6 +1324,12 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat16) {
   RunCsaPackedTest<MLFloat16>(MakeCsaPackedProblem(), 4.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaPortableStorageBindingLimit) {
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu, nullptr, &config_options);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaAllEmptyBatchPreservesState) {
