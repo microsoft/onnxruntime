@@ -2394,7 +2394,9 @@ struct OrtApi {
    *
    * If the `size` parameter is less than the actual string attribute's size and `out`
    * is not nullptr, the value of `size` is set to the true size of the string attribute
-   * and a failure status is returned.)
+   * and a failure status is returned.
+   *
+   * The true size of the string attribute includes the trailing null character.
    *
    * \param[in] info ::OrtKernelInfo instance
    * \param[in] name Null terminated string of the name of the attribute

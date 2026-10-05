@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
@@ -71,7 +72,8 @@ class GraphPartitioner {
                    LayeringIndex* layering_index,
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
-                   const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+                   const layout_transformation::DebugGraphFn& debug_graph_fn = {},
+                   WorkspaceReservationMap* workspace_reservations = nullptr) const;
 
 #ifndef ORT_MINIMAL_BUILD
   // Returns true if any execution provider produced EPContext (compiled) nodes during partitioning.
@@ -101,6 +103,7 @@ class GraphPartitioner {
   Status InlineFunctionsAOT(Model& model,
                             const ExecutionProviders& execution_providers,
                             const KernelRegistryManager& kernel_registry_manager,
+                            const ConfigOptions& config_options,
                             const logging::Logger& logger) const;
 #endif
 
@@ -112,6 +115,14 @@ class GraphPartitioner {
   std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry_;
   CheckLoadCancellationFn check_load_cancellation_fn_;
   OnPartitionAssignmentFunction on_partition_assignment_fn_;
+#ifndef ORT_MINIMAL_BUILD
+  // Shared by AOT and fallback inlining so neither path can bypass the cumulative limit.
+  mutable bool function_expansion_limits_initialized_ = false;
+  mutable size_t function_expansion_node_limit_ = 0;
+  mutable size_t function_expansion_byte_limit_ = 0;
+  mutable size_t expanded_function_node_count_ = 0;
+  mutable size_t expanded_function_proto_bytes_ = 0;
+#endif
 };
 
 }  // namespace onnxruntime
