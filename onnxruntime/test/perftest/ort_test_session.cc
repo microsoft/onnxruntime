@@ -115,9 +115,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   // Add EP devices if any (created by plugin EP)
   if (!performance_test_config.registered_plugin_eps.empty()) {
-    const bool io_binding_requested = performance_test_config.run_config.enable_cuda_io_binding;
-    std::vector<Ort::ConstEpDevice> selected_ep_devices = perftest::utils::AppendPluginExecutionProviders(
-        env, session_options, performance_test_config, io_binding_requested ? &ext_stream_ : nullptr);
+    std::vector<Ort::ConstEpDevice> selected_ep_devices =
+        perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config);
 
     // Pick an allocator from the plugin EP devices unless the user explicitly requested to force the CPU allocator.
     if (performance_test_config.plugin_ep_force_cpu_allocator) {
@@ -129,7 +128,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     // IO binding binds outputs to allocator_'s memory info, which comes from the selected EP device (including its
     // device id), so it is only used when that allocator is device memory.
-    if (io_binding_requested) {
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
       use_plugin_ep_io_binding_ = IsAllocatorDeviceOnly();
       if (!use_plugin_ep_io_binding_) {
         fprintf(stdout,

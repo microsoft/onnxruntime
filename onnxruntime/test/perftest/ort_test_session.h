@@ -54,8 +54,6 @@ class OnnxRuntimeTestSession : public TestSession {
   // True if allocator_ is for device-only (i.e., non CPU or host-accessible) memory.
   bool IsAllocatorDeviceOnly() const;
 
-  // Must be declared before session_ so the stream outlives the session that uses it.
-  Ort::SyncStream ext_stream_{nullptr};
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
