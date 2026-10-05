@@ -102,122 +102,68 @@ D3D12_RESOURCE_DESC BufferDescription(
 
 }  // namespace
 
-struct D3D12FileBufferLoader::Impl {
-  struct FileReadRegion {
-    uint64_t begin = 0;
-    uint64_t end = 0;
-  };
-
-  struct PreparedFile {
-    std::wstring path;
-    wil::unique_hfile file;
-    wil::unique_hfile buffered_tail_file;
-    uint64_t size = 0;
-    uint64_t alignment = 0;
-    std::vector<size_t> range_indices;
-    std::vector<FileReadRegion> regions;
-  };
-
-  struct UploadSlot {
-    ComPtr<ID3D12Resource> resource;
-    ComPtr<ID3D12CommandAllocator> allocator;
-    ComPtr<ID3D12GraphicsCommandList> command_list;
-    wil::unique_handle read_event;
-    void* mapped = nullptr;
-    OVERLAPPED overlapped{};
-    HANDLE read_file = INVALID_HANDLE_VALUE;
-    uint64_t file_offset = 0;
-    DWORD requested = 0;
-    uint64_t fence_value = 0;
-    bool read_active = false;
-  };
-
-  struct AllocationResult {
-    common::Status status;
-    Batch batch;
-  };
-
-  Impl(ID3D12Device* device, const Config& config);
-  ~Impl();
-
-  common::Status Initialize();
-  common::Status Load(
-      const std::vector<FileRange>& ranges,
-      Batch& result,
-      const CancellationToken& cancellation);
-
- private:
-  friend class D3D12FileBufferLoader;
-
-  common::Status AllocateDestinations(
-      const std::vector<uint64_t>& sizes,
-      Batch& batch);
-  common::Status PrepareFiles(
-      const std::vector<FileRange>& ranges,
-      const CancellationToken& cancellation,
-      std::vector<PreparedFile>& files);
-  common::Status PrepareSlots(
-      uint64_t alignment,
-      const CancellationToken& cancellation);
-  common::Status IssueRead(
-      HANDLE file,
-      UploadSlot& slot,
-      uint64_t offset,
-      DWORD size);
-  common::Status CompleteRead(
-      uint64_t file_size,
-      UploadSlot& slot,
-      DWORD& bytes_read);
-  template <typename EnsureAllocationFn>
-  common::Status ReadRegion(
-      PreparedFile& file,
-      const FileReadRegion& region,
-      const std::vector<FileRange>& ranges,
-      Batch& batch,
-      bool& allocation_ready,
-      EnsureAllocationFn& ensure_allocation,
-      const CancellationToken& cancellation,
-      uint64_t& last_submitted_fence);
-  common::Status SubmitCopies(
-      UploadSlot& slot,
-      uint64_t chunk_begin,
-      uint64_t bytes,
-      const std::vector<size_t>& range_indices,
-      const std::vector<FileRange>& ranges,
-      Batch& batch,
-      uint64_t& last_submitted_fence);
-  common::Status TransitionToCommon(
-      Batch& batch,
-      const CancellationToken& cancellation,
-      uint64_t& last_submitted_fence);
-  common::Status WaitForFence(
-      uint64_t value,
-      const CancellationToken& cancellation);
-  common::Status SignalSubmittedWork(uint64_t value);
-  void WaitForFenceUncancelled(uint64_t value) noexcept;
-  void DrainActiveReads() noexcept;
-  bool MustRetainUntrackedSubmission() const noexcept {
-    return retain_untracked_submission_;
-  }
-
-  ComPtr<ID3D12Device> device_;
-  Config config_;
-  ComPtr<ID3D12CommandQueue> copy_queue_;
-  ComPtr<ID3D12Fence> copy_fence_;
-  wil::unique_handle fence_event_;
-  std::vector<UploadSlot> slots_;
-  Batch untracked_batch_;
-  uint64_t next_fence_value_ = 0;
-  bool retain_untracked_submission_ = false;
-  std::mutex load_mutex_;
+struct D3D12FileBufferLoader::FileReadRegion {
+  uint64_t begin = 0;
+  uint64_t end = 0;
 };
 
-D3D12FileBufferLoader::Impl::Impl(
-    ID3D12Device* device, const Config& config)
+struct D3D12FileBufferLoader::PreparedFile {
+  std::wstring path;
+  wil::unique_hfile file;
+  wil::unique_hfile buffered_tail_file;
+  uint64_t size = 0;
+  uint64_t alignment = 0;
+  std::vector<size_t> range_indices;
+  std::vector<FileReadRegion> regions;
+};
+
+struct D3D12FileBufferLoader::UploadSlot {
+  ComPtr<ID3D12Resource> resource;
+  ComPtr<ID3D12CommandAllocator> allocator;
+  ComPtr<ID3D12GraphicsCommandList> command_list;
+  wil::unique_handle read_event;
+  void* mapped = nullptr;
+  OVERLAPPED overlapped{};
+  HANDLE read_file = INVALID_HANDLE_VALUE;
+  uint64_t file_offset = 0;
+  DWORD requested = 0;
+  uint64_t fence_value = 0;
+  bool read_active = false;
+};
+
+struct D3D12FileBufferLoader::AllocationResult {
+  common::Status status;
+  Batch batch;
+};
+
+D3D12FileBufferLoader::D3D12FileBufferLoader(
+    ID3D12Device* device, const Config& config) noexcept
     : device_(device), config_(config) {
 }
 
-D3D12FileBufferLoader::Impl::~Impl() {
+D3D12FileBufferLoader::~D3D12FileBufferLoader() {
+  if (retain_untracked_submission_) {
+    // Submitted work has no usable completion fence, so its resources must
+    // remain alive for the lifetime of the process.
+    device_.Detach();
+    copy_queue_.Detach();
+    copy_fence_.Detach();
+    (void)fence_event_.release();
+    for (auto& slot : slots_) {
+      slot.resource.Detach();
+      slot.allocator.Detach();
+      slot.command_list.Detach();
+      (void)slot.read_event.release();
+    }
+    for (auto& heap : untracked_batch_.heaps) {
+      heap.Detach();
+    }
+    for (auto& buffer : untracked_batch_.buffers) {
+      buffer.resource.Detach();
+    }
+    return;
+  }
+
   for (auto& slot : slots_) {
     if (slot.resource && slot.mapped != nullptr) {
       slot.resource->Unmap(0, nullptr);
@@ -226,7 +172,7 @@ D3D12FileBufferLoader::Impl::~Impl() {
   }
 }
 
-common::Status D3D12FileBufferLoader::Impl::Initialize() {
+common::Status D3D12FileBufferLoader::Initialize() {
   if (device_ == nullptr) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
@@ -322,7 +268,7 @@ common::Status D3D12FileBufferLoader::Impl::Initialize() {
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::Load(
+common::Status D3D12FileBufferLoader::LoadInternal(
     const std::vector<FileRange>& ranges,
     Batch& result,
     const CancellationToken& cancellation) {
@@ -447,7 +393,7 @@ common::Status D3D12FileBufferLoader::Impl::Load(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::AllocateDestinations(
+common::Status D3D12FileBufferLoader::AllocateDestinations(
     const std::vector<uint64_t>& sizes,
     Batch& batch) {
   struct Placement {
@@ -561,7 +507,7 @@ common::Status D3D12FileBufferLoader::Impl::AllocateDestinations(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
+common::Status D3D12FileBufferLoader::PrepareFiles(
     const std::vector<FileRange>& ranges,
     const CancellationToken& cancellation,
     std::vector<PreparedFile>& files) {
@@ -682,7 +628,7 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::PrepareSlots(
+common::Status D3D12FileBufferLoader::PrepareSlots(
     uint64_t alignment,
     const CancellationToken& cancellation) {
   for (auto& slot : slots_) {
@@ -705,7 +651,7 @@ common::Status D3D12FileBufferLoader::Impl::PrepareSlots(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::IssueRead(
+common::Status D3D12FileBufferLoader::IssueRead(
     HANDLE file,
     UploadSlot& slot,
     uint64_t offset,
@@ -735,7 +681,7 @@ common::Status D3D12FileBufferLoader::Impl::IssueRead(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::CompleteRead(
+common::Status D3D12FileBufferLoader::CompleteRead(
     uint64_t file_size,
     UploadSlot& slot,
     DWORD& bytes_read) {
@@ -760,7 +706,7 @@ common::Status D3D12FileBufferLoader::Impl::CompleteRead(
 }
 
 template <typename EnsureAllocationFn>
-common::Status D3D12FileBufferLoader::Impl::ReadRegion(
+common::Status D3D12FileBufferLoader::ReadRegion(
     PreparedFile& file,
     const FileReadRegion& region,
     const std::vector<FileRange>& ranges,
@@ -894,7 +840,7 @@ common::Status D3D12FileBufferLoader::Impl::ReadRegion(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::SubmitCopies(
+common::Status D3D12FileBufferLoader::SubmitCopies(
     UploadSlot& slot,
     uint64_t chunk_begin,
     uint64_t bytes,
@@ -984,7 +930,7 @@ common::Status D3D12FileBufferLoader::Impl::SubmitCopies(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::Impl::TransitionToCommon(
+common::Status D3D12FileBufferLoader::TransitionToCommon(
     Batch& batch,
     const CancellationToken& cancellation,
     uint64_t& last_submitted_fence) {
@@ -1048,7 +994,7 @@ common::Status D3D12FileBufferLoader::Impl::TransitionToCommon(
       last_submitted_fence, cancellation);
 }
 
-common::Status D3D12FileBufferLoader::Impl::SignalSubmittedWork(
+common::Status D3D12FileBufferLoader::SignalSubmittedWork(
     uint64_t value) {
   // ExecuteCommandLists has no status return. Once work has been submitted,
   // its resources must stay alive until either a fence is queued behind it or
@@ -1073,7 +1019,7 @@ common::Status D3D12FileBufferLoader::Impl::SignalSubmittedWork(
       signal_result);
 }
 
-common::Status D3D12FileBufferLoader::Impl::WaitForFence(
+common::Status D3D12FileBufferLoader::WaitForFence(
     uint64_t value,
     const CancellationToken& cancellation) {
   if (value == 0) {
@@ -1130,7 +1076,7 @@ common::Status D3D12FileBufferLoader::Impl::WaitForFence(
   }
 }
 
-void D3D12FileBufferLoader::Impl::WaitForFenceUncancelled(
+void D3D12FileBufferLoader::WaitForFenceUncancelled(
     uint64_t value) noexcept {
   if (value == 0 ||
       copy_fence_->GetCompletedValue() >= value) {
@@ -1155,7 +1101,7 @@ void D3D12FileBufferLoader::Impl::WaitForFenceUncancelled(
   }
 }
 
-void D3D12FileBufferLoader::Impl::DrainActiveReads() noexcept {
+void D3D12FileBufferLoader::DrainActiveReads() noexcept {
   for (auto& slot : slots_) {
     if (!slot.read_active) {
       continue;
@@ -1176,31 +1122,16 @@ void D3D12FileBufferLoader::Impl::DrainActiveReads() noexcept {
   }
 }
 
-D3D12FileBufferLoader::D3D12FileBufferLoader(
-    std::unique_ptr<Impl> impl) noexcept
-    : impl_(std::move(impl)) {
-}
-
-D3D12FileBufferLoader::~D3D12FileBufferLoader() {
-  if (impl_ && impl_->MustRetainUntrackedSubmission()) {
-    // A live device has accepted work but rejected the fence that would prove
-    // its completion. Releasing the referenced resources would be unsafe.
-    // This catastrophic path intentionally retains the loader for process
-    // lifetime; normal and device-removed paths destroy it normally.
-    (void)impl_.release();
-  }
-}
-
 common::Status D3D12FileBufferLoader::Create(
     ID3D12Device* device,
     std::unique_ptr<D3D12FileBufferLoader>& loader,
     const Config& config) noexcept {
   loader.reset();
   try {
-    auto impl = std::make_unique<Impl>(device, config);
-    ORT_RETURN_IF_ERROR(impl->Initialize());
-    loader.reset(
-        new D3D12FileBufferLoader(std::move(impl)));
+    auto instance = std::unique_ptr<D3D12FileBufferLoader>(
+        new D3D12FileBufferLoader(device, config));
+    ORT_RETURN_IF_ERROR(instance->Initialize());
+    loader = std::move(instance);
     return common::Status::OK();
   } catch (const std::exception& ex) {
     return ORT_MAKE_STATUS(
@@ -1218,14 +1149,8 @@ common::Status D3D12FileBufferLoader::Load(
     const std::vector<FileRange>& ranges,
     Batch& result,
     const CancellationToken& cancellation) noexcept {
-  if (!impl_) {
-    result.Clear();
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL,
-        "D3D12FileBufferLoader is not initialized.");
-  }
   try {
-    return impl_->Load(ranges, result, cancellation);
+    return LoadInternal(ranges, result, cancellation);
   } catch (const std::exception& ex) {
     result.Clear();
     return ORT_MAKE_STATUS(

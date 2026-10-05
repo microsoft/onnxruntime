@@ -5,10 +5,12 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include <d3d12.h>
+#include <wil/Resource.h>
 #include <wrl/client.h>
 
 #include "core/common/status.h"
@@ -76,11 +78,78 @@ class D3D12FileBufferLoader {
       const CancellationToken& cancellation = {}) noexcept;
 
  private:
-  struct Impl;
+  struct FileReadRegion;
+  struct PreparedFile;
+  struct UploadSlot;
+  struct AllocationResult;
 
-  explicit D3D12FileBufferLoader(std::unique_ptr<Impl> impl) noexcept;
+  D3D12FileBufferLoader(
+      ID3D12Device* device,
+      const Config& config) noexcept;
 
-  std::unique_ptr<Impl> impl_;
+  common::Status Initialize();
+  common::Status LoadInternal(
+      const std::vector<FileRange>& ranges,
+      Batch& result,
+      const CancellationToken& cancellation);
+  common::Status AllocateDestinations(
+      const std::vector<uint64_t>& sizes,
+      Batch& batch);
+  common::Status PrepareFiles(
+      const std::vector<FileRange>& ranges,
+      const CancellationToken& cancellation,
+      std::vector<PreparedFile>& files);
+  common::Status PrepareSlots(
+      uint64_t alignment,
+      const CancellationToken& cancellation);
+  common::Status IssueRead(
+      HANDLE file,
+      UploadSlot& slot,
+      uint64_t offset,
+      DWORD size);
+  common::Status CompleteRead(
+      uint64_t file_size,
+      UploadSlot& slot,
+      DWORD& bytes_read);
+  template <typename EnsureAllocationFn>
+  common::Status ReadRegion(
+      PreparedFile& file,
+      const FileReadRegion& region,
+      const std::vector<FileRange>& ranges,
+      Batch& batch,
+      bool& allocation_ready,
+      EnsureAllocationFn& ensure_allocation,
+      const CancellationToken& cancellation,
+      uint64_t& last_submitted_fence);
+  common::Status SubmitCopies(
+      UploadSlot& slot,
+      uint64_t chunk_begin,
+      uint64_t bytes,
+      const std::vector<size_t>& range_indices,
+      const std::vector<FileRange>& ranges,
+      Batch& batch,
+      uint64_t& last_submitted_fence);
+  common::Status TransitionToCommon(
+      Batch& batch,
+      const CancellationToken& cancellation,
+      uint64_t& last_submitted_fence);
+  common::Status WaitForFence(
+      uint64_t value,
+      const CancellationToken& cancellation);
+  common::Status SignalSubmittedWork(uint64_t value);
+  void WaitForFenceUncancelled(uint64_t value) noexcept;
+  void DrainActiveReads() noexcept;
+
+  Microsoft::WRL::ComPtr<ID3D12Device> device_;
+  Config config_;
+  Microsoft::WRL::ComPtr<ID3D12CommandQueue> copy_queue_;
+  Microsoft::WRL::ComPtr<ID3D12Fence> copy_fence_;
+  wil::unique_handle fence_event_;
+  std::vector<UploadSlot> slots_;
+  Batch untracked_batch_;
+  uint64_t next_fence_value_ = 0;
+  bool retain_untracked_submission_ = false;
+  std::mutex load_mutex_;
 };
 
 }  // namespace d3d12
