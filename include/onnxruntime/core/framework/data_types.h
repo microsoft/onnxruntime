@@ -191,6 +191,7 @@ class DataTypeImpl {
    */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
+  // These functions take TensorProto::DataType numbers, not ONNXTensorElementDataType.
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
   static const SequenceTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
 #if !defined(DISABLE_SPARSE_TENSORS)

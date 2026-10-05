@@ -8,6 +8,7 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "onnxruntime_c_api.h"
+#include "core/session/onnxruntime_type_conversion.h"
 
 namespace ONNX_NAMESPACE {
 class TypeProto;
@@ -26,7 +27,7 @@ constexpr ONNXTensorElementDataType ToONNXTensorElementDataType(
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
 
-  return static_cast<ONNXTensorElementDataType>(value);
+  return utils::ToOrtTensorElementDataType(value);
 }
 
 consteval bool IsTensorProtoToOrtElementTypeMapBijective() {
