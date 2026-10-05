@@ -356,16 +356,20 @@ class TestQMoEBlockFP8(unittest.TestCase):
         return tensors
 
     @staticmethod
-    def _session(tensors, block=128, fusion=0, top_k=10, normalize=1, initializers=False, row_tile_size=0):
+    def _session(
+        tensors, block=128, fusion=0, top_k=10, normalize=1, initializers=False, row_tile_size=0, enable_cuda_graph=False
+    ):
         dtype = TensorProto.BFLOAT16 if tensors["input"].dtype == torch.bfloat16 else TensorProto.FLOAT16
         model, input_types = create_block_fp8_moe_graph(tensors, top_k, dtype, block, fusion, normalize, initializers)
         options = onnxruntime.SessionOptions()
         options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
-        return onnxruntime.InferenceSession(
-            model, options, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
-        ), input_types
+        provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
+        if enable_cuda_graph:
+            provider_name, provider_options = provider if isinstance(provider, tuple) else (provider, {})
+            provider = (provider_name, {**provider_options, "enable_cuda_graph": "1"})
+        return onnxruntime.InferenceSession(model, options, providers=[provider]), input_types
 
     @classmethod
     def _execute(cls, tensors, block=128, fusion=0, top_k=10, normalize=1, session=None, initializers=False):
@@ -615,7 +619,10 @@ def test_block_fp8_compact_decode_scratch(capfd, monkeypatch):
     assert "QMoE FP8 ExpertCapacity=10 DequantWeightBytes=768000" in capfd.readouterr().out
 
 
-@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
 @pytest.mark.parametrize("tokens,path", [(1, "fp8_fused_gemv"), (32, "fp8_fused_gemm")])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("scale_dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -635,7 +642,10 @@ def test_block_fp8_fused_without_weight_scratch(capfd, monkeypatch, tokens, path
     assert "DequantWeightBytes=0" in log
 
 
-@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("fusion", [0, 1, 2])
 @pytest.mark.parametrize("row_tile_size", [0, 17])
@@ -654,6 +664,37 @@ def test_block_fp8_fused_gemm_partial_tiles(monkeypatch, dtype, fusion, row_tile
     actual = TestQMoEBlockFP8._execute(tensors, block=32, fusion=fusion, session=session)
     expected = TestQMoEBlockFP8._reference(tensors, 32, fusion)
     torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("tokens", [1, 32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_block_fp8_fused_cuda_graph_replay(capfd, monkeypatch, tokens, dtype):
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    tensors = TestQMoEBlockFP8._inputs(experts=32, tokens=tokens, dtype=dtype)
+    session, input_types = TestQMoEBlockFP8._session(tensors, enable_cuda_graph=True)
+    output = torch.empty_like(tensors["input"])
+    binding = session.io_binding()
+    for graph_input in session.get_inputs():
+        tensor = tensors[graph_input.name]
+        binding.bind_input(graph_input.name, "cuda", 0, input_types[graph_input.name], tensor.shape, tensor.data_ptr())
+    binding.bind_output("output", "cuda", 0, input_types["input"], output.shape, output.data_ptr())
+    for selected in ([31, 7, 2, 19, 25, 0, 17, 11, 9, 23], [1, 4, 6, 8, 10, 12, 14, 16, 18, 20]):
+        tensors["router_probs"].fill_(-10)
+        tensors["router_probs"][:, selected] = torch.linspace(2, 1, 10, device=device, dtype=dtype)
+        tensors["fc2_scales"].mul_(0.5)
+        for _replay in range(2):
+            output.zero_()
+            torch.cuda.synchronize()
+            session.run_with_iobinding(binding)
+            binding.synchronize_outputs()
+            expected = TestQMoEBlockFP8._reference(tensors, 128, 0)
+            torch.testing.assert_close(output.float(), expected.float(), atol=0.003, rtol=0.04)
+    assert "DequantWeightBytes=0" in capfd.readouterr().out
 
 
 if __name__ == "__main__":
