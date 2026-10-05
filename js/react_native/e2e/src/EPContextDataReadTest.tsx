@@ -433,6 +433,15 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       if (!read.__nativeWorker.wasAborted) {
         throw new Error('The pending callback bridge worker was not aborted');
       }
+      let rejected = false;
+      try {
+        await read;
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) {
+        throw new Error('The cancelled callback bridge promise was not rejected');
+      }
 
       this.updateTestResult(index, {
         status: 'success',

@@ -66,7 +66,7 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
       return Function::createFromHostFunction(
           runtime, name, 0,
           [self](Runtime&, const Value&, const Value*, size_t) {
-            self->requestAbort();
+            self->onAbort();
             return Value::undefined();
           });
     }
