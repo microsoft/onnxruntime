@@ -223,11 +223,6 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
   // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
-  // Float6 types introduced in ONNX 1.23.
-  // ORT tensor storage uses one byte per element. TensorProto typed serialization uses int32_data;
-  // TensorProto raw_data uses bit-packed 6-bit values.
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -2455,7 +2450,9 @@ struct OrtApi {
    *
    * If the `size` parameter is less than the actual string attribute's size and `out`
    * is not nullptr, the value of `size` is set to the true size of the string attribute
-   * and a failure status is returned.)
+   * and a failure status is returned.
+   *
+   * The true size of the string attribute includes the trailing null character.
    *
    * \param[in] info ::OrtKernelInfo instance
    * \param[in] name Null terminated string of the name of the attribute

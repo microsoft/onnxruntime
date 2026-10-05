@@ -1,6 +1,7 @@
 # Workstream `plugin-boundary`: Plugin Boundary and Web/Wasm Integration
 
-Status: Working plan
+Status: In progress. Generic static plugin EP registration is implemented in PR #32395, and WebGPU can be built
+through it with `--use_webgpu static_plugin`. ORT Web migration and the remaining lifetime work are outstanding.
 
 [WebGPU EP extraction overview](../webgpu_ep_extraction.md)
 
@@ -31,8 +32,8 @@ does not own WebGPU kernels, Dawn, shader tooling, or the provider's standalone 
 
 ## Generic static plugin registration
 
-Add an ORT facility that accepts statically linked plugin factory entry points. It should reuse the existing dynamic
-plugin path after library loading and symbol lookup.
+The static plugin facility accepts linked factory entry points and reuses the existing dynamic plugin path after
+library loading and symbol lookup.
 
 The design must address:
 
@@ -44,7 +45,11 @@ The design must address:
 - Dead-code elimination for statically linked providers.
 - Diagnostics for incompatible or duplicate registrations.
 
-The facility must be generic and validated with at least one non-WebGPU test plugin where practical.
+The facility must be generic. Validation with a non-WebGPU test plugin is deferred: WebGPU is currently the only
+statically linked plugin EP, so this is tracked as a test gap rather than a completed criterion.
+
+The detailed design and validation summary are in
+[Static Plugin EP Registration](static_plugin_ep_registration_design.md).
 
 ## Process-global ownership and teardown
 
@@ -115,8 +120,8 @@ Likely investigation areas include:
 
 The adapter's own `Missing parts` section in `onnxruntime/core/providers/webgpu/ep/README.md` is authoritative input
 to this inventory rather than speculation. It records two gaps: WebGPU cleanup, which the process-global ownership
-and teardown work covers, and EP default configuration, which is missing for both static and shared library builds
-and sketches an `OrtApi` addition for it.
+and teardown work covers, and EP default configuration, which is missing for hosts that do not expose environment
+configuration.
 
 ## Browser/Wasm bridge
 
@@ -136,15 +141,19 @@ The bridge should not expose unrelated ORT private implementation details.
 
 ## Work packages
 
-1. **Size and latency baselines:** measure `onnxruntime-web` WebAssembly size and inference latency, and native
-   inference latency, on the non-plugin path while it still exists, since the size and latency completion criteria
-   compare the plugin path against those numbers.
-2. **Static registration core:** implement and contract-test generic static factory registration.
-3. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.
-4. **Emscripten prototype:** compile the plugin path statically and run a small model.
-5. **Gap inventory triage:** convert private-dependency findings into public API or provider-owned actions.
-6. **Browser bridge:** specify and prototype object and lifetime exchange.
-7. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.
+1. **Size and latency baselines — In progress:** measure `onnxruntime-web` WebAssembly size and inference latency,
+   and native inference latency, on the non-plugin path while it still exists.
+2. **Static registration core — Implemented in PR #32395:** contract-test generic static factory registration.
+   Validation with more than one static plugin remains outstanding.
+3. **Global lifetime contract — In progress:** inventory process-global state and implement safe ownership and
+   teardown rules.
+4. **Emscripten prototype — Done:** compile the plugin path statically and run it in a browser. Production ORT Web
+   migration remains separate work.
+5. **Gap inventory triage — Not started:** convert private-dependency findings into public API or provider-owned
+   actions.
+6. **Browser bridge — Not started:** specify and prototype object and lifetime exchange.
+7. **Parity and retirement — In progress:** run the existing suite through the plugin path and remove the legacy
+   path after ORT Web parity is demonstrated.
 
 Packages 1 through 6 can proceed largely in parallel, and legacy-path removal waits for their convergence. That
 ordering matters for the baselines in particular: the non-plugin path is the comparison, so once package 7 removes it
@@ -180,8 +189,11 @@ the numbers can no longer be captured.
   the native shared-library plugin.
 - The direct `IExecutionProvider` WebGPU path is removed.
 
-## Open questions
+## Resolved decisions
 
-- Should static factories be registered before environment creation or through environment construction options?
-- What is the stable representation of JavaScript-owned WebGPU objects at the C API boundary?
+- Should static factories be registered before environment creation, or through environment construction options?
+  Neither. ORT core registers them during `OrtEnv` creation, after the environment is constructed and published.
+  See [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
+
+## Open questions
 - Which private-dependency findings require a public plugin EP API addition rather than a provider-owned replacement?

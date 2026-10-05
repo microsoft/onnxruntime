@@ -2416,11 +2416,14 @@ struct OrtEp {
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    * Any allocator specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateAllocator will be used.
+   * Implementation of this function is optional. If nullptr, OrtEpFactory::CreateAllocator will be used if
+   * implemented. If neither callback is implemented, the EP does not provide a preferred allocator for the memory
+   * location. For default CPU memory, this allows ORT to use its default CPU allocator.
    *
-   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] this_ptr The OrtEp instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the EP does not provide a preferred
+   *                       allocator for the memory location.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2876,7 +2879,17 @@ struct OrtEpFactory {
    * \param[in] max_ep_devices The maximum number of OrtEpDevices that can be added to ep_devices.
    *                           Current default is 8. This can be increased if needed.
    * \param[out] num_ep_devices The number of EP devices added to ep_devices.
-   * \return true if the factory can create an execution provider that uses `device`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \remarks Called during execution provider library registration. The OrtEpDevice instances returned are added to
+   *          the environment after this returns. An implementation should not depend on other OrtEpDevices returned by
+   *          OrtApi::GetEpDevices since those depend on the execution provider library registration order.
+   *
+   *          Environment configuration entries are populated before any library is registered, so
+   *          OrtEpApi::GetEnvConfigEntries may be called from this function, but it must be called synchronously on
+   *          the thread invoking GetSupportedDevices. The implementation must not wait for another thread that calls
+   *          OrtEpApi::GetEnvConfigEntries.
    *
    * \since Version 1.22.
    */
@@ -2982,10 +2995,15 @@ struct OrtEpFactory {
    * The factory that creates the EP is responsible for providing the allocators required by the EP.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
+   * Implementation of this function is optional. It is required if ORT needs to create a shared allocator for an
+   * OrtMemoryInfo advertised by the EP.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. When called to create an allocator for a session, this
+   *                       may be set to nullptr if the EP does not provide a preferred allocator for the memory
+   *                       location. When called to create a shared allocator, this must be set to a non-null value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2997,6 +3015,9 @@ struct OrtEpFactory {
                   _Outptr_result_maybenull_ OrtAllocator** allocator);
 
   /** \brief Release an OrtAllocator created by the factory.
+   *
+   * Implementation of this function is required if OrtEpFactory::CreateAllocator or OrtEp::CreateAllocator is
+   * implemented.
    *
    * \since Version 1.23.
    */

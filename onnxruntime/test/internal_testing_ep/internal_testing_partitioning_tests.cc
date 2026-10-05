@@ -240,8 +240,9 @@ class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider
     return nodes;
   }
 
-  bool MayProduceExternalEpContextDataWithoutCompilation() const override {
-    return produces_ep_context_nodes_;
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer& /*graph_viewer*/) const override {
+    return produces_ep_context_nodes_ ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                      : OrtEpContextDataCallbackSupportFlags_NONE;
   }
 
   Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override {
