@@ -62,6 +62,18 @@ constexpr int kQwenHeadSize = 128;
 constexpr int kQwenCompressRatio = 4;
 constexpr int kQwenNumHeads = 4;
 
+template <typename Kernel>
+Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* kernel_name) {
+  int device = 0;
+  int max_bytes = 0;
+  CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
+  CUDA_RETURN_IF_ERROR(
+      cudaDeviceGetAttribute(&max_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
+  ORT_RETURN_IF_ERROR(psai::ValidateDynamicSharedMemory(
+      bytes, static_cast<size_t>(max_bytes), kernel_name));
+  return CUDA_CALL(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_bytes));
+}
+
 bool UseHierarchicalQsaTopK(const PackedSparseAttentionIndexerParams& params) {
   return params.total_tokens > 0 && params.total_tokens <= kDistributedTopKMaxRows &&
          params.state_capacity >= kDistributedTopKMinBlocks &&
@@ -1244,8 +1256,11 @@ Status LaunchQsaPackedSparseAttentionIndexer(
   }
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
+  const size_t update_shared_bytes = 2 * value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(
+      ConfigureDynamicSharedMemory(QsaUpdateStateKernel<T>, update_shared_bytes, "QsaUpdateStateKernel"));
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
-  QsaUpdateStateKernel<T><<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
+  QsaUpdateStateKernel<T><<<state_blocks, kThreads, update_shared_bytes, stream>>>(
       key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, past_kv_buffer,
       past_state_lengths, state_update_capture_count, state_update_active, present_key_state, present_kv_buffer,
       present_state_lengths, state_update, overflow_flags, params);
@@ -1263,7 +1278,10 @@ Status LaunchQsaPackedSparseAttentionIndexer(
 
   const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
-  PackedRotateQueryKernel<T, true><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  const size_t rotate_shared_bytes = value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
+      PackedRotateQueryKernel<T, true>, rotate_shared_bytes, "PackedRotateQueryKernel"));
+  PackedRotateQueryKernel<T, true><<<rotate_blocks, kThreads, rotate_shared_bytes, stream>>>(
       query, query_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
       position_ids, query_rotated, params);
 
@@ -1363,8 +1381,11 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   }
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
+  const size_t update_shared_bytes = value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(
+      ConfigureDynamicSharedMemory(CsaUpdateStateKernel<T>, update_shared_bytes, "CsaUpdateStateKernel"));
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
-  CsaUpdateStateKernel<T><<<state_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  CsaUpdateStateKernel<T><<<state_blocks, kThreads, update_shared_bytes, stream>>>(
       key, gate, key_norm_weight, cos_cache, sin_cache, position_bias, cumulative_sequence_lengths,
       past_sequence_lengths, past_kv_buffer, past_gate_buffer, past_state_lengths, present_key_state,
       present_kv_buffer, present_gate_buffer, present_state_lengths, overflow_flags, params);
@@ -1378,7 +1399,10 @@ Status LaunchCsaPackedSparseAttentionIndexer(
 
   const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
-  PackedRotateQueryKernel<T, false><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  const size_t rotate_shared_bytes = value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
+      PackedRotateQueryKernel<T, false>, rotate_shared_bytes, "PackedRotateQueryKernel"));
+  PackedRotateQueryKernel<T, false><<<rotate_blocks, kThreads, rotate_shared_bytes, stream>>>(
       query, query_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
       position_ids, query_rotated, params);
 
