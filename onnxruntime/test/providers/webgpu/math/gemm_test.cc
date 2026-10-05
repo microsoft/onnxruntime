@@ -47,9 +47,8 @@ TEST(GemmOpTest, WebGpuPackedFp16LongReduction) {
     test.AddAttribute("beta", 0.5f);
     test.AddAttribute("transB", static_cast<int64_t>(transpose_b));
     test.AddInput<MLFloat16>("A", {4, reduction_size}, std::vector<MLFloat16>(4 * reduction_size, value));
-    test.AddInput<MLFloat16>("B", transpose_b ? std::vector<int64_t>{columns, reduction_size}
-                                           : std::vector<int64_t>{reduction_size, columns},
-                           std::vector<MLFloat16>(reduction_size * columns, value));
+    test.AddInput<MLFloat16>("B", transpose_b ? std::vector<int64_t>{columns, reduction_size} : std::vector<int64_t>{reduction_size, columns},
+                             std::vector<MLFloat16>(reduction_size * columns, value));
     test.AddInput<MLFloat16>("C", {columns}, std::vector<MLFloat16>(columns, MLFloat16(0.5f)));
     test.AddOutput<MLFloat16>("Y", {4, columns}, std::vector<MLFloat16>(4 * columns, expected));
     test.SetOutputAbsErr("Y", 0.01f);
