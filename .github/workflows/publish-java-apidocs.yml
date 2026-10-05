@@ -38,7 +38,7 @@ jobs:
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           java-version: '11'
-          distribution: 'adopt'
+          distribution: 'temurin'
       - name: Build with Gradle
         uses: gradle/gradle-build-action@ac2d340dc04d9e1113182899e983b5400c17cda1 # v3.5.0
         with:
