@@ -138,7 +138,7 @@ All-zero counters distribute slots round-robin across eligible nodes; initialize
 value with deterministic ties. The offload count is global and must not exceed the number of experts in eligible CUDA
 nodes. The default is `0`, which disables CPU offloading.
 
-Every expert retains canonical CPU weights. Only selected experts are copied to CUDA. During inference, CUDA experts
+Every expert retains a CPU weight representation. Only selected experts are copied to CUDA. During inference, CUDA experts
 run through the existing CUTLASS MoE path and other experts run through the MLAS FP16 CPU path; their weighted outputs
 are combined on CUDA. Routing still records every selected expert, so counter updates continue unchanged.
 

@@ -184,6 +184,30 @@ TEST(OrtModelOnlyTests, RejectsMoeExpertCountingInMinimalBuild) {
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
   }
 }
+
+TEST(OrtModelOnlyTests, HandlesMoeCpuOffloadOptionInMinimalBuild) {
+  for (const char* value : {"0", "00", "-0"}) {
+    SCOPED_TRACE(value);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts, value));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+
+  for (const char* value : {"1", "-1", "invalid", ""}) {
+    SCOPED_TRACE(value);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts, value));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    const Status status = session.Initialize();
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+  }
+}
 #endif
 
 TEST(OrtModelOnlyTests, MoeExpertCountingDisabled) {

@@ -218,6 +218,10 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
 
   for (int input_idx : {2, 4}) {
     auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+    if (cuda_experts_.size() == num_experts) {
+      std::vector<MLFloat16>{}.swap(packed.cpu_data);
+      continue;
+    }
     const size_t output_size = static_cast<size_t>(
         logical_output_sizes[static_cast<size_t>(input_idx)]);
     const size_t input_size = static_cast<size_t>(input_idx == 2 ? hidden_size : inter_size);
@@ -238,6 +242,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
         }
       }
     }
+    std::vector<MLFloat16>{}.swap(packed.cpu_data);
   }
 
   if (!cuda_experts_.empty()) {
@@ -460,6 +465,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<MLFloat16> host_input;
   IAllocatorUniquePtr<int> host_expert_indices;
   IAllocatorUniquePtr<float> host_expert_scales;
+  KernelPilot* moe_pilot = nullptr;
   cudaEvent_t input_ready = nullptr;
   cudaEvent_t input_copy_ready = nullptr;
   cudaEvent_t routing_copy_ready = nullptr;
@@ -595,10 +601,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (cpu_offload_enabled_) {
     ORT_RETURN_IF_NOT(use_packed_fp16_weights && expert_map_.size() == static_cast<size_t>(moe_params.num_experts),
                       "FP16 MoE CPU offload weights were not initialized.");
-    auto* pilot = context->GetKernelPilot();
-    ORT_RETURN_IF_NOT(pilot, "FP16 MoE CPU offload requires a KernelPilot.");
-    auto& usage = pilot->Moe();
-    ORT_RETURN_IF_ERROR(usage.BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
+    moe_pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(moe_pilot, "FP16 MoE CPU offload requires a KernelPilot.");
+    ORT_RETURN_IF_ERROR(moe_pilot->Moe().BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
                                          indices_bytes, cudaMemcpyDeviceToHost, stream));
@@ -609,70 +614,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
     CUDA_RETURN_IF_ERROR(cudaEventRecord(routing_copy_ready, stream));
     routing_copy_recorded = true;
-    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(routing_copy_ready));
-    routing_copy_complete = true;
-    ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(host_expert_indices.get(), expanded_rows)));
-
-    if (run_cpu_experts) {
-      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(input_copy_ready));
-      input_copy_complete = true;
-
-      auto cpu_activation_type = ::onnxruntime::contrib::ActivationType::Identity;
-      switch (activation_type_) {
-        case ActivationType::Relu:
-          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Relu;
-          break;
-        case ActivationType::Gelu:
-          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Gelu;
-          break;
-        case ActivationType::Silu:
-          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Silu;
-          break;
-        case ActivationType::Identity:
-          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Identity;
-          break;
-        case ActivationType::Swiglu:
-          cpu_activation_type = ::onnxruntime::contrib::ActivationType::SwiGLU;
-          break;
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                                 "Unsupported FP16 MoE CPU-offload activation.");
-      }
-
-      auto host_data = [&](int input_idx) {
-        const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-        return gsl::make_span(packed.cpu_gemm_data.empty() ? packed.cpu_data : packed.cpu_gemm_data);
-      };
-      auto optional_host_data = [&](int input_idx) -> gsl::span<const MLFloat16> {
-        const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-        return packed.present ? host_data(input_idx) : gsl::span<const MLFloat16>{};
-      };
-
-      const size_t host_element_count =
-          static_cast<size_t>(SafeInt<int64_t>(moe_params.num_rows) * moe_params.hidden_size);
-      auto host_cpu_output = AllocateBufferOnCPUPinned<MLFloat16>(host_element_count);
-      ORT_RETURN_IF_NOT(host_cpu_output, "Failed to allocate the pinned FP16 MoE CPU output buffer.");
-      const ::onnxruntime::contrib::MoeCpuOffloadParameters cpu_parameters{
-          cpu_activation_type, activation_alpha_, activation_beta_, swiglu_limit_, is_fused_swiglu};
-      ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsFp16(
-          gsl::make_span(host_input.get(), host_element_count),
-          gsl::make_span(host_expert_indices.get(), expanded_rows),
-          gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
-          host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
-          moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-          cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
-          context->GetOperatorThreadPool()));
-
-      void* cpu_output_destination = output->MutableDataRaw();
-      if (!cuda_experts_.empty()) {
-        cpu_output_device_buffer = GetScratchBuffer<void>(input->SizeInBytes(), stream_obj);
-        cpu_output_destination = cpu_output_device_buffer.get();
-      }
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_output_destination, host_cpu_output.get(),
-                                           input->SizeInBytes(),
-                                           cudaMemcpyHostToDevice, stream));
-      AddDeferredReleaseCPUPtr(host_cpu_output.release(), stream_obj);
-    }
 
     if (!cuda_experts_.empty()) {
       remapped_expert_indices_buffer = GetScratchBuffer<void>(indices_bytes, stream_obj);
@@ -789,6 +730,76 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{},
         stream);
   }
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (cpu_offload_enabled_) {
+    // The CUDA path is already enqueued above, so mixed execution overlaps its kernels with the host GEMMs.
+    ORT_RETURN_IF_NOT(moe_pilot, "FP16 MoE CPU offload requires a KernelPilot.");
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(routing_copy_ready));
+    routing_copy_complete = true;
+    ORT_RETURN_IF_ERROR(
+        moe_pilot->Moe().Collect(gsl::make_span(host_expert_indices.get(), expanded_rows)));
+
+    if (run_cpu_experts) {
+      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(input_copy_ready));
+      input_copy_complete = true;
+
+      auto cpu_activation_type = ::onnxruntime::contrib::ActivationType::Identity;
+      switch (activation_type_) {
+        case ActivationType::Relu:
+          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Relu;
+          break;
+        case ActivationType::Gelu:
+          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Gelu;
+          break;
+        case ActivationType::Silu:
+          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Silu;
+          break;
+        case ActivationType::Identity:
+          cpu_activation_type = ::onnxruntime::contrib::ActivationType::Identity;
+          break;
+        case ActivationType::Swiglu:
+          cpu_activation_type = ::onnxruntime::contrib::ActivationType::SwiGLU;
+          break;
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                 "Unsupported FP16 MoE CPU-offload activation.");
+      }
+
+      auto host_data = [&](int input_idx) {
+        return gsl::make_span(packed_inputs_[static_cast<size_t>(input_idx)].cpu_gemm_data);
+      };
+      auto optional_host_data = [&](int input_idx) -> gsl::span<const MLFloat16> {
+        const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+        return packed.present ? gsl::make_span(packed.cpu_data) : gsl::span<const MLFloat16>{};
+      };
+
+      const size_t host_element_count =
+          static_cast<size_t>(SafeInt<int64_t>(moe_params.num_rows) * moe_params.hidden_size);
+      auto host_cpu_output = AllocateBufferOnCPUPinned<MLFloat16>(host_element_count);
+      ORT_RETURN_IF_NOT(host_cpu_output, "Failed to allocate the pinned FP16 MoE CPU output buffer.");
+      const ::onnxruntime::contrib::MoeCpuOffloadParameters cpu_parameters{
+          cpu_activation_type, activation_alpha_, activation_beta_, swiglu_limit_, is_fused_swiglu};
+      ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsFp16(
+          gsl::make_span(host_input.get(), host_element_count),
+          gsl::make_span(host_expert_indices.get(), expanded_rows),
+          gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
+          host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
+          moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+          cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
+          context->GetOperatorThreadPool()));
+
+      void* cpu_output_destination = output->MutableDataRaw();
+      if (!cuda_experts_.empty()) {
+        cpu_output_device_buffer = GetScratchBuffer<void>(input->SizeInBytes(), stream_obj);
+        cpu_output_destination = cpu_output_device_buffer.get();
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_output_destination, host_cpu_output.get(),
+                                           input->SizeInBytes(), cudaMemcpyHostToDevice, stream));
+      AddDeferredReleaseCPUPtr(host_cpu_output.release(), stream_obj);
+    }
+  }
+#endif
 
   if (run_cpu_experts && !cuda_experts_.empty()) {
     LaunchAddMoeFp16Output(
