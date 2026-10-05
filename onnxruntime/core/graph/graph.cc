@@ -2755,6 +2755,15 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return &node_output_types_[index];
   }
 
+  bool hasOutput(size_t index) override {
+    if (index >= node_.OutputDefs().size()) {
+      return false;
+    }
+
+    const auto* node_arg = node_.OutputDefs()[index];
+    return node_arg != nullptr && node_arg->Exists();
+  }
+
   const TensorProto* getInputData(size_t index) const override {
     // A schema-optional input that's omitted (not even an empty placeholder) shrinks InputDefs(),
     // so callers can pass an index the node doesn't actually have.
@@ -6594,7 +6603,7 @@ Status Graph::InlineFunction(Node& callnode) {
     ORT_ENFORCE(callnode.TryGetFunctionProto(inlined_fp), "Node has no function body and cannot be inlined.");
 
     // Make all the names unique and resolve nested graphs inputs to the outer scope.
-    function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
+    ORT_RETURN_IF_ERROR(function_utils::Specialize(inlined_fp, callnode, uniq_identifier));
 
     // In this case, global Resolve() will take care of everything.
     ORT_RETURN_IF_ERROR(InlineFunctionProto(inlined_fp, parent_annotation));
