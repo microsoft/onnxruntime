@@ -26,6 +26,17 @@ GemmDispatchPolicy GetGemmDispatchPolicy(const OpKernelInfo& info) {
       ParseEnvironmentVariable<std::string>(kGemmAutoTuneEnvVar));
 }
 
+bool GetGemmGraphReplayTuning(const OpKernelInfo& info) {
+  const bool enabled = ParseGemmOnOffOption(ParseEnvironmentVariable<std::string>(kGemmGraphReplayTuneEnvVar),
+                                            kGemmGraphReplayTuneEnvVar)
+                           .value_or(true);
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  return enabled && detail::GetCudaKernelAdapterRuntimeConfigForProvider(info.GetExecutionProvider())->enable_cuda_graph;
+#else
+  return enabled && static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->IsGraphCaptureEnabled();
+#endif
+}
+
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       MatMul,                                                     \
@@ -334,6 +345,7 @@ Status MatMul<T>::SelectGemmKernel(OpKernelContext* ctx, const void* a, const vo
   key.small_n_vectorized = SmallNGemvUsesVectorizedKernel(n, k, a, b);
   key.candidates = candidates;
   key.tinygemm2_b_is_constant = (candidates & GemmKernelBit(GemmKernel::kTinyGemm2)) && b_is_constant_;
+  key.cuda_graph_replay = graph_replay_tuning_;
 
   std::optional<GemmKernel> kernel = GemmAutoTuneCache::Instance().Lookup(key);
   if (!kernel.has_value()) {
