@@ -98,6 +98,9 @@ EpContextDataCallbackState* createEpContextDataCallbackState(
 
 void releaseEpContextDataCallbackState(JNIEnv* jniEnv, EpContextDataCallbackState* state);
 
+int isEpContextDataReadAllocatorHostAccessible(
+    const OrtApi* api, const OrtMemoryInfo* memoryInfo);
+
 OrtStatus* ORT_API_CALL javaEpContextDataReadCallback(
     void* state, const char* name, OrtAllocator* allocator, void** buffer, size_t* dataSize);
 

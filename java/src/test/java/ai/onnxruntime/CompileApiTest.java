@@ -87,6 +87,17 @@ public class CompileApiTest {
   }
 
   @Test
+  public void epContextDataReadAllocatorRequiresHostAccessibleMemory() {
+    long apiHandle = OnnxRuntime.ortApiHandle;
+    Assertions.assertTrue(
+        SessionOptions.isEpContextDataReadMemoryInfoHostAccessibleForTest(apiHandle, 0, 0));
+    Assertions.assertTrue(
+        SessionOptions.isEpContextDataReadMemoryInfoHostAccessibleForTest(apiHandle, 1, 5));
+    Assertions.assertFalse(
+        SessionOptions.isEpContextDataReadMemoryInfoHostAccessibleForTest(apiHandle, 1, 0));
+  }
+
+  @Test
   @EnabledOnOs(OS.WINDOWS)
   public void externalEpContextDataUsesCallbacks() throws Exception {
     String libraryPath = TestHelpers.getResourcePath("/example_plugin_ep.dll").toString();

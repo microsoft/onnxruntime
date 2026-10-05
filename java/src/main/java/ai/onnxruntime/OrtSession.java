@@ -1695,6 +1695,9 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, EpContextDataReadCallback callback, long maxDataSize)
         throws OrtException;
 
+    static native boolean isEpContextDataReadMemoryInfoHostAccessibleForTest(
+        long apiHandle, int deviceType, int deviceMemoryType);
+
     private static native void clearEpContextDataReadCallback(long apiHandle, long nativeHandle)
         throws OrtException;
 

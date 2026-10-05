@@ -288,18 +288,37 @@ void releaseEpContextDataCallbackState(JNIEnv* jniEnv, EpContextDataCallbackStat
     }
 }
 
+int isEpContextDataReadAllocatorHostAccessible(
+    const OrtApi* api, const OrtMemoryInfo* memoryInfo) {
+    OrtMemoryInfoDeviceType deviceType;
+    api->MemoryInfoGetDeviceType(memoryInfo, &deviceType);
+    return deviceType == OrtMemoryInfoDeviceType_CPU ||
+           api->MemoryInfoGetDeviceMemType(memoryInfo) == OrtDeviceMemoryType_HOST_ACCESSIBLE;
+}
+
 OrtStatus* ORT_API_CALL javaEpContextDataReadCallback(
     void* callbackState, const char* name, OrtAllocator* allocator, void** buffer, size_t* dataSize) {
     EpContextDataCallbackState* state = (EpContextDataCallbackState*)callbackState;
+    *buffer = NULL;
+    *dataSize = 0;
+    const OrtMemoryInfo* allocatorInfo = NULL;
+    OrtStatus* status = state->api->AllocatorGetInfo(allocator, &allocatorInfo);
+    if (status != NULL) {
+        return status;
+    }
+    if (!isEpContextDataReadAllocatorHostAccessible(state->api, allocatorInfo)) {
+        return createCallbackStatus(
+            state, ORT_INVALID_ARGUMENT,
+            "EPContext data read callbacks require a CPU or host-accessible allocator");
+    }
+
     JNIEnv* jniEnv = NULL;
     bool attached = false;
-    OrtStatus* status = getCallbackEnv(state, &jniEnv, &attached);
+    status = getCallbackEnv(state, &jniEnv, &attached);
     if (status != NULL) {
         return status;
     }
 
-    *buffer = NULL;
-    *dataSize = 0;
     jstring javaName = createJavaStringFromStandardUtf8(state, jniEnv, name, &status);
     if (javaName == NULL) {
       detachCallbackThread(state, attached);

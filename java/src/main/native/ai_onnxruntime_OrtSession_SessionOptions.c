@@ -190,6 +190,26 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setEp
   return (jlong)callbackState;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_ai_onnxruntime_OrtSession_00024SessionOptions_isEpContextDataReadMemoryInfoHostAccessibleForTest
+    (JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jint deviceType, jint deviceMemoryType) {
+  (void)jclazz;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtMemoryInfo* memoryInfo = NULL;
+  OrtStatus* status = api->CreateMemoryInfo_V2(
+      "EpContextDataReadTest", (OrtMemoryInfoDeviceType)deviceType, 0, 0,
+      (OrtDeviceMemoryType)deviceMemoryType, 0, OrtDeviceAllocator, &memoryInfo);
+  if (status != NULL) {
+    checkOrtStatus(jniEnv, api, status);
+    return JNI_FALSE;
+  }
+
+  const int isHostAccessible =
+      isEpContextDataReadAllocatorHostAccessible(api, memoryInfo);
+  api->ReleaseMemoryInfo(memoryInfo);
+  return isHostAccessible ? JNI_TRUE : JNI_FALSE;
+}
+
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    clearEpContextDataReadCallback
