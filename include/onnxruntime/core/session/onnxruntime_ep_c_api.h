@@ -2103,6 +2103,62 @@ struct OrtEpApi {
   ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                   _Outptr_result_maybenull_ const void** source_model_data,
                   _Out_ size_t* source_model_data_length);
+
+  /** \brief Copy the EPContext callback configuration from session options into an owned handle.
+   *
+   * An EP should call this during OrtEpFactory::CreateEp and retain the returned handle for as long as its Compile
+   * implementation may need the callbacks. The handle owns copies of the function and state pointers, but it does
+   * not own the application-provided state itself. On failure, `*config` is not modified.
+   *
+   * \param[in] session_options Session options supplied to OrtEpFactory::CreateEp.
+   * \param[out] config Non-null handle that must be released with ReleaseEpContextConfig.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtEpContextConfig** config);
+
+  /** \brief Release an OrtEpContextConfig handle. May be called with NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(EpContextConfig);
+
+  /** \brief Get the EPContext data read callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL. On failure, both outputs are unchanged.
+   * The returned state is application-owned and remains
+   * subject to the lifetime and synchronization requirements documented by SessionOptionsSetEpContextDataReadFunc.
+   *
+   * \param[in] config EPContext configuration handle.
+   * \param[out] read_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state);
+
+  /** \brief Get the EPContext data write callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL. The returned state is application-owned and remains
+   * subject to the lifetime and synchronization requirements documented by
+   * ModelCompilationOptions_SetEpContextDataWriteFunc.
+   *
+   * \param[in] config EPContext configuration handle.
+   * \param[out] write_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
 };
 
 /**
@@ -2360,11 +2416,14 @@ struct OrtEp {
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    * Any allocator specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateAllocator will be used.
+   * Implementation of this function is optional. If nullptr, OrtEpFactory::CreateAllocator will be used if
+   * implemented. If neither callback is implemented, the EP does not provide a preferred allocator for the memory
+   * location. For default CPU memory, this allows ORT to use its default CPU allocator.
    *
-   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] this_ptr The OrtEp instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the EP does not provide a preferred
+   *                       allocator for the memory location.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2708,6 +2767,31 @@ struct OrtEp {
    * \since Version 1.29.
    */
   ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
+
+  /** \brief Query support for application-managed external EPContext data.
+   *
+   * The EP sets `supported_flags` to a bitwise combination of OrtEpContextDataCallbackSupportFlags values.
+   * READ indicates support for OrtReadNamedBufferFunc, and WRITE indicates support for OrtWriteNamedBufferFunc.
+   *
+   * If the EP advertises READ or WRITE support and the corresponding callback is registered, the EP must use the
+   * callback or return an error. It must not fall back to another method such as filesystem I/O. Callback errors
+   * must be returned to ORT. The EP is responsible for validating the returned data and imposing deserialization
+   * limits before consuming it; ORT does not invoke the callback or validate its result.
+   *
+   * These flags cover provider-owned EPContext artifacts only. They do not describe temporary files that an EP's
+   * backend or driver may create internally.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] supported_flags The supported OrtEpContextDataCallbackSupportFlags values.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not support
+   *       application-managed external EPContext data.
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(GetEpContextDataCallbackSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* supported_flags);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -2795,7 +2879,17 @@ struct OrtEpFactory {
    * \param[in] max_ep_devices The maximum number of OrtEpDevices that can be added to ep_devices.
    *                           Current default is 8. This can be increased if needed.
    * \param[out] num_ep_devices The number of EP devices added to ep_devices.
-   * \return true if the factory can create an execution provider that uses `device`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \remarks Called during execution provider library registration. The OrtEpDevice instances returned are added to
+   *          the environment after this returns. An implementation should not depend on other OrtEpDevices returned by
+   *          OrtApi::GetEpDevices since those depend on the execution provider library registration order.
+   *
+   *          Environment configuration entries are populated before any library is registered, so
+   *          OrtEpApi::GetEnvConfigEntries may be called from this function, but it must be called synchronously on
+   *          the thread invoking GetSupportedDevices. The implementation must not wait for another thread that calls
+   *          OrtEpApi::GetEnvConfigEntries.
    *
    * \since Version 1.22.
    */
@@ -2901,10 +2995,15 @@ struct OrtEpFactory {
    * The factory that creates the EP is responsible for providing the allocators required by the EP.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
+   * Implementation of this function is optional. It is required if ORT needs to create a shared allocator for an
+   * OrtMemoryInfo advertised by the EP.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. When called to create an allocator for a session, this
+   *                       may be set to nullptr if the EP does not provide a preferred allocator for the memory
+   *                       location. When called to create a shared allocator, this must be set to a non-null value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2916,6 +3015,9 @@ struct OrtEpFactory {
                   _Outptr_result_maybenull_ OrtAllocator** allocator);
 
   /** \brief Release an OrtAllocator created by the factory.
+   *
+   * Implementation of this function is required if OrtEpFactory::CreateAllocator or OrtEp::CreateAllocator is
+   * implemented.
    *
    * \since Version 1.23.
    */

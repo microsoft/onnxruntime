@@ -10,17 +10,18 @@ namespace onnxruntime::llm::kernels::cutlass_kernels {
 
 template <typename ElementType>
 bool IsInt2GroupedGemmSupportedImpl(const Int2GroupedGemmParamsT<ElementType>& params) {
-  return params.sm == 80 && params.block_size == 64 && params.num_rows > 0 &&
+  return params.sm >= 80 && (params.block_size == 32 || params.block_size == 64 || params.block_size == 128) && params.num_rows > 0 &&
          params.num_rows <= std::numeric_limits<int>::max() && params.num_experts > 0 &&
          params.num_columns > 0 && params.num_columns % 64 == 0 &&
          params.reduction_size > 0 && params.reduction_size % 64 == 0 &&
+         params.reduction_size % params.block_size == 0 &&
          params.multiprocessor_count > 0 &&
          (params.tile_rows == 32 || params.tile_rows == 64);
 }
 
 template <typename ElementType>
 void RunInt2GroupedGemmImpl(const Int2GroupedGemmParamsT<ElementType>& params) {
-  ORT_ENFORCE(IsInt2GroupedGemmSupportedImpl(params), "Unsupported SM80 A16 INT2 grouped GEMM configuration");
+  ORT_ENFORCE(IsInt2GroupedGemmSupportedImpl(params), "Unsupported SM80+ A16 INT2 grouped GEMM configuration");
   ORT_ENFORCE(params.activations && params.packed_weights && params.block_scales &&
                   params.expert_row_ends && params.output,
               "INT2 grouped GEMM requires non-null device buffers");
