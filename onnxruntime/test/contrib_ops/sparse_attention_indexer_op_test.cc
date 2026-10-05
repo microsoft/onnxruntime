@@ -1512,6 +1512,7 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaScoreCacheBoundary) {
   problem.compress_ratio = 1;
   problem.token_budget = 4;
   problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
   RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
 }
 
@@ -1524,6 +1525,7 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaVisibilityCacheBoundaryWithMaskHoles) 
   problem.compress_ratio = 32;
   problem.token_budget = 32;
   problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
   for (int token : {8, 53, 2050, 3011}) {
     problem.mask[token] = 0;
   }
