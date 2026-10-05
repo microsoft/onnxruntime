@@ -53,6 +53,13 @@ Status ValidateTokenOffset(
     return Status::OK();
   }
 
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+  if (capture_status != cudaStreamCaptureStatusNone) {
+    // Host readback is not capture-safe. The captured restore kernels enforce the same bounds.
+    return Status::OK();
+  }
+
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(validation_flag, 0, sizeof(int), stream));
   constexpr int threads_per_block = 256;
   const int required_blocks =
@@ -225,6 +232,10 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
   const int tid = threadIdx.x;
   const int token_index = blockIdx.x;
   const int target_seq_id = token_offset[token_index];
+  if (target_seq_id < 0 || target_seq_id >= gridDim.x) {
+    return;
+  }
+
   const int source_seq_id = token_index;
   constexpr T padding_zero = 0;
 
@@ -246,6 +257,10 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
   const int tid = threadIdx.x;
   const int token_index = blockIdx.x;
   const int target_seq_id = token_offset[token_index];
+  if (target_seq_id < 0 || target_seq_id >= gridDim.x) {
+    return;
+  }
+
   const int source_seq_id = token_index;
   int4 padding_zero{0, 0, 0, 0};
 
