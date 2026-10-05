@@ -129,11 +129,24 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
   });
 
   it('rejects oversized, wrong-type, and throwing callback results through the native bridge', async () => {
-    await assert.rejects(binding.testEpContextDataReadCallback(() => new Uint8Array(2), 1, 'large.bin'), /exceeds/);
-    await assert.rejects(binding.testEpContextDataReadCallback(() => new Uint8Array(1).buffer, 4, 'wrong.bin'), /Uint8Array/);
-    await assert.rejects(binding.testEpContextDataReadCallback(() => {
-      throw new Error('test callback failure');
-    }, 4, 'throw.bin'), /test callback failure/);
+    await assert.rejects(
+      binding.testEpContextDataReadCallback(() => new Uint8Array(2), 1, 'large.bin'),
+      /exceeds/,
+    );
+    await assert.rejects(
+      binding.testEpContextDataReadCallback(() => new Uint8Array(1).buffer, 4, 'wrong.bin'),
+      /Uint8Array/,
+    );
+    await assert.rejects(
+      binding.testEpContextDataReadCallback(
+        () => {
+          throw new Error('test callback failure');
+        },
+        4,
+        'throw.bin',
+      ),
+      /test callback failure/,
+    );
   });
 
   it('the callback is not invoked for a model without EPContext data', async function () {
