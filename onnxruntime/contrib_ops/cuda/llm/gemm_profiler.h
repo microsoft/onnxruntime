@@ -19,9 +19,12 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -395,8 +398,28 @@ class GemmPluginProfilerManager {
     return profiler;
   }
 
+  // Returns a profile map private to `session_key` (any address that is stable while the session lives).
+  // Profilers of the same session share one map, so identical shapes are profiled once per session,
+  // but the map is never shared with the process-global one or with other sessions. The map is dropped
+  // when the last profiler holding it goes away, so a later session reusing the key starts empty.
+  MNKProfileMapPtr getSessionProfileMap(const void* session_key) {
+    std::lock_guard<std::mutex> lock(mSessionMapsMutex);
+    for (auto it = mSessionMaps.begin(); it != mSessionMaps.end();) {
+      it = it->second.expired() ? mSessionMaps.erase(it) : std::next(it);
+    }
+    auto& weak_map = mSessionMaps[session_key];
+    auto map = weak_map.lock();
+    if (map == nullptr) {
+      map = std::make_shared<MNKProfileMap>();
+      weak_map = map;
+    }
+    return map;
+  }
+
  private:
   MNKProfileMapPtr mMNKProfileMap{};
+  std::mutex mSessionMapsMutex;
+  std::unordered_map<const void*, std::weak_ptr<MNKProfileMap>> mSessionMaps;
 };
 
 }  // namespace onnxruntime::llm::kernels::weight_only

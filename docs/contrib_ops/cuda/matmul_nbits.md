@@ -572,7 +572,7 @@ session-config option:
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | `ep.cuda.gemm_tactic_cache_dir` | Directory for the cache file; the file name is derived from the hardware signature. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | `ep.cuda.gemm_tactic_cache_prefix` | Explicit file prefix; writes `<prefix>.matmulnbits_fpa_intb.tsv`. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `ep.cuda.gemm_tactic_cache_to_model` | `1` stores the cache next to the model as `<model_path>.matmulnbits_fpa_intb.tsv`. Ignored for models loaded from bytes. |
-| `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | `ep.cuda.gemm_tactic_cache_mode` | `load_save` (default): load on create, save on close. `load`: read-only, never writes (e.g. a pre-tuned cache shipped with an application). `save`: ignore existing rows, re-tune, and save on close; every save-mode session profiles again even if an earlier session in the same process already tuned the shape (concurrent save-mode sessions share their tuning with each other). Other values fail session creation. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | `ep.cuda.gemm_tactic_cache_mode` | `load_save` (default): load on create, save on close. `load`: read-only, never writes (e.g. a pre-tuned cache shipped with an application). `save`: ignore existing rows, re-tune, and save on close; the session profiles every shape again even if another session in the same process already tuned it (nodes with the same shape inside the session still share one tuning). Other values fail session creation. |
 
 Resolution order: session-config prefix → session-config dir → model sidecar →
 env prefix → env dir. A non-empty prefix wins over a directory, and an explicit

@@ -18,11 +18,15 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "onnxruntime_config.h"
 

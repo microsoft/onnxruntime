@@ -13,8 +13,9 @@
 
 #include <cstdio>
 #include <barrier>
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -44,6 +45,20 @@ using onnxruntime::llm::cutlass_extensions::MainloopScheduleType;
 using onnxruntime::llm::cutlass_extensions::SplitKStyle;
 
 namespace {
+
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+class CacheTestProfiler : public onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler {
+ public:
+  size_t launches = 0;
+
+ protected:
+  void runTactic(int, int, int, const CutlassGemmConfig&, char*, const cudaStream_t&) override { ++launches; }
+  size_t computeTmpSize(size_t, size_t, size_t) override { return 0; }
+  std::vector<CutlassGemmConfig> getTactics(int, int, int) const override { return {CutlassGemmConfig{}}; }
+  bool checkTactic(int, int, int, const CutlassGemmConfig&) const override { return true; }
+  float getSelectionTime(int, int, int, const CutlassGemmConfig&, float time) const override { return time; }
+};
+#endif  // !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 gc::HardwareSignature MakeSignature(const std::string& device_name = "TEST GPU 4090", int sm = 80) {
   gc::HardwareSignature sig;
@@ -1026,6 +1041,72 @@ TEST(GemmTacticCacheTest, FlushAdoptsRowsFromOtherWriters) {
 
   CleanUp(file);
 }
+
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+TEST(GemmTacticCacheTest, SessionProfileMapsDeduplicateOnlyWithinOneLiveSession) {
+  using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
+  GemmPluginProfilerManager<CacheTestProfiler> manager;
+  const int first_session = 1;
+  const int second_session = 2;
+  auto first_map = manager.getSessionProfileMap(&first_session);
+  EXPECT_EQ(first_map, manager.getSessionProfileMap(&first_session));
+  EXPECT_NE(first_map, manager.getSessionProfileMap(&second_session));
+  using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+  const GemmIdCore key(1024, 4096, onnxruntime::llm::nvinfer::DataType::kHALF);
+  first_map->createMProfileMap(key);
+  first_map->getMProfileMap(key)->emplace(1, MakeSm80Config());
+  auto second_map = manager.getSessionProfileMap(&second_session);
+  EXPECT_FALSE(second_map->existsMProfileMap(key));
+  first_map.reset();
+  EXPECT_FALSE(manager.getSessionProfileMap(&first_session)->existsMProfileMap(key));
+}
+
+TEST(GemmTacticCacheTest, RetuneProfilesAgainAcrossConcurrentAndSequentialSessions) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "CUDA events are required for the profiling-loop smoke test.";
+  }
+  using onnxruntime::llm::kernels::weight_only::GemmDims;
+  using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+  using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
+  GemmPluginProfilerManager<CacheTestProfiler> manager;
+  const int first_session = 1;
+  const int retune_session = 2;
+  const auto dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+  const GemmIdCore key(1024, 4096, dtype);
+  const GemmDims dims(1, 1, 1024, 4096);
+  const auto allocator = std::make_shared<CPUAllocator>();
+  const auto access = gc::ParseCacheAccess("save");
+  ASSERT_TRUE(access.has_value());
+  auto first = manager.createGemmPluginProfiler(false);
+  first->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&first_session));
+  first->setAllocator(allocator);
+  first->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_GT(first->launches, 0u);
+
+  auto same_session = manager.createGemmPluginProfiler(false);
+  same_session->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&first_session));
+  same_session->setAllocator(allocator);
+  same_session->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_EQ(same_session->launches, 0u);
+
+  auto retune = manager.createGemmPluginProfiler(false);
+  retune->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&retune_session));
+  retune->setAllocator(allocator);
+  retune->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_GT(retune->launches, 0u);
+  EXPECT_TRUE(first->getBestConfig(1, key).has_value());
+
+  first.reset();
+  same_session.reset();
+  auto sequential = manager.createGemmPluginProfiler(false);
+  sequential->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&first_session));
+  sequential->setAllocator(allocator);
+  sequential->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_GT(sequential->launches, 0u);
+  EXPECT_TRUE(retune->getBestConfig(1, key).has_value());
+}
+#endif  // !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 }  // namespace test
 }  // namespace onnxruntime

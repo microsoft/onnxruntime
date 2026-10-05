@@ -505,7 +505,7 @@ class PluginKernelCollector {
 // which is initialized in CudaEpFactory::CudaEpFactory.
 
 #include <cstring>
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -1175,6 +1175,8 @@ class CudaKernel : public OpKernel {
   }
   inline int GetDeviceId() const { return device_id_; }
   std::filesystem::path GetSessionModelPath() const { return runtime_config_->GetModelPath(); }
+  // Identifies the session (execution provider instance) that owns this kernel.
+  const void* GetSessionKey() const { return runtime_config_.get(); }
   int GetCudnnConvAlgo() const { return runtime_config_->cudnn_conv_algo; }
   bool GetCudnnConvUseMaxWorkspace() const { return runtime_config_->cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return runtime_config_->cudnn_conv1d_pad_to_nc1d; }

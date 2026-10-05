@@ -16,10 +16,12 @@
  */
 #pragma once
 
+#include <cutlass/numeric_types.h>
+
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cassert>
-#include <cutlass/numeric_types.h>
 #include <memory>
 #include <optional>
 #include <set>
@@ -117,11 +119,17 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   }
 
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
-  // in-process-only behavior (no disk reads/writes).
+  // in-process-only behavior (no disk reads/writes). A non-null `session_profile_map` replaces the
+  // process-global profile map, so this profiler neither reuses tactics selected by other sessions nor
+  // shares its own with them (used to re-tune).
   void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache,
-                          onnxruntime::llm::gemm_cache::CacheAccess access = {}) {
+                          onnxruntime::llm::gemm_cache::CacheAccess access = {},
+                          MNKProfileMapPtr session_profile_map = nullptr) {
     mCache = std::move(cache);
     mCacheAccess = access;
+    if (session_profile_map != nullptr) {
+      setSelectionTactics(session_profile_map);
+    }
   }
 
   void setTuningResultsCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {

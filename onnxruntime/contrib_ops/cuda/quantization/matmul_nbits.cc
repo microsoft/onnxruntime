@@ -5,10 +5,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/common/status.h"
@@ -169,35 +171,6 @@ struct ExitTacticCacheFlusher {
   ~ExitTacticCacheFlusher() { FlushAllTacticCaches(/*log_failures*/ false); }
 };
 ExitTacticCacheFlusher s_exit_tactic_cache_flusher;
-
-// Profile maps for sessions that re-tune (cache mode "save"). Live save-mode sessions share one map so
-// identical shapes are tuned once per session; it is dropped when any session closes, so the next
-// save-mode session starts empty. Profilers keep their own reference, so concurrent sessions are unaffected.
-using SaveModeProfilerManager = GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
-struct SaveModeProfilerState {
-  std::mutex mutex;
-  std::shared_ptr<SaveModeProfilerManager> manager;
-};
-
-SaveModeProfilerState& GetSaveModeProfilerState() {
-  static auto* state = new SaveModeProfilerState();  // Leaked on purpose, like the registry.
-  return *state;
-}
-
-std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler> CreateSaveModeProfiler() {
-  auto& state = GetSaveModeProfilerState();
-  std::lock_guard<std::mutex> lock(state.mutex);
-  if (state.manager == nullptr) {
-    state.manager = std::make_shared<SaveModeProfilerManager>();
-  }
-  return state.manager->createGemmPluginProfiler(/*inference*/ false);
-}
-
-void ResetSaveModeProfilerManager() {
-  auto& state = GetSaveModeProfilerState();
-  std::lock_guard<std::mutex> lock(state.mutex);
-  state.manager.reset();
-}
 }  // namespace
 
 // Returns the process-global cache for `file_path` (creating, loading, and registering it on first
@@ -239,7 +212,6 @@ static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> Get
 // never throws.
 void FlushMatMulNBitsTacticCaches() {
   FlushAllTacticCaches(/*log_failures*/ true);
-  ResetSaveModeProfilerManager();
 }
 
 constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
@@ -675,11 +647,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
       info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigCachePrefix, ""), cache_signature,
       sidecar_prefix);
 
-  // A save-mode session must re-profile rather than reuse tactics that earlier sessions left in the
-  // process-global profile map.
-  gemmProfiler_ = (!cache_file_path.empty() && !cache_access.load)
-                      ? CreateSaveModeProfiler()
-                      : s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
+  gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
   using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
   KernelType cuda_kernel_type;
@@ -790,9 +758,12 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setDecodeInterleave(weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? 1 : 4);
 
   if (!cache_file_path.empty()) {
+    // A save-mode session must re-profile instead of reusing tactics that earlier sessions left in the
+    // process-global profile map, so it gets a profile map of its own.
     gemmProfiler_->setPersistentCache(
         GetGlobalMatMulNBitsTacticCache(std::move(cache_file_path), cache_signature, cache_access.load),
-        cache_access);
+        cache_access,
+        cache_access.load ? nullptr : s_profilerManager.getSessionProfileMap(this->GetSessionKey()));
   }
   const std::string tuning_results_prefix =
       info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigTuningResultsPrefix, "");
