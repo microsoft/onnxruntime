@@ -158,6 +158,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// For buffers larger than <see cref="int.MaxValue"/>, use <see cref="Allocate(ulong)"/>
         /// followed by chunked calls to <see cref="GetSpan(ulong, int)"/>.
         /// </summary>
+        /// <param name="size">Number of bytes to allocate.</param>
         /// <returns>A writable span over the allocated buffer.</returns>
         public Span<byte> Allocate(int size)
         {
@@ -173,6 +174,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Allocates an output buffer of the requested size.
         /// </summary>
+        /// <param name="size">Number of bytes to allocate.</param>
         public void Allocate(ulong size)
         {
             ThrowIfDisposed();
