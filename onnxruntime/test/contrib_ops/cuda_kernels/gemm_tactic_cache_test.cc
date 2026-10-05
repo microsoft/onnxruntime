@@ -20,6 +20,7 @@
 
 #include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime {
 namespace test {
@@ -147,6 +148,8 @@ TEST(GemmTacticCacheTest, TsvDecodeKeepsMalformedEscapes) {
 }
 
 TEST(GemmTacticCacheTest, ResolveFilePathSessionConfig) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{gc::kEnvCachePrefix, "/tmp/env_model"}, {gc::kEnvCacheDir, "/tmp/env_dir"}}};
   const auto sig = MakeSignature("NVIDIA H200", 90);
   const std::string suffix = ".matmulnbits_fpa_intb.tsv";
   EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "", sig),
@@ -154,6 +157,39 @@ TEST(GemmTacticCacheTest, ResolveFilePathSessionConfig) {
   EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "/tmp/model", sig), "/tmp/model" + suffix);
   // A prefix wins over a directory.
   EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "/tmp/model", sig), "/tmp/model" + suffix);
+}
+
+TEST(GemmTacticCacheTest, ResolveFilePathEnvironmentDisabled) {
+  const auto sig = MakeSignature();
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{gc::kEnvCachePrefix, std::nullopt}, {gc::kEnvCacheDir, std::nullopt}}};
+  EXPECT_TRUE(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig).empty());
+
+  ScopedEnvironmentVariables empty_env_vars{
+      {{gc::kEnvCachePrefix, ""}, {gc::kEnvCacheDir, ""}}};
+  EXPECT_TRUE(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig).empty());
+}
+
+TEST(GemmTacticCacheTest, ResolveFilePathEnvironmentFallback) {
+  const auto sig = MakeSignature("NVIDIA H200", 90);
+  const std::string suffix = ".matmulnbits_fpa_intb.tsv";
+  const std::string dir = "/tmp/cache \xE4\xB8\xAD";
+  const std::string prefix = "/tmp/model \xE4\xB8\xAD";
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{gc::kEnvCachePrefix, std::nullopt}, {gc::kEnvCacheDir, dir}}};
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig),
+            dir + "/NVIDIA_H200_sm90" + suffix);
+
+  {
+    ScopedEnvironmentVariables prefix_env_var{{{gc::kEnvCachePrefix, prefix}}};
+    EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig), prefix + suffix);
+  }
+
+  {
+    ScopedEnvironmentVariables prefix_only_env_vars{
+        {{gc::kEnvCachePrefix, prefix}, {gc::kEnvCacheDir, std::nullopt}}};
+    EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig), prefix + suffix);
+  }
 }
 
 TEST(GemmTacticCacheTest, ConfigColumnsRoundTripSm80) {
