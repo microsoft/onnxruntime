@@ -4665,6 +4665,51 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsFc3BiasWithoutFc3Weights) {
              nullptr, &execution_providers);
 }
 
+TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsInvalidWeightRank) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddInput<MLFloat16>("input", {1, hidden_size},
+                             std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("router_probs", {1, num_experts},
+                             ToFloat16({1.0f, 0.0f}));
+  tester.AddInput<MLFloat16>(
+      "fc1_experts_weights", {num_experts, inter_size, hidden_size},
+      std::vector<MLFloat16>(num_experts * inter_size * hidden_size), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<MLFloat16>(
+      "fc2_experts_weights", {num_experts, hidden_size * inter_size},
+      std::vector<MLFloat16>(num_experts * hidden_size * inter_size), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {1, hidden_size},
+                              std::vector<MLFloat16>(hidden_size));
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "FC1 and FC2 weights must be rank 3", {},
+             nullptr, &execution_providers);
+}
+
 TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";

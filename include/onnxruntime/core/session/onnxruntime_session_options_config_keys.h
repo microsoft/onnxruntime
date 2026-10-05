@@ -43,9 +43,9 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 
-// Number of FP16 MoE experts to offload to CPU memory across the session.
-// The remaining experts execute from CUDA. The value must be a non-negative integer no greater than the number of
-// experts owned by CUDA MoE nodes. The default is 0, which disables CPU offloading.
+// Number of FP16 MoE experts to execute on CPU across the session. All expert weights remain in CPU memory, while
+// CUDA-resident copies are created for the remaining experts. The value must be a non-negative integer no greater
+// than the number of experts owned by CUDA MoE nodes. The default is 0, which disables CPU offloading.
 static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
     "session.moe_cpu_offload_experts";
 

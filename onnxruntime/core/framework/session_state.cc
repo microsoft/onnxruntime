@@ -1920,24 +1920,63 @@ static bool IsCudaFp16MoeNode(const Node& node) {
          input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 }
 
-static bool IsMoeExpertInput(const Node& node, const NodeArg& input) {
-  if (!IsCudaFp16MoeNode(node)) {
-    return false;
+static Status FindMoeCpuOffloadInitializerUses(
+    const Graph& graph,
+    const std::string& initializer_name,
+    bool graph_owns_initializer,
+    bool& found_moe_expert_use) {
+  if (!graph_owns_initializer &&
+      graph.GetAllInitializedTensors().find(initializer_name) != graph.GetAllInitializedTensors().end()) {
+    return Status::OK();
   }
 
-  const auto& input_defs = node.InputDefs();
-  bool found_expert_input = false;
-  for (size_t input_idx = 0; input_idx < input_defs.size(); ++input_idx) {
-    if (input_defs[input_idx] != &input) {
-      continue;
+  for (const auto& node : graph.Nodes()) {
+    const auto& input_defs = node.InputDefs();
+    for (size_t input_idx = 0; input_idx < input_defs.size(); ++input_idx) {
+      const NodeArg* input = input_defs[input_idx];
+      if (!input->Exists() || input->Name() != initializer_name) {
+        continue;
+      }
+
+      ORT_RETURN_IF_NOT(
+          IsCudaFp16MoeNode(node) && input_idx >= 2 && input_idx < 8,
+          "FP16 MoE CPU offload requires expert initializer ", initializer_name,
+          " to be used only as an expert input of CUDA FP16 MoE nodes.");
+      found_moe_expert_use = true;
     }
-    if (input_idx < 2 || input_idx >= 8) {
-      return false;
+
+    for (const Graph* subgraph : node.GetSubgraphs()) {
+      ORT_RETURN_IF_ERROR(
+          FindMoeCpuOffloadInitializerUses(*subgraph, initializer_name, false, found_moe_expert_use));
     }
-    found_expert_input = true;
   }
 
-  return found_expert_input;
+  for (const NodeArg* output : graph.GetOutputs()) {
+    ORT_RETURN_IF(output->Exists() && output->Name() == initializer_name,
+                  "FP16 MoE CPU offload requires expert initializer ", initializer_name,
+                  " not to be exposed as a graph output.");
+  }
+
+  return Status::OK();
+}
+
+static void CollectMoeCpuOffloadInitializerNames(
+    const Graph& graph,
+    InlinedHashSet<std::string>& initializer_names) {
+  for (const auto& node : graph.Nodes()) {
+    if (IsCudaFp16MoeNode(node)) {
+      const auto& input_defs = node.InputDefs();
+      for (size_t input_idx = 2; input_idx < std::min<size_t>(input_defs.size(), 8); ++input_idx) {
+        if (input_defs[input_idx]->Exists()) {
+          initializer_names.insert(input_defs[input_idx]->Name());
+        }
+      }
+    }
+
+    for (const Graph* subgraph : node.GetSubgraphs()) {
+      CollectMoeCpuOffloadInitializerNames(*subgraph, initializer_names);
+    }
+  }
 }
 
 static Status PlaceMoeCpuOffloadInitializersOnCpu(
@@ -1959,32 +1998,25 @@ static Status PlaceMoeCpuOffloadInitializersOnCpu(
 
   // MoE::PrePack retains these constants on CPU and uploads only the selected resident experts.
   // Override their planned location before SaveInitializedTensors materializes them on CUDA.
-  for (const auto& node : graph.Nodes()) {
-    if (!IsCudaFp16MoeNode(node)) {
+  InlinedHashSet<std::string> initializer_names;
+  CollectMoeCpuOffloadInitializerNames(graph.GetGraph(), initializer_names);
+  for (const auto& initializer_name : initializer_names) {
+    if (!graph.IsConstantInitializer(initializer_name, /*check_outer_scope*/ false)) {
       continue;
     }
 
-    const auto& input_defs = node.InputDefs();
-    for (size_t input_idx = 2; input_idx < std::min<size_t>(input_defs.size(), 8); ++input_idx) {
-      const NodeArg* input = input_defs[input_idx];
-      if (!input->Exists() ||
-          !graph.IsConstantInitializer(input->Name(), /*check_outer_scope*/ false)) {
-        continue;
-      }
-
-      for (const Node* consumer : graph.GetConsumerNodes(input->Name())) {
-        ORT_RETURN_IF_NOT(
-            IsMoeExpertInput(*consumer, *input),
-            "FP16 MoE CPU offload requires expert initializer ", input->Name(),
-            " to be used only as an expert input of CUDA FP16 MoE nodes.");
-      }
-
-      int ort_value_index = -1;
-      ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(input->Name(), ort_value_index));
-      execution_plan.SetLocation(
-          static_cast<size_t>(ort_value_index),
-          OrtDevice{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0});
+    bool found_moe_expert_use = false;
+    ORT_RETURN_IF_ERROR(
+        FindMoeCpuOffloadInitializerUses(graph.GetGraph(), initializer_name, true, found_moe_expert_use));
+    if (!found_moe_expert_use) {
+      continue;
     }
+
+    int ort_value_index = -1;
+    ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(initializer_name, ort_value_index));
+    execution_plan.SetLocation(
+        static_cast<size_t>(ort_value_index),
+        OrtDevice{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0});
   }
 
   return Status::OK();
