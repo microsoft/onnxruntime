@@ -1249,7 +1249,7 @@ TEST(PackedSparseAttentionIndexerTest, CsaFloat16) { RunCsaPackedTest<MLFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, CsaBFloat16) { RunCsaPackedTest<BFloat16>(MakeCsaPackedProblem(), 3.0e-2f); }
 
-TEST(PackedSparseAttentionIndexerTest, CsaAliasedBufferCompaction) {
+TEST(PackedSparseAttentionIndexerTest, CsaLargeRatioCompaction) {
   CsaPackedProblem problem;
   problem.batch_size = 1;
   problem.compress_ratio = 64;
