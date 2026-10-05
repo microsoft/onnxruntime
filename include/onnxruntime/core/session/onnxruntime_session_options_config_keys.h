@@ -465,12 +465,13 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
-/// Maximum total KV sequence length (accumulated past + current tokens) that CUDA
-/// GroupQueryAttention Level-1 workspace estimation should assume. total_sequence_length is a
-/// runtime scalar input that cannot be recovered from graph shapes, so this hands the estimator
-/// the KV-length envelope directly for capacity-aware partitioning. A positive integer sets the
-/// bound; "0" or unset (default) leaves it unspecified and the estimator keeps its shape-derived
-/// behavior.
+/// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
+/// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
+/// forwarded to the Level-1 estimator but is not consumed, so it does not change workspace
+/// estimates or partitioning. Non-windowed estimation remains unavailable.
+/// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
+/// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating
+/// resource accountants. This is not a runtime-enforced input limit or a no-OOM guarantee.
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 

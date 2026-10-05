@@ -542,6 +542,21 @@ Status CreateAccountants(
     const ConfigOptions& config_options,
     const std::filesystem::path& model_path,
     std::optional<ResourceAccountantMap>& acc_map) {
+  WorkspaceEstimatorConfig estimator_config{
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+  if (const auto knob =
+          config_options.GetConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
+      knob.has_value()) {
+    auto& length = estimator_config.cuda_gqa_workspace_max_total_sequence_length;
+    if (!TryParseStringWithClassicLocale(*knob, length) || length < 0) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
+          " must be a nonnegative decimal int64 value, but got: '", *knob, "'");
+    }
+  }
+
   std::optional<ResourceAccountantMap> result;
   // Check if CUDA partitioning settings are provided
   const std::string resource_partitioning_settings = config_options.GetConfigOrDefault(
@@ -586,10 +601,6 @@ Status CreateAccountants(
   }
 
   if (result.has_value()) {
-    WorkspaceEstimatorConfig estimator_config{
-        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM),
-        config_options.GetConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength)};
     for (auto& [ep_type, accountant] : *result) {
       ORT_UNUSED_PARAMETER(ep_type);
       accountant->SetWorkspaceEstimatorConfig(estimator_config);

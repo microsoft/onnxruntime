@@ -3638,19 +3638,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             input_defs.size() > 11 && input_defs[11] != nullptr &&
             input_defs[11]->Exists() &&
             graph.IsConstantInitializer(input_defs[11]->Name(), true);
-        // KV-length envelope for the non-windowed workspace estimate. total_sequence_length is a
-        // runtime scalar that is not recoverable from graph shapes, so the user hands it to the
-        // estimator via ep.cuda.gqa_workspace_max_total_sequence_length. Zero (unset or invalid)
-        // leaves the estimator's shape-derived behavior unchanged.
-        int64_t gqa_workspace_max_total_sequence_length = 0;
-        if (const auto& knob = resource_accountant->GetWorkspaceEstimatorConfig()
-                                   .cuda_gqa_workspace_max_total_sequence_length;
-            knob.has_value()) {
-          int64_t parsed = 0;
-          if (TryParseStringWithClassicLocale(*knob, parsed) && parsed > 0) {
-            gqa_workspace_max_total_sequence_length = parsed;
-          }
-        }
+        // The factory validates the envelope once. It remains reader-only here.
+        const auto gqa_workspace_max_total_sequence_length =
+            resource_accountant->GetWorkspaceEstimatorConfig()
+                .cuda_gqa_workspace_max_total_sequence_length;
         const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
             *GetAttentionKernelOptions(), head_sink_is_constant_initializer,

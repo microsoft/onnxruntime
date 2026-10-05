@@ -8,13 +8,22 @@
 namespace onnxruntime::test {
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
+    const void* node, bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
+  return contrib::cuda::GetGroupQueryAttentionWorkspaceEstimateConfig(
+      *static_cast<const Node*>(node), head_sink_is_constant_initializer,
+      max_total_sequence_length);
+}
+
 std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspaceForTest(
     const void* node, gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop, const AttentionKernelOptions& kernel_options,
-    bool head_sink_is_constant_initializer) {
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
   return contrib::cuda::EstimateGroupQueryAttentionWorkspace(
       *static_cast<const Node*>(node), input_shapes, device_prop, kernel_options,
-      head_sink_is_constant_initializer);
+      head_sink_is_constant_initializer, max_total_sequence_length);
 }
 
 std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspaceForTest(
