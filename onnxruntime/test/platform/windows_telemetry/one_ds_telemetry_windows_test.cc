@@ -10,11 +10,31 @@
 #include "gtest/gtest.h"
 
 #include "core/platform/windows/telemetry_1ds.h"
+#include "core/platform/telemetry_strings.h"
+#include "core/common/logging/logging.h"
+#include "test/common/logging/helpers.h"
 
 namespace onnxruntime::test {
 namespace {
 
 using Microsoft::Applications::Events::EventProperty;
+
+TEST(TelemetryEtwStringTest, BoundsCaptureViewWithoutChangingOtherLoggingSinks) {
+  const std::string large(100000, 'a');
+  auto sink = std::make_unique<MockSink>();
+  EXPECT_CALL(*sink, SendImpl(testing::_, testing::_, testing::Property(&logging::Capture::Message, testing::Eq(large))))
+      .Times(1);
+  logging::LoggingManager manager{std::move(sink), logging::Severity::kWARNING, false,
+                                  logging::LoggingManager::InstanceType::Temporal};
+  auto logger = manager.CreateLogger("TelemetryEtwStringTest");
+  {
+    logging::Capture capture{*logger, logging::Severity::kWARNING, "telemetry",
+                             logging::DataType::SYSTEM, ORT_WHERE};
+    capture.Stream() << large;
+    EXPECT_EQ(capture.MessageView(), large);
+    EXPECT_EQ(telemetry_detail::BoundedTelemetryString(capture.MessageView()).size(), 1024);
+  }
+}
 
 TEST(OneDsTelemetryWindowsTest, BuildsExecutionProviderEvent) {
   LUID adapter_luid{};
@@ -60,6 +80,19 @@ TEST(OneDsTelemetryWindowsTest, ProviderOptionsWithoutPathsArePreserved) {
       "CUDAExecutionProvider", "device_id:0,arena_extend_strategy:kSameAsRequested", false);
   EXPECT_STREQ(event.GetProperties().at("providerOptions").as_string,
                "device_id:0,arena_extend_strategy:kSameAsRequested");
+}
+
+TEST(OneDsTelemetryWindowsTest, BoundsDriverAndProviderPropertiesBeforeConversion) {
+  const std::string large(100000, 'a');
+  const std::wstring wide(100000, L'\u20ac');
+  const auto driver = telemetry_internal::BuildDriverInfoEvent(large, wide, wide);
+  const auto& properties = driver.GetProperties();
+  EXPECT_EQ(std::string_view(properties.at("deviceClass").as_string).size(), 1024);
+  EXPECT_EQ(std::string_view(properties.at("driverNames").as_string).size(), 1023);
+  EXPECT_EQ(std::string_view(properties.at("driverVersions").as_string).size(), 1023);
+  const auto provider = telemetry_internal::BuildProviderOptionsEvent(large, large, false);
+  EXPECT_EQ(std::string_view(provider.GetProperties().at("providerId").as_string).size(), 1024);
+  EXPECT_EQ(std::string_view(provider.GetProperties().at("providerOptions").as_string).size(), 1024);
 }
 
 }  // namespace

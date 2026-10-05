@@ -8,10 +8,9 @@
 #include <string>
 #include <string_view>
 
-namespace onnxruntime {
+#include "core/platform/telemetry_strings.h"
 
-// Maximum transmitted telemetry-string length, applied after scrubbing to bound telemetry payload size.
-inline constexpr size_t kMaxTelemetryStringLength = 40'960;
+namespace onnxruntime {
 
 namespace telemetry_detail {
 
@@ -95,11 +94,7 @@ inline void TruncateUtf8AtBoundary(std::string& s, size_t max_length) {
     return;
   }
 
-  size_t end = max_length;
-  while (end > 0 && (static_cast<unsigned char>(s[end]) & 0xC0) == 0x80) {
-    --end;
-  }
-  s.resize(end);
+  s.resize(TelemetryStringView(std::string_view(s), max_length).size());
 }
 
 }  // namespace telemetry_detail
@@ -110,8 +105,20 @@ inline void TruncateUtf8AtBoundary(std::string& s, size_t max_length) {
 // frequently contain spaces, a per-token classifier is bypassable; instead everything from the first
 // path anchor to the end of the message is replaced with a single "[path]" placeholder, so no portion
 // of the path -- including a space-separated user name -- can survive.
-inline std::string ScrubStringForTelemetry(std::string_view msg) {
-  const size_t anchor = telemetry_detail::FindPathAnchor(msg);
+inline std::string ScrubStringForTelemetry(std::string_view msg, bool input_truncated = false) {
+  const bool truncated = input_truncated || msg.size() > kMaxTelemetryStringLength;
+  msg = telemetry_detail::TelemetryStringView(msg);
+  size_t anchor = telemetry_detail::FindPathAnchor(msg);
+  if (truncated && anchor == std::string_view::npos) {
+    // The remainder may contain the second separator needed to recognize a relative path.
+    anchor = msg.find_first_of("/\\");
+    if (anchor != std::string_view::npos) {
+      while (anchor > 0 && !std::isspace(static_cast<unsigned char>(msg[anchor - 1])) &&
+             msg[anchor - 1] != '"' && msg[anchor - 1] != '\'') {
+        --anchor;
+      }
+    }
+  }
   std::string out;
   if (anchor == std::string_view::npos) {
     out.assign(msg);

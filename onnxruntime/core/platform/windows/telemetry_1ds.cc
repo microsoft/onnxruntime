@@ -35,11 +35,6 @@ using namespace Microsoft::Applications::Events;
 namespace onnxruntime {
 namespace {
 
-std::string GetFileName(std::string_view path) {
-  const size_t separator = path.find_last_of("/\\");
-  return std::string(path.substr(separator == std::string_view::npos ? 0 : separator + 1));
-}
-
 EventProperties NewEvent(std::string name) {
   EventProperties event(std::move(name));
   event.SetLatency(EventLatency_Normal);
@@ -101,9 +96,9 @@ EventProperties BuildDriverInfoEvent(
     std::string_view device_class, std::wstring_view driver_names, std::wstring_view driver_versions) {
   auto event = NewEvent("DriverInfo");
   event.SetProperty("schemaVersion", int64_t{0});
-  event.SetProperty("deviceClass", std::string(device_class));
-  event.SetProperty("driverNames", ToUTF8String(driver_names));
-  event.SetProperty("driverVersions", ToUTF8String(driver_versions));
+  event.SetProperty("deviceClass", telemetry_detail::BoundedTelemetryString(device_class));
+  event.SetProperty("driverNames", ToUTF8String(telemetry_detail::BoundedTelemetryWideString(driver_names)));
+  event.SetProperty("driverVersions", ToUTF8String(telemetry_detail::BoundedTelemetryWideString(driver_versions)));
   return event;
 }
 
@@ -111,7 +106,7 @@ EventProperties BuildProviderOptionsEvent(
     const std::string& provider_id, const std::string& provider_options, bool capture_state) {
   auto event = NewEvent(capture_state ? "ProviderOptions_CaptureState" : "ProviderOptions");
   event.SetProperty("schemaVersion", int64_t{0});
-  event.SetProperty("providerId", provider_id);
+  event.SetProperty("providerId", telemetry_detail::BoundedTelemetryString(provider_id));
   event.SetProperty("providerOptions", ScrubStringForTelemetry(provider_options));
   return event;
 }
@@ -180,7 +175,11 @@ std::string OneDsTelemetry::GetProcessName() {
       return {};
     }
     if (length < path.size()) {
-      std::string process_name = GetFileName(ToUTF8String(std::wstring_view(path.data(), length)));
+      std::wstring_view file_name(path.data(), length);
+      if (const size_t separator = file_name.find_last_of(L"/\\"); separator != std::wstring_view::npos) {
+        file_name.remove_prefix(separator + 1);
+      }
+      std::string process_name = ToUTF8String(telemetry_detail::BoundedTelemetryWideString(file_name));
       constexpr std::string_view executable_extension = ".exe";
       if (process_name.size() > executable_extension.size() &&
           std::equal(executable_extension.begin(), executable_extension.end(),

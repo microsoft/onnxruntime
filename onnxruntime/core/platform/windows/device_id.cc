@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "core/platform/telemetry_guid.h"
+#include "core/platform/telemetry_strings.h"
 
 namespace onnxruntime {
 namespace {
@@ -66,7 +67,7 @@ class ScopedDeviceIdMutex {
 
     DWORD size = 0;
     ::GetTokenInformation(token_handle.Get(), TokenUser, nullptr, 0, &size);
-    if (size == 0) {
+    if (size == 0 || size > telemetry_detail::kMaxTelemetryProbeBytes) {
       return;
     }
 
@@ -205,7 +206,7 @@ bool WriteDeviceIdRegistryValue(const std::string& value) {
 
 std::wstring GetEnvironmentValue(const wchar_t* name) {
   const DWORD required_size = ::GetEnvironmentVariableW(name, nullptr, 0);
-  if (required_size == 0) {
+  if (required_size == 0 || required_size > 32768) {
     return {};
   }
 
@@ -225,7 +226,7 @@ std::filesystem::path GetAbsoluteEnvironmentPath(const wchar_t* name) {
 }
 
 std::string WideToUtf8(std::wstring_view value) {
-  if (value.empty()) {
+  if (value.empty() || value.size() > 32767) {
     return {};
   }
 
@@ -313,6 +314,7 @@ std::string DeviceId::GetStorageDirectory() {
   if (home.empty()) {
     const std::wstring home_drive = GetEnvironmentValue(L"HOMEDRIVE");
     const std::wstring home_path = GetEnvironmentValue(L"HOMEPATH");
+    if (home_drive.size() + home_path.size() > 32767) return {};
     const std::filesystem::path combined_home(home_drive + home_path);
     if (combined_home.is_absolute()) {
       home = combined_home;

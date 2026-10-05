@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/platform/telemetry_guid.h"
+#include "core/platform/telemetry_environment.h"
 
 #include <algorithm>
 #include <cctype>
@@ -279,15 +280,20 @@ std::string DeviceId::GetStorageDirectory() {
 #if !defined(__APPLE__)
   // XDG requires absolute paths. Ignore relative values so telemetry state is never written below
   // the process working directory.
-  if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] == '/') {
-    return std::string(xdg) + "/" + kDeviceIdDir;
+  if (const std::string xdg =
+          telemetry_detail::GetTelemetryEnv("XDG_CACHE_HOME", telemetry_detail::kMaxTelemetryPathBytes, false);
+      !xdg.empty() && xdg[0] == '/') {
+    const std::string path = xdg + "/" + kDeviceIdDir;
+    return path.size() <= telemetry_detail::kMaxTelemetryPathBytes ? path : std::string{};
   }
 #endif
 
   // Prefer an absolute $HOME; fall back to the password database for contexts where HOME is unset
   // or invalid, e.g. system services/daemons under systemd/launchd.
   std::string home;
-  if (const char* h = std::getenv("HOME"); h != nullptr && h[0] == '/') {
+  if (const std::string h =
+          telemetry_detail::GetTelemetryEnv("HOME", telemetry_detail::kMaxTelemetryPathBytes, false);
+      !h.empty() && h[0] == '/') {
     home = h;
   } else {
     // getpwuid() returns a pointer to shared static storage and is not thread-safe; use the
@@ -302,16 +308,20 @@ std::string DeviceId::GetStorageDirectory() {
     std::vector<char> buf(pw_buffer_size);
     if (::getpwuid_r(::getuid(), &pwd, buf.data(), buf.size(), &result) == 0 &&
         result != nullptr && result->pw_dir != nullptr && result->pw_dir[0] == '/') {
-      home = result->pw_dir;
+      const auto value = telemetry_detail::TelemetryCStringView(result->pw_dir, telemetry_detail::kMaxTelemetryPathBytes);
+      if (value.size() <= telemetry_detail::kMaxTelemetryPathBytes) {
+        home = value;
+      }
     }
   }
   if (home.empty()) return "";
 
 #if defined(__APPLE__)
-  return home + "/Library/Application Support/" + kDeviceIdDir;
+  const std::string path = home + "/Library/Application Support/" + kDeviceIdDir;
 #else
-  return home + "/.cache/" + kDeviceIdDir;
+  const std::string path = home + "/.cache/" + kDeviceIdDir;
 #endif
+  return path.size() <= telemetry_detail::kMaxTelemetryPathBytes ? path : std::string{};
 }
 
 std::string DeviceId::EnsureStorageDirectory() {

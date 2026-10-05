@@ -131,18 +131,6 @@ enum class EventPriority {
 // Helper class to build events with common properties
 class EventBuilder {
  private:
-  template <typename Map>
-  static InlinedVector<const typename Map::value_type*> SortedEntries(const Map& map) {
-    InlinedVector<const typename Map::value_type*> entries;
-    entries.reserve(map.size());
-    for (const auto& entry : map) {
-      entries.push_back(&entry);
-    }
-    std::sort(entries.begin(), entries.end(),
-              [](const auto* lhs, const auto* rhs) { return lhs->first < rhs->first; });
-    return entries;
-  }
-
   EventProperties props_;
 
  public:
@@ -161,11 +149,15 @@ class EventBuilder {
     return *this;
   }
 
-  EventBuilder& AddString(const char* key, const std::string& value) {
+  EventBuilder& AddString(const char* key, std::string_view value) {
     if (!value.empty()) {
-      props_.SetProperty(key, value);
+      props_.SetProperty(key, telemetry_detail::BoundedTelemetryString(value));
     }
     return *this;
+  }
+
+  EventBuilder& AddString(const char* key, const char* value) {
+    return AddString(key, telemetry_detail::TelemetryStringView(value));
   }
 
   EventBuilder& AddInt32(const char* key, int32_t value) {
@@ -196,12 +188,7 @@ class EventBuilder {
   // Helper for vector to comma-separated string
   EventBuilder& AddStringList(const char* key, const std::vector<std::string>& vec) {
     if (!vec.empty()) {
-      std::string result;
-      for (size_t i = 0; i < vec.size(); ++i) {
-        if (i > 0) result += ',';
-        result += vec[i];
-      }
-      props_.SetProperty(key, result);
+      props_.SetProperty(key, telemetry_detail::JoinTelemetryStrings(vec));
     }
     return *this;
   }
@@ -209,15 +196,7 @@ class EventBuilder {
   // Helper for map to key=value,key=value format
   EventBuilder& AddIntMap(const char* key, const std::unordered_map<std::string, int>& map) {
     if (!map.empty()) {
-      std::string result;
-      bool first = true;
-      for (const auto* entry : SortedEntries(map)) {
-        const auto& [k, v] = *entry;
-        if (!first) result += ',';
-        result += k + '=' + std::to_string(v);
-        first = false;
-      }
-      props_.SetProperty(key, result);
+      props_.SetProperty(key, telemetry_detail::FormatTelemetryMap(map));
     }
     return *this;
   }
@@ -225,32 +204,14 @@ class EventBuilder {
   // Helper for string map
   EventBuilder& AddStringMap(const char* key, const std::unordered_map<std::string, std::string>& map) {
     if (!map.empty()) {
-      std::string result;
-      bool first = true;
-      for (const auto* entry : SortedEntries(map)) {
-        const auto& [k, v] = *entry;
-        if (!first) result += ',';
-        result += k + '=' + v;
-        first = false;
-      }
-      props_.SetProperty(key, result);
+      props_.SetProperty(key, telemetry_detail::FormatTelemetryMap(map));
     }
     return *this;
   }
 
   // Helper for batch size duration map
   EventBuilder& AddBatchSizeDurations(const std::unordered_map<int64_t, long long>& durations) {
-    std::string result;
-    for (const auto* entry : SortedEntries(durations)) {
-      const auto& [batch_size, duration] = *entry;
-      if (!result.empty()) {
-        result += ", ";
-      }
-      result += std::to_string(batch_size);
-      result += ": ";
-      result += std::to_string(duration);
-    }
-    props_.SetProperty("totalRunDurationPerBatchSize", result);
+    props_.SetProperty("totalRunDurationPerBatchSize", telemetry_detail::FormatTelemetryMap(durations, ", ", ": "));
     return *this;
   }
 
@@ -303,8 +264,9 @@ const std::string& GetAppSessionGuidInternal() {
 
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
 std::string GetCertificateAuthorityBundlePath() {
-  if (const char* ssl_cert_file = std::getenv("SSL_CERT_FILE");
-      ssl_cert_file != nullptr && access(ssl_cert_file, R_OK) == 0) {
+  if (const std::string ssl_cert_file =
+          telemetry_detail::GetTelemetryEnv("SSL_CERT_FILE", telemetry_detail::kMaxTelemetryPathBytes, false);
+      !ssl_cert_file.empty() && access(ssl_cert_file.c_str(), R_OK) == 0) {
     return ssl_cert_file;
   }
 
@@ -813,7 +775,7 @@ void OneDsTelemetry::LogRuntimeError(
 
     // __FILE__ may be an absolute build path that embeds developer/build directory names; emit only
     // the basename so remote telemetry doesn't leak usernames or local paths.
-    std::string_view file_view = file ? std::string_view{file} : std::string_view{};
+    std::string_view file_view = telemetry_detail::TelemetryStringView(file, telemetry_detail::kMaxTelemetryPathBytes);
     if (const size_t slash = file_view.find_last_of("/\\"); slash != std::string_view::npos) {
       file_view.remove_prefix(slash + 1);
     }

@@ -11,6 +11,8 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/telemetry_strings.h"
+#include "core/platform/telemetry_redaction.h"
 #ifdef _WIN32
 #include <Windows.h>
 #include <winmeta.h>
@@ -151,14 +153,10 @@ class ExecutionProviders {
   void LogProviderOptions(const std::string& provider_id, const ProviderOptions& options, bool capture_state) {
     const Env& env = Env::Default();
     // Convert ProviderOptions to string for telemetry logging
-    std::string provider_options_str;
-    for (const auto& config_pair : options) {
-      if (!provider_options_str.empty()) {
-        provider_options_str += ",";
-      }
-      provider_options_str += config_pair.first + ":" + config_pair.second;
-    }
-    env.GetTelemetryProvider().LogProviderOptions(provider_id, provider_options_str, capture_state);
+    bool truncated = false;
+    const auto provider_options_str = telemetry_detail::FormatTelemetryMap(options, ",", ":", &truncated);
+    env.GetTelemetryProvider().LogProviderOptions(
+        provider_id, ScrubStringForTelemetry(provider_options_str, truncated), capture_state);
   }
 
   std::vector<std::shared_ptr<IExecutionProvider>> exec_providers_;

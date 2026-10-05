@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/qnn_telemetry.h"
+#include "core/platform/telemetry_strings.h"
 
 #ifdef _WIN32
 #if !BUILD_QNN_EP_STATIC_LIB
@@ -143,18 +144,19 @@ void QnnTelemetry::LogQnnProfileEvent(uint64_t timestamp,
                                       const std::string& timingSource,
                                       const std::string& eventLevel,
                                       const char* eventIdentifier) const {
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
       TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)),
       TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
       TraceLoggingValue(timestamp, "Timestamp"),
-      TraceLoggingString(message.c_str(), "Message"),
-      TraceLoggingString(qnnScalarValue.c_str(), "Value"),
-      TraceLoggingString(unit.c_str(), "Unit of Measurement"),
-      TraceLoggingString(timingSource.c_str(), "Timing Source"),
-      TraceLoggingString(eventLevel.c_str(), "Event Level"),
-      TraceLoggingString(eventIdentifier, "Event Identifier"));
+      TraceLoggingString(strings.Utf8(message), "Message"),
+      TraceLoggingString(strings.Utf8(qnnScalarValue), "Value"),
+      TraceLoggingString(strings.Utf8(unit), "Unit of Measurement"),
+      TraceLoggingString(strings.Utf8(timingSource), "Timing Source"),
+      TraceLoggingString(strings.Utf8(eventLevel), "Event Level"),
+      TraceLoggingString(strings.Utf8(eventIdentifier), "Event Identifier"));
 }
 
 void QnnTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {

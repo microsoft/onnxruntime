@@ -23,6 +23,7 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry_strings.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sha256.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sha256.cc"

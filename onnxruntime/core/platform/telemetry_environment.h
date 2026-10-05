@@ -9,8 +9,11 @@
 #include <string>
 #include <string_view>
 
+#include "core/platform/telemetry_strings.h"
+
 #ifdef _WIN32
 #include <Windows.h>
+#include "core/common/path_string.h"
 #endif
 
 namespace onnxruntime {
@@ -36,27 +39,29 @@ inline constexpr std::array<const char*, 13> kCiEnvironmentVariableNames = {
 };
 
 // Read an environment variable, returning an empty string when unset.
-inline std::string GetTelemetryEnv(const char* name) {
+inline std::string GetTelemetryEnv(const char* name, size_t max_bytes = kMaxTelemetryStringLength,
+                                   bool truncate = true) {
 #ifdef _WIN32
-  DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
-  while (required_size != 0) {
-    std::string value(required_size, '\0');
-    const DWORD written = ::GetEnvironmentVariableA(name, value.data(), required_size);
-    if (written == 0) {
-      return {};
-    }
-    if (written < required_size) {
-      value.resize(written);
-      return value;
-    }
-
-    // The value grew between calls. Windows returns its new required size, including the null.
-    required_size = written;
+  // Windows bounds individual environment values to 32,767 characters.
+  std::array<wchar_t, 32768> buffer{};
+  const DWORD written = ::GetEnvironmentVariableW(ToWideString(name).c_str(), buffer.data(),
+                                                  static_cast<DWORD>(buffer.size()));
+  if (written == 0 || written >= buffer.size()) {
+    return {};
   }
-  return {};
+  const std::wstring_view value(buffer.data(), written);
+  const auto prefix = TelemetryWideStringView(value, max_bytes);
+  if (!truncate && prefix.size() != value.size()) {
+    return {};
+  }
+  return ToUTF8String(std::wstring(prefix));
 #else
   const char* value = std::getenv(name);
-  return value != nullptr ? std::string(value) : std::string();
+  const auto prefix = TelemetryCStringView(value, max_bytes);
+  if (!truncate && prefix.size() > max_bytes) {
+    return {};
+  }
+  return BoundedTelemetryString(prefix, max_bytes);
 #endif
 }
 
@@ -73,7 +78,7 @@ inline std::string_view TrimAscii(std::string_view s) {
 }
 
 inline std::string ToLowerAscii(std::string_view s) {
-  std::string out(s);
+  std::string out(TelemetryStringView(s, kMaxTelemetryProbeBytes));
   for (char& c : out) {
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   }
@@ -83,6 +88,7 @@ inline std::string ToLowerAscii(std::string_view s) {
 // A CI variable counts as present unless its (trimmed) value is empty or an explicit falsey token, so
 // that a runner exporting e.g. CI=false does not trip detection.
 inline bool IsTruthyCiValue(std::string_view value) {
+  value = TelemetryStringView(value);
   const std::string v = ToLowerAscii(TrimAscii(value));
   return !v.empty() && v != "0" && v != "false" && v != "no" && v != "off";
 }
@@ -119,8 +125,9 @@ inline bool ContainsAscii(std::string_view haystack, std::string_view needle) {
 
 // Classifies only positive evidence. "undetected" deliberately does not claim bare metal.
 inline HostEnvironmentInfo ClassifyHostEnvironment(const HostEnvironmentEvidence& evidence) {
-  const std::string container_name = ToLowerAscii(TrimAscii(evidence.systemd_container));
-  const std::string combined_container_evidence = ToLowerAscii(evidence.cgroup + " " + container_name);
+  const std::string container_name = ToLowerAscii(TrimAscii(TelemetryStringView(evidence.systemd_container)));
+  const std::string combined_container_evidence =
+      ToLowerAscii(TelemetryStringView(evidence.cgroup, kMaxTelemetryProbeBytes)) + " " + container_name;
 
   const char* container_type = "none";
   int container_confidence = 0;

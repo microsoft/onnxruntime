@@ -18,6 +18,7 @@
 #include <cctype>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <string_view>
 #include <vector>
 
@@ -25,8 +26,21 @@ namespace onnxruntime {
 namespace {
 std::string GetFileName(std::string_view path) {
   const size_t separator = path.find_last_of("/\\");
-  return std::string(path.substr(separator == std::string_view::npos ? 0 : separator + 1));
+  return telemetry_detail::BoundedTelemetryString(path.substr(separator == std::string_view::npos ? 0 : separator + 1));
 }
+
+#if defined(__linux__) || defined(__ANDROID__)
+std::string ReadBoundedFile(const char* path, size_t max_bytes = telemetry_detail::kMaxTelemetryProbeBytes) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    return {};
+  }
+  std::string buffer(max_bytes, '\0');
+  input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+  buffer.resize(static_cast<size_t>(input.gcount()));
+  return buffer;
+}
+#endif
 
 }  // namespace
 
@@ -79,6 +93,7 @@ std::string OneDsTelemetry::GetOsDescription() const {
   char version[64] = {};
   size_t len = sizeof(version);
   if (sysctlbyname("kern.osproductversion", version, &len, nullptr, 0) == 0) {
+    version[sizeof(version) - 1] = '\0';
 #if TARGET_OS_IOS
     return std::string("iOS ") + version;
 #else
@@ -90,35 +105,40 @@ std::string OneDsTelemetry::GetOsDescription() const {
 #elif defined(__ANDROID__)
   // Read Android system properties via /system/build.prop
   std::string release, sdk;
-  std::ifstream prop("/system/build.prop");
-  if (prop.is_open()) {
+  std::istringstream prop(ReadBoundedFile("/system/build.prop"));
+  if (prop) {
     std::string line;
     while (std::getline(prop, line)) {
       if (line.rfind("ro.build.version.release=", 0) == 0)
-        release = line.substr(25);
+        release = telemetry_detail::BoundedTelemetryString(std::string_view(line).substr(25));
       else if (line.rfind("ro.build.version.sdk=", 0) == 0)
-        sdk = line.substr(21);
+        sdk = telemetry_detail::BoundedTelemetryString(std::string_view(line).substr(21));
     }
   }
   if (!release.empty()) {
-    std::string result = "Android " + release;
-    if (!sdk.empty()) result += " (API " + sdk + ")";
+    std::string result = "Android ";
+    telemetry_detail::AppendTelemetryString(result, release);
+    if (!sdk.empty()) {
+      telemetry_detail::AppendTelemetryString(result, " (API ");
+      telemetry_detail::AppendTelemetryString(result, sdk);
+      telemetry_detail::AppendTelemetryString(result, ")");
+    }
     return result;
   }
   return "Android";
 
 #elif defined(__linux__)
   // Parse /etc/os-release for PRETTY_NAME (e.g., "Ubuntu 22.04.3 LTS")
-  std::ifstream os_release("/etc/os-release");
-  if (os_release.is_open()) {
+  std::istringstream os_release(ReadBoundedFile("/etc/os-release"));
+  if (os_release) {
     std::string line;
     while (std::getline(os_release, line)) {
       if (line.rfind("PRETTY_NAME=", 0) == 0) {
-        std::string value = line.substr(12);
+        std::string_view value = std::string_view(line).substr(12);
         if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
           value = value.substr(1, value.size() - 2);
         }
-        return value;
+        return telemetry_detail::BoundedTelemetryString(value);
       }
     }
   }
@@ -136,13 +156,14 @@ std::string OneDsTelemetry::GetCpuModel() const {
   char buf[256] = {0};
   size_t size = sizeof(buf);
   if (sysctlbyname("machdep.cpu.brand_string", buf, &size, nullptr, 0) == 0) {
+    buf[sizeof(buf) - 1] = '\0';
     return std::string(buf);
   }
   return "";
 
 #elif defined(__linux__) || defined(__ANDROID__)
   // /proc/cpuinfo exposes the CPU brand as "model name" (x86) or "Hardware" (ARM).
-  std::ifstream cpuinfo("/proc/cpuinfo");
+  std::istringstream cpuinfo(ReadBoundedFile("/proc/cpuinfo"));
   std::string line;
   std::string hardware;
   while (std::getline(cpuinfo, line)) {
@@ -150,18 +171,18 @@ std::string OneDsTelemetry::GetCpuModel() const {
     if (colon == std::string::npos) {
       continue;
     }
-    std::string key = line.substr(0, colon);
+    std::string key = telemetry_detail::BoundedTelemetryString(std::string_view(line).substr(0, colon));
     while (!key.empty() && std::isspace(static_cast<unsigned char>(key.back()))) {
       key.pop_back();
     }
-    std::string value = line.substr(colon + 1);
+    std::string_view value = std::string_view(line).substr(colon + 1);
     const size_t start = value.find_first_not_of(" \t");
-    value = (start == std::string::npos) ? std::string() : value.substr(start);
+    value = (start == std::string::npos) ? std::string_view() : value.substr(start);
     if (key == "model name") {
-      return value;
+      return telemetry_detail::BoundedTelemetryString(value);
     }
     if (hardware.empty() && key == "Hardware") {
-      hardware = value;
+      hardware = telemetry_detail::BoundedTelemetryString(value);
     }
   }
   return hardware;
@@ -183,18 +204,6 @@ std::string OneDsTelemetry::GetDeviceClass() const {
 namespace {
 
 #if defined(__linux__) || defined(__ANDROID__)
-std::string ReadBoundedFile(const char* path) {
-  constexpr size_t kMaxProbeBytes = 16 * 1024;
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    return {};
-  }
-
-  std::array<char, kMaxProbeBytes> buffer{};
-  input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-  return std::string(buffer.data(), static_cast<size_t>(input.gcount()));
-}
-
 bool FileExists(const char* path) {
   std::ifstream input(path);
   return input.good();
@@ -242,6 +251,9 @@ std::string OneDsTelemetry::GetProcessName() {
   uint32_t path_size = 1024;
   std::vector<char> path(path_size);
   if (_NSGetExecutablePath(path.data(), &path_size) != 0) {
+    if (path_size > telemetry_detail::kMaxTelemetryPathBytes) {
+      return {};
+    }
     path.resize(path_size);
     if (_NSGetExecutablePath(path.data(), &path_size) != 0) {
       return {};
@@ -249,7 +261,7 @@ std::string OneDsTelemetry::GetProcessName() {
   }
   return GetFileName(path.data());
 #elif defined(__linux__) || defined(__ANDROID__)
-  std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
+  std::istringstream cmdline(ReadBoundedFile("/proc/self/cmdline", telemetry_detail::kMaxTelemetryPathBytes));
   std::string first_argument;
   if (cmdline && std::getline(cmdline, first_argument, '\0')) {
     return GetFileName(first_argument);

@@ -15,6 +15,15 @@ The build driver enables telemetry by default for supported native platforms. Ta
 
 #### Technical Details
 
+ORT-produced free-form telemetry property values are limited to 1 KiB of UTF-8 data, without splitting
+multi-byte characters. Existing smaller limits are retained. Telemetry-only collections
+are limited to 128 entries, and aggregate string properties also stay within 1 KiB.
+Host-classification file probes use bounded reads (up to 16 KiB); oversized telemetry storage and
+certificate paths are rejected, not truncated. These limits do not alter public model
+metadata or execution-provider configuration used for inference. Android context strings
+also account for the 1DS JNI bridge's modified-UTF-8 encoding; HTTP transport data is not
+treated as a free-form event property.
+
 **Windows apps and components.** The Windows provider used the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
 **Other builds with telemetry (Windows, Linux, macOS, Android, iOS).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.

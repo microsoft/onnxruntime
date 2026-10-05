@@ -45,6 +45,12 @@ TEST(TelemetryContextTest, SetsApplicationNameFromProcessName) {
   EXPECT_EQ(context.Fields().at("AppInfo.Name"), "onnxruntime_test_all");
 }
 
+TEST(TelemetryContextTest, BoundsApplicationNameBeforeStorage) {
+  RecordingSemanticContext context;
+  telemetry_internal::SetApplicationNameFromProcessName(context, std::string(100000, 'a'));
+  EXPECT_EQ(context.Fields().at("AppInfo.Name").size(), kMaxTelemetryStringLength);
+}
+
 TEST(TelemetryContextTest, PreservesSdkApplicationNameFallbackWhenProcessNameIsUnavailable) {
   RecordingSemanticContext context;
   telemetry_internal::SetApplicationNameFromProcessName(context, "");

@@ -9,6 +9,26 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(TelemetryEnvironmentTest, BoundsValuesAndRejectsOversizedPaths) {
+  const std::string large(20000, 'a');
+  ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", large}}};
+  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE").size(), 1024);
+  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", 256).size(), 256);
+  EXPECT_TRUE(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", 4096, false).empty());
+  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", large.size(), false), large);
+}
+
+TEST(TelemetryEnvironmentTest, BoundsEnvironmentValuesAtUtf8Boundary) {
+  const std::string prefix = std::string(1021, 'a') + "\xe2\x82\xac";
+  ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", prefix + "tail"}}};
+#ifdef _WIN32
+  const std::wstring wide = std::wstring(1021, L'a') + L"\u20actail";
+  ASSERT_NE(::SetEnvironmentVariableW(L"ORT_TEST_TELEMETRY_VALUE", wide.c_str()), 0);
+#endif
+  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE"), prefix);
+  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", 1023), std::string(1021, 'a'));
+}
+
 TEST(TelemetryEnvironmentTest, IsTruthyCiValue) {
   using telemetry_detail::IsTruthyCiValue;
   // Any non-empty, non-falsey value counts as present.
