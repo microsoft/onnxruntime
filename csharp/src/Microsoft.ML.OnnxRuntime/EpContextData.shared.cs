@@ -119,6 +119,26 @@ namespace Microsoft.ML.OnnxRuntime
         {
             _allocator = new OrtAllocator(allocator, false);
             _maxDataSize = maxDataSize;
+            try
+            {
+                using var memoryInfo = _allocator.Info;
+                EnsureCpuAccessibleAllocator(memoryInfo);
+            }
+            catch
+            {
+                _allocator.Dispose();
+                throw;
+            }
+        }
+
+        internal static void EnsureCpuAccessibleAllocator(OrtMemoryInfo memoryInfo)
+        {
+            if (memoryInfo.GetDeviceType() != OrtMemoryInfoDeviceType.CPU &&
+                memoryInfo.GetDeviceMemoryType() != OrtDeviceMemoryType.HOST_ACCESSIBLE)
+            {
+                throw new InvalidOperationException(
+                    "EPContext read callbacks require a CPU or host-accessible allocator.");
+            }
         }
 
         /// <summary>

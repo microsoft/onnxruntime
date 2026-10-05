@@ -658,6 +658,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtMemoryInfoGetId = (DOrtMemoryInfoGetId)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetId, typeof(DOrtMemoryInfoGetId));
             OrtMemoryInfoGetMemType = (DOrtMemoryInfoGetMemType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetMemType, typeof(DOrtMemoryInfoGetMemType));
             OrtMemoryInfoGetType = (DOrtMemoryInfoGetType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetType, typeof(DOrtMemoryInfoGetType));
+            OrtMemoryInfoGetDeviceType = (DOrtMemoryInfoGetDeviceType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetDeviceType, typeof(DOrtMemoryInfoGetDeviceType));
             OrtGetAllocatorWithDefaultOptions = (DOrtGetAllocatorWithDefaultOptions)Marshal.GetDelegateForFunctionPointer(api_.GetAllocatorWithDefaultOptions, typeof(DOrtGetAllocatorWithDefaultOptions));
             OrtCreateMemoryInfoV2 = (DOrtCreateMemoryInfoV2)Marshal.GetDelegateForFunctionPointer(api_.CreateMemoryInfo_V2, typeof(DOrtCreateMemoryInfoV2));
             OrtMemoryInfoGetDeviceMemType = (DOrtMemoryInfoGetDeviceMemType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetDeviceMemType, typeof(DOrtMemoryInfoGetDeviceMemType));
@@ -2127,6 +2128,13 @@ namespace Microsoft.ML.OnnxRuntime
             out OrtAllocatorType /*(OrtAllocatorType*)*/ alloc_type);
 
         public static DOrtMemoryInfoGetType OrtMemoryInfoGetType;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtMemoryInfoGetDeviceType(
+            IntPtr /*(const OrtMemoryInfo*)*/ memoryInfo,
+            out OrtMemoryInfoDeviceType deviceType);
+
+        public static DOrtMemoryInfoGetDeviceType OrtMemoryInfoGetDeviceType;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate OrtDeviceMemoryType DOrtMemoryInfoGetDeviceMemType(
