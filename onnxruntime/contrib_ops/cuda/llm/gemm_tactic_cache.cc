@@ -3,6 +3,11 @@
 
 #if USE_FPA_INTB_GEMM
 
+#include "core/providers/shared_library/provider_api.h"
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+#include "core/providers/cuda/plugin/provider_api_shims.h"
+#endif
+
 #include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 
 #include <cuda_runtime_api.h>
@@ -19,7 +24,6 @@
 #include <sstream>
 #include <utility>
 
-#include "core/platform/env_var_utils.h"
 #include "onnxruntime_config.h"
 
 #if defined(_WIN32)
@@ -401,8 +405,8 @@ std::string MatMulNBitsTacticCache::ResolveFilePath(const std::string& config_di
   std::string dir = config_dir;
   // Any session-config value overrides both env vars, so an env prefix cannot shadow a session dir.
   if (prefix.empty() && dir.empty()) {
-    prefix = ParseEnvironmentVariableWithDefault<std::string>(kEnvCachePrefix, "");
-    dir = ParseEnvironmentVariableWithDefault<std::string>(kEnvCacheDir, "");
+    prefix = GetEnvironmentVar(kEnvCachePrefix);
+    dir = GetEnvironmentVar(kEnvCacheDir);
   }
 
   const std::string suffix = std::string(".") + kTableMatMulNBits + ".tsv";
