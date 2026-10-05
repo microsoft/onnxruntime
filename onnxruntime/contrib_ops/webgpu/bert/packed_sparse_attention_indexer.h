@@ -150,6 +150,7 @@ class PackedSparseAttentionIndexerCsaSelectProgram final
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"state_capacity", ProgramUniformVariableDataType::Uint32},
+      {"buffer_capacity", ProgramUniformVariableDataType::Uint32},
       {"capacity", ProgramUniformVariableDataType::Uint32},
       {"index_topk", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32},

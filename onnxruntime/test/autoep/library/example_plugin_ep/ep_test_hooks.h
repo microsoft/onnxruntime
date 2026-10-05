@@ -23,8 +23,10 @@ EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSyncCount();
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetPreallocatedOutputQuery();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputQueryResult();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected();
+EXPORT_SYMBOL void ExampleEpTestHooks_SetCreateDataTransferFailure(int enabled);
 }
 
 // Internal to the library; not exported.
 void RecordPreallocatedOutputQueryResult(int has_preallocated_output);
 void RecordPreallocatedOutputBadIndexRejected(int rejected);
+bool ShouldFailCreateDataTransfer();

@@ -2784,6 +2784,11 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
                          psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
+  if (ctx.hasOutput(psai::kPresentGateBuffer) == is_qsa) {
+    fail_shape_inference("PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
+                         is_qsa ? " (present_gate_buffer) must be omitted when policy_mode is 'qsa'"
+                                : " (present_gate_buffer) is required when policy_mode is 'csa'");
+  }
   updateOutputElemType(ctx, psai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kPresentStateLengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);

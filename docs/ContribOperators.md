@@ -2633,7 +2633,8 @@ This version of the operator has been available since version 1 of the 'com.micr
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
     5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
-       for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+       for `bits` < 8 the values are packed along the last dimension (low-order bits first), and `gather_axis`
+       and `quantize_axis` must differ.
     6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
        (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
        no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.

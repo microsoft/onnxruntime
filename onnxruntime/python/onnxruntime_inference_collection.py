@@ -1555,6 +1555,7 @@ class OrtValue:
         :param data: A tensor object supporting the DLPack protocol, or a raw
             DLPack PyCapsule.
         :return: An OrtValue wrapping the tensor data.
+        :raises TypeError: If the object does not provide a valid DLPack capsule.
         """
         # Detect boolean dtype from the source object before consuming it,
         # because DLPack encodes bool as uint8 and the capsule alone cannot

@@ -575,6 +575,25 @@ TEST(ConvTransposeTest, ConvTranspose_RankPlus2_OutputShape_DynamicRankInput_Run
   }
 }
 
+TEST(ConvTransposeTest, MissingBiasCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("ConvTranspose", 11);
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("W", {1, 1, 1, 1}, {2.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {2.f, 4.f, 6.f, 8.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
