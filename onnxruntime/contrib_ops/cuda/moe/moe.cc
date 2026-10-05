@@ -153,6 +153,25 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
                         fc1_shape[0] > 0 && fc2_shape[0] == fc1_shape[0],
                     "FP16 MoE FC1 and FC2 weights must be rank 3 with matching positive expert dimensions.");
   const size_t num_experts = static_cast<size_t>(fc1_shape[0]);
+  const auto& input_defs = Info().node().InputDefs();
+  const auto* input_shape = input_defs[0]->Shape();
+  ORT_RETURN_IF_NOT(input_shape != nullptr && input_shape->dim_size() > 0 &&
+                        input_shape->dim(input_shape->dim_size() - 1).has_dim_value(),
+                    "FP16 MoE CPU offload requires a static input hidden dimension.");
+  const int64_t hidden_size = input_shape->dim(input_shape->dim_size() - 1).dim_value();
+  const int64_t fc2_elements_per_expert = fc2_shape.SizeFromDimension(1);
+  ORT_RETURN_IF_NOT(hidden_size > 0 && fc2_elements_per_expert % hidden_size == 0,
+                    "FP16 MoE FC2 weights have an invalid shape for hidden size ", hidden_size, ".");
+  const int64_t inter_size = fc2_elements_per_expert / hidden_size;
+  const bool is_fused_swiglu =
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
+      swiglu_fusion_ != 2 && !packed_inputs_[6].present;
+  const int64_t fc1_output_size = is_fused_swiglu ? 2 * inter_size : inter_size;
+  const bool legacy_shape =
+      (hidden_size != inter_size && fc2_shape[1] == inter_size) ||
+      (hidden_size == inter_size && is_fused_swiglu && fc1_shape[1] == hidden_size);
+  const std::array<int64_t, 8> logical_output_sizes{
+      0, 0, fc1_output_size, fc1_output_size, hidden_size, hidden_size, 0, 0};
   for (const auto& [bias_idx, weight_idx] : {std::pair{3, 2}, std::pair{5, 4}}) {
     const auto& bias = packed_inputs_[static_cast<size_t>(bias_idx)];
     const auto& weight = packed_inputs_[static_cast<size_t>(weight_idx)];
@@ -160,7 +179,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
                       (weight.shape.NumDimensions() != 3 ||
                        bias.shape.NumDimensions() != 2 ||
                        bias.shape[0] != static_cast<int64_t>(num_experts) ||
-                       bias.shape[1] != weight.shape[1]),
+                       bias.shape[1] != logical_output_sizes[static_cast<size_t>(bias_idx)]),
                   "FP16 MoE input ", bias_idx, " has an invalid bias shape.");
   }
   cuda_experts_.assign(cuda_experts.begin(), cuda_experts.end());
@@ -199,9 +218,16 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
 
   for (int input_idx : {2, 4}) {
     auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-    const size_t output_size = static_cast<size_t>(packed.shape[1]);
-    const size_t input_size = static_cast<size_t>(packed.shape[2]);
+    const size_t output_size = static_cast<size_t>(
+        logical_output_sizes[static_cast<size_t>(input_idx)]);
+    const size_t input_size = static_cast<size_t>(input_idx == 2 ? hidden_size : inter_size);
     const size_t expert_element_count = output_size * input_size;
+    ORT_RETURN_IF_NOT(
+        packed.shape.SizeFromDimension(1) == static_cast<int64_t>(expert_element_count) &&
+            (legacy_shape ? packed.shape[1] == static_cast<int64_t>(input_size)
+                          : packed.shape[1] == static_cast<int64_t>(output_size)),
+        "FP16 MoE input ", input_idx, " has an invalid ",
+        legacy_shape ? "legacy" : "standard", " expert weight shape.");
     packed.cpu_gemm_data.resize(packed.cpu_data.size());
     for (size_t expert = 0; expert < num_experts; ++expert) {
       const MLFloat16* source = packed.cpu_data.data() + expert * expert_element_count;
