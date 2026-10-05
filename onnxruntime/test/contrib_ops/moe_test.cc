@@ -4713,6 +4713,49 @@ TEST(MoETest, MoECudaFp16ConstantFc3RunsWithoutCpuOffload) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsSparseMixer) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_experts = 8;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  for (int cpu_experts : {1, num_experts}) {
+    SCOPED_TRACE(MakeString("cpu_experts=", cpu_experts));
+    OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 2);
+    tester.AddAttribute<std::string>("activation_type", "relu");
+    tester.AddAttribute<int64_t>("use_sparse_mixer", 1);
+    tester.AddInput<MLFloat16>("input", {1, hidden_size},
+                               std::vector<MLFloat16>(hidden_size, MLFloat16(1.0f)));
+    tester.AddInput<MLFloat16>("router_probs", {1, num_experts},
+                               std::vector<MLFloat16>(num_experts, MLFloat16(0.0f)));
+    tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, hidden_size, hidden_size},
+                               std::vector<MLFloat16>(num_experts * hidden_size * hidden_size), true);
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, hidden_size},
+                               std::vector<MLFloat16>(num_experts * hidden_size * hidden_size), true);
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOutput<MLFloat16>("output", {1, hidden_size}, std::vector<MLFloat16>(hidden_size));
+
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts, MakeString(cpu_experts).c_str()));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options, OpTester::ExpectResult::kExpectFailure,
+               "FP16 MoE CPU offload does not support sparse_mixer.", {}, nullptr, &providers);
+  }
+}
+
 TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsDynamicOptionalExpertInputs) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
