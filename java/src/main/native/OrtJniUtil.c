@@ -217,8 +217,16 @@ static jstring createJavaStringFromStandardUtf8(
   cursor = (const unsigned char*)input;
   size_t outputIndex = 0;
   while (*cursor != '\0') {
-    uint32_t codePoint;
-    (void)decodeUtf8CodePoint(&cursor, &codePoint);
+    uint32_t codePoint = 0;
+    if (!decodeUtf8CodePoint(&cursor, &codePoint)) {
+      if (utf16Length != 0) {
+        free(utf16);
+      }
+      *status = createCallbackStatus(
+          state, ORT_INVALID_ARGUMENT, "EPContext data name is not valid UTF-8");
+      return NULL;
+    }
+
     if (codePoint <= 0xffff) {
       utf16[outputIndex++] = (jchar)codePoint;
     } else {
