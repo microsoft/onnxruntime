@@ -498,9 +498,12 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                            fc3_experts_weights_optional->DataType() == DataTypeImpl::GetType<uint8_t>()),
                       "Integer QMoE weights must use uint8 elements.");
     // MatMulNBits addresses packed rows and blocks as u32 words; partial words would drop weights.
-    const auto has_word_aligned_rows = [&](int64_t k, int64_t n, int64_t bits) {
-      const int64_t packed_block = block_size_ != 0 && block_size_ != k * n ? block_size_ : k;
-      return (k * bits) % 32 == 0 && (packed_block * bits) % 32 == 0;
+    const auto has_word_aligned_rows = [&](int64_t row_elems, int64_t col_elems, int64_t bits) {
+      // A single scale for the matrix makes each row the effective packed block.
+      const int64_t packed_block = block_size_ != 0 && block_size_ != row_elems * col_elems
+                                       ? block_size_
+                                       : row_elems;
+      return (row_elems * bits) % 32 == 0 && (packed_block * bits) % 32 == 0;
     };
     ORT_RETURN_IF_NOT(has_word_aligned_rows(moe_params.hidden_size,
                                             is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size,
