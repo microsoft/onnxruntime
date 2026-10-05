@@ -364,7 +364,9 @@ public class CompileApiTests
             {
                 reentrantCompileSessionOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
                 using var reentrantCompileOptions = new OrtModelCompilationOptions(reentrantCompileSessionOptions);
-                reentrantCompileOptions.SetInputModelFromBuffer(CreateIfMulModelWithoutCapturedInitializers());
+                byte[] reentrantInputModel = CreateIfMulModelWithoutCapturedInitializers();
+                using var reentrantInputModelPin = reentrantInputModel.AsMemory().Pin();
+                reentrantCompileOptions.SetInputModelFromBuffer(reentrantInputModel);
                 reentrantCompileOptions.SetEpContextEmbedMode(false);
                 reentrantCompileOptions.SetEpContextBinaryInformation("./", "reentrant_write.onnx");
                 reentrantCompileOptions.SetEpContextDataWriteDelegate((_, data) =>
