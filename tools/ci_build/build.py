@@ -463,6 +463,13 @@ def generate_build_tree(
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
 
+    # VitisAI and OpenVINO providers currently only support the full protobuf option. Resolve this once: the
+    # vcpkg triplets (which decide how the ONNX port is built) and the CMake configure must agree, otherwise
+    # ONNX and ONNX Runtime end up with different protobuf runtimes in the same binary.
+    use_full_protobuf = bool(
+        args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface
+    )
+
     # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
     cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
     if is_windows():
@@ -568,6 +575,10 @@ def generate_build_tree(
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
+        # The WebGPU EP library kind selects these. Emit them unconditionally, including the OFF case, so that
+        # reusing a build directory cannot leak a previous build's setting in via the CMake cache.
+        "-Donnxruntime_USE_EP_API_ADAPTERS=" + ("ON" if args.use_webgpu in ("shared_lib", "static_plugin") else "OFF"),
+        "-Donnxruntime_WEBGPU_STATIC_PLUGIN=" + ("ON" if args.use_webgpu == "static_plugin" else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         "-DDAWN_USE_AGILITY_SDK=" + ("ON" if args.use_dawn_agility_sdk else "OFF"),
         # Training related flags
@@ -721,7 +732,7 @@ def generate_build_tree(
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,
                 args.enable_address_sanitizer,
-                args.use_full_protobuf,
+                use_full_protobuf,
             )
         elif args.android:
             generate_android_triplets(
@@ -729,20 +740,20 @@ def generate_build_tree(
                 configs,
                 args.android_cpp_shared,
                 args.android_api,
-                args.use_full_protobuf,
+                use_full_protobuf,
             )
         elif is_windows():
-            generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
+            generate_windows_triplets(build_dir, configs, args.msvc_toolset, use_full_protobuf)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf, args.use_telemetry)
+            generate_macos_triplets(build_dir, configs, osx_target, use_full_protobuf, args.use_telemetry)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf, args.use_telemetry)
+            generate_linux_triplets(build_dir, configs, use_full_protobuf, args.use_telemetry)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
@@ -898,8 +909,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # VitisAI and OpenVINO providers currently only support full_protobuf option.
-    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface:
+    if use_full_protobuf:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_cuda and not is_windows():
@@ -985,7 +995,6 @@ def generate_build_tree(
                 )
     elif args.use_webgpu == "shared_lib":
         # Shared library build (plugin EP)
-        cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
 

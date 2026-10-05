@@ -11,11 +11,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-// The subgroup matrix config table, support check, and component-type validation live in the
-// shared core header (core/providers/webgpu/math/subgroup_matrix_config.h) so both this contrib
-// kernel and the core subgroup-matrix MatMul share them.
 using onnxruntime::webgpu::SelectSubgroupMatrixConfig;
-using onnxruntime::webgpu::supported_subgroup_matrix_configs;
+using onnxruntime::webgpu::SubgroupMatrixConfig;
 
 // This program optimizes the layout of input matrix A(MxK) for SubgroupMatrixLoad, so that all elements of each
 // subgroup matrix(mxk) are arranged continuously in memory.
@@ -65,9 +62,8 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                                   const ShaderVariableHelper& b,
                                   const ShaderVariableHelper& scales_b,
                                   const ShaderVariableHelper& output,
-                                  uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
-  const auto& config = supported_subgroup_matrix_configs[config_index];
-  // Use 128x128 tile shader for 16x16x16 config (index 0)
+                                  uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+  // Use the 128x128 tile shader for the 16x16x16 config.
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16_128.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
@@ -87,9 +83,8 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
                                  const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
                                  const ShaderVariableHelper& output,
-                                 uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
+                                 uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
                                  bool has_tail_buffer) {
-  const auto& config = supported_subgroup_matrix_configs[config_index];
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x16x16.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_tail_buffer, has_tail_buffer),
@@ -140,13 +135,12 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
     shader.AddOutput("tail_output", ShaderUsage::None);
   }
 
-  const auto& config = supported_subgroup_matrix_configs[config_index_];
-  if (config.Is(8, 8, 8)) {
+  if (config_.Is(8, 8, 8)) {
     return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
-  } else if (config.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_, has_tail_buffer_);
-  } else if (config.Is(16, 16, 16)) {
-    return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+  } else if (config_.Is(8, 16, 16)) {
+    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_, has_tail_buffer_);
+  } else if (config_.Is(16, 16, 16)) {
+    return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "Unsupported subgroup matrix config dimensions.");
@@ -179,13 +173,12 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       uint32_t K,
                                       uint32_t nbits,
                                       uint32_t zero_blocks_per_col,
-                                      int32_t config_index,
+                                      const SubgroupMatrixConfig& config,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect) {
   // Determine tile sizes first (needed for prepack padding).
-  const auto& config = supported_subgroup_matrix_configs[config_index];
   uint32_t tile_size_a = 32;
   uint32_t tile_size_b = 64;
   uint32_t work_group_size = 128;
@@ -243,7 +236,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   // dispatch below moves the valid rows into `y`. This keeps the no-bias write-out
   // free of any bounds-checked workgroup-scratch store.
   const bool has_tail_buffer = !has_bias && config.Is(8, 16, 16) && (M % tile_size_a != 0);
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer};
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer};
   mul_program.SetWorkgroupSize(work_group_size);
 
   // Pin kernels running on variable-size adapters to the subgroup size they were written for.
@@ -272,7 +265,11 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}, {weight_index}, {m_tiles_per_wg}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
-      .CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer);
+      .CacheHint(nbits,
+                 static_cast<uint32_t>(config.componentType),
+                 static_cast<uint32_t>(config.resultComponentType),
+                 config.M, config.N, config.K, config.subgroupSize,
+                 has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer);
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
@@ -323,9 +320,11 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t K,
                                        uint32_t nbits,
                                        bool is_fp16,
-                                       int32_t& config_index,
+                                       std::optional<SubgroupMatrixConfig>& config,
                                        uint32_t M,
                                        bool has_weight_idx_indirect) {
+  config.reset();
+
   // Subgroup matrix kernels only support 4-bit/8-bit quantization.
   if (nbits != 4 && nbits != 8) {
     return false;
@@ -337,8 +336,8 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
-  // Every fp16 config in supported_subgroup_matrix_configs has resultComponentType == F16, and
-  // the kernels declare subgroup_matrix_result<f16, ...> to match, so the accumulation inside
+  // Every fp16 preference below has resultComponentType == F16, and the kernels declare
+  // subgroup_matrix_result<f16, ...> to match, so the accumulation inside
   // subgroupMatrixMultiplyAccumulate is f16 and there is no variant of this kernel that can
   // honour an f32 accumulator request. Decline the path instead of ignoring the option: the
   // caller then falls through to a kernel that does honour it. Only fp16 outputs are affected;
@@ -357,14 +356,17 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
-  const auto selected_config = SelectSubgroupMatrixConfig(
-      context, is_fp16, {{16, 16, 16, 32}, {8, 16, 16, 32}, {8, 8, 8, 32}});
-  if (!selected_config) {
-    return false;
+  constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+  constexpr auto kF32 = wgpu::SubgroupMatrixComponentType::F32;
+  if (!is_fp16) {
+    config = SelectSubgroupMatrixConfig(context, {{kF32, kF32, 8, 8, 8, 32, false}});
+  } else {
+    config = SelectSubgroupMatrixConfig(
+        context, {{kF16, kF16, 16, 16, 16, 32, true},
+                  {kF16, kF16, 8, 16, 16, 32, true},
+                  {kF16, kF16, 8, 8, 8, 32, false}});
   }
-
-  config_index = *selected_config;
-  return true;
+  return config.has_value();
 }
 }  // namespace webgpu
 }  // namespace contrib
