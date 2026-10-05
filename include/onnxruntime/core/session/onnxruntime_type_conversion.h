@@ -32,7 +32,7 @@ constexpr ONNXTensorElementDataType ToOrtTensorElementDataType(int type) noexcep
     case 26:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
     default:
-      if (type < 0 || type > static_cast<int>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2)) {
+      if (type < 0 || type > static_cast<int>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0)) {
         return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
       }
       return static_cast<ONNXTensorElementDataType>(type);

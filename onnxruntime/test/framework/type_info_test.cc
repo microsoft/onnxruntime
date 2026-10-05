@@ -10,7 +10,6 @@
 #include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
 #include "core/framework/tensor_type_and_shape.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_type_conversion.h"
 
@@ -49,8 +48,6 @@ constexpr bool TensorElementTypeConversionIsConstexpr() {
           ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,
           ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,
           ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,
-          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
-          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
       };
 
   for (size_t index = 0; index < expected_types.size(); ++index) {
@@ -104,8 +101,6 @@ TEST(TypeInfoTests, TensorElementTypeConversions) {
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, ONNX_NAMESPACE::TensorProto_DataType_UINT2},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, ONNX_NAMESPACE::TensorProto_DataType_INT2},
-      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3, ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3},
-      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2},
   };
   static_assert(std::size(types) == ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE);
   for (const auto& [api_type, proto_type] : types) {
@@ -117,13 +112,6 @@ TEST(TypeInfoTests, TensorElementTypeConversions) {
   EXPECT_EQ(utils::ToOrtTensorElementDataType(-1), ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
   EXPECT_EQ(utils::ToOrtTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE),
             ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
-}
-
-TEST(TypeInfoTests, CApiElementTypeFromProtoTypeFloat6) {
-  EXPECT_EQ(utils::CApiElementTypeFromProtoType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3),
-            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3);
-  EXPECT_EQ(utils::CApiElementTypeFromProtoType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2),
-            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2);
 }
 
 TEST(TypeInfoTests, TensorProto) {
