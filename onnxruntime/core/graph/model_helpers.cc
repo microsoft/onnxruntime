@@ -151,6 +151,35 @@ bool CanContainGraph(const BoundAttribute& attribute) {
          attribute.proto->type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS;
 }
 
+bool ContainsReferencedAttribute(const ONNX_NAMESPACE::AttributeProto& root_attribute) {
+  InlinedVector<const ONNX_NAMESPACE::AttributeProto*> pending_attributes{&root_attribute};
+
+  while (!pending_attributes.empty()) {
+    const auto* attribute = pending_attributes.back();
+    pending_attributes.pop_back();
+    if (!attribute->ref_attr_name().empty()) {
+      return true;
+    }
+
+    const auto enqueue_graph_attributes = [&pending_attributes](const ONNX_NAMESPACE::GraphProto& graph) {
+      for (const auto& node : graph.node()) {
+        for (const auto& nested_attribute : node.attribute()) {
+          pending_attributes.push_back(&nested_attribute);
+        }
+      }
+    };
+
+    if (attribute->has_g()) {
+      enqueue_graph_attributes(attribute->g());
+    }
+    for (const auto& graph : attribute->graphs()) {
+      enqueue_graph_attributes(graph);
+    }
+  }
+
+  return false;
+}
+
 void CollectReferencedAttributeNames(
     const ONNX_NAMESPACE::FunctionProto& function_proto,
     InlinedHashSet<std::string_view>& referenced_attribute_names) {
@@ -419,7 +448,9 @@ Status ValidateProtoNodesCallDepth(
       for (const auto& attr : node.attribute()) {
         auto resolved_attr = ResolveAttribute(attr, bindings);
         if (resolved_attr.proto != nullptr) {
-          if (resolved_attr.context == nullptr && CanContainGraph(resolved_attr)) {
+          if (resolved_attr.context == nullptr &&
+              CanContainGraph(resolved_attr) &&
+              ContainsReferencedAttribute(*resolved_attr.proto)) {
             // FunctionProto attributes are specialized in the caller's binding environment.
             resolved_attr.context = context;
           }

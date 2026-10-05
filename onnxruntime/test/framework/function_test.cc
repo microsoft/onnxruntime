@@ -1354,6 +1354,15 @@ static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t
 
     function.add_attribute("tag");
     populate_graph_attribute(*function.add_attribute_proto());
+
+    auto* graph_attribute_user = function.add_node();
+    graph_attribute_user->set_op_type("Identity");
+    graph_attribute_user->add_input("x");
+    graph_attribute_user->add_output("tag_ref_output");
+    auto* graph_attribute_reference = graph_attribute_user->add_attribute();
+    graph_attribute_reference->set_name("graph");
+    graph_attribute_reference->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    graph_attribute_reference->set_ref_attr_name("tag");
   }
 
   for (int i = 0; i + 1 < model_proto.functions_size(); ++i) {
