@@ -2753,23 +2753,13 @@ common::Status InferenceSession::Initialize() {
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;
-      if (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) {
-        int64_t cpu_offload_expert_count = -1;
-        ORT_RETURN_IF_NOT(
-            TryParseStringWithClassicLocale(value, cpu_offload_expert_count) &&
-                cpu_offload_expert_count >= 0,
-            key, " must be a non-negative integer. Received: \"", value, "\".");
-        if (cpu_offload_expert_count == 0) {
-          continue;
-        }
-      }
       if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
-            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
+            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics ||
+            option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) &&
            value != "0") ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
-          option == kOrtSessionOptionsConfigMoeExpertCounterBeta ||
-          option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) {
+          option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
       }
@@ -3722,8 +3712,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  const bool track_moe_experts =
-      session_state_->GetMoeExpertState() != nullptr;
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
@@ -3830,9 +3818,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
 #if !defined(ORT_MINIMAL_BUILD)
-      if (track_moe_experts) {
-        moe_expert_state = session_state_->GetMoeExpertState();
-        ORT_RETURN_IF_NOT(moe_expert_state, "MoE expert state is unavailable.");
+      moe_expert_state = session_state_->GetMoeExpertState();
+      if (moe_expert_state != nullptr) {
         ORT_RETURN_IF_ERROR_SESSIONID_(moe_expert_state->BeginRun(
             run_options.run_tag, collect_moe_statistics ? &run_logger : nullptr));
         moe_run_active = true;
