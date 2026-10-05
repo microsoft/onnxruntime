@@ -93,17 +93,20 @@ class TestPublicExports(unittest.TestCase):
             self.assertNotIn("curl_easy_init", symbols)
             self.assertNotIn("Curl_private", symbols)
             self.assertNotIn("mbedtls_private", symbols)
+            interposition_test = (
+                "import ctypes; "
+                "host = ctypes.CDLL('./libhost.so', mode=ctypes.RTLD_GLOBAL); "
+                "unrestricted = ctypes.CDLL('./libunrestricted.so'); "
+                "runtime = ctypes.CDLL('./libonnxruntime.so'); "
+                "assert host.curl_easy_init() == -1; "
+                "assert unrestricted.OrtGetApiBase() == -1; "
+                "assert runtime.OrtGetApiBase() == 42"
+            )
             subprocess.run(
                 [
                     sys.executable,
                     "-c",
-                    "import ctypes; "
-                    "host = ctypes.CDLL('./libhost.so', mode=ctypes.RTLD_GLOBAL); "
-                    "unrestricted = ctypes.CDLL('./libunrestricted.so'); "
-                    "runtime = ctypes.CDLL('./libonnxruntime.so'); "
-                    "assert host.curl_easy_init() == -1; "
-                    "assert unrestricted.OrtGetApiBase() == -1; "
-                    "assert runtime.OrtGetApiBase() == 42",
+                    interposition_test,
                 ],
                 cwd=root,
                 check=True,

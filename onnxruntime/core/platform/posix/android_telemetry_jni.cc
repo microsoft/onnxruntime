@@ -14,15 +14,15 @@ jstring BoundedTelemetryJniString(JNIEnv* env, jstring value,
   const jsize count = static_cast<jsize>(std::min(static_cast<size_t>(length), max_bytes + 1));
   env->GetStringRegion(value, 0, count, buffer.data());
   if (env->ExceptionCheck()) return nullptr;
-  const auto prefix = onnxruntime::telemetry_detail::TelemetryUnicodeStringView(
-      std::basic_string_view<jchar>(buffer.data(), static_cast<size_t>(count)), max_bytes, true);
-  if (prefix.size() == static_cast<size_t>(length)) return value;
+  const size_t prefix_length = onnxruntime::telemetry_detail::TelemetryUnicodePrefixLength(
+      buffer.data(), static_cast<size_t>(count), max_bytes, true);
+  if (prefix_length == static_cast<size_t>(length)) return value;
   if (!truncate) {
     const jclass exception = env->FindClass("java/lang/IllegalArgumentException");
     if (exception != nullptr) env->ThrowNew(exception, "Telemetry cache path exceeds the byte limit");
     return nullptr;
   }
-  return env->NewString(prefix.data(), static_cast<jsize>(prefix.size()));
+  return env->NewString(buffer.data(), static_cast<jsize>(prefix_length));
 }
 }  // namespace
 

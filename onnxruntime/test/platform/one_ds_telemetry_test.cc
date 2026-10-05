@@ -33,11 +33,44 @@ class OneDsTelemetryTest : public testing::Test {
     std::map<std::string, std::string> strings;
   };
 
+  class RecordingLocalTelemetry : public Telemetry {
+   public:
+    void SetLanguageProjection(uint32_t projection) const override {
+      last_projection = projection;
+    }
+
+    void LogSessionCreation(
+        uint32_t session_id, int64_t, const std::string&, const std::string&, const std::string&,
+        const std::unordered_map<std::string, int>&, const std::string&, const std::string&,
+        const std::string&, const std::string&, const std::string&,
+        const std::unordered_map<std::string, std::string>&, const std::string&,
+        const std::vector<std::string>&, const std::string&, const std::string&,
+        const std::string&, bool, bool capture_state) const override {
+      ++session_count;
+      last_session_id = session_id;
+      last_capture_state = capture_state;
+    }
+
+    void LogProviderOptions(const std::string&, const std::string& options, bool capture_state) const override {
+      ++options_count;
+      last_options = options;
+      last_capture_state = capture_state;
+    }
+
+    mutable size_t session_count = 0;
+    mutable size_t options_count = 0;
+    mutable uint32_t last_session_id = 0;
+    mutable uint32_t last_projection = 0;
+    mutable bool last_capture_state = false;
+    mutable std::string last_options;
+  };
+
   void SetUp() override {
     previous_logger_ = OneDsTelemetry::logger_.exchange(&logger_);
     previous_enabled_ = OneDsTelemetry::enabled_.exchange(true);
     previous_disabled_ = OneDsTelemetry::telemetry_disabled_.exchange(false);
     previous_process_info_logged_ = OneDsTelemetry::process_info_logged_.exchange(false);
+    previous_projection_ = OneDsTelemetry::projection_;
   }
 
   void TearDown() override {
@@ -45,6 +78,7 @@ class OneDsTelemetryTest : public testing::Test {
     OneDsTelemetry::enabled_.store(previous_enabled_);
     OneDsTelemetry::telemetry_disabled_.store(previous_disabled_);
     OneDsTelemetry::process_info_logged_.store(previous_process_info_logged_);
+    OneDsTelemetry::projection_ = previous_projection_;
   }
 
   bool ProcessInfoLogged() const {
@@ -60,8 +94,13 @@ class OneDsTelemetryTest : public testing::Test {
     OneDsTelemetry::logger_.store(nullptr);
   }
 
-  Microsoft::Applications::Events::ILogConfiguration* GetSdkConfiguration() const {
-    return OneDsTelemetry::config_.get();
+  static void ConfigureSdk(Microsoft::Applications::Events::ILogConfiguration& config) {
+    OneDsTelemetry::ConfigureSdk(config);
+  }
+
+  static void LogCaptureState(const OneDsTelemetry& telemetry, uint32_t session_id) {
+    telemetry.LogSessionCreation(
+        session_id, 1, "", "", "", {}, "", "", "", "", "", {}, "", {}, "", "", "", false, true);
   }
 
   OneDsTelemetry telemetry_;
@@ -72,16 +111,86 @@ class OneDsTelemetryTest : public testing::Test {
   bool previous_enabled_ = false;
   bool previous_disabled_ = false;
   bool previous_process_info_logged_ = false;
+  uint32_t previous_projection_ = 0;
 };
 
 #if defined(_WIN32)
 TEST_F(OneDsTelemetryTest, WindowsNetworkDetectorIsDisabled) {
-  auto* config = GetSdkConfiguration();
-  ASSERT_NE(config, nullptr);
-  ASSERT_TRUE(config->HasConfig(Microsoft::Applications::Events::CFG_BOOL_ENABLE_NET_DETECT));
-  EXPECT_FALSE(static_cast<bool>((*config)[Microsoft::Applications::Events::CFG_BOOL_ENABLE_NET_DETECT]));
+  Microsoft::Applications::Events::ILogConfiguration config;
+  ConfigureSdk(config);
+  ASSERT_TRUE(config.HasConfig(Microsoft::Applications::Events::CFG_BOOL_ENABLE_NET_DETECT));
+  EXPECT_FALSE(static_cast<bool>(config[Microsoft::Applications::Events::CFG_BOOL_ENABLE_NET_DETECT]));
 }
 #endif
+
+TEST_F(OneDsTelemetryTest, CaptureStateUsesLocalProviderWithoutUploaderOrSampling) {
+  RecordingLocalTelemetry local;
+  OneDsTelemetry telemetry(local);
+  RemoveLogger();
+  uint32_t session_id = 0;
+  while (session_id < 100000 &&
+         telemetry_internal::ShouldSampleSession(telemetry_internal::GetAppSessionGuid(), session_id)) {
+    ++session_id;
+  }
+  ASSERT_LT(session_id, 100000u);
+  ASSERT_FALSE(telemetry.IsEnabled());
+  LogCaptureState(telemetry, session_id);
+  EXPECT_EQ(local.session_count, size_t{1});
+  EXPECT_EQ(local.last_session_id, session_id);
+  EXPECT_TRUE(local.last_capture_state);
+  EXPECT_EQ(logger_.event_count, size_t{0});
+}
+
+TEST_F(OneDsTelemetryTest, CaptureStateHonorsRuntimeOptOutAndFullSuppression) {
+  RecordingLocalTelemetry local;
+  OneDsTelemetry telemetry(local);
+  telemetry.DisableTelemetryEvents();
+  LogCaptureState(telemetry, 0);
+  EXPECT_EQ(local.session_count, size_t{0});
+  telemetry.EnableTelemetryEvents();
+  LogCaptureState(telemetry, 0);
+  EXPECT_EQ(local.session_count, size_t{1});
+  SuppressProcess();
+  telemetry.EnableTelemetryEvents();
+  LogCaptureState(telemetry, 0);
+  EXPECT_EQ(local.session_count, size_t{1});
+  EXPECT_EQ(logger_.event_count, size_t{0});
+}
+
+TEST_F(OneDsTelemetryTest, LocalProviderReceivesLanguageProjectionWithoutUploader) {
+  RecordingLocalTelemetry local;
+  OneDsTelemetry telemetry(local);
+  RemoveLogger();
+  telemetry.SetLanguageProjection(3);
+  EXPECT_EQ(local.last_projection, 3u);
+  EXPECT_EQ(logger_.event_count, size_t{0});
+}
+
+TEST_F(OneDsTelemetryTest, ProviderOptionsStayLocalAndHonorOptOut) {
+  RecordingLocalTelemetry local;
+  OneDsTelemetry telemetry(local);
+  const std::string options = "custom_credential:private-value";
+  for (bool capture_state : {false, true}) {
+    telemetry.LogProviderOptions("CustomEP", options, capture_state);
+    EXPECT_EQ(local.last_options, options);
+    EXPECT_EQ(local.last_capture_state, capture_state);
+  }
+  EXPECT_EQ(local.options_count, size_t{2});
+  telemetry.DisableTelemetryEvents();
+  telemetry.LogProviderOptions("CustomEP", options, false);
+  EXPECT_EQ(local.options_count, size_t{2});
+  telemetry.EnableTelemetryEvents();
+  SuppressProcess();
+  telemetry.LogProviderOptions("CustomEP", options, true);
+  EXPECT_EQ(local.options_count, size_t{2});
+  EXPECT_EQ(logger_.event_count, size_t{0});
+}
+
+TEST_F(OneDsTelemetryTest, ProviderOptionsWithoutLocalProviderAreNotUploaded) {
+  telemetry_.LogProviderOptions("CustomEP", "custom_credential:private-value", false);
+  telemetry_.LogProviderOptions("CustomEP", "custom_credential:private-value", true);
+  EXPECT_EQ(logger_.event_count, size_t{0});
+}
 
 TEST_F(OneDsTelemetryTest, DisabledProcessInfoIsNotEmittedOrConsumed) {
   ASSERT_TRUE(telemetry_.IsEnabled());

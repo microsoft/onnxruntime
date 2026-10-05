@@ -3,7 +3,6 @@
 
 #include "qnn_profile_serializer.h"
 #include "core/providers/qnn/qnn_telemetry.h"
-#include "core/platform/telemetry_strings.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -94,7 +93,7 @@ std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {
     case QNN_DATATYPE_BOOL_8:
       return scalar.bool8Value ? "true" : "false";
     case QNN_DATATYPE_STRING:
-      return telemetry_detail::BoundedTelemetryString(scalar.stringValue ? scalar.stringValue : "NULL");
+      return scalar.stringValue ? scalar.stringValue : "NULL";
     default:
       return "UNKNOWN";
   }
@@ -130,7 +129,7 @@ Status Serializer::ProcessEvent(const QnnProfile_EventId_t event_id, const std::
              << "BACKEND"
              << ","
              << event_level << ","
-             << telemetry_detail::TelemetryStringView(event_data.identifier ? event_data.identifier : "NULL") << "\n";
+             << (event_data.identifier ? event_data.identifier : "NULL") << "\n";
   }
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   QnnSystemProfile_ProfileEventV1_t* created_event = nullptr;
@@ -178,7 +177,7 @@ Status Serializer::ProcessExtendedEvent(const QnnProfile_EventId_t event_id, con
                << "BACKEND"
                << ","
                << event_level << ","
-               << telemetry_detail::TelemetryStringView(event_data.v1.identifier ? event_data.v1.identifier : "NULL")
+               << (event_data.v1.identifier ? event_data.v1.identifier : "NULL")
                << "\n";
     }
   }

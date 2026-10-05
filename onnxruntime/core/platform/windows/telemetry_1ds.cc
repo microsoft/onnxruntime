@@ -102,15 +102,6 @@ EventProperties BuildDriverInfoEvent(
   return event;
 }
 
-EventProperties BuildProviderOptionsEvent(
-    const std::string& provider_id, const std::string& provider_options, bool capture_state) {
-  auto event = NewEvent(capture_state ? "ProviderOptions_CaptureState" : "ProviderOptions");
-  event.SetProperty("schemaVersion", int64_t{0});
-  event.SetProperty("providerId", telemetry_detail::BoundedTelemetryString(provider_id));
-  event.SetProperty("providerOptions", ScrubStringForTelemetry(provider_options));
-  return event;
-}
-
 }  // namespace telemetry_internal
 
 std::string OneDsTelemetry::GetPlatformInfo() const {
@@ -242,20 +233,6 @@ void OneDsTelemetry::LogDriverInfoEvent(
       return;
     }
     auto event = telemetry_internal::BuildDriverInfoEvent(device_class, driver_names, driver_versions);
-    if (PrepareSampledProcessEvent(event)) {
-      LogEventAsync(std::move(event));
-    }
-  });
-}
-
-void OneDsTelemetry::LogProviderOptions(
-    const std::string& provider_id, const std::string& provider_options_string, bool capture_state) const {
-  RunWindowsTelemetryOperation("LogProviderOptions", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-    WindowsTelemetry::LogLocalProviderOptions(provider_id, provider_options_string, capture_state);
-    auto event = telemetry_internal::BuildProviderOptionsEvent(provider_id, provider_options_string, capture_state);
     if (PrepareSampledProcessEvent(event)) {
       LogEventAsync(std::move(event));
     }

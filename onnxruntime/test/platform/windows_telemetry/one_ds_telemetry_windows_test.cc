@@ -63,26 +63,7 @@ TEST(OneDsTelemetryWindowsTest, BuildsUtf8DriverInfoEvent) {
   EXPECT_STREQ(properties.at("driverVersions").as_string, "Version \xe7\x89\x88\xe6\x9c\xac");
 }
 
-TEST(OneDsTelemetryWindowsTest, ProviderOptionsRedactPathsForNormalAndCaptureStateEvents) {
-  for (bool capture_state : {false, true}) {
-    const auto event = telemetry_internal::BuildProviderOptionsEvent(
-        "CUDAExecutionProvider", "device_id:0,cache_dir:C:\\Users\\First Last\\cache", capture_state);
-    EXPECT_EQ(event.GetName(), capture_state ? "ProviderOptions_CaptureState" : "ProviderOptions");
-    const auto& properties = event.GetProperties();
-    EXPECT_EQ(properties.at("schemaVersion").as_int64, 0);
-    EXPECT_STREQ(properties.at("providerId").as_string, "CUDAExecutionProvider");
-    EXPECT_STREQ(properties.at("providerOptions").as_string, "device_id:0,cache_dir:[path]");
-  }
-}
-
-TEST(OneDsTelemetryWindowsTest, ProviderOptionsWithoutPathsArePreserved) {
-  const auto event = telemetry_internal::BuildProviderOptionsEvent(
-      "CUDAExecutionProvider", "device_id:0,arena_extend_strategy:kSameAsRequested", false);
-  EXPECT_STREQ(event.GetProperties().at("providerOptions").as_string,
-               "device_id:0,arena_extend_strategy:kSameAsRequested");
-}
-
-TEST(OneDsTelemetryWindowsTest, BoundsDriverAndProviderPropertiesBeforeConversion) {
+TEST(OneDsTelemetryWindowsTest, BoundsDriverPropertiesBeforeConversion) {
   const std::string large(100000, 'a');
   const std::wstring wide(100000, L'\u20ac');
   const auto driver = telemetry_internal::BuildDriverInfoEvent(large, wide, wide);
@@ -90,9 +71,6 @@ TEST(OneDsTelemetryWindowsTest, BoundsDriverAndProviderPropertiesBeforeConversio
   EXPECT_EQ(std::string_view(properties.at("deviceClass").as_string).size(), 1024);
   EXPECT_EQ(std::string_view(properties.at("driverNames").as_string).size(), 1023);
   EXPECT_EQ(std::string_view(properties.at("driverVersions").as_string).size(), 1023);
-  const auto provider = telemetry_internal::BuildProviderOptionsEvent(large, large, false);
-  EXPECT_EQ(std::string_view(provider.GetProperties().at("providerId").as_string).size(), 1024);
-  EXPECT_EQ(std::string_view(provider.GetProperties().at("providerOptions").as_string).size(), 1024);
 }
 
 }  // namespace

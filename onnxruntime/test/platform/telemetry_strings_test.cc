@@ -63,6 +63,14 @@ TEST(TelemetryStringsTest, BoundsJniModifiedUtf8AndKeepsSurrogatePairs) {
   EXPECT_EQ(TelemetryUnicodeStringView(std::u16string_view(euro), 1024, true).size(), 1022);
 }
 
+TEST(TelemetryStringsTest, BoundsJniUnsignedShortCodeUnitsWithoutCharTraits) {
+  const std::array<uint16_t, 4> value{0x61, 0xD83D, 0xDE00, 0};
+  EXPECT_EQ(TelemetryUnicodePrefixLength(value.data(), value.size(), 6, true), size_t{1});
+  EXPECT_EQ(TelemetryUnicodePrefixLength(value.data(), value.size(), 7, true), size_t{3});
+  EXPECT_EQ(TelemetryUnicodePrefixLength(value.data(), value.size(), 8, true), size_t{3});
+  EXPECT_EQ(TelemetryUnicodePrefixLength(value.data(), value.size(), 9, true), value.size());
+}
+
 TEST(TelemetryStringsTest, AppendDoesNotExceedBudgetOrSplitCharacters) {
   std::string output(1023, 'a');
   EXPECT_FALSE(AppendTelemetryString(output, "\xc2\xa2"));

@@ -1232,8 +1232,18 @@ if(onnxruntime_USE_1DS_TELEMETRY)
           get_target_property(_ort_apple_inc
             ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
           if(_ort_apple_inc)
+            # Preserve individual build expressions; wrapping a semicolon-separated list nests
+            # expressions that ORT's MSVC /external:I handling cannot flatten.
+            set(_ort_build_includes "")
+            foreach(_ort_include IN LISTS _ort_apple_inc)
+              if(_ort_include MATCHES "^\\$<BUILD_INTERFACE:")
+                list(APPEND _ort_build_includes "${_ort_include}")
+              elseif(NOT _ort_include MATCHES "^\\$<INSTALL_INTERFACE:")
+                list(APPEND _ort_build_includes "$<BUILD_INTERFACE:${_ort_include}>")
+              endif()
+            endforeach()
             set_target_properties(${_ort_apple_dep} PROPERTIES
-              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_apple_inc}>")
+              INTERFACE_INCLUDE_DIRECTORIES "${_ort_build_includes}")
           endif()
         endif()
       endforeach()

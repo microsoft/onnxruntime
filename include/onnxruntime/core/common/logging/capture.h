@@ -99,10 +99,13 @@ class Capture {
     return stream_.str();
   }
 
+#ifdef _WIN32
+  // Only the Windows ETW sink needs this API; Apple libc++ does not provide stream::view().
   // The view remains valid until the capture stream is modified or destroyed.
   std::string_view MessageView() const noexcept {
     return stream_.view();
   }
+#endif
 
   ~Capture();
 

@@ -327,11 +327,4 @@ void OneDsTelemetry::LogDriverInfoEvent(
   (void)driver_versions;
 }
 
-void OneDsTelemetry::LogProviderOptions(
-    const std::string& provider_id, const std::string& provider_options, bool capture_state) const {
-  (void)provider_id;
-  (void)provider_options;
-  (void)capture_state;
-}
-
 }  // namespace onnxruntime

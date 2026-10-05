@@ -41,6 +41,8 @@ class OneDsTelemetryTest;
 class OneDsTelemetry : public Telemetry {
  public:
   OneDsTelemetry();
+  // The local diagnostic provider must outlive this instance.
+  explicit OneDsTelemetry(const Telemetry& local_telemetry);
   ~OneDsTelemetry() override;
 
   void EnableTelemetryEvents() const override;
@@ -141,6 +143,10 @@ class OneDsTelemetry : public Telemetry {
 
  private:
   friend class test::OneDsTelemetryTest;
+
+  static void ConfigureSdk(::Microsoft::Applications::Events::ILogConfiguration& config);
+
+  const Telemetry* local_telemetry_ = nullptr;
 
   // Initialize telemetry SDK logger
   void Initialize();

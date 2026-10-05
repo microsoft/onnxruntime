@@ -355,6 +355,10 @@ OneDsTelemetry::OneDsTelemetry() {
   }
 }
 
+OneDsTelemetry::OneDsTelemetry(const Telemetry& local_telemetry) : OneDsTelemetry() {
+  local_telemetry_ = &local_telemetry;
+}
+
 OneDsTelemetry::~OneDsTelemetry() {
   std::lock_guard<std::mutex> lock(global_mutex_);
 
@@ -401,6 +405,24 @@ void OneDsTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
   }
 }
 
+void OneDsTelemetry::ConfigureSdk(ILogConfiguration& config) {
+  config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
+  config[CFG_BOOL_ENABLE_TRACE] = false;
+  config[CFG_INT_TRACE_LEVEL_MASK] = 0;
+  config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;
+#if defined(_WIN32)
+  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
+  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
+#endif
+#if defined(__APPLE__)
+  // System SQLite is shared with other libraries; let it manage its own lifetime.
+  config["skipSqliteInitAndShutdown"] = "true";
+#endif
+  // Persist pending events without blocking process teardown on uploads.
+  config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
+  config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;
+}
+
 void OneDsTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
@@ -427,19 +449,7 @@ void OneDsTelemetry::Initialize() {
   auto pending_config = std::make_unique<ILogConfiguration>();
   auto& config = *pending_config;
 
-  config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
-  config[CFG_BOOL_ENABLE_TRACE] = false;  // Disable SDK internal logging
-  config[CFG_INT_TRACE_LEVEL_MASK] = 0;
-  config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
-#if defined(_WIN32)
-  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
-  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
-#endif
-#if defined(__APPLE__)
-  // Apple system SQLite is process-global. Multiple libraries may embed 1DS in the same process,
-  // so let SQLite initialize lazily and never let an individual SDK copy shut it down.
-  config["skipSqliteInitAndShutdown"] = "true";
-#endif
+  ConfigureSdk(config);
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
   if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
     config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
@@ -447,10 +457,6 @@ void OneDsTelemetry::Initialize() {
     ORT_TELEMETRY_WARN("No readable CA bundle was found; telemetry HTTPS uploads will be unavailable");
   }
 #endif
-  // Do not block process teardown to upload; persisted events are sent on the next run. 0 keeps
-  // Shutdown non-blocking and avoids adding exit latency to host apps.
-  config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
-
 #if !defined(__ANDROID__)
   // Configure the desktop cache in the same directory as device ID storage. Android's Java
   // HttpClient supplies the app-private cache directory to 1DS.
@@ -462,9 +468,6 @@ void OneDsTelemetry::Initialize() {
     }
   }
 #endif
-
-  // Configure RAM queue for async batching
-  config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;  // 512KB RAM queue
 
   // Create log manager via LogManagerProvider (recommended for production use,
   // per LogManager_Creation_and_Lifecycle_Management.md).
@@ -574,7 +577,12 @@ void OneDsTelemetry::DisableTelemetryEvents() const {
 }
 
 void OneDsTelemetry::SetLanguageProjection(uint32_t projection) const {
-  projection_ = projection;
+  RunTelemetryOperation("SetLanguageProjection", [&]() {
+    projection_ = projection;
+    if (local_telemetry_ != nullptr) {
+      local_telemetry_->SetLanguageProjection(projection);
+    }
+  });
 }
 
 bool OneDsTelemetry::IsEnabled() const {
@@ -671,15 +679,22 @@ void OneDsTelemetry::LogSessionCreation(
     const std::string& ep_versions,
     bool use_fp16, bool captureState) const {
   RunTelemetryOperation("LogSessionCreation", [&]() {
+    if (captureState) {
+      if (local_telemetry_ != nullptr && enabled_.load(std::memory_order_acquire) &&
+          !telemetry_disabled_.load(std::memory_order_acquire)) {
+        local_telemetry_->LogSessionCreation(
+            session_id, ir_version, model_producer_name, model_producer_version, model_domain,
+            domain_to_version_map, model_file_name, model_graph_name, model_weight_type,
+            model_graph_hash, model_weight_hash, model_metadata, loadedFrom, execution_provider_ids,
+            hardware_device_types, hardware_vendor_ids, ep_versions, use_fp16, true);
+      }
+      return;
+    }
     if (!IsEnabled()) {
       return;
     }
 
-    // captureState is currently only triggered on Windows via ETW's EVENT_CONTROL_CODE_CAPTURE_STATE callback
-    // (LogAllSessions). Kept here for future compatibility if a similar mechanism is added for POSIX.
-    std::string event_name = captureState ? "SessionCreation_CaptureState" : "SessionCreation";
-
-    auto builder = EventBuilder(std::move(event_name), EventPriority::CRITICAL);
+    auto builder = EventBuilder("SessionCreation", EventPriority::CRITICAL);
     if (!PrepareSampledEvent(builder, session_id)) {
       return;
     }
@@ -865,6 +880,17 @@ void OneDsTelemetry::LogAutoEpSelection(
 
 void OneDsTelemetry::LogModelLoadStart(uint32_t session_id) const {
   (void)session_id;
+}
+
+void OneDsTelemetry::LogProviderOptions(
+    const std::string& provider_id, const std::string& provider_options, bool capture_state) const {
+  RunTelemetryOperation("LogProviderOptions", [&]() {
+    // Custom provider values are not safe to upload, even after filesystem-path redaction.
+    if (local_telemetry_ != nullptr && enabled_.load(std::memory_order_acquire) &&
+        !telemetry_disabled_.load(std::memory_order_acquire)) {
+      local_telemetry_->LogProviderOptions(provider_id, provider_options, capture_state);
+    }
+  });
 }
 
 void OneDsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,

@@ -62,15 +62,15 @@ inline std::string BoundedTelemetryString(const char* value,
 
 // JNI encodes supplementary characters as two three-byte sequences, and NUL as two bytes.
 template <typename Char>
-std::basic_string_view<Char> TelemetryUnicodeStringView(
-    std::basic_string_view<Char> value, size_t max_bytes = kMaxTelemetryStringLength, bool modified_utf8 = false) {
+size_t TelemetryUnicodePrefixLength(
+    const Char* value, size_t length, size_t max_bytes = kMaxTelemetryStringLength, bool modified_utf8 = false) {
   size_t bytes = 0;
   size_t end = 0;
-  while (end < value.size()) {
+  while (end < length) {
     uint32_t codepoint = static_cast<uint32_t>(value[end]);
     size_t width = 1;
     if constexpr (sizeof(Char) == 2) {
-      if (codepoint >= 0xD800 && codepoint <= 0xDBFF && end + 1 < value.size()) {
+      if (codepoint >= 0xD800 && codepoint <= 0xDBFF && end + 1 < length) {
         const uint32_t low = static_cast<uint32_t>(value[end + 1]);
         if (low >= 0xDC00 && low <= 0xDFFF) {
           codepoint = 0x10000 + ((codepoint - 0xD800) << 10) + low - 0xDC00;
@@ -90,7 +90,13 @@ std::basic_string_view<Char> TelemetryUnicodeStringView(
     bytes += encoded_bytes;
     end += width;
   }
-  return value.substr(0, end);
+  return end;
+}
+
+template <typename Char>
+std::basic_string_view<Char> TelemetryUnicodeStringView(
+    std::basic_string_view<Char> value, size_t max_bytes = kMaxTelemetryStringLength, bool modified_utf8 = false) {
+  return value.substr(0, TelemetryUnicodePrefixLength(value.data(), value.size(), max_bytes, modified_utf8));
 }
 
 inline std::wstring_view TelemetryWideStringView(std::wstring_view value,
