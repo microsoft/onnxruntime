@@ -1438,11 +1438,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       const int routes = rows * narrow<int>(k_);
       const int64_t row_offset = row_tile_plan.RowOffset(tile);
       route_tile(row_offset, rows);
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-      if (routing_snapshot_) {
-        ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(expert_indices, routes, stream));
-      }
-#endif
       IAllocatorUniquePtr<int> counts;
       IAllocatorUniquePtr<int> cumulative_counts;
       IAllocatorUniquePtr<int> blocked_rows;
@@ -1511,11 +1506,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       } else {
         execute(static_cast<__nv_bfloat16*>(nullptr));
       }
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-      if (routing_snapshot_) {
-        ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
-      }
-#endif
     }
     if (enable_kernel_debug_info_) {
       const size_t activation_bytes = SafeInt<size_t>(max_routes) * (fc1_n + inter + hidden) * element_size;
