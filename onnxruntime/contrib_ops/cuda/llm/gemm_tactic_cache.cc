@@ -356,7 +356,7 @@ bool MatMulNBitsKey::operator==(const MatMulNBitsKey& o) const {
          activation_dtype == o.activation_dtype && weight_type == o.weight_type &&
          bits == o.bits && block_size == o.block_size &&
          has_zero_points == o.has_zero_points && zero_point_dtype == o.zero_point_dtype &&
-         gemv_enabled == o.gemv_enabled && packing_sm == o.packing_sm;
+         gemv_enabled == o.gemv_enabled && has_bias == o.has_bias && packing_sm == o.packing_sm;
 }
 
 std::size_t MatMulNBitsKeyHash::operator()(const MatMulNBitsKey& k) const {
@@ -372,6 +372,7 @@ std::size_t MatMulNBitsKeyHash::operator()(const MatMulNBitsKey& k) const {
   mix(std::hash<bool>{}(k.has_zero_points));
   mix(std::hash<std::string>{}(k.zero_point_dtype));
   mix(std::hash<bool>{}(k.gemv_enabled));
+  mix(std::hash<bool>{}(k.has_bias));
   mix(std::hash<int>{}(k.packing_sm));
   return h;
 }
@@ -382,7 +383,7 @@ namespace {
 const std::vector<std::string>& MatMulNBitsColumnNames() {
   static const std::vector<std::string> names = {
       "n_16b", "k", "activation_dtype", "weight_type", "bits",
-      "block_size", "has_zero_points", "zero_point_dtype", "gemv_enabled", "packing_sm",
+      "block_size", "has_zero_points", "zero_point_dtype", "gemv_enabled", "has_bias", "packing_sm",
       "m_bucket", "valid_config", "sm_version", "tile80", "tile90", "tile100", "tile120",
       "split_k_style", "split_k", "stages", "cluster", "mainloop", "epilogue", "tma",
       "enable_cuda_kernel"};
@@ -551,6 +552,9 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
     int gemv = 0;
     ParseInt(field("gemv_enabled"), gemv);
     key.gemv_enabled = gemv != 0;
+    int has_bias = 0;
+    ParseInt(field("has_bias"), has_bias);
+    key.has_bias = has_bias != 0;
 
     int m_bucket = 0;
     if (!ParseInt(field("m_bucket"), m_bucket)) {
@@ -590,7 +594,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
 
 onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
     const std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash>& table) const {
-  // Unique per writer so concurrent writers never share a temp file, even if the file lock failed.
+  // Unique per writer so concurrent writers never share a temp file.
   static std::atomic<uint64_t> tmp_counter{0};
   const std::string tmp_path = file_path_ + ".tmp." + std::to_string(CurrentProcessId()) + "." +
                                std::to_string(tmp_counter.fetch_add(1));
@@ -633,6 +637,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
         row.emplace_back(key.has_zero_points ? "1" : "0");
         row.emplace_back(TsvEncode(key.zero_point_dtype));
         row.emplace_back(key.gemv_enabled ? "1" : "0");
+        row.emplace_back(key.has_bias ? "1" : "0");
         row.emplace_back(std::to_string(key.packing_sm));
         row.emplace_back(std::to_string(m_bucket));
         AppendConfigColumns(row, cfg);
@@ -684,9 +689,12 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
     }
   }
 
+  // Without the lock two writers could load the same snapshot and the last rename would drop the
+  // other's rows, so fail the flush (the rows stay dirty and are retried at the next flush point).
   ScopedFileLock lock(file_path_);
-  // Even if the OS lock could not be acquired, proceed best-effort; atomic rename
-  // still guarantees a consistent file, only lost updates become possible.
+  if (!lock.locked()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to acquire the gemm tactic cache file lock: ", file_path_, ".lock");
+  }
 
   // Reload the current on-disk file so concurrently-written rows are not dropped,
   // then overlay the in-memory table (in-memory wins on conflict).

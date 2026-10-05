@@ -26,7 +26,9 @@
 #include <optional>
 #include <shared_mutex>
 #include <sstream>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "contrib_ops/cuda/llm/nv_infer_datatype.h"
@@ -92,7 +94,9 @@ struct GemmDims {
 // In our case GEMM is uniquely identified by N and K, plus the target SM architecture (so the
 // SM80-compatibility and native SM90 kernels for the same shape do not share profiled configs).
 // The quantization fields keep the process-global profile map aligned with the persistent cache key:
-// kernels with different bits/group size/zero points/GEMV support must not share tactics.
+// kernels with different bits/group size/zero points/bias/GEMV support must not share tactics.
+// device_name separates GPUs that share a packing SM (e.g. RTX 4090 and RTX 4060) so a tactic profiled
+// on one device is never reused, or written to a disk cache, for another.
 class GemmIdCore {
  public:
   int n;
@@ -103,10 +107,13 @@ class GemmIdCore {
   int group_size;
   bool has_zeros;
   bool gemv_enabled;
+  bool has_bias;
+  std::string device_name;
 
   GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, int bits_ = 0, int group_size_ = 0,
-             bool has_zeros_ = false, bool gemv_enabled_ = false)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_), bits(bits_), group_size(group_size_), has_zeros(has_zeros_), gemv_enabled(gemv_enabled_) {
+             bool has_zeros_ = false, bool gemv_enabled_ = false, bool has_bias_ = false,
+             std::string device_name_ = std::string())
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), bits(bits_), group_size(group_size_), has_zeros(has_zeros_), gemv_enabled(gemv_enabled_), has_bias(has_bias_), device_name(std::move(device_name_)) {
   }
 
   GemmIdCore()
@@ -115,7 +122,8 @@ class GemmIdCore {
         bits(0),
         group_size(0),
         has_zeros(false),
-        gemv_enabled(false) {
+        gemv_enabled(false),
+        has_bias(false) {
   }
 
   bool operator==(GemmIdCore const& id) const {
@@ -127,14 +135,16 @@ class GemmIdCore {
     out << " type=" << static_cast<int>(id.dtype);
     out << " sm=" << id.sm;
     out << " bits=" << id.bits << " group_size=" << id.group_size;
-    out << " has_zeros=" << id.has_zeros << " gemv=" << id.gemv_enabled;
+    out << " has_zeros=" << id.has_zeros << " gemv=" << id.gemv_enabled << " has_bias=" << id.has_bias;
+    out << " device=" << id.device_name;
     return out;
   }
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
     return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && bits == id.bits &&
-           group_size == id.group_size && has_zeros == id.has_zeros && gemv_enabled == id.gemv_enabled;
+           group_size == id.group_size && has_zeros == id.has_zeros && gemv_enabled == id.gemv_enabled &&
+           has_bias == id.has_bias && device_name == id.device_name;
   }
 };
 
@@ -145,9 +155,10 @@ struct GemmIdCoreHash {
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
     auto h4 = std::hash<int>{}(id.sm);
-    auto h5 = std::hash<int>{}((id.bits << 16) ^ (id.group_size << 2) ^ (id.has_zeros ? 2 : 0) ^
-                               (id.gemv_enabled ? 1 : 0));
-    return h1 ^ h2 ^ h3 ^ h4 ^ h5;
+    auto h5 = std::hash<int>{}((id.bits << 16) ^ (id.group_size << 3) ^ (id.has_bias ? 4 : 0) ^
+                               (id.has_zeros ? 2 : 0) ^ (id.gemv_enabled ? 1 : 0));
+    auto h6 = std::hash<std::string>{}(id.device_name);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6;
   }
 };
 
