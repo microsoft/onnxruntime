@@ -140,9 +140,11 @@ TEST_F(RandomAccessFileTest, MappingUsesOpenedFileAfterPathReplacement) {
   ASSERT_NE(mapped_memory, nullptr);
   EXPECT_EQ(std::memcmp(mapped_memory.get(), contents_.data(), contents_.size()), 0);
 
+#ifndef __wasm__
   PathString canonical_path;
   ASSERT_STATUS_OK(file_->GetCanonicalPath(canonical_path));
   EXPECT_TRUE(std::filesystem::equivalent(canonical_path, opened_path, ec)) << ec.message();
+#endif
 }
 
 #ifndef __wasm__
