@@ -17,6 +17,7 @@ from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import NotImplemented as OrtNotImplemented
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
 from onnxruntime.quantization.calibrate import entropy
 
@@ -54,6 +55,17 @@ class TestOpMatMul(unittest.TestCase):
                         opset_imports=[helper.make_opsetid("", 21)],
                         ir_version=10,
                     )
+                    options = SessionOptions()
+                    options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+                    options.intra_op_num_threads = 1
+                    if dtype == np.float16:
+                        # Calibration also requires a CPU kernel for the original FP16 MatMul.
+                        try:
+                            InferenceSession(model.SerializeToString(), options, providers=["CPUExecutionProvider"])
+                        except OrtNotImplemented as e:
+                            if "Could not find an implementation for MatMul" in str(e):
+                                self.skipTest("CPU FP16 MatMul kernel is unavailable.")
+                            raise
                     output_path = Path(directory) / "quantized.onnx"
                     quantize_static(
                         model,
@@ -75,9 +87,6 @@ class TestOpMatMul(unittest.TestCase):
                         self.assertTrue(np.isfinite(scale).all())
                         self.assertTrue((scale > 0).all())
 
-                    options = SessionOptions()
-                    options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-                    options.intra_op_num_threads = 1
                     result = InferenceSession(str(output_path), options, providers=["CPUExecutionProvider"]).run(
                         None, inputs
                     )[0]
