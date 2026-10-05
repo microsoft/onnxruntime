@@ -380,6 +380,10 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   if (code != ORT_OK) {
     return NULL;
   }
+  jsize numDimJava;
+  if (!safecast_size_t_to_jsize(jniEnv, numDim, &numDimJava)) {
+    return NULL;
+  }
   int64_t* dimensions = (int64_t*) malloc(sizeof(int64_t)*numDim);
   code = checkOrtStatus(jniEnv, api, api->GetDimensions(info, dimensions, numDim));
   if (code != ORT_OK) {
@@ -389,11 +393,18 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   jint onnxTypeInt = convertFromONNXDataFormat(onnxType);
 
   // Create the long array for the shape.
-  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(numDim));
-  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
+  jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, numDimJava);
+  if (shape == NULL) {
+    free(dimensions);
+    return NULL;
+  }
+  (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, numDimJava, (jlong*)dimensions);
   // Free the dimensions array
   free(dimensions);
   dimensions = NULL;
+  if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+    return NULL;
+  }
 
   // Create the string array for the names.
   const char** dimensionNames = (const char**) malloc(sizeof(char*)*numDim);
@@ -408,10 +419,27 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
     return NULL;
   }
   jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
-  jobjectArray names = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numDim), stringClazz, NULL);
-  for (size_t i = 0; i < numDim; i++) {
+  if (stringClazz == NULL) {
+    free(dimensionNames);
+    return NULL;
+  }
+  jobjectArray names = (*jniEnv)->NewObjectArray(jniEnv, numDimJava, stringClazz, NULL);
+  if (names == NULL) {
+    free(dimensionNames);
+    return NULL;
+  }
+  for (jsize i = 0; i < numDimJava; i++) {
     jobject javaName = (*jniEnv)->NewStringUTF(jniEnv, dimensionNames[i]);
-    (*jniEnv)->SetObjectArrayElement(jniEnv, names, safecast_size_t_to_jsize(i), javaName);
+    if (javaName == NULL) {
+      free(dimensionNames);
+      return NULL;
+    }
+    (*jniEnv)->SetObjectArrayElement(jniEnv, names, i, javaName);
+    (*jniEnv)->DeleteLocalRef(jniEnv, javaName);
+    if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+      free(dimensionNames);
+      return NULL;
+    }
   }
   free(dimensionNames);
 
@@ -638,6 +666,10 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
 }
 
 OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor, size_t length, jobjectArray outputArray) {
+  jsize lengthJava;
+  if (!safecast_size_t_to_jsize(jniEnv, length, &lengthJava)) {
+    return ORT_INVALID_ARGUMENT;
+  }
   size_t bufferSize = 16;
   char * tempBuffer = malloc(bufferSize);
   if (tempBuffer == NULL) {
@@ -671,7 +703,7 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
     // Get the final offset, write to the end of the array.
     code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, offsets+length));
     if (code == ORT_OK) {
-      for (size_t i = 0; i < length; i++) {
+      for (jsize i = 0; i < lengthJava; i++) {
         size_t curSize = (offsets[i+1] - offsets[i]) + 1;
         if (curSize > bufferSize) {
           char* oldTempBuffer = tempBuffer;
@@ -686,7 +718,16 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
         memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
         tempBuffer[curSize-1] = '\0';
         jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,tempBuffer);
-        (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,safecast_size_t_to_jsize(i),tempString);
+        if (tempString == NULL) {
+          code = ORT_FAIL;
+          goto string_tensor_cleanup;
+        }
+        (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,i,tempString);
+        (*jniEnv)->DeleteLocalRef(jniEnv, tempString);
+        if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+          code = ORT_FAIL;
+          goto string_tensor_cleanup;
+        }
       }
     }
   }
@@ -715,10 +756,20 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
     if (code != ORT_OK) {
         return NULL;
     }
+    jsize lengthJava;
+    if (!safecast_size_t_to_jsize(jniEnv, length, &lengthJava)) {
+        return NULL;
+    }
 
     // Create the java array
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
-    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(length), stringClazz, NULL);
+    if (stringClazz == NULL) {
+        return NULL;
+    }
+    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv, lengthJava, stringClazz, NULL);
+    if (outputArray == NULL) {
+        return NULL;
+    }
 
     code = copyStringTensorToArray(jniEnv, api, tensor, length, outputArray);
     if (code != ORT_OK) {
@@ -741,14 +792,23 @@ jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValu
       size_t length = 0;
       code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
       if (code == ORT_OK) {
+        jsize lengthJava;
+        if (!safecast_size_t_to_jsize(jniEnv, length, &lengthJava)) {
+          api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
+          return NULL;
+        }
         // Extract the values
         uint8_t* arr = NULL;
         code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(tensor, (void**)&arr));
         if (code == ORT_OK) {
           // Create the java array and copy to it.
-          outputArray = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(length));
+          outputArray = (*jniEnv)->NewLongArray(jniEnv, lengthJava);
+          if (outputArray == NULL) {
+            api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
+            return NULL;
+          }
           int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-          if (consumed == -1) {
+          if (consumed == -1 || (*jniEnv)->ExceptionCheck(jniEnv)) {
             outputArray = NULL;
           }
         }
@@ -772,14 +832,23 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
         size_t length = 0;
         code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
         if (code == ORT_OK) {
+            jsize lengthJava;
+            if (!safecast_size_t_to_jsize(jniEnv, length, &lengthJava)) {
+                api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
+                return NULL;
+            }
             // Extract the values
             uint8_t* arr = NULL;
             code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(tensor, (void**)&arr));
             if (code == ORT_OK) {
                 // Create the java array and copy to it.
-                outputArray = (*jniEnv)->NewFloatArray(jniEnv, safecast_size_t_to_jsize(length));
+                outputArray = (*jniEnv)->NewFloatArray(jniEnv, lengthJava);
+                if (outputArray == NULL) {
+                    api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
+                    return NULL;
+                }
                 int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-                if (consumed == -1) {
+                if (consumed == -1 || (*jniEnv)->ExceptionCheck(jniEnv)) {
                     outputArray = NULL;
                 }
             }
@@ -803,14 +872,23 @@ jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
         size_t length = 0;
         code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
         if (code == ORT_OK) {
+            jsize lengthJava;
+            if (!safecast_size_t_to_jsize(jniEnv, length, &lengthJava)) {
+                api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
+                return NULL;
+            }
             // Extract the values
             uint8_t* arr = NULL;
             code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(tensor, (void**)&arr));
             if (code == ORT_OK) {
                 // Create the java array and copy to it.
-                outputArray = (*jniEnv)->NewDoubleArray(jniEnv, safecast_size_t_to_jsize(length));
+                outputArray = (*jniEnv)->NewDoubleArray(jniEnv, lengthJava);
+                if (outputArray == NULL) {
+                    api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
+                    return NULL;
+                }
                 int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-                if (consumed == -1) {
+                if (consumed == -1 || (*jniEnv)->ExceptionCheck(jniEnv)) {
                     outputArray = NULL;
                 }
             }
@@ -1056,25 +1134,60 @@ jobjectArray convertOrtKeyValuePairsToArrays(JNIEnv *jniEnv, const OrtApi * api,
     const char* const* values = NULL;
     size_t numKeys = 0;
     api->GetKeyValuePairs(kvp, &keys, &values, &numKeys);
-    jsize jNumKeys = safecast_size_t_to_jsize(numKeys);
+    jsize jNumKeys;
+    if (!safecast_size_t_to_jsize(jniEnv, numKeys, &jNumKeys)) {
+        return NULL;
+    }
 
     // create Java String[]
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
+    if (stringClazz == NULL) {
+        return NULL;
+    }
     jobjectArray keyArray = (*jniEnv)->NewObjectArray(jniEnv, jNumKeys, stringClazz, NULL);
+    if (keyArray == NULL) {
+        return NULL;
+    }
     jobjectArray valueArray = (*jniEnv)->NewObjectArray(jniEnv, jNumKeys, stringClazz, NULL);
+    if (valueArray == NULL) {
+        return NULL;
+    }
 
     // populate Java arrays
     for (jsize i = 0; i < jNumKeys; i++) {
         jstring key = (*jniEnv)->NewStringUTF(jniEnv, keys[i]);
+        if (key == NULL) {
+            return NULL;
+        }
         (*jniEnv)->SetObjectArrayElement(jniEnv, keyArray, i, key);
+        (*jniEnv)->DeleteLocalRef(jniEnv, key);
+        if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+            return NULL;
+        }
         jstring value = (*jniEnv)->NewStringUTF(jniEnv, values[i]);
+        if (value == NULL) {
+            return NULL;
+        }
         (*jniEnv)->SetObjectArrayElement(jniEnv, valueArray, i, value);
+        (*jniEnv)->DeleteLocalRef(jniEnv, value);
+        if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+            return NULL;
+        }
     }
 
     // create Java String[][]
     jclass stringArrClazz = (*jniEnv)->GetObjectClass(jniEnv, keyArray);
+    if (stringArrClazz == NULL) {
+        return NULL;
+    }
     jobjectArray pair = (*jniEnv)->NewObjectArray(jniEnv, 2, stringArrClazz, 0);
+    if (pair == NULL) {
+        return NULL;
+    }
     (*jniEnv)->SetObjectArrayElement(jniEnv, pair, 0, keyArray);
+    if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+        return NULL;
+    }
     (*jniEnv)->SetObjectArrayElement(jniEnv, pair, 1, valueArray);
 
     return pair;
@@ -1082,13 +1195,32 @@ jobjectArray convertOrtKeyValuePairsToArrays(JNIEnv *jniEnv, const OrtApi * api,
 
 jint throwOrtException(JNIEnv *jniEnv, int messageId, const char *message) {
   jstring messageStr = (*jniEnv)->NewStringUTF(jniEnv, message);
+  if (messageStr == NULL) {
+    return JNI_ERR;
+  }
 
   static const char *className = "ai/onnxruntime/OrtException";
   jclass exClazz = (*jniEnv)->FindClass(jniEnv, className);
+  if (exClazz == NULL) {
+    (*jniEnv)->DeleteLocalRef(jniEnv, messageStr);
+    return JNI_ERR;
+  }
   jmethodID exConstructor = (*jniEnv)->GetMethodID(jniEnv, exClazz, "<init>", "(ILjava/lang/String;)V");
+  if (exConstructor == NULL) {
+    (*jniEnv)->DeleteLocalRef(jniEnv, messageStr);
+    (*jniEnv)->DeleteLocalRef(jniEnv, exClazz);
+    return JNI_ERR;
+  }
   jobject javaException = (*jniEnv)->NewObject(jniEnv, exClazz, exConstructor, messageId, messageStr);
+  (*jniEnv)->DeleteLocalRef(jniEnv, messageStr);
+  (*jniEnv)->DeleteLocalRef(jniEnv, exClazz);
+  if (javaException == NULL) {
+    return JNI_ERR;
+  }
 
-  return (*jniEnv)->Throw(jniEnv, javaException);
+  jint result = (*jniEnv)->Throw(jniEnv, javaException);
+  (*jniEnv)->DeleteLocalRef(jniEnv, javaException);
+  return result;
 }
 
 jint convertErrorCode(OrtErrorCode code) {
@@ -1150,26 +1282,20 @@ OrtErrorCode checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * stat
     return errCode;
 }
 
-jsize safecast_size_t_to_jsize(size_t v) {
-#ifndef NDEBUG
-  jsize result = (jsize)v;
-  if (v != (size_t)result) {
-    abort();
+jboolean safecast_size_t_to_jsize(JNIEnv *jniEnv, size_t v, jsize *result) {
+  if (v > INT32_MAX) {
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Array length exceeds the Java limit of 2147483647 elements");
+    return JNI_FALSE;
   }
-  return result;
-#else
-  return (jsize)v;
-#endif
+  *result = (jsize)v;
+  return JNI_TRUE;
 }
 
-jsize safecast_int64_to_jsize(int64_t v) {
-#ifndef NDEBUG
-  jsize result = (jsize)v;
-  if (v != (int64_t)result) {
-    abort();
+jboolean safecast_int64_to_jsize(JNIEnv *jniEnv, int64_t v, jsize *result) {
+  if (v < 0 || v > INT32_MAX) {
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Array length must be between 0 and 2147483647 elements");
+    return JNI_FALSE;
   }
-  return result;
-#else
-  return (jsize)v;
-#endif
+  *result = (jsize)v;
+  return JNI_TRUE;
 }

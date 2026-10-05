@@ -2507,6 +2507,25 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
       block()
         message(STATUS "Enabling Java tests")
 
+        if(NOT ANDROID AND NOT CMAKE_CROSSCOMPILING)
+          onnxruntime_add_executable(onnxruntime_java_jni_test
+              ${JAVA_ROOT}/src/test/native/ort_jni_util_test.cc
+              ${JAVA_ROOT}/src/main/native/OrtJniUtil.c)
+          set_property(TARGET onnxruntime_java_jni_test PROPERTY C_STANDARD 11)
+          target_include_directories(onnxruntime_java_jni_test PRIVATE
+              ${REPO_ROOT}/include ${JAVA_ROOT}/src/main/native ${JNI_INCLUDE_DIRS}
+              ${CMAKE_CURRENT_BINARY_DIR})
+          target_link_libraries(onnxruntime_java_jni_test PRIVATE GTest::gtest JNI::JVM)
+          add_dependencies(onnxruntime_java_jni_test onnxruntime4j)
+          add_test(NAME onnxruntime_java_jni_test COMMAND onnxruntime_java_jni_test
+              ${JAVA_ROOT}/build/classes/java/main)
+          if(WIN32)
+            get_filename_component(JAVA_BIN_DIR "${Java_JAVA_EXECUTABLE}" DIRECTORY)
+            set_tests_properties(onnxruntime_java_jni_test PROPERTIES ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${JAVA_BIN_DIR}/server;PATH=path_list_prepend:${JAVA_BIN_DIR}")
+          endif()
+        endif()
+
         # native-test is added to resources so custom_op_lib can be loaded
         # and we want to copy it there
         set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)

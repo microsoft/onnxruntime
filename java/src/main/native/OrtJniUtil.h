@@ -90,9 +90,10 @@ jint convertErrorCode(OrtErrorCode code);
 
 OrtErrorCode checkOrtStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
 
-jsize safecast_size_t_to_jsize(size_t v);
+/* On failure, throws OrtException and leaves result unchanged. */
+jboolean safecast_size_t_to_jsize(JNIEnv *jniEnv, size_t v, jsize *result);
 
-jsize safecast_int64_to_jsize(int64_t v);
+jboolean safecast_int64_to_jsize(JNIEnv *jniEnv, int64_t v, jsize *result);
 
 #ifdef _WIN32
 #include <Intsafe.h>

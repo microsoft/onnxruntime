@@ -132,13 +132,16 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames(JNIE
     return NULL;
   }
 
-  int32_t numInputsInt = (int32_t) numInputs;
-  if (numInputs != (size_t) numInputsInt) {
-    throwOrtException(jniEnv, 1, "Too many inputs, expected less than 2^31");
+  jsize numInputsInt;
+  if (!safecast_size_t_to_jsize(jniEnv, numInputs, &numInputsInt)) {
+    return NULL;
   }
 
   // Allocate the return array
   jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numInputsInt, stringClazz, NULL);
+  if (array == NULL) {
+    return NULL;
+  }
   for (int32_t i = 0; i < numInputsInt; i++) {
     // Read out the input name and convert it to a java.lang.String
     char* inputName = NULL;
@@ -193,13 +196,16 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames(JNI
     return NULL;
   }
 
-  int32_t numOutputsInt = (int32_t) numOutputs;
-  if (numOutputs != (size_t) numOutputsInt) {
-    throwOrtException(jniEnv, 1, "Too many outputs, expected less than 2^31");
+  jsize numOutputsInt;
+  if (!safecast_size_t_to_jsize(jniEnv, numOutputs, &numOutputsInt)) {
+    return NULL;
   }
 
   // Allocate the return array
   jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numOutputsInt, stringClazz, NULL);
+  if (array == NULL) {
+    return NULL;
+  }
   for (int32_t i = 0; i < numOutputsInt; i++) {
     // Read out the output name and convert it to a java.lang.String
     char* outputName = NULL;
@@ -244,8 +250,15 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputInfo(JNIEn
   }
 
   // Allocate the return array
-  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numInputs), nodeInfoClazz, NULL);
-  for (size_t i = 0; i < numInputs; i++) {
+  jsize numInputsJava;
+  if (!safecast_size_t_to_jsize(jniEnv, numInputs, &numInputsJava)) {
+    return NULL;
+  }
+  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numInputsJava, nodeInfoClazz, NULL);
+  if (array == NULL) {
+    return NULL;
+  }
+  for (jsize i = 0; i < numInputsJava; i++) {
     // Read out the input name and convert it to a java.lang.String
     char* inputName = NULL;
     code = checkOrtStatus(jniEnv, api, api->SessionGetInputName(session, i, allocator, &inputName));
@@ -272,7 +285,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputInfo(JNIEn
 
     // Create a NodeInfo and assign into the array
     jobject nodeInfo = (*jniEnv)->NewObject(jniEnv, nodeInfoClazz, nodeInfoConstructor, name, valueInfoJava);
-    (*jniEnv)->SetObjectArrayElement(jniEnv, array, safecast_size_t_to_jsize(i), nodeInfo);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, nodeInfo);
   }
 
   return array;
@@ -302,8 +315,15 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputInfo(JNIE
   }
 
   // Allocate the return array
-  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numOutputs), nodeInfoClazz, NULL);
-  for (uint32_t i = 0; i < numOutputs; i++) {
+  jsize numOutputsJava;
+  if (!safecast_size_t_to_jsize(jniEnv, numOutputs, &numOutputsJava)) {
+    return NULL;
+  }
+  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numOutputsJava, nodeInfoClazz, NULL);
+  if (array == NULL) {
+    return NULL;
+  }
+  for (jsize i = 0; i < numOutputsJava; i++) {
     // Read out the output name and convert it to a java.lang.String
     char* outputName = NULL;
     code = checkOrtStatus(jniEnv, api, api->SessionGetOutputName(session, i, allocator, &outputName));
@@ -360,6 +380,13 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEn
   OrtRunOptions* runOptions = (OrtRunOptions*)runOptionsHandle;
 
   jbooleanArray outputArray = NULL;
+  jboolean* boolArr = NULL;
+  jsize numInputsJava;
+  jsize numOutputsJava;
+  if (!safecast_int64_to_jsize(jniEnv, numInputs, &numInputsJava) ||
+      !safecast_int64_to_jsize(jniEnv, numOutputs, &numOutputsJava)) {
+    return NULL;
+  }
 
   // Create the buffers for the Java input & output strings, and the input pointers
   const char** inputNames = allocarray(numInputs, sizeof(char*));
@@ -417,6 +444,16 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEn
   // Release the java array copy of pointers to the outputs.
   (*jniEnv)->ReleaseLongArrayElements(jniEnv, outputHandlesArr, outputHandleLongs, JNI_ABORT);
 
+  outputArray = (*jniEnv)->NewBooleanArray(jniEnv, numOutputsJava);
+  if (outputArray == NULL) {
+    goto cleanup_output_values;
+  }
+  boolArr = (*jniEnv)->GetBooleanArrayElements(jniEnv, outputArray, NULL);
+  if (boolArr == NULL) {
+    outputArray = NULL;
+    goto cleanup_output_values;
+  }
+
   // Actually score the inputs.
   // ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess, _In_ OrtRunOptions* run_options,
   // _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
@@ -428,11 +465,6 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEn
     goto cleanup_output_values;
   }
 
-  // Create the output boolean array denoting if ORT owns the memory for each output.
-  // Java boolean arrays are initialized to false.
-  outputArray = (*jniEnv)->NewBooleanArray(jniEnv, safecast_int64_to_jsize(numOutputs));
-  jboolean* boolArr = (*jniEnv)->GetBooleanArrayElements(jniEnv, outputArray, NULL);
-
   // Convert the output tensors into ONNXValues
   for (int i = 0; i < numOutputs; i++) {
     if (outputValues[i] != NULL && (*jniEnv)->GetObjectArrayElement(jniEnv, outputValuesArr, i) == NULL) {
@@ -442,15 +474,18 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEn
       }
       boolArr[i] = 1;
       (*jniEnv)->SetObjectArrayElement(jniEnv, outputValuesArr, i, onnxValue);
+      if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+        break;
+      }
     }
   }
-
-  // Write the output array back to Java.
-  (*jniEnv)->ReleaseBooleanArrayElements(jniEnv, outputArray, boolArr, 0);
 
   // Note these gotos are in a specific order so they mirror the allocation pattern above.
   // They must be changed if the allocation code is rearranged.
 cleanup_output_values:
+  if (boolArr != NULL) {
+    (*jniEnv)->ReleaseBooleanArrayElements(jniEnv, outputArray, boolArr, 0);
+  }
   free(outputValues);
 
   // Release the Java output strings
@@ -607,7 +642,18 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata(JNIEn
   }
   jobjectArray customArray = NULL;
   if (numKeys > 0) {
-    customArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_int64_to_jsize(numKeys * 2), stringClazz, NULL);
+    jsize numEntriesJava;
+    if (numKeys > INT32_MAX / 2) {
+      throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Too many custom metadata entries");
+      goto release_keys;
+    }
+    if (!safecast_int64_to_jsize(jniEnv, numKeys * 2, &numEntriesJava)) {
+      goto release_keys;
+    }
+    customArray = (*jniEnv)->NewObjectArray(jniEnv, numEntriesJava, stringClazz, NULL);
+    if (customArray == NULL) {
+      goto release_keys;
+    }
 
     // Iterate key array to extract the values
     for (int64_t i = 0; i < numKeys; i++) {
@@ -632,10 +678,19 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata(JNIEn
       }
 
       // Write the key and value into the array
-      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, safecast_int64_to_jsize(i * 2), keyJava);
-      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, safecast_int64_to_jsize((i * 2) + 1), valueJava);
+      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, (jsize)(i * 2), keyJava);
+      if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+        customArray = NULL;
+        break;
+      }
+      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, (jsize)((i * 2) + 1), valueJava);
+      if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+        customArray = NULL;
+        break;
+      }
     }
 
+release_keys:
     // Release key array
     for (int64_t i = 0; i < numKeys; i++) {
       code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, keys[i]));
