@@ -36,6 +36,7 @@
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
 
@@ -78,6 +79,11 @@ bool UseRaggedQsaPrefill(const PackedSparseAttentionIndexerParams& params) {
 
 int GetHierarchicalTileCount(const PackedSparseAttentionIndexerParams& params) {
   return (params.state_capacity + kHierarchicalTileBlocks - 1) / kHierarchicalTileBlocks;
+}
+
+bool UseQsaMergePaddingShortcut() {
+  static const bool enabled = ParseEnvironmentVariableWithDefault<bool>("ORT_PACKED_QSA_MERGE_PADDING_SHORTCUT", false);
+  return enabled;
 }
 
 template <typename T>
@@ -546,6 +552,7 @@ __device__ __forceinline__ uint64_t QsaMergeRank(const uint64_t* left, int left_
   return topk::kPaddingSortKey;
 }
 
+template <bool SkipPadding>
 __global__ void QsaMergeTileTopKKernel(const uint64_t* input_keys, uint64_t* output_keys,
                                        int key_stride, int list_width, int rows) {
   const int pairs_per_row = (key_stride + 2 * list_width - 1) / (2 * list_width);
@@ -559,6 +566,19 @@ __global__ void QsaMergeTileTopKKernel(const uint64_t* input_keys, uint64_t* out
     const int right_count = min(min(list_width, kBoundedTopKMax), max(0, key_stride - right_start));
     const int output_count = min(left_count + right_count, kBoundedTopKMax);
     const int64_t row_base = row * key_stride;
+    if constexpr (SkipPadding) {
+      const bool left_empty = left_count == 0 || input_keys[row_base + left_start] == topk::kPaddingSortKey;
+      const bool right_empty = right_count == 0 || input_keys[row_base + right_start] == topk::kPaddingSortKey;
+      if (left_empty || right_empty) {
+        const int source_start = left_empty ? right_start : left_start;
+        const int source_count = left_empty ? right_count : left_count;
+        for (int rank = threadIdx.x; rank < output_count; rank += blockDim.x) {
+          output_keys[row_base + left_start + rank] =
+              rank < source_count ? input_keys[row_base + source_start + rank] : topk::kPaddingSortKey;
+        }
+        continue;
+      }
+    }
     for (int rank = threadIdx.x; rank < output_count; rank += blockDim.x) {
       output_keys[row_base + left_start + rank] =
           QsaMergeRank(input_keys + row_base + left_start, left_count,
@@ -1276,11 +1296,12 @@ Status LaunchQsaPackedSparseAttentionIndexer(
                                 kHierarchicalScoreThreads, 0, stream>>>(
         present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
         present_state_lengths, overflow_flags, merge_input, tile_count, params);
+    const auto merge_kernel = UseQsaMergePaddingShortcut() ? QsaMergeTileTopKKernel<true> : QsaMergeTileTopKKernel<false>;
     for (int list_width = kHierarchicalTileBlocks; list_width < key_stride; list_width *= 2) {
       const int pairs_per_row = (key_stride + 2 * list_width - 1) / (2 * list_width);
       const int64_t merge_work = static_cast<int64_t>(params.total_tokens) * pairs_per_row;
-      QsaMergeTileTopKKernel<<<static_cast<int>(std::min<int64_t>(merge_work, kSaiMaxGridDimX)),
-                               kHierarchicalMergeThreads, 0, stream>>>(
+      merge_kernel<<<static_cast<int>(std::min<int64_t>(merge_work, kSaiMaxGridDimX)),
+                     kHierarchicalMergeThreads, 0, stream>>>(
           merge_input, merge_output, key_stride, list_width, params.total_tokens);
       std::swap(merge_input, merge_output);
     }
