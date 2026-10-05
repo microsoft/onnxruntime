@@ -223,11 +223,6 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
   // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
-  // Float6 types introduced in ONNX 1.23.
-  // ORT tensor storage uses one byte per element. TensorProto typed serialization uses int32_data;
-  // TensorProto raw_data uses bit-packed 6-bit values.
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -595,15 +590,17 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
 
 /** \brief Function called to write named binary data.
  *
- * Each invocation represents one complete write for `name`. ORT does not retain `buffer` after the callback returns
- * and does not serialize calls made by different EP instances or worker threads.
+ * Each invocation represents one complete write operation for `name`. ORT does not retain `buffer` after the callback
+ * returns and does not serialize calls made by different EP instances or worker threads.
  *
- * \param[in] state Application-owned state that remains valid while the callback may be invoked.
+ * \param[in] state Application-owned state. It must remain valid while the callback may be invoked and must be
+ *                  synchronized by the application if calls can be concurrent.
  * \param[in] name Null-terminated UTF-8 logical data identifier.
  * \param[in] buffer Data to write. May be NULL only when `buffer_num_bytes` is zero.
  * \param[in] buffer_num_bytes Number of bytes in `buffer`.
- * \return nullptr on success, or an OrtStatus* describing the failure.
- * \since Version 1.30.
+ * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
+ *
+ * \since Version 1.31.
  */
 typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
                                                           _In_ const char* name,
@@ -615,19 +612,36 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
  * The callback must allocate the returned buffer with `allocator`. The consumer frees it with the same allocator.
  * ORT does not serialize calls made by different EP instances or worker threads.
  *
- * \param[in] state Application-owned state that remains valid while the callback may be invoked.
+ * \param[in] state Application-owned state. It must remain valid while the callback may be invoked and must be
+ *                  synchronized by the application if calls can be concurrent.
  * \param[in] name Null-terminated UTF-8 logical data identifier.
- * \param[in] allocator Allocator that must be used for the returned buffer.
- * \param[out] buffer Allocated buffer containing the data.
+ * \param[in] allocator Allocator that must be used for the output buffer.
+ * \param[out] buffer Allocated output buffer, or NULL for an empty payload.
  * \param[out] data_size Number of bytes in `buffer`.
- * \return nullptr on success, or an OrtStatus* describing the failure.
- * \since Version 1.30.
+ * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
+ *
+ * \since Version 1.31.
  */
 typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
                                                          _In_ const char* name,
                                                          _In_ OrtAllocator* allocator,
-                                                         _Outptr_ void** buffer,
+                                                         _Outptr_result_buffer_maybenull_(*data_size) void** buffer,
                                                          _Out_ size_t* data_size);
+
+/** \brief Flags describing an execution provider's support for application-managed external EPContext data.
+ *
+ * \since Version 1.31.
+ */
+typedef enum OrtEpContextDataCallbackSupportFlags {
+  /** The EP does not support application-managed external EPContext data. */
+  OrtEpContextDataCallbackSupportFlags_NONE = 0,
+
+  /** The EP will use the read callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_READ = 1 << 0,
+
+  /** The EP will use the write callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
+} OrtEpContextDataCallbackSupportFlags;
 
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
@@ -2436,7 +2450,9 @@ struct OrtApi {
    *
    * If the `size` parameter is less than the actual string attribute's size and `out`
    * is not nullptr, the value of `size` is set to the true size of the string attribute
-   * and a failure status is returned.)
+   * and a failure status is returned.
+   *
+   * The true size of the string attribute includes the trailing null character.
    *
    * \param[in] info ::OrtKernelInfo instance
    * \param[in] name Null terminated string of the name of the attribute
@@ -7638,6 +7654,24 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
                   _Outptr_result_maybenull_ OrtValue** output);
+
+  /** \brief Register a callback that supplies external EPContext binary data during session initialization.
+   *
+   * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
+   * callback is not used for EPContext nodes whose data is embedded in the ONNX model. Passing NULL clears the
+   * callback and its state. If an external EPContext node is assigned to an EP that does not advertise READ support,
+   * session initialization fails before that EP's Compile() call.
+   *
+   * \param[in] options Session options used to create the session and execution providers.
+   * \param[in] read_func Read callback, or NULL to clear a previously registered callback.
+   * \param[in] state Application-owned state passed to `read_func`. Ignored when `read_func` is NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
+                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
 };
 
 /*
@@ -8511,14 +8545,18 @@ struct OrtCompileApi {
 
   /** \brief Register a callback that receives external EPContext binary data during model compilation.
    *
-   * Execution providers retrieve this callback from an OrtEpContextConfig. It is used only when EPContext data is not
-   * embedded in the generated model. Passing NULL clears the callback and state.
+   * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
+   * callback is used only when EPContext data is not embedded in the generated ONNX model. Passing NULL clears the
+   * callback and its state. If a compiling EP does not advertise WRITE support, compilation fails before that EP's
+   * Compile() call.
    *
    * \param[in] model_compile_options Model compilation options.
    * \param[in] write_func Write callback, or NULL to clear a previously registered callback.
-   * \param[in] state Application-owned callback state. Ignored when `write_func` is NULL.
+   * \param[in] state Application-owned state passed to `write_func`. Ignored when `write_func` is NULL.
+   *
    * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.30.
+   *
+   * \since Version 1.31.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
@@ -8542,7 +8580,7 @@ struct OrtCompileApi {
    * \param[out] output_buffer_ptr Receives the allocated buffer, or NULL when no data is externalized.
    * \param[out] output_buffer_size_ptr Receives the allocated buffer size.
    * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.30.
+   * \since Version 1.31.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
                   _In_ OrtModelCompilationOptions* model_compile_options,
@@ -8561,7 +8599,7 @@ struct OrtCompileApi {
    * \param[in] alignment Required byte alignment, or zero to disable.
    * \param[in] minimum_size Minimum initializer size at which alignment is applied.
    * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.30.
+   * \since Version 1.31.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
                   _In_ OrtModelCompilationOptions* model_compile_options,

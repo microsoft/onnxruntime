@@ -126,6 +126,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override;
+
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry&, AllocatorMap&) const override;
@@ -174,7 +176,6 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
   bool generate_ep_ctx_model_ = false;
-  bool ep_context_data_write_requested_ = false;
   bool weightless_requested_ = false;  // True if app set ep.enable_weightless=1
 
   // Provider options extracted from session-level config (excluding arena.*).

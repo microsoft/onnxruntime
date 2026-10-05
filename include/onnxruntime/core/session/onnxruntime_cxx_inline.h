@@ -1352,7 +1352,8 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc
 
 inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(
     OrtWriteNamedBufferFunc write_func, void* state) {
-  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
+  Ort::ThrowOnError(
+      GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
   return *this;
 }
 
@@ -1560,6 +1561,19 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::Add(OrtCustomOpDomain* cust
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* config_key, const char* config_value) {
   ThrowOnError(GetApi().AddSessionConfigEntry(this->p_, config_key, config_value));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
+    OrtReadNamedBufferFunc read_func, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::ClearEpContextDataReadFunc() {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, nullptr, nullptr));
   return *this;
 }
 

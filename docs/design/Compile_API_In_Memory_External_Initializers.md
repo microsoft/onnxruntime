@@ -132,10 +132,11 @@ EP creates the `EPContext` node itself (plugin EPs through `OrtModelEditorApi::C
 callback (`OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc` retrieved via `OrtEpContextConfig`) is
 opt-in, so ORT cannot force an arbitrary EP to route through it.
 
-Promote the WRITE callback transport to the stable API. The compile API accepts an `OrtWriteNamedBufferFunc`; plugin
+Use the stable READ and WRITE callback transport. The compile API accepts an `OrtWriteNamedBufferFunc`; plugin
 EPs snapshot it from session options through an owned `OrtEpContextConfig` and retrieve the callback through
-`OrtEpApi`. Add `OrtEpContextDataSupportFlags_WRITE` and `OrtEp::GetEpContextDataSupport` so ORT rejects a configured
-WRITE callback before `Compile()` when a plugin EP cannot honor it. READ callback support remains experimental.
+`OrtEpApi`. EPs advertise `OrtEpContextDataCallbackSupportFlags_READ` and `OrtEpContextDataCallbackSupportFlags_WRITE`
+through `OrtEp::GetEpContextDataCallbackSupport` so ORT rejects a configured callback before `Compile()` when a plugin
+EP cannot honor it.
 
 `CreateEpContextNode` is intentionally deferred. EPs continue to create their own EPContext nodes and decide how to
 encode `ep_cache_context`. This change provides stable callback transport and capability negotiation only; it does not
@@ -166,4 +167,4 @@ A misaligned supplied buffer is valid; direct-use loading copies only slices tha
 - Compile with the example plugin EP and verify that its non-embedded EPContext data reaches the configured stable
   WRITE callback.
 - Verify callback snapshot and clearing behavior, and reject a configured WRITE callback when a plugin EP does not
-  advertise `OrtEpContextDataSupportFlags_WRITE`.
+  advertise `OrtEpContextDataCallbackSupportFlags_WRITE`.

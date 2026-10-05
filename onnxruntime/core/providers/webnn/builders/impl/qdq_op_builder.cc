@@ -25,8 +25,6 @@ class QDQOpBuilder : public BaseOpBuilder {
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
-
-  int GetMaxSupportedOpSet(const Node& /* node */) const override { return 27; }
 };
 
 Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,

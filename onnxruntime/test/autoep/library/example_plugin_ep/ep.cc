@@ -222,7 +222,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   Sync = SyncImpl;                                                            // optional. can be nullptr
   GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;                        // optional. can be nullptr
   GetWeightlessSupport = GetWeightlessSupportImpl;                            // weightless support
-  GetEpContextDataSupport = GetEpContextDataSupportImpl;
+  GetEpContextDataCallbackSupport = GetEpContextDataCallbackSupportImpl;      // EPContext callback support
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -243,9 +243,13 @@ OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* /*this_
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL ExampleEp::GetEpContextDataSupportImpl(const OrtEp* /*this_ptr*/,
-                                                               uint32_t* support_flags) noexcept {
-  *support_flags = OrtEpContextDataSupportFlags_WRITE;
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetEpContextDataCallbackSupportImpl(const OrtEp* this_ptr,
+                                                                       uint32_t* supported_flags) noexcept {
+  const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+  *supported_flags = ep->config_.advertise_ep_context_data_support
+                         ? OrtEpContextDataCallbackSupportFlags_READ | OrtEpContextDataCallbackSupportFlags_WRITE
+                         : OrtEpContextDataCallbackSupportFlags_NONE;
   return nullptr;
 }
 

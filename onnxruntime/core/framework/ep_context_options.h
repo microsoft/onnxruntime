@@ -37,6 +37,16 @@ struct EpContextDataWriteFuncHolder {
 };
 
 /// <summary>
+/// Non-owning copy of the application callbacks and states used for external EPContext binary data.
+/// </summary>
+struct EpContextDataCallbacks {
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* read_state = nullptr;
+  OrtWriteNamedBufferFunc write_func = nullptr;
+  void* write_state = nullptr;
+};
+
+/// <summary>
 /// Holds path and size threshold used to write out initializers to an external file.
 /// </summary>
 struct ExternalInitializerFileInfo {

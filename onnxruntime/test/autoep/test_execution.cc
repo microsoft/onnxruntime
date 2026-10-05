@@ -16,7 +16,6 @@
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "nlohmann/json.hpp"
@@ -36,11 +35,8 @@ namespace test {
 
 namespace {
 
-// Invokes the experimental EPContext read setter on the public C API.
 void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamedBufferFunc read_func, void* state) {
-  auto* set_read_func =
-      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&Ort::GetApi());
-  ASSERT_ORTSTATUS_OK(set_read_func(session_options, read_func, state));
+  ASSERT_NO_THROW(session_options.SetEpContextDataReadFunc(read_func, state));
 }
 
 void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, OrtWriteNamedBufferFunc write_func,
@@ -744,6 +740,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   EpContextDataCallbackState compile_read_callback_state;
   {
     Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, "0");
     ASSERT_NO_FATAL_FAILURE(
         SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &compile_read_callback_state));
 
@@ -785,6 +782,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   EpContextDataCallbackState load_read_callback_state;
   {
     Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, "0");
     ASSERT_NO_FATAL_FAILURE(
         SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &load_read_callback_state));
 
@@ -944,6 +942,96 @@ TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
 
   ASSERT_TRUE(read_callback_state.read_called);
   EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
+}
+
+TEST(OrtEpLibrary, PluginEp_ExternalEpContextCallbacksRequireAdvertisedSupport) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_callback_support_test.onnx");
+  std::filesystem::remove(compiled_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(compiled_model_file); });
+
+  EpContextDataCallbackState rejected_write_state;
+  for (bool legacy_ep : {false, true}) {
+    SCOPED_TRACE(legacy_ep ? "API version 30" : "No advertised support");
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, legacy_ep ? "1" : "0");
+    session_options.AddConfigEntry(kExampleEpTestOrtVersion, legacy_ep ? "30" : "current");
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+    compile_options.SetEpContextEmbedMode(false);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &rejected_write_state));
+
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.GetErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data write callback"));
+  }
+  EXPECT_FALSE(rejected_write_state.write_called);
+  EXPECT_FALSE(std::filesystem::exists(compiled_model_file));
+
+  EpContextDataCallbackState stored_context;
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+    compile_options.SetEpContextEmbedMode(false);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &stored_context));
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  }
+  ASSERT_TRUE(stored_context.write_called);
+  ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+
+  EpContextDataCallbackState rejected_read_state;
+  rejected_read_state.payload = stored_context.payload;
+  for (bool legacy_ep : {false, true}) {
+    SCOPED_TRACE(legacy_ep ? "API version 30" : "No advertised support");
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, legacy_ep ? "1" : "0");
+    session_options.AddConfigEntry(kExampleEpTestOrtVersion, legacy_ep ? "30" : "current");
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &rejected_read_state));
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    std::string error;
+    try {
+      Ort::Session session(*ort_env, compiled_model_file, session_options);
+      FAIL() << "Expected unsupported EPContext data read callback rejection";
+    } catch (const Ort::Exception& ex) {
+      error = ex.what();
+    }
+    EXPECT_THAT(error, testing::HasSubstr("does not support the registered EPContext data read callback"));
+  }
+  EXPECT_FALSE(rejected_read_state.read_called);
+
+  EpContextDataCallbackState unused_read_state;
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, "0");
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &unused_read_state));
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(input_model_file, session_options));
+  }
+  EXPECT_FALSE(unused_read_state.read_called);
 }
 
 TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {

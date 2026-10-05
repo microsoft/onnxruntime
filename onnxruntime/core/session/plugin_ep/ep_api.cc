@@ -97,7 +97,6 @@ ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptio
 
   ep_context_config->read_func = session_options->value.ep_context_data_read_func;
   ep_context_config->read_state = session_options->value.ep_context_data_read_state;
-
   *config = ep_context_config.release();
   return nullptr;
   API_IMPL_END
@@ -125,6 +124,7 @@ ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpCo
   ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
   ORT_API_RETURN_IF(write_func == nullptr, ORT_INVALID_ARGUMENT, "Output write_func is NULL");
   ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
+
   *write_func = config->write_func;
   *state = config->write_func != nullptr ? config->write_state : nullptr;
   return nullptr;

@@ -418,6 +418,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWrite
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_API_RETURN_IF(ort_model_compile_options == nullptr, ORT_INVALID_ARGUMENT,
                     "OrtModelCompilationOptions is NULL");
+
   auto* model_compile_options =
       reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
   model_compile_options->SetEpContextDataWriteFunc(write_func, state);
