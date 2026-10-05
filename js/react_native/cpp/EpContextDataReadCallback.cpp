@@ -47,6 +47,18 @@ bool toViewIndex(double value, size_t& result) noexcept {
   return true;
 }
 
+class VectorMutableBuffer final : public MutableBuffer {
+ public:
+  explicit VectorMutableBuffer(std::vector<uint8_t> data)
+      : data_(std::move(data)) {}
+
+  size_t size() const override { return data_.size(); }
+  uint8_t* data() override { return data_.data(); }
+
+ private:
+  std::vector<uint8_t> data_;
+};
+
 class EpContextDataReadTestWorker final : public AsyncWorker {
  public:
   EpContextDataReadTestWorker(
@@ -125,10 +137,8 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
 
   Value onResolve(Runtime& runtime) override {
     callback_->invalidate();
-    ArrayBuffer buffer(runtime, data_.size());
-    if (!data_.empty()) {
-      std::memcpy(buffer.data(runtime), data_.data(), data_.size());
-    }
+    ArrayBuffer buffer(runtime,
+                       std::make_shared<VectorMutableBuffer>(std::move(data_)));
     auto uint8Array = runtime.global().getPropertyAsFunction(runtime, "Uint8Array");
     return uint8Array.callAsConstructor(runtime, Value(runtime, std::move(buffer)));
   }
