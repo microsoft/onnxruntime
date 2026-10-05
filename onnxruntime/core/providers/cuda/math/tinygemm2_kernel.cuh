@@ -142,14 +142,20 @@ __device__ __forceinline__ __nv_bfloat16 FromFloat<__nv_bfloat16>(float v) { ret
 template <>
 __device__ __forceinline__ __half FromFloat<__half>(float v) { return __float2half(v); }
 
-#endif  // __CUDA_ARCH__ >= 900
+#endif // __CUDA_ARCH__ >= 900
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#define KERNEL_PARAM_MODIFIER __grid_constant__
+#else
+#define KERNEL_PARAM_MODIFIER
+#endif
 
 // B tiles are [kTileK rows of K][kTileN columns] (32-byte rows, 32B swizzle); A tiles are
 // [kTileM rows][kTileK] (128-byte rows, 128B swizzle). Both swizzles XOR address bits of the absolute
 // shared-memory address, which the ldmatrix addressing below reproduces.
 template <typename T>
 __global__ void __launch_bounds__(kThreads, 1)
-    TinyGemm2Kernel(const __grid_constant__ TensorMaps maps, T* __restrict__ output, int m, int n, int k) {
+    TinyGemm2Kernel(const KERNEL_PARAM_MODIFIER TensorMaps maps, T* __restrict__ output, int m, int n, int k) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
   const CUtensorMap& weight_map = *reinterpret_cast<const CUtensorMap*>(maps.weight);
   const CUtensorMap& activation_map = *reinterpret_cast<const CUtensorMap*>(maps.activation);
