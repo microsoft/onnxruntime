@@ -311,6 +311,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string ep_context_embed_mode;
   std::string ep_context_output_model_path;
   std::string weightless_ep_context_nodes_enable;
+  std::string advertise_ep_context_data_support;
+  std::string test_ort_version;
   std::string use_default_cpu_allocator;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
@@ -320,6 +322,19 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                  ep_context_output_model_path));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
                                                  "0", weightless_ep_context_nodes_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestEpContextDataSupport, "1",
+                                                 advertise_ep_context_data_support));
+
+  if (advertise_ep_context_data_support != "0" && advertise_ep_context_data_support != "1") {
+    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "Example EP context data support test option must be '0' or '1'.");
+  }
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestOrtVersion, "current",
+                                                 test_ort_version));
+  if (test_ort_version != "current" && test_ort_version != "30") {
+    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "Example EP test ORT version must be 'current' or '30'.");
+  }
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
                                                  "0", use_default_cpu_allocator));
 
@@ -328,14 +343,18 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
+  config.advertise_ep_context_data_support = advertise_ep_context_data_support == "1";
   config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
 
-  // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
-  // throws if the experimental functions are unavailable or extraction fails; EXCEPTION_TO_RETURNED_STATUS_END
-  // converts that (and any other exception thrown in this function) into an OrtStatus.
+  // The EpContextConfig wrapper captures a stable snapshot of the EPContext callbacks from the session options and
+  // owns the snapshot handle. EXCEPTION_TO_RETURNED_STATUS_END converts extraction failures into an OrtStatus.
   auto dummy_ep = std::make_unique<ExampleEp>(
       *factory, factory->ep_name_, config, *logger,
-      Ort::Experimental::EpContextConfig{Ort::ConstSessionOptions{session_options}});
+      Ort::EpContextConfig{Ort::ConstSessionOptions{session_options}});
+  if (test_ort_version == "30") {
+    // Keep the support callback populated to verify that ORT ignores it for older EP versions.
+    dummy_ep->ort_version_supported = 30;
+  }
   *ep = dummy_ep.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

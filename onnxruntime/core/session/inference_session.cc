@@ -1619,11 +1619,18 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
           session_options_.config_options.GetConfigOrDefault(
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
       !disable_aot_function_inlining) {
+    uint32_t registered_ep_context_data_callbacks = session_options_.ep_context_data_read_func != nullptr
+                                                        ? OrtEpContextDataCallbackSupportFlags_READ
+                                                        : OrtEpContextDataCallbackSupportFlags_NONE;
+    if (session_options_.ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr) {
+      registered_ep_context_data_callbacks |= OrtEpContextDataCallbackSupportFlags_WRITE;
+    }
     ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.InlineFunctionsAOT(*model_,
                                                                   execution_providers_,
                                                                   kernel_registry_manager_,
                                                                   session_options_.config_options,
-                                                                  *session_logger_));
+                                                                  *session_logger_,
+                                                                  registered_ep_context_data_callbacks));
   }
 
   // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
@@ -1875,7 +1882,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, ep_context_gen_options, debug_graph_fn,
+                                                       mode, ep_context_gen_options,
+                                                       session_options_.ep_context_data_read_func != nullptr,
+                                                       debug_graph_fn,
                                                        &workspace_reservations));
   graph.SetNodeReplacementCallback(
       [&workspace_reservations](const Graph& modified_graph,
@@ -2621,7 +2630,9 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             sess_options.config_options,
                                             logger,
                                             nullptr /*layering_index*/,
-                                            GraphPartitioner::Mode::kOrtFormatLoad));
+                                            GraphPartitioner::Mode::kOrtFormatLoad,
+                                            {},
+                                            sess_options.ep_context_data_read_func != nullptr));
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
   // kOrtFormatLoad does compile and fuse, unlike the kAssignOnly pass used when writing an ORT format

@@ -13,7 +13,9 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
+#include "onnxruntime_cxx_api.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/config_options.h"
@@ -35,7 +37,9 @@
 #include "gmock/gmock.h"
 
 #include <limits>
+#include <fstream>
 #include <queue>
+#include <tuple>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
@@ -155,6 +159,112 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
 
  private:
   mutable ModelMetadefIdGenerator metadef_id_generator_;
+};
+
+struct DirectAssignmentEpContextTestOptions {
+  DataLayout preferred_layout = DataLayout::Default;
+  bool enable_resource_accountant = false;
+  bool drop_after_layout = false;
+  bool assigned_to_other_ep = false;
+  std::optional<int64_t> embed_mode = 0;
+  bool output_embed_mode = false;
+};
+
+class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider {
+ public:
+  explicit DirectAssignmentEpContextTestExecutionProvider(bool produces_ep_context_nodes = false,
+                                                          bool* get_ep_context_nodes_called = nullptr,
+                                                          uint32_t ep_context_data_support = OrtEpContextDataCallbackSupportFlags_NONE,
+                                                          bool claims_ep_context_node = true,
+                                                          const DirectAssignmentEpContextTestOptions& options = {})
+      : IExecutionProvider{options.enable_resource_accountant
+                               ? kCudaExecutionProvider
+                               : "DirectAssignmentEpContextTestExecutionProvider"},
+        produces_ep_context_nodes_{produces_ep_context_nodes},
+        get_ep_context_nodes_called_{get_ep_context_nodes_called},
+        ep_context_data_support_{ep_context_data_support},
+        claims_ep_context_node_{claims_ep_context_node},
+        options_{options} {
+  }
+
+  DataLayout GetPreferredLayout() const override {
+    return options_.preferred_layout;
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer,
+                const IKernelLookup&,
+                const GraphOptimizerRegistry&,
+                IResourceAccountant* resource_accountant) const override {
+    const bool after_layout = get_capability_call_count_++ > 0;
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const auto* node = graph_viewer.GetNode(node_index);
+      if (claims_ep_context_node_ && node != nullptr &&
+          node->Domain() == kMSDomain && node->OpType() == "EPContext") {
+        if (after_layout && options_.drop_after_layout) {
+          continue;
+        }
+
+        // The accountant retains independently runnable survivors even when the final
+        // budgeted pass omits their capabilities.
+        if (resource_accountant != nullptr && node->GetExecutionProviderType() == Type()) {
+          continue;
+        }
+
+        ep_context_node_ = node;
+        auto sub_graph = std::make_unique<IndexedSubGraph>();
+        sub_graph->nodes.push_back(node_index);
+        if (resource_accountant != nullptr && node->GetExecutionProviderType().empty()) {
+          sub_graph->SetAccountant(resource_accountant);
+          sub_graph->AppendNodeCost(resource_accountant->ComputeResourceCount(*node));
+        }
+        capabilities.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      }
+    }
+
+    last_capability_count_ = capabilities.size();
+    return capabilities;
+  }
+
+  const InlinedVector<const Node*> GetEpContextNodes() const override {
+    if (get_ep_context_nodes_called_ != nullptr) {
+      *get_ep_context_nodes_called_ = true;
+    }
+
+    InlinedVector<const Node*> nodes;
+    if (produces_ep_context_nodes_ && ep_context_node_ != nullptr) {
+      nodes.push_back(ep_context_node_);
+    }
+
+    return nodes;
+  }
+
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer& /*graph_viewer*/) const override {
+    return produces_ep_context_nodes_ ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                      : OrtEpContextDataCallbackSupportFlags_NONE;
+  }
+
+  Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override {
+    ++support_query_count_;
+    supported_flags = ep_context_data_support_;
+    return Status::OK();
+  }
+
+  size_t get_capability_call_count() const { return get_capability_call_count_; }
+  size_t last_capability_count() const { return last_capability_count_; }
+  size_t support_query_count() const { return support_query_count_; }
+
+ private:
+  const bool produces_ep_context_nodes_;
+  bool* const get_ep_context_nodes_called_;
+  const uint32_t ep_context_data_support_;
+  const bool claims_ep_context_node_;
+  const DirectAssignmentEpContextTestOptions options_;
+  mutable const Node* ep_context_node_{nullptr};
+  mutable size_t get_capability_call_count_ = 0;
+  mutable size_t last_capability_count_ = 0;
+  mutable size_t support_query_count_ = 0;
 };
 
 // Variant of the two-pass NHWC EP used to validate that the resource accountant
@@ -454,6 +564,240 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
   std::optional<NodeIndex> accounted_overlap_dropped_node_index_;
 };
 
+OrtStatus* ORT_API_CALL NoopEpContextWriteCallback(void*, const char*, const void*, size_t) {
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL NoopModelWriteCallback(void*, const void*, size_t) {
+  return nullptr;
+}
+
+struct EpContextPreflightTestOptions {
+  bool read_during_discovery = true;
+  bool write_during_compile = false;
+  bool has_context_node = true;
+  int64_t input_embed_mode = 0;
+  bool register_read_callback = true;
+  bool register_write_callback = false;
+  bool generate_context_model = false;
+  bool output_embed_mode = true;
+  uint32_t supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+  bool fail_support_query = false;
+};
+
+struct EpContextPreflightTestState {
+  size_t capability_calls = 0;
+  size_t aot_capability_calls = 0;
+  size_t compile_calls = 0;
+  size_t support_queries = 0;
+  size_t file_reads = 0;
+  size_t file_writes = 0;
+  size_t read_callbacks = 0;
+  size_t write_callbacks = 0;
+};
+
+OrtStatus* ORT_API_CALL PreflightReadCallback(void* state, const char*, OrtAllocator*, void** buffer,
+                                              size_t* buffer_size) {
+  ++static_cast<EpContextPreflightTestState*>(state)->read_callbacks;
+  *buffer = nullptr;
+  *buffer_size = 0;
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL PreflightWriteCallback(void* state, const char*, const void*, size_t) {
+  ++static_cast<EpContextPreflightTestState*>(state)->write_callbacks;
+  return nullptr;
+}
+
+class EpContextPreflightTestExecutionProvider : public InternalTestingExecutionProvider {
+ public:
+  EpContextPreflightTestExecutionProvider(const EpContextPreflightTestOptions& options,
+                                          EpContextPreflightTestState& state,
+                                          const std::filesystem::path& context_path)
+      : InternalTestingExecutionProvider{{"EPContext", "Identity"}},
+        options_{options},
+        state_{state},
+        context_path_{context_path} {}
+
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer& graph_viewer) const override {
+    uint32_t flags = options_.write_during_compile ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                                   : OrtEpContextDataCallbackSupportFlags_NONE;
+    if (ReadsExternalContext(graph_viewer)) {
+      flags |= OrtEpContextDataCallbackSupportFlags_READ;
+    }
+    return flags;
+  }
+
+  Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override {
+    ++state_.support_queries;
+    ORT_RETURN_IF(options_.fail_support_query, "EPContext test support query failed");
+    supported_flags = options_.supported_flags;
+    return Status::OK();
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& optimizer_registry, IResourceAccountant* accountant) const override {
+    ++state_.capability_calls;
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.Domain() == "epcontext.preflight" && node.OpType() == "PreflightIdentity") {
+        ++state_.aot_capability_calls;
+        break;
+      }
+    }
+    if (ReadsExternalContext(graph_viewer)) {
+      if (options_.register_read_callback &&
+          (options_.supported_flags & OrtEpContextDataCallbackSupportFlags_READ) != 0) {
+        Ort::AllocatorWithDefaultOptions allocator;
+        void* buffer = nullptr;
+        size_t buffer_size = 0;
+        Ort::ThrowOnError(PreflightReadCallback(&state_, "context.bin", allocator, &buffer, &buffer_size));
+      } else {
+        ++state_.file_reads;
+        std::ifstream stream(context_path_, std::ios::binary);
+        std::string contents;
+        ORT_ENFORCE(std::getline(stream, contents) && contents == "test context", "Failed to read test context");
+      }
+    }
+    return InternalTestingExecutionProvider::GetCapability(graph_viewer, kernel_lookup, optimizer_registry, accountant);
+  }
+
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    ++state_.compile_calls;
+    if (options_.write_during_compile) {
+      if (options_.register_write_callback &&
+          (options_.supported_flags & OrtEpContextDataCallbackSupportFlags_WRITE) != 0) {
+        Ort::ThrowOnError(PreflightWriteCallback(&state_, "context.bin", "test context", 12));
+      } else {
+        ++state_.file_writes;
+        std::ofstream stream(context_path_, std::ios::binary);
+        ORT_RETURN_IF_NOT(stream.write("test context", 12), "Failed to write test context");
+      }
+    }
+    return InternalTestingExecutionProvider::Compile(fused_nodes, node_compute_funcs);
+  }
+
+ private:
+  bool ReadsExternalContext(const GraphViewer& graph_viewer) const {
+    if (!options_.read_during_discovery) {
+      return false;
+    }
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.Domain() == kMSDomain && node.OpType() == "EPContext") {
+        const auto embed_mode = node.GetAttributes().find("embed_mode");
+        if (embed_mode != node.GetAttributes().end() && embed_mode->second.i() == 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  const EpContextPreflightTestOptions options_;
+  EpContextPreflightTestState& state_;
+  const std::filesystem::path context_path_;
+};
+
+Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes,
+                                                  bool read_callback_registered,
+                                                  bool write_callback_required,
+                                                  GraphPartitioner::Mode mode = GraphPartitioner::Mode::kNormal,
+                                                  bool* get_ep_context_nodes_called = nullptr,
+                                                  uint32_t ep_context_data_support =
+                                                      OrtEpContextDataCallbackSupportFlags_NONE,
+                                                  bool claims_ep_context_node = true,
+                                                  const DirectAssignmentEpContextTestOptions& options = {}) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("PartitionDirectAssignmentExternalEpContext",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  const std::vector<int64_t> tensor_shape{1};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto& ep_context_node = builder.AddNode("EPContext", {input}, {output}, kMSDomain);
+  if (options.embed_mode.has_value()) {
+    ep_context_node.AddAttribute("embed_mode", *options.embed_mode);
+  }
+  ep_context_node.AddAttribute("ep_cache_context", "external_context.bin");
+  ep_context_node.AddAttribute("partition_name", "direct_assignment_partition");
+  ep_context_node.AddAttribute("source", "DirectAssignmentEpContextTestExecutionProvider");
+  if (options.assigned_to_other_ep) {
+    ep_context_node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  builder.SetGraphOutputs();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<DirectAssignmentEpContextTestExecutionProvider>(
+      produces_ep_context_nodes, get_ep_context_nodes_called, ep_context_data_support, claims_ep_context_node, options);
+  const auto* ep_raw = ep.get();
+  ep->SetLogger(&default_logger);
+  const std::string ep_type = ep->Type();
+  ORT_RETURN_IF_ERROR(execution_providers.Add(ep_type, std::move(ep)));
+
+  ConfigOptions config_options;
+  if (options.enable_resource_accountant) {
+    ORT_RETURN_IF_ERROR(config_options.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  }
+
+  KernelRegistryManager krm;
+  ORT_RETURN_IF_ERROR(krm.RegisterKernels(execution_providers));
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      nullptr /*session_options*/, nullptr /*cpu_ep*/, &default_logger);
+  GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry),
+                               []() -> bool { return false; });
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+
+  epctx::ModelGenOptions model_gen_options;
+  if (write_callback_required) {
+    model_gen_options.enable = true;
+    model_gen_options.embed_ep_context_in_model = options.output_embed_mode;
+    model_gen_options.ep_context_data_write_func = {NoopEpContextWriteCallback, nullptr};
+    model_gen_options.output_model_location =
+        epctx::BufferWriteFuncHolder{NoopModelWriteCallback, nullptr};
+  }
+
+  FuncManager func_mgr;
+  const auto status = partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                                            config_options, default_logger, nullptr /*layering_index*/,
+                                            mode,
+                                            model_gen_options,
+                                            read_callback_registered);
+  if (options.preferred_layout == DataLayout::NHWC && mode != GraphPartitioner::Mode::kAssignOnly &&
+      claims_ep_context_node && !write_callback_required) {
+    EXPECT_EQ(ep_raw->get_capability_call_count(), options.enable_resource_accountant ? 3u : 2u);
+    const std::string expected_ep_type = options.assigned_to_other_ep
+                                             ? kCpuExecutionProvider
+                                             : (options.drop_after_layout ? std::string{} : ep_type);
+    EXPECT_EQ(ep_context_node.GetExecutionProviderType(), expected_ep_type);
+
+    const bool read_support_required = read_callback_registered && options.embed_mode == 0 &&
+                                       !options.drop_after_layout && !options.assigned_to_other_ep;
+    EXPECT_EQ(ep_raw->support_query_count(), read_support_required ? 1u : 0u);
+    if (options.enable_resource_accountant && !options.assigned_to_other_ep) {
+      EXPECT_EQ(ep_raw->last_capability_count(), 0u);
+    }
+  }
+
+  return status;
+}
+
 }  // namespace
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
@@ -605,6 +949,387 @@ TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
   EXPECT_GT(num_ep_nodes, 0);
   EXPECT_TRUE(saw_log_softmax);
 }
+
+TEST(InternalTestingEP, ExternalEpContextReadCallbackRequiresSupportForDirectAssignment) {
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      false /*produces_ep_context_nodes*/, true /*read_callback_registered*/, false /*write_callback_required*/);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data read callback"));
+}
+
+TEST(InternalTestingEP, ExternalEpContextWriteCallbackRequiresSupportForNonCompileProducer) {
+  bool get_ep_context_nodes_called = false;
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data write callback"));
+  EXPECT_FALSE(get_ep_context_nodes_called);
+}
+
+TEST(InternalTestingEP, ExternalEpContextWriteCallbackRequiresSupportForProducerWithoutCapabilities) {
+  bool get_ep_context_nodes_called = false;
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called, OrtEpContextDataCallbackSupportFlags_NONE,
+      false /*claims_ep_context_node*/);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data write callback"));
+  EXPECT_FALSE(get_ep_context_nodes_called);
+}
+
+TEST(InternalTestingEP, ExternalEpContextWriteCallbackAllowsDirectAssignmentWithoutProducedContext) {
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      false /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/);
+  EXPECT_STATUS_OK(status);
+}
+
+TEST(InternalTestingEP, ExternalEpContextWriteCallbackAllowsSupportedNonCompileProducer) {
+  bool get_ep_context_nodes_called = false;
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called, OrtEpContextDataCallbackSupportFlags_WRITE);
+  EXPECT_STATUS_OK(status);
+  EXPECT_TRUE(get_ep_context_nodes_called);
+}
+
+TEST(InternalTestingEP, ExternalEpContextNonCompileProducerOverridesCoreEmbedMode) {
+  bool get_ep_context_nodes_called = false;
+  DirectAssignmentEpContextTestOptions options;
+  options.output_embed_mode = true;
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called, OrtEpContextDataCallbackSupportFlags_NONE,
+      true /*claims_ep_context_node*/, options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data write callback"));
+  EXPECT_FALSE(get_ep_context_nodes_called);
+}
+
+enum class EpContextDiscoveryStage { Onnx,
+                                     OrtFormat,
+                                     Aot };
+
+class EpContextCallbackPreflightTest : public testing::TestWithParam<EpContextDiscoveryStage> {
+ protected:
+  void ConfigureWriter() {
+    options_.read_during_discovery = false;
+    options_.write_during_compile = true;
+    options_.has_context_node = false;
+    options_.register_read_callback = false;
+    options_.register_write_callback = true;
+    options_.generate_context_model = true;
+  }
+
+  Status Partition() {
+    state_ = {};
+    const auto context_path = std::filesystem::path(temp_dir_.Path()) / "context.bin";
+    if (options_.has_context_node) {
+      std::ofstream stream(context_path, std::ios::binary);
+      ORT_RETURN_IF_NOT(stream.write("test context", 12), "Failed to create test context");
+    }
+
+    auto& logger = DefaultLoggingManager().DefaultLogger();
+    const bool aot = GetParam() == EpContextDiscoveryStage::Aot;
+    std::unordered_map<std::string, int> domain_versions{{kOnnxDomain, 13}, {kMSDomain, 1}, {"epcontext.preflight", 1}};
+    std::vector<FunctionProto> functions;
+    if (aot) {
+      FunctionProto function;
+      function.set_name("PreflightIdentity");
+      function.set_domain("epcontext.preflight");
+      function.add_input("X");
+      function.add_output("Y");
+      function.add_opset_import()->set_version(13);
+      auto* node = function.add_node();
+      node->set_op_type("Identity");
+      node->add_input("X");
+      node->add_output("Y");
+      functions.push_back(std::move(function));
+    }
+
+    Model model("EpContextCallbackPreflight", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_versions, functions, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    const std::optional<std::vector<int64_t>> shape{std::vector<int64_t>{1}};
+    auto* input = builder.MakeInput<float>(shape);
+    auto* output = builder.MakeOutput<float>(shape);
+    auto* primary_output = aot ? builder.MakeIntermediate<float>(shape) : output;
+    if (options_.has_context_node) {
+      auto& node = builder.AddNode("EPContext", {input}, {primary_output}, kMSDomain);
+      node.AddAttribute("embed_mode", options_.input_embed_mode);
+      node.AddAttribute("ep_cache_context", "context.bin");
+      node.AddAttribute("partition_name", "preflight_partition");
+      node.AddAttribute("source", kInternalTestingExecutionProvider);
+    } else {
+      builder.AddNode("Identity", {input}, {primary_output});
+    }
+    if (aot) {
+      builder.AddNode("PreflightIdentity", {primary_output}, {output}, "epcontext.preflight");
+    }
+    builder.SetGraphOutputs();
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    auto ep = std::make_unique<EpContextPreflightTestExecutionProvider>(options_, state_, context_path);
+    ep->SetLogger(&logger);
+    epctx::ModelGenOptions model_gen_options;
+    model_gen_options.enable = options_.generate_context_model;
+    model_gen_options.embed_ep_context_in_model = options_.output_embed_mode;
+    model_gen_options.output_model_location = epctx::BufferWriteFuncHolder{NoopModelWriteCallback, nullptr};
+    if (options_.register_write_callback) {
+      model_gen_options.ep_context_data_write_func = {PreflightWriteCallback, &state_};
+    }
+
+    if (aot) {
+      SessionOptions session_options;
+      session_options.graph_optimization_level = TransformerLevel::Default;
+      session_options.ep_context_gen_options = model_gen_options;
+      if (options_.register_read_callback) {
+        session_options.ep_context_data_read_func = PreflightReadCallback;
+        session_options.ep_context_data_read_state = &state_;
+      }
+      InferenceSessionWrapper session(session_options, GetEnvironment());
+      ORT_RETURN_IF_ERROR(session.RegisterExecutionProvider(std::move(ep)));
+      std::string model_data;
+      ORT_RETURN_IF_NOT(model.ToProto().SerializeToString(&model_data), "Failed to serialize test model");
+      ORT_RETURN_IF_ERROR(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+      const auto status = session.Initialize();
+      if (status.IsOK()) {
+        EXPECT_GT(state_.aot_capability_calls, 0u);
+      }
+      return status;
+    }
+
+    ExecutionProviders providers;
+    const std::string ep_type = ep->Type();
+    ORT_RETURN_IF_ERROR(providers.Add(ep_type, std::move(ep)));
+    KernelRegistryManager krm;
+    ORT_RETURN_IF_ERROR(krm.RegisterKernels(providers));
+    auto optimizer_registry = std::make_unique<GraphOptimizerRegistry>(nullptr, nullptr, &logger);
+    GraphPartitioner partitioner(krm, providers, std::move(optimizer_registry), [] { return false; });
+    FuncManager func_mgr;
+    const auto mode = GetParam() == EpContextDiscoveryStage::OrtFormat
+                          ? GraphPartitioner::Mode::kOrtFormatLoad
+                          : GraphPartitioner::Mode::kNormal;
+    return partitioner.Partition(graph, func_mgr, {}, ConfigOptions{}, logger, nullptr, mode,
+                                 model_gen_options, options_.register_read_callback);
+  }
+
+  EpContextPreflightTestOptions options_;
+  EpContextPreflightTestState state_;
+  TemporaryDirectory temp_dir_{ORT_TSTR("ep_context_callback_preflight_test"), false};
+};
+
+TEST_P(EpContextCallbackPreflightTest, RejectsReadBeforeCapabilityIo) {
+  for (uint32_t support : {OrtEpContextDataCallbackSupportFlags_NONE, OrtEpContextDataCallbackSupportFlags_WRITE}) {
+    SCOPED_TRACE(support);
+    options_.supported_flags = support;
+    const auto status = Partition();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data read callback"));
+    EXPECT_EQ(state_.capability_calls, 0u);
+    EXPECT_EQ(state_.file_reads, 0u);
+    EXPECT_EQ(state_.compile_calls, 0u);
+  }
+}
+
+TEST_P(EpContextCallbackPreflightTest, SupportQueryFailurePreventsCapabilityIo) {
+  options_.fail_support_query = true;
+  const auto status = Partition();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("EPContext test support query failed"));
+  EXPECT_EQ(state_.capability_calls, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, AdvertisedReadSupportAllowsDiscovery) {
+  options_.supported_flags = OrtEpContextDataCallbackSupportFlags_READ;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.capability_calls, 0u);
+  EXPECT_GT(state_.read_callbacks, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, NoReadCallbackPreservesLegacyReads) {
+  options_.register_read_callback = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, WriteCallbackDoesNotRequireReadSupport) {
+  options_.register_read_callback = false;
+  options_.register_write_callback = true;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, EmbeddedContextDoesNotRequireReadSupport) {
+  options_.input_embed_mode = 1;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.capability_calls, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, OrdinaryGraphDoesNotRequireReadSupport) {
+  options_.has_context_node = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.capability_calls, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, ProviderExternalModeOverridesCoreEmbedMode) {
+  ConfigureWriter();
+  for (uint32_t support : {OrtEpContextDataCallbackSupportFlags_NONE, OrtEpContextDataCallbackSupportFlags_READ}) {
+    SCOPED_TRACE(support);
+    options_.supported_flags = support;
+    const auto status = Partition();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data write callback"));
+    EXPECT_EQ(state_.capability_calls, 0u);
+    EXPECT_EQ(state_.compile_calls, 0u);
+    EXPECT_EQ(state_.file_writes, 0u);
+    EXPECT_FALSE(std::filesystem::exists(std::filesystem::path(temp_dir_.Path()) / "context.bin"));
+  }
+}
+
+TEST_P(EpContextCallbackPreflightTest, AdvertisedWriteSupportAllowsProviderExternalMode) {
+  ConfigureWriter();
+  options_.supported_flags = OrtEpContextDataCallbackSupportFlags_WRITE;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.compile_calls, 0u);
+  EXPECT_GT(state_.write_callbacks, 0u);
+  EXPECT_EQ(state_.file_writes, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, NoWriteCallbackPreservesProviderExternalMode) {
+  ConfigureWriter();
+  options_.register_write_callback = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_writes, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, ReadCallbackDoesNotRequireWriteSupport) {
+  ConfigureWriter();
+  options_.register_write_callback = false;
+  options_.register_read_callback = true;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_writes, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, EmbeddedProviderOutputDoesNotRequireWriteSupport) {
+  ConfigureWriter();
+  options_.write_during_compile = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.compile_calls, 0u);
+  EXPECT_EQ(state_.file_writes, 0u);
+  EXPECT_EQ(state_.write_callbacks, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Discovery, EpContextCallbackPreflightTest,
+    testing::Values(EpContextDiscoveryStage::Onnx, EpContextDiscoveryStage::OrtFormat, EpContextDiscoveryStage::Aot),
+    [](const testing::TestParamInfo<EpContextDiscoveryStage>& info) {
+      switch (info.param) {
+        case EpContextDiscoveryStage::Onnx:
+          return "Onnx";
+        case EpContextDiscoveryStage::OrtFormat:
+          return "OrtFormat";
+        case EpContextDiscoveryStage::Aot:
+          return "Aot";
+      }
+      ORT_THROW("Unexpected discovery stage");
+    });
+
+TEST(InternalTestingEP, OrtFormatExternalEpContextReadCallbackRequiresSupportForDirectAssignment) {
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      false /*produces_ep_context_nodes*/, true /*read_callback_registered*/, false /*write_callback_required*/,
+      GraphPartitioner::Mode::kOrtFormatLoad);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data read callback"));
+}
+
+class NhwcEpContextReadCallbackTest
+    : public testing::TestWithParam<std::tuple<GraphPartitioner::Mode, bool>> {
+ protected:
+  void SetUp() override {
+    options_.preferred_layout = DataLayout::NHWC;
+    options_.enable_resource_accountant = std::get<1>(GetParam());
+  }
+
+  Status Partition(uint32_t support = OrtEpContextDataCallbackSupportFlags_NONE,
+                   bool read_callback_registered = true) {
+    return PartitionDirectAssignmentExternalEpContext(
+        false /*produces_ep_context_nodes*/, read_callback_registered, false /*write_callback_required*/,
+        std::get<0>(GetParam()), nullptr /*get_ep_context_nodes_called*/, support,
+        true /*claims_ep_context_node*/, options_);
+  }
+
+  DirectAssignmentEpContextTestOptions options_;
+};
+
+TEST_P(NhwcEpContextReadCallbackTest, RetainedExternalContextRequiresReadSupport) {
+  for (uint32_t support : {OrtEpContextDataCallbackSupportFlags_NONE, OrtEpContextDataCallbackSupportFlags_WRITE}) {
+    SCOPED_TRACE(support);
+    const auto status = Partition(support);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data read callback"));
+  }
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, RetainedExternalContextAcceptsReadSupport) {
+  EXPECT_STATUS_OK(Partition(OrtEpContextDataCallbackSupportFlags_READ));
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, NoReadCallbackDoesNotRequireSupport) {
+  EXPECT_STATUS_OK(Partition(OrtEpContextDataCallbackSupportFlags_NONE, false /*read_callback_registered*/));
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, EmbeddedContextDoesNotRequireReadSupport) {
+  options_.embed_mode = 1;
+  EXPECT_STATUS_OK(Partition());
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, DefaultEmbedModeDoesNotRequireReadSupport) {
+  options_.embed_mode = std::nullopt;
+  EXPECT_STATUS_OK(Partition());
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, DroppedTentativeContextDoesNotRequireReadSupport) {
+  options_.drop_after_layout = true;
+  EXPECT_STATUS_OK(Partition());
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, OtherProviderContextDoesNotRequireReadSupport) {
+  options_.assigned_to_other_ep = true;
+  EXPECT_STATUS_OK(Partition());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Partitioning, NhwcEpContextReadCallbackTest,
+    testing::Values(std::make_tuple(GraphPartitioner::Mode::kNormal, false),
+                    std::make_tuple(GraphPartitioner::Mode::kOrtFormatLoad, false),
+                    std::make_tuple(GraphPartitioner::Mode::kNormal, true)),
+    [](const testing::TestParamInfo<NhwcEpContextReadCallbackTest::ParamType>& info) {
+      if (std::get<1>(info.param)) {
+        return "OnnxWithAccounting";
+      }
+      return std::get<0>(info.param) == GraphPartitioner::Mode::kNormal ? "Onnx" : "OrtFormat";
+    });
 
 // Validates that the resource accountant is updated correctly across the NHWC two-pass
 // partitioning flow: a node tentatively claimed on the first pass but dropped on the
@@ -831,6 +1556,7 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
                             sess_options.config_options, default_logger, nullptr /*layering_index*/,
                             GraphPartitioner::Mode::kNormal,
                             epctx::ModelGenOptions{},
+                            false /*ep_context_data_read_callback_registered*/,
                             debug_graph_fn));
 
   if (survivor_capability_mode == SurvivorCapabilityMode::kAccountedMixedOverlap &&
@@ -1251,6 +1977,7 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingDoesNotReserveUnassignedCapability)
                             sess_options.config_options, default_logger, nullptr /*layering_index*/,
                             GraphPartitioner::Mode::kNormal,
                             epctx::ModelGenOptions{},
+                            false /*ep_context_data_read_callback_registered*/,
                             debug_graph_fn));
 
   EXPECT_TRUE(pass2_only_relu_assigned)
