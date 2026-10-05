@@ -2894,12 +2894,12 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::da
   if (onnxruntime_BUILD_SHARED_LIB)
     AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-            LIBS dawn::dawn_native
+            LIBS dawn::dawn_native dawn::dawn_proc
             DEPENDS ${all_dependencies})
   else()
     AddTest(TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-            LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+            LIBS dawn::dawn_native dawn::dawn_proc ${onnxruntime_test_providers_libs}
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)

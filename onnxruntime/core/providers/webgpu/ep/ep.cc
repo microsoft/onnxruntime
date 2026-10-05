@@ -303,9 +303,11 @@ OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL Ep::GetGraphCaptureNodeAssignme
 OrtStatus* ORT_API_CALL Ep::CreateSyncStreamForDeviceImpl(
     OrtEp* this_ptr, const OrtMemoryDevice* memory_device, OrtSyncStreamImpl** stream) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  auto& ep = *static_cast<WebGpuExecutionProvider*>(static_cast<Ep*>(this_ptr)->EpImpl());
+  auto* ep_adapter = static_cast<Ep*>(this_ptr);
+  auto& ep = *static_cast<WebGpuExecutionProvider*>(ep_adapter->EpImpl());
   ORT_ENFORCE(Api().ep.MemoryDevice_GetDeviceType(memory_device) == OrtMemoryInfoDeviceType_GPU &&
-                  static_cast<int64_t>(Api().ep.MemoryDevice_GetDeviceId(memory_device)) == ep.GetDeviceId(),
+                  static_cast<int64_t>(Api().ep.MemoryDevice_GetDeviceId(memory_device)) ==
+                      ep_adapter->config_.device_allocator->Info().device.Id(),
               "Unsupported memory device for WebGPU Session stream.");
   *stream = CreateWebGpuSyncStream(ep);
   return nullptr;
