@@ -379,6 +379,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(quant_type_ != "fp8", "QMoE quant_type='fp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8", "QMoE quant_type='wfp4afp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
 #endif
+  enable_fp8_fused_ = quant_type_ == "fp8" && sm_ >= 80 &&
+                      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP8_FUSED", 1) != 0;
 
   using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
@@ -1264,6 +1266,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   }
   const bool use_packed_int = use_packed_int_gemv || use_packed_int_prefill;
+  const bool use_fp8_fused = is_block_fp8 && enable_fp8_fused_ &&
+                             (kernel_activation_type == ActivationType::Silu ||
+                              kernel_activation_type == ActivationType::Swiglu) &&
+                             moe_params.num_rows <= 65535 / k_;
   if (use_int_dequant_fallback && !use_packed_int) {
     const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;
     ORT_RETURN_IF_NOT(total_dequant_bytes <= static_cast<size_t>(int_dequant_max_scratch_bytes_),
@@ -1307,7 +1313,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // dense grouped-GEMM tile loop, so profiling/sizing the dense runner here would be pure
   // overhead (mutex, two dense-tactic profiling launches, and an unused large workspace
   // allocation). Skip it entirely for that path; workspace_size stays 0.
-  if (!use_packed_int) {
+  if (!use_packed_int && !use_fp8_fused) {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
 
     // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
@@ -1512,6 +1518,122 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
     return fused_routing;
   };
+
+  if (use_fp8_fused) {
+    namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
+    const int num_experts = narrow<int>(moe_params.num_experts);
+    const int hidden = narrow<int>(moe_params.hidden_size);
+    const int inter = narrow<int>(moe_params.inter_size);
+    const int fusion = split_fp8_fc1 ? 1 : (is_fused_swiglu ? swiglu_fusion : 0);
+    const int fc1_n = inter * (fusion ? 2 : 1);
+    const int max_routes = narrow<int>(row_tile_plan.rows_per_tile * k_);
+    const size_t element_size = input->DataType()->Size();
+    auto row_map = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
+    auto sorted_experts = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
+    auto expert_offsets = GetScratchBuffer<int64_t>(num_experts + 1, GetComputeStream(context));
+    auto tile_offsets = GetScratchBuffer<int>(num_experts + 1, GetComputeStream(context));
+    auto projection = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * fc1_n * element_size, GetComputeStream(context));
+    auto activation = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * inter * element_size, GetComputeStream(context));
+    auto result = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * hidden * element_size, GetComputeStream(context));
+    auto scale_type = [](const Tensor* tensor) {
+      return tensor->IsDataType<float>() ? 0 : (tensor->IsDataType<MLFloat16>() ? 1 : 2);
+    };
+    const auto* fc1_scale_tensor = context->Input<Tensor>(3);
+    const auto* fc2_scale_tensor = context->Input<Tensor>(6);
+    const auto* fc3_scale_tensor = split_fp8_fc1 ? context->Input<Tensor>(9) : nullptr;
+    for (int64_t tile = 0; tile < row_tile_plan.TileCount(); ++tile) {
+      const int rows = narrow<int>(row_tile_plan.RowsInTile(tile));
+      const int routes = rows * narrow<int>(k_);
+      const int64_t row_offset = row_tile_plan.RowOffset(tile);
+      route_tile(row_offset, rows);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+      if (routing_snapshot_) {
+        ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(expert_indices, routes, stream));
+      }
+#endif
+      IAllocatorUniquePtr<int> counts;
+      IAllocatorUniquePtr<int> cumulative_counts;
+      IAllocatorUniquePtr<int> blocked_rows;
+      if (!ck::fusedBuildExpertMapsSortFirstToken(
+              expert_indices, row_map.get(), unpermuted_row_to_permuted_row, sorted_experts.get(), expert_offsets.get(),
+              rows, num_experts, narrow<int>(k_), 0, num_experts, stream)) {
+        const int64_t tokens_per_block = ck::computeNumTokensPerBlock(rows, num_experts);
+        const int64_t blocks = onnxruntime::llm::common::ceilDiv(rows, tokens_per_block);
+        counts = GetScratchBuffer<int>(SafeInt<size_t>(num_experts) * blocks, GetComputeStream(context));
+        cumulative_counts = GetScratchBuffer<int>(SafeInt<size_t>(num_experts) * blocks, GetComputeStream(context));
+        blocked_rows = GetScratchBuffer<int>(SafeInt<size_t>(num_experts) * rows, GetComputeStream(context));
+        ck::threeStepBuildExpertMapsSortFirstToken(
+            expert_indices, sorted_experts.get(), row_map.get(), unpermuted_row_to_permuted_row, expert_offsets.get(),
+            counts.get(), cumulative_counts.get(), blocked_rows.get(), rows, num_experts, k_, 0, stream);
+      }
+      const bool gemm = rows > 8;
+      if (gemm) {
+        LaunchQMoEFp8ExpertTiles(expert_offsets.get(), tile_offsets.get(), num_experts, stream);
+      }
+      auto execute = [&](auto* type_ptr) {
+        using T = std::remove_pointer_t<decltype(type_ptr)>;
+        QMoEFp8ProjectionParams params;
+        params.weights = static_cast<const uint8_t*>(fc1_experts_weights->DataRaw());
+        params.scales = fc1_scale_tensor->DataRaw();
+        params.scale_type = scale_type(fc1_scale_tensor);
+        params.up_weights = split_fp8_fc1 ? static_cast<const uint8_t*>(fc3_experts_weights->DataRaw()) : nullptr;
+        params.up_scales = fc3_scale_tensor ? fc3_scale_tensor->DataRaw() : nullptr;
+        params.up_scale_type = fc3_scale_tensor ? scale_type(fc3_scale_tensor) : 0;
+        params.row_to_unpermuted = row_map.get();
+        params.experts = sorted_experts.get();
+        params.expert_offsets = expert_offsets.get();
+        params.tile_offsets = gemm ? tile_offsets.get() : nullptr;
+        params.num_experts = num_experts;
+        params.num_rows = rows;
+        params.expanded_rows = routes;
+        params.n = fc1_n;
+        params.k = hidden;
+        params.block_size = narrow<int>(block_size_);
+        params.fusion = fusion;
+        const auto* tile_input = static_cast<const T*>(input->DataRaw()) + row_offset * hidden;
+        LaunchQMoEFp8Projection(params, tile_input, static_cast<T*>(projection.get()), stream);
+        const auto* fc1_bias = fc1_experts_bias_optional ? static_cast<const T*>(fc1_experts_bias_optional->DataRaw()) : nullptr;
+        LaunchQMoEFp8Activation(static_cast<const T*>(projection.get()), fc1_bias, static_cast<T*>(activation.get()),
+                                sorted_experts.get(), routes, inter, fusion,
+                                split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
+                                split_fp8_fc1 ? 0.0f : activation_beta_,
+                                split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+        params.weights = static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
+        params.scales = fc2_scale_tensor->DataRaw();
+        params.scale_type = scale_type(fc2_scale_tensor);
+        params.up_weights = nullptr;
+        params.up_scales = nullptr;
+        params.row_to_unpermuted = nullptr;
+        params.n = hidden;
+        params.k = inter;
+        params.fusion = 0;
+        LaunchQMoEFp8Projection(params, static_cast<const T*>(activation.get()), static_cast<T*>(result.get()), stream);
+        const auto* fc2_bias = fc2_experts_bias_optional ? static_cast<const T*>(fc2_experts_bias_optional->DataRaw()) : nullptr;
+        ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
+            static_cast<const T*>(result.get()), static_cast<T*>(output->MutableDataRaw()) + row_offset * hidden,
+            fc2_bias, expert_scales, unpermuted_row_to_permuted_row, row_map.get(), expert_indices, expert_offsets.get(),
+            rows, hidden, k_, num_experts, parallelism_config, false, stream);
+      };
+      if (is_fp16_) {
+        execute(static_cast<half*>(nullptr));
+      } else {
+        execute(static_cast<__nv_bfloat16*>(nullptr));
+      }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+      if (routing_snapshot_) {
+        ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+      }
+#endif
+    }
+    if (enable_kernel_debug_info_) {
+      const size_t activation_bytes = SafeInt<size_t>(max_routes) * (fc1_n + inter + hidden) * element_size;
+      PrintQMoEKernelDebugInfo(row_tile_plan.rows_per_tile > 8 ? "fp8_fused_gemm" : "fp8_fused_gemv",
+                               moe_params.num_rows, row_tile_plan.rows_per_tile, final_tile_rows,
+                               max_routes, final_tile_rows * k_, 0, total_scratch_bytes + activation_bytes);
+      std::cout << "QMoE FP8 ExpertCapacity=" << num_experts << " DequantWeightBytes=0" << std::endl;
+    }
+    return Status::OK();
+  }
 
   // Holders for packed tensors (if packing is needed for SwiGLU)
   IAllocatorUniquePtr<void> packed_fc1_scales_holder;

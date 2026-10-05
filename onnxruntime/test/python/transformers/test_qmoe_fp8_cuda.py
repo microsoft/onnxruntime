@@ -606,12 +606,54 @@ class TestQMoEBlockFP8(unittest.TestCase):
 @pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
 def test_block_fp8_compact_decode_scratch(capfd, monkeypatch):
     monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
     tensors = TestQMoEBlockFP8._inputs(experts=512, tokens=1)
     tensors["router_probs"] = (torch.randperm(512, device=device).float() / 128 - 2).bfloat16().unsqueeze(0)
     actual = TestQMoEBlockFP8._execute(tensors)
     expected = TestQMoEBlockFP8._reference(tensors, 128, 0)
     torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
     assert "QMoE FP8 ExpertCapacity=10 DequantWeightBytes=768000" in capfd.readouterr().out
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
+@pytest.mark.parametrize("tokens,path", [(1, "fp8_fused_gemv"), (32, "fp8_fused_gemm")])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("scale_dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_block_fp8_fused_without_weight_scratch(capfd, monkeypatch, tokens, path, dtype, scale_dtype):
+    tensors = TestQMoEBlockFP8._inputs(
+        experts=512 if tokens == 1 else 16, tokens=tokens, dtype=dtype, scale_dtype=scale_dtype
+    )
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
+    reference = TestQMoEBlockFP8._execute(tensors)
+    capfd.readouterr()
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    actual = TestQMoEBlockFP8._execute(tensors)
+    torch.testing.assert_close(actual.float(), reference.float(), atol=0.003, rtol=0.04)
+    log = capfd.readouterr().out
+    assert path in log
+    assert "DequantWeightBytes=0" in log
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("fusion", [0, 1, 2])
+@pytest.mark.parametrize("row_tile_size", [0, 17])
+def test_block_fp8_fused_gemm_partial_tiles(monkeypatch, dtype, fusion, row_tile_size):
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=72, inter=40, experts=32, tokens=35, block=32, fusion=fusion, dtype=dtype
+    )
+    tensors["router_probs"].fill_(-10)
+    selected = [31, 7, 2, 19, 25, 0, 17, 11, 9, 23]
+    tensors["router_probs"][:, selected] = torch.linspace(2, 1, 10, device=device, dtype=dtype)
+    tensors["fc2_bias"] = torch.randn(32, 72, device=device, dtype=dtype) * 0.01
+    if fusion == 1:
+        tensors["fc1_bias"] = torch.randn(32, 80, device=device, dtype=dtype) * 0.01
+    session = TestQMoEBlockFP8._session(tensors, block=32, fusion=fusion, row_tile_size=row_tile_size)
+    actual = TestQMoEBlockFP8._execute(tensors, block=32, fusion=fusion, session=session)
+    expected = TestQMoEBlockFP8._reference(tensors, 32, fusion)
+    torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
 
 
 if __name__ == "__main__":

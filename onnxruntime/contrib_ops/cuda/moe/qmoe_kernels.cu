@@ -6,6 +6,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
+#include <mma.h>
 
 #include <algorithm>
 #include <cfloat>
@@ -1544,6 +1545,195 @@ void LaunchQMoECompactExperts(
   QMoERemapExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, compact_indices, expert_to_compact, num_routes);
   CUDA_CALL_THROW(cudaGetLastError());
 }
+
+template <typename T>
+__device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params, int expert, int row, int col) {
+  const uint8_t* weights = params.weights;
+  const void* scales = params.scales;
+  int scale_type = params.scale_type;
+  int source_n = params.n;
+  if (params.up_weights) {
+    if (row % 2) {
+      weights = params.up_weights;
+      scales = params.up_scales;
+      scale_type = params.up_scale_type;
+    }
+    source_n /= 2;
+    row /= 2;
+  } else if (params.fusion == 2) {
+    row = row / 2 + (row % 2) * (source_n / 2);
+  }
+  const int scale_n = (source_n + params.block_size - 1) / params.block_size;
+  const int scale_k = (params.k + params.block_size - 1) / params.block_size;
+  const int64_t scale_index = (static_cast<int64_t>(expert) * scale_n + row / params.block_size) * scale_k +
+                             col / params.block_size;
+  const int64_t weight_index = (static_cast<int64_t>(expert) * source_n + row) * params.k + col;
+  const float scale = scale_type == 0 ? static_cast<const float*>(scales)[scale_index]
+                     : scale_type == 1 ? __half2float(static_cast<const half*>(scales)[scale_index])
+                                       : __bfloat162float(static_cast<const __nv_bfloat16*>(scales)[scale_index]);
+  return static_cast<T>(DecodeFloat8E4M3FN(weights[weight_index]) * scale);
+}
+
+template <typename T>
+__global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input, T* output) {
+  const int row = static_cast<int>(blockIdx.y);
+  const int expert = params.experts[row];
+  const int output_col = static_cast<int>(blockIdx.x) * 4 + threadIdx.x / 32;
+  if (output_col >= params.n) {
+    return;
+  }
+  const int input_row = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows : row;
+  float sum = 0.0f;
+  for (int col = threadIdx.x % 32; col < params.k; col += 32) {
+    sum = fmaf(static_cast<float>(input[static_cast<int64_t>(input_row) * params.k + col]),
+               static_cast<float>(QMoEFp8Weight<T>(params, expert, output_col, col)), sum);
+  }
+  sum = WarpReduceSum(sum);
+  if (threadIdx.x % 32 == 0) {
+    output[static_cast<int64_t>(row) * params.n + output_col] = static_cast<T>(sum);
+  }
+}
+
+__global__ void QMoEFp8ExpertTilesKernel(const int64_t* expert_offsets, int* tile_offsets, int num_experts) {
+  int tiles = 0;
+  tile_offsets[0] = 0;
+  for (int expert = 0; expert < num_experts; ++expert) {
+    tiles += static_cast<int>((expert_offsets[expert + 1] - expert_offsets[expert] + 15) / 16);
+    tile_offsets[expert + 1] = tiles;
+  }
+}
+
+void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
+                            int num_experts, cudaStream_t stream) {
+  QMoEFp8ExpertTilesKernel<<<1, 1, 0, stream>>>(expert_offsets, tile_offsets, num_experts);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+template <typename T>
+__global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input, T* output) {
+#if __CUDA_ARCH__ >= 800
+  namespace wmma = nvcuda::wmma;
+  const int tile = static_cast<int>(blockIdx.y);
+  if (tile >= params.tile_offsets[params.num_experts]) {
+    return;
+  }
+  int first = 0;
+  int last = params.num_experts;
+  while (first < last) {
+    const int middle = (first + last) / 2;
+    if (params.tile_offsets[middle + 1] <= tile) {
+      first = middle + 1;
+    } else {
+      last = middle;
+    }
+  }
+  const int expert = first;
+  const int64_t row_start = params.expert_offsets[expert] + (tile - params.tile_offsets[expert]) * 16;
+  const int64_t row_end = params.expert_offsets[expert + 1];
+  const int column_start = static_cast<int>(blockIdx.x) * 64;
+  __shared__ __align__(32) T activation_tile[16 * 32];
+  __shared__ __align__(32) T weight_tile[64 * 32];
+  __shared__ __align__(32) float output_tile[16 * 64];
+  wmma::fragment<wmma::accumulator, 16, 16, 16, float> accumulator;
+  wmma::fill_fragment(accumulator, 0.0f);
+  const int warp = threadIdx.x / 32;
+  for (int k_start = 0; k_start < params.k; k_start += 32) {
+    for (int index = threadIdx.x; index < 16 * 32; index += 128) {
+      const int64_t row = row_start + index / 32;
+      const int col = k_start + index % 32;
+      T value = static_cast<T>(0.0f);
+      if (row < row_end && col < params.k) {
+        const int input_row = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows
+                                                     : static_cast<int>(row);
+        value = input[static_cast<int64_t>(input_row) * params.k + col];
+      }
+      activation_tile[index] = value;
+    }
+    for (int index = threadIdx.x; index < 64 * 32; index += 128) {
+      const int row = column_start + index / 32;
+      const int col = k_start + index % 32;
+      weight_tile[index] = row < params.n && col < params.k
+                               ? QMoEFp8Weight<T>(params, expert, row, col)
+                               : static_cast<T>(0.0f);
+    }
+    __syncthreads();
+    for (int inner = 0; inner < 32; inner += 16) {
+      wmma::fragment<wmma::matrix_a, 16, 16, 16, T, wmma::row_major> activation;
+      wmma::fragment<wmma::matrix_b, 16, 16, 16, T, wmma::col_major> weight;
+      wmma::load_matrix_sync(activation, activation_tile + inner, 32);
+      wmma::load_matrix_sync(weight, weight_tile + warp * 16 * 32 + inner, 32);
+      wmma::mma_sync(accumulator, activation, weight, accumulator);
+    }
+    __syncthreads();
+  }
+  wmma::store_matrix_sync(output_tile + warp * 16, accumulator, 64, wmma::mem_row_major);
+  __syncthreads();
+  for (int index = threadIdx.x; index < 16 * 64; index += 128) {
+    const int64_t row = row_start + index / 64;
+    const int col = column_start + index % 64;
+    if (row < row_end && col < params.n) {
+      output[row * params.n + col] = static_cast<T>(output_tile[index]);
+    }
+  }
+#endif
+}
+
+template <typename T>
+void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
+                            const T* input, T* output, cudaStream_t stream) {
+  if (params.tile_offsets) {
+    const int tiles = std::min(params.expanded_rows,
+                               std::min(params.num_experts, params.expanded_rows) + params.expanded_rows / 16);
+    QMoEFp8GemmKernel<<<dim3((params.n + 63) / 64, tiles), 128, 0, stream>>>(params, input, output);
+  } else {
+    QMoEFp8GemvKernel<<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
+  }
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+template <typename T>
+__global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output,
+                                      const int* experts, int rows, int inter_size, int fusion,
+                                      float alpha, float beta, float limit) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= static_cast<int64_t>(rows) * inter_size) {
+    return;
+  }
+  const int row = static_cast<int>(index / inter_size);
+  const int col = static_cast<int>(index % inter_size);
+  const int n = inter_size * (fusion ? 2 : 1);
+  const int gate_col = fusion ? 2 * col : col;
+  float gate = static_cast<float>(input[static_cast<int64_t>(row) * n + gate_col]);
+  float up = fusion ? static_cast<float>(input[static_cast<int64_t>(row) * n + gate_col + 1]) : 1.0f;
+  if (bias) {
+    const int bias_col = fusion == 2 ? col : gate_col;
+    gate += static_cast<float>(bias[static_cast<int64_t>(experts[row]) * n + bias_col]);
+    if (fusion) {
+      up += static_cast<float>(bias[static_cast<int64_t>(experts[row]) * n +
+                                   (fusion == 2 ? col + inter_size : gate_col + 1)]);
+    }
+  }
+  if (fusion) {
+    gate = fminf(gate, limit);
+    up = fminf(fmaxf(up, -limit), limit) + beta;
+  }
+  output[index] = static_cast<T>(gate / (1.0f + expf(-alpha * gate)) * up);
+}
+
+template <typename T>
+void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
+                            const int* experts, int rows, int inter_size, int fusion,
+                            float alpha, float beta, float limit, cudaStream_t stream) {
+  const int64_t count = static_cast<int64_t>(rows) * inter_size;
+  QMoEFp8ActivationKernel<<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
+      input, bias, output, experts, rows, inter_size, fusion, alpha, beta, limit);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+template void LaunchQMoEFp8Projection<half>(const QMoEFp8ProjectionParams&, const half*, half*, cudaStream_t);
+template void LaunchQMoEFp8Projection<__nv_bfloat16>(const QMoEFp8ProjectionParams&, const __nv_bfloat16*, __nv_bfloat16*, cudaStream_t);
+template void LaunchQMoEFp8Activation<half>(const half*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
+template void LaunchQMoEFp8Activation<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
 
 template <typename T>
 __global__ void QMoEDequantizeFp8WeightsKernel(

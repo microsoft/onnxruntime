@@ -270,6 +270,38 @@ void LaunchQMoECompactExperts(
     int64_t num_routes,
     cudaStream_t stream);
 
+struct QMoEFp8ProjectionParams {
+  const uint8_t* weights = nullptr;
+  const uint8_t* up_weights = nullptr;
+  const void* scales = nullptr;
+  const void* up_scales = nullptr;
+  int scale_type = 0;
+  int up_scale_type = 0;
+  const int* row_to_unpermuted = nullptr;
+  const int* experts = nullptr;
+  const int64_t* expert_offsets = nullptr;
+  const int* tile_offsets = nullptr;
+  int num_experts = 0;
+  int num_rows = 0;
+  int expanded_rows = 0;
+  int n = 0;
+  int k = 0;
+  int block_size = 0;
+  int fusion = 0;
+};
+
+void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
+                              int num_experts, cudaStream_t stream);
+
+template <typename T>
+void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
+                             const T* input, T* output, cudaStream_t stream);
+
+template <typename T>
+void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
+                             const int* experts, int rows, int inter_size, int fusion,
+                             float alpha, float beta, float limit, cudaStream_t stream);
+
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
     const float* scales,
