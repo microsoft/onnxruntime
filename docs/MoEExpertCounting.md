@@ -141,6 +141,11 @@ nodes. The default is `0`, which disables CPU offloading.
 Every expert retains a CPU weight representation. Only selected experts are copied to CUDA. During inference, CUDA experts
 run through the existing CUTLASS MoE path and other experts run through the MLAS FP16 CPU path; their weighted outputs
 are combined on CUDA. Routing still records every selected expert, so counter updates continue unchanged.
+Each kernel retains only one host representation of its FC1/FC2 weights: original weights for all-CUDA nodes, or
+GEMM-layout weights for nodes with CPU experts. The temporary original copy is released after transposition.
+
+Offload requires prepacking to remain enabled and the input hidden dimension to be statically known. Connected
+FC1/FC2 biases must be constant, just like the expert weights.
 
 Placement is static in this stage: counters continue to evolve, but no weight transfer, expert swap, or end-of-run
 redistribution occurs. Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, BF16, FP32, the CUDA

@@ -798,7 +798,25 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile, path));
   InferenceSessionWrapper session(options, GetEnvironment());
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
-  const auto model = MakeCountingModel(false, true);
+  ModelProto numerical_model;
+  ASSERT_TRUE(numerical_model.ParseFromString(MakeCountingModel(false, true)));
+  for (auto& tensor : *numerical_model.mutable_graph()->mutable_initializer()) {
+    std::vector<MLFloat16> weights(static_cast<size_t>(kExperts * kWidth * kWidth), MLFloat16(0.0f));
+    for (int64_t expert = 0; expert < kExperts; ++expert) {
+      for (int64_t column = 0; column < kWidth; ++column) {
+        weights[static_cast<size_t>(expert * kWidth * kWidth + column * kWidth + column)] =
+            MLFloat16(tensor.name() == "w1" ? 1.0f : static_cast<float>(expert + 1));
+      }
+    }
+    tensor.set_raw_data(weights.data(), weights.size() * sizeof(MLFloat16));
+  }
+  for (auto& node : *numerical_model.mutable_graph()->mutable_node()) {
+    auto* attribute = node.add_attribute();
+    attribute->set_name("normalize_routing_weights");
+    attribute->set_type(AttributeProto_AttributeType_INT);
+    attribute->set_i(1);
+  }
+  const auto model = numerical_model.SerializeAsString();
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(session.Initialize());
 
@@ -808,6 +826,28 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
             (InlinedVector<int>{1, 3}));
   EXPECT_EQ(CudaExperts(*state, session.GetSessionState().GetKernel(1)),
             (InlinedVector<int>{0, 2, 3}));
+
+  auto feeds = CountingFeeds();
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue router;
+  const std::vector<MLFloat16> routing{
+      MLFloat16(0.f), MLFloat16(9.f), MLFloat16(0.f), MLFloat16(0.f),
+      MLFloat16(0.f), MLFloat16(0.f), MLFloat16(0.f), MLFloat16(9.f),
+      MLFloat16(9.f), MLFloat16(0.f), MLFloat16(0.f), MLFloat16(0.f)};
+  CreateMLValue<MLFloat16>(allocator, {3, kExperts}, routing, &router);
+  feeds["router"] = router;
+  std::vector<OrtValue> outputs;
+  const std::array<std::string, 1> output_names{"output"};
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+  ASSERT_EQ(outputs.size(), 1U);
+  const auto values = outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+  ASSERT_EQ(values.size(), static_cast<size_t>(3 * kWidth));
+  const std::array<float, 3> expected{4.0f, 16.0f, 1.0f};
+  for (size_t row = 0; row < expected.size(); ++row) {
+    for (size_t column = 0; column < static_cast<size_t>(kWidth); ++column) {
+      EXPECT_NEAR(values[row * static_cast<size_t>(kWidth) + column].ToFloat(), expected[row], 0.01f);
+    }
+  }
 }
 
 TEST(MoeExpertCountingTest, StaticCpuOffloadRejectsCountAboveEligibleExperts) {

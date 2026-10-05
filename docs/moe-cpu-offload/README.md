@@ -269,7 +269,8 @@ Implemented initially for the built-in CUDA FP16 `MoE` path:
 
 - Parse and validate `session.moe_cpu_offload_experts`; `0` disables offloading.
 - Use loaded counters to select CUDA experts globally; distribute an all-zero budget round-robin across eligible nodes.
-- Keep canonical constant weights on CPU and materialize only selected expert slices in compact CUDA storage.
+- Keep one representation of all constant expert weights on CPU and materialize only selected expert slices in compact
+  CUDA storage. All-CUDA nodes retain the original host weights; nodes with CPU experts retain the GEMM-layout weights.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
 - Dispatch CUDA-resident routes through CUTLASS and CPU-resident routes through MLAS FP16 GEMMs.
 - Combine CPU and CUDA expert results on CUDA without changing the exported `MoE` model contract.
@@ -280,6 +281,8 @@ Implemented initially for the built-in CUDA FP16 `MoE` path:
 
 Current limitations are deliberate: constant FC1/FC2 weights are required; FC3, sparse mixer, QMoE, BF16, FP32,
 minimal builds, CUDA graph capture, and the CUDA plugin EP are not supported by this first slice.
+Prepacking must remain enabled, the input hidden dimension must be statically known, and connected FC1/FC2 biases
+must also be constant.
 
 ### Step 2: adaptive expert swaps
 

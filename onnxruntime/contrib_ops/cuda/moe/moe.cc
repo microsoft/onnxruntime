@@ -219,7 +219,6 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
   for (int input_idx : {2, 4}) {
     auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
     if (cuda_experts_.size() == num_experts) {
-      std::vector<MLFloat16>{}.swap(packed.cpu_data);
       continue;
     }
     const size_t output_size = static_cast<size_t>(
