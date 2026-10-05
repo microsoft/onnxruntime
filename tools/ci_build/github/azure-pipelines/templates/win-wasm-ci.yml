@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - name: SkipPublish
   type: boolean

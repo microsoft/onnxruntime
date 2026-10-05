@@ -117,7 +117,7 @@ stages:
       - job: CreateZipPackages
         displayName: 'Create Foundry Local WebGPU Plugin-EP Zip Packages'
         pool:
-          name: onnxruntime-Win-CPU-2022
+          name: 'onnxruntime-Win-CPU-VS2022-Latest'
           os: windows
         templateContext:
           outputs:
