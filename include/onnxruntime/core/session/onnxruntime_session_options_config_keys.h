@@ -117,6 +117,11 @@ static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimiz
 // Its default value is "0".
 static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
 
+// Limits cumulative model-local function expansion across AOT and fallback inlining.
+// Values must be positive decimal integers. Defaults are 1,000,000 nodes and 1 GiB of serialized node payload.
+static const char* const kOrtSessionOptionsFunctionExpansionNodeLimit = "session.function_expansion_node_limit";
+static const char* const kOrtSessionOptionsFunctionExpansionByteLimit = "session.function_expansion_byte_limit";
+
 #ifdef ENABLE_TRAINING
 // Specifies a path of the file containing a list of memory optimization configurations.
 // The value should be a string indicating the file path of the config file.
@@ -472,9 +477,10 @@ static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_in
 static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
 
 /// Enables per-shape GEMM kernel auto-tuning for CUDA fp16/bf16 MatMul: "1" enables, "0" (default) disables.
-/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS and a small-N
-/// GEMV for small M) on the current device and caches the fastest for the process. Tuning is skipped
-/// while a CUDA graph is being captured, so run at least one warm-up inference before capture.
+/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS, a small-N
+/// GEMV, and on SM 9.0+ the TMA-based tinygemm2) on the current device and caches the fastest for the
+/// process. Tuning is skipped while a CUDA graph is being captured, so run at least one warm-up inference
+/// before capture.
 /// When disabled, cuBLAS is used. Overrides the ORT_CUDA_GEMM_AUTO_TUNE environment variable;
 /// ORT_ENABLE_SMALL_N_GEMV=1/0, when set, forces the small-N GEMV on/off and bypasses tuning.
 static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.enable_gemm_auto_tune";
@@ -633,6 +639,16 @@ static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.
 // "0" or unset uses the MLAS default (128).
 // This option exists for perf experimentation; the default may be retuned in future releases.
 static const char* const kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch = "mlas.nchwc_pointwise_conv_max_input_channel_batch";
+
+// Selects the NCHWc depthwise convolution kernel on AVX-512 platforms. The sliding window kernel keeps
+// each input column of a kernel row in a register across the kernel columns and handles the padding
+// columns with masks. It supports stride 1, dilation 1 and kernel widths 3, 5 and 7 (other shapes use
+// the assembly kernel). Its results are bitwise identical to the assembly kernel, except that a NaN
+// result may carry a different NaN payload or sign.
+// Option values:
+// - "1": Use the sliding window kernel where it applies. [DEFAULT]
+// - "0": Always use the assembly kernel.
+static const char* const kOrtSessionOptionsMlasNchwcDepthwiseSliding = "mlas.nchwc_depthwise_sliding";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
