@@ -56,6 +56,13 @@ Status ValidatePackedMultiHeadAttentionTokenOffset(
     return Status::OK();
   }
 
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+  if (capture_status != cudaStreamCaptureStatusNone) {
+    // Host readback is not capture-safe. The captured transpose kernels enforce the same bounds.
+    return Status::OK();
+  }
+
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(validation_flag, 0, sizeof(int32_t), stream));
   constexpr int32_t threads_per_block = 256;
   const int32_t required_blocks =
@@ -111,6 +118,10 @@ __global__ void TransposeQKV_TNH_3BNSH(
 
   const int packing_token_idx = b * S + s;
   const int padding_token_idx = token_offset[packing_token_idx];
+  if (padding_token_idx < 0 || padding_token_idx >= gridDim.y * S) {
+    return;
+  }
+
   b = padding_token_idx / S;
   s = padding_token_idx % S;
 
@@ -284,6 +295,10 @@ __global__ void TransposeQKV_TN3H_3BNSH(
 
   const int packing_token_idx = b * S + s;
   const int padding_token_idx = token_offset[packing_token_idx];
+  if (padding_token_idx < 0 || padding_token_idx >= gridDim.y * S) {
+    return;
+  }
+
   b = padding_token_idx / S;
   s = padding_token_idx % S;
 
