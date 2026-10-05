@@ -15,7 +15,7 @@ struct OptionalProvider : onnxruntime::Provider {
   int initialization_count = 0;
 
   void Initialize() override { ++initialization_count; }
-  void Shutdown() override {}
+  void Shutdown() override { initialization_count = 0; }
   void* GetInfo() override { return &initialization_count; }
 } optional_provider;
 }  // namespace

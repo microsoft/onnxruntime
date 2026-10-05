@@ -95,6 +95,9 @@ TEST_F(OptionalProviderProbeTest, SuccessfulProbeInitializesOnceAndCanReload) {
   ASSERT_NE(info, nullptr);
   EXPECT_EQ(TryGetProviderInfo_OpenVINO(), info);
   ASSERT_NO_FATAL_FAILURE(CheckInitializedOnce());
+  void* retained_handle = nullptr;
+  ASSERT_STATUS_OK(Env::Default().LoadDynamicLibrary(provider_path_.native(), false, &retained_handle));
+  auto unload = gsl::finally([&] { EXPECT_STATUS_OK(Env::Default().UnloadDynamicLibrary(retained_handle)); });
   UnloadSharedProviders();
   EXPECT_NE(TryGetProviderInfo_OpenVINO(), nullptr);
   ASSERT_NO_FATAL_FAILURE(CheckInitializedOnce());
