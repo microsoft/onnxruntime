@@ -628,19 +628,18 @@ tests before it can claim support.
 An EP should claim support only after its tests prove callback write/read, callback-error propagation without disk
 fallback, no extra payload copy on read, legacy disk behavior with no callback, and embed-mode bypass.
 
-Built-in EPs that can generate external context data without `Compile()` must report that through
-`IExecutionProvider::MayProduceExternalEpContextDataWithoutCompilation()`. ORT checks WRITE support before capability
-discovery for these EPs. VitisAI has a direct-assignment path through `GetComputeCapabilityOps()` and compiles its
-backend model in `GetCapability()`. Merely moving context-node creation into its `Compile()` would skip
-direct-assignment-only sessions; changing that lifecycle requires coordinated VAIP changes.
-
-Built-in EPs report additional provider-specific requirements through the side-effect-free
+Built-in EPs report provider-specific EPContext data callback requirements through the side-effect-free
 `IExecutionProvider::GetEpContextDataCallbackRequirements()` query. ORT checks the registered callbacks against these
-requirements before each `GetCapability()` call, including AOT inlining, NHWC passes, and ORT-format loading.
-TensorRT reports WRITE when its effective provider options select external context output, even if ORT's compilation
-options request embedded output. QNN reports READ before capability-time loading of external contexts for VTCM backup
-buffer sharing or file-mapped weights. Embedded data and sessions without the corresponding callback do not require
-that callback's support.
+requirements before each `GetCapability()` call, including AOT inlining, NHWC passes, and ORT-format loading — this
+same check covers EPs, such as VitisAI, that can produce external EPContext data as a side effect of
+`GetCapability()` itself, before `Compile()` is ever called. VitisAI has a direct-assignment path through
+`GetComputeCapabilityOps()` and compiles its backend model in `GetCapability()`; it reports WRITE from
+`GetEpContextDataCallbackRequirements()` whenever its effective configuration would produce external context data.
+Merely moving context-node creation into its `Compile()` would skip direct-assignment-only sessions; changing that
+lifecycle requires coordinated VAIP changes. TensorRT reports WRITE when its effective provider options select
+external context output, even if ORT's compilation options request embedded output. QNN reports READ before
+capability-time loading of external contexts for VTCM backup buffer sharing or file-mapped weights. Embedded data
+and sessions without the corresponding callback do not require that callback's support.
 
 ## API Summary
 

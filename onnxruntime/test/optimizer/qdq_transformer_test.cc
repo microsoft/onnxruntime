@@ -5636,10 +5636,7 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
 TEST(QDQTransformerTests, QDQFinalCleanupTransformerReportsIntentionalRemoval) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[kOnnxDomain] = 25;
-  Model model("QDQFinalCleanupRemovalTester", false, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Model model("QDQFinalCleanupRemovalTester", false, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder(graph);
 

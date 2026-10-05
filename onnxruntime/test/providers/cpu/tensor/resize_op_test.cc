@@ -3101,6 +3101,23 @@ TEST(ResizeOpTest, Antialias_Use_ExtrapolationWithNegativeRoi) {
       excluded_eps);
 }
 
+TEST(ResizeOpTest, Antialias_LargeRoiRoundedWindow) {
+  std::vector<float> X(512);
+  std::iota(X.begin(), X.end(), 0.f);
+  InlinedVector<std::string_view> excluded_eps = {
+      kDmlExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider};
+
+  TestAntialiasing(
+      {{"mode", "linear"},
+       {"exclude_outside", "0"},
+       {"extrapolation_value", "10"},
+       {"coordinate_transformation_mode", "tf_crop_and_resize"},
+       {"roi", "{0,0,0,10000000,1,1,1,10000000}"},
+       {"output_shape", "{1,1,1,1}"}},
+      {1, 1, 1, 512}, X, std::vector<float>{1.0f, 1.0f, 1.0f, 0.00333f}, {10.0f},
+      excluded_eps);
+}
+
 TEST(ResizeOpTest, Antialias_Large_half_pixel) {
   std::vector<float> X{0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
   std::vector<float> Y = {1.f, 4.f};
