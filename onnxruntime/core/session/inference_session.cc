@@ -2978,6 +2978,17 @@ common::Status InferenceSession::Initialize() {
         return Status::OK();
       };
 
+      // Enable DQ->MatMulNBits fusion if the NvTensorRTRTX plugin EP is registered.
+      // Matches the EP's documented registration name
+      if (execution_providers_.Get("NvTensorRTRTXExecutionProvider") != nullptr) {
+        if (session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "") == "") {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              session_options_.config_options.AddConfigEntry(
+                  kOrtSessionOptionsEnableDQMatMulNBitsFusion, "1"));
+        }
+      }
+
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
                                                                session_options_.graph_optimization_level,
