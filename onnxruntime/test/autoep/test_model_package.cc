@@ -885,7 +885,8 @@ TEST(ModelPackageTest, VariantSessionOption_RejectsOutputFileOptions) {
   const auto& pkg_api = GetModelPackageFns();
   ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
 
-  for (const auto* option_key : {kOrtSessionOptionsCollectNodeMemoryStatsToFile,
+  for (const auto* option_key : {kDebugLayoutTransformation,
+                                 kOrtSessionOptionsCollectNodeMemoryStatsToFile,
                                  kOrtSessionOptionsConfigEnableProfiling,
                                  kOrtSessionOptionsConfigOptimizedModelFilePath}) {
     SCOPED_TRACE(option_key);

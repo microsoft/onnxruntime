@@ -39,7 +39,8 @@ bool IsModelPackagePathSessionOption(std::string_view key) {
 
 namespace {
 bool IsUnsupportedModelPackageSessionOption(std::string_view key) {
-  return key == kOrtSessionOptionsCollectNodeMemoryStatsToFile ||
+  return key == kDebugLayoutTransformation ||
+         key == kOrtSessionOptionsCollectNodeMemoryStatsToFile ||
          key == kOrtSessionOptionsConfigEnableProfiling ||
          key == kOrtSessionOptionsConfigOptimizedModelFilePath;
 }
