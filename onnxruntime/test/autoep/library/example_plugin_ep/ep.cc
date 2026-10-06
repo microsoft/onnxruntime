@@ -436,7 +436,8 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
     // Validate configuration: cannot enable EPContext generation when loading a compiled model.
     // This is a configuration error - you cannot re-compile an already compiled model.
-    if (ep->config_.enable_ep_context && is_ep_context_node) {
+    if (ep->config_.enable_ep_context && is_ep_context_node &&
+        !ep->config_.test_read_ep_context_during_compile) {
       Ort::Status status(
           "Invalid configuration: 'enable_ep_context' is true but model already contains "
           "EPContext nodes. Cannot re-compile an already compiled model. Either:\n"
