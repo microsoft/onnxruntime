@@ -289,9 +289,13 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
     const NodeIndex pre_action_num_nodes = graph.MaxNodeIndex();
 
     ORT_RETURN_IF_ERROR(selector_action_entry->action->Run(graph, nodes_to_optimize));
-    modified = true;
-
     const NodeIndex post_action_num_nodes = graph.MaxNodeIndex();
+    if (post_action_num_nodes == pre_action_num_nodes && !record.produced_op_ids.empty()) {
+      LOGS(logger, VERBOSE) << "Runtime optimization action was skipped because its selected nodes "
+                               "are no longer safe to replace.";
+      continue;
+    }
+    modified = true;
 
     ORT_RETURN_IF_ERROR(SetOpSinceVersionForProducedNodes(pre_action_num_nodes, post_action_num_nodes,
                                                           record, graph));

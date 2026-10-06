@@ -310,6 +310,16 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementSkipsNonConvexSelection) {
   ASSERT_FALSE(input_identities.empty());
   ASSERT_FALSE(output_identities.empty());
 
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  {
+    auto transformer = std::make_unique<sat::TestTransformer>(SatRuntimeOptimizationSaveContext{});
+    GraphTransformerManager transformer_manager{/* steps */ 5};
+    ASSERT_STATUS_OK(transformer_manager.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  }
+
   const auto& graph_inputs = graph.GetInputs();
   ASSERT_FALSE(graph_inputs.empty());
   auto& external_output =
@@ -325,17 +335,7 @@ TEST(GraphRuntimeOptimizationTest, SavedReplacementSkipsNonConvexSelection) {
   ASSERT_TRUE(graph.AddControlEdge(external_node.Index(), output_identities.front()->Index()));
   ASSERT_STATUS_OK(graph.Resolve());
 
-  for (auto& node : graph.Nodes()) {
-    node.SetExecutionProviderType(kCpuExecutionProvider);
-  }
   const auto original_ops = CountOpsInGraph(graph);
-
-  {
-    auto transformer = std::make_unique<sat::TestTransformer>(SatRuntimeOptimizationSaveContext{});
-    GraphTransformerManager transformer_manager{/* steps */ 5};
-    ASSERT_STATUS_OK(transformer_manager.Register(std::move(transformer), TransformerLevel::Level1));
-    ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
-  }
 
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<fbs::Model> fbs_model_offset;
