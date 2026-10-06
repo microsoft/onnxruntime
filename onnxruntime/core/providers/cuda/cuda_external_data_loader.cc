@@ -199,8 +199,7 @@ void ExternalDataLoader::ReleaseResources() const noexcept {
   }
 }
 
-common::Status ExternalDataLoader::LoadTensor(const Env& env,
-                                              const std::filesystem::path& data_file_path,
+common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
                                               FileOffsetType data_offset,
                                               SafeInt<size_t> data_length,
                                               Tensor& tensor) const {
@@ -212,10 +211,8 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   const size_t length = data_length;
   ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "External data length does not match tensor size.");
 
-  std::unique_ptr<RandomAccessFile> file;
-  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(data_file_path.native().c_str(), file));
-  size_t file_length = 0;
-  ORT_RETURN_IF_ERROR(file->GetLength(file_length));
+  uint64_t file_length = 0;
+  ORT_RETURN_IF_ERROR(file.GetLength(file_length));
   const SafeInt<FileOffsetType> end_offset = SafeInt<FileOffsetType>(data_offset) + length;
   ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
                 "External data range is outside the file.");
@@ -232,14 +229,22 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
       status = DirectStorageLoader::Create(device_id_, directstorage_loader_);
     }
     if (status.IsOK()) {
+      PathString data_file_path;
+      status = file.GetCanonicalPath(data_file_path);
+      if (!status.IsOK()) {
+        directstorage_loader_.reset();
+      }
       void* handle = nullptr;
 #if !defined(ORT_NO_RTTI)
-      const auto* provider = dynamic_cast<const WindowsFileHandleProvider*>(file.get());
+      const auto* provider = dynamic_cast<const WindowsFileHandleProvider*>(&file);
       if (provider != nullptr) {
         handle = provider->GetFileHandle();
       }
 #endif
-      status = directstorage_loader_->Load(data_file_path, handle, data_offset, length, tensor);
+      if (status.IsOK()) {
+        status = directstorage_loader_->Load(
+            std::filesystem::path{data_file_path}, handle, data_offset, length, tensor);
+      }
     }
     if (status.IsOK()) {
       LOGS_DEFAULT(INFO) << "CUDA external data loader: path=directstorage bytes=" << length;
@@ -265,7 +270,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
 #if defined(ORT_NO_RTTI)
       constexpr int file_descriptor = -1;
 #else
-      const auto* descriptor_provider = dynamic_cast<const PosixFileDescriptorProvider*>(file.get());
+      const auto* descriptor_provider = dynamic_cast<const PosixFileDescriptorProvider*>(&file);
       const int file_descriptor =
           descriptor_provider == nullptr ? -1 : descriptor_provider->GetFileDescriptor();
 #endif
@@ -287,7 +292,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
 #endif
 
   if (reading_thread_count_ == 0) {
-    ORT_RETURN_IF_ERROR(LoadWithPageableBuffer(*file, data_offset, length, tensor, 1, reader_pool_));
+    ORT_RETURN_IF_ERROR(LoadWithPageableBuffer(file, data_offset, length, tensor, 1, reader_pool_));
     LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pageable bytes=" << length;
     return Status::OK();
   }
@@ -297,7 +302,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
     LOGS_DEFAULT(WARNING) << "CUDA pinned-buffer setup failed; falling back to pageable memory. "
                           << resource_status.ErrorMessage();
     ORT_RETURN_IF_ERROR(
-        LoadWithPageableBuffer(*file, data_offset, length, tensor, reading_thread_count_, reader_pool_));
+        LoadWithPageableBuffer(file, data_offset, length, tensor, reading_thread_count_, reader_pool_));
     LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pageable bytes=" << length;
     return Status::OK();
   }
@@ -332,7 +337,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
     }
 
     const auto read_status =
-        ReadChunk(*file, data_offset + offset, chunk_size, buffers_[buffer_index],
+        ReadChunk(file, data_offset + offset, chunk_size, buffers_[buffer_index],
                   reading_thread_count_, reader_pool_);
     if (!read_status.IsOK()) {
       ORT_IGNORE_RETURN_VALUE(synchronize_streams());

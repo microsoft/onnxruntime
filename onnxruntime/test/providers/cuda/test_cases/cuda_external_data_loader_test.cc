@@ -94,8 +94,9 @@ void VerifyLoad(size_t length, size_t load_count = 1, size_t reading_thread_coun
     ScopedFileDeleter file_deleter{path};
     ASSERT_EQ(cudaSuccess, cudaMemset(tensor.MutableDataRaw(), 0xa5, length));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
-    ASSERT_STATUS_OK(LoadCudaExternalDataForTest(
-        loader.get(), Env::Default(), path, prefix_size, length, &tensor));
+    std::unique_ptr<RandomAccessFile> file;
+    ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(path.c_str(), file));
+    ASSERT_STATUS_OK(loader->LoadTensor(*file, prefix_size, length, tensor));
 
     std::vector<uint8_t> output(length);
     ASSERT_EQ(cudaSuccess, cudaMemcpy(output.data(), tensor.DataRaw(), length, cudaMemcpyDeviceToHost));
@@ -511,8 +512,9 @@ TEST(CudaExternalDataLoaderTest, RestoresCurrentDevice) {
   Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(kLength)}), *allocator);
 
   ASSERT_EQ(cudaSuccess, cudaSetDevice(kCallerDeviceId));
-  ASSERT_STATUS_OK(LoadCudaExternalDataForTest(
-      loader.get(), Env::Default(), path, kFilePrefixSize, kLength, &tensor));
+  std::unique_ptr<RandomAccessFile> file;
+  ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(path.c_str(), file));
+  ASSERT_STATUS_OK(loader->LoadTensor(*file, kFilePrefixSize, kLength, tensor));
 
   int current_device = -1;
   ASSERT_EQ(cudaSuccess, cudaGetDevice(&current_device));

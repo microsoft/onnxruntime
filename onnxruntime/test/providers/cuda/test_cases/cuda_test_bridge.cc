@@ -53,8 +53,10 @@ std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
 common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,
     FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
+  std::unique_ptr<RandomAccessFile> file;
+  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(path.c_str(), file));
   return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
-      env, path, offset, length, *static_cast<Tensor*>(tensor));
+      *file, offset, length, *static_cast<Tensor*>(tensor));
 }
 
 }  // namespace onnxruntime::test

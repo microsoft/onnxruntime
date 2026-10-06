@@ -74,8 +74,7 @@ class ExternalDataLoader final : public IExternalDataLoader {
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
 
-  common::Status LoadTensor(const Env& env,
-                            const std::filesystem::path& data_file_path,
+  common::Status LoadTensor(const RandomAccessFile& file,
                             FileOffsetType data_offset,
                             SafeInt<size_t> data_length,
                             Tensor& tensor) const override;
