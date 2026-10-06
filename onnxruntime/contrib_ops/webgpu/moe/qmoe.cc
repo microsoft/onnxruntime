@@ -14,6 +14,7 @@
 #endif
 
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <sstream>
 
@@ -116,8 +117,8 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   Tensor raw_weights(DataTypeImpl::GetType<uint8_t>(), weights->Shape(),
                      const_cast<void*>(weights->DataRaw()), memory_info);
 
-  const uint32_t scale_n_blocks = (cols + 127) / 128;
-  const uint32_t scale_k_blocks = (inner + 127) / 128;
+  const uint32_t scale_n_blocks = (cols - 1) / 128 + 1;
+  const uint32_t scale_k_blocks = (inner - 1) / 128 + 1;
   uint32_t byte_offset = 0;
   BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input};
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type}});
@@ -129,12 +130,12 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
     }
     program.AddInputs({{indirect_experts, ProgramTensorMetadataDependency::Type}});
   } else {
-    const uint32_t weight_elements = cols * inner;
-    const uint32_t weight_offset = expert_idx * weight_elements;
-    const uint32_t first_word = weight_offset / 4;
-    byte_offset = weight_offset % 4;
+    const uint64_t weight_elements = uint64_t{cols} * inner;
+    const uint64_t weight_offset = uint64_t{expert_idx} * weight_elements;
+    const uint32_t first_word = static_cast<uint32_t>(weight_offset / 4);
+    byte_offset = static_cast<uint32_t>(weight_offset % 4);
     // Include the shared boundary word when an expert starts inside it.
-    const uint32_t view_words = (byte_offset + weight_elements + 3) / 4;
+    const uint32_t view_words = static_cast<uint32_t>((byte_offset + weight_elements + 3) / 4);
     program.AddInputs({ProgramInput::BufferView(&raw_weights,
                                                 ProgramTensorMetadataDependency::Type,
                                                 TensorShape({view_words}),
@@ -154,11 +155,31 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   constexpr uint32_t workgroup_size = 64;
   program.AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(workgroup_size)
-      .SetDispatchGroupSize((cols + workgroup_size - 1) / workgroup_size, rows)
+      .SetDispatchGroupSize((cols - 1) / workgroup_size + 1, rows)
       .AddUniformVariables({rows, cols, inner, byte_offset,
                             scale_n_blocks, scale_k_blocks})
       .CacheHint(bias != nullptr, indirect_experts != nullptr, broadcast_input);
   return context.RunProgram(program);
+}
+
+Status ValidateBlockFp8Projection(const Tensor* weights, const Tensor* scales, const Tensor* bias,
+                                  const char* name, uint32_t rows, uint32_t cols, uint32_t inner,
+                                  uint32_t max_workgroups_per_dimension) {
+  constexpr uint64_t max_index = std::numeric_limits<uint32_t>::max();
+  const uint64_t weight_elements = static_cast<uint64_t>(weights->Shape().Size());
+  const uint64_t scale_elements = static_cast<uint64_t>(scales->Shape().Size());
+  const uint64_t bias_elements = bias ? static_cast<uint64_t>(bias->Shape().Size()) : 0;
+  ORT_RETURN_IF_NOT(cols != 0 && inner != 0 && rows != 0 &&
+                        (uint64_t{cols} - 1) / 64 < max_workgroups_per_dimension &&
+                        rows <= max_workgroups_per_dimension,
+                    name, " block-FP8 dispatch exceeds WebGPU's per-dimension workgroup limit.");
+  // Both the direct expert view and indirect shader use u32 byte/element offsets.
+  // Reject matrices that could wrap those offsets even when their buffers are valid.
+  ORT_RETURN_IF_NOT(weight_elements <= max_index && scale_elements <= max_index &&
+                        bias_elements <= max_index &&
+                        uint64_t{rows} * cols <= max_index,
+                    name, " block-FP8 projection exceeds 32-bit shader address range.");
+  return Status::OK();
 }
 
 Status ValidateBlockFp8Scales(const Tensor* scales, const char* name,
@@ -521,6 +542,22 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                     ", maxComputeInvocationsPerWorkgroup=", device_limits.maxComputeInvocationsPerWorkgroup, ".");
   const uint32_t hidden_size = static_cast<uint32_t>(moe_params.hidden_size);
   const int64_t fc1_output_size = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
+  if (is_block_fp8_) {
+    const auto max_groups = device_limits.maxComputeWorkgroupsPerDimension;
+    const uint32_t max_rows = static_cast<uint32_t>(
+        moe_params.num_rows == 1 && router_weights == nullptr ? k_ : std::min<int64_t>(moe_params.num_rows, max_tokens));
+    ORT_RETURN_IF_ERROR(ValidateBlockFp8Projection(
+        fc1_experts_weights, fc1_scales, fc1_experts_bias_optional, "FC1", max_rows,
+        static_cast<uint32_t>(fc1_output_size), hidden_size, max_groups));
+    ORT_RETURN_IF_ERROR(ValidateBlockFp8Projection(
+        fc2_experts_weights, fc2_scales, fc2_experts_bias_optional, "FC2", max_rows,
+        hidden_size, static_cast<uint32_t>(moe_params.inter_size), max_groups));
+    if (fc3_experts_weights_optional) {
+      ORT_RETURN_IF_ERROR(ValidateBlockFp8Projection(
+          fc3_experts_weights_optional, fc3_scales_optional, fc3_experts_bias_optional, "FC3", max_rows,
+          static_cast<uint32_t>(moe_params.inter_size), hidden_size, max_groups));
+    }
+  }
   const bool is_fp16 = hidden_state->DataType() == DataTypeImpl::GetType<MLFloat16>();
   const auto dtype = is_fp16 ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   const auto dtype_uint32 = DataTypeImpl::GetType<uint32_t>();

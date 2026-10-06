@@ -4991,7 +4991,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of each token before packing, with shape (batch_size, sequence_length). Values must be in [0, batch_size * sequence_length).</dd>
+<dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
@@ -5046,8 +5046,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-      incomplete block. QSA positions are always the request-local logical cache positions derived
-      from past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
+      incomplete block. QSA positions are the request-local logical cache positions derived from
+      past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
   
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -5104,17 +5104,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).</dd>
 <dt><tt>state_capacity</tt> : int (required)</dt>
 <dd>Fixed capacity (number of entries) of past_key_state / present_key_state. Must be > 0.</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Only for policy_mode 'qsa': maximum number of leading token transitions captured per request. Must be in [0, 8]. Default is 0.</dd>
 <dt><tt>token_budget</tt> : int</dt>
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (16 - 18)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, logical reshape, and rotary embedding.</dd>
-<dt><tt>key</tt> : T</dt>
-<dd>Packed indexer key projection of the new tokens. Shape is (total_tokens, head_size) for policy_mode 'qsa' and (total_tokens, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series.</dd>
+<dd>Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', key may be omitted and query then contains row-wise concatenated query and key projections with shape (total_tokens, (num_heads + 1) * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Packed indexer key projection of the new tokens. Shape is (total_tokens, head_size) for policy_mode 'qsa' and (total_tokens, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series. May be omitted for policy_mode 'qsa' when query contains the packed query/key projection.</dd>
 <dt><tt>query_norm_weight</tt> : T</dt>
 <dd>Effective RMSNorm multiplier of the queries, with shape (head_size).</dd>
 <dt><tt>key_norm_weight</tt> : T</dt>
@@ -5143,9 +5145,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.</dd>
 <dt><tt>past_state_lengths</tt> : M</dt>
 <dd>Generic per-request state length with shape (batch_size, 2). Column 0 is the key_state entry count (policy_mode 'qsa': complete-block count; 'csa': compressed-entry count); column 1 is the pending-buffer length (policy_mode 'qsa': incomplete-block length in [0, compress_ratio); 'csa': buffer length in [0, 2 * compress_ratio)).</dd>
+<dt><tt>state_update_capture_count</tt> (optional) : M</dt>
+<dd>Only for policy_mode 'qsa': number of leading token transitions to capture for each request, with shape (batch_size). Values are clamped to the request length and state_update_capacity. Required when state_update_capacity is positive.</dd>
+<dt><tt>state_update_active</tt> (optional) : M</dt>
+<dd>Only for policy_mode 'qsa': optional capture gate with shape (1). A zero value disables capture.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (6 - 7)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5160,6 +5166,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': updated gate buffer with the same fixed shape as past_gate_buffer.</dd>
 <dt><tt>present_state_lengths</tt> : M</dt>
 <dd>Updated generic per-request state length, with the same fixed shape as past_state_lengths.</dd>
+<dt><tt>state_update</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'qsa': compact transition payloads with shape (batch_size, state_update_capacity, head_size). A token that completes a compression block stores the prepared block representative; any other captured token stores its raw key. Inactive and unused slots are zero.</dd>
 </dl>
 
 #### Type Constraints
@@ -6099,13 +6107,22 @@ This version of the operator has been available since version 1 of the 'com.micr
         The quantized weights are stored in column major order per expert.
         The quantization block size can be specified. If not provided, column wise quantization is used.
   
-        The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+        For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
           dequantized_weight = (quantized_weight - zero_point) * scale
         When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
+
+        For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+        the dequantization is performed per block of size block_size along the K (input feature) dimension.
   
-        For integer and FP4 quantization, a provided block_size requires hidden_size and inter_size
-        to be divisible by the block size. FP8 with block_size=128 instead uses float8e4m3fn weights
-        and FP32 scales per 128x128 output/input-feature tile, including partial edge tiles.
+        For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
+        A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
+        [num_experts, ceil(N / block_size), ceil(K / block_size)]:
+          dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
+        Partial edge blocks are allowed. No zero points or activation scales are used.
+        Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
+        Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+        The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+        that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
         Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
         Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -6143,7 +6160,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. FP8 with block_size 128 uses 128x128 output/input-feature scale tiles. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
+<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>fc1_expert_weight_bits</tt> : int</dt>
@@ -6157,7 +6174,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. For 'fp8', omitting block_size selects the legacy per-expert global-scale contract; block_size=128 selects FP32 128x128 block scales in fc*_scales.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -6178,19 +6195,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is fc1_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc1_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 16). For quant_type='fp8' with block_size=128, this is an FP32 tensor with shape (num_experts, ceil(fusion_size * inter_size / 128), ceil(hidden_size / 128)).</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 16). For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape (num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc2_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, hidden_size, inter_size / 16). For quant_type='fp8' with block_size=128, this is an FP32 tensor with shape (num_experts, ceil(hidden_size / 128), ceil(inter_size / 128)).</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, hidden_size, inter_size / 16). For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape (num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, hidden_size)</dd>
 <dt><tt>fc3_experts_weights</tt> (optional) : T1</dt>
 <dd>3D optional tensor with shape (num_experts, inter_size, hidden_size * effective_fc3_bits / 8). The last dimension must be byte-aligned. effective_fc3_bits is fc3_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc3_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, inter_size), or a 3D tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, inter_size, hidden_size / 32). For quant_type='fp8' with block_size=128, this is an FP32 tensor with shape (num_experts, ceil(inter_size / 128), ceil(hidden_size / 128)).</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, inter_size), or a 3D tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, inter_size, hidden_size / 32). For quant_type='fp8' and block_size > 0, required when FC3 is present, with floating-point scales shaped (num_experts, ceil(inter_size / block_size), ceil(hidden_size / block_size)).</dd>
 <dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, inter_size)</dd>
 <dt><tt>fc1_zero_points</tt> (optional) : T1</dt>
@@ -6202,9 +6219,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>router_weights</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_tokens, num_experts). When provided, router_probs is used only for Top-K expert selection, and router_weights is used for aggregating expert outputs (the values at the selected expert indices are gathered and used as mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for selection and aggregation. When not provided, router_probs is used for both selection and aggregation (backward compatible).</dd>
 <dt><tt>fc1_global_scale</tt> (optional) : T4</dt>
-<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required for 'fp4', 'nvfp4', 'wfp4afp8', and legacy global-scale 'fp8'; omitted for block_size=128 FP8.</dd>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', or 'fp8' with block_size <= 0. Not used for block-scaled FP8.</dd>
 <dt><tt>fc2_global_scale</tt> (optional) : T4</dt>
-<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC2. Required for 'fp4', 'nvfp4', 'wfp4afp8', and legacy global-scale 'fp8'; omitted for block_size=128 FP8.</dd>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', or 'fp8' with block_size <= 0. Not used for block-scaled FP8.</dd>
 <dt><tt>fc1_act_scale</tt> (optional) : T4</dt>
 <dd>1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.</dd>
 <dt><tt>fc2_act_scale</tt> (optional) : T4</dt>
@@ -6230,7 +6247,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T1</tt> : tensor(uint8), tensor(float8e4m3fn)</dt>
 <dd>Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.</dd>
 <dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(float8e8m0), tensor(float8e4m3fn)</dt>
-<dd>Constrain scale types. Float tensors are used for integer quantization scales. Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.</dd>
+<dd>Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.</dd>
 <dt><tt>T4</tt> : tensor(float)</dt>
 <dd>Constrain FP4 global scale type to float32 tensors.</dd>
 </dl>
@@ -6944,7 +6961,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input</tt> : T</dt>
 <dd>Input tensor with shape (total_tokens, hidden_size)</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length), and values must be in [0, batch_size * sequence_length).</dd>
+<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)</dd>
 </dl>
 
 #### Outputs
@@ -7617,11 +7634,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>key_norm_weight</tt> : T</dt>
 <dd>Effective RMSNorm multiplier of the compressed keys, with shape (head_size).</dd>
 <dt><tt>cos_cache</tt> : T</dt>
-<dd>Cosine rotary table indexed by absolute key position, with shape (batch_size, max_rotary_sequence_length, rotary_width).</dd>
+<dd>Cosine rotary table indexed by absolute key position, shared across the batch with shape (max_rotary_sequence_length, rotary_width) or request-specific with shape (batch_size, max_rotary_sequence_length, rotary_width).</dd>
 <dt><tt>sin_cache</tt> : T</dt>
 <dd>Sine rotary table with the same shape as cos_cache.</dd>
 <dt><tt>mask</tt> (optional) : TB</dt>
-<dd>Only for policy_mode 'qsa': INT64 padding mask with shape (batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. total_sequence_length is past_sequence_length + sequence_length.</dd>
+<dd>Only for policy_mode 'qsa': INT64 padding mask with shape (batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. total_sequence_length is past_sequence_length + sequence_length. When omitted, every position through past_sequence_length plus the current query index is visible.</dd>
 <dt><tt>past_key</tt> : T</dt>
 <dd>Cached indexer keys. For policy_mode 'qsa', these are raw keys; for 'csa', they are compressed keys. Shape is (batch_size, past_sequence_length, head_size), or (batch_size, max_cache_length, head_size) when a valid past_sequence_length is provided.</dd>
 <dt><tt>gate</tt> (optional) : T</dt>

@@ -66,6 +66,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool enable_weightless_ep_context_nodes = false;
     bool advertise_ep_context_data_support = true;
     bool use_default_cpu_allocator = false;
+    bool test_read_ep_context_during_compile = false;
     std::string ep_context_output_model_path;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
