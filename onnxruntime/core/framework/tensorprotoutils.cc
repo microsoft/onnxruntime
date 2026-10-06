@@ -2300,8 +2300,8 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       ORT_UNUSED_PARAMETER(model_path);
 #endif
     default:
-      ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(), " in 'Constant' node '", node.name(),
-                "'");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Unsupported attribute value type of ",
+                             constant_attribute.type(), " in 'Constant' node '", node.name(), "'");
   }
 
   // set name last in case attribute type was tensor (would copy over name)
@@ -2313,7 +2313,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
-  ORT_ENFORCE(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
+  ORT_RETURN_IF_NOT(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
 }
 
