@@ -13,12 +13,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace paged_attention_helper {
 
-constexpr bool NeedsHostReadback(bool has_metadata_bounds,
-                                 bool dense_kv_prefers_exact_size,
-                                 bool xqa_candidate) {
-  return !has_metadata_bounds && (dense_kv_prefers_exact_size || xqa_candidate);
-}
-
 template <typename T = Tensor>
 Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
                    int& token_count, int& q_hidden_size, int& kv_hidden_size, int& head_size) {
@@ -476,6 +470,42 @@ inline Status CheckSequenceLengthValues(const int32_t* cumulative_seqlens_q,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "past_seqlens + query_length exceeds block_table capacity for a sequence.");
       }
+    }
+  }
+
+  return Status::OK();
+}
+
+inline Status CheckSequenceLengthAndPastValues(const int32_t* cumulative_seqlens_q,
+                                               const int32_t* past_seqlens,
+                                               int batch_size,
+                                               int max_num_blocks_per_seq,
+                                               int block_size,
+                                               int token_count) {
+  if (cumulative_seqlens_q[0] != 0 ||
+      cumulative_seqlens_q[batch_size] != token_count) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "cumulative_seqlens_q must start with 0 and end with token_count.");
+  }
+
+  const int64_t capacity = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
+  for (int b = 0; b < batch_size; ++b) {
+    const int32_t q_start = cumulative_seqlens_q[b];
+    const int32_t q_end = cumulative_seqlens_q[b + 1];
+    const int32_t past = past_seqlens[b];
+    if (q_start < 0 || q_end < q_start || past < 0) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "cumulative_seqlens_q must be non-negative and non-decreasing, and past_seqlens must be non-negative.");
+    }
+
+    const int64_t q_len = static_cast<int64_t>(q_end) - q_start;
+    if ((q_len == 0 && past > capacity) ||
+        (q_len > 0 && (past >= capacity || static_cast<int64_t>(past) + q_len > capacity))) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "past_seqlens and query length exceed block_table capacity.");
     }
   }
 

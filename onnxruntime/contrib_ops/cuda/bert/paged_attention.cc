@@ -627,18 +627,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool use_memory_efficient_attention =
       mea_eligible && !use_paged_decode && !use_cudnn_paged;
 
-  // FlashAttention cannot safely consume the paged table directly because -1 is a valid unmapped
-  // sentinel and its native page loader does not mask negative page IDs. Stage all Flash inputs
-  // through the sentinel-aware dense gather, including the runtime fallback from native XQA.
-  const bool native_flash_fallback_possible =
-      use_paged_decode && !kIsQuantizedCache && flash_eligible &&
-      (fp16_xqa_eligible || native_spec_xqa_eligible);
+  // Quantized Flash and CUTLASS need dense staging. Native Flash reads the paged cache directly;
+  // its page loader masks the documented -1 sentinel without materializing capacity-sized K/V.
   const bool needs_dense_kv =
-      use_memory_efficient_attention || use_flash_attention || native_flash_fallback_possible;
-  // Native-cache Flash staging can use the static block-table capacity without a host readback.
-  // Keep exact-size readback only for paths that already required it to avoid excessive expansion
-  // or dequantization workspace.
-  const bool dense_kv_prefers_exact_size =
       use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
   // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
   // GQA-expanded for the CUTLASS kernel.
@@ -677,8 +668,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   //
   // During graph capture, static capacity bounds replace an otherwise-required readback. Optional
   // attention_metadata can tighten those bounds, but correctness and capture never require it.
-  const bool needs_readback = paged_attention_helper::NeedsHostReadback(
-      has_metadata_bounds, dense_kv_prefers_exact_size, xqa_candidate);
+  const bool needs_readback = !has_metadata_bounds && (needs_dense_kv || xqa_candidate);
   const bool perform_readback =
       needs_readback && !onnxruntime::llm::common::isCapturing(cuda_stream);
 
@@ -695,13 +685,28 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     const int kCumulativeCount = parameters.batch_size + 1;
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
+    auto original_cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
+    auto original_past_pinned = this->AllocateBufferOnCPUPinned<int>(parameters.batch_size);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
                                          sanitized_cumulative_seqlens_q,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        original_cum_q_pinned.get(), cumulative_seqlens_q->Data<int>(),
+        sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        original_past_pinned.get(), past_seqlens->Data<int>(),
+        sizeof(int) * parameters.batch_size, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
+    ORT_RETURN_IF_ERROR(paged_attention_helper::CheckSequenceLengthAndPastValues(
+        original_cum_q_pinned.get(),
+        original_past_pinned.get(),
+        parameters.batch_size,
+        parameters.max_num_blocks_per_seq,
+        parameters.block_size,
+        parameters.token_count));
     ORT_RETURN_IF_ERROR(paged_attention_helper::CheckSequenceLengthValues(
         cum_q_pinned.get(),
         cum_kv_pinned.get(),

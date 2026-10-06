@@ -93,6 +93,7 @@ struct IoBindingCase {
   bool allow_malformed_sequence_metadata = false;
   bool skip_reference_check = false;
   bool verify_malformed_cache_unchanged = false;
+  bool verify_malformed_output_finite = false;
 };
 
 // Masked positions get zero probability. Uses fp32 throughout to establish a
@@ -817,6 +818,17 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
         for (size_t i = 0; i < key_cache_data.size(); ++i) {
           EXPECT_EQ(actual_key_cache[i].ToFloat(), key_cache_data[i].ToFloat());
           EXPECT_EQ(actual_value_cache[i].ToFloat(), value_cache_data[i].ToFloat());
+        }
+      }
+      if (c.verify_malformed_output_finite && run_index + 1 == run_count) {
+        Tensor cpu_output(
+            DataTypeImpl::GetType<MLFloat16>(),
+            TensorShape({token_count, hidden_size}), cpu_alloc);
+        ORT_THROW_IF_ERROR(
+            execution_provider_ptr->GetDataTransfer()->CopyTensor(
+                output_value.Get<Tensor>(), cpu_output));
+        for (const MLFloat16 value : cpu_output.DataAsSpan<MLFloat16>()) {
+          EXPECT_TRUE(std::isfinite(value.ToFloat()));
         }
       }
       continue;
@@ -1993,15 +2005,16 @@ TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
   malformed.kv_num_heads = 1;
   malformed.head_size = 64;
   malformed.block_size = 256;
-  malformed.num_blocks = 1;
-  malformed.max_num_blocks_per_seq = 1;
+  malformed.num_blocks = 2;
+  malformed.max_num_blocks_per_seq = 2;
   malformed.cumulative_seqlens_q = {0, 1};
-  malformed.replay_past_seqlens = {{0}, {0}, {0}, {0}};
-  malformed.block_table = {malformed.num_blocks};
-  malformed.attention_metadata = {1, 1};
+  malformed.replay_past_seqlens = {{256}, {256}, {256}, {256}};
+  malformed.block_table = {0, malformed.num_blocks};
+  malformed.attention_metadata = {1, 257};
   malformed.allow_malformed_sequence_metadata = true;
   malformed.skip_reference_check = true;
   malformed.verify_malformed_cache_unchanged = true;
+  malformed.verify_malformed_output_finite = true;
   malformed.enable_cuda_graph = true;
   RunIoBindingCase(
       CudaExecutionProviderWithOptions(&provider_options),

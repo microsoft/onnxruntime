@@ -2060,21 +2060,29 @@ Status FlashAttention(
   void* output = reinterpret_cast<void*>(data.output);
   void* softmax_lse = reinterpret_cast<void*>(data.softmax_lse);
 
-  // Stage every cache type through the sentinel-aware gather. Native paged FlashAttention treats
-  // block IDs as raw offsets and cannot safely consume the documented -1 unmapped sentinel.
-  ORT_RETURN_IF_ERROR((LaunchGatherAndExpandPagedKVCache<T, TCACHE>(
-      data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
-      data.k_scale, data.v_scale, k_per_channel, v_per_channel,
-      block_table, cumulative_seqlens_kv, batch_size, /*num_heads*/ kv_num_heads, kv_num_heads,
-      head_size, block_size, max_num_blocks_per_seq, data.total_kv_tokens, stream, max_threads_per_block)));
+  if constexpr (IsQuantizedCache<TCACHE>::value) {
+    ORT_RETURN_IF_ERROR((LaunchGatherAndExpandPagedKVCache<T, TCACHE>(
+        data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
+        data.k_scale, data.v_scale, k_per_channel, v_per_channel,
+        block_table, cumulative_seqlens_kv, batch_size, /*num_heads*/ kv_num_heads, kv_num_heads,
+        head_size, block_size, max_num_blocks_per_seq, data.total_kv_tokens, stream, max_threads_per_block)));
 
-  ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
-      device_prop, stream, q, reinterpret_cast<void*>(data.gathered_key),
-      reinterpret_cast<void*>(data.gathered_value), output, cumulative_seqlens_q, cumulative_seqlens_kv,
-      /*seqused_k*/ nullptr, /*block_table*/ nullptr, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
-      max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
-      local_window_size - 1, /*max_num_blocks_per_seq*/ 0, /*page_block_size*/ 1,
-      data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
+        device_prop, stream, q, reinterpret_cast<void*>(data.gathered_key),
+        reinterpret_cast<void*>(data.gathered_value), output, cumulative_seqlens_q, cumulative_seqlens_kv,
+        /*seqused_k*/ nullptr, /*block_table*/ nullptr, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
+        max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
+        local_window_size - 1, /*max_num_blocks_per_seq*/ 0, /*page_block_size*/ 1,
+        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
+  } else {
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
+        device_prop, stream, q, reinterpret_cast<void*>(data.key_cache),
+        reinterpret_cast<void*>(data.value_cache), output, cumulative_seqlens_q, cumulative_seqlens_kv,
+        /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
+        max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
+        local_window_size - 1, max_num_blocks_per_seq, block_size,
+        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
+  }
 
   if (parameters.use_smooth_softmax) {
     // Sink-bearing steps remain unsplit until the split-combine LSE layout is qualified.

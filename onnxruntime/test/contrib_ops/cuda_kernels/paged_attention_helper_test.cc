@@ -28,25 +28,6 @@ struct FakeTensor {
 
 }  // namespace
 
-TEST(PagedAttentionHelperTest, NativeFlashDenseStagingDoesNotRequireHostReadback) {
-  EXPECT_FALSE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
-      /*has_metadata_bounds*/ false,
-      /*dense_kv_prefers_exact_size*/ false,
-      /*xqa_candidate*/ false));
-  EXPECT_TRUE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
-      /*has_metadata_bounds*/ false,
-      /*dense_kv_prefers_exact_size*/ true,
-      /*xqa_candidate*/ false));
-  EXPECT_TRUE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
-      /*has_metadata_bounds*/ false,
-      /*dense_kv_prefers_exact_size*/ false,
-      /*xqa_candidate*/ true));
-  EXPECT_FALSE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
-      /*has_metadata_bounds*/ true,
-      /*dense_kv_prefers_exact_size*/ true,
-      /*xqa_candidate*/ true));
-}
-
 TEST(PagedAttentionHelperTest, CheckSequenceLengthTensorsRejectsWrongSeqlensLength) {
   FakeTensor cumulative_sequence_length({65});
   FakeTensor seqlens({1});
@@ -69,6 +50,22 @@ TEST(PagedAttentionHelperTest, CheckSequenceLengthTensorsAcceptsMatchingSeqlensL
 
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(batch_size, 64);
+}
+
+TEST(PagedAttentionHelperTest, CheckSequenceLengthAndPastValuesRejectsOriginalMalformedMetadata) {
+  const int32_t shifted_cumulative[] = {1, 2};
+  const int32_t valid_past[] = {0};
+  EXPECT_FALSE(
+      onnxruntime::contrib::paged_attention_helper::CheckSequenceLengthAndPastValues(
+          shifted_cumulative, valid_past, 1, 1, 16, 1)
+          .IsOK());
+
+  const int32_t valid_cumulative[] = {0, 1};
+  const int32_t negative_past[] = {-1};
+  EXPECT_FALSE(
+      onnxruntime::contrib::paged_attention_helper::CheckSequenceLengthAndPastValues(
+          valid_cumulative, negative_past, 1, 1, 16, 1)
+          .IsOK());
 }
 
 TEST(PagedAttentionHelperTest, CheckBlockTableRejectsZeroWidth) {
