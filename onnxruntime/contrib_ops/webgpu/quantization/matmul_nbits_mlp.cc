@@ -11,6 +11,7 @@
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/bert/skip_layer_norm.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/common/make_string.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -44,7 +45,8 @@ std::string EmitGateActivationExpr(MlpActivationKind kind, std::string_view gate
   switch (kind) {
     case MlpActivationKind::Silu:
       // SiLU(x) = x * sigmoid(x)
-      return std::string{gate_var} + " * (one / (one + exp(-" + std::string{gate_var} + ")))";
+      // MakeString avoids a GCC 14 -Warray-bounds false positive from std::string concatenation here.
+      return MakeString(gate_var, " * (one / (one + exp(-", gate_var, ")))");
   }
   ORT_THROW("MatMulNBitsMlp: unhandled MlpActivationKind ", static_cast<uint32_t>(kind));
 }
