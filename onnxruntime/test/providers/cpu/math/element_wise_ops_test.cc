@@ -1507,6 +1507,17 @@ TEST(MathOpTest, Pow_float16_float16) {
                     dims, {1.0f, 256.0f, 2.0f, 1.0f}, false, true);
 }
 
+TEST(MathOpTest, Float16SupplementPreservesFloat32Result) {
+  OpTester test("Add");
+  test.AddInput<float>("A", {1}, {1.0f});
+  test.AddInput<float>("B", {1}, {2.0f});
+  test.AddOutput<float>("C", {1}, {3.0f});
+  test.Run();
+
+  TestBinaryFloat16("Add", {1}, {1.0f}, {1}, {2.0f}, {1}, {3.0f}, false);
+  EXPECT_FALSE(::testing::Test::IsSkipped());
+}
+
 #if defined(USE_CUDA) || defined(USE_COREML)
 TEST(MathOpTest, Pow_float_float16) {
   OpTester test("Pow", 12);
