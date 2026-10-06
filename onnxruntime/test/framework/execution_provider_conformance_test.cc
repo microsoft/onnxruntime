@@ -27,17 +27,14 @@
 // its EP is not compiled in. The stored value is a *factory*, not a constructed
 // provider, so:
 //   - No EP is instantiated during static initialization.
-//   - An EP that is compiled but unavailable at runtime (e.g. no GPU present)
-//     causes the affected test to be skipped, not failed -- whether its factory
-//     signals that by returning nullptr or by throwing during construction (see
-//     MakeEp()).
+//   - A factory returning nullptr causes the affected test to skip.
+//   - Factory exceptions fail the test instead of hiding initialization regressions.
 //
 // Only documented, backend-agnostic contracts are asserted here. Memory that is
 // not CPU-accessible is never dereferenced from the test thread; such checks are
 // guarded by OrtDevice::UsesCpuMemory().
 
 #include <algorithm>
-#include <exception>
 #include <functional>
 #include <memory>
 #include <string>
@@ -45,8 +42,10 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "gtest/gtest-spi.h"
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/kernel_registry.h"
 #include "core/graph/constants.h"
 #include "core/providers/get_execution_providers.h"
 
@@ -184,16 +183,25 @@ TEST(EpConformanceCoverage, EveryAvailableEpIsRegistered) {
   }
 }
 
-// Guards the exemption lists themselves. Without this, a typo or a stale entry left
-// behind after an EP is renamed or removed would silently widen the exemption and hide
-// a real coverage gap -- the exact failure mode the check above exists to prevent.
-TEST(EpConformanceCoverage, ExemptionsAreWellFormed) {
+// Reject unknown registered names even when the corresponding EP is not compiled in,
+// as well as stale exemptions and entries that are both registered and exempted.
+TEST(EpConformanceCoverage, RegistrationsAndExemptionsAreWellFormed) {
   const auto& all_ep_names = GetAllExecutionProviderNames();
   const auto params = GetEpConformanceParams();
 
+  const auto is_known = [&](std::string_view ep_name) {
+    return std::any_of(all_ep_names.begin(), all_ep_names.end(),
+                       [ep_name](const std::string& name) { return std::string_view{name} == ep_name; });
+  };
+
+  for (const auto& param : params) {
+    EXPECT_TRUE(is_known(param.ep_name))
+        << param.ep_name << " is registered for EP conformance coverage but is not a known "
+        << "execution provider name. Fix the typo or drop the stale entry.";
+  }
+
   const auto check = [&](std::string_view exempt) {
-    EXPECT_TRUE(std::any_of(all_ep_names.begin(), all_ep_names.end(),
-                            [exempt](const std::string& name) { return std::string_view{name} == exempt; }))
+    EXPECT_TRUE(is_known(exempt))
         << exempt << " is listed as exempt from EP conformance coverage but is not a known "
         << "execution provider name. Fix the typo or drop the stale entry.";
 
@@ -206,24 +214,174 @@ TEST(EpConformanceCoverage, ExemptionsAreWellFormed) {
   for (std::string_view ep_name : kNotYetVettedEps) check(ep_name);
 }
 
+namespace {
+
+class OrtEpConformanceProvider : public IExecutionProvider {
+ public:
+  explicit OrtEpConformanceProvider(const OrtEp& ort_ep)
+      : IExecutionProvider("OrtEpConformanceProvider"), ort_ep_(ort_ep) {}
+
+  const OrtEp* GetOrtEp() const override { return &ort_ep_; }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    ++registry_queries;
+    return kernel_registry;
+  }
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override {
+    ++allocator_queries;
+    return {};
+  }
+
+  std::shared_ptr<KernelRegistry> kernel_registry;
+  mutable size_t registry_queries = 0;
+  size_t allocator_queries = 0;
+
+ private:
+  const OrtEp& ort_ep_;
+};
+
+class OrtEpConformanceInvariantTest : public testing::Test {
+ protected:
+  OrtEpConformanceInvariantTest() : ep_(ort_ep_) {
+    ort_ep_.ort_version_supported = ORT_API_VERSION;
+    ort_ep_.GetCapability = GetCapability;
+    ort_ep_.Compile = Compile;
+    ort_ep_.ReleaseNodeComputeInfos = ReleaseNodeComputeInfos;
+  }
+
+  static OrtStatus* ORT_API_CALL GetCapability(OrtEp*, const OrtGraph*, OrtEpGraphSupportInfo*) noexcept {
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL Compile(OrtEp*, const OrtGraph**, const OrtNode**, size_t,
+                                         OrtNodeComputeInfo**, OrtNode**) noexcept {
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseNodeComputeInfos(OrtEp*, OrtNodeComputeInfo**, size_t) noexcept {}
+
+  static OrtStatus* ORT_API_CALL GetNullKernelRegistry(OrtEp*, const OrtKernelRegistry** registry) noexcept {
+    *registry = nullptr;
+    return nullptr;
+  }
+
+  OrtEp ort_ep_{};
+  OrtEpConformanceProvider ep_;
+};
+
+}  // namespace
+
+TEST_F(OrtEpConformanceInvariantTest, RequiredFunctionsArePresent) {
+  ep_conformance::CheckOrtEpRequiredFunctionsArePresent(ep_, ep_.Type());
+}
+
+TEST_F(OrtEpConformanceInvariantTest, MissingGetCapabilityFails) {
+  ort_ep_.GetCapability = nullptr;
+  EXPECT_NONFATAL_FAILURE(ep_conformance::CheckOrtEpRequiredFunctionsArePresent(ep_, ep_.Type()),
+                          "GetCapability must be implemented");
+}
+
+TEST_F(OrtEpConformanceInvariantTest, CompileBasedEpPasses) {
+  ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type());
+}
+
+TEST_F(OrtEpConformanceInvariantTest, MissingCompileFails) {
+  ort_ep_.Compile = nullptr;
+  EXPECT_NONFATAL_FAILURE(ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type()),
+                          "does not implement Compile()");
+}
+
+TEST_F(OrtEpConformanceInvariantTest, MissingReleaseNodeComputeInfosFails) {
+  ort_ep_.ReleaseNodeComputeInfos = nullptr;
+  EXPECT_NONFATAL_FAILURE(ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type()),
+                          "must implement ReleaseNodeComputeInfos()");
+}
+
+TEST_F(OrtEpConformanceInvariantTest, NullRegistryCallbackRequiresCompile) {
+  ort_ep_.GetKernelRegistry = GetNullKernelRegistry;
+  ort_ep_.Compile = nullptr;
+  EXPECT_NONFATAL_FAILURE(ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type()),
+                          "does not implement Compile()");
+}
+
+TEST_F(OrtEpConformanceInvariantTest, NullRegistryCallbackRequiresReleaseNodeComputeInfos) {
+  ort_ep_.GetKernelRegistry = GetNullKernelRegistry;
+  ort_ep_.ReleaseNodeComputeInfos = nullptr;
+  EXPECT_NONFATAL_FAILURE(ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type()),
+                          "must implement ReleaseNodeComputeInfos()");
+}
+
+TEST_F(OrtEpConformanceInvariantTest, NullRegistryCallbackWithCompilePasses) {
+  ort_ep_.GetKernelRegistry = GetNullKernelRegistry;
+  ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type());
+}
+
+TEST_F(OrtEpConformanceInvariantTest, EmptyRegistryDoesNotRequireCompile) {
+  // The adapter caches the registry returned by OrtEp, including an empty registry.
+  ep_.kernel_registry = std::make_shared<KernelRegistry>();
+  ort_ep_.Compile = nullptr;
+  ort_ep_.ReleaseNodeComputeInfos = nullptr;
+  ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type());
+}
+
+TEST_F(OrtEpConformanceInvariantTest, RegistryAndCompileMayCoexist) {
+  ep_.kernel_registry = std::make_shared<KernelRegistry>();
+  ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type());
+}
+
+TEST_F(OrtEpConformanceInvariantTest, Abi23DoesNotQueryRegistry) {
+  ort_ep_.ort_version_supported = 23;
+  ep_.kernel_registry = std::make_shared<KernelRegistry>();
+  ort_ep_.Compile = nullptr;
+  EXPECT_NONFATAL_FAILURE(ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(ep_, ep_.Type()),
+                          "does not implement Compile()");
+  EXPECT_EQ(ep_.registry_queries, 0u);
+}
+
+TEST_F(OrtEpConformanceInvariantTest, Abi22SkipsNewerFunctions) {
+  ort_ep_.ort_version_supported = 22;
+  ort_ep_.GetCapability = nullptr;
+  ort_ep_.Compile = nullptr;
+  ort_ep_.ReleaseNodeComputeInfos = nullptr;
+
+  const auto checks = {ep_conformance::CheckOrtEpRequiredFunctionsArePresent,
+                       ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry};
+  for (const auto check : checks) {
+    testing::TestPartResultArray results;
+    {
+      testing::ScopedFakeTestPartResultReporter reporter(
+          testing::ScopedFakeTestPartResultReporter::INTERCEPT_ONLY_CURRENT_THREAD, &results);
+      check(ep_, ep_.Type());
+    }
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results.GetTestPartResult(0).type(), testing::TestPartResult::kSkip);
+  }
+  EXPECT_EQ(ep_.registry_queries, 0u);
+}
+
+TEST_F(OrtEpConformanceInvariantTest, PluginAllocatorChecksSkipBeforeQueryingAllocators) {
+  const auto checks = {ep_conformance::CheckPreferredAllocatorsAreNonNullAndRepeatable,
+                       ep_conformance::CheckPreferredAllocatorsAllocateUsableMemory,
+                       ep_conformance::CheckDataTransferCpuCopyPreservesData,
+                       ep_conformance::CheckPreferredAllocatorInfoIsConsistent};
+  for (const auto check : checks) {
+    testing::TestPartResultArray results;
+    {
+      testing::ScopedFakeTestPartResultReporter reporter(
+          testing::ScopedFakeTestPartResultReporter::INTERCEPT_ONLY_CURRENT_THREAD, &results);
+      check(ep_, ep_.Type());
+    }
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results.GetTestPartResult(0).type(), testing::TestPartResult::kSkip);
+  }
+  EXPECT_EQ(ep_.allocator_queries, 0u);
+}
+
 class EpConformanceTest : public testing::TestWithParam<EpConformanceParam> {
  protected:
-  // Construct the EP under test. Returns nullptr when the EP is compiled but not
-  // available in the current environment; callers should GTEST_SKIP() in that case.
-  // Some providers signal unavailability by returning nullptr from their factory;
-  // others (e.g. CUDA, whose constructor calls cudaSetDevice) throw when no device or
-  // driver is present. Both are treated as "unavailable" so the affected test skips
-  // rather than fails; the exception text is logged so a genuine construction
-  // regression stays visible.
-  std::unique_ptr<IExecutionProvider> MakeEp() const {
-    try {
-      return GetParam().factory();
-    } catch (const std::exception& e) {
-      GTEST_LOG_(WARNING) << GetParam().name
-                          << " EP factory threw during construction (treated as unavailable): " << e.what();
-      return nullptr;
-    }
-  }
+  // A null result skips the test; exceptions propagate to gtest as test failures.
+  std::unique_ptr<IExecutionProvider> MakeEp() const { return GetParam().factory(); }
 };
 
 // Invariant: Type() is non-empty and stable -- both across repeated calls on a
