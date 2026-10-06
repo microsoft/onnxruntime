@@ -693,7 +693,6 @@ void OneDsTelemetry::LogSessionCreation(
         .AddString("modelWeightType", model_weight_type)
         .AddString("modelGraphHash", model_graph_hash)
         .AddString("modelWeightHash", model_weight_hash)
-        .AddMap("modelMetaData", model_metadata)
         .AddString("loadedFrom", loadedFrom)
         .AddStringList("executionProviderIds", execution_provider_ids)
         .AddString("hardwareDeviceTypes", hardware_device_types)

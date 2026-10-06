@@ -15,6 +15,11 @@ The build driver enables telemetry by default for supported native platforms. Ta
 
 #### Technical Details
 
+Custom ONNX model metadata (`modelMetaData`) is not uploaded through 1DS. Arbitrary
+metadata keys and values can contain sensitive information; size limits or path
+redaction alone do not make them safe to transmit. Public model metadata APIs and
+local Windows ETW capture-state events are unchanged.
+
 **Windows apps and components.** The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
 **Other builds with telemetry (Linux, macOS, Android, iOS, Windows builds not made for Windows apps and components).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
