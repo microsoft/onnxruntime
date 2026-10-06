@@ -407,6 +407,8 @@ class D3D12AcceleratedWebGpuAllocator final
         wgpu::BufferUsage::CopyDst |
         wgpu::BufferUsage::Indirect;
     auto& recording = recording_getter_();
+    std::lock_guard<std::recursive_mutex> lock{
+        recording.mutex};
     return context_.InitializerBufferManager().Create(
         recording, size, usage);
   }
@@ -417,6 +419,8 @@ class D3D12AcceleratedWebGpuAllocator final
     }
 
     auto& recording = recording_getter_();
+    std::lock_guard<std::recursive_mutex>
+        recording_lock{recording.mutex};
     std::unique_ptr<ImportedAllocation> imported;
     {
       std::lock_guard<std::mutex> lock{

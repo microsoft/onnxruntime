@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <memory>
+#include <memory>
 #include <utility>
 
 #include "core/providers/webgpu/allocator.h"
@@ -49,6 +50,7 @@ void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording
     return nullptr;
   }
 
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   const auto& buffer_manager = buffer_manager_getter_();
   wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
@@ -60,8 +62,12 @@ void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording
 
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
-    buffer_manager_getter_().Release(static_cast<WGPUBuffer>(p),
-                                     recording_getter_ ? &recording_getter_() : nullptr);
+    auto* recording = recording_getter_ ? &recording_getter_() : nullptr;
+    std::unique_lock<std::recursive_mutex> lock;
+    if (recording != nullptr) {
+      lock = std::unique_lock<std::recursive_mutex>{recording->mutex};
+    }
+    buffer_manager_getter_().Release(static_cast<WGPUBuffer>(p), recording);
     num_allocs_.fetch_sub(1, std::memory_order_relaxed);
   }
 }
