@@ -222,6 +222,59 @@ class GatedDeltaNetUnpackQkvProgram final : public Program<GatedDeltaNetUnpackQk
       {"value_size", ProgramUniformVariableDataType::Uint32});
 };
 
+class GatedDeltaNetNormalizeProgram final : public Program<GatedDeltaNetNormalizeProgram> {
+ public:
+  GatedDeltaNetNormalizeProgram() : Program{"GatedDeltaNetNormalize"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
+      {"num_heads_q", ProgramUniformVariableDataType::Uint32},
+      {"head_size_qk", ProgramUniformVariableDataType::Uint32});
+};
+
+class GatedDeltaNetChunkPrepareProgram final : public Program<GatedDeltaNetChunkPrepareProgram> {
+ public:
+  GatedDeltaNetChunkPrepareProgram(bool has_cu_seqlens) : Program{"GatedDeltaNetChunkPrepare"},
+                                                          has_cu_seqlens_(has_cu_seqlens) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads_q", ProgramUniformVariableDataType::Uint32},
+      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
+      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
+      {"head_size_v", ProgramUniformVariableDataType::Uint32},
+      {"chunks_per_sequence", ProgramUniformVariableDataType::Uint32},
+      {"chunk_elements", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_cu_seqlens_;
+};
+
+class GatedDeltaNetChunkScanProgram final : public Program<GatedDeltaNetChunkScanProgram> {
+ public:
+  GatedDeltaNetChunkScanProgram(uint32_t head_size, bool has_cu_seqlens, bool has_initial_state,
+                                bool state_alias, bool output_final_state)
+      : Program{"GatedDeltaNetChunkScan"}, head_size_(head_size), has_cu_seqlens_(has_cu_seqlens), has_initial_state_(has_initial_state), state_alias_(state_alias), output_final_state_(output_final_state) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
+      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
+      {"head_size_v", ProgramUniformVariableDataType::Uint32},
+      {"chunks_per_sequence", ProgramUniformVariableDataType::Uint32},
+      {"chunk_elements", ProgramUniformVariableDataType::Uint32},
+      {"scale", ProgramUniformVariableDataType::Float32});
+
+ private:
+  uint32_t head_size_;
+  bool has_cu_seqlens_;
+  bool has_initial_state_;
+  bool state_alias_;
+  bool output_final_state_;
+};
+
 class GatedDeltaNet final : public WebGpuKernel {
  public:
   explicit GatedDeltaNet(const OpKernelInfo& info);
@@ -234,6 +287,7 @@ class GatedDeltaNet final : public WebGpuKernel {
   bool qwen_gate_;
   bool sigmoid_beta_;
   bool qk_l2_norm_;
+  bool chunkwise_prefill_;
 };
 
 }  // namespace webgpu

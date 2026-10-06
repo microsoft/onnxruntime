@@ -851,6 +851,64 @@ TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialStateAndNonDivisibleDv) {
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPartialChunk) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  for (const Geometry geometry : {Geometry{65, 1, 2, 4, 128, 128}, Geometry{65, 1, 16, 48, 128, 128}}) {
+    SCOPED_TRACE(geometry.hv);
+    Inputs inputs = MakeInputs(geometry, 231);
+    inputs.cu_seqlens = {0, 65};
+    RunTypedCase<MLFloat16>(geometry, options, inputs, 3e-3f, 5e-4f,
+                            /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillRaggedAndEmptySequence) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry geometry{130, 3, 1, 3, 16, 7};
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.scale = 0.37f;
+  for (bool with_state : {false, true}) {
+    SCOPED_TRACE(with_state);
+    Inputs inputs = MakeInputs(geometry, 232, with_state);
+    inputs.cu_seqlens = {0, 0, 33, 130};
+    RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
+                        /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPackedAndUniform) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry geometry{130, 2, 2, 4, 32, 32};
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  const Inputs inputs = MakeInputs(geometry, 233);
+  RunTypedCase<MLFloat16>(geometry, options, inputs, 3e-3f, 5e-4f,
+                          /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                          /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                          /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+  RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true);
+}
+
 TEST(GatedDeltaNetWebGpuTest, CompactStateUpdates) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
