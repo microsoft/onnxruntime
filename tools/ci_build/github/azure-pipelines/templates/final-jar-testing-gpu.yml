@@ -36,7 +36,7 @@ stages:
           javaHomeOption: 'JDKVersion'
           jdkVersionOption: '1.17'
           mavenVersionOption: 'Default'
-      - download: build
+      - download: cuda13
         artifact: 'onnxruntime-java-gpu'
         displayName: 'Download Final Jar'
       - script: |
@@ -117,7 +117,7 @@ stages:
           echo "Maven is now on the PATH."
           mvn --version
 
-      - download: build
+      - download: cuda13
         artifact: 'onnxruntime-java-gpu'
         displayName: 'Download Final Jar'
 
