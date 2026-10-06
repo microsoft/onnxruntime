@@ -7,6 +7,21 @@
 
 namespace Dml
 {
+    void detail::ValidateUploadHeapAllocationSize(size_t sizeInBytes)
+    {
+        ORT_THROW_HR_IF(E_OUTOFMEMORY, sizeInBytes > c_maxUploadHeapChunkSize);
+    }
+
+    std::optional<size_t> detail::TryConvertToUploadSize(uint64_t sizeInBytes) noexcept
+    {
+        if (sizeInBytes > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+        {
+            return std::nullopt;
+        }
+
+        return static_cast<size_t>(sizeInBytes);
+    }
+
     PooledUploadHeap::PooledUploadHeap(ID3D12Device* device, ExecutionContext* executionContext)
         : m_device(device)
         , m_executionContext(executionContext)
@@ -112,6 +127,8 @@ namespace Dml
 
     std::pair<PooledUploadHeap::Chunk*, size_t> PooledUploadHeap::Reserve(size_t sizeInBytes)
     {
+        detail::ValidateUploadHeapAllocationSize(sizeInBytes);
+
         // Try to find a chunk with enough free space to accommodate the requested allocation size
         for (Chunk& chunk : m_chunks)
         {
@@ -125,8 +142,10 @@ namespace Dml
 
         // No chunks were able to accommodate the allocation - create a new chunk and return that instead
 
-        // At least double the capacity of the pool, limit to c_maxChunkSize so DX12 does not reject size
-        const size_t newChunkSize = std::min(std::max({ m_totalCapacity, c_minChunkSize, sizeInBytes }), c_maxChunkSize);
+        // At least double the capacity of the pool, limited so DX12 does not reject the resource size.
+        const size_t newChunkSize = std::min(
+            std::max({ m_totalCapacity, c_minChunkSize, sizeInBytes }),
+            detail::c_maxUploadHeapChunkSize);
         m_chunks.push_back(CreateChunk(m_device.Get(), newChunkSize));
         m_totalCapacity += newChunkSize;
 
@@ -168,8 +187,11 @@ namespace Dml
         size_t offsetInChunk = 0;
         std::tie(chunk, offsetInChunk) = Reserve(src.size());
 
-        assert(chunk != nullptr);
-        assert(offsetInChunk + src.size() <= chunk->capacityInBytes);
+        ORT_THROW_HR_IF(
+            E_INVALIDARG,
+            chunk == nullptr ||
+                offsetInChunk > chunk->capacityInBytes ||
+                src.size() > chunk->capacityInBytes - offsetInChunk);
 
         // Map the upload heap and copy the source data into it at the specified offset
         void* uploadHeapData = nullptr;

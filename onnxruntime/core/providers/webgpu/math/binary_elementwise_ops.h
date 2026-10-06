@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
@@ -20,19 +21,24 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
                            const bool is_rhs_scalar,
                            const bool is_lhs_use_4_components,
                            const bool is_rhs_use_4_components,
-                           const bool vectorize) : Program{kernel_name},
-                                                   expression_{expression},
-                                                   additional_impl_{additional_impl},
-                                                   is_broadcast_{is_broadcast},
-                                                   is_lhs_scalar_{is_lhs_scalar},
-                                                   is_rhs_scalar_{is_rhs_scalar},
-                                                   is_lhs_use_4_components_{is_lhs_use_4_components},
-                                                   is_rhs_use_4_components_{is_rhs_use_4_components},
-                                                   vectorize_{vectorize} {}
+                           const bool vectorize,
+                           const bool is_int64_input = false,
+                           const bool is_int64_output = false) : Program{kernel_name},
+                                                                 expression_{expression},
+                                                                 additional_impl_{additional_impl},
+                                                                 is_broadcast_{is_broadcast},
+                                                                 is_lhs_scalar_{is_lhs_scalar},
+                                                                 is_rhs_scalar_{is_rhs_scalar},
+                                                                 is_lhs_use_4_components_{is_lhs_use_4_components},
+                                                                 is_rhs_use_4_components_{is_rhs_use_4_components},
+                                                                 vectorize_{vectorize},
+                                                                 is_int64_input_{is_int64_input},
+                                                                 is_int64_output_{is_int64_output} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
+                                          {"element_count", ProgramUniformVariableDataType::Uint32});
 
  private:
   std::string_view expression_;
@@ -43,6 +49,8 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
   bool is_lhs_use_4_components_;
   bool is_rhs_use_4_components_;
   bool vectorize_;
+  bool is_int64_input_;
+  bool is_int64_output_;
 };
 
 class BinaryElementwise : public WebGpuKernel {
@@ -56,6 +64,36 @@ class BinaryElementwise : public WebGpuKernel {
                                                                                                kernel_name_{kernel_name},
                                                                                                expression_{expression},
                                                                                                get_additional_impl_{get_additional_impl} {}
+
+ protected:
+  Status ComputeInternal(ComputeContext& context) const final;
+
+ private:
+  std::string kernel_name_;
+  std::string expression_;
+  const GetAdditionalImplementationFunction get_additional_impl_;
+};
+
+// Registers the binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
+// GreaterOrEqual, LessOrEqual, Pow, PRelu, And) through a single path. int64 support (behind the
+// enableInt64 provider option) is enabled for the arithmetic/comparison ops whose i32 shader
+// semantics are meaningful; Pow int64 is a known gap (TODO) and PRelu/And have no int64 form.
+void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enable_int64);
+
+// Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
+// multidirectional (NumPy-style) broadcasting. The inputs are folded pairwise using the
+// two-input binary element-wise program, reusing its broadcasting and vectorization paths.
+class VariadicElementwise : public WebGpuKernel {
+ public:
+  using GetAdditionalImplementationFunction = std::string (*)(int lhs_element_type, int rhs_element_type);
+
+  VariadicElementwise(const OpKernelInfo& info,
+                      const std::string& kernel_name,
+                      const std::string& expression,
+                      const GetAdditionalImplementationFunction get_additional_impl = nullptr) : WebGpuKernel{info},
+                                                                                                 kernel_name_{kernel_name},
+                                                                                                 expression_{expression},
+                                                                                                 get_additional_impl_{get_additional_impl} {}
 
  protected:
   Status ComputeInternal(ComputeContext& context) const final;

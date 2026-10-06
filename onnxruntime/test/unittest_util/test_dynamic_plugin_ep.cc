@@ -84,9 +84,11 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
 
     // required keys
     parsed_json.at("ep_library_registration_name").get_to(config.ep_library_registration_name);
-    parsed_json.at("ep_library_path").get_to(config.ep_library_path);
 
     // optional keys
+    // `ep_library_path` is not needed when the EP library is already registered, e.g. a plugin EP that is
+    // statically linked into the ORT binary and registered by ORT core at environment creation.
+    config.ep_library_path = parsed_json.value<decltype(config.ep_library_path)>("ep_library_path", {});
     config.default_ep_options = parsed_json.value<decltype(config.default_ep_options)>("default_ep_options", {});
     config.selected_ep_name = parsed_json.value<decltype(config.selected_ep_name)>("selected_ep_name", {});
     config.selected_ep_device_indices =
@@ -116,8 +118,13 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
 Status Initialize(Ort::Env& env, InitializationConfig config) {
   ORT_RETURN_IF(IsInitialized(), "Already initialized.");
 
-  auto ep_library_registration_handle = RegisterPluginEpLibrary(env, config.ep_library_registration_name,
-                                                                ToPathString(config.ep_library_path));
+  // An empty `ep_library_path` means the EP library is already registered and this infrastructure should not
+  // register or unregister it. That is the case for a plugin EP that is statically linked into the ORT binary.
+  auto ep_library_registration_handle =
+      config.ep_library_path.empty()
+          ? PluginEpLibraryRegistrationHandle{nullptr, [](void*) {}}
+          : RegisterPluginEpLibrary(env, config.ep_library_registration_name,
+                                    ToPathString(config.ep_library_path));
 
   ORT_RETURN_IF(config.selected_ep_device_indices.empty() == config.selected_ep_name.empty(),
                 "Exactly one of selected_ep_device_indices or selected_ep_name should be specified.");
@@ -135,6 +142,15 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
                  [&selected_ep_name = std::as_const(config.selected_ep_name)](Ort::ConstEpDevice ep_device) {
                    return ep_device.EpName() == selected_ep_name;
                  });
+
+    // Some EP factories create a provider for a single device at a time yet can surface more than one
+    // OrtEpDevice under the same EP name (e.g. multiple CUDA GPUs, or WebGPU's real + virtual GPU when
+    // virtual devices are enabled). Keep the first match for those.
+    if ((config.selected_ep_name == kCudaExecutionProviderPluginName ||
+         config.selected_ep_name == kWebGpuExecutionProviderPluginName) &&
+        selected_c_ep_devices.size() > 1) {
+      selected_c_ep_devices.resize(1);
+    }
   }
 
   ORT_RETURN_IF(selected_c_ep_devices.empty(), "No EP devices were selected.");
@@ -166,6 +182,22 @@ bool IsInitialized() {
 
 void Shutdown() {
   g_plugin_ep_infrastructure_state.reset();
+}
+
+void RunWithTemporaryShutdownForTesting(const std::function<void()>& test_body) {
+  // Save the current global infrastructure state, then present an uninitialized state to `test_body`.
+  // The prior state is restored afterwards (even if `test_body` throws), so a test that exercises the
+  // uninitialized/shutdown behavior does not disturb the shared infrastructure that unit test main set up
+  // and that other tests (e.g. those routing CUDA to the plugin EP) rely on.
+  std::optional<PluginEpInfrastructureState> saved_state = std::move(g_plugin_ep_infrastructure_state);
+  g_plugin_ep_infrastructure_state.reset();
+
+  struct StateRestorer {
+    std::optional<PluginEpInfrastructureState>& saved;
+    ~StateRestorer() { g_plugin_ep_infrastructure_state = std::move(saved); }
+  } restorer{saved_state};
+
+  test_body();
 }
 
 std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* ep_options) {

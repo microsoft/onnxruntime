@@ -230,11 +230,15 @@ TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
 }
 
 TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
-  auto run_test = [&](const ORTCHAR_T* model_path) {
+  auto run_test = [&](const ORTCHAR_T* model_path, bool enable_saved_runtime_optimizations = false) {
     auto resolved_model_path = ResolveInternalTestPathString(model_path);
     SCOPED_TRACE("model path: " + ToUTF8String(resolved_model_path.c_str()));
 
     SessionOptions so;
+    if (enable_saved_runtime_optimizations) {
+      ASSERT_STATUS_OK(
+          so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "1"));
+    }
     // set this if you want to manually inspect the optimized model
     // so.optimized_model_filepath = ORT_MODEL_FOLDER "squeezenet/model.test_output.onnx";
     InferenceSessionWrapper session(so, GetEnvironment());
@@ -281,7 +285,7 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
 
   // Note: Using ORT format model with runtime optimizations so that the Conv nodes are preserved in the graph,
   // not converted into FusedConv nodes. The InternalTestingExecutionProvider handles Conv nodes.
-  run_test(ORT_MODEL_FOLDER "squeezenet/model_opset11.with_runtime_opt.ort");
+  run_test(ORT_MODEL_FOLDER "squeezenet/model_opset11.with_runtime_opt.ort", true);
 }
 
 // make sure allocators returned by SessionState::GetAllocator are valid when IExecutionProvider::ReplaceAllocator
@@ -320,6 +324,13 @@ TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorag
 
   ASSERT_EQ(session_allocator, &ort_allocator)
       << "Allocators registered from Env should have the highest priority";
+
+  // Unregister the allocator before the stack-allocated `ort_allocator` goes out of scope. The environment
+  // stores a raw pointer to it in its shared allocator set (it does not take ownership), so leaving it
+  // registered would leave a dangling pointer that can be dereferenced later - e.g. when a plugin EP
+  // library registered in the same (global) environment is unregistered during teardown, which iterates
+  // the shared allocators and would crash.
+  ASSERT_STATUS_OK(env.GetEnvironment().UnregisterAllocator(mem_info));
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

@@ -47,7 +47,7 @@ class Softmax final : public CudaKernel {
       }
     }
 
-    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
+    log_softmax_ = node.OpType() == "LogSoftmax";
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

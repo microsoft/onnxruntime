@@ -100,19 +100,21 @@ Status LaunchXQAFp8Kernel(
     const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
-    const float* kv_cache_scale,
+    const float* attention_sinks,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
     void* workspace,
     size_t workspace_size) {
   int group_size = num_heads / kv_num_heads;
   switch (group_size) {
     case 4:
-      return grp4_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, nullptr, kv_cache_scale, workspace, workspace_size, local_window_size);
+      return grp4_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size, local_window_size);
     case 8:
-      return grp8_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, nullptr, kv_cache_scale, workspace, workspace_size, local_window_size);
+      return grp8_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size, local_window_size);
     case 16:
-      return grp16_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, nullptr, kv_cache_scale, workspace, workspace_size, local_window_size);
+      return grp16_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size, local_window_size);
     case 32:
-      return grp32_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, nullptr, kv_cache_scale, workspace, workspace_size, local_window_size);
+      return grp32_fp8::Launch<half>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size, local_window_size);
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA FP8 only supports group_size 4, 8, 16, 32. Input has ", group_size);
   }
