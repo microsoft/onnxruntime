@@ -176,7 +176,7 @@ jobs:
             --workdir /onnxruntime_src \
             --user root \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            /onnxruntime_src/tools/ci_build/run_mlas_sve_qemu_tests.sh /onnxruntime_src/build/${{ inputs.build_config }}
+            /onnxruntime_src/tools/ci_build/run_mlas_sve_qemu_tests.sh /onnxruntime_src/build/${{ inputs.build_config }}/${{ inputs.build_config }}
 
       - name: Set up Go
         if: inputs.run_go_tests == true
