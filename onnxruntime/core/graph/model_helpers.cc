@@ -339,9 +339,13 @@ struct BoundAttributeExpansionState {
   const ONNX_NAMESPACE::AttributeProto* proto;
   const Graph* graph;
   const AttributeBindingContext* context;
+  size_t call_depth;
+  bool use_onnx_schema_registry;
 
   bool operator==(const BoundAttributeExpansionState& other) const {
-    return proto == other.proto && graph == other.graph && context == other.context;
+    return proto == other.proto && graph == other.graph && context == other.context &&
+           call_depth == other.call_depth &&
+           use_onnx_schema_registry == other.use_onnx_schema_registry;
   }
 };
 
@@ -350,6 +354,8 @@ struct BoundAttributeExpansionStateHash {
     size_t result = std::hash<const void*>{}(state.proto);
     result ^= std::hash<const void*>{}(state.graph) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<const void*>{}(state.context) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    result ^= std::hash<size_t>{}(state.call_depth) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    result ^= std::hash<bool>{}(state.use_onnx_schema_registry) + 0x9e3779b9 + (result << 6) + (result >> 2);
     return result;
   }
 };
@@ -362,6 +368,8 @@ struct ValidatedFunctionStates {
       contexts;
   std::unordered_set<BoundAttributeExpansionState, BoundAttributeExpansionStateHash>
       active_attribute_expansions;
+  std::unordered_set<BoundAttributeExpansionState, BoundAttributeExpansionStateHash>
+      completed_attribute_expansions;
 };
 
 const BoundAttribute* FindAttributeBinding(const AttributeBindings& bindings,
@@ -465,6 +473,7 @@ Status ValidateGraphCallDepth(
     const Graph& graph,
     const AttributeBindings& bindings,
     size_t call_depth,
+    bool use_onnx_schema_registry,
     const ModelLocalFunctions& model_local_functions,
     const IOnnxRuntimeOpSchemaCollection& schema_registry,
     ValidatedFunctionStates& validated_states);
@@ -474,6 +483,7 @@ Status ValidateBoundAttributeCallDepth(
     const AttributeBindings& bindings,
     const DomainToVersionMap& domain_to_version,
     size_t call_depth,
+    bool use_onnx_schema_registry,
     const ModelLocalFunctions& model_local_functions,
     const IOnnxRuntimeOpSchemaCollection& schema_registry,
     ValidatedFunctionStates& validated_states) {
@@ -487,7 +497,19 @@ Status ValidateBoundAttributeCallDepth(
   }
 
   const BoundAttributeExpansionState expansion_state{
-      attribute.proto, attribute.graph, attribute.context.get()};
+      attribute.proto, attribute.graph, attribute.context.get(), call_depth,
+      use_onnx_schema_registry};
+  if (validated_states.completed_attribute_expansions.find(expansion_state) !=
+      validated_states.completed_attribute_expansions.end()) {
+    return Status::OK();
+  }
+  if (validated_states.active_attribute_expansions.size() >=
+      kMaxModelLocalFunctionCallDepth) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "Model local function graph attribute expansion depth exceeds the maximum supported depth of ",
+        kMaxModelLocalFunctionCallDepth, ".");
+  }
   if (!validated_states.active_attribute_expansions.insert(expansion_state).second) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
@@ -504,7 +526,8 @@ Status ValidateBoundAttributeCallDepth(
 
   if (attribute.graph != nullptr) {
     ORT_RETURN_IF_ERROR(ValidateGraphCallDepth(
-        *attribute.graph, attribute_bindings, call_depth, model_local_functions,
+        *attribute.graph, attribute_bindings, call_depth, use_onnx_schema_registry,
+        model_local_functions,
         schema_registry, validated_states));
   } else if (attribute.proto->has_g()) {
     ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
@@ -518,6 +541,7 @@ Status ValidateBoundAttributeCallDepth(
         call_depth, model_local_functions, schema_registry, validated_states));
   }
 
+  validated_states.completed_attribute_expansions.insert(expansion_state);
   return Status::OK();
 }
 
@@ -604,7 +628,8 @@ Status ValidateProtoNodesCallDepth(
     for (const auto& attr : node.attribute()) {
       ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
           ResolveAttribute(attr, bindings), bindings, domain_to_version,
-          call_depth, model_local_functions, schema_registry, validated_states));
+          call_depth, /*use_onnx_schema_registry*/ true,
+          model_local_functions, schema_registry, validated_states));
     }
   }
 
@@ -615,6 +640,7 @@ Status ValidateGraphCallDepth(
     const Graph& graph,
     const AttributeBindings& bindings,
     size_t call_depth,
+    bool use_onnx_schema_registry,
     const ModelLocalFunctions& model_local_functions,
     const IOnnxRuntimeOpSchemaCollection& schema_registry,
     ValidatedFunctionStates& validated_states) {
@@ -623,7 +649,9 @@ Status ValidateGraphCallDepth(
         node.Domain(), node.OpType(), node.Overload());
     const auto function_it = model_local_functions.find(function_id);
     if (function_it != model_local_functions.end() &&
-        !HasRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap(), schema_registry)) {
+        !(use_onnx_schema_registry
+              ? HasOnnxRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap())
+              : HasRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap(), schema_registry))) {
       AttributeBindings callee_bindings;
       for (const auto& [attr_name, attr] : node.GetAttributes()) {
         const Graph* attribute_graph = nullptr;
@@ -649,7 +677,8 @@ Status ValidateGraphCallDepth(
       ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
           ResolveAttribute(attr, bindings, attribute_graph),
           bindings, graph.DomainToVersionMap(), call_depth,
-          model_local_functions, schema_registry, validated_states));
+          use_onnx_schema_registry, model_local_functions,
+          schema_registry, validated_states));
     }
   }
 
@@ -868,7 +897,8 @@ Status ValidateModelLocalFunctionCallDepth(
   ORT_RETURN_IF_ERROR(ValidateCallGraphAcyclic(call_graph));
   ValidatedFunctionStates validated_states;
   return ValidateGraphCallDepth(
-      main_graph, {}, 0, model_local_functions,
+      main_graph, {}, 0, /*use_onnx_schema_registry*/ false,
+      model_local_functions,
       *main_graph.GetSchemaRegistry(), validated_states);
 }
 

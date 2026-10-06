@@ -1411,6 +1411,9 @@ static std::shared_ptr<OnnxRuntimeOpSchemaRegistry> CreateLocalFunctionCollision
   return registry;
 }
 
+static void WrapLocalFunctionChainInReferencedGraphAttribute(
+    ONNX_NAMESPACE::ModelProto& model_proto);
+
 TEST(FunctionTest, RegisteredSchemaTakesPrecedenceOverCollidingRootLocalFunction) {
   auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
   IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
@@ -1438,6 +1441,18 @@ TEST(FunctionTest, FunctionInferenceRegistryTakesPrecedenceInsideLocalFunctionBo
   collision_node->set_op_type("function_0");
   collision_node->add_input("x");
   collision_node->add_output("y");
+
+  IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
+  Model model(std::move(model_proto), &registries, DefaultLoggingManager().DefaultLogger());
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST(FunctionTest, FunctionInferenceRegistryTakesPrecedenceInsideBoundGraph) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
+  WrapLocalFunctionChainInReferencedGraphAttribute(model_proto);
 
   IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
   Model model(std::move(model_proto), &registries, DefaultLoggingManager().DefaultLogger());
@@ -2622,6 +2637,94 @@ TEST(FunctionTest, ResolveAllowsSequentialDefaultGraphAttributeReuse) {
           MakeGraphRefAttribute("body_attr_0", default_attr.name(), default_attr.type()),
           MakeGraphRefAttribute("body_attr_1", default_attr.name(), default_attr.type()),
       });
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(
+      MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
+      nullptr, logger);
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
+
+static ONNX_NAMESPACE::AttributeProto MakeDefaultGraphReference(
+    std::string name, std::string referenced_name, bool duplicate_reference) {
+  ONNX_NAMESPACE::AttributeProto attribute;
+  attribute.set_name(std::move(name));
+  attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* graph = attribute.mutable_g();
+  graph->set_name(attribute.name());
+  auto* node = graph->add_node();
+  node->set_op_type("Identity");
+  node->add_input("x");
+  node->add_output("y");
+  *node->add_attribute() =
+      MakeGraphRefAttribute("next_0", referenced_name, ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  if (duplicate_reference) {
+    *node->add_attribute() =
+        MakeGraphRefAttribute("next_1", referenced_name, ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  }
+  auto* output = graph->add_output();
+  output->set_name("y");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  return attribute;
+}
+
+TEST(FunctionTest, ResolveRejectsExcessiveDefaultGraphReferenceDepth) {
+  std::vector<ONNX_NAMESPACE::AttributeProto> defaults;
+  defaults.reserve(kMaxModelLocalFunctionCallDepth + 1);
+  for (size_t i = 0; i <= kMaxModelLocalFunctionCallDepth; ++i) {
+    const std::string name = "body_" + std::to_string(i);
+    if (i == kMaxModelLocalFunctionCallDepth) {
+      ONNX_NAMESPACE::AttributeProto leaf;
+      leaf.set_name(name);
+      leaf.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      *leaf.mutable_g() = MakeNonRecursiveDefaultGraph();
+      defaults.push_back(std::move(leaf));
+    } else {
+      defaults.push_back(MakeDefaultGraphReference(
+          name, "body_" + std::to_string(i + 1), false));
+    }
+  }
+
+  auto function = MakeFunctionWithDefaultGraphAttributes(
+      defaults,
+      {MakeGraphRefAttribute(
+          "body_attr", defaults.front().name(),
+          ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH)});
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(
+      MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
+      nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(
+      status.ErrorMessage(),
+      testing::HasSubstr("graph attribute expansion depth exceeds"));
+}
+
+TEST(FunctionTest, RepeatedDefaultGraphDagExpansionCompletes) {
+  constexpr size_t graph_count = 30;
+  std::vector<ONNX_NAMESPACE::AttributeProto> defaults;
+  defaults.reserve(graph_count);
+  for (size_t i = 0; i < graph_count; ++i) {
+    const std::string name = "body_" + std::to_string(i);
+    if (i + 1 == graph_count) {
+      ONNX_NAMESPACE::AttributeProto leaf;
+      leaf.set_name(name);
+      leaf.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      *leaf.mutable_g() = MakeNonRecursiveDefaultGraph();
+      defaults.push_back(std::move(leaf));
+    } else {
+      defaults.push_back(MakeDefaultGraphReference(
+          name, "body_" + std::to_string(i + 1), true));
+    }
+  }
+
+  auto function = MakeFunctionWithDefaultGraphAttributes(
+      defaults,
+      {MakeGraphRefAttribute(
+          "body_attr", defaults.front().name(),
+          ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH)});
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(
       MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
