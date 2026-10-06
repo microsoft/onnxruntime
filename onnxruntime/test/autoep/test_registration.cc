@@ -62,6 +62,11 @@ TEST(OrtEpLibrary, GetTensorDataTypeUsesOrtElementTypes) {
     const auto* type_proto = ml_type->GetTypeProto();
     ASSERT_NE(type_proto, nullptr);
     EXPECT_EQ(type_proto->tensor_type().elem_type(), proto_type);
+    const auto* tensor_type = ml_type->AsTensorType();
+    ASSERT_NE(tensor_type, nullptr);
+    const auto* primitive_type = tensor_type->GetElementType()->AsPrimitiveDataType();
+    ASSERT_NE(primitive_type, nullptr);
+    EXPECT_EQ(primitive_type->GetDataType(), proto_type);
     EXPECT_EQ(ep::adapter::MLDataTypeToOrtDataType(ml_type), data_type);
     EXPECT_EQ(ep::adapter::TryMLDataTypeToOrtDataType(ml_type), data_type);
 
