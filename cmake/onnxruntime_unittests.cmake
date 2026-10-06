@@ -1535,6 +1535,11 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
+  # Match the non-plugin WebGPU test-source selection above.
+  if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+    target_include_directories(${onnxruntime_provider_test_target} PRIVATE ${WGSL_GENERATED_ROOT})
+  endif()
+
   if (NOT onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
     # Keep the public build target responsible for both runtime artifacts without
     # making the executable depend on the module that imports its symbols.
