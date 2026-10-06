@@ -4991,7 +4991,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of each token before packing, with shape (batch_size, sequence_length). Values must be in [0, batch_size * sequence_length).</dd>
+<dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
@@ -5046,8 +5046,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-      incomplete block. QSA positions are always the request-local logical cache positions derived
-      from past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
+      incomplete block. QSA positions are the request-local logical cache positions derived from
+      past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
   
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -5104,17 +5104,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).</dd>
 <dt><tt>state_capacity</tt> : int (required)</dt>
 <dd>Fixed capacity (number of entries) of past_key_state / present_key_state. Must be > 0.</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Only for policy_mode 'qsa': maximum number of leading token transitions captured per request. Must be in [0, 8]. Default is 0.</dd>
 <dt><tt>token_budget</tt> : int</dt>
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (16 - 18)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, logical reshape, and rotary embedding.</dd>
-<dt><tt>key</tt> : T</dt>
-<dd>Packed indexer key projection of the new tokens. Shape is (total_tokens, head_size) for policy_mode 'qsa' and (total_tokens, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series.</dd>
+<dd>Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', key may be omitted and query then contains row-wise concatenated query and key projections with shape (total_tokens, (num_heads + 1) * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Packed indexer key projection of the new tokens. Shape is (total_tokens, head_size) for policy_mode 'qsa' and (total_tokens, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series. May be omitted for policy_mode 'qsa' when query contains the packed query/key projection.</dd>
 <dt><tt>query_norm_weight</tt> : T</dt>
 <dd>Effective RMSNorm multiplier of the queries, with shape (head_size).</dd>
 <dt><tt>key_norm_weight</tt> : T</dt>
@@ -5143,9 +5145,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.</dd>
 <dt><tt>past_state_lengths</tt> : M</dt>
 <dd>Generic per-request state length with shape (batch_size, 2). Column 0 is the key_state entry count (policy_mode 'qsa': complete-block count; 'csa': compressed-entry count); column 1 is the pending-buffer length (policy_mode 'qsa': incomplete-block length in [0, compress_ratio); 'csa': buffer length in [0, 2 * compress_ratio)).</dd>
+<dt><tt>state_update_capture_count</tt> (optional) : M</dt>
+<dd>Only for policy_mode 'qsa': number of leading token transitions to capture for each request, with shape (batch_size). Values are clamped to the request length and state_update_capacity. Required when state_update_capacity is positive.</dd>
+<dt><tt>state_update_active</tt> (optional) : M</dt>
+<dd>Only for policy_mode 'qsa': optional capture gate with shape (1). A zero value disables capture.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (6 - 7)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5160,6 +5166,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': updated gate buffer with the same fixed shape as past_gate_buffer.</dd>
 <dt><tt>present_state_lengths</tt> : M</dt>
 <dd>Updated generic per-request state length, with the same fixed shape as past_state_lengths.</dd>
+<dt><tt>state_update</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'qsa': compact transition payloads with shape (batch_size, state_update_capacity, head_size). A token that completes a compression block stores the prepared block representative; any other captured token stores its raw key. Inactive and unused slots are zero.</dd>
 </dl>
 
 #### Type Constraints
@@ -6951,7 +6959,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input</tt> : T</dt>
 <dd>Input tensor with shape (total_tokens, hidden_size)</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length), and values must be in [0, batch_size * sequence_length).</dd>
+<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)</dd>
 </dl>
 
 #### Outputs
@@ -7624,11 +7632,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>key_norm_weight</tt> : T</dt>
 <dd>Effective RMSNorm multiplier of the compressed keys, with shape (head_size).</dd>
 <dt><tt>cos_cache</tt> : T</dt>
-<dd>Cosine rotary table indexed by absolute key position, with shape (batch_size, max_rotary_sequence_length, rotary_width).</dd>
+<dd>Cosine rotary table indexed by absolute key position, shared across the batch with shape (max_rotary_sequence_length, rotary_width) or request-specific with shape (batch_size, max_rotary_sequence_length, rotary_width).</dd>
 <dt><tt>sin_cache</tt> : T</dt>
 <dd>Sine rotary table with the same shape as cos_cache.</dd>
 <dt><tt>mask</tt> (optional) : TB</dt>
-<dd>Only for policy_mode 'qsa': INT64 padding mask with shape (batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. total_sequence_length is past_sequence_length + sequence_length.</dd>
+<dd>Only for policy_mode 'qsa': INT64 padding mask with shape (batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. total_sequence_length is past_sequence_length + sequence_length. When omitted, every position through past_sequence_length plus the current query index is visible.</dd>
 <dt><tt>past_key</tt> : T</dt>
 <dd>Cached indexer keys. For policy_mode 'qsa', these are raw keys; for 'csa', they are compressed keys. Shape is (batch_size, past_sequence_length, head_size), or (batch_size, max_cache_length, head_size) when a valid past_sequence_length is provided.</dd>
 <dt><tt>gate</tt> (optional) : T</dt>
