@@ -2502,8 +2502,16 @@ class SymbolicShapeInference:
         input_shape = self._get_sympy_shape(node, 0)
         branches = get_attribute(node, "num_branches", 0)
         if branches:
+            assert branches > 0, "num_branches must be positive"
+            assert len(input_shape) >= 1, "flattened streams must have rank at least 1"
+            width = input_shape[-1]
+            if is_literal(width):
+                assert width > 0 and width % branches == 0, (
+                    "flattened stream width must be positive and divisible by num_branches"
+                )
             output_shape = [*input_shape[:-1], sympy.simplify(input_shape[-1] / branches)]
         else:
+            assert len(input_shape) >= 2, "grouped streams must have rank at least 2"
             output_shape = [*input_shape[:-2], input_shape[-1]]
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
@@ -2662,13 +2670,16 @@ class SymbolicShapeInference:
         query_shape = self._get_shape(node, 0)
         if query_shape is not None:
             output_shape = query_shape.copy()
-            if node.input[1] == "" and node.input[2] == "" and isinstance(output_shape[2], int):
+            if node.input[1] == "" and node.input[2] == "":
                 num_heads = get_attribute(node, "num_heads")
                 kv_num_heads = get_attribute(node, "kv_num_heads")
-                divisor = num_heads + 2 * kv_num_heads
-                if output_shape[2] % divisor == 0:
-                    head_size = output_shape[2] // divisor
-                    output_shape[2] = num_heads * head_size
+                if isinstance(output_shape[2], int):
+                    divisor = num_heads + 2 * kv_num_heads
+                    if output_shape[2] % divisor == 0:
+                        head_size = output_shape[2] // divisor
+                        output_shape[2] = num_heads * head_size
+                    else:
+                        output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
                 else:
                     output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
             vi = self.known_vi_[node.output[0]]
@@ -2683,7 +2694,8 @@ class SymbolicShapeInference:
             divisor = num_heads + 2 * kv_num_heads if packed else num_heads
             if query_shape[2] % divisor == 0:
                 head_size = query_shape[2] // divisor
-                total_length = self._try_get_value(node, 10)
+                past_inputs_omitted = len(node.input) <= 4 or (not node.input[3] and not node.input[4])
+                total_length = self._try_get_value(node, 10) if past_inputs_omitted else None
                 cache_length = (
                     as_scalar(total_length)
                     if total_length is not None
@@ -2817,7 +2829,7 @@ class SymbolicShapeInference:
             copy_state_output(4, 14, output_dtype)  # present_gate_buffer <- past_gate_buffer
         copy_state_output(5, 15, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
         if policy_mode == "qsa" and len(node.output) > 6 and node.output[6]:
-            past_key_shape = past_shape(12)
+            past_key_shape = self._get_sympy_shape(node, 12) if len(node.input) > 12 and node.input[12] else None
             if past_key_shape is not None:
                 state_update_capacity = get_attribute(node, "state_update_capacity", 0)
                 vi = self.known_vi_[node.output[6]]

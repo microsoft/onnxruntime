@@ -43,7 +43,7 @@ Status HyperConnectionPreMix<T>::ComputeInternal(OpKernelContext* context) const
   ORT_RETURN_IF_NOT(params.branches <= std::numeric_limits<int>::max() &&
                         params.hidden <= std::numeric_limits<int>::max(),
                     "branch or hidden dimension is too large for CUDA");
-  hyper_connection::GateLayout layout;
+  hyper_connection::GateLayout layout = hyper_connection::GateLayout::Scalar;
   ORT_RETURN_IF_ERROR(
       hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, layout, true));
   auto* y = context->Output(0, TensorShape(params.reduced_shape));

@@ -29,6 +29,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.DequantizeWithOrder">com.microsoft.DequantizeWithOrder</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
+  * <a href="#com.microsoft.DynamicSparseAttention">com.microsoft.DynamicSparseAttention</a>
   * <a href="#com.microsoft.DynamicTimeWarping">com.microsoft.DynamicTimeWarping</a>
   * <a href="#com.microsoft.EPContext">com.microsoft.EPContext</a>
   * <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
@@ -225,6 +226,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask index to integer types</dd>
 </dl>
+
 
 ### <a name="com.microsoft.AttnLSTM"></a><a name="com.microsoft.attnlstm">**com.microsoft.AttnLSTM**</a>
 
@@ -1695,6 +1697,124 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.DynamicSparseAttention"></a><a name="com.microsoft.dynamicsparseattention">**com.microsoft.DynamicSparseAttention**</a>
+
+  Model-neutral sparse grouped-query attention with a contiguous main KV cache.
+
+  `selected_indices` and `selected_counts` are produced by an external selector. The operator never computes selection
+  scores or TopK indices. The first `selected_counts[q]` entries in each selected-index row are valid; remaining entries
+  must be -1. Valid entries must be unique, non-negative request-local positions in the selected source.
+
+  `attention_mode="selected_only"` attends only to selected entries. `attention_mode="local_plus_selected"` jointly
+  normalizes causally valid main-cache entries in `local_window_size` and selected auxiliary entries. An optional
+  per-query-head sink can participate in either mode; it contributes to the shared softmax denominator but has no value
+  vector. A row with no entries and no sink produces zero output.
+
+  Supported mode/source combinations:
+
+  - `selected_only` + `main`: Qwen4-Exp QSA-compatible execution.
+  - `local_plus_selected` + `auxiliary`: DeepSeek V4 CSA-compatible execution and requires `local_window_size > 0`.
+
+  The main cache uses BNSH layout and ordinary contiguous append semantics. Selection changes reads, not cache writes.
+  Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
+  auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
+  the exporter's responsibility.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>attention_mode</tt> : string</dt>
+<dd>One of 'selected_only' or 'local_plus_selected'.</dd>
+<dt><tt>auxiliary_kv_shared</tt> : int</dt>
+<dd>Use auxiliary_key as both key and value when auxiliary_value is omitted.</dd>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to apply rotary embedding to Q and newly appended K.</dd>
+<dt><tt>is_causal</tt> : int</dt>
+<dd>Must be 1. DynamicSparseAttention version 1 supports causal attention only.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of main and auxiliary KV heads.</dd>
+<dt><tt>local_window_size</tt> : int</dt>
+<dd>Number of causally visible main-cache entries in local_plus_selected mode.</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of query heads.</dd>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dd>Epsilon for optional per-head Q/K RMS normalization.</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Whether rotary pairs use interleaved layout.</dd>
+<dt><tt>rotary_offset</tt> : int</dt>
+<dd>First head channel covered by rotary embedding. Must be nonnegative, a multiple of 8, and leave room for the rotary dimensions within head_size.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Scaling factor applied to QK. Defaults to 1/sqrt(head_size).</dd>
+<dt><tt>selected_kv_source</tt> : string</dt>
+<dd>Source addressed by selected indices: 'main' or 'auxiliary'.</dd>
+<dt><tt>smooth_softmax</tt> : int</dt>
+<dd>Add a zero-valued sink logit when no explicit head_sink is supplied.</dd>
+</dl>
+
+#### Inputs (11 - 17)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Current main value [batch, sequence, kv_num_heads * head_size].</dd>
+<dt><tt>past_key</tt> (optional) : T</dt>
+<dd>Main key cache in BNSH layout.</dd>
+<dt><tt>past_value</tt> (optional) : T</dt>
+<dd>Main value cache in BNSH layout.</dd>
+<dt><tt>auxiliary_key</tt> (optional) : T</dt>
+<dd>Read-only auxiliary key sequence in BNSH layout.</dd>
+<dt><tt>auxiliary_value</tt> (optional) : T</dt>
+<dd>Read-only auxiliary value sequence in BNSH layout.</dd>
+<dt><tt>selected_indices</tt> : M</dt>
+<dd>Selected request-local source positions [batch * sequence, max_selected].</dd>
+<dt><tt>selected_counts</tt> : M</dt>
+<dd>Number of valid entries per selected-index row [batch * sequence].</dd>
+<dt><tt>seqlens_k</tt> : M</dt>
+<dd>Total logical main sequence length minus one for each batch entry.</dd>
+<dt><tt>total_sequence_length</tt> : M</dt>
+<dd>Maximum total main sequence length, as a scalar or one-element tensor.</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>Rotary cosine cache [max_sequence_length, rotary_dim / 2].</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>Rotary sine cache [max_sequence_length, rotary_dim / 2].</dd>
+<dt><tt>position_ids</tt> (optional) : tensor(int64)</dt>
+<dd>Optional rotary positions [batch, sequence].</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>Optional Q RMSNorm weight [head_size].</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>Optional K RMSNorm weight [head_size].</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Attention output [batch, sequence, num_heads * head_size].</dd>
+<dt><tt>present_key</tt> (optional) : T</dt>
+<dd>Updated main key cache in BNSH layout.</dd>
+<dt><tt>present_value</tt> (optional) : T</dt>
+<dd>Updated main value cache in BNSH layout.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain all floating-point inputs and outputs to one element type.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain selection and sequence metadata to int32.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.DynamicTimeWarping"></a><a name="com.microsoft.dynamictimewarping">**com.microsoft.DynamicTimeWarping**</a>
 
   Input is cost matrix where each value in input[r][c] is the cost for pass the point (r, c). From current point(r, c),  points (r+1, c), (r+1, c+1) or (r, c+1) could be arrived in next move. Given such cost matrix, return dynamic time warping of shape [2, x], where the path made by all points (output[0][t], output[1][t])have the lowest cost among all paths from (0, 0) to (M-1, N-1).
@@ -2248,6 +2368,10 @@ This version of the operator has been available since version 1 of the 'com.micr
     key   [total_tokens, num_heads_k, head_size_qk]
     value [total_tokens, num_heads_v, head_size_v]
   
+  Alternatively, key and value may be omitted and query contains packed QKV with shape
+  `[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+  `initial_state` is required for packed QKV to determine the head counts and head sizes.
+
   The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
   pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
   is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
@@ -2331,14 +2455,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
 </dl>
 
-#### Inputs (3 - 11)
+#### Inputs (1 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query, shape (total_tokens, num_heads_q, head_size_qk)</dd>
-<dt><tt>key</tt> : T</dt>
+<dd>Query or packed QKV, shaped as described above.</dd>
+<dt><tt>key</tt> (optional) : T</dt>
 <dd>Key, shape (total_tokens, num_heads_k, head_size_qk)</dd>
-<dt><tt>value</tt> : T</dt>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value, shape (total_tokens, num_heads_v, head_size_v)</dd>
 <dt><tt>cu_seqlens</tt> (optional) : TI</dt>
 <dd>Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). Absent means uniform packing.</dd>
@@ -2347,7 +2471,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta</tt> (optional) : TS</dt>
 <dd>Update rate, shape (total_tokens, num_heads_v)</dd>
 <dt><tt>initial_state</tt> (optional) : TS</dt>
-<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. May alias final_state.</dd>
+<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
 <dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>
@@ -2508,7 +2632,8 @@ This version of the operator has been available since version 1 of the 'com.micr
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
     5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
-       for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+       for `bits` < 8 the values are packed along the last dimension (low-order bits first), and `gather_axis`
+       and `quantize_axis` must differ.
     6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
        (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
        no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
@@ -4876,7 +5001,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of each token before packing, with shape (batch_size, sequence_length).</dd>
+<dd>Offset of each token before packing, with shape (batch_size, sequence_length). Values must be in [0, batch_size * sequence_length).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
@@ -6838,7 +6963,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input</tt> : T</dt>
 <dd>Input tensor with shape (total_tokens, hidden_size)</dd>
 <dt><tt>token_offset</tt> : M</dt>
-<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)</dd>
+<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length), and values must be in [0, batch_size * sequence_length).</dd>
 </dl>
 
 #### Outputs

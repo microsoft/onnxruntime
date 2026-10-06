@@ -921,6 +921,18 @@ class TestQMoENVFP4(unittest.TestCase):
             gemv_mode="0",
         )
 
+    def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=64,
+            inter_size=64,
+            num_experts=4,
+            top_k=2,
+            num_tokens=4,
+            onnx_dtype=TensorProto.FLOAT16,
+            gemv_mode="1",
+            disable_prepacking=True,
+        )
+
     @parameterized.expand(
         [(onnx_dtype, disable_prepacking) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
          for disable_prepacking in (False, True)]
@@ -1017,18 +1029,6 @@ class TestQMoENVFP4(unittest.TestCase):
             gemv_mode="1",
             offline_prepacked=True,
             enable_cuda_graph=True,
-        )
-
-    def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):
-        self._run_nvfp4_moe_test(
-            hidden_size=64,
-            inter_size=64,
-            num_experts=4,
-            top_k=2,
-            num_tokens=4,
-            onnx_dtype=TensorProto.FLOAT16,
-            gemv_mode="1",
-            disable_prepacking=True,
         )
 
     @parameterized.expand(

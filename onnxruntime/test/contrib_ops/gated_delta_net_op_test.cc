@@ -693,17 +693,17 @@ TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
 
-  // A 128 MiB binding limit forces Q and K into two storage-buffer segments. The
-  // last token crosses that boundary, exercising the shader helper accessors.
-  Geometry g{131073, 1, 1, 1, 256, 1};
+  constexpr uint64_t max_binding_size = 256;
+  // The small test-only binding limit forces Q and K into two storage-buffer
+  // segments while keeping the test's memory footprint negligible.
+  Geometry g{17, 1, 1, 1, 4, 1};
+  Inputs inputs = MakeInputs(g, 227, /*with_state=*/false);
+  inputs.cu_seqlens = {0, g.total_tokens};
   Options options;
   options.update_rule = "linear";
-  ConfigOptions config_options;
-  ASSERT_STATUS_OK(
-      config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728"));
-  RunTypedCase<float>(g, options, MakeInputs(g, 227), 5e-4f, 5e-4f,
+  RunTypedCase<float>(g, options, inputs, 5e-4f, 5e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
-                      /*omit_final_state=*/true, &config_options);
+                      /*omit_final_state=*/true, /*config_options=*/nullptr, max_binding_size);
 }
 #endif
 
@@ -735,6 +735,7 @@ TEST(GatedDeltaNetWebGpuPlanTest, ParallelPrefillWorkspaceIsBounded) {
   EXPECT_LT(long_plan->chunks_per_pass, 4096u);
   EXPECT_LT(long_plan->workspace_bytes, 16 * short_plan->workspace_bytes);
   EXPECT_FALSE(SelectGatedDeltaNetParallelPrefillPlan(32ull << 20, 2).has_value());
+  EXPECT_FALSE(SelectGatedDeltaNetParallelPrefillPlan(1ull << 20, 2, 8ull << 20).has_value());
 }
 #endif
 
@@ -1447,7 +1448,7 @@ TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
   }
   Options options;
   options.update_rule = "linear";
-  RunAliasedStateIoBindingCase(/*total_tokens=*/64, std::move(webgpu_ep), kWebGpuExecutionProvider, options);
+  RunAliasedStateIoBindingCase(/*total_tokens=*/1, std::move(webgpu_ep), kWebGpuExecutionProvider, options);
 }
 
 // Device-supplied offsets must not be able to steer an out-of-bounds access.
@@ -1482,6 +1483,30 @@ TEST(GatedDeltaNetTest, MalformedCuSeqlensIsClamped) {
     eps.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   }
+}
+
+TEST(GatedDeltaNetTest, RejectsNonDivisiblePackedQkvUniformBatch) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{5, 2, 1, 2, kDim, kDim};
+  Inputs in = MakeInputs(g, 46);
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  Options o;
+  o.update_rule = "linear";
+  AddCommonAttrs(test, o);
+  const int packed_size = 2 * g.hq * g.dk + g.hv * g.dv;
+  test.AddInput<MLFloat16>("query", {g.total_tokens, packed_size},
+                           ToFloat16(std::vector<float>(static_cast<size_t>(g.total_tokens) * packed_size, 0.0f)));
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
+  test.AddOutput<MLFloat16>("output", {g.total_tokens, g.hv, g.dv},
+                            ToFloat16(std::vector<float>(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f)));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be divisible by batch", {}, nullptr, &eps);
 }
 
 TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {

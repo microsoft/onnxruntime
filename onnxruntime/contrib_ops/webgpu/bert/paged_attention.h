@@ -44,6 +44,8 @@ class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheP
       {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"num_blocks", ProgramUniformVariableDataType::Uint32},
+      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 

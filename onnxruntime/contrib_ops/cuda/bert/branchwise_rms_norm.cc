@@ -38,7 +38,7 @@ BranchwiseRMSNorm<T>::BranchwiseRMSNorm(const OpKernelInfo& info)
 
 template <typename T>
 Status BranchwiseRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
-  using CudaT = typename OrtToCudaType<T>::type;
+  using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
   const auto* x = context->Input<Tensor>(0);
   const auto* scale = context->Input<Tensor>(1);
   hyper_connection::StreamShape params;

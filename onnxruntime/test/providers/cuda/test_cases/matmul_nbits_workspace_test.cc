@@ -53,6 +53,7 @@ using onnxruntime::contrib::cuda::MatMulNBits;
 using onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize;
 using onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize;
 using onnxruntime::llm::kernels::weight_only::GetProfileTimedRuns;
+using onnxruntime::llm::kernels::weight_only::GetWeightOnlyGemmSelectionTime;
 using onnxruntime::llm::kernels::weight_only::RoundUpProfileM;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 
@@ -275,6 +276,18 @@ TEST(MatMulNBitsWorkspace, TacticProfilerTimedRunsPruneOnlyExpensiveSlowTactics)
   // Expensive launches clearly slower than the best cannot win and are not averaged.
   EXPECT_EQ(GetProfileTimedRuns(40.0f, 26.0f), 0);
   EXPECT_EQ(GetProfileTimedRuns(4.0f, 2.0f), 0);
+}
+
+TEST(MatMulNBitsWorkspace, TacticSelectionPenalizesCutlassOnlyForSmallMAndL2ResidentWeights) {
+  constexpr size_t kL2 = 32 << 20;
+  // Small M, weight fits in L2: CUTLASS is biased, the GEMV is not.
+  EXPECT_FLOAT_EQ(GetWeightOnlyGemmSelectionTime(1, kL2, kL2, /*is_cuda_kernel=*/false, 1.0f), 1.1f);
+  EXPECT_FLOAT_EQ(GetWeightOnlyGemmSelectionTime(1, kL2, kL2, /*is_cuda_kernel=*/true, 1.0f), 1.0f);
+  // Weight larger than L2 is already timed from DRAM.
+  EXPECT_FLOAT_EQ(GetWeightOnlyGemmSelectionTime(1, kL2 + 1, kL2, false, 1.0f), 1.0f);
+  // Unknown L2 size and large M keep the measured time.
+  EXPECT_FLOAT_EQ(GetWeightOnlyGemmSelectionTime(1, 1024, 0, false, 1.0f), 1.0f);
+  EXPECT_FLOAT_EQ(GetWeightOnlyGemmSelectionTime(16, 1024, kL2, false, 1.0f), 1.0f);
 }
 
 // ---------------------------------------------------------------------------

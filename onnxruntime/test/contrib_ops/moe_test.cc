@@ -16,11 +16,14 @@
 #include "nlohmann/json.hpp"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/mlas/inc/mlas_qnbit.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test/test_environment.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
@@ -1913,8 +1916,11 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
                                               bool use_bf16 = false,
                                               int64_t block_size = 32,
                                               int64_t hidden_size = 64,
-                                              int64_t inter_size = 64) {
-  constexpr int64_t num_rows = 1;
+                                              int64_t inter_size = 64,
+                                              bool expect_scratch_failure = true,
+                                              bool use_initializers = false,
+                                              int64_t num_rows = 1,
+                                              int64_t row_tile_size = 0) {
   constexpr int64_t num_experts = 1;
 
   auto make_identity = [block_size](int64_t bits, int64_t rows, int64_t columns,
@@ -1946,10 +1952,11 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
     return std::make_pair(std::move(weights), std::move(zero_points));
   };
 
-  std::vector<float> input(static_cast<size_t>(hidden_size));
-  for (int64_t i = 0; i < hidden_size; ++i) {
-    input[static_cast<size_t>(i)] = static_cast<float>((i % 13) - 6) * 0.125f;
+  std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
+  for (size_t index = 0; index < input.size(); ++index) {
+    input[index] = static_cast<float>(static_cast<int>(index % 13) - 6) * 0.125f;
   }
+  const std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), 1.0f);
   const int64_t fc1_rows = fused_swiglu ? 2 * inter_size : inter_size;
   auto [fc1_weights, fc1_zero_points] =
       make_identity(fc1_bits, fc1_rows, hidden_size, fused_swiglu, with_zero_points);
@@ -1982,28 +1989,32 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
   tester.AddAttribute<int64_t>("block_size", block_size);
   if (use_bf16) {
     tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, ToBFloat16(input));
-    tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, ToBFloat16({1.0f}));
+    tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, ToBFloat16(router_probs));
     tester.AddInput<uint8_t>("fc1_experts_weights",
-                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
-    tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToBFloat16(fc1_scales));
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights, use_initializers);
+    tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                              ToBFloat16(fc1_scales), use_initializers);
     tester.AddOptionalInputEdge<BFloat16>();
     tester.AddInput<uint8_t>("fc2_experts_weights",
-                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
-    tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToBFloat16(fc2_scales));
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights, use_initializers);
+    tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                              ToBFloat16(fc2_scales), use_initializers);
     tester.AddOptionalInputEdge<BFloat16>();
     tester.AddOptionalInputEdge<uint8_t>();
     tester.AddOptionalInputEdge<BFloat16>();
     tester.AddOptionalInputEdge<BFloat16>();
   } else {
     tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
-    tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16({1.0f}));
+    tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
     tester.AddInput<uint8_t>("fc1_experts_weights",
-                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
-    tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToFloat16(fc1_scales));
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights, use_initializers);
+    tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                               ToFloat16(fc1_scales), use_initializers);
     tester.AddOptionalInputEdge<MLFloat16>();
     tester.AddInput<uint8_t>("fc2_experts_weights",
-                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
-    tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToFloat16(fc2_scales));
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights, use_initializers);
+    tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                               ToFloat16(fc2_scales), use_initializers);
     tester.AddOptionalInputEdge<MLFloat16>();
     tester.AddOptionalInputEdge<uint8_t>();
     tester.AddOptionalInputEdge<MLFloat16>();
@@ -2033,9 +2044,15 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
   }
+  if (row_tile_size > 0) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.qmoe_row_tile_size", std::to_string(row_tile_size).c_str()));
+  }
   tester.Run(session_options,
-             max_scratch_bytes > 0 ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
-             max_scratch_bytes > 0 ? "exceeding the configured limit" : "", {}, nullptr, &execution_providers);
+             max_scratch_bytes > 0 && expect_scratch_failure ? OpTester::ExpectResult::kExpectFailure
+                                                             : OpTester::ExpectResult::kExpectSuccess,
+             max_scratch_bytes > 0 && expect_scratch_failure ? "exceeding the configured limit" : "",
+             {}, nullptr, &execution_providers);
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
@@ -2092,6 +2109,739 @@ TEST(MoETest, QMoETest_MixedWidthCudaFusedSwiGLU) {
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, true);
 }
 
+TEST(MoETest, QMoETest_Int2CudaPackedDecode) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/false, /*block_size=*/64, /*hidden_size=*/512, /*inter_size=*/512,
+      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+}
+
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeBlock128) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/false, /*block_size=*/128, /*hidden_size=*/512, /*inter_size=*/512,
+      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+}
+
+// Runs the same multi-row, multi-expert, k=2 INT2 SwiGLU model once with the packed GEMV
+// path selected and once with it disabled (forcing the already-validated dense fallback from
+// #32743), so a stride/permutation/top-k bug in the new packed pipeline shows up as a numeric
+// mismatch instead of only a shape or gate mismatch.
+static std::vector<float> RunQMoEPackedIntGemvParityCase(bool disable_packed_gemv) {
+  constexpr int64_t num_rows = 4;
+  constexpr int64_t num_experts = 4;
+  constexpr int64_t k = 2;
+  constexpr int64_t hidden_size = 512;
+  constexpr int64_t inter_size = 512;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t bits = 2;
+  constexpr int64_t pack_size = 8 / bits;
+  constexpr int64_t fc1_rows = 2 * inter_size;  // Fused SwiGLU doubles FC1's output rows.
+
+  uint32_t rng_state = 12345u;
+  auto next_rand = [&rng_state]() {
+    rng_state = rng_state * 1103515245u + 12345u;
+    return rng_state;
+  };
+
+  std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
+  for (float& value : input) {
+    value = static_cast<float>(next_rand() % 17) * 0.05f - 0.4f;
+  }
+
+  // Give each row a distinct preferred expert pair so k=2 top-k selection and the resulting
+  // expert permutation differ across rows.
+  constexpr int64_t preferred_pairs[num_rows][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+  std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts));
+  for (int64_t row = 0; row < num_rows; ++row) {
+    for (int64_t e = 0; e < num_experts; ++e) {
+      router_probs[static_cast<size_t>(row * num_experts + e)] = 0.1f * static_cast<float>(e);
+    }
+    router_probs[static_cast<size_t>(row * num_experts + preferred_pairs[row][0])] = 3.0f;
+    router_probs[static_cast<size_t>(row * num_experts + preferred_pairs[row][1])] = 2.0f;
+  }
+
+  // Each expert's weight is a "shifted identity": row r picks out input column
+  // (r + expert_shift) % columns, so a bug that mixes up per-expert strides or permutation
+  // changes the numeric result rather than only the output shape.
+  auto make_expert_weights = [](int64_t rows, int64_t columns, int64_t expert_shift) {
+    std::vector<uint8_t> weights(static_cast<size_t>(rows * columns / pack_size), 0);
+    constexpr uint8_t base_code = static_cast<uint8_t>(1u << (bits - 1));
+    for (int64_t row = 0; row < rows; ++row) {
+      const int64_t identity_column = (row + expert_shift) % columns;
+      for (int64_t column = 0; column < columns; ++column) {
+        const uint8_t code = static_cast<uint8_t>(base_code + (column == identity_column ? 1 : 0));
+        const int64_t byte_index = row * (columns / pack_size) + column / pack_size;
+        weights[static_cast<size_t>(byte_index)] |=
+            static_cast<uint8_t>(code << ((column % pack_size) * bits));
+      }
+    }
+    return weights;
+  };
+
+  std::vector<uint8_t> fc1_weights(static_cast<size_t>(num_experts * fc1_rows * hidden_size / pack_size));
+  std::vector<uint8_t> fc2_weights(static_cast<size_t>(num_experts * hidden_size * inter_size / pack_size));
+  for (int64_t e = 0; e < num_experts; ++e) {
+    const auto fc1_e = make_expert_weights(fc1_rows, hidden_size, e * 7);
+    const auto fc2_e = make_expert_weights(hidden_size, inter_size, e * 11);
+    std::copy(fc1_e.begin(), fc1_e.end(), fc1_weights.begin() + static_cast<int64_t>(fc1_e.size()) * e);
+    std::copy(fc2_e.begin(), fc2_e.end(), fc2_weights.begin() + static_cast<int64_t>(fc2_e.size()) * e);
+  }
+  const std::vector<float> fc1_scales(static_cast<size_t>(num_experts * fc1_rows * (hidden_size / block_size)), 1.0f);
+  const std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size * (inter_size / block_size)), 1.0f);
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", k);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", bits);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, hidden_size / pack_size},
+                           fc1_weights, /*is_initializer=*/true);
+  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                             ToFloat16(fc1_scales), /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / pack_size},
+                           fc2_weights, /*is_initializer=*/true);
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                             ToFloat16(fc2_scales), /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+
+  // The real assertion is the packed-vs-dense parity check the caller performs on GetFetches();
+  // use a placeholder expected output and a huge tolerance so the framework's own comparison
+  // never fails here.
+  const std::vector<float> placeholder(static_cast<size_t>(num_rows * hidden_size), 0.0f);
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(placeholder));
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  // ASSERT_STATUS_OK contains a bare `return;`, which only compiles in void-returning
+  // functions; use EXPECT_TRUE here since this helper returns a vector.
+  EXPECT_TRUE(session_options.config_options.AddConfigEntry(
+                                                kOrtSessionOptionsDisableCPUEPFallback, "1")
+                  .IsOK());
+  if (!disable_packed_gemv) {
+    // A one-byte dense-dequant scratch cap proves the packed path actually ran: if it silently
+    // fell back to dense, this run would fail loudly instead of producing a plausible-looking
+    // but wrong result.
+    EXPECT_TRUE(session_options.config_options.AddConfigEntry(
+                                                  "ep.cuda.qmoe_int_dequant_max_scratch_bytes", "1")
+                    .IsOK());
+  }
+
+  EnvVarMap env_overrides;
+  if (disable_packed_gemv) {
+    env_overrides["ORT_DISABLE_MOE_GEMV"] = "1";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{env_overrides};
+
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  const auto fetches = tester.GetFetches();
+  const Tensor& out = fetches[0].Get<Tensor>();
+  const MLFloat16* data = out.Data<MLFloat16>();
+  std::vector<float> result(static_cast<size_t>(out.Shape().Size()));
+  for (size_t i = 0; i < result.size(); ++i) {
+    result[i] = data[i].ToFloat();
+  }
+  return result;
+}
+
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeMultiRowExpertParity) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  const std::vector<float> packed_output = RunQMoEPackedIntGemvParityCase(/*disable_packed_gemv=*/false);
+  const std::vector<float> dense_output = RunQMoEPackedIntGemvParityCase(/*disable_packed_gemv=*/true);
+  ASSERT_EQ(packed_output.size(), dense_output.size());
+  for (size_t i = 0; i < packed_output.size(); ++i) {
+    EXPECT_NEAR(packed_output[i], dense_output[i], 0.02f) << "mismatch at index " << i;
+  }
+}
+
+#ifdef USE_CUDA
+static std::string BuildQMoEInt2DynamicRowsModel() {
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 512;
+  constexpr int64_t inter_size = 512;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t pack_size = 4;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain(kMSDomain);
+  ms_opset->set_version(1);
+  auto* graph = model.mutable_graph();
+  graph->set_name("qmoe_int2_dynamic_rows");
+
+  auto add_fp16_value_info = [graph](const char* name, int64_t width, bool is_input) {
+    auto* value_info = is_input ? graph->add_input() : graph->add_output();
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    tensor_type->mutable_shape()->add_dim()->set_dim_param("num_rows");
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(width);
+  };
+  add_fp16_value_info("input", hidden_size, true);
+  add_fp16_value_info("router_probs", num_experts, true);
+  add_fp16_value_info("output", hidden_size, false);
+
+  auto make_identity_weights = [](int64_t rows, int64_t columns) {
+    std::vector<uint8_t> weights(static_cast<size_t>(rows * columns / pack_size), 0xAA);
+    for (int64_t row = 0; row < rows; ++row) {
+      const int64_t column = row % columns;
+      const size_t byte_index = static_cast<size_t>(row * (columns / pack_size) + column / pack_size);
+      weights[byte_index] |= static_cast<uint8_t>(1u << ((column % pack_size) * 2));
+    }
+    return weights;
+  };
+  const auto fc1_weights = make_identity_weights(fc1_rows, hidden_size);
+  const auto fc2_weights = make_identity_weights(hidden_size, inter_size);
+
+  auto make_scales = [](int64_t rows, int64_t blocks) {
+    std::vector<MLFloat16> scales(static_cast<size_t>(rows * blocks));
+    for (int64_t row = 0; row < rows; ++row) {
+      for (int64_t block = 0; block < blocks; ++block) {
+        scales[static_cast<size_t>(row * blocks + block)] = MLFloat16(0.5f + 0.0625f * block);
+      }
+    }
+    return scales;
+  };
+  const auto fc1_scales = make_scales(fc1_rows, hidden_size / block_size);
+  const auto fc2_scales = make_scales(hidden_size, inter_size / block_size);
+
+  auto add_initializer = [graph](const char* name, int32_t data_type, const std::vector<int64_t>& dims,
+                                 const void* data, size_t bytes) {
+    auto* initializer = graph->add_initializer();
+    initializer->set_name(name);
+    initializer->set_data_type(data_type);
+    for (int64_t dim : dims) {
+      initializer->add_dims(dim);
+    }
+    initializer->mutable_raw_data()->assign(static_cast<const char*>(data), bytes);
+  };
+  add_initializer("fc1_weights", ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                  {num_experts, fc1_rows, hidden_size / pack_size}, fc1_weights.data(), fc1_weights.size());
+  add_initializer("fc1_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                  {num_experts, fc1_rows, hidden_size / block_size}, fc1_scales.data(),
+                  fc1_scales.size() * sizeof(MLFloat16));
+  add_initializer("fc2_weights", ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                  {num_experts, hidden_size, inter_size / pack_size}, fc2_weights.data(), fc2_weights.size());
+  add_initializer("fc2_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                  {num_experts, hidden_size, inter_size / block_size}, fc2_scales.data(),
+                  fc2_scales.size() * sizeof(MLFloat16));
+
+  auto* node = graph->add_node();
+  node->set_op_type("QMoE");
+  node->set_domain(kMSDomain);
+  for (const char* input_name : {"input", "router_probs", "fc1_weights", "fc1_scales", "",
+                                 "fc2_weights", "fc2_scales", "", "", "", ""}) {
+    node->add_input(input_name);
+  }
+  node->add_output("output");
+  auto add_int_attribute = [node](const char* name, int64_t value) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  };
+  add_int_attribute("k", 1);
+  add_int_attribute("swiglu_fusion", 1);
+  add_int_attribute("normalize_routing_weights", 1);
+  add_int_attribute("expert_weight_bits", 2);
+  add_int_attribute("weights_prepacked", 0);
+  add_int_attribute("block_size", block_size);
+  auto* activation = node->add_attribute();
+  activation->set_name("activation_type");
+  activation->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  activation->set_s("swiglu");
+
+  std::string model_bytes;
+  ORT_ENFORCE(model.SerializeToString(&model_bytes));
+  return model_bytes;
+}
+
+TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+
+  constexpr int64_t hidden_size = 512;
+  const std::string model_bytes = BuildQMoEInt2DynamicRowsModel();
+#if defined(ENABLE_CUDA_PROFILING)
+  const auto profile_prefix = std::filesystem::temp_directory_path() / "qmoe_int2_cached_scales";
+#endif
+  SessionOptions session_options;
+#if defined(ENABLE_CUDA_PROFILING)
+  session_options.enable_profiling = true;
+  session_options.profile_file_prefix = profile_prefix.native();
+#endif
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+#if defined(ENABLE_CUDA_PROFILING)
+  const std::string setup_profile_path = session.EndProfiling();
+  std::error_code setup_profile_error;
+  std::filesystem::remove(setup_profile_path, setup_profile_error);
+  session.StartProfiling(profile_prefix.string());
+#endif
+
+  const auto run_rows = [&session](int64_t num_rows) {
+    std::vector<MLFloat16> input(static_cast<size_t>(num_rows * hidden_size), MLFloat16(0.1f));
+    std::vector<MLFloat16> router_probs(static_cast<size_t>(num_rows), MLFloat16(1.0f));
+    OrtValue input_value;
+    OrtValue router_value;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({num_rows, hidden_size}),
+                         input.data(), OrtMemoryInfo(), input_value);
+    Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({num_rows, 1}),
+                         router_probs.data(), OrtMemoryInfo(), router_value);
+    NameMLValMap feeds{{"input", input_value}, {"router_probs", router_value}};
+    const std::vector<std::string> output_names{"output"};
+    std::vector<OrtValue> fetches;
+    EXPECT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+    if (fetches.empty()) {
+      return std::vector<float>{};
+    }
+    const Tensor& output = fetches[0].Get<Tensor>();
+    const MLFloat16* output_data = output.Data<MLFloat16>();
+    std::vector<float> result(static_cast<size_t>(output.Shape().Size()));
+    std::transform(output_data, output_data + result.size(), result.begin(),
+                   [](MLFloat16 value) { return value.ToFloat(); });
+    return result;
+  };
+
+  const std::vector<float> first_decode = run_rows(1);
+  const std::vector<float> second_decode = run_rows(1);
+  ASSERT_EQ(first_decode.size(), static_cast<size_t>(hidden_size));
+  ASSERT_EQ(first_decode, second_decode);
+#if defined(ENABLE_CUDA_PROFILING)
+  const std::string profile_path = session.EndProfiling();
+  auto remove_profile = gsl::finally([&profile_path] {
+    std::error_code error;
+    std::filesystem::remove(profile_path, error);
+  });
+
+  if (session.GetProfiling().HasEpProfilers() && session.GetProfiling().GetEpProfilingStatus().IsOK()) {
+    std::ifstream profile_stream(profile_path);
+    ASSERT_TRUE(profile_stream.is_open());
+    const auto profile = nlohmann::json::parse(profile_stream);
+    bool saw_kernel_event = false;
+    for (const auto& event : profile) {
+      if (event.value("cat", "") == "Kernel") {
+        saw_kernel_event = true;
+        EXPECT_EQ(event.value("name", "").find("QMoETranspose2DKernel"), std::string::npos)
+            << "initializer scales were transposed during repeated decode";
+      }
+    }
+    EXPECT_TRUE(saw_kernel_event);
+  }
+#endif
+
+  const std::vector<float> prefill = run_rows(257);
+  ASSERT_EQ(prefill.size(), static_cast<size_t>(257 * hidden_size));
+  for (size_t column = 0; column < static_cast<size_t>(hidden_size); ++column) {
+    EXPECT_NEAR(prefill[column], first_decode[column], 0.02f) << "mismatch at column " << column;
+  }
+}
+#endif
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDefaultEnabled) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", std::nullopt}, {"ORT_ENABLE_QMOE_INT2_PREFILL", std::nullopt}}};
+  for (int64_t num_rows : {1, 33, 257}) {
+    SCOPED_TRACE(num_rows);
+    RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, num_rows);
+#if defined(ENABLE_BF16)
+    RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 512, 512, false, true, num_rows);
+#endif
+  }
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWithoutDecode) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  for (int64_t num_rows : {1, 33, 257}) {
+    SCOPED_TRACE(num_rows);
+    RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, num_rows);
+  }
+}
+
+#if defined(ENABLE_BF16)
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillBFloat16WithoutDecode) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  for (int64_t num_rows : {1, 33, 257}) {
+    SCOPED_TRACE(num_rows);
+    RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 512, 512, false, true, num_rows);
+  }
+}
+#endif
+
+template <typename ElementType>
+static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_size, int64_t inter_size,
+                                            int64_t top_k, bool skewed, bool scale_initializers = true,
+                                            int64_t row_tile_size = 0, int64_t block_size = 64,
+                                            int64_t fc1_bits = 2, int64_t fc2_bits = 4) {
+  constexpr int64_t num_experts = 8;
+  constexpr float alpha = 1.5f;
+  constexpr float beta = 0.125f;
+  constexpr float limit = 0.5f;
+  const auto round_value = [](float value) { return ElementType(value).ToFloat(); };
+  const auto fc1_scale = [](int64_t expert, int64_t column, int64_t block) {
+    return 0.5f + 0.125f * static_cast<float>(expert) +
+           0.015625f * static_cast<float>((column / 2) % 7) + 0.03125f * static_cast<float>(block);
+  };
+  const auto fc2_scale = [](int64_t expert, int64_t column, int64_t block) {
+    return 0.125f * static_cast<float>(expert + 1) +
+           0.015625f * static_cast<float>(column % 5) + 0.03125f * static_cast<float>(block);
+  };
+  const auto make_weights = [](int64_t rows, int64_t columns, int64_t bits, bool interleaved) {
+    const int64_t pack_size = 8 / bits;
+    const uint8_t zero = static_cast<uint8_t>(1u << (bits - 1));
+    std::vector<uint8_t> weights(static_cast<size_t>(num_experts * rows * columns / pack_size), 0);
+    for (int64_t expert = 0; expert < num_experts; ++expert) {
+      for (int64_t row = 0; row < rows; ++row) {
+        const int64_t selected_column = (interleaved ? row / 2 : row) % columns;
+        for (int64_t column = 0; column < columns; ++column) {
+          const uint8_t code = static_cast<uint8_t>(zero + (column == selected_column));
+          weights[static_cast<size_t>(((expert * rows + row) * columns + column) / pack_size)] |=
+              static_cast<uint8_t>(code << ((column % pack_size) * bits));
+        }
+      }
+    }
+    return weights;
+  };
+  const auto fc1_weights = make_weights(2 * inter_size, hidden_size, fc1_bits, true);
+  const auto fc2_weights = make_weights(hidden_size, inter_size, fc2_bits, false);
+  std::vector<ElementType> input(static_cast<size_t>(num_rows * hidden_size));
+  std::vector<ElementType> router(static_cast<size_t>(num_rows * num_experts), ElementType(-20.0f));
+  std::vector<ElementType> fc1_scales(static_cast<size_t>(num_experts * 2 * inter_size * hidden_size / block_size));
+  std::vector<ElementType> fc2_scales(static_cast<size_t>(num_experts * hidden_size * inter_size / block_size));
+  std::vector<ElementType> fc1_bias(static_cast<size_t>(num_experts * 2 * inter_size));
+  std::vector<ElementType> fc2_bias(static_cast<size_t>(num_experts * hidden_size));
+  std::vector<ElementType> expected(input.size());
+  for (size_t index = 0; index < input.size(); ++index) {
+    input[index] = ElementType(static_cast<float>(static_cast<int>(index % 29) - 14) * 0.125f);
+  }
+  for (int64_t expert = 0; expert < num_experts; ++expert) {
+    for (int64_t column = 0; column < 2 * inter_size; ++column) {
+      for (int64_t block = 0; block < hidden_size / block_size; ++block) {
+        fc1_scales[static_cast<size_t>((expert * 2 * inter_size + column) * hidden_size / block_size + block)] =
+            ElementType(fc1_scale(expert, column, block));
+      }
+    }
+    for (int64_t column = 0; column < hidden_size; ++column) {
+      for (int64_t block = 0; block < inter_size / block_size; ++block) {
+        fc2_scales[static_cast<size_t>((expert * hidden_size + column) * inter_size / block_size + block)] =
+            ElementType(fc2_scale(expert, column, block));
+      }
+    }
+    for (int64_t column = 0; column < inter_size; ++column) {
+      fc1_bias[static_cast<size_t>(expert * 2 * inter_size + 2 * column)] =
+          ElementType(0.0625f * static_cast<float>(expert - 2) +
+                      0.015625f * static_cast<float>(column % 11 - 5));
+      fc1_bias[static_cast<size_t>(expert * 2 * inter_size + 2 * column + 1)] =
+          ElementType(-0.03125f * static_cast<float>(expert + 1) +
+                      0.015625f * static_cast<float>(column % 7 - 3));
+    }
+    for (int64_t column = 0; column < hidden_size; ++column) {
+      fc2_bias[static_cast<size_t>(expert * hidden_size + column)] =
+          ElementType(0.03125f * static_cast<float>(expert - 3) +
+                      0.015625f * static_cast<float>(column % 13 - 6));
+    }
+  }
+  float denominator = 0.0f;
+  for (int64_t rank = 0; rank < top_k; ++rank) {
+    denominator += std::exp(-static_cast<float>(rank));
+  }
+  for (int64_t row = 0; row < num_rows; ++row) {
+    const int64_t start_expert = skewed && row + 2 < num_rows ? 0 : row % (num_experts - 2);
+    for (int64_t rank = 0; rank < top_k; ++rank) {
+      const int64_t expert = 1 + (start_expert + rank) % (num_experts - 2);
+      router[static_cast<size_t>(row * num_experts + expert)] = ElementType(4.0f - static_cast<float>(rank));
+    }
+    for (int64_t column = 0; column < hidden_size; ++column) {
+      float sum = 0.0f;
+      for (int64_t rank = 0; rank < top_k; ++rank) {
+        const int64_t expert = 1 + (start_expert + rank) % (num_experts - 2);
+        const int64_t input_column = (column % inter_size) % hidden_size;
+        const float fc1 = round_value(input[static_cast<size_t>(row * hidden_size + input_column)].ToFloat() *
+                                      round_value(fc1_scale(expert, 2 * (column % inter_size), input_column / block_size)));
+        const size_t gate_bias_index = static_cast<size_t>(expert * 2 * inter_size + 2 * (column % inter_size));
+        const float gate = std::min(fc1 + fc1_bias[gate_bias_index].ToFloat(), limit);
+        const float linear = std::clamp(
+                                 fc1 + fc1_bias[gate_bias_index + 1].ToFloat(), -limit, limit) +
+                             beta;
+        const float activated = round_value(gate / (1.0f + std::exp(-alpha * gate)) * linear);
+        const float fc2 = round_value(activated *
+                                      round_value(fc2_scale(expert, column, (column % inter_size) / block_size)));
+        sum += (fc2 + fc2_bias[static_cast<size_t>(expert * hidden_size + column)].ToFloat()) *
+               std::exp(-static_cast<float>(rank)) / denominator;
+      }
+      expected[static_cast<size_t>(row * hidden_size + column)] = ElementType(sum);
+    }
+  }
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<float>("activation_alpha", alpha);
+  tester.AddAttribute<float>("activation_beta", beta);
+  tester.AddAttribute<float>("swiglu_limit", limit);
+  tester.AddAttribute<int64_t>("expert_weight_bits", fc2_bits);
+  tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
+  tester.AddAttribute<int64_t>("fc3_expert_weight_bits", fc1_bits);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddInput<ElementType>("input", {num_rows, hidden_size}, input);
+  tester.AddInput<ElementType>("router_probs", {num_rows, num_experts}, router);
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, 2 * inter_size, hidden_size / (8 / fc1_bits)}, fc1_weights, true);
+  tester.AddInput<ElementType>("fc1_scales", {num_experts, 2 * inter_size, hidden_size / block_size},
+                               fc1_scales, scale_initializers);
+  tester.AddInput<ElementType>("fc1_experts_bias", {num_experts, 2 * inter_size}, fc1_bias, true);
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights, true);
+  tester.AddInput<ElementType>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                               fc2_scales, scale_initializers);
+  tester.AddInput<ElementType>("fc2_experts_bias", {num_experts, hidden_size}, fc2_bias, true);
+  tester.AddOutput<ElementType>("output", {num_rows, hidden_size}, expected);
+  tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.004f : 0.001f);
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry("ep.cuda.qmoe_int_dequant_max_scratch_bytes", "1"));
+  if (row_tile_size > 0) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.qmoe_row_tile_size", std::to_string(row_tile_size).c_str()));
+  }
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  for (int64_t top_k : {1, 2, 4}) {
+    for (bool skewed : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "top_k=" << top_k << " skewed=" << skewed);
+      RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 512, 256, top_k, skewed);
+#if defined(ENABLE_BF16)
+      RunQMoEPackedPrefillRoutingTest<BFloat16>(257, 512, 256, top_k, skewed);
+#endif
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRuntimeScales) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 128, 64, 2, false, false);
+  RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 64, 128, 4, true, false);
+#if defined(ENABLE_BF16)
+  RunQMoEPackedPrefillRoutingTest<BFloat16>(33, 128, 64, 2, false, false);
+  RunQMoEPackedPrefillRoutingTest<BFloat16>(33, 64, 128, 4, true, false);
+#endif
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillBlockSizes) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  for (int64_t block_size : {32, 64, 128}) {
+    SCOPED_TRACE(block_size);
+    for (const auto& weight_bits : {std::pair<int64_t, int64_t>{2, 4}, {2, 2}, {4, 2}}) {
+      SCOPED_TRACE(testing::Message() << "fc1_bits=" << weight_bits.first << " fc2_bits=" << weight_bits.second);
+      for (int64_t num_rows : {1, 33, 257}) {
+        for (bool scale_initializers : {false, true}) {
+          for (int64_t row_tile_size : {0, 16}) {
+            SCOPED_TRACE(testing::Message() << "rows=" << num_rows
+                                            << " scale_initializers=" << scale_initializers
+                                            << " row_tile_size=" << row_tile_size);
+            RunQMoEPackedPrefillRoutingTest<MLFloat16>(num_rows, 512, 256, 2, false,
+                                                       scale_initializers, row_tile_size, block_size,
+                                                       weight_bits.first, weight_bits.second);
+#if defined(ENABLE_BF16)
+            RunQMoEPackedPrefillRoutingTest<BFloat16>(num_rows, 512, 256, 4, true,
+                                                      scale_initializers, row_tile_size, block_size,
+                                                      weight_bits.first, weight_bits.second);
+#endif
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillFallback) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, true, false, 64, 512, 512, true, true, 33);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 16, 512, 512, true, true, 33);
+  RunQMoEMixedWidthCudaIdentityTest(2, 8, 1, true, false, false, 64, 512, 512, true, true, 33);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, false, false, false, 64, 512, 512, true, true, 33);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, false, 33);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWorkspaceLimit) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 64, 8192, false, true, 8193);
+#if defined(ENABLE_BF16)
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 64, 8192, false, true, 8193);
+#endif
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRespectsRowTiling) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, 33, 33);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, 33, 16);
+#if defined(ENABLE_BF16)
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 512, 512, false, true, 257, 16);
+#endif
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillTiledRouting) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  for (int64_t top_k : {1, 2, 4}) {
+    for (bool scale_initializers : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "top_k=" << top_k << " scale_initializers=" << scale_initializers);
+      RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 128, 64, top_k, false, scale_initializers, 16);
+#if defined(ENABLE_BF16)
+      RunQMoEPackedPrefillRoutingTest<BFloat16>(257, 64, 128, top_k, true, scale_initializers, 16);
+#endif
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDisabled) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, true, 1);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, true, 33);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaBlock32DenseFallbackWithoutPrefill) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
+  for (const auto& weight_bits : {std::pair<int64_t, int64_t>{2, 4}, {2, 2}, {4, 2}}) {
+    SCOPED_TRACE(testing::Message() << "fc1_bits=" << weight_bits.first << " fc2_bits=" << weight_bits.second);
+    for (int64_t num_rows : {1, 33}) {
+      SCOPED_TRACE(num_rows);
+      RunQMoEMixedWidthCudaIdentityTest(
+          weight_bits.first, weight_bits.second, /*max_scratch_bytes=*/0, /*fused_swiglu=*/true,
+          /*with_zero_points=*/false, /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/512,
+          /*inter_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true, num_rows);
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const auto& bits : {std::pair<int64_t, int64_t>{2, 4},
+                           std::pair<int64_t, int64_t>{4, 2}}) {
+    RunQMoEMixedWidthCudaIdentityTest(
+        bits.first, bits.second, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true,
+        /*with_zero_points=*/false, /*use_bf16=*/false, /*block_size=*/64, /*hidden_size=*/512,
+        /*inter_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+  }
+}
+
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeFallback) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/64, /*inter_size=*/64,
+      /*expect_scratch_failure=*/true, /*use_initializers=*/true);
+}
+
+#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeBFloat16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/true, /*block_size=*/64, /*hidden_size=*/512, /*inter_size=*/512,
+      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedDecodeBFloat16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const auto& bits : {std::pair<int64_t, int64_t>{2, 4},
+                           std::pair<int64_t, int64_t>{4, 2}}) {
+    RunQMoEMixedWidthCudaIdentityTest(
+        bits.first, bits.second, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true,
+        /*with_zero_points=*/false, /*use_bf16=*/true, /*block_size=*/64, /*hidden_size=*/512,
+        /*inter_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+  }
+}
+#endif
+
 TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
@@ -2103,7 +2853,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
 
 static void RunQMoEMixedWidthCudaInvalidFallbackInputTest(
     int64_t hidden_size, int64_t inter_size, int64_t block_size,
-    bool row_wise_scales, bool legacy_weights, const char* expected_error) {
+    bool row_wise_scales, bool legacy_weights, const char* expected_error,
+    bool use_float8_scales = false) {
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
   constexpr int64_t fc1_bits = 2;
@@ -2137,15 +2888,25 @@ static void RunQMoEMixedWidthCudaInvalidFallbackInputTest(
   tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, {MLFloat16(1.0f)});
   tester.AddInput<uint8_t>("fc1_experts_weights", fc1_weight_shape,
                            std::vector<uint8_t>(static_cast<size_t>(fc1_weight_shape[1] * fc1_weight_shape[2])));
-  tester.AddInput<MLFloat16>("fc1_scales", fc1_scale_shape,
-                             std::vector<MLFloat16>(static_cast<size_t>(inter_size * (row_wise_scales ? 1 : fc1_blocks)),
-                                                    MLFloat16(1.0f)));
+  const size_t fc1_scale_count = static_cast<size_t>(inter_size * (row_wise_scales ? 1 : fc1_blocks));
+  if (use_float8_scales) {
+    tester.AddInput<Float8E4M3FN>("fc1_scales", fc1_scale_shape,
+                                  std::vector<Float8E4M3FN>(fc1_scale_count, Float8E4M3FN(1.0f)));
+  } else {
+    tester.AddInput<MLFloat16>("fc1_scales", fc1_scale_shape,
+                               std::vector<MLFloat16>(fc1_scale_count, MLFloat16(1.0f)));
+  }
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddInput<uint8_t>("fc2_experts_weights", fc2_weight_shape,
                            std::vector<uint8_t>(static_cast<size_t>(fc2_weight_shape[1] * fc2_weight_shape[2])));
-  tester.AddInput<MLFloat16>("fc2_scales", fc2_scale_shape,
-                             std::vector<MLFloat16>(static_cast<size_t>(hidden_size * (row_wise_scales ? 1 : fc2_blocks)),
-                                                    MLFloat16(1.0f)));
+  const size_t fc2_scale_count = static_cast<size_t>(hidden_size * (row_wise_scales ? 1 : fc2_blocks));
+  if (use_float8_scales) {
+    tester.AddInput<Float8E4M3FN>("fc2_scales", fc2_scale_shape,
+                                  std::vector<Float8E4M3FN>(fc2_scale_count, Float8E4M3FN(1.0f)));
+  } else {
+    tester.AddInput<MLFloat16>("fc2_scales", fc2_scale_shape,
+                               std::vector<MLFloat16>(fc2_scale_count, MLFloat16(1.0f)));
+  }
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddOptionalInputEdge<uint8_t>();
   tester.AddOptionalInputEdge<MLFloat16>();
@@ -2175,6 +2936,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaRejectsUnsafeFallbackInputs) {
       80, 64, 32, false, false, "requires hidden_size to be divisible by block_size");
   RunQMoEMixedWidthCudaInvalidFallbackInputTest(
       64, 80, 32, false, false, "requires inter_size to be divisible by block_size");
+  RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+      64, 64, 32, false, false, "fc1_scales dtype to match the input dtype", true);
 }
 #endif
 
@@ -3339,8 +4102,8 @@ static void RunMoECpuTest(const std::vector<float>& input, const std::vector<flo
 }
 
 #if !defined(__wasm__) && !defined(_WIN32) && !defined(__ANDROID__)
-static std::vector<nlohmann::json> ParseMoeRoutingLogs(const std::string& logs) {
-  constexpr std::string_view marker = "moe_routing ";
+static std::vector<nlohmann::json> ParseMoeCounterLogs(const std::string& logs) {
+  constexpr std::string_view marker = "moe_expert_counters ";
   std::vector<nlohmann::json> events;
   size_t position = 0;
   while ((position = logs.find(marker, position)) != std::string::npos) {
@@ -3409,24 +4172,17 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(
   testing::internal::CaptureStderr();
   tester.Run(session_options, expected_result, std::string(expected_error), {},
              &run_options, &execution_providers);
-  return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  return ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 }
 
-TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
+TEST(MoETest, MoECpuLogHasCounterUpdateSchema) {
   const auto routing_events = RunMoECpuLoggingTest(
       true, {1, 2, 4}, OpTester::ExpectResult::kExpectSuccess, "", 2);
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "{routing \"request\"}");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0}));
-  ASSERT_EQ(event["router_weights"].size(), 4U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.6456563f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.3543437f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.5986876f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.4013123f, 1e-6f);
-  EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_EQ(event["execution_device_id"], -1);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_TRUE(event.contains("node_index"));
   EXPECT_TRUE(event.contains("node_name"));
   EXPECT_EQ(event["node_type"], "MoE");
@@ -3434,11 +4190,6 @@ TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
 
 TEST(MoETest, MoECpuRoutingLogDisabledHasNoDecision) {
   EXPECT_TRUE(RunMoECpuLoggingTest(false, {2, 1, 4}).empty());
-}
-
-TEST(MoETest, MoECpuRoutingLogRejectsBatchGreaterThanOne) {
-  RunMoECpuLoggingTest(true, {2, 1, 4}, OpTester::ExpectResult::kExpectFailure,
-                       "MoE expert statistics logging only supports batch size 1; got batch size 2.");
 }
 
 #ifdef USE_MLAS
@@ -3492,30 +4243,18 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest(
   testing::internal::CaptureStderr();
   tester.Run(session_options, expected_result, std::string(expected_error), {},
              &run_options, &execution_providers);
-  return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  return ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 }
 
-TEST(MoETest, QMoECpuRoutingLogHasDecisionSchema) {
+TEST(MoETest, QMoECpuLogHasCounterUpdateSchema) {
   const auto routing_events = RunQMoECpuLoggingTest(
       {1, 2, 32}, OpTester::ExpectResult::kExpectSuccess, "", 2);
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cpu qmoe request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({1, 0, 0, 1}));
-  ASSERT_EQ(event["router_weights"].size(), 4U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.6899745f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.3100255f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.6456563f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.3543437f, 1e-3f);
-  EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_EQ(event["execution_device_id"], -1);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({1, 0}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_EQ(event["node_type"], "QMoE");
-}
-
-TEST(MoETest, QMoECpuRoutingLogRejectsBatchGreaterThanOne) {
-  RunQMoECpuLoggingTest({2, 1, 32}, OpTester::ExpectResult::kExpectFailure,
-                        "MoE expert statistics logging only supports batch size 1; got batch size 2.");
 }
 #endif
 
@@ -3548,7 +4287,7 @@ static void ConfigureCudaMoeRoutingTester(
                           std::vector<float>(num_rows * hidden_size, 0.0f));
 }
 
-TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
+TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
@@ -3571,49 +4310,17 @@ TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
   execution_providers.push_back(std::move(execution_provider));
   testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
-  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cuda request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0}));
-  ASSERT_EQ(event["router_weights"].size(), 4U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.7310586f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.2689414f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.8807971f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.1192029f, 1e-6f);
-  EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_GE(event["execution_device_id"].get<int>(), 0);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_EQ(event["node_type"], "MoE");
 }
 
-TEST(MoETest, MoECudaRoutingLogRejectsBatchGreaterThanOne) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
-  }
-  auto execution_provider = DefaultCudaExecutionProvider();
-  ASSERT_NE(execution_provider, nullptr);
-  if (execution_provider->GetOrtEp() != nullptr) {
-    GTEST_SKIP() << "MoE routing statistics are not supported by the CUDA plugin execution provider.";
-  }
-
-  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
-  ConfigureCudaMoeRoutingTester(tester, {2, 1, kMoEMinCudaDim});
-
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(execution_provider));
-  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "MoE expert statistics logging only supports batch size 1; got batch size 2.",
-             {}, nullptr, &execution_providers);
-}
-
-TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
+TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
@@ -3668,76 +4375,14 @@ TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
   execution_providers.push_back(std::move(execution_provider));
   testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
-  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "qmoe tiled request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0, 0, 1}));
-  ASSERT_EQ(event["router_weights"].size(), 6U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.7310586f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.2689414f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.8807971f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.1192029f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][4].get<float>(), 0.9820138f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][5].get<float>(), 0.0179862f, 1e-3f);
-  EXPECT_EQ(event["num_rows"], 3);
-  EXPECT_EQ(event["top_k"], 2);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_EQ(event["node_type"], "QMoE");
-}
-
-TEST(MoETest, QMoECudaRoutingLogRejectsBatchGreaterThanOne) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
-  }
-  auto execution_provider = DefaultCudaExecutionProvider();
-  ASSERT_NE(execution_provider, nullptr);
-  if (execution_provider->GetOrtEp() != nullptr) {
-    GTEST_SKIP() << "MoE routing statistics are not supported by the CUDA plugin execution provider.";
-  }
-
-  constexpr int num_rows = 2;
-  constexpr int num_experts = 2;
-  constexpr int hidden_size = kMoEMinCudaDim;
-  constexpr int inter_size = kMoEMinCudaDim;
-  constexpr int pack_size = 2;
-  const std::vector<int64_t> input_shape = {2, 1, hidden_size};
-
-  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("k", 1);
-  tester.AddAttribute<std::string>("activation_type", "relu");
-  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
-  tester.AddInput<MLFloat16>("input_ids", input_shape,
-                             ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
-  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
-                             ToFloat16({2.0f, 1.0f, 1.0f, 3.0f}));
-  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, hidden_size, inter_size / pack_size},
-                           std::vector<uint8_t>(num_experts * hidden_size * inter_size / pack_size, 0));
-  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, inter_size},
-                             ToFloat16(std::vector<float>(num_experts * inter_size, 1.0f)));
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, inter_size, hidden_size / pack_size},
-                           std::vector<uint8_t>(num_experts * inter_size * hidden_size / pack_size, 0));
-  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size},
-                             ToFloat16(std::vector<float>(num_experts * hidden_size, 1.0f)));
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<uint8_t>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOutput<MLFloat16>("output", input_shape,
-                              ToFloat16(std::vector<float>(num_rows * hidden_size, 0.0f)));
-
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(execution_provider));
-  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "MoE expert statistics logging only supports batch size 1; got batch size 2.",
-             {}, nullptr, &execution_providers);
 }
 
 TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {

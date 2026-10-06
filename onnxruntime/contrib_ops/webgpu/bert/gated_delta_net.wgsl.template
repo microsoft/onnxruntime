@@ -12,6 +12,7 @@
 #param use_packed_params
 #param vectorized_value_io
 #param capture_state_updates
+#param vectorized_value_io
 #param value_channels_per_workgroup
 #use .getByOffset .setByOffset
 
@@ -92,7 +93,6 @@ $MAIN {
   for (var token = first_token; token < last_token; token++) {
     var key_value = 0.0;
     var query_value = 0.0;
-    var gate_scale = 1.0;
     if (key_index < uniforms.head_size_qk) {
       key_value = f32(key.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
       query_value = f32(query.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
@@ -202,7 +202,11 @@ $MAIN {
     if (slot < captured) {
       let row_base = batch * row_width;
       if (value_start == 0u && key_index == 0u) {
+#if update_rule == 1 || update_rule == 3
         state_update.setByOffset(row_base + decay_offset + slot * uniforms.num_heads_v + value_head, gate_scale);
+#else
+        state_update.setByOffset(row_base + decay_offset + slot * uniforms.num_heads_v + value_head, 1.0);
+#endif
       }
       if (value_start == 0u && value_head == query_head * (uniforms.num_heads_v / uniforms.num_heads_q) &&
           key_index < uniforms.head_size_qk) {

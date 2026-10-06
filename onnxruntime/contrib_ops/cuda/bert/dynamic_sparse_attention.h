@@ -22,6 +22,7 @@ class DynamicSparseAttention final : public onnxruntime::cuda::CudaKernel {
   int local_window_size_;
   int rotary_offset_;
   float scale_;
+  bool has_scale_;
   float qk_norm_epsilon_;
   bool do_rotary_;
   bool rotary_interleaved_;

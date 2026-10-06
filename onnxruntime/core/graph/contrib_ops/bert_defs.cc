@@ -1013,7 +1013,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "token_offset",
-               "Offset of each token before packing, with shape (batch_size, sequence_length).",
+               "Offset of each token before packing, with shape (batch_size, sequence_length). "
+               "Values must be in [0, batch_size * sequence_length).",
                "M")
         .Input(5,
                "cumulative_sequence_length",
@@ -3837,7 +3838,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "token_offset",
-               "Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)",
+               "Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length), "
+               "and values must be in [0, batch_size * sequence_length).",
                "M")
         .Output(0,
                 "output",
@@ -5233,7 +5235,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
-               "V-major. May alias final_state.",
+               "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
                "Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.",
@@ -5339,7 +5341,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           updateOutputShape(ctx, 0, out_shape);
 
           auto add_batch_dim = [&](ONNX_NAMESPACE::TensorShapeProto& shape) {
-            if (hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
+            if (ctx.getNumInputs() > 9 && hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
               *shape.add_dim() = getInputShape(ctx, 9).dim(0);
             } else if (rank == (packed_qkv ? 3 : 4)) {
               *shape.add_dim() = query_shape.dim(0);

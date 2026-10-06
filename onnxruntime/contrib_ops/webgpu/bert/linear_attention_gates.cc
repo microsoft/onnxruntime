@@ -11,6 +11,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
+
 ONNX_OPERATOR_KERNEL_EX(
     LinearAttentionGate,
     kMSDomain,

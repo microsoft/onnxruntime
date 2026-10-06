@@ -29,6 +29,7 @@ constexpr uint32_t kMaxCacheLength = 65536;
 constexpr uint32_t kMaxSelected = 4096;
 constexpr uint32_t kMaxLocalWindow = 4096;
 constexpr uint32_t kAttentionWorkgroupSize = 64;
+static_assert(kMaxHeadSize % kAttentionWorkgroupSize == 0);
 constexpr uint32_t kAttentionValuesPerInvocation = kMaxHeadSize / kAttentionWorkgroupSize;
 
 DynamicSparseAttentionMode ParseAttentionMode(const std::string& value) {
@@ -159,12 +160,17 @@ Status DynamicSparseAttentionPrepareQueryProgram::GenerateShaderCode(ShaderHelpe
       body << "      q_pair *= f32(" << q_norm_weight->GetByOffset("pair_d") << ");\n";
     }
     if (has_position_ids_) {
-      body << "      let position = " << position_ids->GetByOffset("row") << ";\n";
+      body << "      let position_words = " << position_ids->GetByOffset("row", true) << ";\n"
+           << "      let position_valid = position_words.y == 0u"
+              " && position_words.x < uniforms.rotary_max_position;\n"
+           << "      let position = i32(position_words.x);\n";
     } else {
       body << "      let position = " << seqlens_k.GetByOffset("b")
-           << " + 1i - i32(uniforms.sequence_length) + i32(s);\n";
+           << " + 1i - i32(uniforms.sequence_length) + i32(s);\n"
+           << "      let position_valid = position >= 0i"
+              " && position < i32(uniforms.rotary_max_position);\n";
     }
-    body << "      if (position >= 0i && position < i32(uniforms.rotary_max_position)) {\n"
+    body << "      if (position_valid) {\n"
          << "        let cosine = f32("
          << cos_cache->GetByOffset("u32(position) * half_dim + cache_d") << ");\n"
          << "        let sine = f32("
@@ -247,6 +253,7 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
         << "var<workgroup> k_sumsq_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
         << "var<workgroup> k_inv_rms: f32;\n";
   }
+  shader.AdditionalImplementation() << "var<workgroup> destination_shared: i32;\n";
 
   auto& body = shader.MainFunctionBody();
   body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
@@ -254,8 +261,11 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
        << "  let row = workgroup_idx / uniforms.kv_num_heads;\n"
        << "  let s = row % uniforms.sequence_length;\n"
        << "  let b = row / uniforms.sequence_length;\n"
-       << "  let destination = " << seqlens_k.GetByOffset("b")
+       << "  if (local_idx == 0u) {\n"
+       << "    destination_shared = " << seqlens_k.GetByOffset("b")
        << " + 1i - i32(uniforms.sequence_length) + i32(s);\n"
+       << "  }\n"
+       << "  let destination = workgroupUniformLoad(&destination_shared);\n"
        << "  if (destination < 0i || destination >= i32(uniforms.cache_capacity)) { return; }\n";
   if (packed_qkv_) {
     body << "  let key_base = row * uniforms.packed_stride + uniforms.query_hidden_size"
@@ -321,11 +331,16 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
       body << "      key_pair *= f32(" << k_norm_weight->GetByOffset("pair_d") << ");\n";
     }
     if (has_position_ids_) {
-      body << "      let rotary_position = " << position_ids->GetByOffset("row") << ";\n";
+      body << "      let position_words = " << position_ids->GetByOffset("row", true) << ";\n"
+           << "      let rotary_position_valid = position_words.y == 0u"
+              " && position_words.x < uniforms.rotary_max_position;\n"
+           << "      let rotary_position = i32(position_words.x);\n";
     } else {
-      body << "      let rotary_position = destination;\n";
+      body << "      let rotary_position = destination;\n"
+           << "      let rotary_position_valid = rotary_position >= 0i"
+              " && rotary_position < i32(uniforms.rotary_max_position);\n";
     }
-    body << "      if (rotary_position >= 0i && rotary_position < i32(uniforms.rotary_max_position)) {\n"
+    body << "      if (rotary_position_valid) {\n"
          << "        let cosine = f32("
          << cos_cache->GetByOffset("u32(rotary_position) * half_dim + cache_d") << ");\n"
          << "        let sine = f32("
@@ -370,7 +385,11 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation()
-      << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n";
+      << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
+      << "var<workgroup> total_length_shared: i32;\n";
+  if (has_selection_) {
+    shader.AdditionalImplementation() << "var<workgroup> selected_count_shared: u32;\n";
+  }
   auto& body = shader.MainFunctionBody();
   body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
        << "  let head = workgroup_idx % uniforms.num_heads;\n"
@@ -379,7 +398,10 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
        << "  let b = row / uniforms.sequence_length;\n"
        << "  let kv_head = head / (uniforms.num_heads / uniforms.kv_num_heads);\n"
        << "  let q_base = (row * uniforms.num_heads + head) * uniforms.head_size;\n"
-       << "  let total_length = " << seqlens_k.GetByOffset("b") << " + 1i;\n"
+       << "  if (local_idx == 0u) {\n"
+       << "    total_length_shared = " << seqlens_k.GetByOffset("b") << " + 1i;\n"
+       << "  }\n"
+       << "  let total_length = workgroupUniformLoad(&total_length_shared);\n"
        << "  let query_position = total_length - i32(uniforms.sequence_length) + i32(s);\n"
        << "  var max_logit = -3.402823466e+38;\n"
        << "  var denominator = 0.0;\n"
@@ -439,8 +461,11 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
   }
 
   if (has_selection_) {
-    body << "  let selected_count_i32 = " << selected_counts->GetByOffset("row") << ";\n"
-         << "  let selected_count = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
+    body << "  if (local_idx == 0u) {\n"
+         << "    let selected_count_i32 = " << selected_counts->GetByOffset("row") << ";\n"
+         << "    selected_count_shared = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
+         << "  }\n"
+         << "  let selected_count = workgroupUniformLoad(&selected_count_shared);\n"
          << "  for (var i = 0u; i < selected_count; i++) {\n"
          << "    let selected_index = "
          << selected_indices->GetByOffset("row * uniforms.max_selected + i") << ";\n";
@@ -511,7 +536,8 @@ DynamicSparseAttention::DynamicSparseAttention(const OpKernelInfo& info) : WebGp
   ORT_ENFORCE(rotary_offset >= 0 && rotary_offset <= std::numeric_limits<int>::max(),
               "DynamicSparseAttention: rotary_offset must be a nonnegative int.");
   rotary_offset_ = static_cast<int>(rotary_offset);
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  scale_ = 0.0f;
+  has_scale_ = info.GetAttr("scale", &scale_).IsOK();
   qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   do_rotary_ = ParseBoolAttribute(info, "do_rotary", 0);
   rotary_interleaved_ = ParseBoolAttribute(info, "rotary_interleaved", 0);
@@ -548,10 +574,10 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
       selected_indices, selected_counts, seqlens_k, total_sequence_length,
       cos_cache, sin_cache, position_ids, q_norm_weight, k_norm_weight, head_sink,
       num_heads_, kv_num_heads_, local_window_size_, rotary_offset_, do_rotary_,
-      auxiliary_kv_shared_, attention_mode_, selected_kv_source_, scale_,
+      auxiliary_kv_shared_, attention_mode_, selected_kv_source_, scale_, has_scale_,
       qk_norm_epsilon_, parameters));
   parameters.rotary_interleaved = rotary_interleaved_;
-  parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;
+  parameters.use_smooth_softmax = use_smooth_softmax_ && head_sink == nullptr;
 
   if (parameters.batch_size > static_cast<int>(kMaxBatchSize)) {
     return NotImplementedBound("batch_size", parameters.batch_size, kMaxBatchSize);
@@ -576,6 +602,30 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   }
   if (parameters.local_window_size > static_cast<int>(kMaxLocalWindow)) {
     return NotImplementedBound("local_window_size", parameters.local_window_size, kMaxLocalWindow);
+  }
+
+  const bool selected_from_auxiliary =
+      parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary;
+  const bool local_plus_selected =
+      parameters.attention_mode == DynamicSparseAttentionMode::kLocalPlusSelected;
+  const bool has_selection =
+      parameters.max_selected > 0 && (!selected_from_auxiliary || parameters.auxiliary_sequence_length > 0);
+  const bool has_auxiliary_value = auxiliary_value != nullptr;
+  const bool use_smooth_softmax = use_smooth_softmax_ && head_sink == nullptr;
+  const uint32_t required_storage_buffers =
+      5u +                         // prepared Q, main K/V, seqlens, and output
+      (has_selection ? 2u : 0u) +  // selected indices and counts
+      (selected_from_auxiliary && has_selection
+           ? 1u + static_cast<uint32_t>(has_auxiliary_value)
+           : 0u) +  // auxiliary K and optional distinct V
+      static_cast<uint32_t>(head_sink != nullptr);
+  if (required_storage_buffers > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "DynamicSparseAttention (WebGPU): attention configuration requires ",
+        required_storage_buffers, " storage buffers, but the device supports ",
+        context.DeviceLimits().maxStorageBuffersPerShaderStage,
+        " per shader stage. Use shared auxiliary K/V, omit head_sink, or use an adapter with a higher limit.");
   }
 
   const TensorShape output_shape(
@@ -759,18 +809,11 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
       .SetWorkgroupSize(kAttentionWorkgroupSize);
   ORT_RETURN_IF_ERROR(context.RunProgram(append_kv_program));
 
-  const bool selected_from_auxiliary =
-      parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary;
-  const bool local_plus_selected =
-      parameters.attention_mode == DynamicSparseAttentionMode::kLocalPlusSelected;
-  const bool has_selection =
-      parameters.max_selected > 0 && (!selected_from_auxiliary || parameters.auxiliary_sequence_length > 0);
-  const bool has_auxiliary_value = auxiliary_value != nullptr;
   DynamicSparseAttentionProgram attention_program(
       has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
-      head_sink != nullptr, use_smooth_softmax_);
+      head_sink != nullptr, use_smooth_softmax);
   attention_program.CacheHint(has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
-                              head_sink != nullptr, use_smooth_softmax_)
+                              head_sink != nullptr, use_smooth_softmax)
       .AddInputs({
           {&prepared_query, ProgramTensorMetadataDependency::TypeAndRank},
           {present_key_output, ProgramTensorMetadataDependency::TypeAndRank},
