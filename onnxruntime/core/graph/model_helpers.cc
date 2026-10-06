@@ -151,14 +151,16 @@ bool CanContainGraph(const BoundAttribute& attribute) {
          attribute.proto->type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS;
 }
 
-bool ContainsReferencedAttribute(const ONNX_NAMESPACE::AttributeProto& root_attribute) {
+void CollectReferencedAttributeNames(
+    const ONNX_NAMESPACE::AttributeProto& root_attribute,
+    InlinedHashSet<std::string_view>& referenced_attribute_names) {
   InlinedVector<const ONNX_NAMESPACE::AttributeProto*> pending_attributes{&root_attribute};
 
   while (!pending_attributes.empty()) {
     const auto* attribute = pending_attributes.back();
     pending_attributes.pop_back();
     if (!attribute->ref_attr_name().empty()) {
-      return true;
+      referenced_attribute_names.insert(attribute->ref_attr_name());
     }
 
     const auto enqueue_graph_attributes = [&pending_attributes](const ONNX_NAMESPACE::GraphProto& graph) {
@@ -176,8 +178,6 @@ bool ContainsReferencedAttribute(const ONNX_NAMESPACE::AttributeProto& root_attr
       enqueue_graph_attributes(graph);
     }
   }
-
-  return false;
 }
 
 void CollectReferencedAttributeNames(
@@ -321,12 +321,33 @@ struct AttributeBindingContextPtrEqual {
   }
 };
 
+struct BoundAttributeExpansionState {
+  const ONNX_NAMESPACE::AttributeProto* proto;
+  const Graph* graph;
+  const AttributeBindingContext* context;
+
+  bool operator==(const BoundAttributeExpansionState& other) const {
+    return proto == other.proto && graph == other.graph && context == other.context;
+  }
+};
+
+struct BoundAttributeExpansionStateHash {
+  size_t operator()(const BoundAttributeExpansionState& state) const {
+    size_t result = std::hash<const void*>{}(state.proto);
+    result ^= std::hash<const void*>{}(state.graph) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    result ^= std::hash<const void*>{}(state.context) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    return result;
+  }
+};
+
 struct ValidatedFunctionStates {
   std::unordered_set<FunctionValidationState, FunctionValidationStateHash> states;
   std::unordered_set<std::shared_ptr<const AttributeBindingContext>,
                      AttributeBindingContextPtrHash,
                      AttributeBindingContextPtrEqual>
       contexts;
+  std::unordered_set<BoundAttributeExpansionState, BoundAttributeExpansionStateHash>
+      active_attribute_expansions;
 };
 
 const BoundAttribute* FindAttributeBinding(const AttributeBindings& bindings,
@@ -367,6 +388,31 @@ void SetAttributeBinding(AttributeBindings& bindings,
   }
 }
 
+std::shared_ptr<const AttributeBindingContext> InternRelevantAttributeBindingContext(
+    const ONNX_NAMESPACE::AttributeProto& attribute,
+    const AttributeBindings& bindings,
+    const DomainToVersionMap& domain_to_version,
+    ValidatedFunctionStates& validated_states) {
+  InlinedHashSet<std::string_view> referenced_attribute_names;
+  CollectReferencedAttributeNames(attribute, referenced_attribute_names);
+  if (referenced_attribute_names.empty()) {
+    return nullptr;
+  }
+
+  AttributeBindings relevant_bindings;
+  for (const auto& binding : bindings) {
+    if (referenced_attribute_names.find(binding.name) != referenced_attribute_names.end()) {
+      relevant_bindings.push_back(binding);
+    }
+  }
+
+  auto candidate = std::make_shared<AttributeBindingContext>(
+      AttributeBindingContext{std::move(relevant_bindings), domain_to_version});
+  const auto [context_it, inserted] = validated_states.contexts.insert(std::move(candidate));
+  ORT_UNUSED_PARAMETER(inserted);
+  return *context_it;
+}
+
 Status ValidateFunctionCallDepth(
     const ONNX_NAMESPACE::FunctionProto& function_proto,
     AttributeBindings bindings,
@@ -403,6 +449,22 @@ Status ValidateBoundAttributeCallDepth(
   if (attribute.proto == nullptr) {
     return Status::OK();
   }
+
+  if (attribute.context == nullptr && CanContainGraph(attribute)) {
+    attribute.context = InternRelevantAttributeBindingContext(
+        *attribute.proto, bindings, domain_to_version, validated_states);
+  }
+
+  const BoundAttributeExpansionState expansion_state{
+      attribute.proto, attribute.graph, attribute.context.get()};
+  if (!validated_states.active_attribute_expansions.insert(expansion_state).second) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Recursive model-local function graph attribute expansion is not supported.");
+  }
+  auto remove_active_expansion = gsl::finally([&validated_states, expansion_state]() {
+    validated_states.active_attribute_expansions.erase(expansion_state);
+  });
 
   const auto& attribute_bindings =
       attribute.context == nullptr ? bindings : attribute.context->bindings;
@@ -483,12 +545,6 @@ Status ValidateProtoNodesCallDepth(
     const ModelLocalFunctions& model_local_functions,
     const IOnnxRuntimeOpSchemaCollection& schema_registry,
     ValidatedFunctionStates& validated_states) {
-  auto context_candidate = std::make_shared<AttributeBindingContext>(
-      AttributeBindingContext{bindings, domain_to_version});
-  const auto [context_it, inserted] = validated_states.contexts.insert(std::move(context_candidate));
-  ORT_UNUSED_PARAMETER(inserted);
-  const auto& context = *context_it;
-
   for (const auto& node : nodes) {
     const auto function_id = function_utils::GetFunctionIdentifier(
         node.domain(), node.op_type(), node.overload());
@@ -500,10 +556,10 @@ Status ValidateProtoNodesCallDepth(
         auto resolved_attr = ResolveAttribute(attr, bindings);
         if (resolved_attr.proto != nullptr) {
           if (resolved_attr.context == nullptr &&
-              CanContainGraph(resolved_attr) &&
-              ContainsReferencedAttribute(*resolved_attr.proto)) {
+              CanContainGraph(resolved_attr)) {
             // FunctionProto attributes are specialized in the caller's binding environment.
-            resolved_attr.context = context;
+            resolved_attr.context = InternRelevantAttributeBindingContext(
+                *resolved_attr.proto, bindings, domain_to_version, validated_states);
           }
           SetAttributeBinding(callee_bindings, attr.name(), resolved_attr);
         }

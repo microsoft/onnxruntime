@@ -2565,6 +2565,64 @@ static ONNX_NAMESPACE::FunctionProto MakeFunctionWithDefaultGraphAttribute(const
       {MakeGraphRefAttribute("body_attr", default_attr.name(), default_attr.type())});
 }
 
+static ONNX_NAMESPACE::ModelProto MakeModelWithDefaultGraphAttributeFunction(
+    ONNX_NAMESPACE::FunctionProto function) {
+  auto model_proto = CreateLocalFunctionChainModel(1);
+  function.set_name("function_0");
+  auto* onnx_opset = function.add_opset_import();
+  onnx_opset->set_domain(kOnnxDomain);
+  onnx_opset->set_version(16);
+  *model_proto.mutable_functions(0) = std::move(function);
+  return model_proto;
+}
+
+TEST(FunctionTest, ResolveRejectsRecursiveDefaultGraphAttributeExpansion) {
+  for (const bool repeated_graphs : {false, true}) {
+    SCOPED_TRACE(repeated_graphs);
+    ONNX_NAMESPACE::AttributeProto default_attr;
+    default_attr.set_name("body");
+    default_attr.set_type(
+        repeated_graphs
+            ? ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS
+            : ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    if (repeated_graphs) {
+      *default_attr.add_graphs() = MakeRecursiveDefaultGraph(default_attr.name());
+    } else {
+      *default_attr.mutable_g() = MakeRecursiveDefaultGraph(default_attr.name());
+    }
+
+    auto& logger = DefaultLoggingManager().DefaultLogger();
+    Model model(
+        MakeModelWithDefaultGraphAttributeFunction(
+            MakeFunctionWithDefaultGraphAttribute(default_attr)),
+        nullptr, logger);
+    const auto status = model.MainGraph().Resolve();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(
+        status.ErrorMessage(),
+        testing::HasSubstr("Recursive model-local function graph attribute expansion"));
+  }
+}
+
+TEST(FunctionTest, ResolveAllowsSequentialDefaultGraphAttributeReuse) {
+  ONNX_NAMESPACE::AttributeProto default_attr;
+  default_attr.set_name("body");
+  default_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *default_attr.mutable_g() = MakeNonRecursiveDefaultGraph();
+
+  auto function = MakeFunctionWithDefaultGraphAttributes(
+      {default_attr},
+      {
+          MakeGraphRefAttribute("body_attr_0", default_attr.name(), default_attr.type()),
+          MakeGraphRefAttribute("body_attr_1", default_attr.name(), default_attr.type()),
+      });
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(
+      MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
+      nullptr, logger);
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
+
 TEST(FunctionTest, SpecializeRejectsRecursiveDefaultGraphAttributeExpansion) {
   ONNX_NAMESPACE::AttributeProto default_attr;
   default_attr.set_name("body");
