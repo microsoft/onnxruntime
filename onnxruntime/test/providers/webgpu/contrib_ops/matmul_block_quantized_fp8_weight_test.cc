@@ -241,6 +241,30 @@ TEST(MatMulBlockQuantizedFp8WeightTest, ActivationQdqAdjacentEvenAndOddTies) {
   }
 }
 
+TEST(MatMulBlockQuantizedFp8WeightTest, ActivationQdqReciprocalMidpoint) {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  constexpr float scale = 1.21603262424469f;
+  const auto input = ToFloat16({0.0272979736328125f, 0.027313232421875f, 0.0273284912109375f});
+  ASSERT_LT(input[1].ToFloat() * (1.0f / scale), 0.0224609375f);
+
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("block_size", int64_t{1});
+  test.AddInput<MLFloat16>("A", {3, 1}, input);
+  test.AddInput<Float8E4M3FN>("B", {1, 1}, {Float8E4M3FN(1.0f, true)}, true);
+  test.AddInput<float>("b_scale", {1, 1}, {1.0f});
+  test.AddInput<float>("a_scale", {}, {scale});
+  test.AddOutput<MLFloat16>("Y", {3, 1},
+                            ToFloat16({0.021484375f * scale, 0.021484375f * scale, 0.0234375f * scale}));
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, {}, {}, nullptr, &providers);
+}
+
 TEST(MatMulBlockQuantizedFp8WeightTest, EmptyReductionWithBias) {
   RunFp8MatMul({2, 0}, 3, 16, false, true);
 }

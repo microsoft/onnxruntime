@@ -18,9 +18,9 @@ $MAIN {
   let step = bitcast<f32>((max(magnitude_exponent, 121u) - 3u) << 23u);
   let units = magnitude / step;
   let lower = floor(units);
-  let halfway_input = (lower + 0.5) * step * abs(scale);
-  let round_up = abs(input_value) > halfway_input ||
-                 (abs(input_value) == halfway_input && (u32(lower) & 1u) != 0u);
+  let halfway = (lower + 0.5) * step;
+  let round_up = magnitude > halfway ||
+                 (magnitude == halfway && (u32(lower) & 1u) != 0u);
   let rounded = min((lower + select(0.0, 1.0, round_up)) * step, E4M3_MAX);
   let q = select(rounded, -rounded, v < 0.0);
   output.setByOffset(global_idx, f16(q * scale));
