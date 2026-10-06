@@ -15,29 +15,6 @@ The build driver enables telemetry by default for supported native platforms. Ta
 
 #### Technical Details
 
-ORT-produced free-form telemetry property values are limited to 1 KiB of UTF-8 data, without splitting
-multi-byte characters. Existing smaller limits are retained. Telemetry-only collections
-are limited to 128 entries, and aggregate string properties also stay within 1 KiB.
-Host-classification file probes use bounded reads (up to 16 KiB); oversized telemetry storage and
-certificate paths are rejected, not truncated. These limits do not alter public model
-metadata or execution-provider configuration used for inference. Android context strings
-also account for the 1DS JNI bridge's modified-UTF-8 encoding; HTTP transport data is not
-treated as a free-form event property.
-
-Environment reads have a separate 16-KiB input budget. Oversized or unreadable CI, test-harness,
-and opt-out flags suppress telemetry rather than interpreting a truncated value. Filesystem paths
-use their tighter path budget and are rejected without truncation. Error redaction inspects at most
-16 KiB before applying the 1-KiB output cap; an unseen suffix is handled conservatively.
-Malformed UTF-8 bytes in telemetry string properties are replaced with `?`.
-
-QNN profiling trace-event strings are scrubbed with `ScrubStringForTelemetry` before emission
-to remove filesystem paths. Local QNN CSV and profiling-log output is unchanged.
-Diagnostic ETW log events also scrub filesystem paths from messages and other string fields,
-including QNN backend-path messages. Console and file diagnostic logs are unchanged.
-Windows 1DS builds retain local ETW session capture-state and provider-option diagnostics.
-These local events respect runtime and process-wide telemetry suppression; provider-option
-values and capture-state events are not uploaded through 1DS.
-
 **Windows apps and components.** The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
 **Other builds with telemetry (Linux, macOS, Android, iOS, Windows builds not made for Windows apps and components).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
@@ -49,9 +26,7 @@ For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetr
 Telemetry can be disabled in any of these ways:
 
 - **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from all builds and disables the Microsoft telemetry configuration on Windows. Unsupported targets and exception-free builds never include telemetry.
-- **Disable all 1DS telemetry at runtime.** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. On all 1DS builds, including Windows, this prevents the uploader, events, and persistent device identifier from being created for the process lifetime. The legacy Windows TraceLogging backend does not use this environment variable.
-- **Disable all telemetry events via the API.** The C API (and the C#, Python, and Java bindings) can suppress all telemetry events. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
+- **Disable all 1DS telemetry at runtime.** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. On all builds with 1DS telemetry, this prevents the uploader, events, and persistent device identifier from being created for the process lifetime. The legacy Windows TraceLogging backend does not use this environment variable.
+- **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
 
-Shared ORT libraries use a public-symbol allowlist, so embedded telemetry dependencies such as curl are not exported. This applies regardless of whether telemetry is supplied through vcpkg, FetchContent, or a caller-provided SDK source tree. On Windows, the 1DS network detector is disabled to avoid a process-exit allocation left by `netprofm.dll`; HTTPS uploads remain enabled.
-
-Telemetry-enabled static Linux builds depend on static curl and mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built packages resolve them through vcpkg. Consumers should use one compatible curl/mbedTLS dependency set in the final binary. Independently linking additional copies can cause duplicate symbols or incompatible symbol resolution. If a single compatible dependency set cannot be ensured, build ORT with `--no_telemetry`.
+Telemetry-enabled static Linux builds depend on static curl and mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built packages resolve them through vcpkg. Shared ORT libraries use a public-symbol allowlist, so embedded telemetry dependencies such as curl are not exported.
