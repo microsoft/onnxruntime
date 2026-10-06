@@ -123,7 +123,8 @@ stages:
 
       # Rename the downloaded folder
       - script: |
-          mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu $(Pipeline.Workspace)/build/onnxruntime-java
+          mkdir -p $(Pipeline.Workspace)/build
+          mv $(Pipeline.Workspace)/cuda13/onnxruntime-java-gpu $(Pipeline.Workspace)/build/onnxruntime-java
 
       - task: Maven@4
         displayName: 'Download Dependencies'
