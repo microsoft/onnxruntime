@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 
@@ -36,6 +37,26 @@ TEST(MatmulIntegerOpTest, MatMulInteger_2D_empty_input) {
   test.AddInput<uint8_t>("b_zero_point", {}, {0});
   test.AddOutput<int32_t>("T3", {0, 2}, {});
   test.Run();
+}
+
+TEST(MatmulIntegerOpTest, MissingAZeroPointWithBZeroPointCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("A", {1, 1}, {3});
+  test.AddInput<int8_t>("B", {1, 1}, {4});
+  test.AddOptionalInputEdge<int8_t>();
+  test.AddInput<int8_t>("b_zero_point", {}, {1});
+  test.AddOutput<int32_t>("Y", {1, 1}, {9});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger) {

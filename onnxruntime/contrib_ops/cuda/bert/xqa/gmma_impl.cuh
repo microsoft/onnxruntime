@@ -48,7 +48,7 @@ MatDesc::Raw descB, bool accHasVal)
             "%{n//2+1},{ptx_eol}" //b-desc
             "%{n//2+2}, 1, 1;{ptx_eol}"
             : {acc_registers(n)}
-            : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+            : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
     }}
     else {{
         asm volatile("wgmma.mma_async.sync.aligned.m64n{n}k32.f32.e4m3.e4m3{ptx_eol}"
@@ -57,7 +57,7 @@ MatDesc::Raw descB, bool accHasVal)
             "%{n//2+1},{ptx_eol}" //b-desc
             "%{n//2+2}, 1, 1;{ptx_eol}"
             : {acc_registers(n)}
-            : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+            : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
     }}
 }}
 
@@ -104,7 +104,7 @@ MatDesc::Raw descB, bool accHasVal)
             "%{n//2+1},{ptx_eol}" //b-desc
             "%{n//2+2}, 1, 1, {transA}, {transB};{ptx_eol}"
             : {acc_registers(n)}
-            : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+            : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
     }}
     else {{
         asm volatile("wgmma.mma_async.sync.aligned.m64n{n}k16.f32.{s}.{s}{ptx_eol}"
@@ -113,7 +113,7 @@ MatDesc::Raw descB, bool accHasVal)
             "%{n//2+1},{ptx_eol}" //b-desc
             "%{n//2+2}, 1, 1, {transA}, {transB};{ptx_eol}"
             : {acc_registers(n)}
-            : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+            : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
     }}
 }}
 ''')
@@ -159,7 +159,7 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 8, false, false>(
         "%5,\n"                // b-desc
         "%6, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k32.f32.e4m3.e4m3\n"
@@ -168,13 +168,13 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 8, false, false>(
         "%5,\n"                // b-desc
         "%6, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_fp8_e4m3, 8, false, false>(
-    float (&acc)[1][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[1][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k32.f32.e4m3.e4m3\n"
@@ -184,7 +184,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 8, false, false>(
         "%9, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k32.f32.e4m3.e4m3\n"
@@ -194,7 +194,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 8, false, false>(
         "%9, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -210,7 +210,7 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 16, false, false>(
         "%10, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k32.f32.e4m3.e4m3\n"
@@ -220,13 +220,13 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 16, false, false>(
         "%10, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_fp8_e4m3, 16, false, false>(
-    float (&acc)[2][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[2][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k32.f32.e4m3.e4m3\n"
@@ -237,7 +237,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 16, false, false>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k32.f32.e4m3.e4m3\n"
@@ -248,7 +248,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 16, false, false>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -265,7 +265,7 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 24, false, false>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k32.f32.e4m3.e4m3\n"
@@ -276,13 +276,13 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 24, false, false>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_fp8_e4m3, 24, false, false>(
-    float (&acc)[3][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[3][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k32.f32.e4m3.e4m3\n"
@@ -294,7 +294,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 24, false, false>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k32.f32.e4m3.e4m3\n"
@@ -306,7 +306,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 24, false, false>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -324,7 +324,7 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 32, false, false>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k32.f32.e4m3.e4m3\n"
@@ -336,13 +336,13 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 32, false, false>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_fp8_e4m3, 32, false, false>(
-    float (&acc)[4][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[4][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k32.f32.e4m3.e4m3\n"
@@ -355,7 +355,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 32, false, false>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k32.f32.e4m3.e4m3\n"
@@ -368,7 +368,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 32, false, false>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -390,7 +390,7 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 64, false, false>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k32.f32.e4m3.e4m3\n"
@@ -406,13 +406,13 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 64, false, false>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_fp8_e4m3, 64, false, false>(
-    float (&acc)[8][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[8][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k32.f32.e4m3.e4m3\n"
@@ -429,7 +429,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 64, false, false>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k32.f32.e4m3.e4m3\n"
@@ -446,7 +446,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 64, false, false>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -475,7 +475,7 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 128, false, false>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k32.f32.e4m3.e4m3\n"
@@ -498,13 +498,13 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 128, false, false>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_fp8_e4m3, 128, false, false>(
-    float (&acc)[16][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[16][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k32.f32.e4m3.e4m3\n"
@@ -528,7 +528,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 128, false, false>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k32.f32.e4m3.e4m3\n"
@@ -552,7 +552,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 128, false, false>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -598,7 +598,7 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 256, false, false>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k32.f32.e4m3.e4m3\n"
@@ -638,13 +638,13 @@ __device__ inline void mma_async_shmA<__nv_fp8_e4m3, 256, false, false>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_fp8_e4m3, 256, false, false>(
-    float (&acc)[32][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[32][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k32.f32.e4m3.e4m3\n"
@@ -685,7 +685,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 256, false, false>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k32.f32.e4m3.e4m3\n"
@@ -726,7 +726,7 @@ __device__ inline void mma_async_regA<__nv_fp8_e4m3, 256, false, false>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -741,7 +741,7 @@ __device__ inline void mma_async_shmA<half, 8, 0, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -750,13 +750,13 @@ __device__ inline void mma_async_shmA<half, 8, 0, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 8, 0, 0>(
-    float (&acc)[1][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[1][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -766,7 +766,7 @@ __device__ inline void mma_async_regA<half, 8, 0, 0>(
         "%9, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -776,7 +776,7 @@ __device__ inline void mma_async_regA<half, 8, 0, 0>(
         "%9, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -791,7 +791,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 0, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -800,13 +800,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 0, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 8, 0, 0>(
-    float (&acc)[1][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[1][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -816,7 +816,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 8, 0, 0>(
         "%9, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -826,7 +826,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 8, 0, 0>(
         "%9, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -841,7 +841,7 @@ __device__ inline void mma_async_shmA<half, 8, 0, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -850,13 +850,13 @@ __device__ inline void mma_async_shmA<half, 8, 0, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 8, 0, 1>(
-    float (&acc)[1][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[1][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -866,7 +866,7 @@ __device__ inline void mma_async_regA<half, 8, 0, 1>(
         "%9, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -876,7 +876,7 @@ __device__ inline void mma_async_regA<half, 8, 0, 1>(
         "%9, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -891,7 +891,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 0, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -900,13 +900,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 0, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 8, 0, 1>(
-    float (&acc)[1][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[1][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -916,7 +916,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 8, 0, 1>(
         "%9, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -926,7 +926,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 8, 0, 1>(
         "%9, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -941,7 +941,7 @@ __device__ inline void mma_async_shmA<half, 8, 1, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -950,7 +950,7 @@ __device__ inline void mma_async_shmA<half, 8, 1, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -965,7 +965,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 1, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -974,7 +974,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 1, 0>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -989,7 +989,7 @@ __device__ inline void mma_async_shmA<half, 8, 1, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.f16.f16\n"
@@ -998,7 +998,7 @@ __device__ inline void mma_async_shmA<half, 8, 1, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1013,7 +1013,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 1, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n8k16.f32.bf16.bf16\n"
@@ -1022,7 +1022,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 8, 1, 1>(
         "%5,\n"                // b-desc
         "%6, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1038,7 +1038,7 @@ __device__ inline void mma_async_shmA<half, 16, 0, 0>(
         "%10, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1048,13 +1048,13 @@ __device__ inline void mma_async_shmA<half, 16, 0, 0>(
         "%10, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 16, 0, 0>(
-    float (&acc)[2][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[2][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1065,7 +1065,7 @@ __device__ inline void mma_async_regA<half, 16, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1076,7 +1076,7 @@ __device__ inline void mma_async_regA<half, 16, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1092,7 +1092,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 0, 0>(
         "%10, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1102,13 +1102,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 0, 0>(
         "%10, 1, 1, 0, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 16, 0, 0>(
-    float (&acc)[2][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[2][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1119,7 +1119,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 16, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1130,7 +1130,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 16, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1146,7 +1146,7 @@ __device__ inline void mma_async_shmA<half, 16, 0, 1>(
         "%10, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1156,13 +1156,13 @@ __device__ inline void mma_async_shmA<half, 16, 0, 1>(
         "%10, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 16, 0, 1>(
-    float (&acc)[2][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[2][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1173,7 +1173,7 @@ __device__ inline void mma_async_regA<half, 16, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1184,7 +1184,7 @@ __device__ inline void mma_async_regA<half, 16, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1200,7 +1200,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 0, 1>(
         "%10, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1210,13 +1210,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 0, 1>(
         "%10, 1, 1, 0, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 16, 0, 1>(
-    float (&acc)[2][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[2][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1227,7 +1227,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 16, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1238,7 +1238,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 16, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1254,7 +1254,7 @@ __device__ inline void mma_async_shmA<half, 16, 1, 0>(
         "%10, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1264,7 +1264,7 @@ __device__ inline void mma_async_shmA<half, 16, 1, 0>(
         "%10, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1280,7 +1280,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 1, 0>(
         "%10, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1290,7 +1290,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 1, 0>(
         "%10, 1, 1, 1, 0;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1306,7 +1306,7 @@ __device__ inline void mma_async_shmA<half, 16, 1, 1>(
         "%10, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.f16.f16\n"
@@ -1316,7 +1316,7 @@ __device__ inline void mma_async_shmA<half, 16, 1, 1>(
         "%10, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1332,7 +1332,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 1, 1>(
         "%10, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16\n"
@@ -1342,7 +1342,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 16, 1, 1>(
         "%10, 1, 1, 1, 1;\n"
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1359,7 +1359,7 @@ __device__ inline void mma_async_shmA<half, 24, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1370,13 +1370,13 @@ __device__ inline void mma_async_shmA<half, 24, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 24, 0, 0>(
-    float (&acc)[3][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[3][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1388,7 +1388,7 @@ __device__ inline void mma_async_regA<half, 24, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1400,7 +1400,7 @@ __device__ inline void mma_async_regA<half, 24, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1417,7 +1417,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1428,13 +1428,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 0, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 24, 0, 0>(
-    float (&acc)[3][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[3][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1446,7 +1446,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 24, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1458,7 +1458,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 24, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1475,7 +1475,7 @@ __device__ inline void mma_async_shmA<half, 24, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1486,13 +1486,13 @@ __device__ inline void mma_async_shmA<half, 24, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 24, 0, 1>(
-    float (&acc)[3][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[3][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1504,7 +1504,7 @@ __device__ inline void mma_async_regA<half, 24, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1516,7 +1516,7 @@ __device__ inline void mma_async_regA<half, 24, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1533,7 +1533,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1544,13 +1544,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 0, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 24, 0, 1>(
-    float (&acc)[3][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[3][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1562,7 +1562,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 24, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1574,7 +1574,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 24, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1591,7 +1591,7 @@ __device__ inline void mma_async_shmA<half, 24, 1, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1602,7 +1602,7 @@ __device__ inline void mma_async_shmA<half, 24, 1, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1619,7 +1619,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 1, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1630,7 +1630,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 1, 0>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1647,7 +1647,7 @@ __device__ inline void mma_async_shmA<half, 24, 1, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.f16.f16\n"
@@ -1658,7 +1658,7 @@ __device__ inline void mma_async_shmA<half, 24, 1, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1675,7 +1675,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 1, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n24k16.f32.bf16.bf16\n"
@@ -1686,7 +1686,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 24, 1, 1>(
         : "+f"(acc[0][0][0]), "+f"(acc[0][0][1]), "+f"(acc[0][1][0]), "+f"(acc[0][1][1]), "+f"(acc[1][0][0]),
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1704,7 +1704,7 @@ __device__ inline void mma_async_shmA<half, 32, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -1716,13 +1716,13 @@ __device__ inline void mma_async_shmA<half, 32, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 32, 0, 0>(
-    float (&acc)[4][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[4][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -1735,7 +1735,7 @@ __device__ inline void mma_async_regA<half, 32, 0, 0>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -1748,7 +1748,7 @@ __device__ inline void mma_async_regA<half, 32, 0, 0>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1766,7 +1766,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -1778,13 +1778,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 0, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 32, 0, 0>(
-    float (&acc)[4][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[4][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -1797,7 +1797,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 32, 0, 0>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -1810,7 +1810,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 32, 0, 0>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1828,7 +1828,7 @@ __device__ inline void mma_async_shmA<half, 32, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -1840,13 +1840,13 @@ __device__ inline void mma_async_shmA<half, 32, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 32, 0, 1>(
-    float (&acc)[4][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[4][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -1859,7 +1859,7 @@ __device__ inline void mma_async_regA<half, 32, 0, 1>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -1872,7 +1872,7 @@ __device__ inline void mma_async_regA<half, 32, 0, 1>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1890,7 +1890,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -1902,13 +1902,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 0, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 32, 0, 1>(
-    float (&acc)[4][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[4][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -1921,7 +1921,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 32, 0, 1>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -1934,7 +1934,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 32, 0, 1>(
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1952,7 +1952,7 @@ __device__ inline void mma_async_shmA<half, 32, 1, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -1964,7 +1964,7 @@ __device__ inline void mma_async_shmA<half, 32, 1, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -1982,7 +1982,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 1, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -1994,7 +1994,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 1, 0>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2012,7 +2012,7 @@ __device__ inline void mma_async_shmA<half, 32, 1, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16\n"
@@ -2024,7 +2024,7 @@ __device__ inline void mma_async_shmA<half, 32, 1, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2042,7 +2042,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 1, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n32k16.f32.bf16.bf16\n"
@@ -2054,7 +2054,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 32, 1, 1>(
           "+f"(acc[1][0][1]), "+f"(acc[1][1][0]), "+f"(acc[1][1][1]), "+f"(acc[2][0][0]), "+f"(acc[2][0][1]),
           "+f"(acc[2][1][0]), "+f"(acc[2][1][1]), "+f"(acc[3][0][0]), "+f"(acc[3][0][1]), "+f"(acc[3][1][0]),
           "+f"(acc[3][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2076,7 +2076,7 @@ __device__ inline void mma_async_shmA<half, 64, 0, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2092,13 +2092,13 @@ __device__ inline void mma_async_shmA<half, 64, 0, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 64, 0, 0>(
-    float (&acc)[8][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[8][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2115,7 +2115,7 @@ __device__ inline void mma_async_regA<half, 64, 0, 0>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2132,7 +2132,7 @@ __device__ inline void mma_async_regA<half, 64, 0, 0>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2154,7 +2154,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 0, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2170,13 +2170,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 0, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 64, 0, 0>(
-    float (&acc)[8][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[8][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2193,7 +2193,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 64, 0, 0>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2210,7 +2210,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 64, 0, 0>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2232,7 +2232,7 @@ __device__ inline void mma_async_shmA<half, 64, 0, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2248,13 +2248,13 @@ __device__ inline void mma_async_shmA<half, 64, 0, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 64, 0, 1>(
-    float (&acc)[8][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[8][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2271,7 +2271,7 @@ __device__ inline void mma_async_regA<half, 64, 0, 1>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2288,7 +2288,7 @@ __device__ inline void mma_async_regA<half, 64, 0, 1>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2310,7 +2310,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 0, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2326,13 +2326,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 0, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 64, 0, 1>(
-    float (&acc)[8][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[8][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2349,7 +2349,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 64, 0, 1>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2366,7 +2366,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 64, 0, 1>(
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2388,7 +2388,7 @@ __device__ inline void mma_async_shmA<half, 64, 1, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2404,7 +2404,7 @@ __device__ inline void mma_async_shmA<half, 64, 1, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2426,7 +2426,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 1, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2442,7 +2442,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 1, 0>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2464,7 +2464,7 @@ __device__ inline void mma_async_shmA<half, 64, 1, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.f16.f16\n"
@@ -2480,7 +2480,7 @@ __device__ inline void mma_async_shmA<half, 64, 1, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2502,7 +2502,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 1, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16\n"
@@ -2518,7 +2518,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 64, 1, 1>(
           "+f"(acc[5][0][0]), "+f"(acc[5][0][1]), "+f"(acc[5][1][0]), "+f"(acc[5][1][1]), "+f"(acc[6][0][0]),
           "+f"(acc[6][0][1]), "+f"(acc[6][1][0]), "+f"(acc[6][1][1]), "+f"(acc[7][0][0]), "+f"(acc[7][0][1]),
           "+f"(acc[7][1][0]), "+f"(acc[7][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2547,7 +2547,7 @@ __device__ inline void mma_async_shmA<half, 128, 0, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -2570,13 +2570,13 @@ __device__ inline void mma_async_shmA<half, 128, 0, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 128, 0, 0>(
-    float (&acc)[16][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[16][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -2600,7 +2600,7 @@ __device__ inline void mma_async_regA<half, 128, 0, 0>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -2624,7 +2624,7 @@ __device__ inline void mma_async_regA<half, 128, 0, 0>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2653,7 +2653,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 0, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -2676,13 +2676,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 0, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 128, 0, 0>(
-    float (&acc)[16][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[16][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -2706,7 +2706,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 128, 0, 0>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -2730,7 +2730,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 128, 0, 0>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2759,7 +2759,7 @@ __device__ inline void mma_async_shmA<half, 128, 0, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -2782,13 +2782,13 @@ __device__ inline void mma_async_shmA<half, 128, 0, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 128, 0, 1>(
-    float (&acc)[16][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[16][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -2812,7 +2812,7 @@ __device__ inline void mma_async_regA<half, 128, 0, 1>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -2836,7 +2836,7 @@ __device__ inline void mma_async_regA<half, 128, 0, 1>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2865,7 +2865,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 0, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -2888,13 +2888,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 0, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 128, 0, 1>(
-    float (&acc)[16][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[16][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -2918,7 +2918,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 128, 0, 1>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -2942,7 +2942,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 128, 0, 1>(
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -2971,7 +2971,7 @@ __device__ inline void mma_async_shmA<half, 128, 1, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -2994,7 +2994,7 @@ __device__ inline void mma_async_shmA<half, 128, 1, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3023,7 +3023,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 1, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -3046,7 +3046,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 1, 0>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3075,7 +3075,7 @@ __device__ inline void mma_async_shmA<half, 128, 1, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16\n"
@@ -3098,7 +3098,7 @@ __device__ inline void mma_async_shmA<half, 128, 1, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3127,7 +3127,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 1, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16\n"
@@ -3150,7 +3150,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 128, 1, 1>(
           "+f"(acc[12][1][0]), "+f"(acc[12][1][1]), "+f"(acc[13][0][0]), "+f"(acc[13][0][1]), "+f"(acc[13][1][0]),
           "+f"(acc[13][1][1]), "+f"(acc[14][0][0]), "+f"(acc[14][0][1]), "+f"(acc[14][1][0]), "+f"(acc[14][1][1]),
           "+f"(acc[15][0][0]), "+f"(acc[15][0][1]), "+f"(acc[15][1][0]), "+f"(acc[15][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3196,7 +3196,7 @@ __device__ inline void mma_async_shmA<half, 256, 0, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -3236,13 +3236,13 @@ __device__ inline void mma_async_shmA<half, 256, 0, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 256, 0, 0>(
-    float (&acc)[32][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[32][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -3283,7 +3283,7 @@ __device__ inline void mma_async_regA<half, 256, 0, 0>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -3324,7 +3324,7 @@ __device__ inline void mma_async_regA<half, 256, 0, 0>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3370,7 +3370,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 0, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -3410,13 +3410,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 0, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 256, 0, 0>(
-    float (&acc)[32][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[32][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -3457,7 +3457,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 256, 0, 0>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -3498,7 +3498,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 256, 0, 0>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3544,7 +3544,7 @@ __device__ inline void mma_async_shmA<half, 256, 0, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -3584,13 +3584,13 @@ __device__ inline void mma_async_shmA<half, 256, 0, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<half, 256, 0, 1>(
-    float (&acc)[32][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[32][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -3631,7 +3631,7 @@ __device__ inline void mma_async_regA<half, 256, 0, 1>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -3672,7 +3672,7 @@ __device__ inline void mma_async_regA<half, 256, 0, 1>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3718,7 +3718,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 0, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -3758,13 +3758,13 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 0, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
 template <>
 __device__ inline void mma_async_regA<__nv_bfloat16, 256, 0, 1>(
-    float (&acc)[32][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
+    float (&acc)[32][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal) {
   if (accHasVal) {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -3805,7 +3805,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 256, 0, 1>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -3846,7 +3846,7 @@ __device__ inline void mma_async_regA<__nv_bfloat16, 256, 0, 1>(
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
         : "r"(a[0][0][0]), "r"(a[0][1][0]), "r"(a[1][0][0]), "r"(a[1][1][0]),
-          "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+          "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3892,7 +3892,7 @@ __device__ inline void mma_async_shmA<half, 256, 1, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -3932,7 +3932,7 @@ __device__ inline void mma_async_shmA<half, 256, 1, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -3978,7 +3978,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 1, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -4018,7 +4018,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 1, 0>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -4064,7 +4064,7 @@ __device__ inline void mma_async_shmA<half, 256, 1, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.f16.f16\n"
@@ -4104,7 +4104,7 @@ __device__ inline void mma_async_shmA<half, 256, 1, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 
@@ -4150,7 +4150,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 1, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(true));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(true));
   } else {
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16\n"
@@ -4190,7 +4190,7 @@ __device__ inline void mma_async_shmA<__nv_bfloat16, 256, 1, 1>(
           "+f"(acc[28][1][1]), "+f"(acc[29][0][0]), "+f"(acc[29][0][1]), "+f"(acc[29][1][0]), "+f"(acc[29][1][1]),
           "+f"(acc[30][0][0]), "+f"(acc[30][0][1]), "+f"(acc[30][1][0]), "+f"(acc[30][1][1]), "+f"(acc[31][0][0]),
           "+f"(acc[31][0][1]), "+f"(acc[31][1][0]), "+f"(acc[31][1][1])
-        : "l"(reinterpret_cast<uint64_t const&>(descA)), "l"(reinterpret_cast<uint64_t const&>(descB)), "n"(false));
+        : "l"(reinterpret_cast<const uint64_t&>(descA)), "l"(reinterpret_cast<const uint64_t&>(descB)), "n"(false));
   }
 }
 

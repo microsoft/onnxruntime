@@ -29,8 +29,6 @@
 
     // Tests that are failing temporarily and should be fixed
     "current_failing_tests": [
-        // TODO(titaiwang): onnx 1.21 should fix lpnorm zero norm issue
-        "^test_l2normalization*",
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
@@ -368,8 +366,6 @@
         // Size(21) from ONNX 1.16.0 is not implemented in cuda.
         "^test_size_cuda",
         "^test_size_example_cuda",
-        // DequantizeLinear(21) blocked quantization from ONNX 1.16.0 is not implemented in ORT yet.
-        "^test_dequantizelinear_blocked",
         "^test_quantizelinear_blocked_asymmetric",
         "^test_quantizelinear_blocked_symmetric",
         // Bug with test model: node's input name does not match the model's input name (x_zero_point vs zero_point)

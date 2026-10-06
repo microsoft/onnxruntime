@@ -5,22 +5,123 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/utils.h"
+#include "core/common/safeint.h"
+
+#include <limits>
+#include <type_traits>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace {
+
+constexpr float kDefaultBatchNormalizationEpsilon = 1e-5f;
+
+int64_t GetGroup(const Node& node) {
+  const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
+  return group_attr != nullptr && utils::HasInt(*group_attr) ? group_attr->i() : 1;
+}
+
+bool IsValidWeightShapeForFusion(const TensorProto& weight,
+                                 int64_t bn_channels,
+                                 bool is_conv_transpose,
+                                 int64_t group) {
+  if (weight.dims_size() <= 2) {
+    return false;
+  }
+
+  if (!is_conv_transpose) {
+    return weight.dims(0) == bn_channels;
+  }
+
+  if (group <= 0 ||
+      weight.dims(0) <= 0 ||
+      weight.dims(1) <= 0 ||
+      weight.dims(0) % group != 0 ||
+      weight.dims(1) > std::numeric_limits<int64_t>::max() / group) {
+    return false;
+  }
+
+  return weight.dims(1) * group == bn_channels;
+}
+
+template <typename T>
+void ScaleConvTransposeWeightData(Initializer& weight, const Initializer& scalers, int64_t group) {
+  const auto dims = weight.dims();
+  ORT_ENFORCE(dims.size() > 2, "ConvTranspose weight should have at least 3 dimensions.");
+  ORT_ENFORCE(group > 0, "ConvTranspose group should be positive.");
+
+  const int64_t input_channels = dims[0];
+  const int64_t output_channels_per_group = dims[1];
+  ORT_ENFORCE(input_channels > 0 && output_channels_per_group > 0, "Invalid ConvTranspose weight shape.");
+  ORT_ENFORCE(input_channels % group == 0, "Invalid ConvTranspose group for weight shape.");
+  ORT_ENFORCE(output_channels_per_group <= std::numeric_limits<int64_t>::max() / group,
+              "Invalid ConvTranspose output channel count.");
+
+  const int64_t input_channels_per_group = input_channels / group;
+  ORT_ENFORCE(SafeInt<size_t>(output_channels_per_group) * group == scalers.size(),
+              "Invalid ConvTranspose channel scaler size.");
+
+  SafeInt<size_t> safe_kernel_size = 1;
+  for (size_t i = 2; i < dims.size(); ++i) {
+    ORT_ENFORCE(dims[i] > 0, "Invalid ConvTranspose kernel shape.");
+    safe_kernel_size *= SafeInt<size_t>(dims[i]);
+  }
+  const size_t kernel_size = safe_kernel_size;
+
+  using Numeric = std::conditional_t<std::is_same_v<T, double>, double, float>;
+  T* weight_data = weight.data<T>();
+  const T* scaler_data = scalers.data<T>();
+
+  for (int64_t input_channel = 0; input_channel < input_channels; ++input_channel) {
+    const int64_t group_index = input_channel / input_channels_per_group;
+    for (int64_t output_channel = 0; output_channel < output_channels_per_group; ++output_channel) {
+      const auto scaler_index = static_cast<size_t>(group_index * output_channels_per_group + output_channel);
+      const Numeric scale = static_cast<Numeric>(scaler_data[scaler_index]);
+      const size_t weight_offset =
+          (SafeInt<size_t>(input_channel) * output_channels_per_group + output_channel) * kernel_size;
+
+      for (size_t kernel_index = 0; kernel_index < kernel_size; ++kernel_index) {
+        T& value = weight_data[weight_offset + kernel_index];
+        value = T(static_cast<Numeric>(value) * scale);
+      }
+    }
+  }
+}
+
+void ScaleConvTransposeWeightByOutputChannel(Initializer& weight, const Initializer& scalers, int64_t group) {
+  switch (weight.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      ScaleConvTransposeWeightData<float>(weight, scalers, group);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      ScaleConvTransposeWeightData<MLFloat16>(weight, scalers, group);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      ScaleConvTransposeWeightData<double>(weight, scalers, group);
+      break;
+    default:
+      ORT_ENFORCE(false, "Unsupported ConvTranspose weight data type for BN fusion.");
+  }
+}
+
+}  // namespace
+
 Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   auto& conv_node = node;
   Node& bn_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());
+  const bool is_conv_transpose = conv_node.OpType() == "ConvTranspose";
+  const int64_t group = is_conv_transpose ? GetGroup(conv_node) : 1;
 
-  // Get value of attribute epsilon
-  const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
-  const ONNX_NAMESPACE::AttributeProto* attr = &(attributes.find("epsilon")->second);
-  if (attr == nullptr || attr->type() != AttributeProto_AttributeType_FLOAT) {
-    return Status::OK();
+  float epsilon = kDefaultBatchNormalizationEpsilon;
+  const auto* attr = graph_utils::GetNodeAttribute(bn_node, "epsilon");
+  if (attr != nullptr) {
+    if (!utils::HasFloat(*attr)) {
+      return Status::OK();
+    }
+    epsilon = static_cast<float>(attr->f());
   }
-  float epsilon = static_cast<float>(attr->f());
 
   // Get initializers of BatchNormalization
   const auto& bn_inputs = bn_node.InputDefs();
@@ -40,7 +141,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
   ORT_ENFORCE(conv_W_tensor_proto);
 
-  // Conv only supports floating point data types, so can only fuse with an initializer containing those types
+  // Conv and ConvTranspose only support floating point data types, so can only fuse with initializers containing those types
   if (!optimizer_utils::IsFloatingPointDataType(*bn_scale_tensor_proto) ||
       !optimizer_utils::IsFloatingPointDataType(*bn_B_tensor_proto) ||
       !optimizer_utils::IsFloatingPointDataType(*bn_mean_tensor_proto) ||
@@ -56,8 +157,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
       bn_scale_tensor_proto->data_type() != bn_B_tensor_proto->data_type() ||
       bn_B_tensor_proto->data_type() != bn_mean_tensor_proto->data_type() ||
       bn_mean_tensor_proto->data_type() != bn_var_tensor_proto->data_type() ||
-      conv_W_tensor_proto->data_type() != bn_scale_tensor_proto->data_type() ||
-      !(conv_W_tensor_proto->dims_size() > 2 && conv_W_tensor_proto->dims(0) == bn_scale_tensor_proto->dims(0))) {
+      conv_W_tensor_proto->data_type() != bn_scale_tensor_proto->data_type()) {
+    return Status::OK();
+  }
+
+  if (!IsValidWeightShapeForFusion(*conv_W_tensor_proto, bn_scale_tensor_proto->dims(0), is_conv_transpose, group)) {
     return Status::OK();
   }
 
@@ -86,7 +190,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   bn_var.add(epsilon);
   bn_var.sqrt();
   bn_scale.div(bn_var);
-  conv_W.scale_by_axis(bn_scale, 1);
+  if (is_conv_transpose) {
+    ScaleConvTransposeWeightByOutputChannel(conv_W, bn_scale, group);
+  } else {
+    conv_W.scale_by_axis(bn_scale, 1);
+  }
 
   if (conv_inputs.size() == 3) {
     conv_B->sub(bn_mean);
@@ -145,7 +253,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 }
 
 bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11, 22}) ||
+  const bool is_supported_conv = graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11, 22});
+  const bool is_supported_conv_transpose =
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "ConvTranspose", {1, 11, 22});
+
+  if ((!is_supported_conv && !is_supported_conv_transpose) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }

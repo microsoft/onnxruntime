@@ -68,6 +68,44 @@ TEST(FlashAttentionTest, GetNumSplitsHandlesZeroKeyTiles) {
 #endif
 }
 
+TEST(FlashAttentionTest, GetNumSplitsUsesLongContextParallelism) {
+#if defined(USE_FLASH_ATTENTION)
+  const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
+      flash::get_num_splits_and_buffer_sizes(
+          1,     // batch_size
+          1,     // seqlen_q
+          4096,  // seqlen_k
+          2,     // num_heads
+          64,    // head_size
+          108);  // num_SMs
+
+  EXPECT_EQ(num_splits, 16U);
+  EXPECT_GT(softmax_lse_accum_bytes, 0U);
+  EXPECT_GT(out_accum_bytes, 0U);
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
+TEST(FlashAttentionTest, GetNumSplitsAvoidsShortContextOverhead) {
+#if defined(USE_FLASH_ATTENTION)
+  const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
+      flash::get_num_splits_and_buffer_sizes(
+          1,     // batch_size
+          1,     // seqlen_q
+          128,   // KV sequence length
+          2,     // num_heads
+          64,    // head_size
+          108);  // num_SMs
+
+  EXPECT_EQ(num_splits, 0U);
+  EXPECT_EQ(softmax_lse_accum_bytes, 0U);
+  EXPECT_EQ(out_accum_bytes, 0U);
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
 TEST(LeanAttentionTest, GetNumSplitsHandlesZeroSmCount) {
 #if defined(USE_LEAN_ATTENTION)
   const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes, sync_flag_bytes,

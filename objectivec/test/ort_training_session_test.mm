@@ -18,6 +18,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(readonly, nullable) ORTEnv* ortEnv;
 @property(readonly, nullable) ORTCheckpoint* checkpoint;
 @property(readonly, nullable) ORTTrainingSession* session;
+- (ORTTrainingSession*)makeTrainingSessionWithCheckpoint:(ORTCheckpoint*)checkpoint
+                                          sessionOptions:(ORTSessionOptions*)sessionOptions;
 @end
 
 @implementation ORTTrainingSessionTest
@@ -76,6 +78,12 @@ NS_ASSUME_NONNULL_BEGIN
   ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&error];
   ORTAssertNullableResultSuccessful(sessionOptions, error);
 
+  return [self makeTrainingSessionWithCheckpoint:checkpoint sessionOptions:sessionOptions];
+}
+
+- (ORTTrainingSession*)makeTrainingSessionWithCheckpoint:(ORTCheckpoint*)checkpoint
+                                          sessionOptions:(ORTSessionOptions*)sessionOptions {
+  NSError* error = nil;
   ORTTrainingSession* session = [[ORTTrainingSession alloc]
              initWithEnv:self.ortEnv
           sessionOptions:sessionOptions
@@ -87,6 +95,33 @@ NS_ASSUME_NONNULL_BEGIN
 
   ORTAssertNullableResultSuccessful(session, error);
   return session;
+}
+
+- (void)testTrainingSessionRetainsEpContextDataReadBlock {
+  NSError* error = nil;
+  ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&error];
+  ORTAssertNullableResultSuccessful(sessionOptions, error);
+
+  NSObject* capture = [[NSObject alloc] init];
+  __weak NSObject* weakCapture = capture;
+  BOOL registered = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        return capture == nil ? nil : [NSData data];
+      }
+                    maxDataSize:1
+                          error:&error];
+  ORTAssertBoolResultSuccessful(registered, error);
+
+  ORTTrainingSession* session = [self makeTrainingSessionWithCheckpoint:self.checkpoint
+                                                         sessionOptions:sessionOptions];
+  XCTAssertTrue([sessionOptions clearEpContextDataReadBlockWithError:&error]);
+  ORTAssertNoError(error);
+  sessionOptions = nil;
+  capture = nil;
+  XCTAssertNotNil(weakCapture);
+
+  session = nil;
+  XCTAssertNil(weakCapture);
 }
 
 - (void)testInitTrainingSession {
