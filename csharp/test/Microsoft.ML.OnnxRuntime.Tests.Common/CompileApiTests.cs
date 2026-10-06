@@ -20,6 +20,8 @@ using System.Threading.Tasks;
 using Xunit;
 
 
+// Serialize with the tests that dispose and recreate the shared OrtEnv.
+[Collection("Ort Inference Tests")]
 public class CompileApiTests
 {
     private OrtEnv ortEnvInstance = OrtEnv.Instance();
