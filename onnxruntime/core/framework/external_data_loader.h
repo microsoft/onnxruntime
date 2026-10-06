@@ -97,6 +97,7 @@ class IExternalDataLoader {
   virtual void AbortLoad() const noexcept {}
 #endif
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
   // Tensor should be allocated with the correct memory info and size. A loader that
   // creates tensors for the target device replaces it with one backed by memory
   // owned through allocator.
