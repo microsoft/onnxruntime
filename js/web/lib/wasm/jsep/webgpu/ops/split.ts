@@ -146,17 +146,13 @@ export const split = (context: ComputeContext, attributes: SplitAttributes): voi
     if (numOutputs < 1) {
       throw new Error('numOutputs must be positive');
     }
-    if (updatedAttributes.isUnevenSplitAllowed) {
-      if (numOutputs > splitDim) {
-        throw new Error('numOutputs must not exceed the size of the split dimension');
-      }
-    } else if (splitDim % numOutputs !== 0) {
+    if (!updatedAttributes.isUnevenSplitAllowed && splitDim % numOutputs !== 0) {
       throw new Error('The split dimension must be evenly divisible by the number of outputs');
     }
     const splitSize = Math.ceil(splitDim / numOutputs);
     const lastSplitSize = splitDim - splitSize * (numOutputs - 1);
-    if (updatedAttributes.isUnevenSplitAllowed && lastSplitSize <= 0) {
-      throw new Error('numOutputs cannot produce the requested number of nonempty splits');
+    if (updatedAttributes.isUnevenSplitAllowed && lastSplitSize < 0) {
+      throw new Error('numOutputs cannot produce a negative split size');
     }
     const splitSizes = new Array<number>(numOutputs).fill(splitSize);
     splitSizes[numOutputs - 1] = lastSplitSize;

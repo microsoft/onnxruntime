@@ -176,11 +176,23 @@ describe('#UnitTest# - JSEP Split runtime shapes', () => {
     expect(() => runSplit([5], evenOnly)).to.throw('evenly divisible');
   });
 
+  it('allows a zero-sized final output', () => {
+    const sixOutputs = parseSplitAttributes({ axis: 0, numOutputs: 6, splitSizes: [], isUnevenSplitAllowed: true });
+    expect(runSplit([10], sixOutputs).map((output) => output.dims)).to.deep.equal([[2], [2], [2], [2], [2], [0]]);
+    expect(runSplit([10], sixOutputs, null).map((output) => output.dims)).to.deep.equal([[2], [2], [2], [2], [2], [0]]);
+    expect(runSplit([1], attributes).map((output) => output.dims)).to.deep.equal([[1], [0]]);
+  });
+
+  it('allows zero-sized outputs for an empty input', () => {
+    expect(runSplit([0], attributes).map((output) => output.dims)).to.deep.equal([[0], [0]]);
+  });
+
   it('rejects invalid output counts', () => {
     const invalidCount = parseSplitAttributes({ axis: 0, numOutputs: 0, splitSizes: [], isUnevenSplitAllowed: true });
     expect(() => runSplit([4], invalidCount)).to.throw('numOutputs must be positive');
-    expect(() => runSplit([1], attributes)).to.throw('must not exceed');
+    const threeOutputs = parseSplitAttributes({ axis: 0, numOutputs: 3, splitSizes: [], isUnevenSplitAllowed: true });
+    expect(() => runSplit([1], threeOutputs)).to.throw('negative split size');
     const tooManyChunks = parseSplitAttributes({ axis: 0, numOutputs: 7, splitSizes: [], isUnevenSplitAllowed: true });
-    expect(() => runSplit([10], tooManyChunks)).to.throw('nonempty splits');
+    expect(() => runSplit([10], tooManyChunks)).to.throw('negative split size');
   });
 });
