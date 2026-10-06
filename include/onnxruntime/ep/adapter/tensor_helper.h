@@ -11,7 +11,6 @@
 #include <sstream>
 
 #include "core/framework/tensor.h"
-#include "core/session/onnxruntime_type_conversion.h"
 
 namespace onnxruntime {
 namespace ep {
@@ -29,9 +28,7 @@ inline onnxruntime::Tensor CreateTensorFromApiValue(OrtValue* ort_value) {
   value.GetTensorElementTypeAndShapeDataReference(element_type, shape);
 
   auto memory_info = value.GetTensorMemoryInfo();
-  MLDataType data_type = DataTypeImpl::TensorTypeFromONNXEnum(
-                             utils::ToTensorProtoElementType(element_type))
-                             ->GetElementType();
+  MLDataType data_type = DataTypeImpl::TensorTypeFromONNXEnum(element_type)->GetElementType();
 
   OrtMemoryInfo tensor_memory_info{memory_info.GetAllocatorName(),
                                    memory_info.GetAllocatorType(),
