@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import { InferenceSession, Tensor } from 'onnxruntime-common';
 import * as path from 'path';
 
+import { onnxruntimeBackend } from '../../../lib/backend';
 import { binding } from '../../../lib/binding';
 import { assertTensorEqual } from '../../test-utils';
 
@@ -110,7 +111,7 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
     const callbackName = 'context/data.bin';
     const backing = new Uint8Array([9, 1, 2, 3, 8]);
     let receivedName: string | undefined;
-    const result = await binding.testEpContextDataReadCallback(
+    const result = await binding.__testEpContextDataReadCallback(
       (name) => {
         receivedName = name;
         return backing.subarray(1, 4);
@@ -124,21 +125,21 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
   });
 
   it('supports empty callback data through the native worker-thread bridge', async () => {
-    const result = await binding.testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
+    const result = await binding.__testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
     assert.strictEqual(result.byteLength, 0);
   });
 
   it('rejects oversized, wrong-type, and throwing callback results through the native bridge', async () => {
     await assert.rejects(
-      binding.testEpContextDataReadCallback(() => new Uint8Array(2), 1, 'large.bin'),
+      binding.__testEpContextDataReadCallback(() => new Uint8Array(2), 1, 'large.bin'),
       /exceeds/,
     );
     await assert.rejects(
-      binding.testEpContextDataReadCallback(() => new Uint8Array(1).buffer, 4, 'wrong.bin'),
+      binding.__testEpContextDataReadCallback(() => new Uint8Array(1).buffer, 4, 'wrong.bin'),
       /Uint8Array/,
     );
     await assert.rejects(
-      binding.testEpContextDataReadCallback(
+      binding.__testEpContextDataReadCallback(
         () => {
           throw new Error('test callback failure');
         },
@@ -169,6 +170,31 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
   // #endregion
 
   // #region asynchronous session construction
+
+  for (const source of ['path', 'buffer'] as const) {
+    it(`defers native construction for a model ${source} without a callback`, async () => {
+      let optionsRead = false;
+      const pathOrBuffer = source === 'path' ? SMALL_MODEL_PATH : new Uint8Array(fs.readFileSync(SMALL_MODEL_PATH));
+      const promise = onnxruntimeBackend.createInferenceSessionHandler(pathOrBuffer, {
+        get graphOptimizationLevel(): InferenceSession.SessionOptions['graphOptimizationLevel'] {
+          optionsRead = true;
+          return 'disabled';
+        },
+      });
+
+      assert.strictEqual(optionsRead, false, 'native construction ran before create returned its promise');
+      await Promise.resolve();
+      assert.strictEqual(optionsRead, false, 'native construction ran before the next event-loop turn');
+
+      const session = await promise;
+      try {
+        assert.strictEqual(optionsRead, true, 'native construction did not inspect the session options');
+        assert.deepStrictEqual(session.inputNames, ['input']);
+      } finally {
+        await session.dispose();
+      }
+    });
+  }
 
   it('uses the synchronous fast path for a model path without a callback', async () => {
     const session = new binding.InferenceSession();

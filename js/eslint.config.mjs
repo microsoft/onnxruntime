@@ -333,6 +333,22 @@ export default [
     },
   },
   {
+    files: [
+      'node/lib/binding.ts',
+      'node/test/unittests/lib/ep-context-data-read.ts',
+      'react_native/e2e/src/EPContextDataReadTest.tsx',
+    ],
+
+    rules: {
+      'no-underscore-dangle': [
+        'error',
+        {
+          allow: ['__testEpContextDataReadCallback', '__testWorker'],
+        },
+      ],
+    },
+  },
+  {
     files: ['react_native/lib/**/*.ts'],
 
     rules: {

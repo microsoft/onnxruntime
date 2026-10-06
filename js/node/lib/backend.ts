@@ -92,6 +92,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     pathOrBuffer: string | Uint8Array,
     options: InferenceSession.SessionOptions,
   ): Promise<OnnxruntimeSessionHandler> {
+    await new Promise<void>((resolve) => setImmediate(resolve));
     initOrt();
 
     // A callback-enabled session is created asynchronously so the event loop can service synchronous

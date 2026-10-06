@@ -7,14 +7,27 @@ import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { Buffer } from 'buffer';
 import RNFS from 'react-native-fs';
 
+interface CallbackTestWorker {
+  abort(): void;
+  forceInvalidate(): void;
+  invalidateEnv(): void;
+  waitForDispatch(): void;
+  readonly isFinished: boolean;
+  readonly wasAborted: boolean;
+}
+
 // Metro's inline requires can evaluate this module before the native bindings are installed.
 const getOrtApi = () =>
   globalThis.OrtApi as typeof globalThis.OrtApi & {
-    testEpContextDataReadCallback(
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    __testEpContextDataReadCallback(
       callback: (name: string) => unknown,
       maxDataSize: number,
       name: string,
-    ): Promise<Uint8Array>;
+    ): Promise<Uint8Array> & {
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      readonly __testWorker: CallbackTestWorker;
+    };
   };
 
 interface TestResult {
@@ -46,7 +59,7 @@ const CHECK_NAMES = [
   'Failed load releases the callback state',
   'Callback bridge marshals sliced Uint8Array data on the JS thread',
   'Callback bridge rejects invalid callback results',
-  'Pending callback bridge reads are cancelled without blocking',
+  'Queued/in-flight callback reads and Env teardown unblock workers',
 ];
 
 const styles = StyleSheet.create({
@@ -328,7 +341,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     this.updateTestResult(index, { status: 'running' });
     try {
       const expectedName = 'context/data.bin';
-      const result = await getOrtApi().testEpContextDataReadCallback(
+      const result = await getOrtApi().__testEpContextDataReadCallback(
         (name) => {
           if (name !== expectedName) {
             throw new Error(`Unexpected callback name: ${name}`);
@@ -366,7 +379,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       ]) {
         let rejected = false;
         try {
-          await getOrtApi().testEpContextDataReadCallback(callback, 1, 'failure.bin');
+          await getOrtApi().__testEpContextDataReadCallback(callback, 1, 'failure.bin');
         } catch {
           rejected = true;
         }
@@ -374,7 +387,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
           throw new Error('Invalid callback result unexpectedly succeeded');
         }
       }
-      const empty = await getOrtApi().testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
+      const empty = await getOrtApi().__testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
       if (empty.length !== 0) {
         throw new Error('Expected an empty callback result');
       }
@@ -394,42 +407,67 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
   runCallbackBridgeCancellationCheck = async (index: number): Promise<void> => {
     this.updateTestResult(index, { status: 'running' });
     try {
-      type CancellableReadPromise = Promise<Uint8Array> & {
-        testWorker: {
-          abort: () => void;
-          forceInvalidate: () => void;
-          isFinished: boolean;
-          wasAborted: boolean;
-        };
-      };
-      const pendingRead = getOrtApi().testEpContextDataReadCallback(
-        (name) => {
-          if (name !== 'cancel.bin') {
-            throw new Error(`Unexpected callback name: ${name}`);
+      for (const mode of ['in-flight', 'queued', 'env'] as const) {
+        const expectedName = `${mode}.bin`;
+        let callbackCalls = 0;
+        const pendingRead = getOrtApi().__testEpContextDataReadCallback(
+          (name) => {
+            callbackCalls++;
+            if (name !== expectedName) {
+              throw new Error(`Unexpected callback name: ${name}`);
+            }
+            if (mode === 'in-flight') {
+              pendingRead.__testWorker.abort();
+            }
+            return new Uint8Array([1]);
+          },
+          1,
+          expectedName,
+        );
+        void pendingRead.catch(() => undefined);
+        // Do not yield before cancellation: queued reads must never enter the JS callback.
+        if (mode === 'queued') {
+          pendingRead.__testWorker.abort();
+        } else if (mode === 'env') {
+          try {
+            pendingRead.__testWorker.waitForDispatch();
+          } catch (err) {
+            pendingRead.__testWorker.forceInvalidate();
+            throw err;
           }
-          pendingRead.testWorker.abort();
-          return new Uint8Array([1]);
-        },
-        1,
-        'cancel.bin',
-      ) as CancellableReadPromise;
-      void pendingRead.catch(() => undefined);
+          pendingRead.__testWorker.invalidateEnv();
+        }
 
-      const deadline = Date.now() + 5000;
-      while (!pendingRead.testWorker.isFinished && Date.now() < deadline) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 10));
-      }
-      if (!pendingRead.testWorker.isFinished) {
-        pendingRead.testWorker.forceInvalidate();
-        throw new Error('Cancelling a pending callback bridge read did not unblock its worker');
-      }
-      if (!pendingRead.testWorker.wasAborted) {
-        throw new Error('The pending callback bridge worker was not aborted');
+        const deadline = Date.now() + 5000;
+        while (!pendingRead.__testWorker.isFinished && Date.now() < deadline) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 10));
+        }
+        if (!pendingRead.__testWorker.isFinished) {
+          pendingRead.__testWorker.forceInvalidate();
+          throw new Error(`${mode} cancellation did not unblock the callback bridge worker`);
+        }
+        if (pendingRead.__testWorker.wasAborted !== (mode !== 'env')) {
+          throw new Error(`Unexpected worker abort state for ${mode} cancellation`);
+        }
+        if (callbackCalls !== (mode === 'in-flight' ? 1 : 0)) {
+          throw new Error(`Unexpected callback invocations for ${mode} cancellation: ${callbackCalls}`);
+        }
+        if (mode === 'env') {
+          let rejection: unknown;
+          try {
+            await pendingRead;
+          } catch (err) {
+            rejection = err;
+          }
+          if (!/released|torn down/.test(String(rejection))) {
+            throw new Error(`Env teardown did not reject the read with a release error: ${String(rejection)}`);
+          }
+        }
       }
 
       this.updateTestResult(index, {
         status: 'success',
-        message: 'A pending read was invalidated and its worker completed after cancellation',
+        message: 'In-flight and queued aborts, plus Env listener teardown, completed their native workers',
       });
     } catch (err) {
       this.updateTestResult(index, {

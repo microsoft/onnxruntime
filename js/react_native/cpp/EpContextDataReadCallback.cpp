@@ -6,9 +6,11 @@
 #include "AsyncWorker.h"
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 using namespace facebook::jsi;
@@ -59,13 +61,62 @@ class VectorMutableBuffer final : public MutableBuffer {
   std::vector<uint8_t> data_;
 };
 
+class EpContextDataReadTestCallInvoker final
+    : public facebook::react::CallInvoker,
+      public std::enable_shared_from_this<EpContextDataReadTestCallInvoker> {
+ public:
+  explicit EpContextDataReadTestCallInvoker(const std::shared_ptr<Env>& env)
+      : env_(env) {}
+
+  void invokeAsync(facebook::react::CallFunc&& func) override {
+    auto env = env_.lock();
+    auto self = shared_from_this();
+    if (!env || !env->runOnJsThread([self, func = std::move(func)]() {
+          if (!self->discardDispatch_.load()) {
+            func();
+          }
+        })) {
+      throw std::runtime_error("ONNX Runtime JSI bindings were torn down");
+    }
+    {
+      std::lock_guard<std::mutex> lock(dispatchMutex_);
+      dispatchQueued_ = true;
+    }
+    dispatchCv_.notify_all();
+  }
+
+  void invokeSync(facebook::react::CallFunc&&) override {
+    throw std::logic_error("The callback test bridge only supports asynchronous dispatch");
+  }
+
+  bool waitForDispatch() {
+    std::unique_lock<std::mutex> lock(dispatchMutex_);
+    return dispatchCv_.wait_for(lock, std::chrono::seconds(5),
+                                [this] { return dispatchQueued_; });
+  }
+
+  void discardDispatch() noexcept { discardDispatch_.store(true); }
+
+ private:
+  std::weak_ptr<Env> env_;
+  std::mutex dispatchMutex_;
+  std::condition_variable dispatchCv_;
+  bool dispatchQueued_ = false;
+  std::atomic<bool> discardDispatch_{false};
+};
+
 class EpContextDataReadTestWorker final : public AsyncWorker {
  public:
   EpContextDataReadTestWorker(
       Runtime& runtime, std::shared_ptr<Env> env,
-      std::shared_ptr<EpContextDataReadCallback> callback, std::string name)
+      std::shared_ptr<EpContextDataReadCallback> callback,
+      std::shared_ptr<Env> callbackEnv,
+      std::shared_ptr<EpContextDataReadTestCallInvoker> callbackInvoker,
+      std::string name)
       : AsyncWorker(runtime, std::move(env)),
         callback_(std::move(callback)),
+        callbackEnv_(std::move(callbackEnv)),
+        callbackInvoker_(std::move(callbackInvoker)),
         name_(std::move(name)) {}
 
   ~EpContextDataReadTestWorker() override { abortAndJoin(); }
@@ -92,6 +143,29 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
             return Value::undefined();
           });
     }
+    if (property == "invalidateEnv") {
+      auto self = std::static_pointer_cast<EpContextDataReadTestWorker>(
+          shared_from_this());
+      return Function::createFromHostFunction(
+          runtime, name, 0,
+          [self](Runtime&, const Value&, const Value*, size_t) {
+            self->callbackInvoker_->discardDispatch();
+            self->callbackEnv_->invalidate();
+            return Value::undefined();
+          });
+    }
+    if (property == "waitForDispatch") {
+      auto self = std::static_pointer_cast<EpContextDataReadTestWorker>(
+          shared_from_this());
+      return Function::createFromHostFunction(
+          runtime, name, 0,
+          [self](Runtime& runtime, const Value&, const Value*, size_t) {
+            if (!self->callbackInvoker_->waitForDispatch()) {
+              throw JSError(runtime, "The callback bridge worker did not queue its read");
+            }
+            return Value::undefined();
+          });
+    }
     if (property == "isFinished") {
       return Value(finished_.load());
     }
@@ -103,10 +177,6 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
 
  protected:
   void execute() override {
-    struct CompletionGuard {
-      std::atomic<bool>& finished;
-      ~CompletionGuard() { finished.store(true); }
-    } completionGuard{finished_};
     Ort::AllocatorWithDefaultOptions allocator;
     void* buffer = nullptr;
     size_t dataSize = 0;
@@ -153,8 +223,12 @@ class EpContextDataReadTestWorker final : public AsyncWorker {
     callback_->invalidate();
   }
 
+  void onFinished() noexcept override { finished_.store(true); }
+
  private:
   std::shared_ptr<EpContextDataReadCallback> callback_;
+  std::shared_ptr<Env> callbackEnv_;
+  std::shared_ptr<EpContextDataReadTestCallInvoker> callbackInvoker_;
   std::string name_;
   std::vector<uint8_t> data_;
   std::atomic<bool> finished_{false};
@@ -182,15 +256,21 @@ Value EpContextDataReadCallback::testCallbackBridge(
 
   auto callback = std::make_shared<Function>(
       arguments[0].asObject(runtime).asFunction(runtime));
+  // Isolate listener teardown from the app's Env so the test can keep polling and reporting results.
+  auto callbackInvoker = std::make_shared<EpContextDataReadTestCallInvoker>(env);
+  auto callbackEnv = std::make_shared<Env>(callbackInvoker);
   auto state = std::make_shared<EpContextDataReadCallback>(
-      env, runtime, std::move(callback),
+      callbackEnv, runtime, std::move(callback),
       static_cast<size_t>(rawMaxDataSize));
+  callbackEnv->addTeardownListener(state);
   env->addTeardownListener(state);
   auto worker = std::make_shared<EpContextDataReadTestWorker>(
-      runtime, env, std::move(state), arguments[2].asString(runtime).utf8(runtime));
+      runtime, env, std::move(state), std::move(callbackEnv),
+      std::move(callbackInvoker),
+      arguments[2].asString(runtime).utf8(runtime));
   auto promise = worker->toPromise(runtime);
   promise.asObject(runtime).setProperty(
-      runtime, "testWorker", Object::createFromHostObject(runtime, worker));
+      runtime, "__testWorker", Object::createFromHostObject(runtime, worker));
   return promise;
 }
 

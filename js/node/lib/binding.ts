@@ -63,7 +63,9 @@ export const binding =
     InferenceSession: Binding.InferenceSessionConstructor;
     listSupportedBackends: () => Binding.SupportedBackend[];
     initOrtOnce: (logLevel: number, tensorConstructor: TensorConstructor, isMainThread: boolean) => void;
-    testEpContextDataReadCallback: (
+    /** @internal Native callback bridge used by binding tests, not a supported API. */
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    __testEpContextDataReadCallback: (
       callback: (name: string) => unknown,
       maxDataSize: number,
       name: string,

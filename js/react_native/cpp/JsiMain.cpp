@@ -66,13 +66,13 @@ install(Runtime& runtime,
 
     auto testEpContextDataReadCallback = Function::createFromHostFunction(
         runtime,
-        PropNameID::forAscii(runtime, "testEpContextDataReadCallback"), 3,
+        PropNameID::forAscii(runtime, "__testEpContextDataReadCallback"), 3,
         [env](Runtime& runtime, const Value&, const Value* arguments,
               size_t count) -> Value {
           return EpContextDataReadCallback::testCallbackBridge(
               runtime, arguments, count, env);
         });
-    ortApi.setProperty(runtime, "testEpContextDataReadCallback",
+    ortApi.setProperty(runtime, "__testEpContextDataReadCallback",
                        testEpContextDataReadCallback);
 
     auto listSupportedBackendsMethod = Function::createFromHostFunction(

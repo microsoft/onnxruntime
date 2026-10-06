@@ -56,13 +56,15 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
                   rejectFunc_ = std::make_shared<Value>(rt, args[1]);
                   cancel_ = false;
                   worker_ = std::thread([this]() {
-                    if (cancel_) return;
-                    try {
-                      execute();
-                      dispatchResolve();
-                    } catch (const std::exception& e) {
-                      dispatchReject(e.what());
+                    if (!cancel_) {
+                      try {
+                        execute();
+                        dispatchResolve();
+                      } catch (const std::exception& e) {
+                        dispatchReject(e.what());
+                      }
                     }
+                    onFinished();
                   });
                   return Value::undefined();
                 }));
@@ -106,6 +108,8 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
   }
 
   virtual void onAbort() {}
+
+  virtual void onFinished() noexcept {}
 
  private:
   void dispatchResolve() {
