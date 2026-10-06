@@ -10,7 +10,7 @@
 #include "test_session.h"
 #include "utils.h"
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
 #include <cuda_runtime.h>
 #endif
 
@@ -82,8 +82,10 @@ class OnnxRuntimeTestSession : public TestSession {
   std::vector<bool> is_output_dynamic_;
   std::atomic<size_t> round_robin_counter_{0};
   bool use_round_robin_{false};
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
-  cudaStream_t stream_;  // Device stream if required by IO bindings
+  // True when the selected plugin EP device's allocator is used for IO binding (-g).
+  bool use_plugin_ep_io_binding_{false};
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
+  cudaStream_t stream_{nullptr};  // Device stream if required by IO bindings
 #endif
   Ort::ArenaCfg cuda_mempool_arena_cfg_{nullptr};
 };
