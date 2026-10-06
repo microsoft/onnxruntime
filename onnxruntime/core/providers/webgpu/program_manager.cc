@@ -10,6 +10,7 @@
 #include "core/platform/env_var.h"
 
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
@@ -205,11 +206,11 @@ Status ProgramManager::Build(const ProgramBase& program,
   {
     const auto shader_content = [&program, &program_key, &code]() {
       return MakeString("\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
+                        ", Key=\"", ProgramCacheKeyForLogging(program_key), "\"",
                         "] Start ===\n\n",
                         code,
                         "\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
+                        ", Key=\"", ProgramCacheKeyForLogging(program_key), "\"",
                         "] End ===\n");
     };
 

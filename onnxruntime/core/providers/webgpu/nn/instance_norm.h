@@ -5,20 +5,26 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class ComputeChannelScaleShiftProgram final : public Program<ComputeChannelScaleShiftProgram> {
- public:
-  ComputeChannelScaleShiftProgram(int components, float epsilon, int workgroup_size) : Program{"ComputeChannelScaleShift"}, components_(components), epsilon_(epsilon), workgroup_size_(workgroup_size) {}
+#define WEBGPU_CHANNEL_SCALE_CONFIG(F) \
+  F(int, components)                   \
+  F(float, epsilon)                    \
+  F(int, workgroup_size)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+WEBGPU_DECLARE_CONFIG(ChannelScaleConfig, WEBGPU_CHANNEL_SCALE_CONFIG);
+#undef WEBGPU_CHANNEL_SCALE_CONFIG
 
-  int components_;
-  float epsilon_;
-  int workgroup_size_;
+struct ComputeChannelScaleShiftShader {
+  using Config = ChannelScaleConfig;
+  static constexpr std::string_view name = "ComputeChannelScaleShift";
+  static Status GenerateShaderCode(const Config& config, ConfiguredShaderHelper& sh);
 };
+
+using ComputeChannelScaleShiftProgram = ConfiguredProgram<ComputeChannelScaleShiftShader>;
 
 class InstanceNormProgram final : public Program<InstanceNormProgram> {
  public:

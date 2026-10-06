@@ -20,7 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     BiasAdd);
 
-Status BiasAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status BiasAddShader::GenerateShaderCode(const Config&, ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const ShaderVariableHelper& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
   const ShaderVariableHelper& residual = shader.AddInput("residual", ShaderUsage::UseUniform);

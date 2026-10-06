@@ -9,6 +9,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/string_utils.h"
 #include "core/providers/webgpu/string_macros.h"
@@ -16,6 +17,33 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+const ShaderVariableHelper& ConfiguredShaderHelper::AddInput(const std::string& name, ShaderUsage usage) {
+  return shader_.AddInput(name, usage | ShaderUsage::UseUniform);
+}
+
+const ShaderVariableHelper& ConfiguredShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
+  return shader_.AddOutput(name, usage | ShaderUsage::UseUniform);
+}
+
+const ShaderIndicesHelper& ConfiguredShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
+  return shader_.AddIndices(name, usage | ShaderUsage::UseUniform);
+}
+
+ProgramVariableDataType ConfiguredShaderHelper::InputType(size_t index) const {
+  return shader_.program_.Inputs().at(index).var_type;
+}
+
+ProgramVariableDataType ConfiguredShaderHelper::OutputType(size_t index) const {
+  return shader_.program_.Outputs().at(index).var_type;
+}
+
+OStringStream& ConfiguredShaderHelper::AdditionalImplementation() { return shader_.AdditionalImplementation(); }
+OStringStream& ConfiguredShaderHelper::MainFunctionBody() { return shader_.MainFunctionBody(); }
+
+std::string ConfiguredShaderHelper::GuardAgainstOutOfBoundsWorkgroupSizes(std::string_view size) const {
+  return shader_.GuardAgainstOutOfBoundsWorkgroupSizes(size);
+}
 
 ShaderHelper::ShaderHelper(const ProgramBase& program,
                            const ProgramMetadata& program_metadata,

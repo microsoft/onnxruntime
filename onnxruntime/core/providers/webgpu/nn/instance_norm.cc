@@ -12,16 +12,16 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ComputeChannelScaleShiftProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status ComputeChannelScaleShiftShader::GenerateShaderCode(const Config& config, ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  shader.AdditionalImplementation() << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n"
-                                    << "var<workgroup> workgroup_shared_sum : array<f32_val_t, " << workgroup_size_ << ">;\n"
-                                    << "var<workgroup> workgroup_shared_squared_sum : array<f32_val_t, " << workgroup_size_ << ">;\n"
-                                    << "const workgroup_size = " << workgroup_size_ << ";\n";
+  shader.AdditionalImplementation() << "alias f32_val_t = " << (config.components == 4 ? "vec4<f32>" : (config.components == 2 ? "vec2<f32>" : "f32")) << ";\n"
+                                    << "var<workgroup> workgroup_shared_sum : array<f32_val_t, " << config.workgroup_size << ">;\n"
+                                    << "var<workgroup> workgroup_shared_squared_sum : array<f32_val_t, " << config.workgroup_size << ">;\n"
+                                    << "const workgroup_size = " << config.workgroup_size << ";\n";
 
   shader.MainFunctionBody() << "  let batch = workgroup_idx / uniforms.x_shape[1];\n"
                             << "  let channel = workgroup_idx % uniforms.x_shape[1];\n"
@@ -46,9 +46,9 @@ Status ComputeChannelScaleShiftProgram::GenerateShaderCode(ShaderHelper& shader)
                             << "    workgroupBarrier();\n"
                             << "  }\n"
                             << "  if (local_idx == 0) {\n"
-                            << "    let sum_final = " << SumVector("workgroup_shared_sum[0]", components_) << " / f32(height * " << components_ << ");\n"
-                            << "    let squared_sum_final = " << SumVector("workgroup_shared_squared_sum[0]", components_) << " / f32(height * " << components_ << ");\n"
-                            << "    let inv_std_dev = inverseSqrt(squared_sum_final - sum_final * sum_final + f32(" << std::to_string(epsilon_) << "));\n"
+                            << "    let sum_final = " << SumVector("workgroup_shared_sum[0]", config.components) << " / f32(height * " << config.components << ");\n"
+                            << "    let squared_sum_final = " << SumVector("workgroup_shared_squared_sum[0]", config.components) << " / f32(height * " << config.components << ");\n"
+                            << "    let inv_std_dev = inverseSqrt(squared_sum_final - sum_final * sum_final + f32(" << std::to_string(config.epsilon) << "));\n"
                             << "    let channel_scale = inv_std_dev * f32(" << scale.GetByOffset("channel") << ");\n"
                             << "    let channel_shift = f32(" << bias.GetByOffset("channel") << ") - sum_final * channel_scale;\n"
                             << "    " << output.SetByOffset("workgroup_idx", "output_value_t(output_element_t(channel_scale), output_element_t(channel_shift))") << ";\n"
@@ -73,10 +73,9 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   TensorShape reduced_output_shape(reduced_output_shape_vector);
   *output = context.CreateGPUTensor(input->DataType(), output_shape);
   ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon, workgroup_size);
-  program.CacheHint(components, units_of_work)
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
-                  {scale, ProgramTensorMetadataDependency::TypeAndRank},
-                  {bias, ProgramTensorMetadataDependency::TypeAndRank}})
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
+                     {scale, ProgramTensorMetadataDependency::TypeAndRank},
+                     {bias, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, 2}})
       .SetDispatchGroupSize(static_cast<uint32_t>(units_of_work))
       .SetWorkgroupSize(workgroup_size);

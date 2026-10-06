@@ -15,5 +15,7 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
                                      std::span<uint32_t> inputs_segments,
                                      std::span<uint32_t> outputs_segments);
 
+std::string ProgramCacheKeyForLogging(std::string_view key);
+
 }  // namespace webgpu
 }  // namespace onnxruntime

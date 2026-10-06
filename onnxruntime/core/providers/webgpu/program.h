@@ -376,6 +376,11 @@ class ProgramBase {
 
   virtual Status GenerateShaderCode(ShaderHelper& shader) const = 0;
 
+  // A structured program's static generator can only inspect its declared configuration
+  // and the metadata exposed by ConfiguredShaderHelper.
+  virtual const void* StructuredKeyType() const { return nullptr; }
+  virtual void AppendSpecializationKey(std::string&) const {}
+
   //
   // Properties Getters
   //
