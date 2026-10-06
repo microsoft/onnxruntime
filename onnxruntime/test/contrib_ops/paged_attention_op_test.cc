@@ -20,6 +20,9 @@
 #include "gtest/gtest.h"
 
 #include "contrib_ops/cpu/bert/attention_common.h"
+#if defined(USE_FLASH_ATTENTION)
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#endif
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -1983,34 +1986,28 @@ TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.enable_cuda_graph = true;
 
-  IoBindingCase probe;
-  probe.batch_size = 1;
-  probe.token_count = 1;
-  probe.num_heads = 2;
-  probe.kv_num_heads = 1;
-  probe.head_size = 64;
-  probe.block_size = 256;
-  probe.num_blocks = 1;
-  probe.max_num_blocks_per_seq = 1;
-  probe.cumulative_seqlens_q = {0, 1};
-  probe.past_seqlens = {0};
-  probe.block_table = {0};
-  probe.attention_metadata = {1, 1};
-  probe.skip_reference_check = true;
-  testing::internal::CaptureStdout();
-  RunIoBindingCase(
-      DefaultCudaExecutionProvider(),
-      kCudaExecutionProvider, true, false, probe);
-  const std::string probe_debug_output = testing::internal::GetCapturedStdout();
-  if (probe_debug_output.find("SdpaKernel=FLASH_ATTENTION") == std::string::npos) {
-    GTEST_SKIP() << "FlashAttention is not runnable in this build/device configuration.\n"
-                 << probe_debug_output;
+  cudaDeviceProp device_prop{};
+  int device_id = 0;
+  ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
+  ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
+  if (!onnxruntime::flash::is_supported<MLFloat16>(
+          device_prop, /*head_size*/ 64, /*num_heads*/ 2, /*num_heads_k*/ 1)) {
+    GTEST_SKIP() << "FlashAttention does not support this test geometry in the current build.";
   }
 
-  IoBindingCase malformed = probe;
-  malformed.past_seqlens.clear();
+  IoBindingCase malformed;
+  malformed.batch_size = 1;
+  malformed.token_count = 1;
+  malformed.num_heads = 2;
+  malformed.kv_num_heads = 1;
+  malformed.head_size = 64;
+  malformed.block_size = 256;
+  malformed.num_blocks = 1;
+  malformed.max_num_blocks_per_seq = 1;
+  malformed.cumulative_seqlens_q = {0, 1};
   malformed.replay_past_seqlens = {{0}, {0}, {0}, {0}};
   malformed.block_table = {malformed.num_blocks};
+  malformed.attention_metadata = {1, 1};
   malformed.allow_malformed_sequence_metadata = true;
   malformed.skip_reference_check = true;
   malformed.verify_malformed_cache_unchanged = true;
