@@ -34,7 +34,7 @@ _Ret_maybenull_ OrtStatus* CreateUnknownExceptionStatus(const char* function_nam
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());                \
   }                                                                                \
   catch (...) {                                                                    \
-    return ::onnxruntime::CreateUnknownExceptionStatus(__func__);                   \
+    return ::onnxruntime::CreateUnknownExceptionStatus(__func__);                  \
   }
 
 #else
