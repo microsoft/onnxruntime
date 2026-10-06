@@ -48,12 +48,6 @@ parameters:
   type: string
   default: '0'
 
-- name: CudaVersion
-  displayName: CUDA version
-  type: string
-  default: '13.0'
-  values:
-  - 13.0
 
 - name: EnableReactNative
   displayName: Whether to build React Native packages
@@ -148,6 +142,8 @@ extends:
       parameters:
         AllowReleasedOpsetOnly: 1
         DoESRP: true
+
+    - template: stages/java-cuda-packaging-stage.yml
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
