@@ -1225,13 +1225,14 @@ TEST(WebGpuContextTest, DisabledWeightLoadAccelerationAllowsEnvironmentAllocator
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 void ExpectD3D12BufferContents(
     ID3D12Device* device,
-    const windows::d3d12::D3D12FileBufferLoader::Batch& batch,
+    const windows::d3d12::D3D12FileBufferLoader::BufferCollection& batch,
     const std::vector<std::vector<uint8_t>>& expected_buffers) {
   ASSERT_EQ(batch.buffers.size(), expected_buffers.size());
 
   uint64_t total_size = 0;
   for (size_t index = 0; index < expected_buffers.size(); ++index) {
-    ASSERT_LE(expected_buffers[index].size(), batch.buffers[index].size);
+    ASSERT_NE(batch.buffers[index].Get(), nullptr);
+    ASSERT_LE(expected_buffers[index].size(), batch.buffers[index]->GetDesc().Width);
     total_size += expected_buffers[index].size();
   }
   ASSERT_GT(total_size, 0u);
@@ -1270,7 +1271,7 @@ void ExpectD3D12BufferContents(
   for (size_t index = 0; index < expected_buffers.size(); ++index) {
     command_list->CopyBufferRegion(
         readback.Get(), destination_offset,
-        batch.buffers[index].resource.Get(), 0,
+        batch.buffers[index].Get(), 0,
         expected_buffers[index].size());
     destination_offset += expected_buffers[index].size();
   }
@@ -1376,7 +1377,7 @@ TEST(WebGpuContextTest, D3D12FileLoaderReusesUploadSlotAcrossChunks) {
   ASSERT_STATUS_OK(windows::d3d12::D3D12FileBufferLoader::Create(
       context.WeightLoadingD3D12Device(), loader, config));
 
-  windows::d3d12::D3D12FileBufferLoader::Batch batch;
+  windows::d3d12::D3D12FileBufferLoader::BufferCollection batch;
   ASSERT_STATUS_OK(loader->Load(
       {{data_path.native(), 0, kDataSize}}, batch));
   ASSERT_EQ(batch.buffers.size(), 1u);
@@ -1397,7 +1398,7 @@ TEST(WebGpuContextTest, D3D12FileLoaderUsesMultipleHeapsAndCommittedResources) {
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
 
-  std::vector<windows::d3d12::D3D12FileBufferLoader::FileRange> ranges;
+  std::vector<windows::d3d12::D3D12FileBufferLoader::BufferSource> ranges;
   uint64_t file_offset = 0;
   {
     std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
@@ -1431,7 +1432,7 @@ TEST(WebGpuContextTest, D3D12FileLoaderUsesMultipleHeapsAndCommittedResources) {
   ASSERT_STATUS_OK(windows::d3d12::D3D12FileBufferLoader::Create(
       context.WeightLoadingD3D12Device(), loader, config));
 
-  windows::d3d12::D3D12FileBufferLoader::Batch batch;
+  windows::d3d12::D3D12FileBufferLoader::BufferCollection batch;
   ASSERT_STATUS_OK(loader->Load(ranges, batch));
   ASSERT_EQ(batch.buffers.size(), expected_buffers.size());
   EXPECT_EQ(batch.heaps.size(), 2u);

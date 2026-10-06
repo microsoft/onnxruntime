@@ -75,7 +75,7 @@ struct TensorKey {
 struct PreparedTensor {
   TensorKey key;
   ComPtr<ID3D12Resource> resource;
-  std::shared_ptr<D3D12FileBufferLoader::Batch> heap_owner;
+  std::shared_ptr<D3D12FileBufferLoader::BufferCollection> heap_owner;
   wgpu::SharedBufferMemory memory;
   wgpu::Buffer buffer;
   bool access_started = false;
@@ -144,7 +144,7 @@ common::Status LoadBatchToD3D12(
         "D3D12 accelerated initializer loading was canceled.");
   }
 
-  std::vector<D3D12FileBufferLoader::FileRange> ranges;
+  std::vector<D3D12FileBufferLoader::BufferSource> ranges;
   std::vector<size_t> tensor_indices;
   ranges.reserve(batch.load_range_count);
   tensor_indices.reserve(batch.load_range_count);
@@ -167,7 +167,7 @@ common::Status LoadBatchToD3D12(
     return common::Status::OK();
   }
 
-  auto loaded = std::make_shared<D3D12FileBufferLoader::Batch>();
+  auto loaded = std::make_shared<D3D12FileBufferLoader::BufferCollection>();
   const CancellationState cancellation_state{
       &is_canceled, &abort_requested};
   const D3D12FileBufferLoader::CancellationToken cancellation{
@@ -183,7 +183,7 @@ common::Status LoadBatchToD3D12(
 
   for (size_t index = 0; index < tensor_indices.size(); ++index) {
     auto& tensor = batch.tensors[tensor_indices[index]];
-    tensor.resource = loaded->buffers[index].resource;
+    tensor.resource = loaded->buffers[index];
     tensor.heap_owner = loaded;
   }
 
@@ -280,7 +280,7 @@ common::Status PrepareTensorForBatch(
 
 struct ImportedAllocation {
   ComPtr<ID3D12Resource> resource;
-  std::shared_ptr<D3D12FileBufferLoader::Batch> heap_owner;
+  std::shared_ptr<D3D12FileBufferLoader::BufferCollection> heap_owner;
   wgpu::SharedBufferMemory memory;
   wgpu::Buffer buffer;
   bool access_started = false;

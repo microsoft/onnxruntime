@@ -107,17 +107,17 @@ struct D3D12FileBufferLoader::FileReadRegion {
   uint64_t end = 0;
 };
 
-struct D3D12FileBufferLoader::PreparedFile {
+struct D3D12FileBufferLoader::FileReadPlan {
   std::wstring path;
   wil::unique_hfile file;
   wil::unique_hfile buffered_tail_file;
   uint64_t size = 0;
   uint64_t alignment = 0;
-  std::vector<size_t> range_indices;
-  std::vector<FileReadRegion> regions;
+  std::vector<size_t> buffer_source_indices;
+  std::vector<FileReadRegion> read_regions;
 };
 
-struct D3D12FileBufferLoader::UploadSlot {
+struct D3D12FileBufferLoader::UploadStagingSlot {
   ComPtr<ID3D12Resource> resource;
   ComPtr<ID3D12CommandAllocator> allocator;
   ComPtr<ID3D12GraphicsCommandList> command_list;
@@ -126,14 +126,14 @@ struct D3D12FileBufferLoader::UploadSlot {
   OVERLAPPED overlapped{};
   HANDLE read_file = INVALID_HANDLE_VALUE;
   uint64_t file_offset = 0;
-  DWORD requested = 0;
+  DWORD requested_read_bytes = 0;
   uint64_t fence_value = 0;
   bool read_active = false;
 };
 
 struct D3D12FileBufferLoader::AllocationResult {
   common::Status status;
-  Batch batch;
+  BufferCollection batch;
 };
 
 D3D12FileBufferLoader::D3D12FileBufferLoader(
@@ -142,32 +142,26 @@ D3D12FileBufferLoader::D3D12FileBufferLoader(
 }
 
 D3D12FileBufferLoader::~D3D12FileBufferLoader() {
-  if (retain_untracked_submission_) {
+  if (upload_error_gpu_completion_unknown_) {
     // Submitted work has no usable completion fence, so its resources must
     // remain alive for the lifetime of the process.
     device_.Detach();
     copy_queue_.Detach();
     copy_fence_.Detach();
     (void)copy_fence_complete_event_.release();
-    for (auto& slot : slots_) {
-      slot.resource.Detach();
-      slot.allocator.Detach();
-      slot.command_list.Detach();
-      (void)slot.file_read_complete_event.release();
-    }
-    for (auto& heap : untracked_batch_.heaps) {
-      heap.Detach();
-    }
-    for (auto& buffer : untracked_batch_.buffers) {
-      buffer.resource.Detach();
+    for (auto& staging_slot : upload_staging_slots_) {
+      staging_slot.resource.Detach();
+      staging_slot.allocator.Detach();
+      staging_slot.command_list.Detach();
+      (void)staging_slot.file_read_complete_event.release();
     }
     return;
   }
 
-  for (auto& slot : slots_) {
-    if (slot.resource && slot.mapped != nullptr) {
-      slot.resource->Unmap(0, nullptr);
-      slot.mapped = nullptr;
+  for (auto& staging_slot : upload_staging_slots_) {
+    if (staging_slot.resource && staging_slot.mapped != nullptr) {
+      staging_slot.resource->Unmap(0, nullptr);
+      staging_slot.mapped = nullptr;
     }
   }
 }
@@ -222,45 +216,45 @@ common::Status D3D12FileBufferLoader::Initialize() {
   const auto upload_heap = HeapProperties(D3D12_HEAP_TYPE_UPLOAD);
   const auto upload_description =
       BufferDescription(config_.upload_slot_size, D3D12_RESOURCE_FLAG_NONE);
-  slots_.resize(config_.upload_slot_count);
-  for (auto& slot : slots_) {
+  upload_staging_slots_.resize(config_.upload_slot_count);
+  for (auto& staging_slot : upload_staging_slots_) {
     hr = device_->CreateCommittedResource(
         &upload_heap, D3D12_HEAP_FLAG_NONE, &upload_description,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-        IID_PPV_ARGS(&slot.resource));
+        IID_PPV_ARGS(&staging_slot.resource));
     if (FAILED(hr)) {
       return HResultError(
           "ID3D12Device::CreateCommittedResource(upload)", hr);
     }
 
-    hr = slot.resource->Map(0, nullptr, &slot.mapped);
+    hr = staging_slot.resource->Map(0, nullptr, &staging_slot.mapped);
     if (FAILED(hr)) {
       return HResultError("ID3D12Resource::Map(upload)", hr);
     }
 
     hr = device_->CreateCommandAllocator(
-        D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&slot.allocator));
+        D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&staging_slot.allocator));
     if (FAILED(hr)) {
       return HResultError(
           "ID3D12Device::CreateCommandAllocator", hr);
     }
 
     hr = device_->CreateCommandList(
-        0, D3D12_COMMAND_LIST_TYPE_COPY, slot.allocator.Get(), nullptr,
-        IID_PPV_ARGS(&slot.command_list));
+        0, D3D12_COMMAND_LIST_TYPE_COPY, staging_slot.allocator.Get(), nullptr,
+        IID_PPV_ARGS(&staging_slot.command_list));
     if (FAILED(hr)) {
       return HResultError("ID3D12Device::CreateCommandList", hr);
     }
-    hr = slot.command_list->Close();
+    hr = staging_slot.command_list->Close();
     if (FAILED(hr)) {
       return HResultError(
           "ID3D12GraphicsCommandList::Close(initial)", hr);
     }
 
-    slot.file_read_complete_event.reset(CreateEventExW(
+    staging_slot.file_read_complete_event.reset(CreateEventExW(
         nullptr, nullptr, CREATE_EVENT_MANUAL_RESET,
         EVENT_MODIFY_STATE | SYNCHRONIZE));
-    if (!slot.file_read_complete_event) {
+    if (!staging_slot.file_read_complete_event) {
       return Win32Error("CreateEventExW(read)", GetLastError());
     }
   }
@@ -269,15 +263,15 @@ common::Status D3D12FileBufferLoader::Initialize() {
 }
 
 common::Status D3D12FileBufferLoader::LoadInternal(
-    const std::vector<FileRange>& ranges,
-    Batch& result,
+    const std::vector<BufferSource>& ranges,
+    BufferCollection& result,
     const CancellationToken& cancellation) {
   std::lock_guard<std::mutex> lock(load_mutex_);
   result.Clear();
 
   ORT_RETURN_IF(
-      retain_untracked_submission_,
-      "D3D12 file buffer loader cannot be reused after an untracked command submission.");
+      upload_error_gpu_completion_unknown_,
+      "D3D12 file buffer loader cannot be reused when GPU completion is unknown after an upload error.");
   if (ranges.empty()) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
@@ -317,7 +311,7 @@ common::Status D3D12FileBufferLoader::LoadInternal(
         AllocationResult allocation;
         try {
           allocation.status =
-              AllocateDestinations(sizes, allocation.batch);
+              AllocateDestinationGpuBuffers(sizes, allocation.batch);
         } catch (const std::exception& ex) {
           allocation.status = ORT_MAKE_STATUS(
               ONNXRUNTIME, RUNTIME_EXCEPTION,
@@ -330,7 +324,9 @@ common::Status D3D12FileBufferLoader::LoadInternal(
         return allocation;
       });
 
-  std::vector<PreparedFile> files;
+  // CreateFileReadPlan groups buffer sources by file and coalesces overlapping
+  // or adjacent sector-aligned ranges into read regions to avoid redundant reads.
+  std::vector<FileReadPlan> files;
   uint64_t last_submitted_fence = 0;
   bool load_succeeded = false;
   // Resources referenced by in-flight I/O or GPU work must remain alive on
@@ -348,15 +344,15 @@ common::Status D3D12FileBufferLoader::LoadInternal(
     }
   });
 
-  ORT_RETURN_IF_ERROR(PrepareFiles(ranges, cancellation, files));
+  ORT_RETURN_IF_ERROR(CreateFileReadPlan(ranges, cancellation, files));
 
   uint64_t maximum_alignment = 1;
   for (const auto& file : files) {
     maximum_alignment = std::max(maximum_alignment, file.alignment);
   }
-  ORT_RETURN_IF_ERROR(PrepareSlots(maximum_alignment, cancellation));
+  ORT_RETURN_IF_ERROR(PrepareUploadStagingSlots(maximum_alignment, cancellation));
 
-  Batch loaded_batch;
+  BufferCollection loaded_batch;
   bool allocation_ready = false;
   auto ensure_allocation = [&]() -> common::Status {
     if (allocation_ready) {
@@ -372,8 +368,8 @@ common::Status D3D12FileBufferLoader::LoadInternal(
   };
 
   for (auto& file : files) {
-    for (const auto& region : file.regions) {
-      const auto status = ReadRegion(
+    for (const auto& region : file.read_regions) {
+      const auto status = ReadFileRegion(
           file, region, ranges, loaded_batch, allocation_ready,
           ensure_allocation, cancellation, last_submitted_fence);
       if (!status.IsOK()) {
@@ -386,16 +382,16 @@ common::Status D3D12FileBufferLoader::LoadInternal(
   ORT_RETURN_IF_ERROR(
       WaitForFence(last_submitted_fence, cancellation));
   ORT_RETURN_IF_ERROR(
-      TransitionToCommon(loaded_batch, cancellation, last_submitted_fence));
+      TransitionDestinationBuffersToCommonState(loaded_batch, cancellation, last_submitted_fence));
 
   result = std::move(loaded_batch);
   load_succeeded = true;
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::AllocateDestinations(
+common::Status D3D12FileBufferLoader::AllocateDestinationGpuBuffers(
     const std::vector<uint64_t>& sizes,
-    Batch& batch) {
+    BufferCollection& batch) {
   struct Placement {
     bool committed = false;
     size_t heap_index = 0;
@@ -486,13 +482,13 @@ common::Status D3D12FileBufferLoader::AllocateDestinations(
       hr = device_->CreateCommittedResource(
           &heap_properties, D3D12_HEAP_FLAG_NONE, &placement.description,
           D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-          IID_PPV_ARGS(&batch.buffers[index].resource));
+          IID_PPV_ARGS(&batch.buffers[index]));
     } else {
       hr = device_->CreatePlacedResource(
           batch.heaps[placement.heap_index].Get(),
           placement.offset, &placement.description,
           D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-          IID_PPV_ARGS(&batch.buffers[index].resource));
+          IID_PPV_ARGS(&batch.buffers[index]));
     }
     if (FAILED(hr)) {
       return HResultError(
@@ -501,16 +497,15 @@ common::Status D3D12FileBufferLoader::AllocateDestinations(
               : "ID3D12Device::CreatePlacedResource",
           hr);
     }
-    batch.buffers[index].size = sizes[index];
   }
 
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::PrepareFiles(
-    const std::vector<FileRange>& ranges,
+common::Status D3D12FileBufferLoader::CreateFileReadPlan(
+    const std::vector<BufferSource>& ranges,
     const CancellationToken& cancellation,
-    std::vector<PreparedFile>& files) {
+    std::vector<FileReadPlan>& files) {
   // Group ranges by source file so each file is opened once. Later, aligned
   // overlapping ranges are merged to avoid redundant unbuffered reads.
   std::map<std::wstring, size_t> file_indices;
@@ -520,11 +515,11 @@ common::Status D3D12FileBufferLoader::PrepareFiles(
     const auto [file_index_it, inserted] =
         file_indices.try_emplace(range.path, files.size());
     if (inserted) {
-      PreparedFile file;
+      FileReadPlan file;
       file.path = range.path;
       files.push_back(std::move(file));
     }
-    files[file_index_it->second].range_indices.push_back(range_index);
+    files[file_index_it->second].buffer_source_indices.push_back(range_index);
   }
 
   for (auto& file : files) {
@@ -589,12 +584,12 @@ common::Status D3D12FileBufferLoader::PrepareFiles(
     }
 
     std::sort(
-        file.range_indices.begin(), file.range_indices.end(),
+        file.buffer_source_indices.begin(), file.buffer_source_indices.end(),
         [&](size_t left, size_t right) {
           return ranges[left].offset < ranges[right].offset;
         });
 
-    for (size_t range_index : file.range_indices) {
+    for (size_t range_index : file.buffer_source_indices) {
       const auto& range = ranges[range_index];
       if (range.offset > file.size ||
           range.length > file.size - range.offset) {
@@ -615,12 +610,12 @@ common::Status D3D12FileBufferLoader::PrepareFiles(
       FileReadRegion region{
           AlignDown(range.offset, file.alignment),
           std::min(aligned_end, file.size)};
-      if (!file.regions.empty() &&
-          region.begin <= file.regions.back().end) {
-        file.regions.back().end =
-            std::max(file.regions.back().end, region.end);
+      if (!file.read_regions.empty() &&
+          region.begin <= file.read_regions.back().end) {
+        file.read_regions.back().end =
+            std::max(file.read_regions.back().end, region.end);
       } else {
-        file.regions.push_back(region);
+        file.read_regions.push_back(region);
       }
     }
   }
@@ -628,76 +623,76 @@ common::Status D3D12FileBufferLoader::PrepareFiles(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::PrepareSlots(
+common::Status D3D12FileBufferLoader::PrepareUploadStagingSlots(
     uint64_t alignment,
     const CancellationToken& cancellation) {
-  for (auto& slot : slots_) {
+  for (auto& staging_slot : upload_staging_slots_) {
     ORT_RETURN_IF_ERROR(
-        WaitForFence(slot.fence_value, cancellation));
-    if (reinterpret_cast<uintptr_t>(slot.mapped) %
+        WaitForFence(staging_slot.fence_value, cancellation));
+    if (reinterpret_cast<uintptr_t>(staging_slot.mapped) %
             alignment !=
         0) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, FAIL,
           "Mapped upload buffer does not satisfy source file alignment.");
     }
-    slot.overlapped = {};
-    slot.read_file = INVALID_HANDLE_VALUE;
-    slot.file_offset = 0;
-    slot.requested = 0;
-    slot.fence_value = 0;
-    slot.read_active = false;
+    staging_slot.overlapped = {};
+    staging_slot.read_file = INVALID_HANDLE_VALUE;
+    staging_slot.file_offset = 0;
+    staging_slot.requested_read_bytes = 0;
+    staging_slot.fence_value = 0;
+    staging_slot.read_active = false;
   }
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::IssueRead(
+common::Status D3D12FileBufferLoader::IssueFileRead(
     HANDLE file,
-    UploadSlot& slot,
+    UploadStagingSlot& staging_slot,
     uint64_t offset,
     DWORD size) {
-  if (!ResetEvent(slot.file_read_complete_event.get())) {
+  if (!ResetEvent(staging_slot.file_read_complete_event.get())) {
     return Win32Error("ResetEvent(read)", GetLastError());
   }
-  slot.overlapped = {};
-  slot.overlapped.Offset = static_cast<DWORD>(offset);
-  slot.overlapped.OffsetHigh =
+  staging_slot.overlapped = {};
+  staging_slot.overlapped.Offset = static_cast<DWORD>(offset);
+  staging_slot.overlapped.OffsetHigh =
       static_cast<DWORD>(offset >> 32);
-  slot.overlapped.hEvent =
-      slot.file_read_complete_event.get();
-  slot.file_offset = offset;
-  slot.requested = size;
-  slot.read_file = file;
-  slot.read_active = true;
+  staging_slot.overlapped.hEvent =
+      staging_slot.file_read_complete_event.get();
+  staging_slot.file_offset = offset;
+  staging_slot.requested_read_bytes = size;
+  staging_slot.read_file = file;
+  staging_slot.read_active = true;
   if (!ReadFile(
-          file, slot.mapped, size, nullptr,
-          &slot.overlapped)) {
+          file, staging_slot.mapped, size, nullptr,
+          &staging_slot.overlapped)) {
     const DWORD error = GetLastError();
     if (error != ERROR_IO_PENDING) {
-      slot.read_active = false;
-      slot.read_file = INVALID_HANDLE_VALUE;
+      staging_slot.read_active = false;
+      staging_slot.read_file = INVALID_HANDLE_VALUE;
       return Win32Error("ReadFile", error);
     }
   }
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::CompleteRead(
+common::Status D3D12FileBufferLoader::ProcessFileReadCompletion(
     uint64_t file_size,
-    UploadSlot& slot,
+    UploadStagingSlot& staging_slot,
     DWORD& bytes_read) {
   if (!GetOverlappedResult(
-          slot.read_file, &slot.overlapped,
+          staging_slot.read_file, &staging_slot.overlapped,
           &bytes_read, FALSE)) {
     return Win32Error(
         "GetOverlappedResult", GetLastError());
   }
-  slot.read_active = false;
-  slot.read_file = INVALID_HANDLE_VALUE;
+  staging_slot.read_active = false;
+  staging_slot.read_file = INVALID_HANDLE_VALUE;
   const uint64_t required_bytes =
       std::min<uint64_t>(
-          slot.requested,
-          file_size - slot.file_offset);
+          staging_slot.requested_read_bytes,
+          file_size - staging_slot.file_offset);
   if (bytes_read < required_bytes) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,
@@ -707,31 +702,31 @@ common::Status D3D12FileBufferLoader::CompleteRead(
 }
 
 template <typename EnsureAllocationFn>
-common::Status D3D12FileBufferLoader::ReadRegion(
-    PreparedFile& file,
+common::Status D3D12FileBufferLoader::ReadFileRegion(
+    FileReadPlan& file,
     const FileReadRegion& region,
-    const std::vector<FileRange>& ranges,
-    Batch& batch,
+    const std::vector<BufferSource>& ranges,
+    BufferCollection& batch,
     bool& allocation_ready,
     EnsureAllocationFn& ensure_allocation,
     const CancellationToken& cancellation,
     uint64_t& last_submitted_fence) {
   uint64_t next_offset = region.begin;
 
-  // Each upload slot moves through read-active, copy-in-flight, and reusable
-  // states. Keep all eligible slots busy without reusing one before its
-  // previous GPU copy reaches the fence.
+  // Each upload staging slot moves through read-active, copy-in-flight, and
+  // reusable states. Keep all eligible staging slots busy without reusing one
+  // before its previous GPU copy reaches the fence.
   auto issue_available = [&]() -> common::Status {
-    for (auto& slot : slots_) {
+    for (auto& staging_slot : upload_staging_slots_) {
       if (next_offset >= region.end) {
         break;
       }
-      if (slot.read_active) {
+      if (staging_slot.read_active) {
         continue;
       }
-      if (slot.fence_value != 0 &&
+      if (staging_slot.fence_value != 0 &&
           copy_fence_->GetCompletedValue() <
-              slot.fence_value) {
+              staging_slot.fence_value) {
         continue;
       }
       if (cancellation.IsCancellationRequested()) {
@@ -745,11 +740,11 @@ common::Status D3D12FileBufferLoader::ReadRegion(
           next_offset + bytes == file.size &&
           bytes % file.alignment != 0;
       ORT_RETURN_IF_ERROR(
-          IssueRead(
+          IssueFileRead(
               use_buffered_tail
                   ? file.buffered_tail_file.get()
                   : file.file.get(),
-              slot,
+              staging_slot,
               next_offset, bytes));
       next_offset += bytes;
     }
@@ -761,14 +756,14 @@ common::Status D3D12FileBufferLoader::ReadRegion(
       kInitialCancellationPollMilliseconds;
   while (true) {
     std::array<HANDLE, MAXIMUM_WAIT_OBJECTS> handles{};
-    std::array<size_t, MAXIMUM_WAIT_OBJECTS> slot_indices{};
+    std::array<size_t, MAXIMUM_WAIT_OBJECTS> staging_slot_indices{};
     DWORD handle_count = 0;
     for (size_t index = 0;
-         index < slots_.size(); ++index) {
-      if (slots_[index].read_active) {
+         index < upload_staging_slots_.size(); ++index) {
+      if (upload_staging_slots_[index].read_active) {
         handles[handle_count] =
-            slots_[index].file_read_complete_event.get();
-        slot_indices[handle_count] = index;
+            upload_staging_slots_[index].file_read_complete_event.get();
+        staging_slot_indices[handle_count] = index;
         ++handle_count;
       }
     }
@@ -779,11 +774,11 @@ common::Status D3D12FileBufferLoader::ReadRegion(
       }
       uint64_t next_fence =
           std::numeric_limits<uint64_t>::max();
-      for (const auto& slot : slots_) {
-        if (!slot.read_active &&
-            slot.fence_value != 0) {
+      for (const auto& staging_slot : upload_staging_slots_) {
+        if (!staging_slot.read_active &&
+            staging_slot.fence_value != 0) {
           next_fence =
-              std::min(next_fence, slot.fence_value);
+              std::min(next_fence, staging_slot.fence_value);
         }
       }
       if (next_fence ==
@@ -818,20 +813,20 @@ common::Status D3D12FileBufferLoader::ReadRegion(
           GetLastError());
     }
 
-    auto& slot =
-        slots_[slot_indices[wait_result - WAIT_OBJECT_0]];
+    auto& staging_slot =
+        upload_staging_slots_[staging_slot_indices[wait_result - WAIT_OBJECT_0]];
     DWORD bytes_read = 0;
     ORT_RETURN_IF_ERROR(
-        CompleteRead(
-            file.size, slot, bytes_read));
+        ProcessFileReadCompletion(
+            file.size, staging_slot, bytes_read));
 
     if (!allocation_ready) {
       ORT_RETURN_IF_ERROR(ensure_allocation());
     }
     ORT_RETURN_IF_ERROR(
-        SubmitCopies(
-            slot, slot.file_offset, bytes_read,
-            file.range_indices, ranges, batch,
+        SubmitStagingToDestinationCopies(
+            staging_slot, staging_slot.file_offset, bytes_read,
+            file.buffer_source_indices, ranges, batch,
             last_submitted_fence));
     cancellation_poll_milliseconds =
         kInitialCancellationPollMilliseconds;
@@ -841,28 +836,28 @@ common::Status D3D12FileBufferLoader::ReadRegion(
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::SubmitCopies(
-    UploadSlot& slot,
+common::Status D3D12FileBufferLoader::SubmitStagingToDestinationCopies(
+    UploadStagingSlot& staging_slot,
     uint64_t chunk_begin,
     uint64_t bytes,
-    const std::vector<size_t>& range_indices,
-    const std::vector<FileRange>& ranges,
-    Batch& batch,
+    const std::vector<size_t>& buffer_source_indices,
+    const std::vector<BufferSource>& ranges,
+    BufferCollection& batch,
     uint64_t& last_submitted_fence) {
-  HRESULT hr = slot.allocator->Reset();
+  HRESULT hr = staging_slot.allocator->Reset();
   if (FAILED(hr)) {
     return HResultError(
         "ID3D12CommandAllocator::Reset", hr);
   }
-  hr = slot.command_list->Reset(
-      slot.allocator.Get(), nullptr);
+  hr = staging_slot.command_list->Reset(
+      staging_slot.allocator.Get(), nullptr);
   if (FAILED(hr)) {
     return HResultError(
         "ID3D12GraphicsCommandList::Reset", hr);
   }
 
   const uint64_t chunk_end = chunk_begin + bytes;
-  for (size_t range_index : range_indices) {
+  for (size_t range_index : buffer_source_indices) {
     const auto& range = ranges[range_index];
     const uint64_t range_end =
         range.offset + range.length;
@@ -871,10 +866,10 @@ common::Status D3D12FileBufferLoader::SubmitCopies(
     const uint64_t copy_end =
         std::min(chunk_end, range_end);
     if (copy_begin < copy_end) {
-      slot.command_list->CopyBufferRegion(
-          batch.buffers[range_index].resource.Get(),
+      staging_slot.command_list->CopyBufferRegion(
+          batch.buffers[range_index].Get(),
           copy_begin - range.offset,
-          slot.resource.Get(),
+          staging_slot.resource.Get(),
           copy_begin - chunk_begin,
           copy_end - copy_begin);
     }
@@ -895,10 +890,10 @@ common::Status D3D12FileBufferLoader::SubmitCopies(
             {aligned_size - padding_offset,
              range.length - source_relative_offset,
              chunk_end - source_offset});
-        slot.command_list->CopyBufferRegion(
-            batch.buffers[range_index].resource.Get(),
+        staging_slot.command_list->CopyBufferRegion(
+            batch.buffers[range_index].Get(),
             padding_offset,
-            slot.resource.Get(),
+            staging_slot.resource.Get(),
             source_offset - chunk_begin,
             copy_size);
         padding_offset += copy_size;
@@ -908,45 +903,38 @@ common::Status D3D12FileBufferLoader::SubmitCopies(
     }
   }
 
-  hr = slot.command_list->Close();
+  hr = staging_slot.command_list->Close();
   if (FAILED(hr)) {
     return HResultError(
         "ID3D12GraphicsCommandList::Close", hr);
   }
   ID3D12CommandList* command_lists[] = {
-      slot.command_list.Get()};
+      staging_slot.command_list.Get()};
   copy_queue_->ExecuteCommandLists(1, command_lists);
 
   const uint64_t fence_value = ++next_fence_value_;
-  const auto signal_status =
-      SignalSubmittedWork(fence_value);
-  if (!signal_status.IsOK()) {
-    if (retain_untracked_submission_) {
-      untracked_batch_ = std::move(batch);
-    }
-    return signal_status;
-  }
-  slot.fence_value = fence_value;
+  ORT_RETURN_IF_ERROR(SignalSubmittedWork(fence_value, batch));
+  staging_slot.fence_value = fence_value;
   last_submitted_fence = fence_value;
   return common::Status::OK();
 }
 
-common::Status D3D12FileBufferLoader::TransitionToCommon(
-    Batch& batch,
+common::Status D3D12FileBufferLoader::TransitionDestinationBuffersToCommonState(
+    BufferCollection& batch,
     const CancellationToken& cancellation,
     uint64_t& last_submitted_fence) {
   if (batch.buffers.empty()) {
     return common::Status::OK();
   }
 
-  auto& slot = slots_.front();
-  HRESULT hr = slot.allocator->Reset();
+  auto& staging_slot = upload_staging_slots_.front();
+  HRESULT hr = staging_slot.allocator->Reset();
   if (FAILED(hr)) {
     return HResultError(
         "ID3D12CommandAllocator::Reset(transition)", hr);
   }
-  hr = slot.command_list->Reset(
-      slot.allocator.Get(), nullptr);
+  hr = staging_slot.command_list->Reset(
+      staging_slot.allocator.Get(), nullptr);
   if (FAILED(hr)) {
     return HResultError(
         "ID3D12GraphicsCommandList::Reset(transition)", hr);
@@ -959,7 +947,7 @@ common::Status D3D12FileBufferLoader::TransitionToCommon(
     barrier.Type =
         D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource =
-        buffer.resource.Get();
+        buffer.Get();
     barrier.Transition.Subresource =
         D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     barrier.Transition.StateBefore =
@@ -968,40 +956,33 @@ common::Status D3D12FileBufferLoader::TransitionToCommon(
         D3D12_RESOURCE_STATE_COMMON;
     barriers.push_back(barrier);
   }
-  slot.command_list->ResourceBarrier(
+  staging_slot.command_list->ResourceBarrier(
       static_cast<UINT>(barriers.size()),
       barriers.data());
 
-  hr = slot.command_list->Close();
+  hr = staging_slot.command_list->Close();
   if (FAILED(hr)) {
     return HResultError(
         "ID3D12GraphicsCommandList::Close(transition)", hr);
   }
   ID3D12CommandList* command_lists[] = {
-      slot.command_list.Get()};
+      staging_slot.command_list.Get()};
   copy_queue_->ExecuteCommandLists(1, command_lists);
 
   const uint64_t fence_value = ++next_fence_value_;
-  const auto signal_status =
-      SignalSubmittedWork(fence_value);
-  if (!signal_status.IsOK()) {
-    if (retain_untracked_submission_) {
-      untracked_batch_ = std::move(batch);
-    }
-    return signal_status;
-  }
+  ORT_RETURN_IF_ERROR(SignalSubmittedWork(fence_value, batch));
   last_submitted_fence = fence_value;
   return WaitForFence(
       last_submitted_fence, cancellation);
 }
 
 common::Status D3D12FileBufferLoader::SignalSubmittedWork(
-    uint64_t value) {
+    uint64_t value, BufferCollection& batch) {
   // ExecuteCommandLists has no status return. Once work has been submitted,
   // its resources must stay alive until either a fence is queued behind it or
   // the device is removed. If Signal fails while the device is still live,
-  // the submission cannot be tracked safely; retain the loader and submitted
-  // resources for process lifetime rather than hanging or releasing them.
+  // completion is unknown. Detach destination resources now; the destructor
+  // detaches the remaining GPU resources to keep them alive for process lifetime.
   const HRESULT signal_result =
       copy_queue_->Signal(copy_fence_.Get(), value);
   if (SUCCEEDED(signal_result)) {
@@ -1014,7 +995,14 @@ common::Status D3D12FileBufferLoader::SignalSubmittedWork(
         "D3D12 device removed after command submission",
         removal_reason);
   }
-  retain_untracked_submission_ = true;
+  upload_error_gpu_completion_unknown_ = true;
+  for (auto& buffer : batch.buffers) {
+    buffer.Detach();
+  }
+  for (auto& heap : batch.heaps) {
+    heap.Detach();
+  }
+  batch.Clear();
   return HResultError(
       "ID3D12CommandQueue::Signal after command submission",
       signal_result);
@@ -1103,23 +1091,23 @@ void D3D12FileBufferLoader::WaitForFenceUncancelled(
 }
 
 void D3D12FileBufferLoader::DrainActiveReads() noexcept {
-  for (auto& slot : slots_) {
-    if (!slot.read_active) {
+  for (auto& staging_slot : upload_staging_slots_) {
+    if (!staging_slot.read_active) {
       continue;
     }
     (void)CancelIoEx(
-        slot.read_file, &slot.overlapped);
+        staging_slot.read_file, &staging_slot.overlapped);
   }
-  for (auto& slot : slots_) {
-    if (!slot.read_active) {
+  for (auto& staging_slot : upload_staging_slots_) {
+    if (!staging_slot.read_active) {
       continue;
     }
     DWORD bytes_read = 0;
     (void)GetOverlappedResult(
-        slot.read_file, &slot.overlapped,
+        staging_slot.read_file, &staging_slot.overlapped,
         &bytes_read, TRUE);
-    slot.read_active = false;
-    slot.read_file = INVALID_HANDLE_VALUE;
+    staging_slot.read_active = false;
+    staging_slot.read_file = INVALID_HANDLE_VALUE;
   }
 }
 
@@ -1147,8 +1135,8 @@ common::Status D3D12FileBufferLoader::Create(
 }
 
 common::Status D3D12FileBufferLoader::Load(
-    const std::vector<FileRange>& ranges,
-    Batch& result,
+    const std::vector<BufferSource>& ranges,
+    BufferCollection& result,
     const CancellationToken& cancellation) noexcept {
   try {
     return LoadInternal(ranges, result, cancellation);

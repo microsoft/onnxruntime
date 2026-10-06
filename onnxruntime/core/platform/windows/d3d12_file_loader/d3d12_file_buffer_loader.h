@@ -27,7 +27,7 @@ class D3D12FileBufferLoader {
     uint64_t max_destination_heap_size = 512ull * 1024ull * 1024ull;
   };
 
-  struct FileRange {
+  struct BufferSource {
     std::wstring path;
     uint64_t offset = 0;
     uint64_t length = 0;
@@ -45,14 +45,9 @@ class D3D12FileBufferLoader {
     }
   };
 
-  struct Buffer {
-    Microsoft::WRL::ComPtr<ID3D12Resource> resource;
-    uint64_t size = 0;
-  };
-
-  struct Batch {
+  struct BufferCollection {
     std::vector<Microsoft::WRL::ComPtr<ID3D12Heap>> heaps;
-    std::vector<Buffer> buffers;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> buffers;
 
     void Clear() noexcept {
       buffers.clear();
@@ -70,17 +65,19 @@ class D3D12FileBufferLoader {
   D3D12FileBufferLoader(const D3D12FileBufferLoader&) = delete;
   D3D12FileBufferLoader& operator=(const D3D12FileBufferLoader&) = delete;
 
+  // Each BufferSource describes a file range for one returned buffer.
   // The returned buffers correspond one-to-one with ranges and preserve input order.
   // Each buffer is in D3D12_RESOURCE_STATE_COMMON when this method succeeds.
+  // Resource widths may include padding; ranges specify the loaded data lengths.
   common::Status Load(
-      const std::vector<FileRange>& ranges,
-      Batch& result,
+      const std::vector<BufferSource>& ranges,
+      BufferCollection& result,
       const CancellationToken& cancellation = {}) noexcept;
 
  private:
   struct FileReadRegion;
-  struct PreparedFile;
-  struct UploadSlot;
+  struct FileReadPlan;
+  struct UploadStagingSlot;
   struct AllocationResult;
 
   D3D12FileBufferLoader(
@@ -89,54 +86,54 @@ class D3D12FileBufferLoader {
 
   common::Status Initialize();
   common::Status LoadInternal(
-      const std::vector<FileRange>& ranges,
-      Batch& result,
+      const std::vector<BufferSource>& ranges,
+      BufferCollection& result,
       const CancellationToken& cancellation);
-  common::Status AllocateDestinations(
+  common::Status AllocateDestinationGpuBuffers(
       const std::vector<uint64_t>& sizes,
-      Batch& batch);
-  common::Status PrepareFiles(
-      const std::vector<FileRange>& ranges,
+      BufferCollection& batch);
+  common::Status CreateFileReadPlan(
+      const std::vector<BufferSource>& ranges,
       const CancellationToken& cancellation,
-      std::vector<PreparedFile>& files);
-  common::Status PrepareSlots(
+      std::vector<FileReadPlan>& files);
+  common::Status PrepareUploadStagingSlots(
       uint64_t alignment,
       const CancellationToken& cancellation);
-  common::Status IssueRead(
+  common::Status IssueFileRead(
       HANDLE file,
-      UploadSlot& slot,
+      UploadStagingSlot& staging_slot,
       uint64_t offset,
       DWORD size);
-  common::Status CompleteRead(
+  common::Status ProcessFileReadCompletion(
       uint64_t file_size,
-      UploadSlot& slot,
+      UploadStagingSlot& staging_slot,
       DWORD& bytes_read);
   template <typename EnsureAllocationFn>
-  common::Status ReadRegion(
-      PreparedFile& file,
+  common::Status ReadFileRegion(
+      FileReadPlan& file,
       const FileReadRegion& region,
-      const std::vector<FileRange>& ranges,
-      Batch& batch,
+      const std::vector<BufferSource>& ranges,
+      BufferCollection& batch,
       bool& allocation_ready,
       EnsureAllocationFn& ensure_allocation,
       const CancellationToken& cancellation,
       uint64_t& last_submitted_fence);
-  common::Status SubmitCopies(
-      UploadSlot& slot,
+  common::Status SubmitStagingToDestinationCopies(
+      UploadStagingSlot& staging_slot,
       uint64_t chunk_begin,
       uint64_t bytes,
-      const std::vector<size_t>& range_indices,
-      const std::vector<FileRange>& ranges,
-      Batch& batch,
+      const std::vector<size_t>& buffer_source_indices,
+      const std::vector<BufferSource>& ranges,
+      BufferCollection& batch,
       uint64_t& last_submitted_fence);
-  common::Status TransitionToCommon(
-      Batch& batch,
+  common::Status TransitionDestinationBuffersToCommonState(
+      BufferCollection& batch,
       const CancellationToken& cancellation,
       uint64_t& last_submitted_fence);
   common::Status WaitForFence(
       uint64_t value,
       const CancellationToken& cancellation);
-  common::Status SignalSubmittedWork(uint64_t value);
+  common::Status SignalSubmittedWork(uint64_t value, BufferCollection& batch);
   void WaitForFenceUncancelled(uint64_t value) noexcept;
   void DrainActiveReads() noexcept;
 
@@ -145,10 +142,9 @@ class D3D12FileBufferLoader {
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> copy_queue_;
   Microsoft::WRL::ComPtr<ID3D12Fence> copy_fence_;
   wil::unique_handle copy_fence_complete_event_;
-  std::vector<UploadSlot> slots_;
-  Batch untracked_batch_;
+  std::vector<UploadStagingSlot> upload_staging_slots_;
   uint64_t next_fence_value_ = 0;
-  bool retain_untracked_submission_ = false;
+  bool upload_error_gpu_completion_unknown_ = false;
   std::mutex load_mutex_;
 };
 
