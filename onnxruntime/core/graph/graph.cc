@@ -2064,6 +2064,7 @@ struct VisitorPriorityQueue {
   void pop() { list_.pop_back(); }
 };
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
   const std::pair<NodeIndex, NodeIndex> edge{src_node_index, dst_node_index};
   if (std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), edge) ==
@@ -2079,6 +2080,7 @@ void Graph::UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex d
     ort_format_control_edges_.erase(it);
   }
 }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
@@ -3848,14 +3850,7 @@ Status Graph::VerifyInputAndInitializerNames() {
   return Status::OK();
 }
 
-bool Graph::HasOrtFormatControlEdge(NodeIndex node_index) const {
-  return std::any_of(
-      ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
-      [node_index](const auto& edge) {
-        return edge.first == node_index || edge.second == node_index;
-      });
-}
-
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::RestoreOrtFormatControlEdges() {
   for (const auto& [src_node_index, dst_node_index] : ort_format_control_edges_) {
     auto* src_node = GetNode(src_node_index);
@@ -3872,6 +3867,7 @@ void Graph::RestoreOrtFormatControlEdges() {
     }
   }
 }
+#endif
 
 Status Graph::InitInputsInitializersOutputs() {
   // clear the previous relationships, as we re-create them when resolving.

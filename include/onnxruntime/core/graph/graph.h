@@ -1245,7 +1245,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index, int dst_arg_index);
 #endif
 
-  bool HasOrtFormatControlEdge(NodeIndex node_index) const;
+  bool HasOrtFormatControlEdge(NodeIndex node_index) const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    for (const auto& edge : ort_format_control_edges_) {
+      if (edge.first == node_index || edge.second == node_index) {
+        return true;
+      }
+    }
+    return false;
+#else
+    ORT_UNUSED_PARAMETER(node_index);
+    return false;
+#endif
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -1909,9 +1921,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   void RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
   void UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
   void RestoreOrtFormatControlEdges();
+#endif
 
   // Initialize overridable initializers container
   void ComputeOverridableInitializers();
@@ -2126,7 +2140,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   bool graph_proto_sync_needed_ = false;
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::vector<std::pair<NodeIndex, NodeIndex>> ort_format_control_edges_;
+#endif
 
   // The topological order of node index used to do node and op match verification temporarily.
   std::vector<NodeIndex> nodes_in_topological_order_;
