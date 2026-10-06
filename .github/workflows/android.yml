@@ -79,7 +79,8 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        BINARY_SIZE_THRESHOLD_IN_BYTES=1601536
+        # Upstream model/external-data validation updates: measured section total 1604910 bytes.
+        BINARY_SIZE_THRESHOLD_IN_BYTES=1605632
         echo "Binary size threshold in bytes: ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
         BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
 
