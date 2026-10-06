@@ -9,6 +9,8 @@
 #include "gtest/gtest.h"
 
 #include "core/common/float8.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -20,7 +22,7 @@ namespace test {
 #if defined(USE_WEBGPU) && !defined(DISABLE_FLOAT8_TYPES)
 namespace {
 void RunFp8MatMul(const std::vector<int64_t>& a_dims, int64_t n, int64_t block_size,
-                  bool with_a_scale, bool with_bias) {
+                  bool with_a_scale, bool with_bias, bool distinct_rows = false) {
   auto ep = DefaultWebGpuExecutionProvider();
   if (!ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
@@ -37,7 +39,8 @@ void RunFp8MatMul(const std::vector<int64_t>& a_dims, int64_t n, int64_t block_s
   std::vector<float> scales;
   std::vector<MLFloat16> biases;
   for (int64_t i = 0; i < m * k; ++i) {
-    a.emplace_back(0.125f * static_cast<float>((i % 11) - 5));
+    a.emplace_back(0.125f * static_cast<float>((i % 11) - 5) +
+                   (distinct_rows ? 0.015625f * static_cast<float>(i / k) : 0.0f));
   }
   for (int64_t i = 0; i < n; ++i) {
     biases.emplace_back(static_cast<float>((i % 5) - 2) * 0.25f);
@@ -91,10 +94,31 @@ void RunFp8MatMul(const std::vector<int64_t>& a_dims, int64_t n, int64_t block_s
   providers.push_back(std::move(ep));
   test.Run(options, OpTester::ExpectResult::kExpectSuccess, {}, {}, nullptr, &providers);
 }
+
+bool SupportsFp8MatrixPath() {
+  const auto& context = webgpu::WebGpuContextFactory::DefaultContext();
+  bool supported = false;
+  if (context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+    const auto& configs = context.SubgroupMatrixConfigs();
+    const auto& adapter = context.AdapterInfo();
+    supported = webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
+                    {configs.configs, configs.configCount}, adapter.subgroupMinSize, adapter.subgroupMaxSize,
+                    context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
+                    {{wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F32,
+                      16, 16, 16, 32, false}})
+                    .has_value();
+  }
+  webgpu::WebGpuContextFactory::ReleaseContext(0);
+  return supported;
+}
 }  // namespace
 
 TEST(MatMulBlockQuantizedFp8WeightTest, DecodeRankOneOddBytes) {
   RunFp8MatMul({3}, 1, 2, false, false);
+}
+
+TEST(MatMulBlockQuantizedFp8WeightTest, ScalarDispatchBeyondWebGpuDimensionLimit) {
+  RunFp8MatMul({1, 1}, 65537, 1, false, false);
 }
 
 TEST(MatMulBlockQuantizedFp8WeightTest, DecodeWithBlockScalesAndBias) {
@@ -106,11 +130,34 @@ TEST(MatMulBlockQuantizedFp8WeightTest, ActivationQdqBatched) {
 }
 
 TEST(MatMulBlockQuantizedFp8WeightTest, MatrixTailWithBlockScales) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  if (!SupportsFp8MatrixPath()) {
+    GTEST_SKIP() << "16x16x16 FP16/F32 subgroup matrix with subgroup size 32 is unavailable";
+  }
   RunFp8MatMul({9, 33}, 19, 16, false, true);
 }
 
 TEST(MatMulBlockQuantizedFp8WeightTest, MatrixWithActivationQdq) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  if (!SupportsFp8MatrixPath()) {
+    GTEST_SKIP() << "16x16x16 FP16/F32 subgroup matrix with subgroup size 32 is unavailable";
+  }
   RunFp8MatMul({8, 32}, 16, 32, true, false);
+}
+
+TEST(MatMulBlockQuantizedFp8WeightTest, MatrixSubgroupTilesAndSecondWorkgroup) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  if (!SupportsFp8MatrixPath()) {
+    GTEST_SKIP() << "16x16x16 FP16/F32 subgroup matrix with subgroup size 32 is unavailable";
+  }
+  RunFp8MatMul({64, 16}, 16, 16, false, false, true);
+  RunFp8MatMul({65, 16}, 16, 16, false, false, true);
 }
 
 TEST(MatMulBlockQuantizedFp8WeightTest, SubnormalSignedWeightsAndBias) {
@@ -163,6 +210,35 @@ TEST(MatMulBlockQuantizedFp8WeightTest, ActivationQdqTieAndSaturation) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(std::move(ep));
   test.Run(options, OpTester::ExpectResult::kExpectSuccess, {}, {}, nullptr, &providers);
+}
+
+TEST(MatMulBlockQuantizedFp8WeightTest, ActivationQdqAdjacentEvenAndOddTies) {
+  for (float scale : {0.375f, 0.75f, 1.0f}) {
+    auto ep = DefaultWebGpuExecutionProvider();
+    if (!ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+    const float factor = scale / 0.375f;
+    const float delta = factor * 0.000244140625f;
+    const float even_tie = factor * 0.3984375f;
+    const float odd_tie = factor * 0.4453125f;
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("block_size", int64_t{1});
+    test.AddInput<MLFloat16>("A", {6, 1},
+                             ToFloat16({even_tie - delta, even_tie, even_tie + delta,
+                                        odd_tie - delta, odd_tie, odd_tie + delta}));
+    test.AddInput<Float8E4M3FN>("B", {1, 1}, {Float8E4M3FN(1.0f, true)}, true);
+    test.AddInput<float>("b_scale", {1, 1}, {1.0f});
+    test.AddInput<float>("a_scale", {}, {scale});
+    test.AddOutput<MLFloat16>("Y", {6, 1},
+                              ToFloat16({factor * 0.375f, factor * 0.375f, factor * 0.421875f,
+                                         factor * 0.421875f, factor * 0.46875f, factor * 0.46875f}));
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    test.Run(options, OpTester::ExpectResult::kExpectSuccess, {}, {}, nullptr, &providers);
+  }
 }
 
 TEST(MatMulBlockQuantizedFp8WeightTest, EmptyReductionWithBias) {

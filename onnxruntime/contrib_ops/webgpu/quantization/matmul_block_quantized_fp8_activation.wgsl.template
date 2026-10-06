@@ -4,8 +4,6 @@
 #use .getByOffset .setByOffset
 
 const E4M3_MAX: f32 = 448.0;
-const E4M3_MIN_NORMAL_EXP: f32 = -6.0;
-const E4M3_MANTISSA_BITS: f32 = 3.0;
 
 $MAIN {
   if (global_idx >= uniforms.size) {
@@ -16,7 +14,8 @@ $MAIN {
   let input_value = f32(input_a.getByOffset(global_idx));
   let v = input_value * inverse;
   let magnitude = min(abs(v), E4M3_MAX);
-  let step = exp2(max(floor(log2(magnitude)), E4M3_MIN_NORMAL_EXP) - E4M3_MANTISSA_BITS);
+  let magnitude_exponent = (bitcast<u32>(magnitude) >> 23u) & 255u;
+  let step = bitcast<f32>((max(magnitude_exponent, 121u) - 3u) << 23u);
   let units = magnitude / step;
   let lower = floor(units);
   let halfway_input = (lower + 0.5) * step * abs(scale);

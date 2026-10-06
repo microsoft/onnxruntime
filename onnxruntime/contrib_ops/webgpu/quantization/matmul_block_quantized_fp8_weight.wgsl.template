@@ -32,8 +32,12 @@ var<workgroup> partial: array<f32, 32>;
 $MAIN {
 #if use_matrix
   let lane = local_idx;
-  let m_base = workgroup_id.y * 64u;
-  let n_base = workgroup_id.x * 16u;
+  let n_tiles = (uniforms.N + 15u) / 16u;
+  if (workgroup_idx >= n_tiles * ((uniforms.M + 63u) / 64u)) {
+    return;
+  }
+  let m_base = (workgroup_idx / n_tiles) * 64u;
+  let n_base = (workgroup_idx % n_tiles) * 16u;
   var acc: subgroup_matrix_result<f32, 16, 16>;
   for (var tile = 0u; tile < (uniforms.K + 15u) / 16u; tile++) {
     let k_base = tile * 16u;
@@ -55,12 +59,12 @@ $MAIN {
     }
     workgroupBarrier();
     let left = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, 16>, row_major>(
-        &tile_a, (lane / 32u) * 256u, 16u);
+        &tile_a, subgroup_index * 256u, 16u);
     let right = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, col_major>(&tile_b, 0u, 16u);
     acc = subgroupMatrixMultiplyAccumulate(left, right, acc);
     workgroupBarrier();
   }
-  subgroupMatrixStore<row_major>(&tile_y, (lane / 32u) * 256u, acc, 16u);
+  subgroupMatrixStore<row_major>(&tile_y, subgroup_index * 256u, acc, 16u);
   workgroupBarrier();
   for (var i = lane; i < 1024u; i += 128u) {
     let m = m_base + i / 16u;
@@ -75,8 +79,11 @@ $MAIN {
   }
 #else
   let lane = local_idx;
-  let m = workgroup_id.y;
-  let n = workgroup_id.x;
+  if (workgroup_idx >= uniforms.M * uniforms.N) {
+    return;
+  }
+  let m = workgroup_idx / uniforms.N;
+  let n = workgroup_idx % uniforms.N;
   var sum = 0.0;
   for (var k = lane; k < uniforms.K; k += 32u) {
     sum += f32(input_a.getByOffset(m * uniforms.K + k)) * f32(weight(n, k));
