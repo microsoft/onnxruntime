@@ -29,6 +29,7 @@ from onnx import (
 )
 from onnx.external_data_helper import load_external_data_for_tensor, uses_external_data
 
+# Transformers tools also support standalone scripts, where __package__ is empty.
 if __package__:
     from onnxruntime.tools.onnx_graph_utils import (
         get_children,
@@ -39,6 +40,7 @@ if __package__:
     )
 else:
     _tools_dir = Path(__file__).resolve().parent.parent
+    # Locate the helper in source-tree python/tools/ or installed onnxruntime/tools/.
     _shared_module_dir = _tools_dir if (_tools_dir / "onnx_graph_utils.py").is_file() else _tools_dir / "tools"
     if str(_shared_module_dir) not in sys.path:
         sys.path.append(str(_shared_module_dir))

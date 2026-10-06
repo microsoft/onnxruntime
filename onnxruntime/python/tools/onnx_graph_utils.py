@@ -2,27 +2,29 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+"""Dependency-light, pure ONNX graph-navigation helpers shared by quantization and transformers tooling."""
+
 from collections.abc import Iterable, Mapping, Sequence
 
 from onnx import NodeProto
 
 
 def input_name_to_nodes(nodes: Iterable[NodeProto]) -> dict[str, list[NodeProto]]:
-    input_name_to_nodes = {}
+    mapping = {}
     for node in nodes:
         for input_name in node.input:
             if input_name:
-                input_name_to_nodes.setdefault(input_name, []).append(node)
-    return input_name_to_nodes
+                mapping.setdefault(input_name, []).append(node)
+    return mapping
 
 
 def output_name_to_node(nodes: Iterable[NodeProto]) -> dict[str, NodeProto]:
-    output_name_to_node = {}
+    mapping = {}
     for node in nodes:
         for output_name in node.output:
             if output_name:
-                output_name_to_node[output_name] = node
-    return output_name_to_node
+                mapping[output_name] = node
+    return mapping
 
 
 def get_children(
