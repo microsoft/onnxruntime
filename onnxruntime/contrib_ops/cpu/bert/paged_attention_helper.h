@@ -13,6 +13,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace paged_attention_helper {
 
+constexpr bool NeedsHostReadback(bool has_metadata_bounds,
+                                 bool dense_kv_prefers_exact_size,
+                                 bool xqa_candidate) {
+  return !has_metadata_bounds && (dense_kv_prefers_exact_size || xqa_candidate);
+}
+
 template <typename T = Tensor>
 Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
                    int& token_count, int& q_hidden_size, int& kv_hidden_size, int& head_size) {

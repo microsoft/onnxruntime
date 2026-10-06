@@ -28,6 +28,25 @@ struct FakeTensor {
 
 }  // namespace
 
+TEST(PagedAttentionHelperTest, NativeFlashDenseStagingDoesNotRequireHostReadback) {
+  EXPECT_FALSE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
+      /*has_metadata_bounds*/ false,
+      /*dense_kv_prefers_exact_size*/ false,
+      /*xqa_candidate*/ false));
+  EXPECT_TRUE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
+      /*has_metadata_bounds*/ false,
+      /*dense_kv_prefers_exact_size*/ true,
+      /*xqa_candidate*/ false));
+  EXPECT_TRUE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
+      /*has_metadata_bounds*/ false,
+      /*dense_kv_prefers_exact_size*/ false,
+      /*xqa_candidate*/ true));
+  EXPECT_FALSE(onnxruntime::contrib::paged_attention_helper::NeedsHostReadback(
+      /*has_metadata_bounds*/ true,
+      /*dense_kv_prefers_exact_size*/ true,
+      /*xqa_candidate*/ true));
+}
+
 TEST(PagedAttentionHelperTest, CheckSequenceLengthTensorsRejectsWrongSeqlensLength) {
   FakeTensor cumulative_sequence_length({65});
   FakeTensor seqlens({1});

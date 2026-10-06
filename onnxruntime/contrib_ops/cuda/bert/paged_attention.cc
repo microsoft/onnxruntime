@@ -635,6 +635,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       (fp16_xqa_eligible || native_spec_xqa_eligible);
   const bool needs_dense_kv =
       use_memory_efficient_attention || use_flash_attention || native_flash_fallback_possible;
+  // Native-cache Flash staging can use the static block-table capacity without a host readback.
+  // Keep exact-size readback only for paths that already required it to avoid excessive expansion
+  // or dequantization workspace.
+  const bool dense_kv_prefers_exact_size =
+      use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
   // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
   // GQA-expanded for the CUTLASS kernel.
   const int gathered_num_heads = use_memory_efficient_attention ? parameters.num_heads : parameters.kv_num_heads;
@@ -672,7 +677,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   //
   // During graph capture, static capacity bounds replace an otherwise-required readback. Optional
   // attention_metadata can tighten those bounds, but correctness and capture never require it.
-  const bool needs_readback = !has_metadata_bounds && (needs_dense_kv || xqa_candidate);
+  const bool needs_readback = paged_attention_helper::NeedsHostReadback(
+      has_metadata_bounds, dense_kv_prefers_exact_size, xqa_candidate);
   const bool perform_readback =
       needs_readback && !onnxruntime::llm::common::isCapturing(cuda_stream);
 
