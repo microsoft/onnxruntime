@@ -4663,7 +4663,7 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
         }
 
         Telemetry::EpDeviceInfo entry;
-        entry.ep_type = ep_type;
+        entry.ep_type = telemetry_detail::BoundedTelemetryString(ep_type);
         entry.ep_vendor = telemetry_detail::BoundedTelemetryString(ep_device->ep_vendor);
         auto it = ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version);
         if (it != ep_device->ep_metadata.Entries().end()) {
@@ -4687,7 +4687,7 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
       // empty vendor / device_id of 0.
       const OrtDevice& device = provider->GetDevice();
       Telemetry::EpDeviceInfo entry;
-      entry.ep_type = ep_type;
+      entry.ep_type = telemetry_detail::BoundedTelemetryString(ep_type);
       entry.hardware_device_type = OrtDeviceTypeToString(device.Type());
       entry.vendor_id = device.Vendor();
       entry.device_id = 0;

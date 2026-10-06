@@ -230,12 +230,22 @@ TEST_F(OneDsTelemetryTest, BoundsRuntimeErrorPropertiesAtEmission) {
   const common::Status status(common::ONNXRUNTIME, common::FAIL, large);
   telemetry_.LogRuntimeError(0, status, large.c_str(), large.c_str(), 7);
   ASSERT_EQ(logger_.event_count, size_t{1});
-  EXPECT_EQ(logger_.strings.at("errorMessage").size(), kMaxTelemetryStringLength);
+  EXPECT_EQ(logger_.strings.at("errorMessage"), "[path]");
   EXPECT_EQ(logger_.strings.at("file").size(), kMaxTelemetryStringLength);
   EXPECT_EQ(logger_.strings.at("function").size(), kMaxTelemetryStringLength);
   for (const auto& [name, value] : logger_.strings) {
     EXPECT_LE(value.size(), kMaxTelemetryStringLength) << name;
   }
+}
+
+TEST_F(OneDsTelemetryTest, SanitizesMalformedRuntimeErrorPropertiesAtEmission) {
+  const std::string malformed(2000, '\x80');
+  const common::Status status(common::ONNXRUNTIME, common::FAIL, malformed);
+  telemetry_.LogRuntimeError(0, status, "test.cc", malformed.c_str(), 7);
+  ASSERT_EQ(logger_.event_count, size_t{1});
+  const std::string sanitized(kMaxTelemetryStringLength, '?');
+  EXPECT_EQ(logger_.strings.at("errorMessage"), sanitized);
+  EXPECT_EQ(logger_.strings.at("function"), sanitized);
 }
 
 TEST_F(OneDsTelemetryTest, BoundsSampledSessionPropertiesWithoutChangingModelMetadata) {

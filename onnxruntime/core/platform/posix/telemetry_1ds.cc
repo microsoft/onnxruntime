@@ -4,6 +4,7 @@
 #include "core/platform/telemetry_1ds.h"
 #include "core/platform/telemetry_1ds_platform.h"
 #include "core/platform/telemetry_environment.h"
+#include "core/common/logging/logging.h"
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -217,13 +218,23 @@ telemetry_detail::HostEnvironmentInfo OneDsTelemetry::GetHostEnvironmentInfo() {
 #if defined(__linux__) || defined(__ANDROID__)
   evidence.docker_marker = FileExists("/.dockerenv");
   evidence.podman_marker = FileExists("/run/.containerenv");
-  evidence.kubernetes = !telemetry_detail::GetTelemetryEnv("KUBERNETES_SERVICE_HOST").empty();
-  evidence.aws_ecs = !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI").empty() ||
-                     !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI_V4").empty();
+  const auto read_evidence = [](const char* name) {
+    const auto value = telemetry_detail::ReadTelemetryEnvironment(name);
+    if (!value) {
+      if (logging::LoggingManager::HasDefaultLogger()) {
+        LOGS_DEFAULT(WARNING) << "Ignoring oversized or unreadable telemetry environment evidence " << name;
+      }
+      return std::string{};
+    }
+    return *value;
+  };
+  evidence.kubernetes = !read_evidence("KUBERNETES_SERVICE_HOST").empty();
+  evidence.aws_ecs = !read_evidence("ECS_CONTAINER_METADATA_URI").empty() ||
+                     !read_evidence("ECS_CONTAINER_METADATA_URI_V4").empty();
   evidence.generic_container =
-      telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("DOTNET_RUNNING_IN_CONTAINER"));
+      telemetry_detail::IsTruthyCiValue(read_evidence("DOTNET_RUNNING_IN_CONTAINER"));
   evidence.systemd_container =
-      ReadBoundedFile("/run/systemd/container") + telemetry_detail::GetTelemetryEnv("container");
+      ReadBoundedFile("/run/systemd/container") + read_evidence("container");
   evidence.cgroup = ReadBoundedFile("/proc/1/cgroup") + ReadBoundedFile("/proc/self/cgroup");
   evidence.cpu_info = ReadBoundedFile("/proc/cpuinfo");
   evidence.kernel_release = ReadBoundedFile("/proc/sys/kernel/osrelease");

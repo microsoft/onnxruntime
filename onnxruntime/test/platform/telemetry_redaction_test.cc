@@ -146,11 +146,22 @@ TEST(TelemetryRedactionTest, QnnProfilingStringsScrubbedBeforeStorage) {
 }
 
 TEST(TelemetryRedactionTest, BoundedQnnIdentifierRetainsTruncationForScrubbing) {
-  const std::string identifier = "alice/" + std::string(kMaxTelemetryStringLength, 'x') + "/model.bin";
-  const auto view = telemetry_detail::TelemetryCStringView(identifier.c_str());
-  EXPECT_EQ(view.size(), kMaxTelemetryStringLength + 1);
+  const std::string identifier = "alice/" + std::string(telemetry_detail::kMaxTelemetryProbeBytes, 'x') + "/model.bin";
+  const auto view = telemetry_detail::TelemetryCStringView(
+      identifier.c_str(), telemetry_detail::kMaxTelemetryProbeBytes);
+  EXPECT_EQ(view.size(), telemetry_detail::kMaxTelemetryProbeBytes + 1);
   EXPECT_EQ(ScrubStringForTelemetry(view), "[path]");
+  EXPECT_EQ(ScrubStringForTelemetry(identifier.c_str()), "[path]");
   EXPECT_EQ(ScrubStringForTelemetry(telemetry_detail::TelemetryCStringView(nullptr)), "");
+}
+
+TEST(TelemetryRedactionTest, SeparatesInspectionAndOutputBudgets) {
+  const std::string harmless = "ratio 3/4 " + std::string(2000, 'x');
+  EXPECT_EQ(ScrubStringForTelemetry(harmless), harmless.substr(0, kMaxTelemetryStringLength));
+  EXPECT_EQ(ScrubStringForTelemetry("Load alice" + std::string(telemetry_detail::kMaxTelemetryProbeBytes, 'x') +
+                                    "/models/file"),
+            "Load [path]");
+  EXPECT_EQ(ScrubStringForTelemetry("Load alice", true), "Load [path]");
 }
 
 TEST(TelemetryRedactionTest, QnnBackendPathDiagnosticScrubbedBeforeEtwStorage) {

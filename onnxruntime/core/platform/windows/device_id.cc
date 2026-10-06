@@ -67,7 +67,7 @@ class ScopedDeviceIdMutex {
 
     DWORD size = 0;
     ::GetTokenInformation(token_handle.Get(), TokenUser, nullptr, 0, &size);
-    if (size == 0 || size > telemetry_detail::kMaxTelemetryProbeBytes) {
+    if (size < sizeof(TOKEN_USER) || size > sizeof(TOKEN_USER) + SECURITY_MAX_SID_SIZE) {
       return;
     }
 

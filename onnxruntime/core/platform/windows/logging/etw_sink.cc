@@ -229,8 +229,7 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
                     TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)), \
                     TraceLoggingLevel(level),                                                                       \
                     TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(logger_id)), "logger"),                 \
-                    TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(                                        \
-                                           telemetry_detail::TelemetryCStringView(message.Category()))),            \
+                    TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(message.Category())),                   \
                                        "category"),                                                                 \
                     TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(location_text)), "location"),           \
                     TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(message.MessageView())), "message"))

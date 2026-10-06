@@ -12,21 +12,44 @@ namespace test {
 TEST(TelemetryEnvironmentTest, BoundsValuesAndRejectsOversizedPaths) {
   const std::string large(20000, 'a');
   ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", large}}};
-  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE").size(), 1024);
-  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", 256).size(), 256);
-  EXPECT_TRUE(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", 4096, false).empty());
-  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", large.size(), false), large);
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE"));
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", 4096));
+  EXPECT_EQ(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", large.size()), large);
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", large.size() - 1));
 }
 
-TEST(TelemetryEnvironmentTest, BoundsEnvironmentValuesAtUtf8Boundary) {
+TEST(TelemetryEnvironmentTest, RejectsEnvironmentValuesOverUtf8ByteBudget) {
   const std::string prefix = std::string(1021, 'a') + "\xe2\x82\xac";
   ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", prefix + "tail"}}};
 #ifdef _WIN32
   const std::wstring wide = std::wstring(1021, L'a') + L"\u20actail";
   ASSERT_NE(::SetEnvironmentVariableW(L"ORT_TEST_TELEMETRY_VALUE", wide.c_str()), 0);
 #endif
-  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE"), prefix);
-  EXPECT_EQ(telemetry_detail::GetTelemetryEnv("ORT_TEST_TELEMETRY_VALUE", 1023), std::string(1021, 'a'));
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", prefix.size()));
+  EXPECT_EQ(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", prefix.size() + 4),
+            prefix + "tail");
+}
+
+TEST(TelemetryEnvironmentTest, DistinguishesAbsentEmptyAndRejectedValues) {
+  for (const auto& value : {std::optional<std::string>{}, std::optional<std::string>{""}}) {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", value}}};
+    EXPECT_EQ(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", 0), "");
+  }
+  ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", "x"}}};
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", 0));
+}
+
+TEST(TelemetryEnvironmentTest, SuppressionFlagsAreNotTruncatedAndOversizedValuesFailClosed) {
+  const std::string padded = std::string(kMaxTelemetryStringLength, ' ') + "true";
+  const std::string oversized(telemetry_detail::kMaxTelemetryProbeBytes + 1, ' ');
+  for (const auto& value : {padded, oversized}) {
+    ScopedEnvironmentVariables env_vars{
+        EnvVarMap{{"APPVEYOR", value}, {"ORT_RUNNING_UNIT_TESTS", value}, {"ORT_DISABLE_TELEMETRY", value}}};
+    EXPECT_TRUE(IsRunningInCI());
+    EXPECT_TRUE(IsRunningUnitTests());
+    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
+  }
+  EXPECT_TRUE(telemetry_detail::IsTruthyCiValue(oversized));
 }
 
 TEST(TelemetryEnvironmentTest, IsTruthyCiValue) {

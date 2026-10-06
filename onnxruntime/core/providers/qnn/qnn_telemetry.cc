@@ -157,7 +157,7 @@ void QnnTelemetry::LogQnnProfileEvent(uint64_t timestamp,
       TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(unit)), "Unit of Measurement"),
       TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(timingSource)), "Timing Source"),
       TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(eventLevel)), "Event Level"),
-      TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(telemetry_detail::TelemetryCStringView(eventIdentifier))),
+      TraceLoggingString(strings.Utf8(ScrubStringForTelemetry(eventIdentifier)),
                          "Event Identifier"));
 }
 

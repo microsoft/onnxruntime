@@ -157,7 +157,7 @@ class EventBuilder {
   }
 
   EventBuilder& AddString(const char* key, const char* value) {
-    return AddString(key, telemetry_detail::TelemetryStringView(value));
+    return AddString(key, telemetry_detail::TelemetryCStringView(value, kMaxTelemetryStringLength + 3));
   }
 
   EventBuilder& AddInt32(const char* key, int32_t value) {
@@ -264,10 +264,12 @@ const std::string& GetAppSessionGuidInternal() {
 
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
 std::string GetCertificateAuthorityBundlePath() {
-  if (const std::string ssl_cert_file =
-          telemetry_detail::GetTelemetryEnv("SSL_CERT_FILE", telemetry_detail::kMaxTelemetryPathBytes, false);
-      !ssl_cert_file.empty() && access(ssl_cert_file.c_str(), R_OK) == 0) {
-    return ssl_cert_file;
+  const auto ssl_cert_file =
+      telemetry_detail::ReadTelemetryEnvironment("SSL_CERT_FILE", telemetry_detail::kMaxTelemetryPathBytes);
+  if (!ssl_cert_file) {
+    ORT_TELEMETRY_WARN("Ignoring oversized or unreadable telemetry SSL_CERT_FILE");
+  } else if (!ssl_cert_file->empty() && access(ssl_cert_file->c_str(), R_OK) == 0) {
+    return *ssl_cert_file;
   }
 
   constexpr const char* kCertificateAuthorityBundlePaths[] = {

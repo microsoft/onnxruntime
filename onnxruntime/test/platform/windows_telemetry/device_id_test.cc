@@ -175,9 +175,9 @@ TEST(DeviceIdWindowsTest, FallsBackToHomeDriveAndPath) {
       EnvVarMap{{"LOCALAPPDATA", nullopt},
                 {"APPDATA", nullopt},
                 {"HOME", nullopt},
-                {"USERPROFILE", nullopt},
-                {"HOMEDRIVE", std::string(drive.begin(), drive.end())},
-                {"HOMEPATH", std::string(home_native.begin() + drive.size(), home_native.end())}}};
+                {"USERPROFILE", nullopt}}};
+  ScopedWideEnvironmentVariable home_drive(L"HOMEDRIVE", drive);
+  ScopedWideEnvironmentVariable home_path(L"HOMEPATH", home_native.substr(drive.size()));
 
   EXPECT_EQ(Utf8Path(DeviceId::GetStorageDirectory()),
             home / "AppData" / "Local" / "Microsoft" / "DeveloperTools" / ".onnxruntime");

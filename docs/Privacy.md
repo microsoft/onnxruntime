@@ -24,6 +24,12 @@ metadata or execution-provider configuration used for inference. Android context
 also account for the 1DS JNI bridge's modified-UTF-8 encoding; HTTP transport data is not
 treated as a free-form event property.
 
+Environment reads have a separate 16-KiB input budget. Oversized or unreadable CI, test-harness,
+and opt-out flags suppress telemetry rather than interpreting a truncated value. Filesystem paths
+use their tighter path budget and are rejected without truncation. Error redaction inspects at most
+16 KiB before applying the 1-KiB output cap; an unseen suffix is handled conservatively.
+Malformed UTF-8 bytes in telemetry string properties are replaced with `?`.
+
 QNN profiling trace-event strings are scrubbed with `ScrubStringForTelemetry` before emission
 to remove filesystem paths. Local QNN CSV and profiling-log output is unchanged.
 Diagnostic ETW log events also scrub filesystem paths from messages and other string fields,

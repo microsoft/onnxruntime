@@ -50,6 +50,23 @@ TEST(TelemetryStringsTest, BoundsWideStringsByUtf8Bytes) {
   EXPECT_TRUE(TelemetryWideStringView(static_cast<const wchar_t*>(nullptr)).empty());
 }
 
+TEST(TelemetryStringsTest, SanitizesMalformedUtf8BeforeStorageAndTransmission) {
+  const std::string malformed = "\x80\xC0\xAF\xED\xA0\x80\xF4\x90\x80\x80";
+  EXPECT_EQ(BoundedTelemetryString(malformed), "??????????");
+  EXPECT_EQ(BoundedTelemetryString(malformed.c_str()), "??????????");
+  const std::string continuations(2000, '\x80');
+  EXPECT_EQ(BoundedTelemetryString(continuations), std::string(1024, '?'));
+  EXPECT_EQ(BoundedTelemetryString(continuations.c_str()), std::string(1024, '?'));
+  EXPECT_EQ(BoundedTelemetryString("\xF0\x9F"), "??");
+  std::string output = "prefix ";
+  EXPECT_TRUE(AppendTelemetryString(output, malformed));
+  EXPECT_EQ(output, "prefix ??????????");
+  EXPECT_EQ(JoinTelemetryStrings(std::vector<std::string>{malformed, "valid"}), "??????????,valid");
+  TelemetryStrings strings;
+  EXPECT_STREQ(strings.Utf8(malformed), "??????????");
+  EXPECT_EQ(ScrubStringForTelemetry(malformed), "??????????");
+}
+
 TEST(TelemetryStringsTest, BoundsJniModifiedUtf8AndKeepsSurrogatePairs) {
   const std::u16string supplementary = u"\U0001f600";
   const std::u16string exact = std::u16string(1018, u'a') + supplementary;
@@ -117,7 +134,7 @@ TEST(TelemetryStringsTest, RetainsPointersAcrossAdditionalFields) {
 TEST(TelemetryStringsTest, RedactsRelativePathsCutOffBeforeSecondSeparator) {
   EXPECT_EQ(ScrubStringForTelemetry("Load alice/" + std::string(2000, 'a') + "/model"), "Load [path]");
   EXPECT_EQ(ScrubStringForTelemetry("Load alice\\" + std::string(2000, 'a') + "\\model"), "Load [path]");
-  EXPECT_LE(ScrubStringForTelemetry(std::string(100000, 'a')).size(), 1024);
+  EXPECT_EQ(ScrubStringForTelemetry(std::string(100000, 'a')), "[path]");
   const std::map<std::string, std::string> options{{"cache", "alice/" + std::string(2000, 'a') + "/model"}};
   bool truncated = false;
   const auto formatted = FormatTelemetryMap(options, ",", ":", &truncated);

@@ -4,6 +4,7 @@
 #include "core/platform/device_id.h"
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_environment.h"
 
@@ -277,13 +278,18 @@ bool DeviceId::IsValidGUID(const std::string& str) {
 }
 
 std::string DeviceId::GetStorageDirectory() {
+  const auto read_path = [](const char* name) {
+    auto value = telemetry_detail::ReadTelemetryEnvironment(name, telemetry_detail::kMaxTelemetryPathBytes);
+    if (!value && logging::LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(WARNING) << "Ignoring oversized or unreadable telemetry storage environment variable " << name;
+    }
+    return value;
+  };
 #if !defined(__APPLE__)
   // XDG requires absolute paths. Ignore relative values so telemetry state is never written below
   // the process working directory.
-  if (const std::string xdg =
-          telemetry_detail::GetTelemetryEnv("XDG_CACHE_HOME", telemetry_detail::kMaxTelemetryPathBytes, false);
-      !xdg.empty() && xdg[0] == '/') {
-    const std::string path = xdg + "/" + kDeviceIdDir;
+  if (const auto xdg = read_path("XDG_CACHE_HOME"); xdg && !xdg->empty() && (*xdg)[0] == '/') {
+    const std::string path = *xdg + "/" + kDeviceIdDir;
     return path.size() <= telemetry_detail::kMaxTelemetryPathBytes ? path : std::string{};
   }
 #endif
@@ -291,10 +297,8 @@ std::string DeviceId::GetStorageDirectory() {
   // Prefer an absolute $HOME; fall back to the password database for contexts where HOME is unset
   // or invalid, e.g. system services/daemons under systemd/launchd.
   std::string home;
-  if (const std::string h =
-          telemetry_detail::GetTelemetryEnv("HOME", telemetry_detail::kMaxTelemetryPathBytes, false);
-      !h.empty() && h[0] == '/') {
-    home = h;
+  if (const auto h = read_path("HOME"); h && !h->empty() && (*h)[0] == '/') {
+    home = *h;
   } else {
     // getpwuid() returns a pointer to shared static storage and is not thread-safe; use the
     // reentrant getpwuid_r() with a caller-provided buffer so concurrent callers don't race.

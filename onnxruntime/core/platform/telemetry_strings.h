@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -35,7 +36,7 @@ inline std::string_view TelemetryStringView(std::string_view value,
 }
 
 inline std::string_view TelemetryCStringView(const char* value, size_t max_bytes = kMaxTelemetryStringLength) {
-  if (value == nullptr || max_bytes == 0) {
+  if (value == nullptr) {
     return {};
   }
   size_t length = 0;
@@ -50,14 +51,56 @@ inline std::string_view TelemetryStringView(const char* value,
   return TelemetryStringView(TelemetryCStringView(value, max_bytes), max_bytes);
 }
 
+// Invalid UTF-8 bytes become '?'; a valid codepoint that cannot fit is omitted in full.
+inline bool AppendTelemetryString(std::string& output, std::string_view value,
+                                  size_t max_bytes = kMaxTelemetryStringLength) {
+  if (output.size() > max_bytes) {
+    output.resize(TelemetryStringView(std::string_view(output), max_bytes).size());
+  }
+  size_t offset = 0;
+  while (offset < value.size() && output.size() < max_bytes) {
+    const auto lead = static_cast<unsigned char>(value[offset]);
+    const size_t width = lead < 0x80 ? 1 : lead >= 0xC2 && lead <= 0xDF ? 2
+                                       : lead >= 0xE0 && lead <= 0xEF   ? 3
+                                       : lead >= 0xF0 && lead <= 0xF4   ? 4
+                                                                        : 0;
+    bool valid = width != 0 && width <= value.size() - offset;
+    for (size_t i = 1; valid && i < width; ++i) {
+      const auto byte = static_cast<unsigned char>(value[offset + i]);
+      valid = (byte & 0xC0) == 0x80;
+      if (i == 1) {
+        valid = valid && !(lead == 0xE0 && byte < 0xA0) &&
+                !(lead == 0xED && byte >= 0xA0) &&
+                !(lead == 0xF0 && byte < 0x90) &&
+                !(lead == 0xF4 && byte >= 0x90);
+      }
+    }
+    if (!valid) {
+      output += '?';
+      ++offset;
+    } else {
+      if (width > max_bytes - output.size()) break;
+      output.append(value.data() + offset, width);
+      offset += width;
+    }
+  }
+  return offset == value.size();
+}
+
 inline std::string BoundedTelemetryString(std::string_view value,
                                           size_t max_bytes = kMaxTelemetryStringLength) {
-  return std::string(TelemetryStringView(value, max_bytes));
+  std::string result;
+  result.reserve((std::min)(value.size(), max_bytes));
+  AppendTelemetryString(result, value, max_bytes);
+  return result;
 }
 
 inline std::string BoundedTelemetryString(const char* value,
                                           size_t max_bytes = kMaxTelemetryStringLength) {
-  return std::string(TelemetryStringView(value, max_bytes));
+  if (max_bytes == 0) return {};
+  // Look past the output boundary far enough to distinguish a full codepoint from malformed input.
+  const size_t probe_bytes = max_bytes + (std::min)(size_t{3}, (std::numeric_limits<size_t>::max)() - max_bytes);
+  return BoundedTelemetryString(TelemetryCStringView(value, probe_bytes), max_bytes);
 }
 
 // JNI encodes supplementary characters as two three-byte sequences, and NUL as two bytes.
@@ -117,16 +160,6 @@ inline std::wstring_view TelemetryWideStringView(const wchar_t* value) {
     ++length;
   }
   return TelemetryWideStringView(std::wstring_view(value, length));
-}
-
-inline bool AppendTelemetryString(std::string& output, std::string_view value) {
-  if (output.size() > kMaxTelemetryStringLength) {
-    output.resize(TelemetryStringView(std::string_view(output)).size());
-  }
-  const size_t remaining = kMaxTelemetryStringLength - output.size();
-  const auto prefix = TelemetryStringView(value, remaining);
-  output.append(prefix);
-  return prefix.size() == value.size();
 }
 
 inline std::string TelemetryStringValue(std::string_view value) {
