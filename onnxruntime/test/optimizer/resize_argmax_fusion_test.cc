@@ -91,6 +91,16 @@ TEST(ResizeArgMaxFusionTest, SingleChannelAndUnitOutput) {
   TestResizeArgMax({1, 1, 2, 2}, {0, 1, 2, 3}, {1, 1, 1, 1}, "pytorch_half_pixel", 1, 1);
 }
 
+TEST(ResizeArgMaxFusionTest, TwoChannelsAndUnitOutput) {
+  const std::vector<float> values{5, 0, 0, 0, 2, 2, 2, 2};
+  for (const auto* mode : {"pytorch_half_pixel", "half_pixel"}) {
+    SCOPED_TRACE(mode);
+    // pytorch_half_pixel samples the top-left corner: channel 0 wins (5 > 2).
+    // half_pixel samples the center: channel 1 wins (2 > 1.25).
+    TestResizeArgMax({1, 2, 2, 2}, values, {1, 2, 1, 1}, mode);
+  }
+}
+
 TEST(ResizeArgMaxFusionTest, UnsupportedGraphs) {
   const std::vector<float> values{0, 1, 2, 3, 4, 5, 6, 7};
   for (const auto* guard : {"graph_output", "shared", "axis", "nearest", "dynamic_sizes", "antialias", "int8"}) {
