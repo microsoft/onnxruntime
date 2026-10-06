@@ -14,7 +14,8 @@ Use the main project's [build instructions](https://www.onnxruntime.ai/docs/how-
 
 #### Requirements
 
-Java 11 or later is required to build the library. The compiled jar file will run on Java 8 or later.
+Java 11 or later is required to build the library. The API docs workflow uses Temurin 17.
+The compiled jar file will run on Java 8 or later.
 
 The [Gradle](https://gradle.org/) build system is used here to manage the Java project's dependency management, compilation, testing, and assembly.
 In particular, the Gradle [wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html) at `java/gradlew[.bat]` is used, locking the Gradle version to the one specified in the `java/gradle/wrapper/gradle-wrapper.properties` configuration.
@@ -39,6 +40,14 @@ To run the Java build independently of CMake supply `-DcmakeBuildDir=<path-to-on
 
 When running the build script, CMake will compile the `onnxruntime` target and the JNI glue `onnxruntime4j_jni` target and expose the resulting libraries in a place where Gradle can ingest them.
 Upon successful compilation of those targets, a special Gradle task to build will be executed. The results will be placed in the output directory stated above.
+
+#### Android Telemetry Permissions
+
+When telemetry is enabled, the Android AAR manifest declares `android.permission.INTERNET` and
+`android.permission.ACCESS_NETWORK_STATE`. Android manifest merging adds these permissions to the
+consuming application. They are required for the bundled 1DS transport to upload events and adapt
+transmission to network state. Build the AAR without telemetry if the application must not request
+these capabilities.
 
 ### Advanced Loading
 

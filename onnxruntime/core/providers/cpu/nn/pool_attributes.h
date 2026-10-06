@@ -82,6 +82,9 @@ struct PoolAttributes {
 
     for (size_t dim = 0; dim < kernel_shape.size(); ++dim) {
       ORT_ENFORCE(kernel_shape[dim] > 0);
+      ORT_ENFORCE(auto_pad != AutoPadType::NOTSET ||
+                      (pads[dim] >= 0 && pads[dim + kernel_shape.size()] >= 0),
+                  "Pad values must be non-negative.");
       ORT_ENFORCE(pads[dim] < kernel_shape[dim] && pads[dim + kernel_shape.size()] < kernel_shape[dim],
                   "Pad should be smaller than kernel.");
     }

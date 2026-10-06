@@ -107,6 +107,37 @@ static void BM_QKGemm(benchmark::State& state) {
                           (M * K * sizeof(float) + N * MlasKVQuantPackedRowBytes(qt, K)));
 }
 
+static void BM_QKGemmFp16(benchmark::State& state) {
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
+  const auto qt = static_cast<MLAS_KV_QUANT_TYPE>(state.range(3));
+
+  const auto A_fp32 = RandomFloats(M * K, 42);
+  std::vector<MLAS_FP16> A(M * K);
+  for (size_t i = 0; i < A.size(); ++i) {
+    A[i] = MLAS_FP16(A_fp32[i]);
+  }
+  auto B_fp = RandomFloats(N * K, 123);
+
+  std::vector<uint8_t> B_quant;
+  std::vector<float> scales;
+  QuantizeMatrix(B_fp.data(), N, K, qt, B_quant, scales);
+
+  std::vector<float> C(M * N, 0.0f);
+  const float alpha = 1.0f / std::sqrt(static_cast<float>(K));
+
+  MlasQKGemmFp16(M, N, K, alpha, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+
+  for (auto _ : state) {
+    MlasQKGemmFp16(M, N, K, alpha, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * M * N * K * 2);
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                          (M * K * sizeof(MLAS_FP16) + N * MlasKVQuantPackedRowBytes(qt, K)));
+}
+
 //
 // Benchmark MlasSVGemm: C[M,N] = A[M,K] * B[K,N]
 //
@@ -139,9 +170,35 @@ static void BM_SVGemm(benchmark::State& state) {
                           (M * K * sizeof(float) + K * MlasKVQuantPackedRowBytes(qt, N)));
 }
 
+static void BM_SVGemmFp16(benchmark::State& state) {
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
+  const auto qt = static_cast<MLAS_KV_QUANT_TYPE>(state.range(3));
+
+  auto A = RandomFloats(M * K, 42);
+  auto B_fp = RandomFloats(K * N, 456);
+
+  std::vector<uint8_t> B_quant;
+  std::vector<float> scales;
+  QuantizeMatrix(B_fp.data(), K, N, qt, B_quant, scales);
+
+  std::vector<MLAS_FP16> C(M * N);
+
+  MlasSVGemmFp16(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
+
+  for (auto _ : state) {
+    MlasSVGemmFp16(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * M * N * K * 2);
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                          (M * K * sizeof(float) + K * MlasKVQuantPackedRowBytes(qt, N)));
+}
+
 // QKGemm benchmark configurations
 // Args: M, N (total_seqlen), K (head_size), QuantType
-static void QKGemmArgs(benchmark::internal::Benchmark* b) {
+static void QKGemmArgs(benchmark::Benchmark* b) {
   b->ArgNames({"M", "N_seqlen", "K_head", "QuantType"});
   // Decoding (M=1) and prefill (M=128) with typical shapes
   for (int qt : {0, 1, 2, 3}) {    // S8_PerTensor, S8_PerChannel, S4_PerTensor, S4_PerChannel
@@ -156,7 +213,7 @@ static void QKGemmArgs(benchmark::internal::Benchmark* b) {
 
 // SVGemm benchmark configurations
 // Args: M, N (head_size), K (total_seqlen), QuantType
-static void SVGemmArgs(benchmark::internal::Benchmark* b) {
+static void SVGemmArgs(benchmark::Benchmark* b) {
   b->ArgNames({"M", "N_head", "K_seqlen", "QuantType"});
   for (int qt : {0, 1, 2, 3}) {
     for (int N : {64, 128}) {      // head_size
@@ -169,7 +226,9 @@ static void SVGemmArgs(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK(BM_QKGemm)->Apply(QKGemmArgs)->UseRealTime();
+BENCHMARK(BM_QKGemmFp16)->Apply(QKGemmArgs)->UseRealTime();
 BENCHMARK(BM_SVGemm)->Apply(SVGemmArgs)->UseRealTime();
+BENCHMARK(BM_SVGemmFp16)->Apply(SVGemmArgs)->UseRealTime();
 
 //
 // Scalar fallback benchmarks: temporarily null the dispatch to force the scalar path.
@@ -238,7 +297,7 @@ static void BM_SVGemm_Scalar(benchmark::State& state) {
 }
 
 // Use a subset of shapes for scalar comparison (it's slow)
-static void ScalarArgs(benchmark::internal::Benchmark* b) {
+static void ScalarArgs(benchmark::Benchmark* b) {
   b->ArgNames({"M", "N", "K", "QuantType"});
   for (int qt : {0, 2}) {          // S8_PerTensor and S4_PerTensor as representative
     b->Args({1, 512, 128, qt});    // decoding
@@ -582,7 +641,7 @@ static void BM_GQA_Flash(benchmark::State& state) {
 
 // Flash vs Naive benchmark configurations
 // Args: batch, num_heads, kv_num_heads, seq_len, total_seqlen, head_size, QuantType
-static void FlashGQAArgs(benchmark::internal::Benchmark* b) {
+static void FlashGQAArgs(benchmark::Benchmark* b) {
   b->ArgNames({"B", "N", "N_kv", "S", "T", "H", "QType"});
   // INT8 per-tensor (qt=0), INT8 per-channel (qt=1)
   for (int qt : {0, 1}) {

@@ -1,0 +1,318 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "contrib_ops/cpu/bert/varlen_ngram_hash_mapping.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+
+#include "contrib_ops/cpu/bert/engram_helper.h"
+#include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
+#include "core/platform/threadpool.h"
+
+using onnxruntime::concurrency::ThreadPool;
+
+namespace onnxruntime {
+namespace contrib {
+
+#define REGISTER_VARLEN_NGRAM_HASH_TYPED(T)                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      VarlenNGramHashMapping,                                           \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCpuExecutionProvider,                                            \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()), \
+      VarlenNGramHashMapping<T>);
+
+REGISTER_VARLEN_NGRAM_HASH_TYPED(int32_t)
+REGISTER_VARLEN_NGRAM_HASH_TYPED(int64_t)
+
+#undef REGISTER_VARLEN_NGRAM_HASH_TYPED
+
+template <typename T>
+VarlenNGramHashMapping<T>::VarlenNGramHashMapping(const OpKernelInfo& info) : OpKernel(info) {
+  ORT_ENFORCE(info.GetAttr<int64_t>("max_ngram_size", &max_ngram_size_).IsOK(),
+              "max_ngram_size attribute is required");
+  ORT_ENFORCE(info.GetAttr<int64_t>("n_head_per_ngram", &n_head_per_ngram_).IsOK(),
+              "n_head_per_ngram attribute is required");
+  int64_t pad_id = 0;
+  ORT_ENFORCE(info.GetAttr<int64_t>("pad_id", &pad_id).IsOK(), "pad_id attribute is required");
+  ORT_ENFORCE(max_ngram_size_ >= 2, "max_ngram_size must be at least 2");
+  ORT_ENFORCE(n_head_per_ngram_ >= 1, "n_head_per_ngram must be positive");
+  state_update_capacity_ = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
+  ORT_ENFORCE(state_update_capacity_ >= 0 && state_update_capacity_ <= 8,
+              "state_update_capacity must be in [0, 8]");
+  ORT_ENFORCE(pad_id >= static_cast<int64_t>(std::numeric_limits<T>::min()) &&
+                  pad_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
+              "pad_id is out of range for the input id type");
+  pad_id_ = static_cast<T>(pad_id);
+  reset_on_eos_ = info.GetAttrOrDefault<int64_t>("reset_on_eos", 0) != 0;
+}
+
+// Reads the id at right-aligned history slot `slot` of past_ids for request `b`. Slots outside the
+// provided history (or a missing past_ids) are positions before the start of the whole sequence.
+template <typename T>
+T VarlenNGramHashMapping<T>::HistoryId(const T* past_data, int64_t b, int64_t slot, int64_t state_length,
+                                       T missing_history_value) const {
+  if (past_data == nullptr || slot < 0 || slot >= state_length) {
+    return missing_history_value;
+  }
+  return past_data[b * state_length + slot];
+}
+
+template <typename T>
+Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
+  const Tensor* input_ids = context->Input<Tensor>(0);
+  const Tensor* multipliers = context->Input<Tensor>(1);
+  const Tensor* vocab_sizes = context->Input<Tensor>(2);
+  const Tensor* cu_seqlens = context->Input<Tensor>(3);
+  const Tensor* past_ids = context->Input<Tensor>(4);
+  const Tensor* head_offsets = context->Input<Tensor>(5);
+  const Tensor* eos_token_id = context->Input<Tensor>(6);
+  const Tensor* segment_ids = context->Input<Tensor>(7);
+  const Tensor* past_segment_ids = context->Input<Tensor>(8);
+  const Tensor* capture_count = context->Input<Tensor>(9);
+
+  ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count != nullptr),
+                    "capture_count must be present exactly when state_update_capacity is positive");
+
+  ORT_RETURN_IF_NOT(input_ids->Shape().NumDimensions() == 1, "input_ids must have rank 1 (total_tokens)");
+  ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
+                        multipliers->Shape()[0] >= max_ngram_size_,
+                    "multipliers must have at least max_ngram_size elements");
+  int64_t num_heads = 0;
+  ORT_RETURN_IF_NOT(engram_helper::TryMultiplyDims(max_ngram_size_ - 1, n_head_per_ngram_, num_heads),
+                    "VarlenNGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
+  ORT_RETURN_IF_NOT(vocab_sizes->Shape().NumDimensions() == 1 && vocab_sizes->Shape()[0] == num_heads,
+                    "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+  ORT_RETURN_IF_NOT(cu_seqlens->Shape().NumDimensions() == 1 && cu_seqlens->Shape()[0] >= 2,
+                    "cumulative_sequence_length must have rank 1 with at least 2 elements");
+
+  const int64_t total_tokens = input_ids->Shape()[0];
+  const int64_t batch_size = cu_seqlens->Shape()[0] - 1;
+  ORT_RETURN_IF_NOT(total_tokens >= batch_size,
+                    "total_tokens must be at least batch_size because every request must contain a token");
+  const int64_t state_length = max_ngram_size_ - 1;
+  int64_t output_count = 0;
+  int64_t present_count = 0;
+  int64_t state_update_count = 0;
+  ORT_RETURN_IF_NOT(engram_helper::TryMultiplyDims(total_tokens, num_heads, output_count) &&
+                        engram_helper::TryMultiplyDims(batch_size, state_length, present_count) &&
+                        engram_helper::TryMultiplyDims(present_count, state_update_capacity_, state_update_count),
+                    "VarlenNGramHashMapping: output dimensions overflow int64_t");
+  if (past_ids != nullptr) {
+    ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_ids must have shape (batch_size, max_ngram_size - 1)");
+  }
+  if (head_offsets != nullptr) {
+    ORT_RETURN_IF_NOT(head_offsets->Shape() == TensorShape({num_heads}),
+                      "head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+  }
+  if (eos_token_id != nullptr) {
+    ORT_RETURN_IF_NOT(eos_token_id->Shape().NumDimensions() == 0, "eos_token_id must be a scalar");
+  }
+  if (segment_ids != nullptr) {
+    ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({total_tokens}),
+                      "segment_ids must have shape (total_tokens)");
+  }
+  if (past_segment_ids != nullptr) {
+    ORT_RETURN_IF_NOT(segment_ids != nullptr, "past_segment_ids requires segment_ids");
+    ORT_RETURN_IF_NOT(past_segment_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_segment_ids must have shape (batch_size, max_ngram_size - 1)");
+  }
+  if (capture_count != nullptr) {
+    ORT_RETURN_IF_NOT(capture_count->Shape() == TensorShape({batch_size}),
+                      "capture_count must have shape (batch_size)");
+  }
+
+  const int32_t* cu_data = cu_seqlens->Data<int32_t>();
+  ORT_RETURN_IF_NOT(cu_data[0] == 0, "cumulative_sequence_length[0] must be 0");
+  ORT_RETURN_IF_NOT(static_cast<int64_t>(cu_data[batch_size]) == total_tokens,
+                    "cumulative_sequence_length[batch_size] must equal total_tokens");
+  for (int64_t b = 0; b < batch_size; ++b) {
+    ORT_RETURN_IF_NOT(cu_data[b] >= 0 && cu_data[b] < cu_data[b + 1],
+                      "cumulative_sequence_length must be strictly increasing and non-negative "
+                      "because every request must contain at least one token");
+  }
+
+  Tensor* output = context->Output(0, TensorShape({total_tokens, num_heads}));
+  Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
+  Tensor* present_segment_ids = context->Output(2, TensorShape({batch_size, state_length}));
+  Tensor* state_update = context->Output(
+      3, TensorShape({batch_size, state_update_capacity_, state_length}));
+  ORT_RETURN_IF_NOT(present_segment_ids == nullptr || segment_ids != nullptr,
+                    "present_segment_ids requires segment_ids");
+
+  const T* input_data = input_ids->Data<T>();
+  const T* multiplier_data = multipliers->Data<T>();
+  const T* vocab_data = vocab_sizes->Data<T>();
+  const T* past_data = past_ids == nullptr ? nullptr : past_ids->Data<T>();
+  const T* offset_data = head_offsets == nullptr ? nullptr : head_offsets->Data<T>();
+  const int32_t* segment_data = segment_ids == nullptr ? nullptr : segment_ids->Data<int32_t>();
+  const int32_t* past_segment_data =
+      past_segment_ids == nullptr ? nullptr : past_segment_ids->Data<int32_t>();
+  const bool has_eos = eos_token_id != nullptr;
+  const T eos_value = has_eos ? eos_token_id->Data<T>()[0] : pad_id_;
+  const bool do_reset = reset_on_eos_ && has_eos;
+
+  // A non-positive head vocabulary size has no meaningful modulo. Every EP guards the division to
+  // avoid a device-side divide-by-zero, which turns the mistake into a constant hash id of 0 for that
+  // head rather than a crash. That is a silent wrong answer, so validate it here where vocab_sizes is
+  // already resident on the host and the check costs one pass over a tiny tensor.
+  for (int64_t h = 0; h < num_heads; ++h) {
+    ORT_RETURN_IF_NOT(vocab_data[h] > 0,
+                      "vocab_sizes must be positive; entry ", h, " is ", static_cast<int64_t>(vocab_data[h]));
+  }
+
+  T* present_data = present_ids == nullptr ? nullptr : present_ids->MutableData<T>();
+  int32_t* present_segment_data =
+      present_segment_ids == nullptr ? nullptr : present_segment_ids->MutableData<int32_t>();
+  T* state_update_data = state_update == nullptr ? nullptr : state_update->MutableData<T>();
+  T* output_data = total_tokens == 0 ? nullptr : output->MutableData<T>();
+
+  const bool has_boundaries = do_reset || segment_data != nullptr;
+  InlinedVector<int64_t> nearest_reset;
+  if (has_boundaries) {
+    nearest_reset.reserve(static_cast<size_t>(total_tokens));
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      int64_t last_reset = -1;
+      if (do_reset) {
+        for (int64_t i = 0; i < state_length; ++i) {
+          if (HistoryId(past_data, b, i, state_length, eos_value) == eos_value) {
+            last_reset = i;
+          }
+        }
+      }
+      if (past_segment_data != nullptr) {
+        for (int64_t i = 1; i < state_length; ++i) {
+          if (past_segment_data[b * state_length + i] !=
+              past_segment_data[b * state_length + i - 1]) {
+            last_reset = std::max(last_reset, i - 1);
+          }
+        }
+        if (segment_data[start] != past_segment_data[(b + 1) * state_length - 1]) {
+          last_reset = std::max(last_reset, state_length - 1);
+        }
+      }
+      nearest_reset.push_back(last_reset);
+      for (int64_t t = 1; t < local_length; ++t) {
+        const bool boundary =
+            (do_reset && input_data[start + t - 1] == eos_value) ||
+            (segment_data != nullptr && segment_data[start + t] != segment_data[start + t - 1]);
+        if (boundary) {
+          last_reset = state_length + t - 1;
+        }
+        nearest_reset.push_back(last_reset);
+      }
+    }
+  }
+
+  ThreadPool::TryParallelFor(
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total_tokens),
+      static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
+      [&](ptrdiff_t begin, ptrdiff_t end) {
+        int64_t b = std::upper_bound(cu_data, cu_data + batch_size, static_cast<int32_t>(begin)) - cu_data - 1;
+        for (int64_t linear = begin; linear < end; ++linear) {
+          while (b + 1 < batch_size && linear >= cu_data[b + 1]) {
+            ++b;
+          }
+          const int64_t start = cu_data[b];
+          const int64_t t = linear - start;
+          const int64_t idx = state_length + t;
+          const int64_t last_reset =
+              has_boundaries ? nearest_reset[static_cast<size_t>(linear)] : -1;
+          const int64_t output_base = linear * num_heads;
+          for (int64_t n = 2; n <= max_ngram_size_; ++n) {
+            T mix = 0;
+            for (int64_t k = 0; k < n; ++k) {
+              const int64_t source_t = t - k;
+              const int64_t source = idx - k;
+              const T token =
+                  source <= last_reset
+                      ? eos_value
+                      : (source_t >= 0
+                             ? input_data[start + source_t]
+                             : HistoryId(past_data, b, state_length + source_t, state_length, eos_value));
+              const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
+              mix = k == 0 ? product : static_cast<T>(mix ^ product);
+            }
+
+            const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
+            for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
+              const int64_t out_h = ngram_offset + h;
+              // vocab_sizes was validated to be positive above, so the modulo is always well defined.
+              T result = engram_helper::PositiveMod(mix, vocab_data[out_h]);
+              if (offset_data != nullptr) {
+                result = engram_helper::WrappedAdd(result, offset_data[out_h]);
+              }
+              output_data[output_base + out_h] = result;
+            }
+          }
+        }
+      });
+
+  if (present_data != nullptr) {
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      for (int64_t j = 0; j < state_length; ++j) {
+        const int64_t source_t = local_length - state_length + j;
+        present_data[b * state_length + j] =
+            source_t >= 0 ? input_data[start + source_t]
+                          : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
+      }
+    }
+  }
+  if (present_segment_data != nullptr) {
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      for (int64_t j = 0; j < state_length; ++j) {
+        const int64_t source_t = local_length - state_length + j;
+        present_segment_data[b * state_length + j] =
+            source_t >= 0
+                ? segment_data[start + source_t]
+                : (past_segment_data != nullptr
+                       ? past_segment_data[b * state_length + state_length + source_t]
+                       : segment_data[start]);
+      }
+    }
+  }
+  if (state_update_data != nullptr) {
+    const int32_t* capture_count_data = capture_count->Data<int32_t>();
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      const int64_t captured = std::min<int64_t>(
+          std::max<int32_t>(capture_count_data[b], 0),
+          std::min(local_length, state_update_capacity_));
+      for (int64_t t = 0; t < state_update_capacity_; ++t) {
+        for (int64_t j = 0; j < state_length; ++j) {
+          T token = pad_id_;
+          if (t < captured) {
+            const int64_t source_t = t + 1 - state_length + j;
+            token = source_t >= 0
+                        ? input_data[start + source_t]
+                        : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
+          }
+          state_update_data[(b * state_update_capacity_ + t) * state_length + j] = token;
+        }
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+template class VarlenNGramHashMapping<int32_t>;
+template class VarlenNGramHashMapping<int64_t>;
+
+}  // namespace contrib
+}  // namespace onnxruntime

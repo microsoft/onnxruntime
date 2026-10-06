@@ -106,10 +106,15 @@ LoraAdapter::BuildParamsValues(const adapters::Adapter* adapter) const {
 
   std::unique_ptr<IDataTransfer> data_transfer;
   if (device_allocator_) {
-    data_transfer = GetDataTransfer(device_allocator_->Info());
-    if (data_transfer == nullptr) {
-      ORT_THROW("Data transfer is not available for the specified device allocator, it also must not be a CPU allocator");
+    const auto& allocator_info = device_allocator_->Info();
+    if (allocator_info.device.Type() == OrtDevice::CPU) {
+      ORT_THROW("The specified allocator must be a device allocator");
     }
+
+    data_transfer = GetDataTransfer(allocator_info);
+    // Plugin EP data transfers are registered with the environment/session and are not
+    // available during adapter creation. Keep the mapped CPU values in that case so Run()
+    // can copy them through the session's data transfer manager.
   }
 
   const auto* params = adapter->parameters();
