@@ -10,9 +10,11 @@
 #if !defined(ORT_MINIMAL_BUILD) && BUILD_QNN_EP_STATIC_LIB
 
 #include "core/graph/model.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
 
 using namespace onnxruntime;
@@ -55,6 +57,46 @@ struct QnnModelWrapperTestContext {
 };
 
 }  // namespace
+
+TEST(QnnModelWrapperTest, SpaceToDepth_RejectsCRDBeforeLayoutTransformation) {
+  for (const std::string mode : {"DCR", "CRD"}) {
+    QnnModelWrapperTestContext ctx;
+    Graph& graph = ctx.model->MainGraph();
+    ONNX_NAMESPACE::TypeProto input_type;
+    auto* input_tensor = input_type.mutable_tensor_type();
+    input_tensor->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+    for (int64_t dim : {1, 2, 4, 4}) {
+      input_tensor->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+    ONNX_NAMESPACE::TypeProto output_type;
+    auto* output_tensor = output_type.mutable_tensor_type();
+    output_tensor->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+    for (int64_t dim : {1, 8, 2, 2}) {
+      output_tensor->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+    auto& input = graph.GetOrCreateNodeArg("input", &input_type);
+    auto& output = graph.GetOrCreateNodeArg("output", &output_type);
+    Node& node = graph.AddNode("SpaceToDepth", "SpaceToDepth", "", {&input}, {&output});
+    node.AddAttribute("blocksize", static_cast<int64_t>(2));
+    node.AddAttribute("mode", mode);
+    ASSERT_STATUS_OK(graph.Resolve());
+    ctx.graph_viewer = std::make_unique<GraphViewer>(graph);
+    ctx.input_index_map = {{"input", 0}};
+    ctx.output_index_map = {{"output", 0}};
+
+    auto wrapper = ctx.CreateWrapper(ModelSettings{});
+    const auto* builder = GetOpBuilder("SpaceToDepth");
+    ASSERT_NE(builder, nullptr);
+    const NodeUnit node_unit(node);
+    auto status = builder->IsOpSupported(*wrapper, node_unit, DefaultLoggingManager().DefaultLogger());
+    if (mode == "DCR") {
+      ASSERT_STATUS_OK(status);
+    } else {
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_NE(status.ErrorMessage().find("only supports SpaceToDepth with DCR mode"), std::string::npos);
+    }
+  }
+}
 
 // Verifies that when htp_shared_memory is disabled (default), the mem type of a
 // graph input tensor remains QNN_TENSORMEMTYPE_RAW.
