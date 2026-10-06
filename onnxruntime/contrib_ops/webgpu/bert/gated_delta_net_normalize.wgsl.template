@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #use .getByOffset .setByOffset
 
 var<workgroup> norms: array<vec2<f32>, workgroup_size_x>;
