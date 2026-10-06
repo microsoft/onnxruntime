@@ -180,12 +180,23 @@ int32_t GetTensorProtoType(const OrtValue& ort_value) {
 }
 
 #ifdef USE_CUDA
+
 void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
+  if (TryGetProviderInfo_CUDA() != nullptr) {
+    GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
+    return;
+  }
+
+  ORT_THROW("CUDA provider interface is not available for host-to-device copy.");
 }
 
 void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+  if (TryGetProviderInfo_CUDA() != nullptr) {
+    GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+    return;
+  }
+
+  ORT_THROW("CUDA provider interface is not available for device-to-host copy.");
 }
 
 const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice& device) {

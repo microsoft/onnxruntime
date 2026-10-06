@@ -260,6 +260,19 @@ Return Value:
         const size_t InputChannelsThisIteration = std::min(i, BlockSize);
         i -= InputChannelsThisIteration;
 
+#if defined(MLAS_TARGET_AMD64)
+        //
+        // Fast path: on AVX-512 (BlockSize == 16) a full 16-channel block is a
+        // 16-wide transpose. Bit-exact with the SSE2 4x4 path below.
+        //
+        if (BlockSize == 16 && InputChannelsThisIteration == 16) {
+            MlasReorderInputNchwBlock16Avx512F(S, D, InputSize);
+            S += BlockSize * InputSize;
+            D += BlockSize * InputSize;
+            continue;
+        }
+#endif
+
         const float* s = S;
         float* d = D;
         size_t InputSizeRemaining = InputSize;
@@ -501,6 +514,19 @@ Return Value:
         const size_t OutputChannelsThisIteration = (TaskInBatchIndex < LastTaskInBatchIndex) ?
             BlockSize : OutputChannels - BlockSize * LastTaskInBatchIndex;
         const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
+
+#if defined(MLAS_TARGET_AMD64)
+        //
+        // Fast path: on AVX-512 (BlockSize == 16) a full 16-channel block is a
+        // 16-wide transpose. Bit-exact with the SSE2 4x4 path below.
+        //
+        if (BlockSize == 16 && OutputChannelsThisIteration == 16) {
+            MlasReorderOutputNchwBlock16Avx512F(S, D, OutputSize);
+            S += BlockSize * OutputSize;
+            D += OutputChannelsThisIteration * OutputSize;
+            continue;
+        }
+#endif
 
         const float* s = S;
         float* d = D;

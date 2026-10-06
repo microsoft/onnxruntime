@@ -2,7 +2,9 @@
 
 ## Build Instructions
 
-To build ONNX Runtime with the CUDA Plugin Execution Provider instead of the statically linked CUDA EP, use the `--cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"` flag with the build script.
+To build ONNX Runtime with the CUDA Plugin Execution Provider, pass `--cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"` with the build script.
+
+If the flag is omitted, the default build uses the legacy source-built CUDA EP (`onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF`).
 
 Example command to build the CUDA Plugin EP in Windows:
 ```
@@ -25,7 +27,7 @@ For local Linux CUDA 13 validation, use the no-cuDNN helper script. It keeps `CU
 bash .env/cuda_130_plugin_no_cudnn.sh --build --test_plugin
 ```
 
-The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`, which passes `enable_cudnn=0` to plugin sessions and skips plugin tests for operators that still require cuDNN, such as Conv, ConvTranspose, BatchNormalization, InstanceNormalization, LRN, ArgMax, reductions, Einsum, and cuDNN-backed pooling paths.
+The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`, which passes `enable_cudnn=0` to plugin sessions and skips plugin tests for operators that still require cuDNN, such as Conv, ConvTranspose, BatchNormalization, InstanceNormalization, LRN, Einsum, and cuDNN-backed pooling paths.
 
 ## Minimum ONNX Runtime Version
 
@@ -38,9 +40,14 @@ At load time, `CreateEpFactories()` negotiates the API version with the runtime:
 
 ## Running
 
-When the plugin is built, it will produce `libonnxruntime_providers_cuda_plugin.so` (or `.dll` on Windows) in the build output directory alongside `libonnxruntime.so`.
+When the plugin is built, it will produce `libonnxruntime_providers_cuda.so` on Linux, `onnxruntime_providers_cuda.dll` on Windows, or `libonnxruntime_providers_cuda.dylib` on macOS in the build output directory alongside the ONNX Runtime library.
 
-The plugin EP is registered under the name **`CudaPluginExecutionProvider`** and uses the EP Plugin API (`RegisterExecutionProviderLibrary` / `GetEpDevices` / `SessionOptionsAppendExecutionProvider_V2`). It is **not** a drop-in replacement for the in-tree `CUDAExecutionProvider` — you must register the plugin library, enumerate its devices, and add them to the session.
+The plugin EP is registered under the name **`CUDAExecutionProvider`** and intentionally uses the same native provider library filename as the legacy CUDA EP. The selected build mode determines what that filename contains:
+
+- `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`: `onnxruntime_providers_cuda` is the CUDA plugin EP.
+- `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF`: `onnxruntime_providers_cuda` is the legacy source-built CUDA EP.
+
+The plugin uses the EP Plugin API (`RegisterExecutionProviderLibrary` / `GetEpDevices` / `SessionOptionsAppendExecutionProvider_V2`). The bundled ONNX Runtime Python package auto-registers the plugin from its `onnxruntime/capi/` directory when the build info contains `cuda-plugin-ep=1`. Direct/native use, C++ use, and the standalone `onnxruntime-ep-cuda12` / `onnxruntime-ep-cuda13` plugin packages still register the plugin library explicitly before creating sessions that request `CUDAExecutionProvider`.
 
 ### C++ API
 
@@ -52,14 +59,14 @@ Use `Env::RegisterExecutionProviderLibrary` to load the plugin, `Env::GetEpDevic
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "PluginTest");
 
 // 1. Register the plugin library.
-env.RegisterExecutionProviderLibrary("CudaPluginExecutionProvider",
-                                     ORT_TSTR("libonnxruntime_providers_cuda_plugin.so"));
+env.RegisterExecutionProviderLibrary("CUDAExecutionProvider",
+                                     ORT_TSTR("libonnxruntime_providers_cuda.so"));
 
 // 2. Enumerate available EP devices and pick the CUDA plugin device.
 auto ep_devices = env.GetEpDevices();
 std::vector<Ort::ConstEpDevice> plugin_devices;
 for (const auto& dev : ep_devices) {
-  if (std::string(dev.EpName()) == "CudaPluginExecutionProvider") {
+  if (std::string(dev.EpName()) == "CUDAExecutionProvider") {
     plugin_devices.push_back(dev);
     break;  // use the first CUDA plugin device
   }
@@ -74,22 +81,40 @@ Ort::Session session(env, "model.onnx", session_options);
 
 ### Python API
 
-Use `onnxruntime.register_execution_provider_library` to load the plugin, `onnxruntime.get_ep_devices` to discover devices, and `SessionOptions.add_provider_for_devices` to add the selected device.
+Bundled CUDA plugin wheels auto-register the plugin at `import onnxruntime` time when `cuda-plugin-ep=1` appears in `onnxruntime.get_build_info()` and the provider library is present in `onnxruntime/capi/`. After import, `CUDAExecutionProvider` can be used like the legacy CUDA EP name.
 
-**Device-based approach (recommended):**
+If CUDA/cuDNN DLL discovery must be prepared first (commonly on Windows), call `onnxruntime.preload_dlls(...)`; it retries bundled plugin registration after loading DLLs and warns if registration still fails.
+
+When using a standalone plugin package or a manually built plugin library outside the bundled wheel, use `onnxruntime.register_execution_provider_library` to load the plugin, `onnxruntime.get_ep_devices` to discover devices, and `SessionOptions.add_provider_for_devices` to add the selected device.
+
+**Bundled wheel approach:**
+
+```python
+import onnxruntime as ort
+
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        ("CUDAExecutionProvider", {"device_id": "0"}),
+        "CPUExecutionProvider",
+    ],
+)
+```
+
+**Standalone or manually registered plugin approach (recommended when using EP devices):**
 
 ```python
 import onnxruntime as ort
 
 # 1. Register the plugin library.
 ort.register_execution_provider_library(
-    "CudaPluginExecutionProvider",
-    "libonnxruntime_providers_cuda_plugin.so",
+    "CUDAExecutionProvider",
+    "libonnxruntime_providers_cuda.so",
 )
 
 # 2. Enumerate devices and pick the CUDA plugin device.
 devices = ort.get_ep_devices()
-plugin_device = next(d for d in devices if d.ep_name == "CudaPluginExecutionProvider")
+plugin_device = next(d for d in devices if d.ep_name == "CUDAExecutionProvider")
 
 # 3. Create session with the plugin device.
 sess_options = ort.SessionOptions()
@@ -98,27 +123,36 @@ sess_options.add_provider_for_devices([plugin_device], {})
 sess = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
 
-**Provider-name approach:**
+**Provider-name approach with explicit registration:**
 
-You can also pass `CudaPluginExecutionProvider` by name in the `providers` list
-(the plugin library must already be registered):
+You can also pass `CUDAExecutionProvider` by name in the `providers` list after explicit registration:
 
 ```python
 import onnxruntime as ort
 
 ort.register_execution_provider_library(
-    "CudaPluginExecutionProvider",
-    "libonnxruntime_providers_cuda_plugin.so",
+    "CUDAExecutionProvider",
+    "libonnxruntime_providers_cuda.so",
 )
 
 sess = ort.InferenceSession(
     "model.onnx",
     providers=[
-        ("CudaPluginExecutionProvider", {"device_id": "0"}),
+        ("CUDAExecutionProvider", {"device_id": "0"}),
         "CPUExecutionProvider",
     ],
 )
 ```
+
+**Python `OrtValue` host/device copies:**
+
+`OrtValue.update_inplace()` and `OrtValue.numpy()` work with CUDA plugin tensors after the plugin has been registered. The Python binding cannot call CUDA runtime APIs directly; host/device copies must use the data-transfer implementation registered by the CUDA plugin library. If `OrtValue.update_inplace()` fails with a message about the CUDA provider interface or an unsupported GPU device, verify that the plugin library is registered before creating or updating CUDA `OrtValue` objects.
+
+### External GPU Allocator Options
+
+The CUDA plugin EP supports the same external GPU allocator provider options as the legacy CUDA EP: `gpu_external_alloc`, `gpu_external_free`, and `gpu_external_empty_cache` (also accepted with the canonical `ep.cuda.*` session config prefix). External allocator callbacks are session-scoped. A session that provides external allocator callbacks creates a per-session CUDA device allocator from that EP instance's options; a later session on the same GPU without those options continues to use the plugin factory's internal arena or CUDA mempool allocator.
+
+`user_compute_stream` and an external allocator cannot be used together in the same session. If both are configured, session creation fails with `ORT_INVALID_ARGUMENT`.
 
 ## Running Tests
 
@@ -126,7 +160,7 @@ The focused validation script for the CUDA Plugin EP is `onnxruntime/test/python
 
 ### Test prerequisites
 
-- Build ONNX Runtime with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`.
+- Build ONNX Runtime with CUDA plugin EP enabled by setting `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`.
 - Install the built ONNX Runtime wheel.
 - Install Python test dependencies. `test_cuda_plugin_ep.py` uses PyTorch for CPU-side reference computations, so CPU-only PyTorch is sufficient.
 
@@ -144,13 +178,13 @@ The test helper tries to auto-detect the plugin library from the installed wheel
 Linux example:
 
 ```bash
-export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda.so
 ```
 
 Windows example:
 
 ```cmd
-set ORT_CUDA_PLUGIN_PATH=E:\path\to\build\Release\Release\onnxruntime_providers_cuda_plugin.dll
+set ORT_CUDA_PLUGIN_PATH=E:\path\to\build\Release\Release\onnxruntime_providers_cuda.dll
 ```
 
 ### Run the test script
@@ -159,6 +193,7 @@ Run the script from a directory outside the repository checkout to avoid Python 
 
 ```bash
 cd onnxruntime/test/python/transformers
+export ORT_TEST_CUDA_PLUGIN_EP=1
 python test_cuda_plugin_ep.py
 ```
 
@@ -166,17 +201,18 @@ On Windows:
 
 ```cmd
 cd /d onnxruntime\test\python\transformers
+set ORT_TEST_CUDA_PLUGIN_EP=1
 python test_cuda_plugin_ep.py
 ```
 
-The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CudaPluginExecutionProvider`.
+The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CUDAExecutionProvider`.
 
 To run the same focused test against a plugin build without cuDNN in the runtime search path:
 
 ```bash
 export ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1
 export ORT_TEST_CUDA_PLUGIN_EP=1
-export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda.so
 python test_cuda_plugin_ep.py
 ```
 
@@ -192,7 +228,7 @@ The plugin must keep working on the oldest supported ONNX Runtime (see [Minimum 
 pip install "onnxruntime==$(cat plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION)" --force-reinstall
 
 # 3. Point the test at the freshly built plugin library and run it.
-export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda.so
 cd onnxruntime/test/python/transformers
 python test_cuda_plugin_ep.py
 ```
@@ -204,5 +240,5 @@ This loads the plugin (compiled against the latest headers) into the minimum sup
 You can generate a parity report comparing the kernels available in the plugin EP versus the statically linked CUDA EP.
 ```bash
 # Check runtime registry parity:
-python tools/ci_build/cuda_plugin_parity_report.py --runtime --plugin-ep-lib build/Linux/RelWithDebInfo/libonnxruntime_providers_cuda_plugin.so
+python tools/ci_build/cuda_plugin_parity_report.py --runtime --plugin-ep-lib build/Linux/RelWithDebInfo/libonnxruntime_providers_cuda.so
 ```
