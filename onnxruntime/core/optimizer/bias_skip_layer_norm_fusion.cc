@@ -197,6 +197,10 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     }
 
     if (p_add == nullptr) continue;
+    if (graph.HasOrtFormatControlEdge(p_add->Index()) ||
+        graph.HasOrtFormatControlEdge(sln_node.Index())) {
+      continue;
+    }
 
     // Determine the non-bias Add input (MatMul / Cast output).
     int add_non_bias_input_index = 1 - add_bias_index;

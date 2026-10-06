@@ -365,6 +365,13 @@ struct CustomGraph {
       return;
     }
 
+    if (original_graph.HasOrtFormatControlEdge(q.node_ptr->Index()) ||
+        std::any_of(dq_ptrs.begin(), dq_ptrs.end(), [this](const GraphNode* dq) {
+          return original_graph.HasOrtFormatControlEdge(dq->node_ptr->Index());
+        })) {
+      return;
+    }
+
     for (std::size_t i = 1; i < dq_ptrs.size(); ++i) {
       if (dq_ptrs[i]->node_input_name[1] != dq_ptrs[0]->node_input_name[1] ||
           dq_ptrs[i]->node_input_name[2] != dq_ptrs[0]->node_input_name[2]) {
