@@ -21,8 +21,7 @@ namespace detail {
 std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path) {
   static std::mutex dump_mutex{};  // one single mutex is shared across all of the shader dump functions
   auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
-  return [dump_file = std::move(dump_file),
-          &dump_mutex](std::string_view shader_content) {
+  return [dump_file = std::move(dump_file)](std::string_view shader_content) {
     std::lock_guard lock{dump_mutex};
     *dump_file << shader_content << "\n";
     dump_file->flush();
