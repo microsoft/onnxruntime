@@ -1983,33 +1983,40 @@ TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.enable_cuda_graph = true;
 
-  IoBindingCase c;
-  c.batch_size = 1;
-  c.token_count = 1;
-  c.num_heads = 2;
-  c.kv_num_heads = 1;
-  c.head_size = 64;
-  c.block_size = 256;
-  c.num_blocks = 1;
-  c.max_num_blocks_per_seq = 1;
-  c.cumulative_seqlens_q = {0, 1};
-  c.replay_past_seqlens = {{0}, {0}, {0}, {0}};
-  c.block_table = {c.num_blocks};
-  c.attention_metadata = {1, 1};
-  c.allow_malformed_sequence_metadata = true;
-  c.skip_reference_check = true;
-  c.verify_malformed_cache_unchanged = true;
-  c.enable_cuda_graph = true;
-
+  IoBindingCase probe;
+  probe.batch_size = 1;
+  probe.token_count = 1;
+  probe.num_heads = 2;
+  probe.kv_num_heads = 1;
+  probe.head_size = 64;
+  probe.block_size = 256;
+  probe.num_blocks = 1;
+  probe.max_num_blocks_per_seq = 1;
+  probe.cumulative_seqlens_q = {0, 1};
+  probe.past_seqlens = {0};
+  probe.block_table = {0};
+  probe.attention_metadata = {1, 1};
   testing::internal::CaptureStdout();
   RunIoBindingCase(
-      CudaExecutionProviderWithOptions(&provider_options),
-      kCudaExecutionProvider, true, false, c);
-  const std::string debug_output = testing::internal::GetCapturedStdout();
-  if (debug_output.find("SdpaKernel=FLASH_ATTENTION") == std::string::npos) {
+      DefaultCudaExecutionProvider(),
+      kCudaExecutionProvider, true, false, probe);
+  const std::string probe_debug_output = testing::internal::GetCapturedStdout();
+  if (probe_debug_output.find("SdpaKernel=FLASH_ATTENTION") == std::string::npos) {
     GTEST_SKIP() << "FlashAttention is not runnable in this build/device configuration.\n"
-                 << debug_output;
+                 << probe_debug_output;
   }
+
+  IoBindingCase malformed = probe;
+  malformed.past_seqlens.clear();
+  malformed.replay_past_seqlens = {{0}, {0}, {0}, {0}};
+  malformed.block_table = {malformed.num_blocks};
+  malformed.allow_malformed_sequence_metadata = true;
+  malformed.skip_reference_check = true;
+  malformed.verify_malformed_cache_unchanged = true;
+  malformed.enable_cuda_graph = true;
+  RunIoBindingCase(
+      CudaExecutionProviderWithOptions(&provider_options),
+      kCudaExecutionProvider, true, false, malformed);
 #else
   GTEST_SKIP() << "FlashAttention is not enabled in this build.";
 #endif
