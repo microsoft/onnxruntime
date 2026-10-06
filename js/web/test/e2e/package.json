@@ -24,6 +24,7 @@
     "webpack-cli": "^5.1.4"
   },
   "overrides": {
+    "source-map-js": "1.2.1",
     "terser": "5.49.0",
     "typed-query-selector": "2.12.2"
   },
