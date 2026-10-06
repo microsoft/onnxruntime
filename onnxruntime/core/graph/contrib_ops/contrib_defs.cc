@@ -1477,13 +1477,22 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       The quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
 
-      The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+      For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
         dequantized_weight = (quantized_weight - zero_point) * scale
       When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
 
-      For integer and FP4 quantization, a provided block_size requires hidden_size and inter_size
-      to be divisible by the block size. FP8 with block_size=128 instead uses float8e4m3fn weights
-      and FP32 scales per 128x128 output/input-feature tile, including partial edge tiles.
+      For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+      the dequantization is performed per block of size block_size along the K (input feature) dimension.
+
+      For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
+      A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
+      [num_experts, ceil(N / block_size), ceil(K / block_size)]:
+        dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
+      Partial edge blocks are allowed. No zero points or activation scales are used.
+      Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
+      Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -1563,13 +1572,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Other values are treated as 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("block_size",
-              "Size of each quantization block along the K (input feature) dimension. "
+              "For integer quantization, size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
               "For integer and FP4 quantization, both hidden_size and inter_size must be divisible by "
               "the block size. FP8 with block_size=128 supports partial 128x128 tiles. "
               "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
               "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
-              "FP8 with block_size 128 uses 128x128 output/input-feature scale tiles. "
+              "For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, "
+              "with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. "
+              "Without a positive value, FP8 uses per-expert global scales. "
               "For integer quantization ('int'), omitting block_size means there is no blocking "
               "and a whole column shares one scaling factor. ",
               AttributeProto::INT,
@@ -1581,8 +1592,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
               "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
               "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
-              "with block_size 16. For 'fp8', omitting block_size selects the legacy per-expert global-scale "
-              "contract; block_size=128 selects FP32 128x128 block scales in fc*_scales.",
+              "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
+              "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.",
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
@@ -1618,9 +1629,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, fusion_size * inter_size, hidden_size / 32). "
                "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / 16). For quant_type='fp8' with "
-               "block_size=128, this is an FP32 tensor with shape "
-               "(num_experts, ceil(fusion_size * inter_size / 128), ceil(hidden_size / 128)).",
+               "(num_experts, fusion_size * inter_size, hidden_size / 16). "
+               "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+               "(num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(4,
@@ -1640,9 +1651,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, hidden_size, inter_size / 32). "
                "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, hidden_size, inter_size / 16). For quant_type='fp8' with block_size=128, "
-               "this is an FP32 tensor with shape "
-               "(num_experts, ceil(hidden_size / 128), ceil(inter_size / 128)).",
+               "(num_experts, hidden_size, inter_size / 16). "
+               "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+               "(num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(7,
@@ -1663,9 +1674,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(num_experts, inter_size), or a 3D tensor with shape "
                "(num_experts, inter_size, hidden_size / block_size) when block_size is provided. "
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, inter_size, hidden_size / 32). For quant_type='fp8' with block_size=128, "
-               "this is an FP32 tensor with shape "
-               "(num_experts, ceil(inter_size / 128), ceil(hidden_size / 128)).",
+               "(num_experts, inter_size, hidden_size / 32). "
+               "For quant_type='fp8' and block_size > 0, required when FC3 is present, with floating-point scales shaped "
+               "(num_experts, ceil(inter_size / block_size), ceil(hidden_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(10,
@@ -1707,15 +1718,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(15,
                "fc1_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC1. Required for 'fp4', 'nvfp4', 'wfp4afp8', and legacy "
-               "global-scale 'fp8'; omitted for block_size=128 FP8.",
+               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+               "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
                "T4",
                OpSchema::Optional)
         .Input(16,
                "fc2_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC2. Required for 'fp4', 'nvfp4', 'wfp4afp8', and legacy "
-               "global-scale 'fp8'; omitted for block_size=128 FP8.",
+               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+               "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
                "T4",
                OpSchema::Optional)
         .Input(17,
@@ -1746,7 +1757,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
         .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
-                        "Constrain scale types. Float tensors are used for integer quantization scales. "
+                        "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
