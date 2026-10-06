@@ -6110,7 +6110,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
           dequantized_weight = (quantized_weight - zero_point) * scale
         When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
-
+  
         For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
   
@@ -6160,7 +6160,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
+<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>fc1_expert_weight_bits</tt> : int</dt>
