@@ -341,7 +341,11 @@ common::Status ResolveWeightLoadAccelerationMode(
   return common::Status::OK();
 }
 
-struct D3D12AcceleratedInitializerState::Impl {
+// Shared by the loader and allocator so imported resources outlive initializer loading.
+class D3D12AcceleratedInitializerState {
+ public:
+  ~D3D12AcceleratedInitializerState();
+
   std::mutex mutex;
   IAllocator* allocator = nullptr;
   std::unordered_map<
@@ -351,24 +355,17 @@ struct D3D12AcceleratedInitializerState::Impl {
 };
 
 D3D12AcceleratedInitializerState::
-    D3D12AcceleratedInitializerState() = default;
-
-D3D12AcceleratedInitializerState::
     ~D3D12AcceleratedInitializerState() {
-  if (!impl_) {
-    return;
-  }
-
   std::vector<std::unique_ptr<ImportedAllocation>>
       allocations;
   {
-    std::lock_guard<std::mutex> lock{impl_->mutex};
+    std::lock_guard<std::mutex> lock{mutex};
     allocations.reserve(
-        impl_->imported_allocations.size());
-    for (auto& entry : impl_->imported_allocations) {
+        imported_allocations.size());
+    for (auto& entry : imported_allocations) {
       allocations.push_back(std::move(entry.second));
     }
-    impl_->imported_allocations.clear();
+    imported_allocations.clear();
   }
   for (auto& allocation : allocations) {
     EndAccessNoThrow(*allocation);
@@ -424,14 +421,14 @@ class D3D12AcceleratedWebGpuAllocator final
     std::unique_ptr<ImportedAllocation> imported;
     {
       std::lock_guard<std::mutex> lock{
-          state_->impl_->mutex};
+          state_->mutex};
       const auto iterator =
-          state_->impl_->imported_allocations.find(
+          state_->imported_allocations.find(
               static_cast<WGPUBuffer>(p));
       if (iterator !=
-          state_->impl_->imported_allocations.end()) {
+          state_->imported_allocations.end()) {
         imported = std::move(iterator->second);
-        state_->impl_->imported_allocations.erase(
+        state_->imported_allocations.erase(
             iterator);
       }
     }
@@ -482,16 +479,12 @@ AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
     std::shared_ptr<D3D12AcceleratedInitializerState>&
         out_state) {
   auto state =
-      std::shared_ptr<D3D12AcceleratedInitializerState>(
-          new D3D12AcceleratedInitializerState());
-  state->impl_ =
-      std::make_unique<
-          D3D12AcceleratedInitializerState::Impl>();
+      std::make_shared<D3D12AcceleratedInitializerState>();
   auto allocator =
       std::make_shared<
           D3D12AcceleratedWebGpuAllocator>(
           context, std::move(recording_getter), state);
-  state->impl_->allocator = allocator.get();
+  state->allocator = allocator.get();
   out_state = state;
   return allocator;
 }
@@ -561,8 +554,7 @@ D3D12AcceleratedExternalDataLoader::
     : impl_{std::make_unique<Impl>(
           context, std::move(state), mode)} {
   ORT_ENFORCE(
-      impl_->state != nullptr &&
-          impl_->state->impl_ != nullptr,
+      impl_->state != nullptr,
       "D3D12 accelerated allocator state is required.");
 }
 
@@ -847,7 +839,7 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
       "D3D12 accelerated initializer requires its device allocator.");
   ORT_RETURN_IF_NOT(
       allocator.get() ==
-          impl_->state->impl_->allocator,
+          impl_->state->allocator,
       "D3D12 accelerated initializer was passed a different allocator.");
 
   const size_t length =
@@ -915,14 +907,14 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
 
   {
     std::lock_guard<std::mutex> lock{
-        impl_->state->impl_->mutex};
+        impl_->state->mutex};
     ORT_RETURN_IF(
-        impl_->state->impl_->imported_allocations
+        impl_->state->imported_allocations
                 .find(buffer) !=
-            impl_->state->impl_->imported_allocations
+            impl_->state->imported_allocations
                 .end(),
         "D3D12 accelerated imported buffer was registered twice.");
-    impl_->state->impl_->imported_allocations.emplace(
+    impl_->state->imported_allocations.emplace(
         buffer, std::move(imported));
   }
 

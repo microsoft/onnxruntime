@@ -28,25 +28,7 @@ common::Status ResolveWeightLoadAccelerationMode(
     const common::Status& support_status,
     bool& enabled);
 
-// Shared by the loader and allocator so imported resources outlive initializer loading.
-class D3D12AcceleratedInitializerState {
- public:
-  ~D3D12AcceleratedInitializerState();
-
- private:
-  struct Impl;
-
-  D3D12AcceleratedInitializerState();
-
-  std::unique_ptr<Impl> impl_;
-
-  friend AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
-      WebGpuContext& context,
-      std::function<CommandRecordingState&()> recording_getter,
-      std::shared_ptr<D3D12AcceleratedInitializerState>& out_state);
-  friend class D3D12AcceleratedExternalDataLoader;
-  friend class D3D12AcceleratedWebGpuAllocator;
-};
+class D3D12AcceleratedInitializerState;
 
 AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
     WebGpuContext& context,
