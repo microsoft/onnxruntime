@@ -4,6 +4,10 @@
 
 #include <utility>
 #include <algorithm>
+#include <exception>
+#include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "core/common/status.h"
@@ -123,24 +127,24 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
                                                    const bool fuse_act,
                                                    const bool w_in_nhwc,
                                                    const bool use_tf32) const {
-  s_.bias_fused = fuse_bias;
-  s_.act_fused = fuse_act;
-  s_.variant_pack.clear();  // clear variant pack, as stored pointers to tensors change
-  s_.cudnn_fe_graph = std::make_unique<cudnn_frontend::graph::Graph>();
+  auto plan = std::make_shared<CudnnFeConvPlan>();
+  plan->bias_fused = fuse_bias;
+  plan->act_fused = fuse_act;
+  plan->graph = std::make_unique<cudnn_frontend::graph::Graph>();
   cudnn_frontend::DataType_t data_type = CudnnFeTensor::GetDataType<CudaT>();
-  s_.cudnn_fe_graph->set_io_data_type(data_type).set_intermediate_data_type(data_type);
+  plan->graph->set_io_data_type(data_type).set_intermediate_data_type(data_type);
   if (data_type == cudnn_frontend::DataType_t::HALF) {
-    s_.cudnn_fe_graph->set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+    plan->graph->set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
 #if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8200
   } else if (data_type == cudnn_frontend::DataType_t::BFLOAT16) {
-    s_.cudnn_fe_graph->set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+    plan->graph->set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
 #endif
   } else {
-    s_.cudnn_fe_graph->set_compute_data_type(data_type);
+    plan->graph->set_compute_data_type(data_type);
   }
 
-  s_.cudnn_fe_X = s_.cudnn_fe_graph->tensor(CudnnFeTensor(x_dims, "x", data_type, Layout == LAYOUT_NHWC).Get());
-  s_.cudnn_fe_W = s_.cudnn_fe_graph->tensor(CudnnFeTensor(w_dims, "w", data_type, w_in_nhwc).Get());
+  plan->X = plan->graph->tensor(CudnnFeTensor(x_dims, "x", data_type, Layout == LAYOUT_NHWC).Get());
+  plan->W = plan->graph->tensor(CudnnFeTensor(w_dims, "w", data_type, w_in_nhwc).Get());
 
   auto conv_options = cudnn_frontend::graph::Conv_fprop_attributes()
                           .set_pre_padding(std::vector<int64_t>(pads.begin(),
@@ -148,11 +152,11 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
                           .set_post_padding(std::vector<int64_t>(pads.begin() + pads.size() / 2, pads.end()))
                           .set_stride(strides)
                           .set_dilation(dilations);
-  s_.cudnn_fe_conv_Y = s_.cudnn_fe_graph->conv_fprop(s_.cudnn_fe_X, s_.cudnn_fe_W, conv_options);
+  plan->conv_Y = plan->graph->conv_fprop(plan->X, plan->W, conv_options);
   auto cudnn_fe_y_tensor = CudnnFeTensor(y_dims, "y", data_type, Layout == LAYOUT_NHWC).Get();
 
   if (!bias_expected && B == nullptr) {
-    s_.cudnn_fe_Y = s_.cudnn_fe_conv_Y;
+    plan->Y = plan->conv_Y;
   } else {
     int64_t bias_size;
     if (B != nullptr) {
@@ -167,18 +171,17 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
       cudnn_fe_z_tensor = CudnnFeTensor(z_shape, "z", data_type, Layout == LAYOUT_NHWC).Get();
     } else if (fuse_bias && Layout == LAYOUT_NCHW) {
       // Z is required for NCHW precompiled kernels in cuDNN
-      s_.z_data = s_.y_data;
       cudnn_fe_z_tensor = cudnn_fe_y_tensor;
     }
 
     if (fuse_bias) {
       std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> add_output;
       if (cudnn_fe_z_tensor.has_value()) {
-        s_.cudnn_fe_Z = s_.cudnn_fe_graph->tensor(cudnn_fe_z_tensor.value());
+        plan->Z = plan->graph->tensor(cudnn_fe_z_tensor.value());
         auto add_options = cudnn_frontend::graph::Pointwise_attributes().set_mode(cudnn_frontend::PointwiseMode_t::ADD);
-        add_output = s_.cudnn_fe_graph->pointwise(s_.cudnn_fe_conv_Y, s_.cudnn_fe_Z, add_options);
+        add_output = plan->graph->pointwise(plan->conv_Y, plan->Z, add_options);
       } else {
-        add_output = s_.cudnn_fe_conv_Y;
+        add_output = plan->conv_Y;
       }
 
       onnxruntime::TensorShapeVector b_dims;
@@ -187,22 +190,22 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
       }
       auto bias_tensor = CudnnFeTensor(b_dims, "b", data_type, Layout == LAYOUT_NHWC).Get();
       auto bias_options = cudnn_frontend::graph::Pointwise_attributes().set_mode(cudnn_frontend::PointwiseMode_t::ADD);
-      s_.cudnn_fe_B = s_.cudnn_fe_graph->tensor(bias_tensor);
-      s_.cudnn_fe_Y = s_.cudnn_fe_graph->pointwise(add_output, s_.cudnn_fe_B, bias_options);
+      plan->B = plan->graph->tensor(bias_tensor);
+      plan->Y = plan->graph->pointwise(add_output, plan->B, bias_options);
     } else {
-      s_.cudnn_fe_Y = s_.cudnn_fe_conv_Y;
+      plan->Y = plan->conv_Y;
 
       TensorShapeVector b_dims(y_dims.size(), 1);
       TensorShapeVector b_strides(y_dims.size(), 1);
       b_dims[1] = bias_size;
       b_strides[0] = bias_size;
       if (Z) {
-        ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().AsShapeVector(),
-                                            CudnnTensor::GetDataType<CudaT>(),
-                                            cudnn_fe_z_tensor->get_stride()));
+        ORT_RETURN_IF_ERROR(plan->z_tensor.Set(Z->Shape().AsShapeVector(),
+                                               CudnnTensor::GetDataType<CudaT>(),
+                                               cudnn_fe_z_tensor->get_stride()));
       }
-      ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>(), b_strides));
-      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>(), cudnn_fe_y_tensor.get_stride()));
+      ORT_RETURN_IF_ERROR(plan->b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>(), b_strides));
+      ORT_RETURN_IF_ERROR(plan->y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>(), cudnn_fe_y_tensor.get_stride()));
 
       /* Creating an own CUDNN Frontend graph for the bias addition.
       s_.cudnn_fe_bias_graph = std::make_unique<cudnn_frontend::graph::Graph>();
@@ -225,32 +228,32 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   }
   if (fuse_act && s_.cudnn_fe_act_attr.has_value()) {
     auto& activation_attr = s_.cudnn_fe_act_attr.value();
-    s_.cudnn_fe_Y = s_.cudnn_fe_graph->pointwise(s_.cudnn_fe_Y, activation_attr);
+    plan->Y = plan->graph->pointwise(plan->Y, activation_attr);
   }
 
-  s_.cudnn_fe_Y->set_dim(cudnn_fe_y_tensor.get_dim());
-  s_.cudnn_fe_Y->set_stride(cudnn_fe_y_tensor.get_stride());
-  s_.cudnn_fe_Y->set_output(true);
+  plan->Y->set_dim(cudnn_fe_y_tensor.get_dim());
+  plan->Y->set_stride(cudnn_fe_y_tensor.get_stride());
+  plan->Y->set_output(true);
 
   try {
-    CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->validate());
-    CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_operation_graph(handle));
-    CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->create_execution_plans({heur_mode}));
+    CUDNN_FE_CALL_THROW(plan->graph->validate());
+    CUDNN_FE_CALL_THROW(plan->graph->build_operation_graph(handle));
+    CUDNN_FE_CALL_THROW(plan->graph->create_execution_plans({heur_mode}));
   } catch (const std::exception& ex) {
     std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what(),
-                                     " with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+                                     " with the cudnn frontend json:\n", plan->graph->print());
     return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
   }
 
-  if (!use_tf32) s_.cudnn_fe_graph->deselect_numeric_notes({cudnn_frontend::NumericalNote_t::TENSOR_CORE});
+  if (!use_tf32) plan->graph->deselect_numeric_notes({cudnn_frontend::NumericalNote_t::TENSOR_CORE});
 
   try {
-    CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->check_support(handle));
-    CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_plans(handle));
+    CUDNN_FE_CALL_THROW(plan->graph->check_support(handle));
+    CUDNN_FE_CALL_THROW(plan->graph->build_plans(handle));
   } catch (const std::exception& ex) {
     if (!fuse_bias && !fuse_act && use_tf32) {
       std::string message = MakeString("OP not supported by CUDNN Frontend: ", ex.what(),
-                                       " with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+                                       " with the cudnn frontend json:\n", plan->graph->print());
       return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
     }
 
@@ -259,7 +262,8 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
                                       pads, strides, dilations, bias_expected, false, false, w_in_nhwc, true);
   }
 
-  s_.workspace_bytes = s_.cudnn_fe_graph->get_workspace_size();
+  plan->workspace_bytes = plan->graph->get_workspace_size();
+  s_.conv_plan = std::move(plan);
   return Status::OK();
 }
 
@@ -301,16 +305,14 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
   // set Z
   const Tensor* Z = context->InputCount() > 3 ? context->Input<Tensor>(3) : nullptr;
   s_.z_data = Z ? reinterpret_cast<const CudaT*>(Z->Data<T>()) : nullptr;
+  const TensorShape b_dims = B ? B->Shape() : TensorShape{};
+  const TensorShape z_dims = Z ? Z->Shape() : TensorShape{};
   bool input_dims_changed = (s_.last_x_dims != x_dims);
   bool w_dims_changed = (s_.last_w_dims != w_dims);
-  if (input_dims_changed || w_dims_changed) {
-    if (input_dims_changed)
-      s_.last_x_dims = gsl::make_span(x_dims);
-
-    if (w_dims_changed) {
-      s_.last_w_dims = gsl::make_span(w_dims);
-    }
-
+  if (!s_.conv_plan_matches_inputs || input_dims_changed || w_dims_changed || s_.last_b_dims != b_dims ||
+      s_.last_z_dims != z_dims || s_.last_b_present != (B != nullptr) || s_.last_z_present != (Z != nullptr) ||
+      s_.last_bias_expected != bias_expected) {
+    s_.conv_plan_matches_inputs = false;
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, w_in_nhwc));
 
     TensorShapeVector kernel_shape;
@@ -436,14 +438,44 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
     const auto fuse_bias = this->IsFuseConvBias() || is_fused_node_;
     const auto fuse_act = is_fused_node_;
 
-    ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(x_dims_cudnn, w_dims_cudnn, B, Z, y_dims_cudnn, handle, heur_mode,
-                                                   std::vector<int64_t>(pads.begin(),
-                                                                        pads.end()),
-                                                   std::vector<int64_t>(strides.begin(),
-                                                                        strides.end()),
-                                                   std::vector<int64_t>(dilations.begin(),
-                                                                        dilations.end()),
-                                                   bias_expected, fuse_bias, fuse_act, w_in_nhwc, use_tf32));
+    TensorShapeVector plan_key;
+    const auto append_dims = [&plan_key](const auto& dims) {
+      plan_key.push_back(static_cast<int64_t>(dims.size()));
+      plan_key.insert(plan_key.end(), dims.begin(), dims.end());
+    };
+    append_dims(x_dims_cudnn);
+    append_dims(w_dims_cudnn);
+    append_dims(y_dims_cudnn);
+    append_dims(b_dims.GetDims());
+    append_dims(z_dims.GetDims());
+    append_dims(pads);
+    append_dims(strides);
+    append_dims(dilations);
+    plan_key.insert(plan_key.end(), {conv_attrs_.group, static_cast<int64_t>(heur_mode),
+                                     B != nullptr, Z != nullptr, bias_expected, fuse_bias, fuse_act, w_in_nhwc, use_tf32});
+    if (s_.cached_conv_plans.contains(plan_key)) {
+      s_.conv_plan = s_.cached_conv_plans.at(plan_key);
+    } else {
+      ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(x_dims_cudnn, w_dims_cudnn, B, Z, y_dims_cudnn, handle, heur_mode,
+                                                     std::vector<int64_t>(pads.begin(),
+                                                                          pads.end()),
+                                                     std::vector<int64_t>(strides.begin(),
+                                                                          strides.end()),
+                                                     std::vector<int64_t>(dilations.begin(),
+                                                                          dilations.end()),
+                                                     bias_expected, fuse_bias, fuse_act, w_in_nhwc, use_tf32));
+      s_.cached_conv_plans.insert(plan_key, s_.conv_plan);
+    }
+    s_.workspace_bytes = s_.conv_plan->workspace_bytes;
+    s_.variant_pack.clear();
+    s_.last_x_dims = gsl::make_span(x_dims);
+    s_.last_w_dims = gsl::make_span(w_dims);
+    s_.last_b_dims = b_dims;
+    s_.last_z_dims = z_dims;
+    s_.last_b_present = B != nullptr;
+    s_.last_z_present = Z != nullptr;
+    s_.last_bias_expected = bias_expected;
+    s_.conv_plan_matches_inputs = true;
 #endif
   } else {
     // set Y
@@ -466,14 +498,18 @@ Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
   const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
   auto cudnn_handle = GetCudnnHandle(context);
 #if !defined(__CUDACC__)
-  s_.variant_pack.insert_or_assign(s_.cudnn_fe_X, const_cast<void*>(s_.x_data));
-  s_.variant_pack.insert_or_assign(s_.cudnn_fe_W, const_cast<void*>(s_.w_data));
-  s_.variant_pack.insert_or_assign(s_.cudnn_fe_Y, s_.y_data);
-  if (s_.bias_fused && s_.b_data != nullptr) {
-    s_.variant_pack.insert_or_assign(s_.cudnn_fe_B, const_cast<void*>(s_.b_data));
+  const auto& plan = *s_.conv_plan;
+  s_.variant_pack.insert_or_assign(plan.X, const_cast<void*>(s_.x_data));
+  s_.variant_pack.insert_or_assign(plan.W, const_cast<void*>(s_.w_data));
+  s_.variant_pack.insert_or_assign(plan.Y, s_.y_data);
+  if (plan.bias_fused && s_.b_data != nullptr) {
+    s_.variant_pack.insert_or_assign(plan.B, const_cast<void*>(s_.b_data));
   }
-  if (s_.bias_fused && s_.z_data != nullptr) {
-    s_.variant_pack.insert_or_assign(s_.cudnn_fe_Z, const_cast<void*>(s_.z_data));
+  if (plan.Z && s_.z_data == nullptr) {
+    s_.z_data = s_.y_data;
+  }
+  if (plan.bias_fused && s_.z_data != nullptr) {
+    s_.variant_pack.insert_or_assign(plan.Z, const_cast<void*>(s_.z_data));
     if (Layout == LAYOUT_NCHW && s_.z_data == s_.y_data) {
       // memset Z if it's required for a succesful fusion
       CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
@@ -481,17 +517,17 @@ Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
   }
   auto ws = GetWorkSpace(GetComputeStream(context));
 
-  CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_graph->execute(cudnn_handle,
-                                                      s_.variant_pack,
-                                                      ws.get()));
+  CUDNN_FE_RETURN_IF_ERROR(plan.graph->execute(cudnn_handle,
+                                               s_.variant_pack,
+                                               ws.get()));
 
-  if (!s_.bias_fused && s_.z_data != nullptr) {
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.z_tensor, s_.z_data,
-                                         &alpha, s_.y_tensor, s_.y_data));
+  if (!plan.bias_fused && s_.z_data != nullptr) {
+    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, plan.z_tensor, s_.z_data,
+                                         &alpha, plan.y_tensor, s_.y_data));
   }
-  if (!s_.bias_fused && s_.b_data != nullptr) {
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
-                                         &alpha, s_.y_tensor, s_.y_data));
+  if (!plan.bias_fused && s_.b_data != nullptr) {
+    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, plan.b_tensor, s_.b_data,
+                                         &alpha, plan.y_tensor, s_.y_data));
 
     /* For the standalone bias addition graph.
     s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_bias_X, s_.y_data);

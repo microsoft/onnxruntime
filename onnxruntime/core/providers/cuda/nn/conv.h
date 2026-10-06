@@ -4,8 +4,13 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <list>
 #include <memory>
+#include <optional>
+#include <stdexcept>
 #include <vector>
 #include <unordered_map>
 
@@ -131,6 +136,24 @@ class lru_unordered_map {
 // cached cudnn descriptors
 constexpr size_t MAX_CACHED_ALGO_PERF_RESULTS = 10000;
 
+#if !defined(__CUDACC__) && CUDNN_MAJOR >= 9
+struct CudnnFeConvPlan {
+  std::unique_ptr<cudnn_frontend::graph::Graph> graph;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> X;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> W;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> conv_Y;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> Z;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> B;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> Y;
+  CudnnTensor b_tensor;
+  CudnnTensor y_tensor;
+  CudnnTensor z_tensor;
+  size_t workspace_bytes = 0;
+  bool bias_fused = false;
+  bool act_fused = false;
+};
+#endif
+
 template <typename AlgoPerfType>
 struct CudnnConvState {
   // if x/w dims changed, update algo and cudnnTensors
@@ -173,6 +196,16 @@ struct CudnnConvState {
 
   std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack;
   std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack_bias;
+#if CUDNN_MAJOR >= 9
+  std::shared_ptr<CudnnFeConvPlan> conv_plan;
+  lru_unordered_map<TensorShapeVector, std::shared_ptr<CudnnFeConvPlan>, tensor_shape_vector_hash> cached_conv_plans{8};
+  TensorShape last_b_dims;
+  TensorShape last_z_dims;
+  bool last_b_present = false;
+  bool last_z_present = false;
+  bool last_bias_expected = false;
+  bool conv_plan_matches_inputs = false;
+#endif
 #endif
 
   struct PerfResultParams {
@@ -209,6 +242,10 @@ enum : size_t {
 // NhwcConv contrib ops uses NHWC format: last dimension of input, weights and output are channels.
 template <typename T, bool Layout>
 class Conv : public CudaKernel {
+#if !defined(__CUDACC__) && CUDNN_MAJOR >= 9
+  friend struct ConvPlanCacheTestPeer;
+#endif
+
  public:
   using CudaT = typename ToCudaType<T>::MappedType;
 

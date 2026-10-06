@@ -3,6 +3,15 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include <cudnn_version.h>
+#endif
+
 #include "core/framework/external_data_loader.h"
 
 // Include after the caller's core or provider headers have declared Node.
@@ -15,6 +24,24 @@
 #endif
 
 namespace onnxruntime::test {
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(BUILD_CUDA_EP_AS_PLUGIN) && CUDNN_MAJOR >= 9
+struct ConvPlanCacheSnapshot {
+  std::shared_ptr<void> conv_plan;
+  size_t cached_plan_count = 0;
+  size_t workspace_bytes = 0;
+  size_t plan_workspace_bytes = 0;
+  std::vector<int64_t> last_x_dims;
+  bool conv_plan_matches_inputs = false;
+  bool bias_fused = false;
+  const void* x_binding = nullptr;
+  const void* w_binding = nullptr;
+  const void* b_binding = nullptr;
+  const void* y_binding = nullptr;
+};
+
+ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, bool bfloat16);
+#endif
 
 // Node and Tensor are borrowed core objects. The provider-side accessors forward
 // their addresses back to ProviderHost; neither type crosses this link boundary.
