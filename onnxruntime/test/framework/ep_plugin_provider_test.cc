@@ -19,6 +19,7 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/stream_handles.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -81,6 +82,7 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
   // OrtMemoryDevice returned by GetDefaultMemoryDeviceImpl. nullptr means "defer to ORT".
   const OrtMemoryDevice* test_default_memory_device = nullptr;
   mutable std::atomic<int> get_default_memory_device_call_count{0};
+  int requested_stream_device_id = -1;
 
   static OrtStatus* ORT_API_CALL GetDefaultMemoryDeviceImpl(const OrtEp* this_ptr,
                                                             const OrtMemoryDevice** device) noexcept {
@@ -552,6 +554,46 @@ TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_SeedsDefaultDevice) {
   ASSERT_EQ(ep->GetDevice(), ort_device);
   ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device);
   ASSERT_GE(ort_ep->get_default_memory_device_call_count.load(), 1);
+}
+
+TEST(PluginExecutionProviderTest, SessionStreamReceivesRequestedMemoryDevice) {
+  struct StreamRegistry : IStreamCommandHandleRegistry {
+    CreateStreamFn create_stream;
+    WaitNotificationFn GetWaitHandle(const OrtDevice&, const OrtDevice&) const override { return {}; }
+    CreateStreamFn GetCreateStreamFn(OrtDevice::DeviceType) const override { return create_stream; }
+    void RegisterWaitFn(OrtDevice::DeviceType, OrtDevice::DeviceType, WaitNotificationFn) override {}
+    void RegisterCreateStreamFn(OrtDevice::DeviceType, CreateStreamFn function) override {
+      create_stream = std::move(function);
+    }
+  } registry;
+  auto& factory = test_plugin_ep::g_test_ort_ep_factory;
+  const auto original_is_stream_aware = factory.IsStreamAware;
+  auto restore_factory = gsl::finally([&]() { factory.IsStreamAware = original_is_stream_aware; });
+  factory.IsStreamAware = [](const OrtEpFactory*) noexcept { return true; };
+  const auto advertised_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  const OrtMemoryInfo memory_info{"TestOrtEp GPU", OrtDeviceAllocator, advertised_device, OrtMemTypeDefault};
+  auto hardware_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hardware_device.get(), &memory_info);
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp({ep_device.get()});
+  ort_ep->CreateSyncStreamForDevice = [](OrtEp* this_ptr, const OrtMemoryDevice* device,
+                                         OrtSyncStreamImpl** stream) noexcept -> OrtStatus* {
+    auto* test_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+    test_ep->requested_stream_device_id = test_ep->ep_api->MemoryDevice_GetDeviceId(device);
+    auto stream_impl = std::make_unique<OrtSyncStreamImpl>();
+    stream_impl->ort_version_supported = ORT_API_VERSION;
+    stream_impl->GetHandle = [](OrtSyncStreamImpl*) noexcept -> void* { return nullptr; };
+    stream_impl->Release = [](OrtSyncStreamImpl* impl) noexcept { delete impl; };
+    *stream = stream_impl.release();
+    return nullptr;
+  };
+  AllocatorMap allocators;
+  ep->RegisterStreamHandlers(registry, allocators);
+  const auto create_stream = registry.GetCreateStreamFn(OrtDevice::GPU);
+  ASSERT_TRUE(create_stream);
+  const OrtDevice requested_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0xBE57, 7};
+  const auto stream = create_stream(requested_device);
+  ASSERT_NE(stream, nullptr);
+  EXPECT_EQ(ort_ep->requested_stream_device_id, 7);
 }
 
 // Version gate: ort_version_supported < 27 must bypass the callback. Without this guard

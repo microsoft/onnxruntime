@@ -520,6 +520,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
@@ -560,6 +561,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
                                        webgpu::BufferCacheMode::Disabled);
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false);
@@ -605,6 +607,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,

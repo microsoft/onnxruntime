@@ -951,9 +951,9 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
 
     registry.RegisterCreateStreamFn(
         device_type,
-        [mem_info, this](const OrtDevice& device) {
+        [this](const OrtDevice& device) {
           OrtSyncStreamImpl* stream = nullptr;
-          const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
+          const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&device);
 
           // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
           OrtStatus* status = ort_ep_->CreateSyncStreamForDevice

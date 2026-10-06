@@ -176,11 +176,9 @@ int main(int argc, char* argv[]) {
         provider_options["webgpuDevice"] = std::to_string(reinterpret_cast<uintptr_t>(host_device.Get()));
         provider_options["preserveDevice"] = "1";
       }
-      if (plugin_path.empty()) {
-        session_options.AppendExecutionProvider("WebGPU", provider_options);
-      } else {
+      Ort::ConstEpDevice webgpu_device{nullptr};
+      if (!plugin_path.empty()) {
         env.RegisterExecutionProviderLibrary("external_dawn_webgpu", plugin_path);
-        Ort::ConstEpDevice webgpu_device{nullptr};
         for (const auto& ep_device : env.GetEpDevices()) {
           if (std::string(ep_device.EpName()) == "WebGpuExecutionProvider") {
             webgpu_device = ep_device;
@@ -190,8 +188,16 @@ int main(int argc, char* argv[]) {
         if (!webgpu_device) {
           throw std::runtime_error("External Dawn WebGPU plugin device was not found.");
         }
-        session_options.AppendExecutionProvider_V2(env, {webgpu_device}, provider_options);
       }
+      auto append_provider = [&](Ort::SessionOptions& options,
+                                 const std::unordered_map<std::string, std::string>& settings) {
+        if (plugin_path.empty()) {
+          options.AppendExecutionProvider("WebGPU", settings);
+        } else {
+          options.AppendExecutionProvider_V2(env, {webgpu_device}, settings);
+        }
+      };
+      append_provider(session_options, provider_options);
       Ort::Session session{env, MODEL_DATA, sizeof(MODEL_DATA), session_options};
 
       if (no_proc_table || no_implicit_sync) {
@@ -222,6 +228,57 @@ int main(int argc, char* argv[]) {
         std::cout << "WebGPU Abs inference passed with CPU fallback disabled." << std::endl;
         if (!plugin_path.empty()) {
           std::cout << "WebGPU plugin EP was registered and selected explicitly." << std::endl;
+        }
+        if (host_device_mode) {
+          Ort::SessionOptions default_options;
+          default_options.DisableMemPattern();
+          default_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+          append_provider(default_options, {{"dawnProcTable", provider_options.at("dawnProcTable")}});
+          Ort::Session default_session{env, MODEL_DATA, sizeof(MODEL_DATA), default_options};
+          const int custom_id = static_cast<int>(cache_pass + 1);
+          Ort::MemoryInfo default_memory{"WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault};
+          Ort::MemoryInfo custom_memory{"WebGPU_Buffer", OrtDeviceAllocator, custom_id, OrtMemTypeDefault};
+          Ort::Allocator default_allocator{default_session, default_memory};
+          Ort::Allocator custom_allocator{session, custom_memory};
+          if (default_allocator.GetInfo().GetDeviceId() != 0 ||
+              custom_allocator.GetInfo().GetDeviceId() != custom_id) {
+            throw std::runtime_error("Default and host-owned WebGPU allocators did not retain distinct context IDs.");
+          }
+          auto default_tensor = Ort::Value::CreateTensor<float>(default_allocator, shape.data(), shape.size());
+          auto custom_tensor = Ort::Value::CreateTensor<float>(custom_allocator, shape.data(), shape.size());
+          for (const bool custom : {false, true}) {
+            auto& current_session = custom ? session : default_session;
+            auto& allocator = custom ? custom_allocator : default_allocator;
+            auto& gpu_input = custom ? custom_tensor : default_tensor;
+            auto& foreign_tensor = custom ? default_tensor : custom_tensor;
+            auto& gpu_memory = custom ? custom_memory : default_memory;
+            auto gpu_copy = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+            Ort::ThrowOnError(env.CopyTensor(input, gpu_input, nullptr));
+            Ort::ThrowOnError(env.CopyTensor(gpu_input, gpu_copy, nullptr));
+            if (env.CopyTensor(gpu_input, foreign_tensor, nullptr).IsOK()) {
+              throw std::runtime_error("A WebGPU copy between distinct context IDs was incorrectly accepted.");
+            }
+            Ort::IoBinding binding{current_session};
+            binding.BindInput("x", gpu_copy);
+            binding.BindOutput("y", gpu_memory);
+            current_session.Run(Ort::RunOptions{nullptr}, binding);
+            binding.SynchronizeOutputs();
+            auto gpu_outputs = binding.GetOutputValues();
+            if (gpu_outputs.size() != 1 ||
+                gpu_outputs[0].GetTensorMemoryInfo().GetDeviceId() != (custom ? custom_id : 0)) {
+              throw std::runtime_error("A WebGPU output was allocated in the wrong context.");
+            }
+            std::array<float, 60> copied_output{};
+            auto cpu_output = Ort::Value::CreateTensor<float>(
+                memory_info, copied_output.data(), copied_output.size(), shape.data(), shape.size());
+            Ort::ThrowOnError(env.CopyTensor(gpu_outputs[0], cpu_output, nullptr));
+            for (size_t index = 0; index < copied_output.size(); ++index) {
+              if (copied_output[index] != std::abs(input_data[index])) {
+                throw std::runtime_error("Concurrent WebGPU contexts produced an incorrect GPU-bound output.");
+              }
+            }
+          }
+          std::cout << "Concurrent default and host-owned WebGPU context allocation and copies passed." << std::endl;
         }
         if (host_device_mode) {
           session = Ort::Session{nullptr};

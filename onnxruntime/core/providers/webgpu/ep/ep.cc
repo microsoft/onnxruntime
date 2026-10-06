@@ -40,6 +40,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
@@ -306,12 +307,18 @@ OrtStatus* ORT_API_CALL Ep::CreateSyncStreamForDeviceImpl(
   auto* ep_adapter = static_cast<Ep*>(this_ptr);
   auto& ep = *static_cast<WebGpuExecutionProvider*>(ep_adapter->EpImpl());
   ORT_ENFORCE(Api().ep.MemoryDevice_GetDeviceType(memory_device) == OrtMemoryInfoDeviceType_GPU &&
-                  static_cast<int64_t>(Api().ep.MemoryDevice_GetDeviceId(memory_device)) ==
-                      ep_adapter->config_.device_allocator->Info().device.Id(),
+                  static_cast<int64_t>(Api().ep.MemoryDevice_GetDeviceId(memory_device)) == ep.GetDeviceId(),
               "Unsupported memory device for WebGPU Session stream.");
   *stream = CreateWebGpuSyncStream(ep);
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+OrtStatus* ORT_API_CALL Ep::GetDefaultMemoryDeviceImpl(
+    const OrtEp* this_ptr, const OrtMemoryDevice** memory_device) noexcept {
+  const auto* ep = static_cast<const Ep*>(this_ptr);
+  *memory_device = Api().ep.MemoryInfo_GetMemoryDevice(&ep->config_.device_allocator->Info());
+  return nullptr;
 }
 
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,

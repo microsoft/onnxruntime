@@ -53,8 +53,9 @@ the existing WebGPU provider options:
 - `webgpuInstance`: the host `WGPUInstance`.
 - `webgpuDevice`: the host `WGPUDevice`.
 - `deviceId`: a positive ORT context ID. ID zero is reserved for ORT's default
-  context. Reusing an ID requires the same instance and device; this ID is not
-  the plugin allocator's memory-device ID.
+  context. This is also the allocator and tensor memory-device ID and must fit
+  in `OrtDevice::DeviceId` (1 through 32767). Reusing an ID requires the same
+  instance and device. Copies between different context IDs are not supported.
 - `preserveDevice`: `"1"` to retain the custom context across session releases.
 
 The device must request `ImplicitDeviceSynchronization` in
@@ -71,7 +72,10 @@ domains that must not share compiled data.
 The native host test's `--host_device` mode runs GPU inference with CPU fallback
 disabled on three fresh devices: a cold cache, a warm cache with the same
 isolation key, and a separate isolation key. It checks actual cache reads and
-writes and device operations after session/environment teardown. The
+writes and device operations after session/environment teardown. It also keeps
+default and host-owned sessions alive together, checks distinct allocator/output
+IDs, exercises CPU/GPU and same-context GPU/GPU copies, and rejects cross-context
+GPU copies. The
 `--no_implicit_sync` negative mode verifies that omitting the required feature
 is rejected. The `--cache_callback_failure` mode injects allocation failures in
 both callbacks. The callbacks contain the exceptions as a cache miss/no-op and
