@@ -37,7 +37,7 @@ class OptionalProviderProbeTest : public ::testing::Test {
 
   void Install(const char* source, const std::filesystem::path& destination) {
     std::error_code error;
-    std::filesystem::copy_file(source, destination, error);
+    std::filesystem::copy_file(runtime_directory_ / "fixtures" / source, destination, error);
     ASSERT_FALSE(error) << error.message();
     installed_paths_.push_back(destination);
   }

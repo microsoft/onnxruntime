@@ -1420,13 +1420,18 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${probe_target}/$<CONFIG>")
     foreach(fixture IN ITEMS shared valid missing_export)
       target_compile_definitions(${probe_target} PRIVATE
-        ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE:onnxruntime_optional_probe_${fixture}_fixture>")
+        ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_optional_probe_${fixture}_fixture>")
+      add_custom_command(TARGET ${probe_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${probe_target}>/fixtures"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "$<TARGET_FILE:onnxruntime_optional_probe_${fixture}_fixture>"
+          "$<TARGET_FILE_DIR:${probe_target}>/fixtures"
+        VERBATIM)
     endforeach()
     if(mode STREQUAL "no_exceptions")
       target_compile_definitions(${probe_target} PRIVATE ORT_NO_EXCEPTIONS ONNX_NO_EXCEPTIONS)
       if(MSVC)
-        target_compile_definitions(${probe_target} PRIVATE _HAS_EXCEPTIONS=0)
-        target_compile_options(${probe_target} PRIVATE /EHs-c-)
+        target_compile_options(${probe_target} PRIVATE /EHs-c- /wd4530)
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
           target_compile_options(${probe_target} PRIVATE /clang:-fno-exceptions)
         endif()
