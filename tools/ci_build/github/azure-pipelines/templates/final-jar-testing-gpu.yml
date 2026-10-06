@@ -40,8 +40,7 @@ stages:
         artifact: 'onnxruntime-java-gpu'
         displayName: 'Download Final Jar'
       - script: |
-          mkdir $(Pipeline.Workspace)\build\onnxruntime-java\
-          move $(Pipeline.Workspace)\build\onnxruntime-java-gpu\*.jar $(Pipeline.Workspace)\build\onnxruntime-java\
+          move $(Pipeline.Workspace)\cuda13\onnxruntime-java-gpu\*.jar $(Pipeline.Workspace)\build\onnxruntime-java\
 
       - task: PowerShell@2
         displayName: 'Run Java Tests with PowerShell'
