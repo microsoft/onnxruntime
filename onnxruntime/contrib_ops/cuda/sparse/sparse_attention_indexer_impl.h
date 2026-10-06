@@ -20,8 +20,9 @@ struct SparseAttentionIndexerParams {
   int head_size = 0;
   int query_row_stride = 0;
   int key_row_stride = 0;
-  int rotary_width = 0;       // cos_cache.shape[2]
-  int max_rotary_length = 0;  // cos_cache.shape[1]
+  int rotary_width = 0;
+  int max_rotary_length = 0;
+  int rotary_cache_batch_stride = 0;
   int compress_ratio = 0;
   int capacity = 0;  // selected_indices.shape[2]
   float epsilon = 1e-6f;
@@ -34,6 +35,7 @@ struct SparseAttentionIndexerParams {
   int key_cache_capacity = 0;
   int max_block_count = 0;  // total_sequence_length / compress_ratio
   int block_topk = 0;       // token_budget / compress_ratio
+  bool use_block_representatives = false;
 
   // policy_mode = "csa"
   int past_compressed_length = 0;
@@ -51,7 +53,7 @@ struct SparseAttentionIndexerParams {
 
 // Scratch requirements, in elements.
 size_t GetQsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params);
-size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params);
+size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params, bool has_mask);
 size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params);
 
 template <typename T>

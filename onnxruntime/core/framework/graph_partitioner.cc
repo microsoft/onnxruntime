@@ -7,6 +7,7 @@
 #include <functional>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -73,7 +74,9 @@ struct PartitionParams {
   std::reference_wrapper<int> fused_node_unique_id;
   std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout_function;
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
+  bool ep_context_data_write_callback_required;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  uint32_t registered_ep_context_data_callbacks;
   std::reference_wrapper<const OnPartitionAssignmentFunction> on_partition_assignment_fn;
   LayeringIndex* layering_index;
 };
@@ -165,6 +168,25 @@ static bool TryAssignSingleNode(Graph& graph,
   return false;
 }
 
+static Status CheckEpContextDataSupport(const IExecutionProvider& ep, uint32_t required_flags) {
+  if (required_flags == OrtEpContextDataCallbackSupportFlags_NONE) {
+    return Status::OK();
+  }
+
+  uint32_t supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+  ORT_RETURN_IF_ERROR(ep.GetEpContextDataCallbackSupport(supported_flags));
+  ORT_RETURN_IF((required_flags & OrtEpContextDataCallbackSupportFlags_READ) != 0 &&
+                    (supported_flags & OrtEpContextDataCallbackSupportFlags_READ) == 0,
+                "EP '", ep.Type(),
+                "' does not support the registered EPContext data read callback.");
+  ORT_RETURN_IF((required_flags & OrtEpContextDataCallbackSupportFlags_WRITE) != 0 &&
+                    (supported_flags & OrtEpContextDataCallbackSupportFlags_WRITE) == 0,
+                "EP '", ep.Type(),
+                "' does not support the registered EPContext data write callback.");
+
+  return Status::OK();
+}
+
 namespace {
 struct GetCapabilityForEPParams {
   std::reference_wrapper<Graph> graph;
@@ -181,14 +203,21 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
   std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
   LayeringIndex* layering_index;  // Added member
+  uint32_t registered_ep_context_data_callbacks;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
                            const GraphViewer& graph_viewer,
                            const IExecutionProvider::IKernelLookup& kernel_lookup,
                            IResourceAccountant* resource_accountant,
-                           const GraphOptimizerRegistry& graph_optimizer_registry) {
-  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
+                           const GraphOptimizerRegistry& graph_optimizer_registry,
+                           uint32_t registered_ep_context_data_callbacks,
+                           std::vector<std::unique_ptr<ComputeCapability>>& capabilities) -> Status {
+  if (registered_ep_context_data_callbacks != OrtEpContextDataCallbackSupportFlags_NONE) {
+    ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(
+        ep, ep.GetEpContextDataCallbackRequirements(graph_viewer) & registered_ep_context_data_callbacks));
+  }
+  capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
@@ -197,7 +226,7 @@ auto get_capabilities = [](const IExecutionProvider& ep,
                                     }),
                      capabilities.end());
 
-  return capabilities;
+  return Status::OK();
 };
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -330,8 +359,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     if (params.resource_accountant) {
       params.resource_accountant->ResetForNewPass();
     }
-    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
-                                    graph_optimizer_registry);
+    ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
+                                         graph_optimizer_registry, params.registered_ep_context_data_callbacks,
+                                         capabilities));
 
     reset_assignment_unclaimed_nodes();
 
@@ -471,8 +501,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       // GetCapability call can stop before visiting later pass-1 survivors, so absence from
       // a truncated result does not prove that a provisional reservation should be removed.
       params.resource_accountant->ResetForNewPass();
-      capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
-                                      nullptr, graph_optimizer_registry);
+      ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry,
+                                           params.registered_ep_context_data_callbacks, capabilities));
 
       if (params.check_load_cancellation_fn()) {
         ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
@@ -687,8 +717,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       if (confirmed_survivor_capabilities.empty()) {
         ORT_RETURN_IF_ERROR(rebuild_survivor_reservations(confirmed_pass1_survivors));
         capabilities.clear();
-        capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
-                                        params.resource_accountant, graph_optimizer_registry);
+        ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                             params.resource_accountant, graph_optimizer_registry,
+                                             params.registered_ep_context_data_callbacks, capabilities));
       } else {
         // First obtain the complete accountant-aware capability grouping. This identifies
         // survivor capabilities displaced by newly accounted overlaps without allowing stale
@@ -697,9 +728,11 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         params.resource_accountant->SetThreshold(
             ResourceCount{std::numeric_limits<size_t>::max()});
         capabilities.clear();
-        capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
-                                        params.resource_accountant, graph_optimizer_registry);
+        const auto capability_status = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                                        params.resource_accountant, graph_optimizer_registry,
+                                                        params.registered_ep_context_data_callbacks, capabilities);
         params.resource_accountant->SetThreshold(original_threshold);
+        ORT_RETURN_IF_ERROR(capability_status);
 
         if (params.check_load_cancellation_fn()) {
           ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
@@ -715,8 +748,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           ORT_RETURN_IF_ERROR(rebuild_survivor_reservations(expected_retained_nodes));
 
           capabilities.clear();
-          capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
-                                          params.resource_accountant, graph_optimizer_registry);
+          ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                               params.resource_accountant, graph_optimizer_registry,
+                                               params.registered_ep_context_data_callbacks, capabilities));
 
           if (params.check_load_cancellation_fn()) {
             ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
@@ -762,8 +796,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         }
       }
     } else {
-      capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
-                                      nullptr, graph_optimizer_registry);
+      ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry,
+                                           params.registered_ep_context_data_callbacks, capabilities));
     }
 
     if (params.check_load_cancellation_fn()) {
@@ -838,6 +872,7 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const IExecutionProvider& current_ep,
                                                const GraphOptimizerRegistry& graph_optimizer_registry,
                                                const logging::Logger& logger,
+                                               uint32_t registered_ep_context_data_callbacks,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   const auto& ep_type = current_ep.Type();
 
@@ -848,10 +883,13 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                    logger};
 
   // TODO: Provide EP with a capability to look inside the functions.
-  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry);
+  ORT_RETURN_IF_ERROR(get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry,
+                                       registered_ep_context_data_callbacks, capabilities));
 
   return Status::OK();
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 /**
  * Check whether the given IndexedSubGraph is available for assigning to a specific provider.
@@ -900,6 +938,38 @@ static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
 
   return true;
 }
+
+static bool IsExternalEpContextNode(const Node& node) {
+  if (node.Domain() != kMSDomain || node.OpType() != "EPContext") {
+    return false;
+  }
+
+  const auto& attributes = node.GetAttributes();
+  const auto embed_mode = attributes.find("embed_mode");
+  return embed_mode != attributes.end() && embed_mode->second.i() == 0;
+}
+
+static bool IndexedSubGraphHasExternalEpContextNode(const Graph& graph,
+                                                    const IndexedSubGraph& indexed_sub_graph) {
+  return std::any_of(indexed_sub_graph.nodes.cbegin(), indexed_sub_graph.nodes.cend(),
+                     [&graph](NodeIndex node_index) {
+                       const auto* node = graph.GetNode(node_index);
+                       return node != nullptr && IsExternalEpContextNode(*node);
+                     });
+}
+
+static bool GraphHasAssignedExternalEpContextNode(const Graph& graph, std::string_view provider_type) {
+  // NHWC survivors can remain assigned without a returned capability after resource-accountant reconciliation.
+  for (const auto& node : graph.Nodes()) {
+    if (node.GetExecutionProviderType() == provider_type && IsExternalEpContextNode(node)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 /**
  * Return a fused node or assign the nodes in the indexed subgraph to the current EP.
@@ -982,6 +1052,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry,
                                            bool disable_model_compile,
+                                           uint32_t registered_ep_context_data_callbacks,
+                                           bool ep_context_data_write_callback_required,
                                            LayeringIndex* layering_index) {  // Added arg
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -1001,6 +1073,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant,
                                                        graph_optimizer_registry, disable_model_compile,
+                                                       registered_ep_context_data_callbacks,
+                                                       ep_context_data_write_callback_required,
                                                        layering_index));  // Pass through
     }
   }
@@ -1028,12 +1102,10 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       resource_accountant,
       std::ref(graph_optimizer_registry),
       std::cref(check_load_cancellation_fn),
-      layering_index};  // Pass param
+      layering_index,
+      registered_ep_context_data_callbacks};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
-  if (capabilities.empty()) {
-    return Status::OK();
-  }
 
   const std::string& type = current_ep.Type();
   auto fusion_style = current_ep.GetFusionStyle();
@@ -1047,12 +1119,14 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // filter out the ComputeCapability instances that do not need compiling so we have a std::vector that's 1:1 with
   // nodes_to_compile.
   std::vector<std::unique_ptr<ComputeCapability>> capabilities_to_compile;
+  bool accepted_external_ep_context_capability = false;
   capabilities_to_compile.reserve(std::count_if(capabilities.cbegin(), capabilities.cend(),
                                                 [](const std::unique_ptr<ComputeCapability>& entry) {
                                                   return entry != nullptr &&
                                                          entry->sub_graph != nullptr &&
                                                          entry->sub_graph->GetMetaDef() != nullptr;
                                                 }));
+
   for (auto& capability : capabilities) {
     // The <provider> can run a fused <sub_graph> in the <graph>.
     // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
@@ -1075,6 +1149,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
     Node* n = nullptr;
     if (sub_graph_available_for_assignment) {
+      accepted_external_ep_context_capability |=
+          IndexedSubGraphHasExternalEpContextNode(graph, *capability->sub_graph);
+
       if (on_partition_assignment_fn) {
         // Call custom function provided by owner of GraphPartitioner whenever a subgraph is assigned to an EP.
         // This can be used, for example, to collect partitioning information.
@@ -1083,7 +1160,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
       n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     }
-
     if (n != nullptr) {
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type, logger)) {
@@ -1095,6 +1171,22 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         capabilities_to_complete_fuse.push_back(std::move(capability));
       }
     }
+  }
+
+  uint32_t required_ep_context_data_support = OrtEpContextDataCallbackSupportFlags_NONE;
+  if (ep_context_data_write_callback_required && !nodes_to_compile.empty()) {
+    required_ep_context_data_support |= OrtEpContextDataCallbackSupportFlags_WRITE;
+  }
+
+  if ((registered_ep_context_data_callbacks & OrtEpContextDataCallbackSupportFlags_READ) != 0 &&
+      (accepted_external_ep_context_capability || GraphHasAssignedExternalEpContextNode(graph, type))) {
+    required_ep_context_data_support |= OrtEpContextDataCallbackSupportFlags_READ;
+  }
+
+  ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(current_ep, required_ep_context_data_support));
+
+  if (capabilities.empty()) {
+    return Status::OK();
   }
 
   // Helper function that returns true if any of the nodes assigned to a compiling EP is not already compiled.
@@ -1661,6 +1753,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                      const GraphOptimizerRegistry& graph_optimizer_registry,
                                      const logging::Logger& logger,
                                      const CheckLoadCancellationFn& check_load_cancellation_fn,
+                                     uint32_t registered_ep_context_data_callbacks,
                                      InlinedHashSet<std::string>& not_inlined,
                                      size_t& inlined_count,
                                      size_t expansion_node_limit,
@@ -1683,6 +1776,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                                  graph_optimizer_registry,
                                                  logger,
                                                  check_load_cancellation_fn,
+                                                 registered_ep_context_data_callbacks,
                                                  not_inlined,
                                                  inlined_count,
                                                  expansion_node_limit,
@@ -1712,6 +1806,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
     ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep,
                                                          graph_optimizer_registry, logger,
+                                                         registered_ep_context_data_callbacks,
                                                          capabilities));
     if (check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "AOT inlining is canceled due to user request.");
@@ -1977,6 +2072,8 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant, graph_optimizer_registry,
                                                        disable_model_compile,
+                                                       partition_params.registered_ep_context_data_callbacks,
+                                                       partition_params.ep_context_data_write_callback_required,
                                                        partition_params.layering_index));  // Pass param
     }
 
@@ -2035,11 +2132,29 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       nullptr,
       std::ref(graph_optimizer_registry),
       partition_params.check_load_cancellation_fn,
-      partition_params.layering_index
+      partition_params.layering_index,
+      partition_params.registered_ep_context_data_callbacks
   };
   // clang-format on
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
+
+  const std::string& type = current_ep.Type();
+  if ((partition_params.registered_ep_context_data_callbacks & OrtEpContextDataCallbackSupportFlags_READ) != 0) {
+    const bool accepted_external_ep_context_capability =
+        GraphHasAssignedExternalEpContextNode(graph, type) ||
+        std::any_of(capabilities.cbegin(), capabilities.cend(),
+                    [&](const std::unique_ptr<ComputeCapability>& capability) {
+                      return IsIndexedSubGraphAvailableForAssignment(
+                                 graph, *capability->sub_graph,
+                                 GraphPartitioner::Mode::kOrtFormatLoad, type) &&
+                             IndexedSubGraphHasExternalEpContextNode(graph, *capability->sub_graph);
+                    });
+    if (accepted_external_ep_context_capability) {
+      ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(current_ep, OrtEpContextDataCallbackSupportFlags_READ));
+    }
+  }
+
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -2054,7 +2169,6 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
   compilation_entries.reserve(capabilities.size());
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-  const std::string& type = current_ep.Type();
   for (const auto& capability : capabilities) {
     const IndexedSubGraph& indexed_sub_graph = *capability->sub_graph;
     const IndexedSubGraph::MetaDef* metadef = indexed_sub_graph.GetMetaDef();
@@ -2145,7 +2259,8 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager,
                                             const ConfigOptions& config_options,
-                                            const logging::Logger& logger) const {
+                                            const logging::Logger& logger,
+                                            uint32_t registered_ep_context_data_callbacks) const {
   const auto local_functions_num = model.GetModelLocalFunctionTemplates().size();
   const bool is_there_local_functions = local_functions_num > 0;
 
@@ -2171,6 +2286,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                                *graph_optimizer_registry_,
                                                logger,
                                                check_load_cancellation_fn,
+                                               registered_ep_context_data_callbacks,
                                                not_inlined,
                                                inlined_count,
                                                function_expansion_node_limit_,
@@ -2204,6 +2320,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
+                                   bool ep_context_data_read_callback_registered,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn,
                                    WorkspaceReservationMap* workspace_reservations) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
@@ -2222,6 +2339,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   }
 
   CheckLoadCancellationFn check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+  uint32_t registered_ep_context_data_callbacks = ep_context_data_read_callback_registered
+                                                      ? OrtEpContextDataCallbackSupportFlags_READ
+                                                      : OrtEpContextDataCallbackSupportFlags_NONE;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
@@ -2230,6 +2350,21 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   // we make sure each fused node name is unique across the entire model for clarity
   int fused_node_unique_id = 0;
+  const bool ep_context_data_write_callback_registered = ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr;
+  if (ep_context_data_write_callback_registered) {
+    registered_ep_context_data_callbacks |= OrtEpContextDataCallbackSupportFlags_WRITE;
+    // Some EPs may produce external EPContext data as a side effect of GetCapability() itself (e.g. a
+    // direct-assignment path that compiles before Compile() is ever called), so this WRITE-support check must
+    // happen before GetCapability() is invoked on any provider.
+    const GraphViewer graph_viewer(graph);
+    for (const auto& ep : providers_) {
+      ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(
+          *ep, ep->GetEpContextDataCallbackRequirements(graph_viewer) & OrtEpContextDataCallbackSupportFlags_WRITE));
+    }
+  }
+  const bool ep_context_data_write_callback_required =
+      ep_context_data_write_callback_registered && ep_context_gen_options.enable &&
+      !ep_context_gen_options.embed_ep_context_in_model;
 
   PartitionParams partition_params{
       std::ref(graph),
@@ -2239,6 +2374,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
       std::cref(debug_graph_fn),
+      ep_context_data_write_callback_required,
+      registered_ep_context_data_callbacks,
       std::cref(on_partition_assignment_fn_),
       layering_index};
 
@@ -2250,6 +2387,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   PartitionParams partition_params{
       std::ref(graph),
       std::cref(check_load_cancellation_fn),
+      registered_ep_context_data_callbacks,
       std::cref(on_partition_assignment_fn_),
       layering_index};
 

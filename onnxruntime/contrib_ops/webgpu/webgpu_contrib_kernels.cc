@@ -18,6 +18,7 @@
 #include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
 #include "contrib_ops/webgpu/bert/paged_attention.h"
 #include "contrib_ops/webgpu/bert/sparse_attention_indexer.h"
+#include "contrib_ops/webgpu/bert/packed_sparse_attention_indexer.h"
 #include "contrib_ops/webgpu/bert/sparse_paged_attention.h"
 #include "contrib_ops/webgpu/bert/varlen_ngram_hash_mapping.h"
 
@@ -69,6 +70,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, QuickGelu)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, RotaryEmbedding)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, SparseAttentionIndexer)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, PackedSparseAttentionIndexer)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, SkipGroupNorm)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, SkipLayerNormalization)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, SparsePagedAttention)>,
