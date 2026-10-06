@@ -6,6 +6,7 @@
 #include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/nn/layer_norm_helper.h"
+#include <limits>
 #include <vector>
 
 namespace onnxruntime {
@@ -75,6 +76,18 @@ Status RMSNorm<T, U, V>::ComputeInternal(OpKernelContext* ctx) const {
   if (x_shape.Size() == 0) {
     return Status::OK();
   }
+
+  // Validate that norm_size won't cause integer overflow in host-side arithmetic.
+  // HostApplyLayerNorm computes: (n2 + 4 * warp_size - 1) where warp_size is typically 32.
+  // Maximum safe value: INT_MAX - (4 * max_warp_size) to prevent overflow.
+  // Using 256 as a conservative upper bound for 4 * warp_size.
+  constexpr int MAX_WARP_FACTOR = 256;
+  const int MAX_NORM_SIZE = std::numeric_limits<int>::max() - MAX_WARP_FACTOR;
+
+  ORT_RETURN_IF(params.num_rows > 0 &&
+                    (params.norm_size > MAX_NORM_SIZE ||
+                     params.norm_size > std::numeric_limits<int>::max() / params.num_rows),
+                "RMSNormalization input is too large for CUDA kernel indexing: norm_size exceeds safe limits or num_rows * norm_size exceeds INT_MAX");
 
   // For RMSNorm, we don't need mean and inv_var data, so we can pass nullptr.
   CudaU* mean_data = nullptr;

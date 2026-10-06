@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/safeint.h"
 #include "core/providers/cpu/llm/attention_parameters.h"
 #include "core/util/shape_checker.h"
 
@@ -101,6 +102,18 @@ inline Status ComputeOutputShapeForAttention(
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[2]) / parameters.q_num_heads;
     parameters.kv_sequence_length = onnxruntime::narrow<int>(K->Shape()[1]);
     parameters.v_head_size = onnxruntime::narrow<int>(V->Shape()[2]) / parameters.kv_num_heads;
+
+    // The 3D branch derives head_size from Q alone and kv_sequence_length from K alone. The K
+    // hidden width and V sequence length are used as strides / row counts in downstream GEMM and
+    // KV-cache copies, so they must line up with the derived values.
+    ORT_ENFORCE(K->Shape()[2] == SafeInt<int64_t>(parameters.kv_num_heads) * parameters.head_size,
+                "inconsistent head_size (between Q and K): K.shape[2]=", K->Shape()[2],
+                " expected kv_num_heads * head_size = ", parameters.kv_num_heads, " * ",
+                parameters.head_size);
+    ORT_ENFORCE(K->Shape()[1] == V->Shape()[1],
+                "inconsistent kv_sequence_length (between K and V): K.shape[1]=", K->Shape()[1],
+                " V.shape[1]=", V->Shape()[1]);
+
     parameters.past_sequence_length = past_key == nullptr
                                           ? 0
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);

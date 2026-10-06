@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -24,6 +27,8 @@ using json = nlohmann::json;
 #include "core/util/thread_utils.h"
 
 #include "test/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/file_util.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #ifdef USE_CUDA
@@ -351,7 +356,12 @@ class PlannerTest : public ::testing::Test {
   }
 
   void CreatePlanWithMemoryReuseDisabled() {
-    ParallelPlannerTestContext test_context(&shape_map_);
+    class NoMemoryReusePlannerContext : public SequentialPlannerTestContext {
+     public:
+      using SequentialPlannerTestContext::SequentialPlannerTestContext;
+      bool GetEnableMemoryReuse() const override { return false; }
+    };
+    NoMemoryReusePlannerContext test_context(&shape_map_);
     CreatePlan({}, true, &test_context);
   }
 
@@ -471,6 +481,9 @@ TEST_F(PlannerTest, DisabledMemoryReuseDoesNotReuseFreedBuffers) {
   Shape shape1{50, 100};
   auto shape = &shape1.value;
   SetShape({{X, shape}, {B, shape}, {Y, shape}, {Z, shape}});
+
+  CreatePlan();
+  CheckAllocKind(Y, AllocKind::kReuse);
 
   CreatePlanWithMemoryReuseDisabled();
 
@@ -1958,6 +1971,46 @@ TEST_F(PlannerTest, TestMultiStreamConfig) {
               graph_partitioner_cpu_gpu->Streams() == 2);
 }
 
+TEST_F(PlannerTest, InvalidMultiStreamConfigUsesDefaultPartition) {
+  const PathString config_path = ORT_TSTR("./test_invalid_partition_config.json");
+  ScopedFileDeleter cleanup{config_path};
+  const std::array<const char*, 13> invalid_configs = {
+      "not-json",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]]})",
+      R"({"type":"DeviceBasedPartitioner","streams":1,"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":["node1"],"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[[1]],"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":[0]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["bad"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["0","1"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"],["node2"]],"devices":["0","bad"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["999999999999999999999"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["-1"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["5"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["256"]})",
+  };
+
+  for (const char* config : invalid_configs) {
+    {
+      std::ofstream file{std::filesystem::path(config_path)};
+      ASSERT_TRUE(file.is_open());
+      file << config;
+    }
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), config_path);
+    ASSERT_NE(partitioner, nullptr);
+    EXPECT_EQ(partitioner->Streams(), 0u) << config;
+  }
+
+  {
+    std::ofstream file{std::filesystem::path(config_path)};
+    ASSERT_TRUE(file.is_open());
+    file << R"({"type":"DeviceBasedPartitioner"})";
+  }
+  auto partitioner = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), config_path);
+  ASSERT_NE(partitioner, nullptr);
+  EXPECT_EQ(partitioner->Streams(), 0u);
+}
+
 // Save partition config to a file and check its completeness
 TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream.json";
@@ -2029,8 +2082,8 @@ TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
   ASSERT_TRUE(!status.IsOK());
 }
 
-// Load with partition config where streams and devices has mismatch
-TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
+// A mismatched stream/device count falls back to default partitioning.
+TEST_F(PlannerTest, TestMultiStreamMismatchDeviceFallsBackToDefault) {
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
@@ -2046,7 +2099,7 @@ TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
   ASSERT_TRUE(status.IsOK());
 
   status = sess.Initialize();
-  ASSERT_TRUE(!status.IsOK());
+  ASSERT_TRUE(status.IsOK());
 }
 #endif
 
@@ -2178,6 +2231,106 @@ TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
   EXPECT_EQ(plan->allocation_plan[concat_training_unused_out_index].alloc_kind, AllocKind::kAllocate);
 }
 #endif
+
+// Regression test for a heap buffer overflow caused by reusing a packed sub-byte buffer for a full-byte tensor.
+//
+// A packed sub-byte tensor (uint4[N]) needs ceil(N/2) storage bytes, while a full-byte tensor (uint8[N]) of the
+// same logical shape needs N bytes. Both types have a one-byte C++ carrier size, so the allocation planner's
+// SameSize() check used to treat them as the same size (carrier size 1 == 1 and identical shape) and let the
+// uint8 output reuse the smaller uint4 buffer. Writing the uint8 tensor into that half-sized buffer then
+// overflows it (CWE-131 -> CWE-787). The uint8 output must not reuse the uint4 buffer.
+//
+// Graph (opset 21):  X(float) -Cast-> A(uint4) -Cast-> B(float) -Cast-> C(uint8) -Cast-> Y(float)
+// A is fully consumed by the second Cast and freed, so before the fix the planner reused A's 512-byte buffer for
+// the 1023-byte uint8 tensor C.
+//
+// The dimension is deliberately odd so the ceiling division in the packed storage size (ceil(1023 / 2) = 512, not
+// 1023 / 2 = 511) is covered as well.
+TEST(AllocationPlannerTest, AvoidReuseOfPackedSubByteBufferForFullByteTensor) {
+  constexpr int64_t kDim = 1023;
+
+  auto make_tensor_type = [](TensorProto_DataType elem_type) {
+    TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(kDim);
+    return t;
+  };
+
+  auto create_model = [&]() -> Model {
+    Model model("packed_subbyte_reuse", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}}, {},
+                DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+
+    TypeProto float_type = make_tensor_type(TensorProto_DataType_FLOAT);
+    TypeProto uint4_type = make_tensor_type(TensorProto_DataType_UINT4);
+    TypeProto uint8_type = make_tensor_type(TensorProto_DataType_UINT8);
+
+    auto& X = graph.GetOrCreateNodeArg("X", &float_type);
+    auto& A = graph.GetOrCreateNodeArg("A", &uint4_type);  // packed sub-byte buffer: ceil(1023/2) = 512 bytes
+    auto& B = graph.GetOrCreateNodeArg("B", &float_type);  // consumes A -> A becomes dead here
+    auto& C = graph.GetOrCreateNodeArg("C", &uint8_type);  // full-byte buffer: 1023 bytes
+    auto& Y = graph.GetOrCreateNodeArg("Y", &float_type);
+
+    auto add_cast = [&graph](const std::string& name, NodeArg& in, NodeArg& out, TensorProto_DataType to) {
+      auto& node = graph.AddNode(name, "Cast", name, {&in}, {&out});
+      node.AddAttribute("to", static_cast<int64_t>(to));
+    };
+    add_cast("cast_to_uint4", X, A, TensorProto_DataType_UINT4);
+    add_cast("cast_a_to_float", A, B, TensorProto_DataType_FLOAT);
+    add_cast("cast_to_uint8", B, C, TensorProto_DataType_UINT8);
+    add_cast("cast_c_to_float", C, Y, TensorProto_DataType_FLOAT);
+
+    graph.SetInputs({&X});
+    graph.SetOutputs({&Y});
+    EXPECT_STATUS_OK(graph.Resolve());
+    return model;
+  };
+
+  SessionOptions so;
+  // Keep memory reuse on (default) and avoid graph optimizations that could rewrite the Cast chain.
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSession sess{so, GetEnvironment()};
+
+  std::string serialized;
+  ASSERT_TRUE(create_model().ToProto().SerializeToString(&serialized));
+  std::stringstream sstr(serialized);
+  ASSERT_STATUS_OK(sess.Load(sstr));
+  ASSERT_STATUS_OK(sess.Initialize());
+
+  const auto& session_state = sess.GetSessionState();
+  const auto& ort_value_index_map = session_state.GetOrtValueNameIdxMap();
+  const SequentialExecutionPlan* plan = session_state.GetExecutionPlan();
+
+  OrtValueIndex a_index, c_index;
+  ASSERT_STATUS_OK(ort_value_index_map.GetIdx("A", a_index));
+  ASSERT_STATUS_OK(ort_value_index_map.GetIdx("C", c_index));
+
+  // The uint8 tensor C must never be planned to reuse the (smaller) uint4 tensor A's buffer.
+  const auto& c_plan = plan->allocation_plan[c_index];
+  const bool reuses_a = (c_plan.alloc_kind == AllocKind::kReuse) && (c_plan.reused_buffer == a_index);
+  EXPECT_FALSE(reuses_a) << "uint8[" << kDim << "] output must not reuse the uint4[" << kDim << "] buffer";
+
+  // The model must still run and produce correct results after round-tripping through uint4 and uint8.
+  constexpr float kValue = 3.0f;
+  std::vector<int64_t> dims{kDim};
+  std::vector<float> input_data(static_cast<size_t>(kDim), kValue);
+  OrtValue input_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, input_data, &input_value);
+
+  NameMLValMap feeds{{"X", input_value}};
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(sess.Run(feeds, output_names, &fetches));
+
+  ASSERT_EQ(fetches.size(), 1u);
+  const Tensor& out = fetches[0].Get<Tensor>();
+  ASSERT_EQ(out.Shape().Size(), kDim);
+  const float* out_data = out.Data<float>();
+  for (int64_t i = 0; i < kDim; ++i) {
+    ASSERT_EQ(out_data[i], kValue) << "mismatch at index " << i;
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime

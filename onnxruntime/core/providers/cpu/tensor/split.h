@@ -61,11 +61,23 @@ class SplitBase {
       }
       split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), split_dim_size / num_outputs);
     } else {
-      int64_t split_size_sum = split_size_sum_;
-      if (split_size_sum == -1) {
-        split_size_sum = std::accumulate(split_sizes.cbegin(), split_sizes.cend(), 0LL);
+      int64_t remaining_split_size = split_dim_size;
+      for (int64_t s : split_sizes) {
+        if (s < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Invalid negative value in 'split'. All split sizes must be >= 0.");
+        }
+        if (s > remaining_split_size) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Invalid value in 'split'. Split size ", s,
+                                 " exceeds the remaining size of the selected axis, ", remaining_split_size, ".");
+        }
+        remaining_split_size -= s;
       }
-      if (split_sizes.size() != static_cast<size_t>(num_outputs) || split_size_sum != split_dim_size)
+
+      const int64_t split_size_sum =
+          split_size_sum_ == -1 ? split_dim_size - remaining_split_size : split_size_sum_;
+      if (split_sizes.size() != static_cast<size_t>(num_outputs) || remaining_split_size != 0)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Cannot split using values in 'split' attribute. Axis=", axis_,
                                " Input shape=", input_shape,
@@ -86,9 +98,9 @@ class SplitBase {
     if (num_inputs == 1) {
       // optional
       if (info.GetAttrs("split", split_sizes_).IsOK()) {
-        split_size_sum_ = std::accumulate(split_sizes_.cbegin(), split_sizes_.cend(), 0LL);
         ORT_ENFORCE(std::all_of(split_sizes_.cbegin(), split_sizes_.cend(), [](int64_t value) { return value >= 0; }),
                     "Invalid value in 'split' attribute. All values must be > 0");
+        split_size_sum_ = std::accumulate(split_sizes_.cbegin(), split_sizes_.cend(), SafeInt<int64_t>{0});
       }
     }
 

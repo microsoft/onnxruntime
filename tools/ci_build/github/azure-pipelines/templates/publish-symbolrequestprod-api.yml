@@ -26,11 +26,6 @@ parameters:
     type: string
 
 steps:
-  - powershell: |-
-      Get-PackageProvider -Name NuGet -ForceBootstrap
-      Install-Module -Verbose -AllowClobber -Force Az.Accounts, Az.Storage, Az.Network, Az.Resources, Az.Compute
-    displayName: Install Azure Module Dependencies
-
   - task: PublishSymbols@2
     displayName: Publish Symbols (to current Azure DevOps tenant)
     continueOnError: True
