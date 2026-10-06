@@ -168,6 +168,13 @@ class OutputIterator {
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                     TensorShapeVector& directions, size_t num_entries);
 
+// Validates the node's 'num_scan_inputs' attribute against the actual number of variadic inputs
+// and outputs before it is used to derive the loop state variable and scan output counts, so a
+// value outside the valid range can't produce a negative count that later code uses as an index
+// or size without further checks. Called both at kernel construction time, before the attribute
+// value is used to size any directions/axes vectors, and again when building Info.
+void ValidateNumScanInputs(int64_t num_scan_inputs, int64_t num_variadic_inputs, int64_t num_outputs);
+
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
                       std::unique_ptr<OutputIterator>& output_iterator,

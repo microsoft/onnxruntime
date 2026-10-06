@@ -123,6 +123,10 @@ class IExecutionProvider {
    * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
    * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
    * CPU memory usage.
+   *
+   * The session requests a fresh loader for each graph initialization attempt. It owns the returned loader and
+   * destroys it after initializing the main graph and its subgraphs, including on failure. The loader is not
+   * retained for inference, and must finish any outstanding work before its destruction completes.
    */
   virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
@@ -465,6 +469,25 @@ class IExecutionProvider {
    */
   virtual const OrtEp* GetOrtEp() const {
     return nullptr;
+  }
+
+  /** Returns support for application-managed external EPContext data. */
+  virtual Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
+    supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+    return Status::OK();
+  }
+
+  /**
+   * Reports provider-specific EPContext data callback requirements before GetCapability(), including AOT discovery.
+   *
+   * This query must not have side effects. Report READ if capability discovery may read external context data.
+   * Report WRITE if the EP's effective configuration produces external EPContext data without a Compile() call
+   * (e.g. as a side effect of GetCapability() or GetEpContextNodes()), independently of ORT's embed mode. ORT uses
+   * a WRITE result here to validate write-callback support before such side effects can occur. Embedded EPContext
+   * data does not require either flag.
+   */
+  virtual uint32_t GetEpContextDataCallbackRequirements(const GraphViewer&) const {
+    return OrtEpContextDataCallbackSupportFlags_NONE;
   }
 
  private:

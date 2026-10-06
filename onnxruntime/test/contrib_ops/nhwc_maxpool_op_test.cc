@@ -258,5 +258,25 @@ TEST(NhwcMaxPoolContribOpTest, MaxPoolDilations_S8) {
   test.Run();
 }
 
+// Verify that a kernel_shape whose rank does not match the input spatial rank is rejected before
+// the spatial loop in NhwcMaxPool::Compute (which indexes kernel_shape/strides/dilations by dim).
+// AddShapeToTensorData(false) omits the input shape from the graph so ONNX shape inference is
+// bypassed and the crafted rank mismatch reaches the kernel. Exclude compiling EPs (TRT, QNN) and
+// EPs with their own validation (DML) that produce different error messages.
+TEST(NhwcMaxPoolContribOpTest, KernelRankMismatch_S8) {
+  OpTester test("NhwcMaxPool", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);
+
+  // Input spatial rank is 2 (input rank 4) while kernel_shape rank is 1.
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+
+  std::vector<int8_t> x_vals(1 * 8 * 8 * 4, 0);
+  test.AddInput<int8_t>("x", {1, 8, 8, 4}, x_vals);
+  test.AddOutput<int8_t>("y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "kernel_shape rank must match",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

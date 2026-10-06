@@ -164,6 +164,12 @@ void Scan<9>::Init(const OpKernelInfo& info) {
 
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
+  // Validate 'num_scan_inputs' before it is used below to derive num_loop_state_vars/num_scan_outputs
+  // and size the directions/axes vectors, so an out-of-range attribute value (from an untrusted
+  // model) can't underflow those derived counts or reach a vector allocation sized from them.
+  scan::detail::ValidateNumScanInputs(num_scan_inputs_, static_cast<int64_t>(info.GetInputCount()),
+                                      static_cast<int64_t>(info.GetOutputCount()));
+
   auto num_loop_state_vars = info.GetInputCount() - num_scan_inputs_;
   auto num_scan_outputs = info.GetOutputCount() - num_loop_state_vars;
 
@@ -204,8 +210,11 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
+  // 'num_scan_inputs_' was already validated in Init(); narrow<int> (rather than static_cast) is
+  // an inexpensive extra guard so an out-of-int-range value still fails predictably here instead
+  // of silently wrapping, even if that earlier validation is ever bypassed or refactored away.
   info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                          static_cast<int>(num_scan_inputs_));
+                                          onnxruntime::narrow<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ false, feeds_fetches_manager_);

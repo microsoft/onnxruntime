@@ -17,6 +17,8 @@
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
 using namespace onnxruntime::cuda;
@@ -44,6 +46,104 @@ bool HasOutput(const NodeType& node, size_t output_index) {
   } else {
     return node.OutputDefs().size() > output_index && node.OutputDefs()[output_index]->Exists();
   }
+}
+
+// A stable, greppable message for tests to detect that the redundant present-copy was skipped.
+constexpr char kPresentCopySkippedMessage[] =
+    "Attention: present_copy_skipped (present output aliases the input KV cache buffer).";
+
+PresentCopyLogger::PresentCopyLogger(const OpKernelInfo& info) noexcept {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // The plugin's internal CUDA shim does not own the session logger, so cache the logger exposed
+  // by kernel info while the kernel is initialized. The session owns both the logger and kernel,
+  // and destroys the kernel first. Logging is diagnostic only, so either API failure disables it.
+  OrtStatus* status = Ort::GetApi().KernelInfo_GetLogger(info.GetKernelInfo(), &logger_);
+  if (status != nullptr) {
+    Ort::GetApi().ReleaseStatus(status);
+    logger_ = nullptr;
+    return;
+  }
+
+  OrtLoggingLevel severity = ORT_LOGGING_LEVEL_FATAL;
+  status = Ort::GetApi().Logger_GetLoggingSeverityLevel(logger_, &severity);
+  if (status != nullptr) {
+    Ort::GetApi().ReleaseStatus(status);
+    logger_ = nullptr;
+    return;
+  }
+  enabled_ = ORT_LOGGING_LEVEL_VERBOSE >= severity;
+#else
+  logger_ = info.GetExecutionProvider()->GetLogger();
+  enabled_ = logger_ != nullptr &&
+             logger_->OutputIsEnabled(logging::Severity::kVERBOSE, logging::DataType::SYSTEM);
+#endif
+}
+
+void PresentCopyLogger::Log() const {
+  // Keep the decode hot path to a cached comparison when VERBOSE logging is disabled.
+  if (!enabled_) {
+    return;
+  }
+
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  OrtStatus* status = Ort::GetApi().Logger_LogMessage(
+      logger_, ORT_LOGGING_LEVEL_VERBOSE,
+      kPresentCopySkippedMessage,
+      ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__));
+  if (status != nullptr) {
+    Ort::GetApi().ReleaseStatus(status);
+  }
+#else
+  LOGS(*logger_, VERBOSE) << kPresentCopySkippedMessage;
+#endif
+}
+
+// Copies a 4-D BNSH KV tensor into the corresponding present_* output, unless the two
+// tensors already point at the SAME device buffer.
+//
+// This helper is only ever reached with past_sequence_length == 0 (see the callers'
+// present_kv_already_populated / ORT_ENFORCE(past_sequence_length == 0) gating), which by
+// ComputeOutputShapeForAttention (onnxruntime/core/providers/cpu/llm/attention_helper.h)
+// forces present_key/value's shape to be IDENTICAL to K/V's shape, not merely equal in byte
+// count. That is also the case ONNX's own Attention-24 reference semantics require
+// present_key == Identity(K) (and present_value == Identity(V)) when there is no past — so
+// skipping a self-copy here isn't just an optimization, it is a faithful in-place identity.
+//
+// On the external-KV-cache path (nonpad_kv_seqlen), TensorScatter declares .MayInplace(0, 0)
+// and its own ComputeInternal explicitly skips the analogous self-copy (see
+// onnxruntime/core/providers/cuda/llm/tensorscatter.cc). An ORT-specific production pattern
+// (a superset of what the ONNX spec documents for this combination) binds one device buffer
+// as the cache input, the TensorScatter output, AND the Attention present_* output (mirroring
+// GroupQueryAttention's past_key==present_key shared-buffer pattern, see the past_key_shared
+// aliasing check in GroupQueryAttention::ComputeInternal). In that case `src` and `dst` are
+// literally the same allocation: the data is already correct in place, and copying it is a
+// full-cache self-copy — wasted bandwidth, and technically UB (cudaMemcpyAsync requires
+// non-overlapping src/dst).
+//
+// NOT applicable to 3-D BSNH inputs: those need a layout-changing transpose, so src and dst
+// can never alias there and the transpose must always run. Callers must only use this helper
+// from the !is_bsnh (4-D BNSH) branches, and only where past_sequence_length == 0 is already
+// guaranteed; the ORT_RETURN_IF_NOT below is a defensive check against a future caller (e.g. an
+// internal-cache cuDNN decode path) using this helper outside that precondition,
+// where present_key/value can be strictly larger than K/V and a bare pointer-equality check
+// would otherwise silently under-copy or wrongly skip.
+//
+// `dst == nullptr` (present output not requested by the caller) is a no-op.
+inline Status CopyKVToPresent(const Tensor* src, Tensor* dst, cudaStream_t stream,
+                              const PresentCopyLogger& logger) {
+  if (dst == nullptr) {
+    return Status::OK();
+  }
+  ORT_RETURN_IF_NOT(src->SizeInBytes() == dst->SizeInBytes(),
+                    "CopyKVToPresent requires identical src/dst sizes; this only holds when "
+                    "past_sequence_length == 0 (see callers' gating).");
+  if (src->DataRaw() == dst->MutableDataRaw()) {
+    logger.Log();
+    return Status::OK();
+  }
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst->MutableDataRaw(), src->DataRaw(),
+                                       src->SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
+  return Status::OK();
 }
 
 }  // namespace llm_attention_detail
@@ -84,7 +184,7 @@ REGISTER_KERNEL_TYPED_24(MLFloat16)
 REGISTER_KERNEL_TYPED_24(BFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), present_copy_logger_(info) {
   is_causal_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("is_causal", 0)) == 1;
   kv_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", 0));
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
@@ -113,6 +213,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   const auto* kernel_options = this->GetAttentionKernelOptions();
   disable_flash_attention_ = std::is_same<T, float>::value || !kernel_options->UseFlashAttention();
   disable_memory_efficient_attention_ = !kernel_options->UseEfficientAttention();
+  // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 only. Reuse the shared cuDNN option
+  // (ORT_ENABLE_CUDNN_FLASH_ATTENTION env / provider option) already surfaced via
+  // UseCudnnFlashAttention(); do NOT add an Attention-specific key. auto_enable mirrors GQA's
+  // SM>=90 auto-preference (group_query_attention.cc:135-136).
+  constexpr bool kIsFp16OrBf16 = std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value;
+  enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options->UseCudnnFlashAttention();
+  auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options->AllowCudnnFlashAttentionAuto();
 }
 
 // ============================================================================
@@ -209,13 +316,16 @@ Status Attention<T>::ConvertAttnMaskToBias(
 //   Note: softcap is passed to the Flash kernel natively. softmax_precision is
 //   inherently satisfied (Flash accumulates softmax in FP32).
 //
-// PERFORMANCE NOTE: ONNX Attention's internal-cache decode path (past_key/past_value)
-// is ~15-30% slower than contrib GQA's decode path for grouped-query attention workloads.
-// When using external KV cache via TensorScatter + nonpad_kv_seqlen (opset 24), the
-// copy overhead (point 1) is eliminated. The remaining ~5-15% gap is from the missing
-// XQA kernel (point 2).
+// CACHE PATH INVARIANTS: The external KV cache path via TensorScatter +
+// nonpad_kv_seqlen (opset 24) has no past→present concat, and
+// for 4-D BNSH inputs the present_key/present_value population itself is also skipped when the
+// caller binds present_key/present_value to the SAME device buffer as key/value (e.g. via
+// IOBinding, mirroring TensorScatter's own .MayInplace(0, 0) pattern). If the caller does NOT
+// alias them, a D2D copy of the cache into the separate present_* buffers still happens — that
+// is required for correctness, not overhead that can be removed. (3-D BSNH inputs always pay a
+// layout-changing BSNH→BNSH transpose into present_*, which can never be aliased away.)
 //
-// The internal-cache overhead comes from:
+// Internal-cache decode retains two structural constraints:
 //
 // 1. No past_present_share_buffer: The ONNX Attention spec requires past_key/value
 //    shape = (B, H, past_seq, head_size) and present_key/value shape =
@@ -230,11 +340,8 @@ Status Attention<T>::ConvertAttnMaskToBias(
 // 2. No XQA kernel: GQA's specialized XQA decode kernel (xqa_loader.h) requires
 //    past_present_share_buffer to function. Since ONNX Attention cannot share buffers
 //    (see point 1), XQA is fundamentally incompatible with this op's spec design.
-//    This accounts for the remaining ~5-15% gap even on the external-cache path.
 //
-// 3. These are spec-level limitations, not implementation gaps. For production LLM
-//    inference, the external-cache path (TensorScatter + nonpad_kv_seqlen) is
-//    recommended and achieves near-parity with contrib GQA performance.
+// These are spec-level constraints, not dispatch gaps. See issue #29714.
 //
 template <typename T>
 Status Attention<T>::RunFlashAttention(
@@ -500,10 +607,9 @@ Status Attention<T>::RunFlashAttention(
           K->Data<T>(), present_key->MutableData<T>(),
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_key != nullptr && !is_bsnh) {
-      // 4D BNSH prompt: K is already BNSH, just D2D copy to present
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          present_key->MutableData<T>(), K->Data<T>(),
-          K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+      // present output may alias the cache buffer; see CopyKVToPresent.
+      ORT_RETURN_IF_ERROR(
+          llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, present_copy_logger_));
     }
     if (present_value != nullptr && is_bsnh) {
       ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
@@ -512,10 +618,9 @@ Status Attention<T>::RunFlashAttention(
           V->Data<T>(), present_value->MutableData<T>(),
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_value != nullptr && !is_bsnh) {
-      // 4D BNSH prompt: V is already BNSH, just D2D copy to present
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          present_value->MutableData<T>(), V->Data<T>(),
-          V->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+      // present output may alias the cache buffer; see CopyKVToPresent.
+      ORT_RETURN_IF_ERROR(
+          llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, present_copy_logger_));
     }
   }
 
@@ -535,6 +640,218 @@ Status Attention<T>::RunFlashAttention(
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Flash attention is not available in this build.");
 #endif
+}
+
+// ============================================================================
+// RunCudnnSdpaAttention: cuDNN SDPA (cudnn_frontend) external-cache decode tier.
+// ============================================================================
+//
+// Scope: opset-24 external KV cache decode only. The caller gates this
+// on ALL of: nonpad_kv_seqlen != nullptr, past_key == nullptr, q_sequence_length == 1,
+// no attn_mask / output_qk / softcap, fp16/bf16, and cudnn_sdpa::is_supported(). is_causal
+// is intentionally NOT gated: for s_q==1 cuDNN drops causal masking, so is_causal=0 and
+// is_causal=1 collapse to the identical padding-only frontier. See §4 of the design (issue #29714).
+//
+// Layout / semantics (mirrors RunFlashAttention Path 1):
+//   * Q: 3D inputs (is_bsnh) are already physical BSNH → no transpose, Q_K_V_BSNH.
+//        4D inputs (BNSH) → transpose Q to BSNH while K/V stay BNSH → mixed
+//        Q_K_V_BSNH_BNSH_BNSH format (as GQA does).
+//   * Output: cuDNN always writes O as BSNH; transpose to BNSH when !is_bsnh.
+//   * Valid KV length → device int32 via LaunchConvertNonpadKvSeqlenToFlashSeqlensK
+//     (emits a clamped count, exactly cuDNN's mask_sequence_lengths_kv). No host readback.
+//   * sequence_length_kv = total_sequence_length (buffer capacity); the per-batch mask
+//     bounds the valid region. mask_sequence_lengths_q = nullptr (single valid q token).
+//   * Fully-masked batch (nonpad_kv_seqlen[b] == 0): cuDNN softmax over an all -inf row is
+//     unspecified (likely NaN), while every other tier defines output = 0. Apply
+//     LaunchZeroOutputForFullyMaskedBatches after run() to restore spec equivalence.
+//   * present_key/value are populated from the input K/V cache, EXCEPT when the caller has
+//     bound the present_* output to the very same device buffer as the K/V cache input (the
+//     recommended TensorScatter + IOBinding pattern). In that aliased case the data is already
+//     in place and the copy is skipped — see llm_attention_detail::CopyKVToPresent.
+//
+// CUDA-graph safety: no host read of valid length; the converter is a device kernel and the
+// cuDNN plan cache is keyed on capacity (stable across decode steps). The plan must be built
+// (warmup) before cudaStreamBeginCapture — a hard invariant, matching the existing GQA flow.
+//
+// Why that invariant holds today (state it explicitly, because it is load-bearing and easy to
+// break accidentally): BOTH sides of it are per-thread.
+//   * The cuDNN execution-plan cache is thread_local
+//     (contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.cc: `thread_local ... mha_graph_cache`).
+//   * ORT's pre-capture run counter lives in CUDAExecutionProvider::PerThreadContext
+//     (`graph_id_to_run_count_` vs `min_num_runs_before_cuda_graph_capture_`), which is likewise
+//     thread-local state.
+// So a Run arriving on a fresh thread restarts ORT's warmup count AND repopulates the plan cache
+// on that same thread: the warmup Run(s) and the eventual capture Run always land on the same
+// thread, guaranteeing the plan is already built (heuristics/autotuning, which may synchronize)
+// by the time cudaStreamBeginCapture runs. A cold plan build can therefore never land inside an
+// active capture.
+//
+// This breaks SILENTLY if the two sides' storage scopes stop matching — specifically, if the
+// capture run counter is hoisted out of PerThreadContext (made global/shared) while the cuDNN plan
+// cache remains thread_local. Then a warmup on one thread could satisfy the (now-shared) counter
+// while the capture Run on another thread still has a cold, never-warmed thread_local plan cache,
+// hitting a cold plan build inside the capture and reintroducing the #29689 class of failure with
+// no test in this PR catching it. (Making the plan cache itself global/shared, by contrast, would
+// not break this invariant — it would make the warmed plan visible across threads too. The unsafe
+// direction is specifically the counter becoming shared/global while the plan cache stays
+// thread_local.) Re-validate this comment if you touch either side's storage scope.
+template <typename T>
+Status Attention<T>::RunCudnnSdpaAttention(
+    OpKernelContext* context,
+    const Tensor* Q, const Tensor* K, const Tensor* V,
+    const Tensor* nonpad_kv_seqlen,
+    Tensor* Y, Tensor* present_key, Tensor* present_value,
+    const attention_helper::AttentionParameters& parameters) const {
+  auto& device_prop = GetDeviceProp();
+  auto ort_stream = GetOrtStream(context);
+  auto cuda_stream = Stream(context);
+  const bool is_bf16 = std::is_same<T, BFloat16>::value;
+  const bool is_bsnh = parameters.transpose_output;  // 3D inputs → BSNH
+
+  // This tier is external-cache decode only. Keep defensive checks for the durable dispatch
+  // constraints even though the caller's eligibility gate guarantees them.
+  ORT_ENFORCE(nonpad_kv_seqlen != nullptr,
+              "RunCudnnSdpaAttention requires nonpad_kv_seqlen (opset-24 external KV cache).");
+  ORT_ENFORCE(parameters.q_sequence_length == 1,
+              "RunCudnnSdpaAttention requires decode (q_sequence_length must be 1, got ",
+              parameters.q_sequence_length, "). Prefill remains on the existing tiers; see issue #29714.");
+  ORT_ENFORCE(parameters.past_sequence_length == 0,
+              "RunCudnnSdpaAttention with nonpad_kv_seqlen requires K/V to be the full cache "
+              "(past_sequence_length must be 0, got ",
+              parameters.past_sequence_length, ").");
+
+  // --- cuDNN handle + temp-space allocator (mirror GQA, group_query_attention.cc:807-810) ---
+  cudnnHandle_t cudnn_handle = GetCudnnHandle(context);
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
+  // --- Transpose Q from BNSH to BSNH for 4D inputs (cuDNN expects Q as BSNH) ---
+  void* q_data = const_cast<void*>(static_cast<const void*>(Q->Data<T>()));
+  IAllocatorUniquePtr<void> q_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                     parameters.q_num_heads * parameters.head_size;
+    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
+        parameters.batch_size, parameters.q_sequence_length,
+        parameters.q_num_heads, parameters.head_size,
+        Q->Data<T>(), q_bsnh_buffer.get(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
+    q_data = q_bsnh_buffer.get();
+  }
+
+  // cuDNN always writes O as BSNH. If Y expects BNSH, write to scratch then transpose.
+  void* out_data = Y->MutableData<T>();
+  IAllocatorUniquePtr<void> out_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t out_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                       parameters.q_num_heads * parameters.v_head_size;
+    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, GetComputeStream(context));
+    out_data = out_bsnh_buffer.get();
+  }
+
+  // --- Valid KV length → device int32 count (mask_sequence_lengths_kv). No host readback. ---
+  auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
+  ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+      nonpad_kv_seqlen->Data<int64_t>(),
+      seqlens_k_buffer.get(),
+      parameters.batch_size,
+      parameters.total_sequence_length,
+      cuda_stream,
+      device_prop.maxThreadsPerBlock));
+
+  // 3D physical BSNH → Q_K_V_BSNH; 4D BNSH inputs → mixed (Q transposed to BSNH, K/V stay BNSH).
+  const onnxruntime::contrib::AttentionQkvFormat qkv_format =
+      is_bsnh ? onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH
+              : onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
+
+  onnxruntime::cudnn_sdpa::run(
+      out_data,
+      q_data,
+      const_cast<void*>(static_cast<const void*>(K->Data<T>())),
+      const_cast<void*>(static_cast<const void*>(V->Data<T>())),
+      /*bias=*/nullptr,
+      /*mask_sequence_lengths_q=*/nullptr,  // single valid q token (decode); do NOT reuse KV lengths.
+      /*mask_sequence_lengths_kv=*/seqlens_k_buffer.get(),
+      parameters.batch_size,
+      parameters.q_num_heads,            // num_heads_q
+      parameters.kv_num_heads,           // num_heads_kv
+      parameters.head_size,              // head_size_qk
+      parameters.v_head_size,            // head_size_v (cuDNN allows head_size != v_head_size)
+      parameters.q_sequence_length,      // sequence_length_q
+      parameters.total_sequence_length,  // sequence_length_kv (capacity → physical strides)
+      parameters.scale,
+      parameters.is_causal,
+      is_bf16,
+      /*broadcast_attn_bias_dim_0=*/false,
+      /*broadcast_attn_bias_dim_1=*/false,
+      /*sliding_window=*/0,
+      qkv_format,
+      cudnn_handle,
+      ort_stream.get(),
+      allocator);
+
+  // --- Fully-masked-batch guard (REQUIRED, §4.3 step 7). nonpad_kv_seqlen[b] may be 0; every
+  // other tier defines output = 0 there, but cuDNN's softmax over an all -inf row is unspecified
+  // (likely NaN). Zero those rows on the BSNH output before transposing to BNSH. This is a
+  // spec-equivalence requirement, not defense-in-depth. Cannot be done as a host-side eligibility
+  // gate because nonpad_kv_seqlen is a device buffer (a D2H copy would break CUDA-graph capture). ---
+  //
+  // 4D (BNSH) output additionally needs a BSNH → BNSH transpose, which touches the same elements,
+  // so the two steps are fused into one kernel launch there (decode-path launch overhead). The 3D
+  // path has no transpose and keeps the standalone zero-fill (also used by the MEA path).
+  {
+    using CudaT = typename OrtToCudaType<T>::type;
+    if (!is_bsnh && out_bsnh_buffer != nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchTransposeBSNHtoBNSHWithZeroMask<CudaT>(
+          reinterpret_cast<const CudaT*>(out_bsnh_buffer.get()),
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          seqlens_k_buffer.get(),
+          parameters.batch_size,
+          parameters.q_sequence_length,
+          parameters.q_num_heads,
+          parameters.v_head_size,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    } else {
+      int64_t elements_per_batch = static_cast<int64_t>(parameters.q_sequence_length) *
+                                   parameters.q_num_heads * parameters.v_head_size;
+      ORT_RETURN_IF_ERROR(LaunchZeroOutputForFullyMaskedBatches<CudaT>(
+          reinterpret_cast<CudaT*>(out_data),
+          seqlens_k_buffer.get(),
+          parameters.batch_size,
+          elements_per_batch,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    }
+  }
+
+  // --- Populate present_key/value (BNSH) from the input K/V cache.
+  // K/V are the full external cache after TensorScatter; mirror RunFlashAttention's Path-1/prompt
+  // population (transpose BSNH→BNSH for 3D inputs, D2D copy for 4D BNSH inputs). For 4D BNSH the
+  // copy is skipped when present_* aliases the K/V buffer (see CopyKVToPresent). ---
+  if (present_key != nullptr && is_bsnh) {
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.kv_sequence_length,
+        parameters.kv_num_heads, parameters.head_size,
+        K->Data<T>(), present_key->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
+  } else if (present_key != nullptr && !is_bsnh) {
+    ORT_RETURN_IF_ERROR(
+        llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, present_copy_logger_));
+  }
+  if (present_value != nullptr && is_bsnh) {
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.kv_sequence_length,
+        parameters.kv_num_heads, parameters.v_head_size,
+        V->Data<T>(), present_value->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
+  } else if (present_value != nullptr && !is_bsnh) {
+    ORT_RETURN_IF_ERROR(
+        llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, present_copy_logger_));
+  }
+
+  return Status::OK();
 }
 
 // ============================================================================
@@ -964,10 +1281,9 @@ Status Attention<T>::RunMemoryEfficientAttention(
           K->Data<T>(), present_key->MutableData<T>(),
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_key != nullptr && !is_bsnh) {
-      // 4D BNSH prompt: K is already BNSH, just D2D copy to present
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          present_key->MutableData<T>(), K->Data<T>(),
-          K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+      // present output may alias the cache buffer; see CopyKVToPresent.
+      ORT_RETURN_IF_ERROR(
+          llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, present_copy_logger_));
     }
     if (present_value != nullptr && is_bsnh) {
       ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
@@ -976,10 +1292,9 @@ Status Attention<T>::RunMemoryEfficientAttention(
           V->Data<T>(), present_value->MutableData<T>(),
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_value != nullptr && !is_bsnh) {
-      // 4D BNSH prompt: V is already BNSH, just D2D copy to present
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          present_value->MutableData<T>(), V->Data<T>(),
-          V->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+      // present output may alias the cache buffer; see CopyKVToPresent.
+      ORT_RETURN_IF_ERROR(
+          llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, present_copy_logger_));
     }
   }
 
@@ -1262,9 +1577,9 @@ Status Attention<T>::RunUnfusedAttention(
                                                    K->Data<T>(), present_key->MutableData<T>(),
                                                    cuda_stream, max_threads));
       } else {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-            present_key->MutableData<T>(), K->Data<T>(),
-            K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+        // present output may alias the cache buffer; see CopyKVToPresent.
+        ORT_RETURN_IF_ERROR(
+            llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, present_copy_logger_));
       }
     }
     if (present_value != nullptr) {
@@ -1273,9 +1588,9 @@ Status Attention<T>::RunUnfusedAttention(
                                                    V->Data<T>(), present_value->MutableData<T>(),
                                                    cuda_stream, max_threads));
       } else {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-            present_value->MutableData<T>(), V->Data<T>(),
-            V->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+        // present output may alias the cache buffer; see CopyKVToPresent.
+        ORT_RETURN_IF_ERROR(
+            llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, present_copy_logger_));
       }
     }
   }
@@ -1286,7 +1601,7 @@ Status Attention<T>::RunUnfusedAttention(
 // ============================================================================
 // ComputeInternal: Dispatch to appropriate attention kernel
 // ============================================================================
-// Dispatch cascade: Flash → MEA (Memory Efficient) → Unified Unfused Attention.
+// Dispatch cascade: cuDNN SDPA → Flash → MEA (Memory Efficient) → Unified Unfused Attention.
 // The unified unfused kernel handles both MHA (num_heads == kv_num_heads) and
 // GQA (num_heads != kv_num_heads) via a reshape-Q trick (no K/V head replication).
 // MEA uses head expansion via LaunchUngroup (fp16/bf16 only) for GQA.
@@ -1332,23 +1647,45 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool is_gqa = parameters.kv_num_heads != parameters.q_num_heads;
 
   // === KERNEL SELECTION CASCADE ===
-  // Priority: flash attention > memory efficient attention > unfused attention
+  // Priority: cuDNN SDPA > flash attention > memory efficient attention > unfused attention
   //
   // 4D BNSH handling per kernel:
+  //   cuDNN: Q is transposed BNSH→BSNH and K/V are passed as BNSH (mixed
+  //          Q_K_V_BSNH_BNSH_BNSH layout); the output is transposed back BSNH→BNSH.
   //   Flash: strictly requires BSNH — Q is transposed BNSH→BSNH before calling mha_fwd*.
   //          K/V passed as BNSH to mha_fwd_kvcache (it handles both layouts).
   //   MEA:   accepts both BSNH and BNSH natively via is_kv_bsnh flag. Q transposed to BSNH.
   //   Unfused: accepts both BSNH and BNSH (transposes if needed).
   //
   // nonpad_kv_seqlen + attn_mask routing:
+  //   cuDNN: handles nonpad_kv_seqlen (per-batch valid KV length) but not attn_mask — its
+  //          external-cache decode gate below requires attn_mask == nullptr.
   //   Flash: cannot handle this combo (no bias param when seqlens_k is used) → excluded.
   //   MEA:   supports both (custom_right_padding for seqlens + additive attn_bias for mask).
   //   Unfused: nonpad → seqlens_k; mask → attention_bias; both handled independently in softmax kernel.
-#if USE_FLASH_ATTENTION || USE_MEMORY_EFFICIENT_ATTENTION
-  const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
-#endif
+  // has_output_qk is needed by all three (cuDNN, Flash, MEA) eligibility blocks. cuDNN is not
+  // gated under USE_FLASH_ATTENTION / USE_MEMORY_EFFICIENT_ATTENTION, so define it unconditionally.
+  [[maybe_unused]] const bool has_output_qk =
+      (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
 
-  // softmax_precision: All CUDA backends (Flash, MEA, Unfused) compute softmax in
+  // Debug-info dispatch recording (mirrors contrib_ops/cuda/bert/attention.cc). When enabled,
+  // records which tier ran so tests can assert routing (the ONNX Attention kernel previously had
+  // no AttentionKernelDebugInfo wiring). Call right before each early return in the cascade.
+  const bool allow_debug_info = this->GetAttentionKernelOptions()->AllowDebugInfo();
+  auto emit_debug_info = [&](bool use_cudnn, bool use_flash, bool use_mea) {
+    if (allow_debug_info) {
+      AttentionKernelDebugInfo debug_info;
+      debug_info.use_cudnn_flash_attention = use_cudnn;
+      debug_info.use_flash_attention = use_flash;
+      debug_info.use_efficient_attention = use_mea;
+      debug_info.Print("Attention",
+                       this->Node().Name(),
+                       std::is_same<T, MLFloat16>::value,
+                       std::is_same<T, BFloat16>::value);
+    }
+  };
+
+  // softmax_precision: All CUDA backends (cuDNN, Flash, MEA, Unfused) compute softmax in
   // FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via FP32
   // softmax kernel). softmax_precision=1 (FP32) is inherently satisfied;
   // softmax_precision=0 (default) is also fine since higher precision is always
@@ -1376,6 +1713,71 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // cross-attention without an external cache (causal_cross_no_past && nonpad_kv_seqlen ==
   // nullptr) keeps upper-left alignment and is handled by MEA/Unfused below.
 
+  // === cuDNN SDPA external-cache decode tier ===
+  // Highest priority when eligible, so the effective cascade is cuDNN → Flash → MEA → Unfused.
+  // NOT gated under USE_FLASH_ATTENTION / USE_MEMORY_EFFICIENT_ATTENTION: GQA's cuDNN eligibility
+  // lives outside those macros and the wrapper stubs out via CUDNN_MAJOR when cuDNN is too old.
+  //
+  // Hard gate (ALL required, §3 of issue #29714): narrowly scoped to the opset-24 external-cache
+  // single-token decode path — its actual value proposition — so it cannot steal traffic from
+  // currently-correct paths:
+  //   * nonpad_kv_seqlen != nullptr  (opset-24 external cache)
+  //   * past_key == nullptr          (external cache only; internal past_key/present_key decode is
+  //                                    excluded because its growing KV extent prevents cuDNN graph
+  //                                    plan reuse; see issue #29714.)
+  //   * q_sequence_length == 1       (decode: the only unconditionally-safe case for this tier.
+  //                                    For s_q==1 cuDNN drops causal masking entirely
+  //                                    (cudnn_flash_attention.cc:430), so is_causal=0 and
+  //                                    is_causal=1 collapse to the identical padding-only frontier
+  //                                    j ∈ [0, nonpad[b]−1]; both are exact ONNX-equivalent here.
+  //                                    is_causal is therefore intentionally NOT gated — requiring it
+  //                                    would leave this tier dead for the repo's own decode contract,
+  //                                    which emits is_causal=0. Prefill (s_q>1) needs extra anchor +
+  //                                    query-padding handling.)
+  //   * !has_output_qk               (cuDNN cannot produce the optional output_qk)
+  //   * attn_mask == nullptr         (explicit mask routes to MEA/Unfused, unchanged)
+  //   * softcap == 0                 (no softcap / smooth-softmax / head-sink; ONNX Attention has
+  //                                    no head-sink, keep defensive)
+  //   * fp16/bf16 with head_size % 8 == 0 and <= 256 (checked by cudnn_sdpa::is_supported)
+  {
+    auto& device_prop = GetDeviceProp();
+    const bool cudnn_flash_enabled =
+        enable_cudnn_flash_attention_ ||
+        (auto_enable_cudnn_flash_attention_ && device_prop.major >= 9);
+    const bool cudnn_eligible =
+        cudnn_flash_enabled &&
+        nonpad_kv_seqlen != nullptr &&
+        past_key == nullptr &&
+        parameters.q_sequence_length == 1 &&
+        !has_output_qk &&
+        attn_mask == nullptr &&
+        parameters.softcap == 0.0f &&
+        onnxruntime::cudnn_sdpa::is_stable() &&
+        onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                              parameters.q_num_heads,
+                                              parameters.kv_num_heads,
+                                              parameters.head_size,              // head_size_qk
+                                              parameters.v_head_size,            // head_size_v
+                                              parameters.q_sequence_length,      // seq_len_q
+                                              parameters.total_sequence_length,  // seq_len_kv (capacity)
+                                              parameters.is_causal);
+
+    if (cudnn_eligible) {
+      LOGS_DEFAULT(VERBOSE) << "ONNX Attention: using cuDNN SDPA"
+                            << " (batch=" << parameters.batch_size
+                            << ", q_seq=" << parameters.q_sequence_length
+                            << ", total_seq=" << parameters.total_sequence_length << ")";
+      emit_debug_info(/*use_cudnn=*/true, /*use_flash=*/false, /*use_mea=*/false);
+      return RunCudnnSdpaAttention(context, Q, K, V, nonpad_kv_seqlen,
+                                   Y, present_key, present_value, parameters);
+    }
+  }
+
+  // Internal-cache decode remains on Flash/MEA because its growing KV extent prevents reuse of a
+  // sequence-length-keyed cuDNN graph plan. Prefill likewise remains on the existing tiers: making
+  // cuDNN plans reusable would require fixed query chunks plus padding and masking machinery.
+  // Keep both cases outside this narrowly gated tier; see issue #29714.
+
 #if USE_FLASH_ATTENTION
   {
     auto& device_prop = GetDeviceProp();
@@ -1399,6 +1801,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             << ", q_seq=" << parameters.q_sequence_length
                             << ", total_seq=" << parameters.total_sequence_length
                             << ", past=" << (past_key != nullptr ? "yes" : "no") << ")";
+      emit_debug_info(/*use_cudnn=*/false, /*use_flash=*/true, /*use_mea=*/false);
       return RunFlashAttention(context, Q, K, V, past_key, past_value,
                                nonpad_kv_seqlen, Y, present_key, present_value, parameters);
     }
@@ -1451,6 +1854,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             << ", total_seq=" << parameters.total_sequence_length
                             << ", past=" << (past_key != nullptr ? "yes" : "no")
                             << ", mask=" << (attn_mask != nullptr ? "yes" : "no") << ")";
+      emit_debug_info(/*use_cudnn=*/false, /*use_flash=*/false, /*use_mea=*/true);
       return RunMemoryEfficientAttention(context, Q, K, V, attn_mask, past_key, past_value,
                                          nonpad_kv_seqlen, Y, present_key, present_value, parameters);
     }
@@ -1479,6 +1883,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   LOGS_DEFAULT(VERBOSE) << "Attention: using unified unfused path (is_gqa=" << is_gqa
                         << ", head_size=" << parameters.head_size
                         << ", softcap=" << parameters.softcap << ")";
+  emit_debug_info(/*use_cudnn=*/false, /*use_flash=*/false, /*use_mea=*/false);
   return RunUnfusedAttention(context, Q, K, V, attn_mask, past_key, past_value,
                              nonpad_kv_seqlen, Y, present_key, present_value,
                              output_qk, parameters);

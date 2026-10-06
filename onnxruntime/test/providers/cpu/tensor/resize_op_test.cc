@@ -3,6 +3,7 @@
 
 #include <exception>
 #include <limits>
+#include <type_traits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -254,6 +255,14 @@ TYPED_TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
     // QNN: result diff
     // TRT: Segmentation fault in A100
     std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+    if constexpr (std::is_same_v<TypeParam, MLFloat16>) {
+      // These EPs do not provide this Resize(13) MLFloat16 kernel.
+      excluded_providers.insert(kNnapiExecutionProvider);
+      excluded_providers.insert(kXnnpackExecutionProvider);
+      excluded_providers.insert(kCoreMLExecutionProvider);
+      excluded_providers.insert(kTensorrtExecutionProvider);
+      excluded_providers.insert("example_ep");
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
   };
 
@@ -3074,6 +3083,41 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
       {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
+TEST(ResizeOpTest, Antialias_Use_ExtrapolationWithNegativeRoi) {
+  std::vector<float> X(16);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {10.0f, 10.0f, 10.0f, 13.75f};
+  InlinedVector<std::string_view> excluded_eps = {
+      kDmlExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider};
+
+  TestAntialiasing(
+      {{"mode", "linear"},
+       {"exclude_outside", "0"},
+       {"extrapolation_value", "10"},
+       {"coordinate_transformation_mode", "tf_crop_and_resize"},
+       {"roi", "{0,0,-100,-100,1,1,1,1}"},
+       {"output_shape", "{1,1,2,2}"}},
+      {1, 1, 4, 4}, X, std::vector<float>{1.0f, 1.0f, 0.5f, 0.5f}, Y,
+      excluded_eps);
+}
+
+TEST(ResizeOpTest, Antialias_LargeRoiRoundedWindow) {
+  std::vector<float> X(512);
+  std::iota(X.begin(), X.end(), 0.f);
+  InlinedVector<std::string_view> excluded_eps = {
+      kDmlExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider};
+
+  TestAntialiasing(
+      {{"mode", "linear"},
+       {"exclude_outside", "0"},
+       {"extrapolation_value", "10"},
+       {"coordinate_transformation_mode", "tf_crop_and_resize"},
+       {"roi", "{0,0,0,10000000,1,1,1,10000000}"},
+       {"output_shape", "{1,1,1,1}"}},
+      {1, 1, 1, 512}, X, std::vector<float>{1.0f, 1.0f, 1.0f, 0.00333f}, {10.0f},
+      excluded_eps);
+}
+
 TEST(ResizeOpTest, Antialias_Large_half_pixel) {
   std::vector<float> X{0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
   std::vector<float> Y = {1.f, 4.f};
@@ -3125,6 +3169,38 @@ TEST(ResizeOpTest, Axes_and_Scale_18) {
 
   test.AddOutput<float>("Y", output_shape, Y);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Axes_Roi_18) {
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<std::vector<int64_t>>("axes", {2});
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("roi", {2}, {0.25f, 0.75f});
+  test.AddInput<float>("scales", {1}, {0.5f}, true);
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.75f, 3.25f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Axes_FullRankRoi_18) {
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<std::vector<int64_t>>("axes", {2});
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("roi", {6}, {0.0f, 0.0f, 0.25f, 1.0f, 1.0f, 0.75f});
+  test.AddInput<float>("scales", {1}, {0.5f}, true);
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.75f, 3.25f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ResizeOpTest, Axes_and_Size_18) {
@@ -3233,6 +3309,25 @@ TEST(ResizeOpTest, Axes_and_Scales_CountMismatch_18) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Number of elements in scales should be equal to number of axes.",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(ResizeOpTest, Scales_CountMismatch_13) {
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> scales(16, 1.0f);
+  std::vector<float> Y(16, 0.0f);
+
+  OpTester test("Resize", 13);
+  test.AddAttribute("mode", "nearest");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, std::vector<float>{});
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Number of elements in scales should be equal to rank of the data when axes is not provided.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 
 TEST(ResizeOpTest, Axes_OutOfRange_18) {
@@ -3444,21 +3539,35 @@ TEST(ResizeOpTest, Roi_TooShortForAxes_18) {
   std::vector<int64_t> axes{2, 3, 4};
   std::vector<float> Y(16 * 4, 0.0f);
 
+  auto configure_test = [&](OpTester& test) {
+    test.AddShapeToTensorData(false);
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+    test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+    test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+    test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+    test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+    test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+  };
+
   OpTester test("Resize", 18);
-  test.AddShapeToTensorData(false);
-  test.AddAttribute("mode", "linear");
-  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-  test.AddAttribute<std::vector<int64_t>>("axes", axes);
-
-  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
-  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
-  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
-  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
-
+  configure_test(test);
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "roi input length",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
             kOpenVINOExecutionProvider});
+
+#ifdef USE_DML
+  auto dml_execution_provider = DefaultDmlExecutionProvider();
+  if (dml_execution_provider) {
+    OpTester dml_test("Resize", 18);
+    configure_test(dml_test);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(dml_execution_provider));
+    dml_test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+  }
+#endif
 }
 
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {

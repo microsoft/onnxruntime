@@ -1,0 +1,46 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// PagedAttention — unpack packed varlen Q into padded BSNH scratch.
+//
+// FA expects a real batch dimension on Q; PagedAttention receives Q packed as
+// (token_count, num_heads * head_size) with variable per-batch lengths. This
+// kernel expands each token into its (batch, seq_pos) slot in a padded
+// (batch_size, max_seqlen_q, num_heads, head_size) tensor. Pad slots are
+// zero-filled; their FA outputs are discarded by the repack kernel.
+//
+// LEFT-aligned: real tokens at slots [0, q_len_b), padding at
+// [q_len_b, max_seqlen_q). Matches GQA's convention for right-padded prefill
+// and enables FA's use_seqlens_q path (past_len_b = total_kv_b - q_len_b).
+//
+// Address model (output global_idx row-major over BSNH):
+//   d = global_idx % head_size
+//   h = (global_idx / head_size) % num_heads
+//   s = (global_idx / (head_size * num_heads)) % max_seqlen_q
+//   b = global_idx / (head_size * num_heads * max_seqlen_q)
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .getByIndices .setByIndices
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  let d = global_idx % uniforms.head_size;
+  let h = (global_idx / uniforms.head_size) % uniforms.num_heads;
+  let s = (global_idx / (uniforms.head_size * uniforms.num_heads)) % uniforms.max_seqlen_q;
+  let b = global_idx / (uniforms.head_size * uniforms.num_heads * uniforms.max_seqlen_q);
+
+  let cum_lo = u32(cumulative_sequence_length.getByOffset(b));
+  let cum_hi = u32(cumulative_sequence_length.getByOffset(b + 1u));
+  let seq_len_b = cum_hi - cum_lo;
+
+  if (s >= seq_len_b) {
+    output.setByIndices(vec4<u32>(b, s, h, d), output_value_t(0));
+    return;
+  }
+
+  let token_idx = cum_lo + s;
+  let src_col = h * uniforms.head_size + d;
+  let v = input.getByIndices(vec2<u32>(token_idx, src_col));
+  output.setByIndices(vec4<u32>(b, s, h, d), v);
+}

@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 29
+#define ORT_API_VERSION 31
 
 #ifdef __cplusplus
 extern "C" {
@@ -321,6 +321,7 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
+ORT_RUNTIME_CLASS(EpContextConfig);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
@@ -586,6 +587,61 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
 typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
                                                      _In_ const void* buffer,
                                                      _In_ size_t buffer_num_bytes);
+
+/** \brief Function called to write named binary data.
+ *
+ * Each invocation represents one complete write operation for `name`. ORT does not retain `buffer` after the callback
+ * returns and does not serialize calls made by different EP instances or worker threads.
+ *
+ * \param[in] state Application-owned state. It must remain valid while the callback may be invoked and must be
+ *                  synchronized by the application if calls can be concurrent.
+ * \param[in] name Null-terminated UTF-8 logical data identifier.
+ * \param[in] buffer Data to write. May be NULL only when `buffer_num_bytes` is zero.
+ * \param[in] buffer_num_bytes Number of bytes in `buffer`.
+ * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
+ *
+ * \since Version 1.31.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
+                                                          _In_ const char* name,
+                                                          _In_ const void* buffer,
+                                                          _In_ size_t buffer_num_bytes);
+
+/** \brief Function called to read named binary data.
+ *
+ * The callback must allocate the returned buffer with `allocator`. The consumer frees it with the same allocator.
+ * ORT does not serialize calls made by different EP instances or worker threads.
+ *
+ * \param[in] state Application-owned state. It must remain valid while the callback may be invoked and must be
+ *                  synchronized by the application if calls can be concurrent.
+ * \param[in] name Null-terminated UTF-8 logical data identifier.
+ * \param[in] allocator Allocator that must be used for the output buffer.
+ * \param[out] buffer Allocated output buffer, or NULL for an empty payload.
+ * \param[out] data_size Number of bytes in `buffer`.
+ * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
+ *
+ * \since Version 1.31.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
+                                                         _In_ const char* name,
+                                                         _In_ OrtAllocator* allocator,
+                                                         _Outptr_result_buffer_maybenull_(*data_size) void** buffer,
+                                                         _Out_ size_t* data_size);
+
+/** \brief Flags describing an execution provider's support for application-managed external EPContext data.
+ *
+ * \since Version 1.31.
+ */
+typedef enum OrtEpContextDataCallbackSupportFlags {
+  /** The EP does not support application-managed external EPContext data. */
+  OrtEpContextDataCallbackSupportFlags_NONE = 0,
+
+  /** The EP will use the read callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_READ = 1 << 0,
+
+  /** The EP will use the write callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
+} OrtEpContextDataCallbackSupportFlags;
 
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
@@ -1052,18 +1108,31 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \brief External memory handle type for importing GPU resources.
+/** \brief External memory handle type for importing GPU/NPU resources.
  *
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,   /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,       /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR or
+                                                             clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_WIN32_KHR */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR or
+                                                             clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_FD_KHR */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION = 4,  /**< Host-allocated CPU virtual address (pointer). Must be page-aligned.
+                                                             Equivalent to VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT
+                                                             or CL_MEM_USE_HOST_PTR, @since 1.30 */
 } OrtExternalMemoryHandleType;
+
+// Previous enum values added for backwards compatibility
+#ifndef ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32
+#endif
+#ifndef ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD
+#endif
 
 /** \brief Descriptor for importing external memory.
  *
@@ -2381,7 +2450,9 @@ struct OrtApi {
    *
    * If the `size` parameter is less than the actual string attribute's size and `out`
    * is not nullptr, the value of `size` is set to the true size of the string attribute
-   * and a failure status is returned.)
+   * and a failure status is returned.
+   *
+   * The true size of the string attribute includes the trailing null character.
    *
    * \param[in] info ::OrtKernelInfo instance
    * \param[in] name Null terminated string of the name of the attribute
@@ -5315,9 +5386,9 @@ struct OrtApi {
    * the platform does not support memory mapping, in which case the file will be read into memory.
    *
    * \param[in] adapter_file_path adapter file path.
-   * \param[in] allocator optional pointer to a device allocator. If specified
-   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
-   *            The data would still be copied to device if required by the model at inference time.
+   * \param[in] allocator optional pointer to a non-CPU device allocator. If specified and a data transfer implementation
+   *            is available during adapter creation, the data is copied to the device before Run() is invoked.
+   *            Otherwise, the data stays on CPU and is copied to the device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    *
@@ -5335,9 +5406,9 @@ struct OrtApi {
    *
    * \param[in] bytes pointer to a valid Lora Adapter format buffer.
    * \param[in] num_bytes length of bytes buffer.
-   * \param[in] allocator optional pointer to a device allocator. If specified
-   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
-   *            The data would still be copied to device if required by the model at inference time.
+   * \param[in] allocator optional pointer to a non-CPU device allocator. If specified and a data transfer implementation
+   *            is available during adapter creation, the data is copied to the device before Run() is invoked.
+   *            Otherwise, the data stays on CPU and is copied to the device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    *
@@ -5767,9 +5838,13 @@ struct OrtApi {
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
-   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
-   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
-   * that are tensors that contain strings will cause an error to be returned.
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors of a
+   * type that occupies at least one byte per element, this is sizeof(element_type) *
+   * total_element_count. For packed sub-byte types (e.g. int4/uint4, which store multiple
+   * elements per byte) it is the actual packed storage size, which is smaller than
+   * sizeof(element_type) * total_element_count. Use this value (not the element count) when
+   * copying or bounds-checking the raw tensor buffer. OrtValues that are not tensors or that are
+   * tensors that contain strings will cause an error to be returned.
    *
    * \param[in] ort_value OrtValue instance containing a tensor
    * \param[out] size The total size of the tensor data in bytes
@@ -6878,11 +6953,20 @@ struct OrtApi {
 
   /** \brief Validate a compiled model's compatibility information for one or more EP devices.
    *
-   * \param[in] ep_devices The EP devices to validate against (e.g., from GetEpDevices).
-   *                        All devices must belong to the same execution provider.
-   * \param[in] num_ep_devices The number of EP devices provided.
+   * Validates an opaque compatibility string against the ordered EP device configuration that the caller intends to
+   * use. The caller is not expected to know which devices were used to compile the model. Device order may be
+   * significant, and the EP factory interprets the configuration using the same selection, fallback, and participation
+   * rules as OrtEpFactory::CreateEp.
+   *
+   * If the model is subsequently loaded, the caller should pass the same OrtEpDevice values in the same order to
+   * SessionOptionsAppendExecutionProvider_V2. This function validates a caller-selected configuration; it does not
+   * discover or return the device configuration for which an opaque compiled model was produced.
+   *
+   * \param[in] ep_devices The ordered EP devices to validate against (e.g., from GetEpDevices).
+   *                        All devices must belong to the same execution provider factory.
+   * \param[in] num_ep_devices The number of EP devices provided. Must be greater than zero.
    * \param[in] compatibility_info The compatibility info string produced when the model was compiled.
-   * \param[out] out_status The resulting compatibility status for the EP devices.
+   * \param[out] out_status The compatibility status for the intended EP device configuration.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -7517,6 +7601,82 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
                   _Outptr_result_maybenull_ OrtSyncStream** out);
+
+  /** \brief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
+   *
+   * When creating a session from a weightless EPContext model, the EP may need access to the source model's
+   * initializer data. This function provides the source model as an in-memory byte buffer, for scenarios
+   * where the source model is not available as a file on disk (e.g., loaded from a package or downloaded).
+   *
+   * The caller retains ownership of the buffer and must ensure it remains valid for the lifetime of the session.
+   *
+   * \note If the source model is available as a file on disk, use the session config entry
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) instead.
+   *
+   * \note If both a buffer (via this function) and a file path (via "ep.context_source_model_path") are
+   *       provided, the EP should prefer the buffer. The recommended EP precedence is:
+   *       buffer > file path > "onnx_model_filename" EPContext node attribute.
+   *
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[in] source_model_data Pointer to the source model byte buffer.
+   * \param[in] source_model_data_length Size of the byte buffer in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
+                  _In_ const void* source_model_data, _In_ size_t source_model_data_length);
+
+  /** \brief Get a preallocated output tensor without allocating an output.
+   *
+   * Returns a borrowed OrtValue that is already allocated for this output. The
+   * value may have been supplied by the caller of Run or IoBinding, or
+   * preallocated by ORT for an internal execution such as a control-flow
+   * subgraph. The returned value is valid only while the current kernel Compute
+   * call is executing and must not be released. If the output is unallocated or
+   * optional, `*output` is set to nullptr. This function never allocates,
+   * resizes, or replaces an output value.
+   *
+   * The caller must validate the returned tensor's shape and element type before
+   * writing to it, and must not write to an incompatible tensor. ORT generally
+   * rejects element type, rank, and static-dimension mismatches for top-level
+   * outputs during pre-run validation. For dynamic output dimensions, however,
+   * the shape check that KernelContext_GetOutput performs is skipped on this
+   * path, so a model with dynamic output shapes can yield a buffer smaller than
+   * the computed output. Calling KernelContext_GetOutput with the computed shape
+   * does not resize or replace an incompatible preallocated tensor; because the
+   * output slot is already allocated, ORT returns an error for the mismatch.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[in] output_index Output index in the current kernel.
+   * \param[out] output Borrowed preallocated output, or nullptr when the
+   *              current output is unallocated or optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
+                  _Outptr_result_maybenull_ OrtValue** output);
+
+  /** \brief Register a callback that supplies external EPContext binary data during session initialization.
+   *
+   * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
+   * callback is not used for EPContext nodes whose data is embedded in the ONNX model. Passing NULL clears the
+   * callback and its state. If an external EPContext node is assigned to an EP that does not advertise READ support,
+   * session initialization fails before that EP's Compile() call.
+   *
+   * \param[in] options Session options used to create the session and execution providers.
+   * \param[in] read_func Read callback, or NULL to clear a previously registered callback.
+   * \param[in] state Application-owned state passed to `read_func`. Ignored when `read_func` is NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
+                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
 };
 
 /*
@@ -8362,6 +8522,50 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
+
+  /** \brief Enable or disable weightless mode for model compilation.
+   *
+   * When enabled, the compiled EPContext model will not embed constant initializer data in the EP's
+   * compiled binary. Instead, the initializer data must be provided when creating a session from the
+   * compiled model, either from the source model (via the "onnx_model_filename" EPContext node attribute
+   * or the "ep.context_source_model_path" session option) or from externalized weights.
+   *
+   * This enables smaller compiled models and allows sharing initializer data across multiple compiled
+   * model variants (e.g., multi-platform caches for different hardware generations).
+   *
+   * ORT verifies that the target EP supports weightless mode during CompileModel() by calling
+   * OrtEp::GetWeightlessSupport(). If the EP does not support weightless mode, CompileModel()
+   * returns an error.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] use_weightless If true, enable weightless mode. If false, disable (default behavior).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ bool use_weightless);
+
+  /** \brief Register a callback that receives external EPContext binary data during model compilation.
+   *
+   * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
+   * callback is used only when EPContext data is not embedded in the generated ONNX model. Passing NULL clears the
+   * callback and its state. If a compiling EP does not advertise WRITE support, compilation fails before that EP's
+   * Compile() call.
+   *
+   * \param[in] model_compile_options Model compilation options.
+   * \param[in] write_func Write callback, or NULL to clear a previously registered callback.
+   * \param[in] state Application-owned state passed to `write_func`. Ignored when `write_func` is NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
 };
 
 /**
