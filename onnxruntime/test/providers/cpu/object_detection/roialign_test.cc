@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -854,6 +856,24 @@ TEST(RoiAlignTest, BatchIndicesNegative) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value -1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, RoiCoordinatesMustBeFinite) {
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 1);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 2, 2}, {0.f, 1.f, 2.f, 3.f});
+  test.AddInput<float>("rois", {1, 4}, {0.f, std::numeric_limits<float>::quiet_NaN(), 1.f, 1.f});
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All 'rois' values must be finite.",
+           {}, nullptr, &execution_providers);
 }
 
 TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {

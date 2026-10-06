@@ -84,6 +84,14 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
             ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(),
                                         "Invalid argument: \"", name, "\" must be a string.");
             value = valueVar.As<Napi::String>().Utf8Value();
+          } else if (name == "enableRobustness") {
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsBoolean(), epList.Env(),
+                                        "Invalid argument: \"enableRobustness\" must be a boolean.");
+            value = valueVar.As<Napi::Boolean>().Value() ? "1" : "0";
+          } else if (name == "enableMatmulFp32Accumulation") {
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsBoolean(), epList.Env(),
+                                        "Invalid argument: \"enableMatmulFp32Accumulation\" must be a boolean.");
+            value = valueVar.As<Napi::Boolean>().Value() ? "1" : "0";
           } else if (name == "forceCpuNodeNames") {
             ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsArray(), epList.Env(),
                                         "Invalid argument: \"forceCpuNodeNames\" must be a string array.");
@@ -195,7 +203,8 @@ void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort
   }
 }
 
-void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions) {
+void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
+                         std::vector<std::vector<char>>* externalDataBuffers) {
   // Execution provider
   if (options.Has("executionProviders")) {
     auto epsValue = options.Get("executionProviders");
@@ -370,20 +379,36 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
         paths.push_back(path);
 #endif
         ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
-                                        !obj.Get("data").IsBuffer() ||
-                                        !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
+                                        (!obj.Get("data").IsBuffer() &&
+                                         !(obj.Get("data").IsTypedArray() &&
+                                           obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array)),
                                     options.Env(),
                                     "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
 
         auto data = obj.Get("data");
+        char* source;
+        size_t size;
         if (data.IsBuffer()) {
-          buffs.push_back(data.As<Napi::Buffer<char>>().Data());
-          sizes.push_back(data.As<Napi::Buffer<char>>().Length());
+          source = data.As<Napi::Buffer<char>>().Data();
+          size = data.As<Napi::Buffer<char>>().Length();
         } else {
           auto typedArray = data.As<Napi::TypedArray>();
-          buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
-          sizes.push_back(typedArray.ByteLength());
+          auto* arrayBufferData = reinterpret_cast<char*>(typedArray.ArrayBuffer().Data());
+          source = typedArray.ByteOffset() == 0 ? arrayBufferData : arrayBufferData + typedArray.ByteOffset();
+          size = typedArray.ByteLength();
         }
+        if (externalDataBuffers != nullptr) {
+          externalDataBuffers->emplace_back();
+          if (size != 0) {
+            externalDataBuffers->back().assign(source, source + size);
+          } else {
+            externalDataBuffers->back().push_back(0);
+          }
+          buffs.push_back(externalDataBuffers->back().data());
+        } else {
+          buffs.push_back(source);
+        }
+        sizes.push_back(size);
       }
       sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
     }

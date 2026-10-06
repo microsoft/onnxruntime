@@ -12,7 +12,7 @@
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
 
-void MoeGemmProfiler::initBackend(CutlassMoeFCRunnerInterface* runner, MoeGemmId const& gemmId) {
+void MoeGemmProfiler::initBackend(CutlassMoeFCRunnerInterface* runner, const MoeGemmId& gemmId) {
   runner_ = runner;
 
   auto gemm_to_profile = (gemmId.gemm_type == MoeGemmId::GemmType::Gemm1)
@@ -28,7 +28,7 @@ void MoeGemmProfiler::initBackend(CutlassMoeFCRunnerInterface* runner, MoeGemmId
                 need_weights_, parallelism_config_);
 }
 
-std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, MoeGemmId const& gemmId,
+std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, const MoeGemmId& gemmId,
                                                                      cudaStream_t timing_stream) {
   ORT_LLM_LOG_ENTRY();
   ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("MoeGemmProfiler::runProfiling for M=", maxM, " ", gemmId));
@@ -98,7 +98,7 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, M
   constexpr int profile_iters = 10;
 
   for (size_t i = 0; i < tactics.size(); ++i) {
-    auto const& tactic = tactics[i];
+    const auto& tactic = tactics[i];
     try {
       // Warmup
       for (int j = 0; j < warmup_iters; ++j) {
@@ -123,7 +123,7 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, M
         best_config = tactic;
         found_one = true;
       }
-    } catch (std::exception const& e) {
+    } catch (const std::exception& e) {
       ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("Tactic failed: ", e.what(), " ", tactic.toString()));
       cudaGetLastError();  // Clear error
       continue;
@@ -142,13 +142,13 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, M
 }
 
 void MoeGemmProfiler::profileTactics(CutlassMoeFCRunnerInterface* runner,
-                                     weight_only::GemmDims const& dims, MoeGemmId const& gemmId,
+                                     const weight_only::GemmDims& dims, const MoeGemmId& gemmId,
                                      cudaStream_t timing_stream) {
   ORT_LLM_LOG_ENTRY();
 
   // Profile per M bucket: decode (small M) and prefill (large M) prefer different tile shapes,
   // so cache a separate best config for each bucket instead of a single shape-only config.
-  int const bucket = bucketM(dims.maxM);
+  const int bucket = bucketM(dims.maxM);
   auto& bucket_map = config_cache_[gemmId];
   if (bucket_map.find(bucket) != bucket_map.end()) {
     return;  // Already profiled for this (GemmId, M bucket).
@@ -182,14 +182,14 @@ int MoeGemmProfiler::bucketM(int64_t m) {
   return static_cast<int>(bucket);
 }
 
-std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::getBestConfig(int m, MoeGemmId const& id) const {
+std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::getBestConfig(int m, const MoeGemmId& id) const {
   ORT_LLM_LOG_ENTRY();
   auto it = config_cache_.find(id);
   if (it == config_cache_.end()) {
     return std::nullopt;
   }
-  auto const& bucket_map = it->second;
-  int const bucket = bucketM(m);
+  const auto& bucket_map = it->second;
+  const int bucket = bucketM(m);
 
   // Exact bucket profiled: use it.
   auto exact = bucket_map.find(bucket);
@@ -204,7 +204,7 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::getBestConfig(int m, Moe
   int best_ge_bucket = std::numeric_limits<int>::max();
   std::optional<Config> best_lt;
   int best_lt_bucket = -1;
-  for (auto const& kv : bucket_map) {
+  for (const auto& kv : bucket_map) {
     if (kv.first >= bucket) {
       if (kv.first < best_ge_bucket) {
         best_ge_bucket = kv.first;
