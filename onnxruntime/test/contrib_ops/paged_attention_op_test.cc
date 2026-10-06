@@ -20,9 +20,6 @@
 #include "gtest/gtest.h"
 
 #include "contrib_ops/cpu/bert/attention_common.h"
-#if defined(USE_FLASH_ATTENTION)
-#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
-#endif
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -1970,6 +1967,9 @@ TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
 
 TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
 #if defined(USE_FLASH_ATTENTION)
+#if defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE) || defined(ORT_QUICK_BUILD) || defined(EXCLUDE_SM_80)
+  GTEST_SKIP() << "This build does not expose the native FlashAttention geometry used by this test.";
+#endif
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "FlashAttention requires a CUDA device with compute capability 8.0 or newer.";
   }
@@ -1985,15 +1985,6 @@ TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
 
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.enable_cuda_graph = true;
-
-  cudaDeviceProp device_prop{};
-  int device_id = 0;
-  ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
-  ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
-  if (!onnxruntime::flash::is_supported<MLFloat16>(
-          device_prop, /*head_size*/ 64, /*num_heads*/ 2, /*num_heads_k*/ 1)) {
-    GTEST_SKIP() << "FlashAttention does not support this test geometry in the current build.";
-  }
 
   IoBindingCase malformed;
   malformed.batch_size = 1;
