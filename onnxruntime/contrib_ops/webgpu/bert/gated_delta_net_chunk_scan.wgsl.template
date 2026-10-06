@@ -29,9 +29,11 @@ $MAIN {
   }
   var first = batch * (uniforms.total_tokens / uniforms.batch_size);
   var last = first + uniforms.total_tokens / uniforms.batch_size;
+  var chunk_offset = batch * (uniforms.total_chunks / uniforms.batch_size);
 #if has_cu_seqlens
   first = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens)));
   last = u32(clamp(cu_seqlens.getByOffset(batch + 1u), i32(first), i32(uniforms.total_tokens)));
+  chunk_offset = first / CHUNK + batch;
 #endif
   let value_base = CHUNK * uniforms.head_size_qk;
   let matrix_base = value_base + CHUNK * uniforms.head_size_v;
@@ -42,7 +44,7 @@ $MAIN {
   var chunk_index = 0u;
   for (var start = first; start < last; start += CHUNK) {
     let length = min(CHUNK, last - start);
-    let base = ((batch * uniforms.num_heads_v + value_head) * uniforms.chunks_per_sequence + chunk_index) * uniforms.chunk_elements;
+    let base = ((chunk_offset + chunk_index) * uniforms.num_heads_v + value_head) * uniforms.chunk_elements;
     let total_qk_elements = length * uniforms.head_size_qk;
     for (var i = local_idx; i < total_qk_elements; i += workgroup_size_x) {
       tile_w[i] = prepared.getByOffset(base + i);

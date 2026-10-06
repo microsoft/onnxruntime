@@ -610,13 +610,12 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
 
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(dk));
-  const uint64_t max_seq_len = cu_seqlens == nullptr ? (total_tokens / batch) : total_tokens;
-  const uint64_t delta_chunks = (max_seq_len + kDeltaPrefillChunkSize - 1) /
-                                kDeltaPrefillChunkSize;
+  const uint64_t delta_chunks = GatedDeltaNetChunkCapacity(total_tokens, batch, kDeltaPrefillChunkSize,
+                                                           cu_seqlens != nullptr);
   const uint64_t delta_chunk_elements = kDeltaPrefillChunkSize * (3ull * dk + dv) +
                                         kDeltaPrefillChunkSize * kDeltaPrefillChunkSize + 1;
   constexpr uint64_t delta_workspace_cap = 64ull << 20;
-  const uint64_t delta_chunk_count = std::min<uint64_t>(static_cast<uint64_t>(batch) * hv * delta_chunks,
+  const uint64_t delta_chunk_count = std::min<uint64_t>(hv * delta_chunks,
                                                         delta_workspace_cap / sizeof(float) / delta_chunk_elements + 1);
   const uint64_t delta_prepared_elements = delta_chunk_count * delta_chunk_elements;
   const uint64_t normalized_elements = 2ull * total_tokens * hq * dk;
@@ -695,7 +694,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     if (cu_seqlens != nullptr) prepare_program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
     prepare_program.AddOutput({&prepared, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(128)
-        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(static_cast<uint64_t>(batch) * hv * delta_chunks))
+        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(hv * delta_chunks))
         .CacheHint(cu_seqlens != nullptr)
         .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)}, {onnxruntime::narrow<uint32_t>(batch)}, {onnxruntime::narrow<uint32_t>(hq)}, {onnxruntime::narrow<uint32_t>(hv)}, {onnxruntime::narrow<uint32_t>(dk)}, {onnxruntime::narrow<uint32_t>(dv)}, {onnxruntime::narrow<uint32_t>(delta_chunks)}, {onnxruntime::narrow<uint32_t>(delta_chunk_elements)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(prepare_program));

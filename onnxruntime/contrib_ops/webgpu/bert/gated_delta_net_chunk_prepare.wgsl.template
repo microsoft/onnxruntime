@@ -11,9 +11,29 @@ var<workgroup> chunk_keys: array<f32, chunk_size * 128>;
 var<workgroup> chunk_queries: array<f32, chunk_size * 128>;
 
 $MAIN {
-  let chunk_index = workgroup_idx % uniforms.chunks_per_sequence;
-  let value_head = (workgroup_idx / uniforms.chunks_per_sequence) % uniforms.num_heads_v;
-  let batch = workgroup_idx / (uniforms.chunks_per_sequence * uniforms.num_heads_v);
+  let chunk_slot = workgroup_idx / uniforms.num_heads_v;
+  let value_head = workgroup_idx % uniforms.num_heads_v;
+  var batch = chunk_slot / (uniforms.total_chunks / uniforms.batch_size);
+  var chunk_offset = batch * (uniforms.total_chunks / uniforms.batch_size);
+#if has_cu_seqlens
+  var lower = 0u;
+  var upper = uniforms.batch_size;
+  while (lower < upper) {
+    let middle = lower + (upper - lower) / 2u;
+    let boundary = u32(clamp(cu_seqlens.getByOffset(middle), 0, i32(uniforms.total_tokens))) / CHUNK + middle;
+    if (boundary <= chunk_slot) {
+      lower = middle + 1u;
+    } else {
+      upper = middle;
+    }
+  }
+  if (lower == 0u) {
+    return;
+  }
+  batch = lower - 1u;
+  chunk_offset = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens))) / CHUNK + batch;
+#endif
+  let chunk_index = chunk_slot - chunk_offset;
   let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
   var first = batch * (uniforms.total_tokens / uniforms.batch_size);
   var last = first + uniforms.total_tokens / uniforms.batch_size;

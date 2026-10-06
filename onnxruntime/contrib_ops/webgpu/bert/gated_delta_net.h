@@ -31,6 +31,12 @@ struct GatedDeltaNetParallelPrefillPlan {
   uint64_t workspace_bytes;
 };
 
+inline uint64_t GatedDeltaNetChunkCapacity(uint64_t total_tokens, uint64_t batch,
+                                           uint32_t chunk_size, bool ragged) {
+  if (ragged) return total_tokens / chunk_size + batch;
+  return batch * ((total_tokens / batch + chunk_size - 1) / chunk_size);
+}
+
 // The prepare and output passes each keep one state-shaped tile per live chunk. Two
 // additional state tiles ping-pong the recurrent carry between passes.
 inline std::optional<GatedDeltaNetParallelPrefillPlan> SelectGatedDeltaNetParallelPrefillPlan(
@@ -244,7 +250,7 @@ class GatedDeltaNetChunkPrepareProgram final : public Program<GatedDeltaNetChunk
       {"num_heads_v", ProgramUniformVariableDataType::Uint32},
       {"head_size_qk", ProgramUniformVariableDataType::Uint32},
       {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"chunks_per_sequence", ProgramUniformVariableDataType::Uint32},
+      {"total_chunks", ProgramUniformVariableDataType::Uint32},
       {"chunk_elements", ProgramUniformVariableDataType::Uint32});
 
  private:
@@ -263,7 +269,7 @@ class GatedDeltaNetChunkScanProgram final : public Program<GatedDeltaNetChunkSca
       {"num_heads_v", ProgramUniformVariableDataType::Uint32},
       {"head_size_qk", ProgramUniformVariableDataType::Uint32},
       {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"chunks_per_sequence", ProgramUniformVariableDataType::Uint32},
+      {"total_chunks", ProgramUniformVariableDataType::Uint32},
       {"chunk_elements", ProgramUniformVariableDataType::Uint32},
       {"scale", ProgramUniformVariableDataType::Float32});
 
