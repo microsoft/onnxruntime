@@ -578,6 +578,11 @@ void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> bu
   captured_host_buffers_.push_back(std::move(buffer));
 }
 
+std::filesystem::path CUDAExecutionProvider::GetSessionModelPath() const {
+  std::lock_guard<std::mutex> lock(model_path_mutex_);
+  return model_path_;
+}
+
 namespace cuda {
 
 template <>
@@ -3456,6 +3461,11 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      IResourceAccountant* resource_accountant) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   const logging::Logger& logger = *GetLogger();
+
+  if (!graph.ModelPath().empty()) {
+    std::lock_guard<std::mutex> lock(model_path_mutex_);
+    model_path_ = graph.ModelPath();
+  }
 
   // Figure out the memory limit if accountant is available
   size_t memory_threshold = std::numeric_limits<size_t>::max();

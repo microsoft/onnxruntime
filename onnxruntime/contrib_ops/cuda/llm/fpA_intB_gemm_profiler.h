@@ -16,8 +16,10 @@
  */
 #pragma once
 
-#include <cassert>
 #include <cutlass/numeric_types.h>
+
+#include <algorithm>
+#include <cassert>
 #include <memory>
 #include <optional>
 #include <set>
@@ -109,8 +111,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
   // in-process-only behavior (no disk reads/writes).
-  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache,
+                          onnxruntime::llm::gemm_cache::CacheAccess access = {}) {
     mCache = std::move(cache);
+    mCacheAccess = access;
   }
 
  protected:
@@ -130,20 +134,13 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
                            bool hasWeightOnlyCudaKernel) override;
 
-  void storePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
-                            bool hasWeightOnlyCudaKernel) override;
-
+  // Records buckets in `map` that are new or differ from the cache in memory (no disk write).
   void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
                             bool hasWeightOnlyCudaKernel) override;
 
  private:
   onnxruntime::llm::gemm_cache::MatMulNBitsKey makeCacheKey(GemmIdCore const& gemmId,
                                                             bool hasWeightOnlyCudaKernel) const;
-
-  // Populates the in-memory cache with any buckets in `map` not already recorded (no disk write).
-  // Returns true if at least one new bucket was staged.
-  bool stageProfiledTactics(GemmIdCore const& gemmId, MProfileMap const& map,
-                            bool hasWeightOnlyCudaKernel);
 
   bool mHasBiases;
   bool mHasZeros;
@@ -153,6 +150,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mArch;
   size_t mL2CacheBytes = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
+  onnxruntime::llm::gemm_cache::CacheAccess mCacheAccess;
   std::vector<int> mProfileMOverride;
 };
 

@@ -121,6 +121,7 @@ class CudaKernel : public OpKernel {
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
+  std::filesystem::path GetSessionModelPath() const { return provider_->GetSessionModelPath(); }
   int GetCudnnConvAlgo() const { return provider_->GetCudnnConvAlgo(); }
   bool GetCudnnConvUseMaxWorkspace() const { return provider_->GetCudnnConvUseMaxWorkspace(); }
   bool GetCudnnConv1dPadToNc1d() const { return provider_->GetCudnnConv1dPadToNc1d(); }
