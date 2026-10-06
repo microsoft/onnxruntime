@@ -310,7 +310,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
           "k_scale must be provided when k_quant_type is not NONE");
     }
 
-    if (k_scale->DataType() != DataTypeImpl::GetType<float>()) {
+    if (!k_scale->IsDataType<float>()) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "k_scale must be float tensor");
@@ -323,7 +323,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
           ONNXRUNTIME, INVALID_ARGUMENT,
           "v_scale must be provided when v_quant_type is not NONE");
     }
-    if (v_scale->DataType() != DataTypeImpl::GetType<float>()) {
+    if (!v_scale->IsDataType<float>()) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "v_scale must be float tensor");
