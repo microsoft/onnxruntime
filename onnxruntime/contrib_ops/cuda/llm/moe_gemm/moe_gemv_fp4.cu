@@ -477,7 +477,8 @@ void LaunchMoeGemvFp4RawNPacked(
 // selected by `config`, and the per-thread step is StepK = 128 / activation_bits = 8
 // (not 128 / weight_bits).
 bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
-                               MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed) {
+                               MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
+                               bool weights_row_major) {
   if (sm < 80) {
     return false;
   }
@@ -487,7 +488,9 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
   if (k % group_size != 0) {
     return false;
   }
-  if (expanded_num_rows <= 0 || expanded_num_rows > kMaxProfiledExpandedRowsFp4) {
+  const int64_t max_expanded_rows =
+      raw_n_packed && weights_row_major ? kMaxProfiledExpandedRowsNvfp4KPacked : kMaxProfiledExpandedRowsFp4;
+  if (expanded_num_rows <= 0 || expanded_num_rows > max_expanded_rows) {
     return false;
   }
   if (n < kMinProfiledProblemDim || k < kMinProfiledProblemDim) {

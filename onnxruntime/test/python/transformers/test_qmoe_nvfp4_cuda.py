@@ -1226,6 +1226,40 @@ class TestQMoENVFP4(unittest.TestCase):
 
 @pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("num_tokens", list(range(1, 10)))
+@pytest.mark.parametrize("use_bias", [False, True])
+@pytest.mark.parametrize("row_tile_size", [0, 2])
+def test_nvfp4_kpacked_mtp_window(onnx_dtype, num_tokens, use_bias, row_tile_size, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_FP4_PREFILL_MIN_TOKENS", "32")
+    shape = dict(
+        hidden_size=528,
+        inter_size=656,
+        num_experts=16,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=onnx_dtype,
+        use_swiglu=True,
+        use_bias=use_bias,
+        row_tile_size=row_tile_size,
+        offline_prepacked=True,
+        input_scale=0.1,
+    )
+    packed = TestQMoENVFP4()._run_nvfp4_moe_test(**shape, gemv_mode="1", enable_cuda_graph=num_tokens == 8)
+    diagnostics = capfd.readouterr().out
+    if num_tokens <= 8:
+        assert "Route=fp4_gemv_raw" in diagnostics
+        assert "DequantWeightBytes=" not in diagnostics
+    else:
+        assert "Route=grouped_moe" in diagnostics
+        assert "DequantWeightBytes=" in diagnostics
+    fallback = TestQMoENVFP4()._run_nvfp4_moe_test(**shape, gemv_mode="0")
+    tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+    torch.testing.assert_close(packed, fallback, atol=tolerance, rtol=tolerance)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
 @pytest.mark.parametrize("use_swiglu", [False, True])
 @pytest.mark.parametrize("row_tile_size", [0, 2])
 @pytest.mark.parametrize("disable_prepacking", [False, True])
@@ -1296,6 +1330,32 @@ def test_nvfp4_compact_qwen38_official_shape(num_tokens, capfd, monkeypatch):
     capacity = num_tokens * 10
     weight_bytes = capacity * (2 * 640 * 2560 + 2560 * 640) * 2
     assert f"QMoE NVFP4 ExpertCapacity={capacity} DequantWeightBytes={weight_bytes}" in capfd.readouterr().out
+
+
+@pytest.mark.skipif(
+    os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") != "1" or not torch.cuda.is_available() or not has_fp4_qmoe,
+    reason="Opt-in official 512-expert NVFP4 memory test",
+)
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("num_tokens", [7, 8])
+def test_nvfp4_kpacked_mtp_qwen38_official_shape(onnx_dtype, num_tokens, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_FP4_PREFILL_MIN_TOKENS", "32")
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=2560,
+        inter_size=640,
+        num_experts=512,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=onnx_dtype,
+        use_swiglu=True,
+        gemv_mode="1",
+        offline_prepacked=True,
+        input_scale=0.05,
+    )
+    diagnostics = capfd.readouterr().out
+    assert "Route=fp4_gemv_raw" in diagnostics
+    assert "DequantWeightBytes=" not in diagnostics
 
 
 if __name__ == "__main__":

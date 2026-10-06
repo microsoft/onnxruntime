@@ -30,6 +30,7 @@ enum class MoeGemvConfig {
 // Cover Qwen-style top_k=8 MTP decode. An (N+1)-token verification for
 // num_speculative_tokens=N expands to (N+1)*8 rows, up to 64 for N=7.
 inline constexpr int64_t kMaxProfiledExpandedRowsFp4 = 64;
+inline constexpr int64_t kMaxProfiledExpandedRowsNvfp4KPacked = 80;
 
 // True when the opt-in interleaved MXFP4 GEMV path is enabled (env ORT_FP4_GEMV_INTERLEAVED=1).
 // It combines three changes over the default path: (a) the INT4-style ColumnMajorInterleaved FP4
@@ -51,8 +52,9 @@ MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int6
                                       int multi_processor_count);
 
 // FP4 GEMV shape support. MXFP4 uses the prepacked ColumnMajor or SM80 pair-interleaved layout;
-// NVFP4 sets raw_n_packed and directly consumes the schema [E,K,N/2] layout. Requires sm >= 80
-// and the profiled small-decode row/dim bounds. The opt-in interleaved layout is MXFP4-only.
+// NVFP4 sets raw_n_packed and directly consumes the schema [E,K,N/2] layout. weights_row_major
+// selects native K-packed NVFP4 with an 80-row bound instead of 64. Requires sm >= 80 and the
+// profiled small-decode row/dim bounds. The opt-in interleaved layout is MXFP4-only.
 // See launch_moe_gemv_fp4_symmetric.
 bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size);
 bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
@@ -62,7 +64,8 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
 // un-permute it in-register. It implies the interleaved shape rules (MXFP4 group_size 32,
 // n % 16 == 0, k % 64 == 0) regardless of ORT_FP4_GEMV_INTERLEAVED.
 bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
-                               MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed = false);
+                               MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed = false,
+                               bool weights_row_major = false);
 
 // Layout-only (row-count independent) form of the rules above, for PrePack: true when a GEMV can
 // decode an [n, k] MXFP4 problem straight out of the SM80 grouped-GEMM pair-interleaved buffer, so
