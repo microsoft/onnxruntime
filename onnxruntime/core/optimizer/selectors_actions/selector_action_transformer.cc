@@ -143,6 +143,9 @@ static Status MatchAndProcess(
       if (!status.IsOK()) {
         break;
       }
+      if (!action_saved_state.save_record) {
+        continue;
+      }
 
       RuntimeOptimizationRecord::ProducedOpIdVector produced_op_ids{};
       produced_op_ids.reserve(action_saved_state.produced_node_op_schemas.size());

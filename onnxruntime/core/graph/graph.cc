@@ -7209,6 +7209,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     }
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   for (const auto& node : Nodes()) {
     for (auto edge = node.OutputEdgesBegin(); edge != node.OutputEdgesEnd(); ++edge) {
       if (edge->IsControlEdge()) {
@@ -7216,6 +7217,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       }
     }
   }
+#endif
 
   for (const auto& node : nodes_) {
     if (node == nullptr) {

@@ -33,6 +33,7 @@ struct Action {
   // per-action saved state
   struct SavedState {
     std::vector<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> produced_node_op_schemas;
+    bool save_record = true;
   };
 
   // saving interface

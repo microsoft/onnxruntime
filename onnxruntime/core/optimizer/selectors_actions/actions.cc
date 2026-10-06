@@ -163,6 +163,11 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
 Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
                                   const SatRuntimeOptimizationSaveContext& /*save_context*/,
                                   SavedState& saved_state, bool& graph_modified) const {
+  if (HasControlEdge(graph, selected_nodes.AllNodes())) {
+    saved_state.save_record = false;
+    return Status::OK();
+  }
+
   // make temporary node, save its op schema, remove temporary node
   const RuntimeState runtime_state{graph, selected_nodes};
   Node* replacement{};
