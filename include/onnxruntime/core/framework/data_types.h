@@ -183,7 +183,7 @@ class DataTypeImpl {
   static MLDataType GetOptionalType();
 
   /**
-    * Return the MLDataType (const DataTypeImpl*) for an ONNX TypeProto.
+   * Return the MLDataType (const DataTypeImpl*) for an ONNX TypeProto.
    * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back.
    * Even though GetTypeProto() will not have the original information, it will still have enough to correctly
    * map to MLDataType.

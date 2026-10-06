@@ -23,8 +23,8 @@ constexpr int ToTensorProtoElementType(ONNXTensorElementDataType type) noexcept 
   }
 }
 
-constexpr ONNXTensorElementDataType ToOrtTensorElementDataType(int type) noexcept {
-  switch (type) {
+constexpr ONNXTensorElementDataType ToOrtTensorElementDataType(int tensor_proto_element_type) noexcept {
+  switch (tensor_proto_element_type) {
     case 24:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0;
     case 25:
@@ -32,10 +32,11 @@ constexpr ONNXTensorElementDataType ToOrtTensorElementDataType(int type) noexcep
     case 26:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
     default:
-      if (type < 0 || type > static_cast<int>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0)) {
+      if (tensor_proto_element_type < 0 ||
+          tensor_proto_element_type > static_cast<int>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0)) {
         return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
       }
-      return static_cast<ONNXTensorElementDataType>(type);
+      return static_cast<ONNXTensorElementDataType>(tensor_proto_element_type);
   }
 }
 
