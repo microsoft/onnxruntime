@@ -23,13 +23,13 @@ Mixed-width QMoE contract
 
 ## Product Target
 
-### Delivery Status (October 5, 2026)
+### Delivery Status (October 6, 2026)
 
 - Contract, bounded CUDA correctness and packed decode merged in #32697, #32743 and #32761, respectively.
 - PR 4a [#32963](https://github.com/microsoft/onnxruntime/pull/32963) merged on October 1 as `a4d55e2b6f`: SM80 FP16/BF16 INT2 grouped GEMM foundation.
 - PR 4a2 [#33045](https://github.com/microsoft/onnxruntime/pull/33045) merged on October 1 as `78c834918d`: grouped-kernel test coverage, plugin test build footprint and diagnostic follow-up, including QUICK_BUILD-compatible baseline tactics.
 - PR 4b [#33005](https://github.com/microsoft/onnxruntime/pull/33005) merged on October 2 as `2cdff3ca8e`: default-enabled SM80+ FP16/BF16 packed INT2 FC1 / INT4 FC2 prefill, block size 64, symmetric weights and interleaved fused SwiGLU. Eligible prefill uses packed row tiling within a 256 MiB estimated temporary-scratch budget rather than switching long prompts to dense weight dequantization.
-- PR 4c [#33092](https://github.com/microsoft/onnxruntime/pull/33092) is open as a draft on October 5: it extends packed prefill to block sizes 32, 64 and 128 and to `(FC1, FC2)` widths `(2,4)`, `(2,2)` and `(4,2)` by dispatching each projection to the INT2 or INT4 grouped GEMM. The earlier `(2,4)` block-size integration passed on A100; the `(2,2)` and `(4,2)` dispatch and the expanded test matrix have not been CUDA-built or executed locally, so they are not validated by this document.
+- PR 4c [#33092](https://github.com/microsoft/onnxruntime/pull/33092) merged on October 5 as `0c67e77bb7cb`: packed prefill supports block sizes 32, 64 and 128 and `(FC1, FC2)` widths `(2,4)`, `(2,2)` and `(4,2)`, dispatching each projection to the INT2 or INT4 grouped GEMM. Final-head local A100 CUDA validation passed the expanded integration matrix and direct grouped-GEMM tests; see PR 4c below for scope and limitations.
 - Implementation merge is not end-to-end qualification. Remaining work includes reproducible fused Olive/Mobius export, CPU/CUDA model parity, target-model quality, controlled benchmarks, exact memory attribution and transition/concurrency/capture qualification. SM80+ dispatch eligibility does not establish execution coverage on every supported GPU architecture.
 
 ### Initial Quantization Recipe
@@ -46,8 +46,8 @@ The first supported configuration is:
 - CUDA execution provider.
 - FP16 or BF16 activations with FP32 accumulation.
 - Symmetric blockwise integer quantization.
-- FC1 INT2 and FC2 INT4 (merged); `(2,2)` and `(4,2)` are proposed in draft #33092.
-- Block size 64 for the merged packed prefill path; sizes 32 and 128 are proposed in draft #33092 and still need CUDA qualification.
+- `(FC1, FC2)` widths `(2,4)`, `(2,2)` and `(4,2)` are merged, including the extensions in #33092.
+- Block sizes 32, 64 and 128 for packed prefill are merged and locally tested on A100. Block size 32 has no GEMV path; broader deployment-GPU qualification remains open.
 - Interleaved fused SwiGLU (`swiglu_fusion=1`).
 - Top-k routing with multiple tokens and experts.
 - Raw portable model weights plus execution-provider-specific runtime prepacking.
@@ -364,14 +364,14 @@ Merged as [#33005](https://github.com/microsoft/onnxruntime/pull/33005) on Octob
 
 See Workstream 4 for the support boundary, merge gates, and the condition under which PR 4a/4b should remain one layered PR. Additional dtypes, architectures, and optional fusion are follow-ups. Block sizes and bit-width combinations are addressed by PR 4c.
 
-### PR 4c: Block Sizes and Width Combinations - Draft
+### PR 4c: Block Sizes and Width Combinations - Merged
 
-Open as [#33092](https://github.com/microsoft/onnxruntime/pull/33092), based on the PR 4a/4b packed prefill path.
+Merged as [#33092](https://github.com/microsoft/onnxruntime/pull/33092) on October 5, 2026 (`0c67e77bb7cb`), extending the PR 4a/4b packed prefill path.
 
 - Block sizes 32, 64 and 128 for packed prefill. The INT2 grouped GEMM support check also requires the reduction size to be divisible by the block size, and the QMoE integration already rejects hidden or intermediate sizes not divisible by it. Block size 32 adds no GEMV path, so small-batch decode at block size 32 uses grouped GEMM instead of the dense fallback.
 - `(FC1, FC2)` widths `(2,4)`, `(2,2)` and `(4,2)`. Each projection is dispatched by its own width; `(4,4)` stays on the existing path, and INT8 combinations, zero points and non-fused or non-interleaved SwiGLU keep the bounded fallback.
 - Defaults are unchanged: omitted FC-specific widths inherit `expert_weight_bits`, which defaults to 4, so existing INT4 models are unaffected.
-- Validation status: the `(2,4)` block-size integration passed on A100, but the final `(2,2)`/`(4,2)` dispatch and the expanded FP16/BF16 matrix and direct grouped-GEMM block-size tests were not executed locally. No performance improvement is claimed.
+- Final-head validation at `db8a7625b8` passed locally on A100-SXM4-80GB in Docker `jiafa-dev`, using a non-plugin Release CUDA 12.8 build with BF16 and internal tests enabled: 15 outer tests (14 QMoE tests plus the internal-test wrapper), zero failures/skips; 26 internal tests (22 grouped-GEMM and four validation tests), zero failures/skips, with three benchmarks disabled. The 216-invocation FP16/BF16 integration matrix, direct block-size/row-tile cases, cached-scale decode-to-prefill transition, packed-decode fallback and block32 dense fallback with prefill disabled passed. The [validation report](https://github.com/microsoft/onnxruntime/pull/33092#issuecomment-5988509632) records the commands and scope. This is local A100 correctness evidence, not plugin integration, every-GPU coverage or a performance-improvement claim.
 
 ### PR 5: Olive/Mobius Export
 
