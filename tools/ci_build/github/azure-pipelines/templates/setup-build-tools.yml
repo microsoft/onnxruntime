@@ -34,8 +34,15 @@ steps:
     python3 -m pip install requests truststore
   displayName: 'Install Python requests package'
 
-- task: PythonScript@0
-  displayName: 'Run GitHub Action via Python Wrapper'
-  inputs:
-    scriptPath: 'tools/ci_build/run_gh_action.py'
-    arguments: '${{ parameters.action_version }}'
+- powershell: |
+    Write-Host "Process: $env:NO_PROXY"
+    Write-Host "User:    $([Environment]::GetEnvironmentVariable('NO_PROXY', 'User'))"
+    Write-Host "Machine: $([Environment]::GetEnvironmentVariable('NO_PROXY', 'Machine'))"
+  displayName: Inspect proxy environment
+
+- powershell: |
+    $env:NO_PROXY = (($env:NO_PROXY -split ',') |
+      Where-Object { $_ -ne '::1' -and $_ -notmatch '/' }) -join ','
+
+    python tools/ci_build/run_gh_action.py ${{ parameters.action_version }}
+  displayName: Run GitHub Action via Python Wrapper
