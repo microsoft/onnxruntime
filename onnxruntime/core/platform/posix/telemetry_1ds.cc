@@ -272,9 +272,10 @@ std::string OneDsTelemetry::GetProcessName() {
   }
   return GetFileName(path.data());
 #elif defined(__linux__) || defined(__ANDROID__)
-  std::istringstream cmdline(ReadBoundedFile("/proc/self/cmdline", telemetry_detail::kMaxTelemetryPathBytes));
+  std::istringstream cmdline(ReadBoundedFile("/proc/self/cmdline", telemetry_detail::kMaxTelemetryPathBytes + 1));
   std::string first_argument;
-  if (cmdline && std::getline(cmdline, first_argument, '\0')) {
+  if (cmdline && std::getline(cmdline, first_argument, '\0') &&
+      first_argument.size() <= telemetry_detail::kMaxTelemetryPathBytes) {
     return GetFileName(first_argument);
   }
   return {};

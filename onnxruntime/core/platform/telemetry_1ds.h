@@ -26,10 +26,6 @@ class EventProperties;
 
 namespace onnxruntime {
 
-namespace test {
-class OneDsTelemetryTest;
-}
-
 /**
  * @brief Cross-platform telemetry implementation using 1DS SDK (cpp_client_telemetry).
  *
@@ -38,7 +34,7 @@ class OneDsTelemetryTest;
  * as the original WindowsTelemetry to provide consistent telemetry across all platforms.
  *
  * Configuration:
- * - Telemetry is opt-in via build flags
+ * - Supported native build-driver targets enable telemetry unless --no_telemetry is passed.
  */
 class OneDsTelemetry : public Telemetry {
  public:
@@ -144,10 +140,6 @@ class OneDsTelemetry : public Telemetry {
                                        const std::string& lib_path) const override;
 
  private:
-  friend class test::OneDsTelemetryTest;
-
-  static void ConfigureSdk(::Microsoft::Applications::Events::ILogConfiguration& config);
-
   static void ReportFailure(const char* operation_name, const char* message);
 
   template <typename Operation>

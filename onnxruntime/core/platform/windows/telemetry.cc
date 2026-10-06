@@ -599,7 +599,10 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
     return;
 
   const std::string scrubbed_error = ScrubStringForTelemetry(status.ErrorMessage());
-  std::string_view file_view = telemetry_detail::TelemetryStringView(file, telemetry_detail::kMaxTelemetryPathBytes);
+  std::string_view file_view = telemetry_detail::TelemetryCStringView(file, telemetry_detail::kMaxTelemetryPathBytes);
+  if (file_view.size() > telemetry_detail::kMaxTelemetryPathBytes) {
+    file_view = {};
+  }
   if (const size_t slash = file_view.find_last_of("/\\"); slash != std::string_view::npos) {
     file_view.remove_prefix(slash + 1);
   }
@@ -797,13 +800,9 @@ void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string
                     TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
-void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const std::string& provider_options_string, bool captureState) const {
-  LogLocalProviderOptions(provider_id, provider_options_string, captureState);
-}
-
-void WindowsTelemetry::LogLocalProviderOptions(const std::string& provider_id,
-                                               const std::string& provider_options_string,
-                                               bool capture_state) {
+void WindowsTelemetry::LogProviderOptions(const std::string& provider_id,
+                                          const std::string& provider_options_string,
+                                          bool capture_state) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 

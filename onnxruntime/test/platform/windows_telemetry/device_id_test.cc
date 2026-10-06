@@ -14,6 +14,7 @@
 
 #include "core/common/common.h"
 #include "core/platform/telemetry_guid.h"
+#include "core/platform/telemetry_strings.h"
 #include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime::test {
@@ -180,6 +181,37 @@ TEST(DeviceIdWindowsTest, CreatesUnicodeStorageDirectory) {
   std::error_code error;
   fs::remove_all(app_data, error);
   EXPECT_FALSE(error);
+}
+
+TEST(DeviceIdWindowsTest, RejectsOversizedStoragePathsWithoutTruncation) {
+  const std::wstring drive = fs::temp_directory_path().root_name().native() + L"\\";
+  const std::wstring paths[] = {
+      drive + std::wstring(telemetry_detail::kMaxTelemetryPathBytes, L'a'),
+      drive + std::wstring(telemetry_detail::kMaxTelemetryPathBytes / 3, L'\u20ac'),
+  };
+  for (const auto& app_data : paths) {
+    ScopedWideEnvironmentVariable local_app_data(L"LOCALAPPDATA", app_data);
+    ScopedEnvironmentVariables environment{
+        EnvVarMap{{"APPDATA", nullopt}, {"HOME", nullopt}, {"USERPROFILE", nullopt}, {"HOMEDRIVE", nullopt}, {"HOMEPATH", nullopt}}};
+    EXPECT_TRUE(DeviceId::GetStorageDirectory().empty());
+  }
+}
+
+TEST(DeviceIdWindowsTest, IncludesStorageSuffixInPathBudget) {
+  const std::wstring drive = fs::temp_directory_path().root_name().native() + L"\\";
+  const std::wstring suffix = L"\\Microsoft\\DeveloperTools\\.onnxruntime";
+  const std::wstring app_data = drive + std::wstring(
+                                            telemetry_detail::kMaxTelemetryPathBytes - drive.size() - suffix.size(), L'a');
+  for (const auto& extra : {std::wstring{}, std::wstring{L"a"}}) {
+    ScopedWideEnvironmentVariable local_app_data(L"LOCALAPPDATA", app_data + extra);
+    const std::string storage = DeviceId::GetStorageDirectory();
+    if (extra.empty()) {
+      EXPECT_EQ(storage.size(), telemetry_detail::kMaxTelemetryPathBytes);
+      EXPECT_EQ(Utf8Path(storage), fs::path(app_data + suffix));
+    } else {
+      EXPECT_TRUE(storage.empty());
+    }
+  }
 }
 
 TEST(DeviceIdWindowsDeathTest, CreatesMissingRegistryValue) {

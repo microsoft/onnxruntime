@@ -387,24 +387,6 @@ void OneDsTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
   }
 }
 
-void OneDsTelemetry::ConfigureSdk(ILogConfiguration& config) {
-  config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
-  config[CFG_BOOL_ENABLE_TRACE] = false;
-  config[CFG_INT_TRACE_LEVEL_MASK] = 0;
-  config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;
-#if defined(_WIN32)
-  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
-  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
-#endif
-#if defined(__APPLE__)
-  // System SQLite is shared with other libraries; let it manage its own lifetime.
-  config["skipSqliteInitAndShutdown"] = "true";
-#endif
-  // Persist pending events without blocking process teardown on uploads.
-  config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
-  config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;
-}
-
 void OneDsTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
@@ -431,7 +413,21 @@ void OneDsTelemetry::Initialize() {
   auto pending_config = std::make_unique<ILogConfiguration>();
   auto& config = *pending_config;
 
-  ConfigureSdk(config);
+  config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
+  config[CFG_BOOL_ENABLE_TRACE] = false;
+  config[CFG_INT_TRACE_LEVEL_MASK] = 0;
+  config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;
+#if defined(_WIN32)
+  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
+  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
+#endif
+#if defined(__APPLE__)
+  // System SQLite is shared with other libraries; let it manage its own lifetime.
+  config["skipSqliteInitAndShutdown"] = "true";
+#endif
+  // Persist pending events without blocking process teardown on uploads.
+  config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
+  config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
   if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
     config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
@@ -446,6 +442,10 @@ void OneDsTelemetry::Initialize() {
     std::string cache_dir = DeviceId::EnsureStorageDirectory();
     if (!cache_dir.empty()) {
       std::string cache_path = telemetry_internal::GetCachePath(cache_dir);
+      if (cache_path.size() > telemetry_detail::kMaxTelemetryPathBytes) {
+        ORT_TELEMETRY_WARN("Telemetry is unavailable because the cache path exceeds the byte limit");
+        return;
+      }
       config[CFG_STR_CACHE_FILE_PATH] = cache_path;
     }
   }
@@ -531,7 +531,7 @@ void OneDsTelemetry::Shutdown() {
   // Clear the logger so concurrent LogEventAsync() readers (which take the shared lock) observe
   // nullptr and skip. enabled_ is intentionally left untouched: it reflects the user's
   // EnableTelemetryEvents()/DisableTelemetryEvents() opt-in state, so a later Initialize() (e.g. in
-  // tests or dynamic load/unload of the last instance) can resume telemetry without a forced re-enable.
+  // dynamic load/unload of the last instance) can resume telemetry without a forced re-enable.
   logger_ = nullptr;  // Owned by log_manager_, will be destroyed with it
 
   if (log_manager_ && config_) {
@@ -773,7 +773,10 @@ void OneDsTelemetry::LogRuntimeError(
 
     // __FILE__ may be an absolute build path that embeds developer/build directory names; emit only
     // the basename so remote telemetry doesn't leak usernames or local paths.
-    std::string_view file_view = telemetry_detail::TelemetryStringView(file, telemetry_detail::kMaxTelemetryPathBytes);
+    std::string_view file_view = telemetry_detail::TelemetryCStringView(file, telemetry_detail::kMaxTelemetryPathBytes);
+    if (file_view.size() > telemetry_detail::kMaxTelemetryPathBytes) {
+      file_view = {};
+    }
     if (const size_t slash = file_view.find_last_of("/\\"); slash != std::string_view::npos) {
       file_view.remove_prefix(slash + 1);
     }

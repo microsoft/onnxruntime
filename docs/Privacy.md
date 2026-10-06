@@ -6,7 +6,7 @@ The software may collect information about you and your use of the software and 
 ***
 
 ### Official Builds
-ONNX Runtime collects trace events with the goal of improving product quality. For builds used in Windows apps and components like Windows ML, it uses the platform's built-in ETW telemetry system; for other Windows builds including our official releases, supported Linux architectures, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, AIX, and RISC-V, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
+ONNX Runtime collects trace events with the goal of improving product quality. For builds used in Windows apps and components like Windows ML, it uses the platform's built-in ETW telemetry system; for other Windows builds including our official releases, supported Linux architectures, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, tvOS, visionOS, Mac Catalyst, AIX, and RISC-V, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
 
 Telemetry is turned **ON** by default in the official builds ([see here](../README.md#binaries)). Both providers are accessed through ONNX Runtime's common telemetry interface (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
 
@@ -49,7 +49,7 @@ For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetr
 Telemetry can be disabled in any of these ways:
 
 - **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from all builds and disables the Microsoft telemetry configuration on Windows. Unsupported targets and exception-free builds never include telemetry.
-- **Disable all telemetry at runtime (non-Windows).** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. This prevents the uploader, events, and persistent device identifier from being created for the process lifetime.
+- **Disable all 1DS telemetry at runtime.** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. On all 1DS builds, including Windows, this prevents the uploader, events, and persistent device identifier from being created for the process lifetime. The legacy Windows TraceLogging backend does not use this environment variable.
 - **Disable all telemetry events via the API.** The C API (and the C#, Python, and Java bindings) can suppress all telemetry events. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
 
 Shared ORT libraries use a public-symbol allowlist, so embedded telemetry dependencies such as curl are not exported. This applies regardless of whether telemetry is supplied through vcpkg, FetchContent, or a caller-provided SDK source tree. On Windows, the 1DS network detector is disabled to avoid a process-exit allocation left by `netprofm.dll`; HTTPS uploads remain enabled.

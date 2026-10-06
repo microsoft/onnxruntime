@@ -17,6 +17,8 @@
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_strings.h"
+#include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 
 namespace onnxruntime {
 namespace {
@@ -181,35 +183,42 @@ bool WriteDeviceIdRegistryValue(const std::string& value) {
   return status == ERROR_SUCCESS;
 }
 
-std::wstring GetEnvironmentValue(const wchar_t* name) {
-  const DWORD required_size = ::GetEnvironmentVariableW(name, nullptr, 0);
-  if (required_size == 0 || required_size > 32768) {
+std::wstring GetEnvironmentValue(const char* name) {
+  const auto value = telemetry_detail::ReadTelemetryEnvironment(name, telemetry_detail::kMaxTelemetryPathBytes);
+  if (!value) {
+    if (logging::LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(WARNING) << "Ignoring oversized or unreadable telemetry storage environment variable " << name;
+    }
     return {};
   }
-
-  std::wstring value(required_size, L'\0');
-  const DWORD value_size = ::GetEnvironmentVariableW(name, value.data(), required_size);
-  if (value_size == 0 || value_size >= required_size) {
-    return {};
-  }
-
-  value.resize(value_size);
-  return value;
+  return ToWideString(*value);
 }
 
-std::filesystem::path GetAbsoluteEnvironmentPath(const wchar_t* name) {
+std::filesystem::path GetAbsoluteEnvironmentPath(const char* name) {
   std::filesystem::path path(GetEnvironmentValue(name));
   return path.is_absolute() ? path : std::filesystem::path{};
 }
 
 std::string WideToUtf8(std::wstring_view value) {
-  if (value.empty() || value.size() > 32767) {
+  if (value.empty()) {
+    return {};
+  }
+  if (value.size() > telemetry_detail::kMaxTelemetryPathBytes) {
+    if (logging::LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(WARNING) << "Ignoring oversized telemetry storage path";
+    }
     return {};
   }
 
   const int required_size = ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
                                                   static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
   if (required_size == 0) {
+    return {};
+  }
+  if (required_size > static_cast<int>(telemetry_detail::kMaxTelemetryPathBytes)) {
+    if (logging::LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(WARNING) << "Ignoring oversized telemetry storage path";
+    }
     return {};
   }
 
@@ -273,21 +282,21 @@ std::string DeviceId::GetStatusString() {
 }
 
 std::string DeviceId::GetStorageDirectory() {
-  for (const wchar_t* variable : {L"LOCALAPPDATA", L"APPDATA"}) {
+  for (const char* variable : {"LOCALAPPDATA", "APPDATA"}) {
     const std::filesystem::path app_data = GetAbsoluteEnvironmentPath(variable);
     if (!app_data.empty()) {
       return WideToUtf8((app_data / kDeviceIdDirectory).native());
     }
   }
 
-  std::filesystem::path home = GetAbsoluteEnvironmentPath(L"HOME");
+  std::filesystem::path home = GetAbsoluteEnvironmentPath("HOME");
   if (home.empty()) {
-    home = GetAbsoluteEnvironmentPath(L"USERPROFILE");
+    home = GetAbsoluteEnvironmentPath("USERPROFILE");
   }
   if (home.empty()) {
-    const std::wstring home_drive = GetEnvironmentValue(L"HOMEDRIVE");
-    const std::wstring home_path = GetEnvironmentValue(L"HOMEPATH");
-    if (home_drive.size() + home_path.size() > 32767) return {};
+    const std::wstring home_drive = GetEnvironmentValue("HOMEDRIVE");
+    const std::wstring home_path = GetEnvironmentValue("HOMEPATH");
+    if (home_drive.size() + home_path.size() > telemetry_detail::kMaxTelemetryPathBytes) return {};
     const std::filesystem::path combined_home(home_drive + home_path);
     if (combined_home.is_absolute()) {
       home = combined_home;

@@ -216,8 +216,9 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
   // forcing us to use an ugly macro for the call.
   telemetry_detail::TelemetryStrings strings;
   const auto& location = message.Location();
-  const auto file = telemetry_detail::TelemetryStringView(std::string_view(location.file_and_path),
-                                                          telemetry_detail::kMaxTelemetryPathBytes);
+  const std::string_view file = location.file_and_path.size() <= telemetry_detail::kMaxTelemetryPathBytes
+                                    ? std::string_view(location.file_and_path)
+                                    : std::string_view{};
   std::string location_text = telemetry_detail::BoundedTelemetryString(file.substr(file.find_last_of("/\\") + 1));
   telemetry_detail::AppendTelemetryString(location_text, ":");
   telemetry_detail::AppendTelemetryString(location_text, std::to_string(location.line_num));

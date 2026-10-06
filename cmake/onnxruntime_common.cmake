@@ -53,7 +53,6 @@ if(WIN32)
     if(onnxruntime_USE_1DS_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
              "${ONNXRUNTIME_ROOT}/core/platform/windows/device_id.cc"
-             "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry_1ds.h"
              "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry_1ds.cc"
         )
     endif()

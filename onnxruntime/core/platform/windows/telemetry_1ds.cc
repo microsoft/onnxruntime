@@ -9,7 +9,6 @@
 
 #include "core/platform/telemetry_1ds.h"
 #include "core/platform/telemetry_1ds_platform.h"
-#include "core/platform/windows/telemetry_1ds.h"
 #include "core/platform/windows/telemetry.h"
 #include "core/platform/telemetry_sampling.h"
 #include "core/platform/telemetry_environment.h"
@@ -68,23 +67,6 @@ int32_t GetProcessorCount() {
 
 std::string GetCachePath(const std::string& directory) {
   return directory + "\\onnxruntime.db";
-}
-
-EventProperties BuildExecutionProviderEvent(const LUID& adapter_luid) {
-  auto event = NewEvent("ExecutionProviderEvent");
-  event.SetProperty("adapterLuidLowPart", static_cast<int64_t>(adapter_luid.LowPart));
-  event.SetProperty("adapterLuidHighPart", static_cast<int64_t>(static_cast<uint32_t>(adapter_luid.HighPart)));
-  return event;
-}
-
-EventProperties BuildDriverInfoEvent(
-    std::string_view device_class, std::wstring_view driver_names, std::wstring_view driver_versions) {
-  auto event = NewEvent("DriverInfo");
-  event.SetProperty("schemaVersion", int64_t{0});
-  event.SetProperty("deviceClass", telemetry_detail::BoundedTelemetryString(device_class));
-  event.SetProperty("driverNames", ToUTF8String(telemetry_detail::BoundedTelemetryWideString(driver_names)));
-  event.SetProperty("driverVersions", ToUTF8String(telemetry_detail::BoundedTelemetryWideString(driver_versions)));
-  return event;
 }
 
 }  // namespace telemetry_internal
@@ -203,7 +185,9 @@ void OneDsTelemetry::LogExecutionProviderEvent(LUID* adapter_luid) const {
     if (!IsEnabled() || adapter_luid == nullptr) {
       return;
     }
-    auto event = telemetry_internal::BuildExecutionProviderEvent(*adapter_luid);
+    auto event = NewEvent("ExecutionProviderEvent");
+    event.SetProperty("adapterLuidLowPart", static_cast<int64_t>(adapter_luid->LowPart));
+    event.SetProperty("adapterLuidHighPart", static_cast<int64_t>(static_cast<uint32_t>(adapter_luid->HighPart)));
     if (PrepareSampledProcessEvent(event)) {
       LogEventAsync(std::move(event));
     }
@@ -217,7 +201,11 @@ void OneDsTelemetry::LogDriverInfoEvent(
     if (!IsEnabled()) {
       return;
     }
-    auto event = telemetry_internal::BuildDriverInfoEvent(device_class, driver_names, driver_versions);
+    auto event = NewEvent("DriverInfo");
+    event.SetProperty("schemaVersion", int64_t{0});
+    event.SetProperty("deviceClass", telemetry_detail::BoundedTelemetryString(device_class));
+    event.SetProperty("driverNames", ToUTF8String(telemetry_detail::BoundedTelemetryWideString(driver_names)));
+    event.SetProperty("driverVersions", ToUTF8String(telemetry_detail::BoundedTelemetryWideString(driver_versions)));
     if (PrepareSampledProcessEvent(event)) {
       LogEventAsync(std::move(event));
     }
