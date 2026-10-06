@@ -147,7 +147,7 @@ diff --git a/onnx/common/scoped_resource.h b/onnx/common/scoped_resource.h
        return tmp;
      }
      ScopedResource(const ScopedResource&) = delete;
-@@ -55,21 +55,33 @@
+@@ -55,20 +55,32 @@
  #ifdef _WIN32
 -inline void close_handle(HANDLE h) {
 -  CloseHandle(h);
