@@ -2110,22 +2110,14 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
     int sm_version,
     ActivationType activation_type,
     bool normalize_routing_weights,
-    bool use_sparse_mixer)
+    bool use_sparse_mixer,
+    bool use_sm80_fp4)
     : sm_(sm_version),
       activation_type_(activation_type),
       normalize_routing_weights_(normalize_routing_weights),
       use_sparse_mixer_(use_sparse_mixer) {
-  // Best-effort default tactic seed only. The SM80-FP4 decision is still unknown here (the QMoE op
-  // pushes it via setUseSm80Fp4() immediately after construction and re-picks), so a config family
-  // that looks unavailable under the provisional use_sm80_fp4=false view must not be fatal.
-  try {
-    auto tactics = getTactics(sm_);
-    if (!tactics.empty()) {
-      gemm1_config_ = tactics[0];
-      gemm2_config_ = tactics[0];
-    }
-  } catch (const std::exception&) {
-  }
+  // Apply the routing decision before querying tactics; a provisional TMA query can fail on Ampere.
+  setUseSm80Fp4(use_sm80_fp4);
 }
 
 template <class T, class WeightType, class OutputType, class InputType, class ScaleBiasType, class Enable>

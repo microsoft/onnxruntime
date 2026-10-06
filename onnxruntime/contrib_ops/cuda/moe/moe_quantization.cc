@@ -426,10 +426,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp4_e2m1, half>>(
-            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_, enable_fp4_sm80_gemm_);
       } else {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_fp4_e2m1, __nv_bfloat16>>(
-            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_, enable_fp4_sm80_gemm_);
       }
       // Dense A16 fallback runner for the large-per-expert-M prefill regime, where dequantizing
       // the MXFP4 weights to FP16/BF16 and running the dense grouped GEMM beats the native FP4
@@ -443,10 +443,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         m_fp4_dense_fallback_runner_ = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
-      // Capture the SM80-FP4 routing decision (made above from the environment at op-construction
-      // time) into the runner, so inference-time config/tactic selection does not re-read the
-      // environment (which may have changed since the session was created, e.g. in unit tests).
-      m_moe_runner->setUseSm80Fp4(enable_fp4_sm80_gemm_);
 #endif
     } else if (quant_type_ == "nvfp4" && !use_fp4_dequant_fallback_) {
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
