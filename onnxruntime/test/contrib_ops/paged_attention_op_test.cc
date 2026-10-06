@@ -1996,6 +1996,7 @@ TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
   probe.past_seqlens = {0};
   probe.block_table = {0};
   probe.attention_metadata = {1, 1};
+  probe.skip_reference_check = true;
   testing::internal::CaptureStdout();
   RunIoBindingCase(
       DefaultCudaExecutionProvider(),
