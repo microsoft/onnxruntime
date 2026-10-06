@@ -5,6 +5,7 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "contrib_ops/webgpu/moe/block_fp8_expert_matmul.h"
 #include "contrib_ops/webgpu/moe/qmoe.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
@@ -15,6 +16,7 @@
 #endif
 
 #include <cstring>
+#include <atomic>
 #include <optional>
 #include <sstream>
 
@@ -24,6 +26,14 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
+
+namespace {
+std::atomic<uint64_t> block_fp8_matrix_dispatch_count{0};
+}
+
+uint64_t BlockFp8MatrixDispatchCount() {
+  return block_fp8_matrix_dispatch_count.load(std::memory_order_relaxed);
+}
 
 namespace {
 
@@ -124,6 +134,8 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   const uint32_t scale_k_blocks = (inner + 127) / 128;
   uint32_t byte_offset = 0;
   const bool use_matrix = !indirect_experts && rows >= 128 && cols >= 256 && inner >= 256 &&
+                          BlockFp8MatrixDispatchFits(rows, cols,
+                                                     context.DeviceLimits().maxComputeWorkgroupsPerDimension) &&
                           input->DataType() == DataTypeImpl::GetType<MLFloat16>() &&
                           SelectSubgroupMatrixConfig(context, {{wgpu::SubgroupMatrixComponentType::F16,
                                                                 wgpu::SubgroupMatrixComponentType::F32,
@@ -171,7 +183,11 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   if (use_matrix && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     program.SetSubgroupSize(32);
   }
-  return context.RunProgram(program);
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  if (use_matrix) {
+    block_fp8_matrix_dispatch_count.fetch_add(1, std::memory_order_relaxed);
+  }
+  return Status::OK();
 }
 
 Status ValidateBlockFp8Scales(const Tensor* scales, const char* name,

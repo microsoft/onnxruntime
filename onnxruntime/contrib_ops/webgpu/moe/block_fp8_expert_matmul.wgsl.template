@@ -12,48 +12,67 @@
 var<workgroup> tile_a: array<f16, 1024>;
 var<workgroup> tile_b: array<f16, 256>;
 var<workgroup> tile_y: array<f32, 1024>;
+var<workgroup> tile_partial: array<f32, 1024>;
 #endif
 $MAIN {
 #if use_matrix
   let lane = local_idx;
   let row_base = workgroup_id.y * 64u;
   let col_base = workgroup_id.x * 16u;
-  var acc: subgroup_matrix_result<f32, 16, 16>;
-  for (var tile = 0u; tile < (uniforms.inner + 15u) / 16u; tile++) {
-    let k_base = tile * 16u;
+  for (var i = lane; i < 1024u; i += 128u) {
+    tile_y[i] = 0.0;
+  }
+  workgroupBarrier();
+  for (var k_block = 0u; k_block < uniforms.scale_k_blocks; k_block++) {
     for (var i = lane; i < 1024u; i += 128u) {
-      let row = row_base + i / 16u;
-      let inner = k_base + i % 16u;
-      tile_a[i] = f16(0);
-      if (row < uniforms.rows && inner < uniforms.inner) {
-#if broadcast_input
-        tile_a[i] = f16(input.getByOffset(inner));
-#else
-        tile_a[i] = f16(input.getByOffset(row * uniforms.inner + inner));
-#endif
-      }
-    }
-    for (var i = lane; i < 256u; i += 128u) {
-      let col = col_base + i / 16u;
-      let inner = k_base + i % 16u;
-      tile_b[i] = f16(0);
-      if (col < uniforms.cols && inner < uniforms.inner) {
-        let offset = uniforms.weight_byte_offset + col * uniforms.inner + inner;
-        let code = (u32(weights.getByOffset(offset / 4u)) >> ((offset % 4u) * 8u)) & 255u;
-        let weight = bitcast<f32>(kFp8DequantLutBits[code]);
-        let scale = f32(scales.getByOffset((col / 128u) * uniforms.scale_k_blocks + inner / 128u));
-        tile_b[i] = f16(weight * scale);
-      }
+      tile_partial[i] = 0.0;
     }
     workgroupBarrier();
-    let left = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, 16>, row_major>(
-        &tile_a, (lane / 32u) * 256u, 16u);
-    let right = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, col_major>(&tile_b, 0u, 16u);
-    acc = subgroupMatrixMultiplyAccumulate(left, right, acc);
+    var acc = subgroupMatrixLoad<subgroup_matrix_result<f32, 16, 16>, row_major>(
+        &tile_partial, (lane / 32u) * 256u, 16u);
+    let block_start = k_block * 128u;
+    let block_end = min(block_start + 128u, uniforms.inner);
+    for (var k_base = block_start; k_base < block_end; k_base += 16u) {
+      for (var i = lane; i < 1024u; i += 128u) {
+        let row = row_base + i / 16u;
+        let inner = k_base + i % 16u;
+        tile_a[i] = f16(0);
+        if (row < uniforms.rows && inner < uniforms.inner) {
+#if broadcast_input
+          tile_a[i] = f16(input.getByOffset(inner));
+#else
+          tile_a[i] = f16(input.getByOffset(row * uniforms.inner + inner));
+#endif
+        }
+      }
+      for (var i = lane; i < 256u; i += 128u) {
+        let col = col_base + i / 16u;
+        let inner = k_base + i % 16u;
+        tile_b[i] = f16(0);
+        if (col < uniforms.cols && inner < uniforms.inner) {
+          let offset = uniforms.weight_byte_offset + col * uniforms.inner + inner;
+          let code = (u32(weights.getByOffset(offset / 4u)) >> ((offset % 4u) * 8u)) & 255u;
+          tile_b[i] = f16(bitcast<f32>(kFp8DequantLutBits[code]));
+        }
+      }
+      workgroupBarrier();
+      let left = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, 16>, row_major>(
+          &tile_a, (lane / 32u) * 256u, 16u);
+      let right = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, col_major>(&tile_b, 0u, 16u);
+      acc = subgroupMatrixMultiplyAccumulate(left, right, acc);
+      workgroupBarrier();
+    }
+    subgroupMatrixStore<row_major>(&tile_partial, (lane / 32u) * 256u, acc, 16u);
+    workgroupBarrier();
+    for (var i = lane; i < 1024u; i += 128u) {
+      let col = col_base + i % 16u;
+      if (col < uniforms.cols) {
+        let scale = f32(scales.getByOffset((col / 128u) * uniforms.scale_k_blocks + k_block));
+        tile_y[i] += tile_partial[i] * scale;
+      }
+    }
     workgroupBarrier();
   }
-  subgroupMatrixStore<row_major>(&tile_y, (lane / 32u) * 256u, acc, 16u);
-  workgroupBarrier();
   for (var i = lane; i < 1024u; i += 128u) {
     let row = row_base + i / 16u;
     let col = col_base + i % 16u;
