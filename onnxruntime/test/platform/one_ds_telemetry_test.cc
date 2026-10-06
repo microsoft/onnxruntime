@@ -103,6 +103,15 @@ class OneDsTelemetryTest : public testing::Test {
         session_id, 1, "", "", "", {}, "", "", "", "", "", {}, "", {}, "", "", "", false, true);
   }
 
+  static uint32_t FindSessionId(bool sampled) {
+    for (uint32_t session_id = 0; session_id < 100000; ++session_id) {
+      if (telemetry_internal::ShouldSampleSession(telemetry_internal::GetAppSessionGuid(), session_id) == sampled) {
+        return session_id;
+      }
+    }
+    ORT_THROW("No telemetry session ID matched sampling decision ", sampled);
+  }
+
   OneDsTelemetry telemetry_;
   RecordingLogger logger_;
 
@@ -127,12 +136,7 @@ TEST_F(OneDsTelemetryTest, CaptureStateUsesLocalProviderWithoutUploaderOrSamplin
   RecordingLocalTelemetry local;
   OneDsTelemetry telemetry(local);
   RemoveLogger();
-  uint32_t session_id = 0;
-  while (session_id < 100000 &&
-         telemetry_internal::ShouldSampleSession(telemetry_internal::GetAppSessionGuid(), session_id)) {
-    ++session_id;
-  }
-  ASSERT_LT(session_id, 100000u);
+  const uint32_t session_id = FindSessionId(false);
   ASSERT_FALSE(telemetry.IsEnabled());
   LogCaptureState(telemetry, session_id);
   EXPECT_EQ(local.session_count, size_t{1});
@@ -225,37 +229,36 @@ TEST_F(OneDsTelemetryTest, UnavailableLoggerDoesNotConsumeProcessInfo) {
   EXPECT_FALSE(ProcessInfoLogged());
 }
 
-TEST_F(OneDsTelemetryTest, BoundsRuntimeErrorPropertiesAtEmission) {
-  const std::string large(1000000, 'a');
-  const common::Status status(common::ONNXRUNTIME, common::FAIL, large);
-  telemetry_.LogRuntimeError(0, status, large.c_str(), large.c_str(), 7);
-  ASSERT_EQ(logger_.event_count, size_t{1});
-  EXPECT_EQ(logger_.strings.at("errorMessage"), "[path]");
-  EXPECT_EQ(logger_.strings.at("file").size(), kMaxTelemetryStringLength);
-  EXPECT_EQ(logger_.strings.at("function").size(), kMaxTelemetryStringLength);
-  for (const auto& [name, value] : logger_.strings) {
-    EXPECT_LE(value.size(), kMaxTelemetryStringLength) << name;
+TEST_F(OneDsTelemetryTest, BoundsAndSanitizesRuntimeErrorPropertiesAtEmission) {
+  const struct {
+    std::string input;
+    std::string expected_message;
+    std::string expected_function;
+  } cases[] = {
+      {std::string(telemetry_detail::kMaxTelemetryProbeBytes + 1, 'a'), "[path]",
+       std::string(kMaxTelemetryStringLength, 'a')},
+      {std::string(2000, '\x80'), std::string(kMaxTelemetryStringLength, '?'),
+       std::string(kMaxTelemetryStringLength, '?')},
+  };
+  for (const auto& [input, expected_message, expected_function] : cases) {
+    SCOPED_TRACE(input.size());
+    logger_.event_count = 0;
+    logger_.strings.clear();
+    const common::Status status(common::ONNXRUNTIME, common::FAIL, input);
+    telemetry_.LogRuntimeError(0, status, input.c_str(), input.c_str(), 7);
+    ASSERT_EQ(logger_.event_count, size_t{1});
+    EXPECT_EQ(logger_.strings.at("errorMessage"), expected_message);
+    EXPECT_EQ(logger_.strings.at("function"), expected_function);
+    EXPECT_EQ(logger_.strings.at("file"), expected_function);
+    for (const auto& [name, value] : logger_.strings) {
+      EXPECT_LE(value.size(), kMaxTelemetryStringLength) << name;
+    }
   }
-}
-
-TEST_F(OneDsTelemetryTest, SanitizesMalformedRuntimeErrorPropertiesAtEmission) {
-  const std::string malformed(2000, '\x80');
-  const common::Status status(common::ONNXRUNTIME, common::FAIL, malformed);
-  telemetry_.LogRuntimeError(0, status, "test.cc", malformed.c_str(), 7);
-  ASSERT_EQ(logger_.event_count, size_t{1});
-  const std::string sanitized(kMaxTelemetryStringLength, '?');
-  EXPECT_EQ(logger_.strings.at("errorMessage"), sanitized);
-  EXPECT_EQ(logger_.strings.at("function"), sanitized);
 }
 
 TEST_F(OneDsTelemetryTest, BoundsSampledSessionPropertiesWithoutChangingModelMetadata) {
-  uint32_t session_id = 0;
-  while (session_id < 100000 &&
-         !telemetry_internal::ShouldSampleSession(telemetry_internal::GetAppSessionGuid(), session_id)) {
-    ++session_id;
-  }
-  ASSERT_LT(session_id, 100000u);
-  const std::string large(100000, 'a');
+  const uint32_t session_id = FindSessionId(true);
+  const std::string large(kMaxTelemetryStringLength + 1, 'a');
   const std::unordered_map<std::string, std::string> metadata{{"key", large}};
   const std::unordered_map<std::string, int> domains{{large, 1}};
   const std::vector<std::string> providers{large, large};

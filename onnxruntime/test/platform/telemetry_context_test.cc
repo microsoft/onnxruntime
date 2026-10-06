@@ -37,25 +37,17 @@ TEST(TelemetryContextTest, SuppressesUnneededCommonContext) {
   EXPECT_EQ(context.Fields().count("AppInfo.Name"), 0);
 }
 
-TEST(TelemetryContextTest, SetsApplicationNameFromProcessName) {
-  RecordingSemanticContext context;
-  telemetry_internal::SetApplicationNameFromProcessName(context, "onnxruntime_test_all");
-
-  ASSERT_EQ(context.Fields().size(), 1);
-  EXPECT_EQ(context.Fields().at("AppInfo.Name"), "onnxruntime_test_all");
-}
-
-TEST(TelemetryContextTest, BoundsApplicationNameBeforeStorage) {
-  RecordingSemanticContext context;
-  telemetry_internal::SetApplicationNameFromProcessName(context, std::string(100000, 'a'));
-  EXPECT_EQ(context.Fields().at("AppInfo.Name").size(), kMaxTelemetryStringLength);
-}
-
-TEST(TelemetryContextTest, PreservesSdkApplicationNameFallbackWhenProcessNameIsUnavailable) {
-  RecordingSemanticContext context;
-  telemetry_internal::SetApplicationNameFromProcessName(context, "");
-
-  EXPECT_TRUE(context.Fields().empty());
+TEST(TelemetryContextTest, SetsBoundedApplicationNameOrPreservesSdkFallback) {
+  const std::string names[] = {"", "onnxruntime_test_all", std::string(kMaxTelemetryStringLength + 1, 'a')};
+  for (const auto& name : names) {
+    SCOPED_TRACE(name.size());
+    RecordingSemanticContext context;
+    context.SetCommonField("AppInfo.Name", "sdk fallback");
+    telemetry_internal::SetApplicationNameFromProcessName(context, name);
+    ASSERT_EQ(context.Fields().size(), 1);
+    EXPECT_EQ(context.Fields().at("AppInfo.Name"),
+              name.empty() ? "sdk fallback" : name.substr(0, kMaxTelemetryStringLength));
+  }
 }
 
 TEST(TelemetryContextTest, SuppressesNetworkContextAfterProcessInfo) {

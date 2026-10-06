@@ -52,69 +52,42 @@ TEST(TelemetryEnvironmentTest, SuppressionFlagsAreNotTruncatedAndOversizedValues
   EXPECT_TRUE(telemetry_detail::IsTruthyCiValue(oversized));
 }
 
-TEST(TelemetryEnvironmentTest, IsTruthyCiValue) {
-  using telemetry_detail::IsTruthyCiValue;
-  // Any non-empty, non-falsey value counts as present.
-  EXPECT_TRUE(IsTruthyCiValue("1"));
-  EXPECT_TRUE(IsTruthyCiValue("true"));
-  EXPECT_TRUE(IsTruthyCiValue("TRUE"));
-  EXPECT_TRUE(IsTruthyCiValue("yes"));
-  EXPECT_TRUE(IsTruthyCiValue(" 1 "));
-  EXPECT_TRUE(IsTruthyCiValue("anything"));
-
-  EXPECT_FALSE(IsTruthyCiValue(""));
-  EXPECT_FALSE(IsTruthyCiValue("   "));
-  EXPECT_FALSE(IsTruthyCiValue("0"));
-  EXPECT_FALSE(IsTruthyCiValue("false"));
-  EXPECT_FALSE(IsTruthyCiValue("FALSE"));
-  EXPECT_FALSE(IsTruthyCiValue("no"));
-  EXPECT_FALSE(IsTruthyCiValue("off"));
-}
-
-TEST(TelemetryEnvironmentTest, EnvVarOptOut) {
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "1"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
+TEST(TelemetryEnvironmentTest, SuppressionFlagsHonorValuesIndependentlyOfRunnerEnvironment) {
+  EnvVarMap cleared_ci;
+  for (const char* name : telemetry_detail::kCiEnvironmentVariableNames) {
+    cleared_ci.emplace(name, nullopt);
   }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "TRUE"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "0"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "random"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", nullopt}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
-  }
-}
-
-TEST(TelemetryEnvironmentTest, CiDetectionSuppresses) {
-  // Only the positive direction is asserted so the test is deterministic whether or not it itself
-  // runs in a CI environment. APPVEYOR is not part of ORT's own CI, so save/restore stays clean.
-  ScopedEnvironmentVariables env_vars{EnvVarMap{{"APPVEYOR", "true"}}};
-  EXPECT_TRUE(IsRunningInCI());
-}
-
-TEST(TelemetryEnvironmentTest, RunningUnitTestsSuppresses) {
-  // The unit-test entry point sets ORT_RUNNING_UNIT_TESTS process-wide; save/restore so this test can
-  // exercise both directions without leaking state to siblings.
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "1"}}};
-    EXPECT_TRUE(IsRunningUnitTests());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "0"}}};
-    EXPECT_FALSE(IsRunningUnitTests());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", nullopt}}};
-    EXPECT_FALSE(IsRunningUnitTests());
+  ScopedEnvironmentVariables runner_environment{cleared_ci};
+  const struct {
+    optional<std::string> value;
+    bool ci_or_unit_test;
+    bool opt_out;
+  } cases[] = {
+      {nullopt, false, false},
+      {"", false, false},
+      {"   ", false, false},
+      {"0", false, false},
+      {"false", false, false},
+      {"FALSE", false, false},
+      {"no", false, false},
+      {"off", false, false},
+      {"1", true, true},
+      {"true", true, true},
+      {"TRUE", true, true},
+      {"yes", true, true},
+      {"on", true, true},
+      {"y", true, true},
+      {" 1 ", true, true},
+      {"anything", true, false},
+  };
+  for (const auto& [value, ci_or_unit_test, opt_out] : cases) {
+    SCOPED_TRACE(value.value_or("<unset>"));
+    ScopedEnvironmentVariables env_vars{
+        EnvVarMap{{"APPVEYOR", value}, {"ORT_RUNNING_UNIT_TESTS", value}, {"ORT_DISABLE_TELEMETRY", value}}};
+    EXPECT_EQ(IsRunningInCI(), ci_or_unit_test);
+    EXPECT_EQ(IsRunningUnitTests(), ci_or_unit_test);
+    EXPECT_EQ(IsTelemetryDisabledByEnvironment(), opt_out);
+    if (value) EXPECT_EQ(telemetry_detail::IsTruthyCiValue(*value), ci_or_unit_test);
   }
 }
 

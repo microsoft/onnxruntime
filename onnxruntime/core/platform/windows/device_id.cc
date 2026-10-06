@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -16,6 +15,7 @@
 #include <vector>
 
 #include "core/platform/telemetry_guid.h"
+#include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_strings.h"
 
 namespace onnxruntime {
@@ -121,29 +121,6 @@ class ScopedDeviceIdMutex {
   bool acquired_{};
 };
 
-void TrimAsciiWhitespace(std::string& value) {
-  while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) {
-    value.pop_back();
-  }
-  const auto first = std::find_if_not(
-      value.begin(), value.end(), [](unsigned char c) { return std::isspace(c); });
-  value.erase(value.begin(), first);
-}
-
-bool IsValidGuid(const std::string& value) {
-  if (value.size() != 36) {
-    return false;
-  }
-  for (size_t i = 0; i < value.size(); ++i) {
-    const bool separator = i == 8 || i == 13 || i == 18 || i == 23;
-    if ((separator && value[i] != '-') ||
-        (!separator && !std::isxdigit(static_cast<unsigned char>(value[i])))) {
-      return false;
-    }
-  }
-  return true;
-}
-
 RegistryRead ReadDeviceIdRegistryValue() {
   HKEY key{};
   const LSTATUS open_status =
@@ -184,7 +161,7 @@ RegistryRead ReadDeviceIdRegistryValue() {
   }
 
   std::string value(buffer.data(), value_size);
-  TrimAsciiWhitespace(value);
+  value = telemetry_detail::TrimAscii(value);
   return {IsValidGuid(value) ? RegistryReadResult::Valid : RegistryReadResult::Invalid,
           std::move(value)};
 }
@@ -293,10 +270,6 @@ std::string DeviceId::GetStatusString() {
     default:
       return "Unknown";
   }
-}
-
-bool DeviceId::IsValidGUID(const std::string& value) {
-  return IsValidGuid(value);
 }
 
 std::string DeviceId::GetStorageDirectory() {

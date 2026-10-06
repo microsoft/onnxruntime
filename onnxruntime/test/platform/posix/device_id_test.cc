@@ -118,5 +118,24 @@ TEST(DeviceIdDeathTest, RepairsCorruptedFile) {
   EXPECT_NE(persisted, "corrupted");
 }
 
+TEST(DeviceIdDeathTest, LoadsExistingFileWithWhitespace) {
+  ScopedTestDirectory test_dir{"existing"};
+  const fs::path home = test_dir.Path() / "home";
+  ScopedEnvironmentVariables environment{
+      EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
+  const fs::path storage_dir = DeviceId::GetStorageDirectory();
+  fs::create_directories(storage_dir);
+  constexpr std::string_view kExistingId = "11111111-2222-4333-8444-555555555555";
+  std::ofstream(storage_dir / "deviceid") << " \t" << kExistingId << "\r\n";
+
+  EXPECT_EXIT(
+      {
+        const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Existing &&
+                            DeviceId::Instance().GetValue() == kExistingId;
+        std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
+      },
+      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+}
+
 }  // namespace
 }  // namespace onnxruntime::test

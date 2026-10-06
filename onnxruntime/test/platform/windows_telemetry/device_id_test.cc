@@ -24,20 +24,6 @@ namespace fs = std::filesystem;
 constexpr char kDeviceIdRegistryKey[] = "SOFTWARE\\Microsoft\\DeveloperTools\\.onnxruntime";
 constexpr char kDeviceIdRegistryValue[] = "deviceid";
 
-bool IsValidGuid(const std::string& value) {
-  if (value.size() != 36) {
-    return false;
-  }
-  for (size_t i = 0; i < value.size(); ++i) {
-    const bool separator = i == 8 || i == 13 || i == 18 || i == 23;
-    if ((separator && value[i] != '-') ||
-        (!separator && !std::isxdigit(static_cast<unsigned char>(value[i])))) {
-      return false;
-    }
-  }
-  return true;
-}
-
 fs::path Utf8Path(const std::string& value) {
   return fs::path(std::u8string(value.begin(), value.end()));
 }
@@ -211,68 +197,45 @@ TEST(DeviceIdWindowsDeathTest, CreatesMissingRegistryValue) {
 }
 
 TEST(DeviceIdWindowsDeathTest, LoadsExistingRegistryValue) {
-  EXPECT_EXIT(
-      {
-        ScopedRegistryOverride registry;
-        constexpr char kExistingId[] = "11111111-2222-4333-8444-555555555555";
-        registry.WriteValue(REG_SZ, kExistingId, sizeof(kExistingId));
-        const std::string value = DeviceId::Instance().GetValue();
-        const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Existing &&
-                            value == kExistingId &&
-                            registry.ReadValue() == kExistingId;
-        registry.Reset();
-        std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
-      },
-      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+  constexpr char kExistingId[] = "11111111-2222-4333-8444-555555555555";
+  for (const auto& stored : {std::string(kExistingId), std::string(" \t") + kExistingId + "\r\n"}) {
+    SCOPED_TRACE(stored.size());
+    EXPECT_EXIT(
+        {
+          ScopedRegistryOverride registry;
+          registry.WriteValue(REG_SZ, stored.c_str(), static_cast<DWORD>(stored.size() + 1));
+          const std::string value = DeviceId::Instance().GetValue();
+          const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Existing &&
+                              value == kExistingId &&
+                              registry.ReadValue() == stored;
+          registry.Reset();
+          std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
+        },
+        ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+  }
 }
 
-TEST(DeviceIdWindowsDeathTest, RepairsCorruptedRegistryValue) {
-  EXPECT_EXIT(
-      {
-        ScopedRegistryOverride registry;
-        constexpr char kCorruptedId[] = "corrupted";
-        registry.WriteValue(REG_SZ, kCorruptedId, sizeof(kCorruptedId));
-        const std::string value = DeviceId::Instance().GetValue();
-        const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Corrupted &&
-                            IsValidGuid(value) &&
-                            registry.ReadValue() == value;
-        registry.Reset();
-        std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
-      },
-      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
-}
-
-TEST(DeviceIdWindowsDeathTest, RepairsOversizedRegistryValue) {
-  EXPECT_EXIT(
-      {
-        ScopedRegistryOverride registry;
-        const std::string oversized_value(512, 'a');
-        registry.WriteValue(REG_SZ, oversized_value.c_str(),
-                            static_cast<DWORD>(oversized_value.size() + 1));
-        const std::string value = DeviceId::Instance().GetValue();
-        const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Corrupted &&
-                            IsValidGuid(value) &&
-                            registry.ReadValue() == value;
-        registry.Reset();
-        std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
-      },
-      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
-}
-
-TEST(DeviceIdWindowsDeathTest, RepairsRegistryValueWithEmbeddedNull) {
-  EXPECT_EXIT(
-      {
-        ScopedRegistryOverride registry;
-        constexpr char kMalformedId[] = "11111111-2222-4333-8444-555555555555\0junk";
-        registry.WriteValue(REG_SZ, kMalformedId, sizeof(kMalformedId));
-        const std::string value = DeviceId::Instance().GetValue();
-        const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Corrupted &&
-                            IsValidGuid(value) &&
-                            registry.ReadValue() == value;
-        registry.Reset();
-        std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
-      },
-      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+TEST(DeviceIdWindowsDeathTest, RepairsMalformedRegistryValues) {
+  const std::string malformed_values[] = {
+      "corrupted",
+      std::string(512, 'a'),
+      std::string("11111111-2222-4333-8444-555555555555\0junk", 41),
+  };
+  for (const auto& malformed : malformed_values) {
+    SCOPED_TRACE(malformed.size());
+    EXPECT_EXIT(
+        {
+          ScopedRegistryOverride registry;
+          registry.WriteValue(REG_SZ, malformed.c_str(), static_cast<DWORD>(malformed.size() + 1));
+          const std::string value = DeviceId::Instance().GetValue();
+          const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Corrupted &&
+                              IsValidGuid(value) &&
+                              registry.ReadValue() == value;
+          registry.Reset();
+          std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
+        },
+        ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+  }
 }
 
 }  // namespace

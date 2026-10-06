@@ -5,6 +5,7 @@
 
 #include "core/platform/telemetry.h"
 #include "core/platform/telemetry_environment.h"
+#include "core/platform/telemetry_no_throw.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -12,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 // Forward declarations of 1DS SDK types
@@ -145,6 +147,15 @@ class OneDsTelemetry : public Telemetry {
   friend class test::OneDsTelemetryTest;
 
   static void ConfigureSdk(::Microsoft::Applications::Events::ILogConfiguration& config);
+
+  static void ReportFailure(const char* operation_name, const char* message);
+
+  template <typename Operation>
+  static void RunTelemetryOperation(const char* operation_name, Operation&& operation) noexcept {
+    telemetry_internal::RunTelemetryOperationNoThrow(
+        std::forward<Operation>(operation),
+        [operation_name](const char* message) { ReportFailure(operation_name, message); });
+  }
 
   const Telemetry* local_telemetry_ = nullptr;
 

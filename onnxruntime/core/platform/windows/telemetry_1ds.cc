@@ -11,7 +11,6 @@
 #include "core/platform/telemetry_1ds_platform.h"
 #include "core/platform/windows/telemetry_1ds.h"
 #include "core/platform/windows/telemetry.h"
-#include "core/platform/telemetry_no_throw.h"
 #include "core/platform/telemetry_sampling.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_redaction.h"
@@ -28,7 +27,6 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/common/logging/logging.h"
 
 using namespace Microsoft::Applications::Events;
 
@@ -51,19 +49,6 @@ bool PrepareSampledProcessEvent(EventProperties& event) {
   }
   event.SetPopsample(telemetry_internal::kOtherProcessEventSampleRatePercent);
   return true;
-}
-
-template <typename Operation>
-void RunWindowsTelemetryOperation(const char* name, Operation&& operation) noexcept {
-  telemetry_internal::RunTelemetryOperationNoThrow(std::forward<Operation>(operation), [name](const char* message) {
-    if (logging::LoggingManager::HasDefaultLogger()) {
-      if (message != nullptr) {
-        LOGS_DEFAULT(WARNING) << "[Telemetry] " << name << " failed: " << message;
-      } else {
-        LOGS_DEFAULT(WARNING) << "[Telemetry] " << name << " failed with an unknown exception";
-      }
-    }
-  });
 }
 
 }  // namespace
@@ -214,7 +199,7 @@ int64_t OneDsTelemetry::GetTotalMemoryMB() {
 }
 
 void OneDsTelemetry::LogExecutionProviderEvent(LUID* adapter_luid) const {
-  RunWindowsTelemetryOperation("LogExecutionProviderEvent", [&]() {
+  RunTelemetryOperation("LogExecutionProviderEvent", [&]() {
     if (!IsEnabled() || adapter_luid == nullptr) {
       return;
     }
@@ -228,7 +213,7 @@ void OneDsTelemetry::LogExecutionProviderEvent(LUID* adapter_luid) const {
 void OneDsTelemetry::LogDriverInfoEvent(
     std::string_view device_class, const std::wstring_view& driver_names,
     const std::wstring_view& driver_versions) const {
-  RunWindowsTelemetryOperation("LogDriverInfoEvent", [&]() {
+  RunTelemetryOperation("LogDriverInfoEvent", [&]() {
     if (!IsEnabled()) {
       return;
     }

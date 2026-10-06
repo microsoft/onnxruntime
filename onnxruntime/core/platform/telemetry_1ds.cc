@@ -193,16 +193,8 @@ class EventBuilder {
     return *this;
   }
 
-  // Helper for map to key=value,key=value format
-  EventBuilder& AddIntMap(const char* key, const std::unordered_map<std::string, int>& map) {
-    if (!map.empty()) {
-      props_.SetProperty(key, telemetry_detail::FormatTelemetryMap(map));
-    }
-    return *this;
-  }
-
-  // Helper for string map
-  EventBuilder& AddStringMap(const char* key, const std::unordered_map<std::string, std::string>& map) {
+  template <typename Map>
+  EventBuilder& AddMap(const char* key, const Map& map) {
     if (!map.empty()) {
       props_.SetProperty(key, telemetry_detail::FormatTelemetryMap(map));
     }
@@ -217,12 +209,6 @@ class EventBuilder {
 
   EventProperties Build() { return std::move(props_); }
 };
-
-// All Microsoft AI developer tools read the same UUID and derive the same upload identifier.
-// The raw UUID is never transmitted.
-[[maybe_unused]] static std::string HashDeviceId(const std::string& id) {
-  return telemetry_internal::Sha256::HashStringHex(id);
-}
 
 namespace {
 
@@ -291,20 +277,6 @@ std::string GetCertificateAuthorityBundlePath() {
 }
 #endif
 
-template <typename Operation>
-void RunTelemetryOperation(const char* operation_name, Operation&& operation) noexcept {
-  auto warning = [operation_name](const char* message) {
-    if (message != nullptr) {
-      ORT_TELEMETRY_WARN("[Telemetry] " << operation_name << " failed: " << message);
-    } else {
-      ORT_TELEMETRY_WARN("[Telemetry] " << operation_name << " failed with an unknown exception");
-    }
-  };
-
-  telemetry_internal::RunTelemetryOperationNoThrow(
-      std::forward<Operation>(operation), warning);
-}
-
 bool PrepareSampledEvent(EventBuilder& event, uint32_t session_id) {
   if (!telemetry_internal::ShouldSampleSession(GetAppSessionGuidInternal(), session_id)) {
     return false;
@@ -343,6 +315,14 @@ const std::string& GetAppSessionGuid() {
   return GetAppSessionGuidInternal();
 }
 }  // namespace telemetry_internal
+
+void OneDsTelemetry::ReportFailure(const char* operation_name, const char* message) {
+  if (message != nullptr) {
+    ORT_TELEMETRY_WARN("[Telemetry] " << operation_name << " failed: " << message);
+  } else {
+    ORT_TELEMETRY_WARN("[Telemetry] " << operation_name << " failed with an unknown exception");
+  }
+}
 
 OneDsTelemetry::OneDsTelemetry() {
   std::lock_guard<std::mutex> lock(global_mutex_);
@@ -523,7 +503,8 @@ void OneDsTelemetry::Initialize() {
   auto& device_id = DeviceId::Instance();
   std::string raw_device_id = device_id.GetValue();
   if (!raw_device_id.empty()) {
-    logger->GetSemanticContext()->SetDeviceId("c:" + HashDeviceId(raw_device_id));
+    // All Microsoft AI developer tools derive the same upload identifier; never transmit the raw UUID.
+    logger->GetSemanticContext()->SetDeviceId("c:" + telemetry_internal::Sha256::HashStringHex(raw_device_id));
   }
 #endif
 
@@ -706,13 +687,13 @@ void OneDsTelemetry::LogSessionCreation(
         .AddString("modelProducerName", model_producer_name)
         .AddString("modelProducerVersion", model_producer_version)
         .AddString("modelDomain", model_domain)
-        .AddIntMap("domainToVersionMap", domain_to_version_map)
+        .AddMap("domainToVersionMap", domain_to_version_map)
         .AddString("modelFileName", model_file_name)
         .AddString("modelGraphName", model_graph_name)
         .AddString("modelWeightType", model_weight_type)
         .AddString("modelGraphHash", model_graph_hash)
         .AddString("modelWeightHash", model_weight_hash)
-        .AddStringMap("modelMetaData", model_metadata)
+        .AddMap("modelMetaData", model_metadata)
         .AddString("loadedFrom", loadedFrom)
         .AddStringList("executionProviderIds", execution_provider_ids)
         .AddString("hardwareDeviceTypes", hardware_device_types)

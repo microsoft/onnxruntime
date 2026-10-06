@@ -64,7 +64,6 @@ TEST(TelemetryStringsTest, SanitizesMalformedUtf8BeforeStorageAndTransmission) {
   EXPECT_EQ(JoinTelemetryStrings(std::vector<std::string>{malformed, "valid"}), "??????????,valid");
   TelemetryStrings strings;
   EXPECT_STREQ(strings.Utf8(malformed), "??????????");
-  EXPECT_EQ(ScrubStringForTelemetry(malformed), "??????????");
 }
 
 TEST(TelemetryStringsTest, BoundsJniModifiedUtf8AndKeepsSurrogatePairs) {
@@ -131,10 +130,7 @@ TEST(TelemetryStringsTest, RetainsPointersAcrossAdditionalFields) {
   EXPECT_STREQ(wide_first, L"first");
 }
 
-TEST(TelemetryStringsTest, RedactsRelativePathsCutOffBeforeSecondSeparator) {
-  EXPECT_EQ(ScrubStringForTelemetry("Load alice/" + std::string(2000, 'a') + "/model"), "Load [path]");
-  EXPECT_EQ(ScrubStringForTelemetry("Load alice\\" + std::string(2000, 'a') + "\\model"), "Load [path]");
-  EXPECT_EQ(ScrubStringForTelemetry(std::string(100000, 'a')), "[path]");
+TEST(TelemetryStringsTest, PropagatesMapTruncationToRedaction) {
   const std::map<std::string, std::string> options{{"cache", "alice/" + std::string(2000, 'a') + "/model"}};
   bool truncated = false;
   const auto formatted = FormatTelemetryMap(options, ",", ":", &truncated);

@@ -56,9 +56,6 @@ class DeviceId {
 
   void InitializeInternal();
 
-  // Validate GUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-  static bool IsValidGUID(const std::string& str);
-
   // Create directory tree recursively using platform APIs.
   static bool CreateDirectoryTree(const std::string& path, bool leaf = true);
 

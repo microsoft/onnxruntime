@@ -9,7 +9,6 @@
 #include "core/platform/telemetry_environment.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -172,15 +171,6 @@ class ScopedDeviceIdFileLock {
   int fd_{-1};
 };
 
-void TrimAsciiWhitespace(std::string& value) {
-  value.erase(std::find_if_not(value.rbegin(), value.rend(),
-                               [](unsigned char c) { return std::isspace(c); })
-                  .base(),
-              value.end());
-  value.erase(value.begin(), std::find_if_not(value.begin(), value.end(),
-                                              [](unsigned char c) { return std::isspace(c); }));
-}
-
 DeviceIdFileRead ReadDeviceIdFileNoFollow(int directory_fd, const char* file_name, size_t max_size) {
   int flags = O_RDONLY;
 #ifdef O_NOFOLLOW
@@ -223,7 +213,7 @@ DeviceIdFileRead ReadDeviceIdFileNoFollow(int directory_fd, const char* file_nam
   if (total > max_size) return {DeviceIdReadResult::Invalid, {}};
 
   std::string content(buffer.data(), total);
-  TrimAsciiWhitespace(content);
+  content = telemetry_detail::TrimAscii(content);
   return {DeviceIdReadResult::Read, std::move(content)};
 }
 
@@ -259,22 +249,6 @@ std::string DeviceId::GetStatusString() {
     default:
       return "Unknown";
   }
-}
-
-bool DeviceId::IsValidGUID(const std::string& str) {
-  if (str.length() != 36) return false;
-
-  for (size_t i = 0; i < str.length(); ++i) {
-    char c = str[i];
-    if (i == 8 || i == 13 || i == 18 || i == 23) {
-      if (c != '-') return false;
-    } else {
-      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 std::string DeviceId::GetStorageDirectory() {
@@ -404,7 +378,7 @@ void DeviceId::InitializeInternal() {
 
     // Try to read existing device ID
     const DeviceIdFileRead existing = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
-    if (existing.result == DeviceIdReadResult::Read && IsValidGUID(existing.content)) {
+    if (existing.result == DeviceIdReadResult::Read && IsValidGuid(existing.content)) {
       device_id_ = existing.content;
       status_ = DeviceIdStatus::Existing;
       return;
@@ -428,7 +402,7 @@ void DeviceId::InitializeInternal() {
 
       // Another process may have repaired the shared file while this process waited.
       const DeviceIdFileRead repaired = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
-      if (repaired.result == DeviceIdReadResult::Read && IsValidGUID(repaired.content)) {
+      if (repaired.result == DeviceIdReadResult::Read && IsValidGuid(repaired.content)) {
         device_id_ = repaired.content;
         status_ = DeviceIdStatus::Existing;
         return;
@@ -486,7 +460,7 @@ void DeviceId::InitializeInternal() {
           // Another process won the first-run race. Its complete file was published atomically,
           // so use that value instead of allowing the persisted id to flap.
           const DeviceIdFileRead winner = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
-          if (winner.result == DeviceIdReadResult::Read && IsValidGUID(winner.content)) {
+          if (winner.result == DeviceIdReadResult::Read && IsValidGuid(winner.content)) {
             device_id_ = winner.content;
             status_ = DeviceIdStatus::Existing;
           } else {
