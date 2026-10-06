@@ -130,6 +130,13 @@ ConfigOptions CompileOnlyWeightLoadAccelerationOptions(const char* value) {
   return options;
 }
 
+ConfigOptions EnvironmentAllocatorWeightLoadAccelerationOptions(const char* value) {
+  auto options = CompileOnlyWeightLoadAccelerationOptions(value);
+  ORT_THROW_IF_ERROR(
+      options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
+  return options;
+}
+
 bool DeviceToggleIsEnabled(const webgpu::WebGpuContext& context, std::string_view toggle_name) {
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
   const auto toggles = dawn::native::GetTogglesUsed(context.Device().Get());
@@ -1189,6 +1196,32 @@ TEST(WebGpuContextTest, RequiredWeightLoadAccelerationDoesNotExposeLoaderWithout
                              true);
 }
 
+TEST(WebGpuContextTest, PreferredWeightLoadAccelerationIsDisabledWithEnvironmentAllocators) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                EnvironmentAllocatorWeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Preferred))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+}
+
+TEST(WebGpuContextTest, RequiredWeightLoadAccelerationRejectsEnvironmentAllocators) {
+  EXPECT_THROW(
+      WebGpuProviderFactoryCreator::Create(
+          EnvironmentAllocatorWeightLoadAccelerationOptions(
+              kWeightLoadAcceleration_Required)),
+      OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, DisabledWeightLoadAccelerationAllowsEnvironmentAllocators) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                EnvironmentAllocatorWeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Off))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+}
+
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 void ExpectD3D12BufferContents(
     ID3D12Device* device,
@@ -1934,33 +1967,6 @@ TEST(WebGpuContextTest, WeightLoadAccelerationModeResolution) {
   EXPECT_EQ(required_status.ErrorMessage(), unsupported.ErrorMessage());
 }
 
-TEST(WebGpuContextTest, WeightLoadAccelerationAllocatorResolution) {
-  const auto accelerated_allocator = std::make_shared<CPUAllocator>();
-  const auto environment_allocator = std::make_shared<CPUAllocator>();
-  bool compatible = false;
-
-  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationAllocator(
-      webgpu::WeightLoadAccelerationMode::Preferred,
-      accelerated_allocator.get(), accelerated_allocator, compatible));
-  EXPECT_TRUE(compatible);
-
-  compatible = true;
-  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationAllocator(
-      webgpu::WeightLoadAccelerationMode::Preferred,
-      accelerated_allocator.get(), environment_allocator, compatible));
-  EXPECT_FALSE(compatible);
-
-  compatible = true;
-  const auto required_status =
-      webgpu::ResolveWeightLoadAccelerationAllocator(
-          webgpu::WeightLoadAccelerationMode::Required,
-          accelerated_allocator.get(), environment_allocator, compatible);
-  EXPECT_FALSE(required_status.IsOK());
-  EXPECT_FALSE(compatible);
-  EXPECT_NE(required_status.ErrorMessage().find(
-                "incompatible with the selected WebGPU initializer allocator"),
-            std::string::npos);
-}
 #endif
 
 TEST(WebGpuContextTest, AdapterIndexRejectsConflictingSelectorOnReusedContext) {

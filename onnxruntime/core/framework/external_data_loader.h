@@ -42,16 +42,6 @@ class IExternalDataLoader {
   // writing into a tensor allocated by the framework.
   virtual bool CreatesTensorForDevice([[maybe_unused]] const OrtDevice& target_device) const { return false; }
 
-  // Determines whether a tensor-creating loader can use the allocator selected for
-  // the SessionState. An OK status with can_create_tensor=false lets ordinary
-  // initializer loading handle the tensor.
-  virtual common::Status CanCreateTensorWithAllocator(
-      [[maybe_unused]] const std::shared_ptr<IAllocator>& allocator,
-      bool& can_create_tensor) const {
-    can_create_tensor = true;
-    return common::Status::OK();
-  }
-
   // Begins a batch covering the external initializers for one SessionState
   // initialization. ORT describes all loader-created tensors through PrepareTensor()
   // before calling FinalizeLoad(), allowing an implementation to coalesce file

@@ -28,12 +28,6 @@ common::Status ResolveWeightLoadAccelerationMode(
     const common::Status& support_status,
     bool& enabled);
 
-common::Status ResolveWeightLoadAccelerationAllocator(
-    WeightLoadAccelerationMode mode,
-    const IAllocator* accelerated_allocator,
-    const std::shared_ptr<IAllocator>& selected_allocator,
-    bool& compatible);
-
 // Shared by the loader and allocator so imported resources outlive initializer loading.
 class D3D12AcceleratedInitializerState {
  public:
@@ -70,9 +64,6 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
   bool SupportsDataType(int32_t tensor_data_type) const override;
   bool CreatesTensorForDevice(const OrtDevice& target_device) const override;
-  common::Status CanCreateTensorWithAllocator(
-      const std::shared_ptr<IAllocator>& allocator,
-      bool& can_create_tensor) const override;
   common::Status BeginLoad() const override;
   common::Status PrepareTensor(const Env& env,
                                const std::filesystem::path& data_file_path,

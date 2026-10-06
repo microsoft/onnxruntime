@@ -78,7 +78,30 @@ WeightLoadAccelerationMode ParseWeightLoadAccelerationMode(
       ". Must be \"off\", \"preferred\", or \"required\".");
 }
 
-WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options) {
+WeightLoadAccelerationMode ResolveWeightLoadAccelerationMode(
+    const ConfigOptions& config_options) {
+  const auto mode =
+      ParseWeightLoadAccelerationMode(config_options);
+  const bool use_environment_allocators =
+      config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
+  if (!use_environment_allocators ||
+      mode == WeightLoadAccelerationMode::Off) {
+    return mode;
+  }
+  ORT_ENFORCE(
+      mode != WeightLoadAccelerationMode::Required,
+      "weightLoadAcceleration=\"required\" is incompatible with "
+      "session.use_env_allocators=1.");
+  LOGS_DEFAULT(WARNING)
+      << "weightLoadAcceleration=\"preferred\" is disabled because "
+         "session.use_env_allocators=1.";
+  return WeightLoadAccelerationMode::Off;
+}
+
+WebGpuExecutionProviderConfig ParseEpConfig(
+    const ConfigOptions& config_options,
+    WeightLoadAccelerationMode weight_load_acceleration_mode) {
   WebGpuExecutionProviderConfig webgpu_ep_config{};
 
   if (std::string preferred_layout_str;
@@ -104,7 +127,7 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   }
 
   webgpu_ep_config.weight_load_acceleration_mode =
-      ParseWeightLoadAccelerationMode(config_options);
+      weight_load_acceleration_mode;
 
   if (std::string pool_generations_str;
       config_options.TryGetConfigEntry(kSessionBufferPoolGenerations, pool_generations_str)) {
@@ -212,11 +235,13 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   return webgpu_ep_config;
 }
 
-WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options) {
+WebGpuContextConfig ParseWebGpuContextConfig(
+    const ConfigOptions& config_options,
+    WeightLoadAccelerationMode weight_load_acceleration_mode) {
   WebGpuContextConfig config{};
 
   config.weight_load_acceleration_mode =
-      ParseWeightLoadAccelerationMode(config_options);
+      weight_load_acceleration_mode;
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
@@ -446,11 +471,16 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
 static std::shared_ptr<IExecutionProviderFactory> CreateWebGpuProviderFactory(
     const ConfigOptions& config_options, uint64_t test_only_max_storage_buffer_binding_size) {
+  const auto weight_load_acceleration_mode =
+      ResolveWeightLoadAccelerationMode(config_options);
+
   // prepare WebGpuExecutionProviderConfig
-  WebGpuExecutionProviderConfig webgpu_ep_config = ParseEpConfig(config_options);
+  WebGpuExecutionProviderConfig webgpu_ep_config =
+      ParseEpConfig(config_options, weight_load_acceleration_mode);
 
   // prepare WebGpuContextConfig
-  WebGpuContextConfig config = ParseWebGpuContextConfig(config_options);
+  WebGpuContextConfig config =
+      ParseWebGpuContextConfig(config_options, weight_load_acceleration_mode);
   config.test_only_max_storage_buffer_binding_size = test_only_max_storage_buffer_binding_size;
 
   // Load the Dawn library and create the WebGPU instance.

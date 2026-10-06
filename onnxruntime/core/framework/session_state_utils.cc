@@ -101,14 +101,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
   if (utils::HasExternalData(tensor_proto) &&
       !utils::HasExternalDataInMemory(tensor_proto)) {
-#if defined(ENABLE_D3D12_FILE_LOADING)
-    const IExternalDataLoader* external_data_loader = nullptr;
-    ORT_RETURN_IF_ERROR(external_data_loader_mgr.GetExternalDataLoader(
-        memory_info, tensor_proto.data_type(), alloc, external_data_loader));
-#else
     auto external_data_loader =
         external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
-#endif
     if (external_data_loader) {
 #if defined(ENABLE_D3D12_FILE_LOADING)
       if (external_data_loader->CreatesTensorForDevice(device)) {
@@ -351,15 +345,11 @@ common::Status SaveInitializedTensors(
     // - we do not trace values that are in memory because they may be sitting on top of the user allocated
     //   memory.
 #if defined(ENABLE_D3D12_FILE_LOADING)
-    const IExternalDataLoader* tensor_creator = nullptr;
-    if (utils::HasExternalData(*tensor_proto) &&
-        !utils::HasExternalDataInMemory(*tensor_proto)) {
-      const auto& target_device = exec_plan.GetLocation(ort_value_index);
-      ORT_RETURN_IF_ERROR(external_data_loader_mgr.GetTensorCreator(
-          target_device, tensor_proto->data_type(),
-          planner.GetInitializerAllocator(target_device), tensor_creator));
-    }
-    const bool loader_creates_tensor = tensor_creator != nullptr;
+    const bool loader_creates_tensor =
+        utils::HasExternalData(*tensor_proto) &&
+        !utils::HasExternalDataInMemory(*tensor_proto) &&
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(ort_value_index), tensor_proto->data_type()) != nullptr;
 #else
     constexpr bool loader_creates_tensor = false;
 #endif
@@ -386,15 +376,10 @@ common::Status SaveInitializedTensors(
     }
 #if defined(ENABLE_D3D12_FILE_LOADING)
     if (utils::HasExternalData(*entry.second) &&
-        !utils::HasExternalDataInMemory(*entry.second)) {
-      const auto& target_device = exec_plan.GetLocation(entry.first);
-      const IExternalDataLoader* tensor_creator = nullptr;
-      ORT_RETURN_IF_ERROR(external_data_loader_mgr.GetTensorCreator(
-          target_device, entry.second->data_type(),
-          planner.GetInitializerAllocator(target_device), tensor_creator));
-      if (tensor_creator != nullptr) {
-        continue;
-      }
+        !utils::HasExternalDataInMemory(*entry.second) &&
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(entry.first), entry.second->data_type()) != nullptr) {
+      continue;
     }
 #endif
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
@@ -443,11 +428,8 @@ common::Status SaveInitializedTensors(
                              "Preparing session state weights is canceled due to user request.");
     }
 
-    const auto& target_device = exec_plan.GetLocation(entry.first);
-    const IExternalDataLoader* tensor_creator = nullptr;
-    ORT_RETURN_IF_ERROR(external_data_loader_mgr.GetTensorCreator(
-        target_device, entry.second->data_type(),
-        planner.GetInitializerAllocator(target_device), tensor_creator));
+    const auto* tensor_creator = external_data_loader_mgr.GetTensorCreator(
+        exec_plan.GetLocation(entry.first), entry.second->data_type());
     if (tensor_creator != nullptr) {
       ORT_RETURN_IF_ERROR(
           utils::PrepareExtDataForTensorFromTensorProto(env, graph_loc, *entry.second, *tensor_creator));

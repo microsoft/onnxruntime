@@ -595,29 +595,6 @@ bool D3D12AcceleratedExternalDataLoader::
           IsWeightLoadAccelerationRequired(impl_->mode));
 }
 
-common::Status ResolveWeightLoadAccelerationAllocator(
-    WeightLoadAccelerationMode mode,
-    const IAllocator* accelerated_allocator,
-    const std::shared_ptr<IAllocator>& selected_allocator,
-    bool& compatible) {
-  compatible = selected_allocator != nullptr &&
-               selected_allocator.get() == accelerated_allocator;
-  ORT_RETURN_IF(
-      !compatible && IsWeightLoadAccelerationRequired(mode),
-      "weightLoadAcceleration=\"required\" is incompatible with the selected "
-      "WebGPU initializer allocator.");
-  return common::Status::OK();
-}
-
-common::Status D3D12AcceleratedExternalDataLoader::
-    CanCreateTensorWithAllocator(
-        const std::shared_ptr<IAllocator>& allocator,
-        bool& can_create_tensor) const {
-  return ResolveWeightLoadAccelerationAllocator(
-      impl_->mode, impl_->state->impl_->allocator,
-      allocator, can_create_tensor);
-}
-
 common::Status
 D3D12AcceleratedExternalDataLoader::BeginLoad() const {
   AbortLoad();

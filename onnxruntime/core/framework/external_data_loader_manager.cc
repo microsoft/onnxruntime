@@ -3,8 +3,6 @@
 
 #include "core/framework/external_data_loader_manager.h"
 
-#include "core/framework/allocator.h"
-
 namespace onnxruntime {
 using namespace common;
 
@@ -39,57 +37,16 @@ const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(
 }
 
 #if defined(ENABLE_D3D12_FILE_LOADING)
-Status ExternalDataLoaderManager::GetTensorCreator(
-    const OrtDevice& target_device,
-    int32_t tensor_data_type,
-    const std::shared_ptr<IAllocator>& allocator,
-    const IExternalDataLoader*& tensor_creator) const {
-  tensor_creator = nullptr;
+const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(
+    const OrtDevice& target_device, int32_t tensor_data_type) const {
   for (const auto& external_data_loader : external_data_loaders_) {
-    if (!external_data_loader->SupportsDataType(tensor_data_type) ||
-        !external_data_loader->CreatesTensorForDevice(target_device)) {
-      continue;
-    }
-
-    bool can_create_tensor = false;
-    ORT_RETURN_IF_ERROR(
-        external_data_loader->CanCreateTensorWithAllocator(allocator, can_create_tensor));
-    if (can_create_tensor) {
-      tensor_creator = external_data_loader.get();
-      break;
+    if (external_data_loader->SupportsDataType(tensor_data_type) &&
+        external_data_loader->CreatesTensorForDevice(target_device)) {
+      return external_data_loader.get();
     }
   }
 
-  return Status::OK();
-}
-
-Status ExternalDataLoaderManager::GetExternalDataLoader(
-    const OrtMemoryInfo& target_memory_info,
-    int32_t tensor_data_type,
-    const std::shared_ptr<IAllocator>& allocator,
-    const IExternalDataLoader*& selected_loader) const {
-  selected_loader = nullptr;
-  for (const auto& external_data_loader : external_data_loaders_) {
-    if (!external_data_loader->SupportsDataType(tensor_data_type)) {
-      continue;
-    }
-
-    if (external_data_loader->CreatesTensorForDevice(target_memory_info.device)) {
-      bool can_create_tensor = false;
-      ORT_RETURN_IF_ERROR(
-          external_data_loader->CanCreateTensorWithAllocator(allocator, can_create_tensor));
-      if (!can_create_tensor) {
-        continue;
-      }
-    } else if (!external_data_loader->CanLoad(target_memory_info)) {
-      continue;
-    }
-
-    selected_loader = external_data_loader.get();
-    break;
-  }
-
-  return Status::OK();
+  return nullptr;
 }
 
 Status ExternalDataLoaderManager::BeginLoad() const {
