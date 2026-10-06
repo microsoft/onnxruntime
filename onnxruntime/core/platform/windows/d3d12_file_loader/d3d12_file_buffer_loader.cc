@@ -121,7 +121,7 @@ struct D3D12FileBufferLoader::UploadSlot {
   ComPtr<ID3D12Resource> resource;
   ComPtr<ID3D12CommandAllocator> allocator;
   ComPtr<ID3D12GraphicsCommandList> command_list;
-  wil::unique_handle read_event;
+  wil::unique_handle file_read_complete_event;
   void* mapped = nullptr;
   OVERLAPPED overlapped{};
   HANDLE read_file = INVALID_HANDLE_VALUE;
@@ -148,12 +148,12 @@ D3D12FileBufferLoader::~D3D12FileBufferLoader() {
     device_.Detach();
     copy_queue_.Detach();
     copy_fence_.Detach();
-    (void)fence_event_.release();
+    (void)copy_fence_complete_event_.release();
     for (auto& slot : slots_) {
       slot.resource.Detach();
       slot.allocator.Detach();
       slot.command_list.Detach();
-      (void)slot.read_event.release();
+      (void)slot.file_read_complete_event.release();
     }
     for (auto& heap : untracked_batch_.heaps) {
       heap.Detach();
@@ -213,9 +213,9 @@ common::Status D3D12FileBufferLoader::Initialize() {
     return HResultError("ID3D12Device::CreateFence", hr);
   }
 
-  fence_event_.reset(CreateEventExW(
+  copy_fence_complete_event_.reset(CreateEventExW(
       nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE));
-  if (!fence_event_) {
+  if (!copy_fence_complete_event_) {
     return Win32Error("CreateEventExW(copy fence)", GetLastError());
   }
 
@@ -257,10 +257,10 @@ common::Status D3D12FileBufferLoader::Initialize() {
           "ID3D12GraphicsCommandList::Close(initial)", hr);
     }
 
-    slot.read_event.reset(CreateEventExW(
+    slot.file_read_complete_event.reset(CreateEventExW(
         nullptr, nullptr, CREATE_EVENT_MANUAL_RESET,
         EVENT_MODIFY_STATE | SYNCHRONIZE));
-    if (!slot.read_event) {
+    if (!slot.file_read_complete_event) {
       return Win32Error("CreateEventExW(read)", GetLastError());
     }
   }
@@ -656,14 +656,15 @@ common::Status D3D12FileBufferLoader::IssueRead(
     UploadSlot& slot,
     uint64_t offset,
     DWORD size) {
-  if (!ResetEvent(slot.read_event.get())) {
+  if (!ResetEvent(slot.file_read_complete_event.get())) {
     return Win32Error("ResetEvent(read)", GetLastError());
   }
   slot.overlapped = {};
   slot.overlapped.Offset = static_cast<DWORD>(offset);
   slot.overlapped.OffsetHigh =
       static_cast<DWORD>(offset >> 32);
-  slot.overlapped.hEvent = slot.read_event.get();
+  slot.overlapped.hEvent =
+      slot.file_read_complete_event.get();
   slot.file_offset = offset;
   slot.requested = size;
   slot.read_file = file;
@@ -766,7 +767,7 @@ common::Status D3D12FileBufferLoader::ReadRegion(
          index < slots_.size(); ++index) {
       if (slots_[index].read_active) {
         handles[handle_count] =
-            slots_[index].read_event.get();
+            slots_[index].file_read_complete_event.get();
         slot_indices[handle_count] = index;
         ++handle_count;
       }
@@ -1038,7 +1039,7 @@ common::Status D3D12FileBufferLoader::WaitForFence(
   }
   const HRESULT hr =
       copy_fence_->SetEventOnCompletion(
-          value, fence_event_.get());
+          value, copy_fence_complete_event_.get());
   if (FAILED(hr)) {
     return HResultError(
         "ID3D12Fence::SetEventOnCompletion", hr);
@@ -1048,7 +1049,7 @@ common::Status D3D12FileBufferLoader::WaitForFence(
       kInitialCancellationPollMilliseconds;
   while (true) {
     const DWORD wait_result = WaitForSingleObject(
-        fence_event_.get(),
+        copy_fence_complete_event_.get(),
         cancellation_poll_milliseconds);
     if (wait_result != WAIT_OBJECT_0 &&
         wait_result != WAIT_TIMEOUT) {
@@ -1083,9 +1084,9 @@ void D3D12FileBufferLoader::WaitForFenceUncancelled(
     return;
   }
   if (SUCCEEDED(copy_fence_->SetEventOnCompletion(
-          value, fence_event_.get())) &&
+          value, copy_fence_complete_event_.get())) &&
       WaitForSingleObject(
-          fence_event_.get(), INFINITE) ==
+          copy_fence_complete_event_.get(), INFINITE) ==
           WAIT_OBJECT_0) {
     return;
   }

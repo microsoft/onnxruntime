@@ -144,7 +144,7 @@ class D3D12FileBufferLoader {
   Config config_;
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> copy_queue_;
   Microsoft::WRL::ComPtr<ID3D12Fence> copy_fence_;
-  wil::unique_handle fence_event_;
+  wil::unique_handle copy_fence_complete_event_;
   std::vector<UploadSlot> slots_;
   Batch untracked_batch_;
   uint64_t next_fence_value_ = 0;
