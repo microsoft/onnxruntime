@@ -186,14 +186,14 @@ Status ApplyGemmPacked(const Tensor* a,
 
   ORT_RETURN_IF_ERROR(context.RunProgram(program));
   if (split_dim_inner > 1 && y->IsDataType<MLFloat16>()) {
-    const uint32_t output_size = narrow<uint32_t>(y->Shape().Size());
-    const uint32_t vec_size = output_size / 4;
+    const uint32_t cast_output_size = narrow<uint32_t>(output_size);
+    const uint32_t vec_size = cast_output_size / 4;
     CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, false, true, false, false};
     cast_program
         .AddInput({&split_k_output, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
         .AddOutput({y, ProgramTensorMetadataDependency::None, {vec_size}, 4})
         .SetDispatchGroupSize(CeilDiv(vec_size, static_cast<uint32_t>(WORKGROUP_SIZE)))
-        .AddUniformVariables({{vec_size}, {output_size}})
+        .AddUniformVariables({{vec_size}, {cast_output_size}})
         .CacheHint(std::to_string(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
     return context.RunProgram(cast_program);
   }
