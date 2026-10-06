@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 from helper import get_name
@@ -27,6 +28,7 @@ class TestBackend(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
+    @patch.dict(os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"})
     def test_prepare_released_opset28_model_when_policy_enabled(self):
         model = self._make_opset28_model()
         original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
@@ -39,6 +41,7 @@ class TestBackend(unittest.TestCase):
         result = rep.run(np.array([1.0], dtype=np.float32))
         np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
 
+    @patch.dict(os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"})
     def test_prepare_model_bytes_rejects_unreleased_opset29_when_policy_enabled(self):
         model = self._make_opset28_model()
         model.opset_import[0].version = 29

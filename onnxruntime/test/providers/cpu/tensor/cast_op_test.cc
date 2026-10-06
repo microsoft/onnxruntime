@@ -155,6 +155,9 @@ std::vector<DstType> CastedValues(gsl::span<const SrcType> src) {
 }
 
 struct CastNonStringTester {
+  int opset{21};
+  bool cuda_only{false};
+
   template <typename SrcType, typename DstType>
   void operator()(const std::pair<SrcType, DstType>&) {
     SCOPED_TRACE(
@@ -177,7 +180,8 @@ struct CastNonStringTester {
     auto output_span = gsl::make_span<DstType>(output_buffer.get(), size);
     CastSpan<SrcType, DstType>(input_span, output_span);
 
-    TestCastOp<SrcType, DstType>(input_span, output_span, shape.AsShapeVector());
+    TestCastOp<SrcType, DstType>(input_span, output_span, shape.AsShapeVector(),
+                                 OpTester::ExpectResult::kExpectSuccess, "", opset, Saturate::None, cuda_only);
   }
 };
 
@@ -193,6 +197,25 @@ TEST(CastOpTest, NonStringTypes) {
   boost::mp11::mp_for_each<boost::mp11::mp_product<std::pair, CastNonStringTypes, CastNonStringTypes>>(
       CastNonStringTester{});
 }
+
+TEST(CastOpTest, NonStringTypes_Opset25To28) {
+  for (int opset : {25, 27, 28}) {
+    SCOPED_TRACE(opset);
+    boost::mp11::mp_for_each<boost::mp11::mp_product<std::pair, CastNonStringTypes, CastNonStringTypes>>(
+        CastNonStringTester{opset});
+  }
+}
+
+#if defined(USE_CUDA)
+TEST(CastOpTest, NonStringTypes_Opset28_Cuda) {
+  if (!HasCudaEnvironment(530)) {
+    GTEST_SKIP() << "CUDA Cast tests require a CUDA device with compute capability >= 5.3.";
+  }
+
+  boost::mp11::mp_for_each<boost::mp11::mp_product<std::pair, CastNonStringTypes, CastNonStringTypes>>(
+      CastNonStringTester{28, true});
+}
+#endif
 
 TEST(CastOpTest, FromString) {
   const std::vector<int64_t> shape{2, 2, 2};

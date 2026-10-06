@@ -1092,6 +1092,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(     19,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(     21,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
+    {REG_INFO(     28,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO_VER( 15,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO_VER( 19,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO_VER( 21,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},

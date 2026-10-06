@@ -118,8 +118,6 @@
         "^test_attention_4d_padded_kv_bf16_cuda$",
         "^test_attention_4d_padded_kv_bf16_expanded_cuda$",
         "^test_attention_local_window_ext_cache_float16_mask_cpu$",
-        // TODO: Remove the exact Cast(28) failures when CPU Cast(28) is available in all builds.
-        "^test_cast_DOUBLE_to_FLOAT_cpu$",
         "^test_celu_bfloat16_cpu$",
         "^test_celu_bfloat16_expanded_cpu$",
         "^test_celu_cpu$",
@@ -187,7 +185,6 @@
         "^test_unique_sorted_with_negative_axis_cpu$",
         "^test_unique_sorted_without_axis_cpu$",
         // TODO: Remove these exact CUDA skips when fallback nodes have providers and Swish(24) has a CPU kernel.
-        "^test_cast_DOUBLE_to_FLOAT_cuda$",
         "^test_celu_bfloat16_cuda$",
         "^test_celu_bfloat16_expanded_cuda$",
         "^test_celu_cuda$",
