@@ -273,6 +273,7 @@ export default [
             '_OrtAddRunConfigEntry',
             '_OrtAddSessionConfigEntry',
             '_OrtAppendExecutionProvider',
+            '_OrtAppendExecutionProviderV2',
             '_OrtBindInput',
             '_OrtBindOutput',
             '_OrtClearBoundOutputs',
@@ -282,7 +283,9 @@ export default [
             '_OrtCreateSessionOptions',
             '_OrtCreateTensor',
             '_OrtEndProfiling',
+            '_OrtEpDevice_EpName',
             '_OrtFree',
+            '_OrtGetEpDevices',
             '_OrtGetInputName',
             '_OrtGetInputOutputCount',
             '_OrtGetInputOutputMetadata',
@@ -327,6 +330,22 @@ export default [
       'unicorn/filename-case': 'off',
       'no-invalid-this': 'off',
       'no-console': 'off',
+    },
+  },
+  {
+    files: [
+      'node/lib/binding.ts',
+      'node/test/unittests/lib/ep-context-data-read.ts',
+      'react_native/e2e/src/EPContextDataReadTest.tsx',
+    ],
+
+    rules: {
+      'no-underscore-dangle': [
+        'error',
+        {
+          allow: ['__testEpContextDataReadCallback', '__testWorker'],
+        },
+      ],
     },
   },
   {

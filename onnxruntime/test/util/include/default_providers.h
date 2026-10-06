@@ -65,6 +65,8 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options);
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
     const WebGpuExecutionProviderTestOptions& test_options);
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options);
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 

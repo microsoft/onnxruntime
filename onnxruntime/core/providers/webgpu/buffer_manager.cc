@@ -27,6 +27,8 @@ void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
 }  // namespace
 
 class DisabledCacheManager : public IBufferCacheManager {
+  bool SupportsBufferReuse() const override { return false; }
+
   size_t CalculateBufferSize(size_t request_size) override {
     return NormalizeBufferSize(request_size);
   }
@@ -48,6 +50,8 @@ class DisabledCacheManager : public IBufferCacheManager {
 };
 
 class LazyReleaseCacheManager : public IBufferCacheManager {
+  bool SupportsBufferReuse() const override { return false; }
+
   size_t CalculateBufferSize(size_t request_size) override {
     return NormalizeBufferSize(request_size);
   }
@@ -560,10 +564,9 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
   }
   if (buffer) {
     if (initialize_to_zero) {
-      // initialize_to_zero controls whether a cached buffer is cleared; submit_zero_initialize
-      // separately controls submission before Create returns. Plugin allocations on an explicit
-      // Session stream defer clears; plain/null-stream and Env allocations submit them immediately,
-      // even during Run. Flush submits the whole recording, not just this buffer's clear.
+      // Plugin plain allocations pass call-local recording and submit only their own clear.
+      // AllocOnStream defers the clear on the Session timeline. Built-in allocations use the
+      // Session recording and retain their caller-supplied submission policy.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
       context_.EndComputePass(recording);
@@ -603,15 +606,23 @@ bool BufferManager::SupportsUMA() const {
 #endif  // !defined(__wasm__)
 }
 
-void BufferManager::Release(CommandRecordingState& recording, WGPUBuffer buffer) const {
+void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* recording) const {
   EnforceBufferUnmapped(context_, buffer);
-  if (recording.has_unsubmitted_work) {
-    recording.pending_buffers.emplace_back(wgpu::Buffer::Acquire(buffer));
+  std::lock_guard<std::mutex> lock{mutex_};
+  auto& cache = GetCacheManager(buffer);
+  // Keep reusable buffers out of the cache while this recording has unsubmitted work.
+  // Graph caches also need this protection from streamless allocations.
+  // Relaxed ordering suffices: recording a buffer's use (and setting the flag) must happen-before
+  // its release, on the same thread or through a synchronized ownership handoff. Only independent
+  // buffer releases may race with recording. The flag publishes no command data, and mutex_ orders
+  // releases against clearing it after submission or abandonment.
+  if (cache.SupportsBufferReuse() && recording != nullptr &&
+      recording->has_unsubmitted_work.load(std::memory_order_relaxed)) {
+    pending_buffers_[recording].emplace_back(wgpu::Buffer::Acquire(buffer));
     return;
   }
 
-  std::lock_guard<std::mutex> lock{mutex_};
-  GetCacheManager(buffer).ReleaseBuffer(buffer);
+  cache.ReleaseBuffer(buffer);
 }
 
 void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const {
@@ -662,17 +673,31 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   staging_buffer.Unmap();
 }
 
-void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) const {
+void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const {
   std::lock_guard<std::mutex> lock{mutex_};
-  for (auto& buffer : recording.pending_buffers) {
-    GetCacheManager(buffer.Get()).ReleaseBuffer(buffer.MoveToCHandle());
+  // Serialize the transition to idle with Free, so a concurrent release cannot miss this refresh.
+  recording.has_unsubmitted_work.store(false, std::memory_order_relaxed);
+  if (auto it = pending_buffers_.find(&recording); it != pending_buffers_.end()) {
+    for (auto& buffer : it->second) {
+      GetCacheManager(buffer.Get()).ReleaseBuffer(buffer.MoveToCHandle());
+    }
+    pending_buffers_.erase(it);
   }
-  recording.pending_buffers.clear();
 
-  storage_cache_->OnRefresh(recording.graph_capture_state);
-  uniform_cache_->OnRefresh(recording.graph_capture_state);
-  query_resolve_cache_->OnRefresh(recording.graph_capture_state);
-  default_cache_->OnRefresh(recording.graph_capture_state);
+  if (graph_capture_state == GraphCaptureState::Replaying) {
+    return;
+  }
+
+  storage_cache_->OnRefresh(graph_capture_state);
+  uniform_cache_->OnRefresh(graph_capture_state);
+  query_resolve_cache_->OnRefresh(graph_capture_state);
+  default_cache_->OnRefresh(graph_capture_state);
+}
+
+void BufferManager::DiscardPendingBuffers(CommandRecordingState& recording) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+  recording.has_unsubmitted_work.store(false, std::memory_order_relaxed);
+  pending_buffers_.erase(&recording);
 }
 
 std::vector<std::pair<size_t, WGPUBuffer>> BufferManager::ExtractCachedBuffers(wgpu::BufferUsage usage) {

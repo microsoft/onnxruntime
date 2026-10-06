@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <gsl/gsl>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -19,6 +20,13 @@ extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
+
+TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {
+  const auto missing_path = Utils::example_ep_info.library_path.parent_path() / "missing_ep_library";
+  Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, "missing_ep_library",
+                                                                    missing_path.c_str())};
+  ASSERT_FALSE(status.IsOK());
+}
 
 TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
@@ -105,6 +113,37 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
 
   // and this should unload it without throwing
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
+
+TEST(OrtEpLibrary, FailedRegistrationLeavesEnvironmentUnchanged) {
+  const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
+  const std::string& registration_name = Utils::example_ep_info.registration_name;
+  const size_t initial_device_count = ort_env->GetEpDevices().size();
+
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  ASSERT_NE(hooks->set_create_data_transfer_failure, nullptr);
+
+  {
+    // Fail registration with a data transfer creation failure.
+    hooks->set_create_data_transfer_failure(1);
+    auto reset_failure = gsl::finally([&] { hooks->set_create_data_transfer_failure(0); });
+
+    Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(
+        *ort_env, registration_name.c_str(), library_path.c_str())};
+    ASSERT_FALSE(status.IsOK());
+
+    // The failed library must not contribute any EP devices to the environment.
+    EXPECT_EQ(ort_env->GetEpDevices().size(), initial_device_count);
+  }
+
+  // The same registration name must remain available after the failed attempt.
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+  EXPECT_EQ(ort_env->GetEpDevices().size(), initial_device_count + 1);
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+
+  // The successful registration must still support a normal unregister lifecycle.
+  EXPECT_EQ(ort_env->GetEpDevices().size(), initial_device_count);
 }
 
 // Test loading example_plugin_ep_virt_gpu and its associated OrtEpDevice/OrtHardwareDevice.

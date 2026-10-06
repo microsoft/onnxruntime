@@ -102,8 +102,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 
-  // WebGPU EP disallow concurrent run because actual implementation (eg. WebGPU backend) relies on global states to
-  // work, and concurrent run with async function may mess up the states and cause undefined behavior.
+  // A Session owns one command recording timeline, so Run calls on that Session must be serialized.
   bool ConcurrentRunSupported() const override { return false; }
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;

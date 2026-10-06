@@ -614,6 +614,9 @@ ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionO
                     _In_ EpSelectionDelegate delegate,
                     _In_opt_ void* state);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
+                    _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
+
 // OrtHardwareDevice accessors.
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
 ORT_API(uint32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
