@@ -103,6 +103,22 @@ There is no eviction or per-ID retirement; recreate the session to release all
 buckets or change the limit. Whole-session capture and ordinary eager execution
 ignore this setting.
 
+## Returned output ownership
+
+Automatically allocated outputs are **mutable per-ID views, not independent
+snapshots**. The retained frame keeps owning OrtValue references for the session's
+lifetime, and returned OrtValues share those tensors. A later partitioned run with
+the same graph ID reuses their storage, including CPU outputs. Keeping an earlier
+OrtValue alive therefore does not preserve its contents: it observes later writes,
+even when the next run uses a fresh empty fetch vector or newly created IOBinding.
+A failed partitioned run may also leave these views partially updated.
+
+Copy results that must be preserved into independent storage before another run
+reuses that ID. CPU results can be copied on the host; device results require an
+explicit host/device copy. Rebinding a different output buffer to the same ID is
+not a snapshot mechanism: preallocated output addresses must still match the
+captured bindings.
+
 ## Prototype constraints
 
 The option requires a non-minimal build, a CUDA EP with capture enabled, and an ONNX
@@ -141,12 +157,16 @@ capture requirements instead.
   correctness but does not overlap transfers and computation.
 - Capture warm-up executes CPU computation repeatedly, so stateful CPU operators
   are not an appropriate workload.
-- Individual graph retirement is not implemented. After an execution/capture
-  failure, including termination between partitions, recreate the session.
+- Individual graph retirement is not implemented. If a partitioned invocation
+  fails after execution/capture begins, including termination between partitions,
+  recreate the session.
   All subsequent runs are rejected, including eager `gpu_graph_id=-1` calls,
   before provider run callbacks or node execution. Input binding validation errors
-  and termination detected before execution do not invalidate the session;
-  existing buckets and eager execution remain usable.
+  and termination detected before partitioned execution do not invalidate the
+  session; existing buckets and eager execution remain usable.
+  An error originating in ordinary eager `gpu_graph_id=-1` execution does not set
+  this partitioned failed-state flag; ordinary eager error handling still applies.
+  This is distinct from rejecting an eager call after a partitioned failure.
 
 This is not a claim that a particular 27B model fits in 12 or 24 GB. That requires
 measurement with its actual quantization, context length, KV cache, placement, and
@@ -194,9 +214,14 @@ coverage for configurable warm-up counts and scratch retention across the alloca
 C ABI boundary. Failure regressions check that scratch retained by a kernel during
 a rejected replay is freed only by that kernel, and that partial replay failures
 invalidate every captured bucket while pre-execution validation remains recoverable.
-Post-start failures also reject eager execution, including IOBinding runs, without
-modifying output buffers. Coverage includes partial termination, changed host
-control inputs, and capture-attempt exhaustion.
+Post-start partitioned failures also reject eager execution, including IOBinding
+runs, without modifying output buffers. Coverage includes partial termination,
+changed host control inputs, and capture-attempt exhaustion. An eager-origin kernel
+failure followed by successful captured replay checks the distinct eager failure
+contract.
+Fresh automatically allocated fetches and IOBinding outputs reuse same-ID CPU
+result storage: an earlier retained OrtValue observes the later writes, while an
+independent copy preserves its earlier contents.
 Graph-ID limit coverage checks the default and configured bounds, invalid settings,
 repeated rejection without new device allocations or changed outputs, and continued
 replay/eager execution at capacity. Whole-session routing remains exempt from the limit.

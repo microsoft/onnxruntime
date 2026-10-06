@@ -466,8 +466,11 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 /// its memory-pattern settings and capture behavior. Otherwise, CPU nodes and device copies execute on every run
 /// and contiguous CUDA compute partitions are captured separately. Placement uses the existing partitioning settings.
 /// In partitioned mode, each gpu_graph_id retains intermediate/scratch buffers and requires fixed addresses and shapes.
+/// Automatically allocated outputs share per-ID storage; copy results before reusing that ID to preserve them.
 /// CPU control inputs consumed directly by CUDA kernels must remain constant for that graph id.
 /// Runs must use the capture thread and device-bound I/O. gpu_graph_id=-1 uses ordinary eager execution.
+/// Post-start partitioned failures reject all subsequent runs, including eager execution; recreate the session.
+/// An eager-origin error does not set the partitioned failed-state flag.
 /// Memory patterns are disabled only in partitioned mode. Control flow is not supported;
 /// partitioned mode also excludes non-tensor node outputs, shared environment/external allocators, and parallel execution.
 /// See docs/partitioned_cuda_graphs.md for prototype limitations.

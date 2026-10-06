@@ -3469,6 +3469,8 @@ TEST(InferenceSessionTests, PartitionedCudaGraphRetainsUnequalConcatStagingBuffe
     RunOptions run_options;
     ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(
         kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str()));
+    OrtValue first_output;
+    InlinedVector<float> first_output_snapshot;
     for (int iteration = 0; iteration < 3; ++iteration) {
       SCOPED_TRACE(iteration);
       auto* values = tensor.MutableData<float>();
@@ -3498,12 +3500,25 @@ TEST(InferenceSessionTests, PartitionedCudaGraphRetainsUnequalConcatStagingBuffe
       ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
       ASSERT_TRUE(cuda_ep->IsGraphCaptured(1));
       const auto& output = fetches[0].Get<Tensor>();
+      ASSERT_TRUE(output.Location().device.UsesCpuMemory());
       ASSERT_EQ(output.Shape(), TensorShape({count + 2}));
       for (int64_t i = 0; i < count; ++i) {
         EXPECT_FLOAT_EQ(output.Data<float>()[i], -values[i]);
       }
       EXPECT_FLOAT_EQ(output.Data<float>()[count], 10.0f);
       EXPECT_FLOAT_EQ(output.Data<float>()[count + 1], -20.0f);
+      if (graph_id >= 0) {
+        if (iteration == 0) {
+          first_output = fetches[0];
+          first_output_snapshot.assign(output.Data<float>(), output.Data<float>() + count + 2);
+        } else {
+          const auto& earlier_output = first_output.Get<Tensor>();
+          ASSERT_EQ(earlier_output.DataRaw(), output.DataRaw());
+          EXPECT_FLOAT_EQ(earlier_output.Data<float>()[0], -values[0]);
+          EXPECT_FLOAT_EQ(first_output_snapshot[0], -static_cast<float>(graph_id));
+          EXPECT_NE(earlier_output.Data<float>()[0], first_output_snapshot[0]);
+        }
+      }
     }
   }
   ASSERT_TRUE(cuda_ep->IsGraphCaptured(2));
@@ -3571,14 +3586,30 @@ TEST(InferenceSessionTests, PartitionedCudaGraphInvalidatesAfterControlInputChan
   EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -1.0f);
   EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
 
-  input.GetMutable<Tensor>()->MutableData<float>()[0] = 9.0f;
   auto* shape_data = shape_input.GetMutable<Tensor>()->MutableData<int64_t>();
+  shape_data[0] = 3;
+  shape_data[1] = 2;
+  RunOptions eager_options;
+  ASSERT_STATUS_OK(eager_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+  std::vector<OrtValue> eager_fetches;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(eager_options, input_names, feeds, output_names, &eager_fetches), "cannot be reshaped");
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+  shape_data[0] = 2;
+  shape_data[1] = 2;
+  input.GetMutable<Tensor>()->MutableData<float>()[0] = 5.0f;
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -5.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 5.0f);
+
+  input.GetMutable<Tensor>()->MutableData<float>()[0] = 9.0f;
   shape_data[0] = 1;
   shape_data[1] = 4;
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       session.Run(run_options, input_names, feeds, output_names, &fetches), "CPU control input");
   EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -9.0f);
-  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 5.0f);
   shape_data[0] = 2;
   shape_data[1] = 2;
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
@@ -3588,7 +3619,7 @@ TEST(InferenceSessionTests, PartitionedCudaGraphInvalidatesAfterControlInputChan
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
   EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -9.0f);
-  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 5.0f);
   ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "7"));
   fetches.clear();
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
