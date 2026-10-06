@@ -41,7 +41,7 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
   }
-  std::string data_type = "a_element_t";
+  std::string data_type = "output_element_t";
   // generate the main function
   if (is_vec4_) {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(

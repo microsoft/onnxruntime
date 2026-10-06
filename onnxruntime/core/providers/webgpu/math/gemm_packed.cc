@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
+#include "core/providers/webgpu/tensor/cast.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -107,18 +108,26 @@ Status ApplyGemmPacked(const Tensor* a,
     c_is_scalar = c_shape.Size() == 1;
   }
 
+  Tensor split_k_output;
   ProgramOutput output(y, ProgramTensorMetadataDependency::TypeAndRank, output_components);
   uint32_t dispatch_z = 1;
   uint32_t split_dim_inner = 1;
 
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
-  if (!y->IsDataType<MLFloat16>() && !context.KernelContext().GetUseDeterministicCompute()) {
+  if (!context.KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context.GetSplitKConfig();
     // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
     const bool output_is_vec4 = output_components == 4;
     // We need to use `true` as `is_channels_last` to meet the requirement in `UseSplitK`.
     const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, M, N, K);
     if (need_split_k) {
+      Tensor* reduction_output = y;
+      if (y->IsDataType<MLFloat16>()) {
+        split_k_output = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), y->Shape());
+        reduction_output = &split_k_output;
+        output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::TypeAndRank, output_components);
+      }
+
       const Tensor* bias = nullptr;
       uint32_t output_components_in_fill_bias_program = 4;
       if (need_handle_bias) {
@@ -128,7 +137,7 @@ Status ApplyGemmPacked(const Tensor* a,
       const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
 
       auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
-          bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, output_shape);
+          bias, reduction_output, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, output_shape);
       ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
 
       // When Split-K is used, `bias` will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
@@ -175,7 +184,20 @@ Status ApplyGemmPacked(const Tensor* a,
                             {dispatch_z}} /* logical_dispatch_z */
       );
 
-  return context.RunProgram(program);
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  if (split_dim_inner > 1 && y->IsDataType<MLFloat16>()) {
+    const uint32_t output_size = narrow<uint32_t>(y->Shape().Size());
+    const uint32_t vec_size = output_size / 4;
+    CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, false, true, false, false};
+    cast_program
+        .AddInput({&split_k_output, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+        .AddOutput({y, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+        .SetDispatchGroupSize(CeilDiv(vec_size, static_cast<uint32_t>(WORKGROUP_SIZE)))
+        .AddUniformVariables({{vec_size}, {output_size}})
+        .CacheHint(std::to_string(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    return context.RunProgram(cast_program);
+  }
+  return Status::OK();
 }
 
 }  // namespace webgpu

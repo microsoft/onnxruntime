@@ -52,15 +52,15 @@ TEST(MathOpTest, MatMulPackedFp16LongReductionUsesFloat32Accumulator) {
   test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
-TEST(MathOpTest, MatMulSubgroupMatrixFp16LongReductionCancellation) {
+TEST(MathOpTest, MatMulIntelEligibleFp16LongReductionCancellation) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
 
-  constexpr int64_t rows = 8;
+  constexpr int64_t rows = 64;
   constexpr int64_t reduction_size = 1024;
-  constexpr int64_t output_columns = 16;
+  constexpr int64_t output_columns = 512;
   std::vector<MLFloat16> weights(reduction_size * output_columns);
   for (int64_t reduction_index = 0; reduction_index < reduction_size; ++reduction_index) {
     const float value = reduction_index < reduction_size / 2 ? 512.0f : -512.0f;
@@ -109,7 +109,9 @@ TEST(MathOpTest, MatMulPackedFp16SplitKEligibleCancellationKeepsFloat32Precision
         SCOPED_TRACE(batch_size);
         SCOPED_TRACE(batched_weights);
         auto webgpu_ep = DefaultWebGpuExecutionProvider();
-        ASSERT_NE(webgpu_ep, nullptr);
+        if (!webgpu_ep) {
+          GTEST_SKIP() << "WebGPU execution provider is not available";
+        }
 
         std::vector<int64_t> a_shape{rows, reduction_size};
         std::vector<int64_t> b_shape{reduction_size, output_columns};

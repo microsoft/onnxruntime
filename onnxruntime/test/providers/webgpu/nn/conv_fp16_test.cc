@@ -248,7 +248,9 @@ TEST(ConvFp16Test, WebGpuConv2dMMLongReduction) {
   for (int64_t input_channels : {300, 299}) {
     SCOPED_TRACE(input_channels);
     auto webgpu_ep = DefaultWebGpuExecutionProvider();
-    ASSERT_NE(webgpu_ep, nullptr);
+    if (!webgpu_ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
     const MLFloat16 value{0.1f};

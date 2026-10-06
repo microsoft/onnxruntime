@@ -173,7 +173,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
 
   shader.AdditionalImplementation() << input.IndicesSet(input_indices, input.Rank() - 2, "u32(row)") << "\n"
                                     << input.IndicesSet(input_indices, input.Rank() - 1, "u32(colIn)") << "\n"
-                                    << "        value = " << input.GetByIndices(input_indices) << ";\n"
+                                    << "        value = " << type_string << "(" << input.GetByIndices(input_indices) << ");\n"
                                     << "    }\n"
                                     << "    return value;\n"
                                     << "}\n\n";
