@@ -377,6 +377,11 @@ std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
+  // Mod-28 floating floor/edge-case semantics require the CPU fallback.
+  if (optype == "Mod" && node->SinceVersion() >= 28) {
+    return true;
+  }
+
   if (optype == "ArgMax" || optype == "ArgMin") {
     const auto& attributes = node->GetAttributes();
     // we do not support select_last_index = 1 for now

@@ -151,8 +151,8 @@ def run_subprocess(
 
 def get_onnx_backend_test_environment(_use_cuda):
     return {
-        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
-        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
+        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "1",
+        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "0",
     }
 
 

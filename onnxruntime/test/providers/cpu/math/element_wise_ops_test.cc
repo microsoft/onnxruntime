@@ -4396,6 +4396,47 @@ TEST(ModOpTest, FloorMod_float_special_values_opset28) {
       {-0.0f, 0.0f, 5.0f, -5.0f, nan, nan, nan, nan});
 }
 
+TEST(ModOpTest, FloorMod_opset28_provider_fallback) {
+  InlinedVector<std::unique_ptr<IExecutionProvider>> providers;
+#ifdef USE_CANN
+  OrtCANNProviderOptions cann_options{};
+  cann_options.enable_cann_graph = 1;
+  auto cann_factory = CannProviderFactoryCreator::Create(&cann_options);
+  ASSERT_NE(cann_factory, nullptr);
+  providers.push_back(cann_factory->CreateProvider());
+#endif
+  providers.push_back(DefaultMIGraphXExecutionProvider());
+  providers.push_back(DefaultOpenVINOExecutionProvider());
+  bool tested_provider = false;
+  for (auto& provider : providers) {
+    if (!provider) {
+      continue;
+    }
+    tested_provider = true;
+    SCOPED_TRACE(provider->Type());
+    const std::vector<int64_t> shape{4};
+    const float infinity = std::numeric_limits<float>::infinity();
+    const std::vector<float> x{-5.0f, 5.0f, -5.0f, 5.0f};
+    const std::vector<float> y{3.0f, -3.0f, infinity, -infinity};
+    OpTester test("Mod", 28);
+    test.AddAttribute<int64_t>("fmod", 0);
+    test.AddInput<float>("X", shape, x);
+    test.AddInput<float>("Y", shape, y);
+    test.AddOutput<float>("Z", shape, {1.0f, -1.0f, infinity, -infinity});
+    std::string model_data;
+    test.BuildModel().ToProto().SerializeToString(&model_data);
+    EPVerificationParams params;
+    params.ep_node_assignment = ExpectedEPNodeAssignment::None;
+    RunAndVerifyOutputsWithEP(
+        AsByteSpan(model_data.data(), model_data.size()), CurrentTestName(), std::move(provider),
+        {{"X", CreateInputOrtValueOnCPU<float>(shape, x)}, {"Y", CreateInputOrtValueOnCPU<float>(shape, y)}},
+        params);
+  }
+  if (!tested_provider) {
+    GTEST_SKIP() << "Requires CANN, MIGraphX, or OpenVINO.";
+  }
+}
+
 #if defined(USE_CUDA)
 TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   OpTester test("Mod", 13);
