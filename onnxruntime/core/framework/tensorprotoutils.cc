@@ -568,6 +568,45 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                          external_data_canonical, " ", "allowed directory: ", real_model_dir);
 }
 
+[[maybe_unused]] static Status ValidateOpenedExternalDataPath(const std::filesystem::path& model_path,
+                                                              const std::filesystem::path& opened_path) {
+  const std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
+                                              ? std::filesystem::path{"."}
+                                              : model_path.parent_path();
+
+  std::filesystem::path model_dir_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir, model_dir_canonical));
+  if (HasPathComponentPrefix(model_dir_canonical, opened_path)) {
+    return Status::OK();
+  }
+
+  std::error_code ec;
+  if (!model_path.empty() && std::filesystem::is_symlink(model_path, ec)) {
+    std::filesystem::path real_model_path;
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
+    std::filesystem::path real_model_dir_canonical;
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_path.parent_path(), real_model_dir_canonical));
+    if (HasPathComponentPrefix(real_model_dir_canonical, opened_path)) {
+      return Status::OK();
+    }
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "Opened external data file escapes model directory. Opened path: ",
+                         opened_path, " allowed directory: ", model_dir_canonical);
+}
+
+[[maybe_unused]] static Status OpenValidatedExternalDataFile(
+    const Env& env,
+    const std::filesystem::path& model_path,
+    const PathString& external_data_file_path,
+    std::unique_ptr<RandomAccessFile>& external_data_file) {
+  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
+  PathString opened_path;
+  ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
+  return ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path});
+}
+
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            const std::filesystem::path& tensor_proto_dir,
                            std::basic_string<ORTCHAR_T>& external_file_path,
@@ -1458,8 +1497,16 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
 
   const size_t num_elems_unsigned = gsl::narrow_cast<size_t>(num_elems_signed);
   size_t byte_size_from_shape = 0;
-  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
-                                                                  &byte_size_from_shape));
+  if (tensor_proto.data_type() == TensorProto_DataType_COMPLEX64 ||
+      tensor_proto.data_type() == TensorProto_DataType_COMPLEX128) {
+    const size_t element_size =
+        tensor_proto.data_type() == TensorProto_DataType_COMPLEX64 ? 2 * sizeof(float) : 2 * sizeof(double);
+    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArray(num_elems_unsigned, element_size, &byte_size_from_shape),
+                      "Invalid TensorProto");
+  } else {
+    ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
+                                                                    &byte_size_from_shape));
+  }
   ORT_RETURN_IF_NOT(byte_size_from_shape <= kMaxEmbeddedInitializerSizeInBytes,
                     "Initializer '", tensor_proto.name(), "' declares a size of ", byte_size_from_shape,
                     " bytes which exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
@@ -1487,6 +1534,14 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
         break;
       case TensorProto_DataType_DOUBLE:
         expected_count = num_elems_signed;
+        actual_count = tensor_proto.double_data_size();
+        break;
+      case TensorProto_DataType_COMPLEX64:
+        expected_count = SafeInt<int64_t>(num_elems_signed) * 2;
+        actual_count = tensor_proto.float_data_size();
+        break;
+      case TensorProto_DataType_COMPLEX128:
+        expected_count = SafeInt<int64_t>(num_elems_signed) * 2;
         actual_count = tensor_proto.double_data_size();
         break;
       case TensorProto_DataType_INT64:
@@ -1526,6 +1581,7 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
       case TensorProto_DataType_FLOAT8E4M3FNUZ:
       case TensorProto_DataType_FLOAT8E5M2:
       case TensorProto_DataType_FLOAT8E5M2FNUZ:
+      case TensorProto_DataType_FLOAT8E8M0:
 #endif
       case TensorProto_DataType_INT32:
         // BOOL, INT8, UINT8, INT16, UINT16, FLOAT16, BFLOAT16, INT32, FLOAT8* all use int32_data
@@ -1607,21 +1663,27 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 #endif
 
 #if !defined(__wasm__)
-static Status GetFileContent(const Env& env, const std::filesystem::path& file_path, FileOffsetType offset,
+static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset,
                              size_t length, IAllocatorUniquePtr<void>& external_data) {
   // query length if it is 0
   if (length == 0) {
-    // The return type of std::filesystem::file_size is uintmax_t which could be bigger than size_t
-    length = narrow<size_t>(std::filesystem::file_size(file_path));
+    uint64_t file_length = 0;
+    ORT_RETURN_IF_ERROR(file.GetLength(file_length));
+    length = SafeInt<size_t>(file_length);
   }
 
   // first, try to map into memory
   {
-    Env::MappedMemoryPtr mapped_memory{};
-    auto status = env.MapFileIntoMemory(file_path.native().c_str(), offset, length, mapped_memory);
+    RandomAccessFile::MappedMemoryPtr mapped_memory{};
+    auto status = file.Map(offset, length, mapped_memory);
     if (status.IsOK()) {
-      IAllocatorUniquePtr<void> raw_buffer(mapped_memory.release(),
-                                           mapped_memory.get_deleter());
+      const auto mapped_memory_deleter = mapped_memory.get_deleter();
+      IAllocatorUniquePtr<void>::deleter_type raw_buffer_deleter =
+          [mapped_memory_deleter](void* p) {
+            mapped_memory_deleter(static_cast<char*>(p));
+          };
+      auto* mapped_data = mapped_memory.release();
+      IAllocatorUniquePtr<void> raw_buffer(mapped_data, std::move(raw_buffer_deleter));
       external_data.swap(raw_buffer);
       return Status::OK();
     }
@@ -1629,8 +1691,7 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 
   // if that fails, try to copy
   auto buffer = std::make_unique<char[]>(length);
-  ORT_RETURN_IF_ERROR(
-      env.ReadFileIntoBuffer(file_path.native().c_str(), offset, length, gsl::make_span(buffer.get(), length)));
+  ORT_RETURN_IF_ERROR(file.Read(offset, gsl::make_span(buffer.get(), length)));
 
   IAllocatorUniquePtr<void> raw_buffer(buffer.release(), [](void* p) { delete[] reinterpret_cast<char*>(p); });
   external_data.swap(raw_buffer);
@@ -1654,6 +1715,38 @@ static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProt
   ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
   return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
 }
+
+#if !defined(__wasm__)
+static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
+                                           std::uintmax_t file_length,
+                                           const ExternalDataInfo::PrepackedInfos& prepacked_infos,
+                                           PrepackedWeightsForGraph& prepacked_info) {
+  for (const auto& [key, blobs] : prepacked_infos) {
+    PrePackedWeights prepacked_weights;
+    prepacked_weights.buffers_.reserve(blobs.size());
+    prepacked_weights.buffer_sizes_.reserve(blobs.size());
+    for (const auto& blob : blobs) {
+      const auto blob_offset = std::get<0>(blob);
+      const auto blob_length = std::get<1>(blob);
+      SafeInt<FileOffsetType> end_of_blob{blob_offset};
+      end_of_blob += blob_length;
+      ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
+                    "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
+                    " is out of bounds and can not read in full");
+
+      IAllocatorUniquePtr<void> data_ptr;
+      ORT_RETURN_IF_ERROR(GetFileContent(file, blob_offset, blob_length, data_ptr));
+      prepacked_weights.buffers_.push_back(std::move(data_ptr));
+      prepacked_weights.buffer_sizes_.push_back(blob_length);
+    }
+    if (!blobs.empty()) {
+      prepacked_info.InsertPrepackedWeights(key, std::move(prepacked_weights));
+    }
+  }
+
+  return Status::OK();
+}
+#endif
 
 Status GetExtDataFromTensorProto(const Env& env,
                                  const std::filesystem::path& model_path,
@@ -1754,9 +1847,12 @@ Status GetExtDataFromTensorProto(const Env& env,
     buffer.release();
 
 #else
-    //  The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
-    //  manually check file size first.
-    std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
+    std::unique_ptr<RandomAccessFile> external_data_file;
+    ORT_RETURN_IF_ERROR(
+        OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
+
+    uint64_t file_length = 0;
+    ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
     end_of_read += raw_data_safe_len;
@@ -1766,8 +1862,7 @@ Status GetExtDataFromTensorProto(const Env& env,
                   " are out of bounds or can not be read in full.");
 
     IAllocatorUniquePtr<void> ext_data_buf;
-    ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, file_offset, raw_data_safe_len,
-                                       ext_data_buf));
+    ORT_RETURN_IF_ERROR(GetFileContent(*external_data_file, file_offset, raw_data_safe_len, ext_data_buf));
 
     // Data on disk is little endian
     if constexpr (endian::native != endian::little) {
@@ -1795,34 +1890,52 @@ Status GetExtDataFromTensorProto(const Env& env,
     ext_data_buf.release();
 
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
-      for (const auto& [key, blobs] : *prepacked_infos) {
-        PrePackedWeights prepacked_weights;
-        prepacked_weights.buffers_.reserve(blobs.size());
-        prepacked_weights.buffer_sizes_.reserve(blobs.size());
-        for (const auto& blob : blobs) {
-          const auto blob_offset = std::get<0>(blob);
-          const auto blob_length = std::get<1>(blob);
-          SafeInt<FileOffsetType> end_of_blob{blob_offset};
-          end_of_blob += blob_length;
-          ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
-                        "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
-                        " is out of bounds and can not read in full");
-
-          IAllocatorUniquePtr<void> data_ptr;
-          ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
-                                             data_ptr));
-          prepacked_weights.buffers_.push_back(std::move(data_ptr));
-          prepacked_weights.buffer_sizes_.push_back(blob_length);
-        }
-        if (!blobs.empty()) {
-          prepacked_info->InsertPrepackedWeights(key, std::move(prepacked_weights));
-        }
-      }
+      ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
+          *external_data_file, file_length, *prepacked_infos, *prepacked_info));
     }
 #endif
   }
 
   return Status::OK();
+}
+
+Status LoadPrepackedWeightsFromExternalData(const Env& env,
+                                            const std::filesystem::path& model_path,
+                                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                            PrepackedWeightsForGraph& prepacked_info) {
+  ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
+              tensor_proto.name(), "Expected to have external data");
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
+
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
+
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ExternalDataInfo::PrepackedInfos prepacked_infos;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
+                          raw_data_safe_len, &prepacked_infos));
+  if (prepacked_infos.empty()) {
+    return Status::OK();
+  }
+
+#if defined(__wasm__)
+  return Status::OK();
+#else
+  ORT_RETURN_IF(external_data_file_path == kTensorProtoNativeEndianMemoryAddressTag ||
+                    external_data_file_path == kTensorProtoLittleEndianMemoryAddressTag,
+                "Pre-packed blobs cannot be restored from an in-memory external tensor.");
+  std::unique_ptr<RandomAccessFile> external_data_file;
+  ORT_RETURN_IF_ERROR(
+      OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
+  uint64_t file_length = 0;
+  ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
+  return LoadPrepackedWeightsFromFile(*external_data_file, file_length, prepacked_infos, prepacked_info);
+#endif
 }
 
 Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
@@ -1850,7 +1963,14 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
+#if defined(__wasm__)
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
+#else
+  std::unique_ptr<RandomAccessFile> external_data_file;
+  ORT_RETURN_IF_ERROR(
+      OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
+  return ext_data_loader.LoadTensor(*external_data_file, file_offset, raw_data_safe_len, tensor);
+#endif
 }
 
 #define CASE_PROTO(X, Y)                                                                                            \
@@ -2180,8 +2300,8 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       ORT_UNUSED_PARAMETER(model_path);
 #endif
     default:
-      ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(), " in 'Constant' node '", node.name(),
-                "'");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Unsupported attribute value type of ",
+                             constant_attribute.type(), " in 'Constant' node '", node.name(), "'");
   }
 
   // set name last in case attribute type was tensor (would copy over name)
@@ -2193,7 +2313,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
-  ORT_ENFORCE(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
+  ORT_RETURN_IF_NOT(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
 }
 
@@ -2255,6 +2375,12 @@ static Status CopySparseData(const std::string& name,
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
   const bool needs_unpack = utils::HasRawData(indices) || utils::HasExternalData(indices);
+  const auto append_indices = [&indices_values, indices_elements](auto first, auto last) {
+    indices_values.reserve(narrow<size_t>(indices_elements));
+    for (; first != last; ++first) {
+      indices_values.push_back(*first);
+    }
+  };
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
@@ -2290,14 +2416,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int32_t));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int32_span.begin(), int32_span.end());
+        append_indices(int32_span.begin(), int32_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int32 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2314,14 +2440,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int16_t));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
+        append_indices(int16_span.begin(), int16_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int16 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2338,14 +2464,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int8_t));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
+        append_indices(int8_span.begin(), int8_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int8 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2443,6 +2569,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   }
 
   auto type = sparse_values.data_type();
+  if (type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " FLOAT8E8M0 values are unsupported because the type has no zero representation.");
+  }
+
   dense.set_data_type(type);
   *dense.mutable_name() = name;
   SafeInt<int64_t> dense_elements = 1;
@@ -2507,81 +2639,103 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(sparse_values, model_path));
   ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(indices, model_path));
 
+  if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING && !HasExternalData(sparse_values)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(sparse_values));
+  }
+
+  if (type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
+                           ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  }
+
   if (dense_elements == 0) {
     // if there are no elements in the dense tensor, we can return early with an empty tensor proto
     return status;
   }
 
-  if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-    auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
-    const size_t element_size = ml_data->Size();
+  size_t element_size = GetElementSizeOfTensor(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type));
+  if (type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64 ||
+      type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128) {
+    element_size *= 2;
+  }
+  const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
+  ORT_RETURN_IF_NOT(dense_data_size <= kMaxEmbeddedInitializerSizeInBytes,
+                    "Sparse tensor: ", name, " dense data size of ", dense_data_size,
+                    " bytes exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                    " byte limit for embedded initializer data.");
 
-    // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
-    // into the TensorProto.
-    std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
-    if (nnz_elements > 0) {
-      // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
-      std::vector<uint8_t> values_data;
-      ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
-      ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
-                        "Sparse tensor: ", name, " values data size does not match expected: ",
-                        static_cast<size_t>(SafeInt<size_t>(nnz_elements) * element_size));
-      void* sparse_data = values_data.data();
-      void* dense_data = dense_data_storage.data();
+  // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
+  // into the TensorProto.
+  std::string dense_data_storage(dense_data_size, 0);
+  if (nnz_elements > 0) {
+    // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
+    std::vector<uint8_t> values_data;
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
+    ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
+                      "Sparse tensor: ", name, " values data size does not match expected: ",
+                      static_cast<size_t>(SafeInt<size_t>(nnz_elements) * element_size));
+    void* sparse_data = values_data.data();
+    void* dense_data = dense_data_storage.data();
 
-      switch (element_size) {
-        case 1: {
-          status = CopySparseData(
-              name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-              [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
-              });
+    switch (element_size) {
+      case 1: {
+        status = CopySparseData(
+            name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+            [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+              static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
+            });
 
-          break;
-        }
-        case 2: {
-          status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint16_t));
-                                  });
+        break;
+      }
+      case 2: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint16_t));
+                                });
 
-          break;
-        }
-        case 4: {
-          status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint32_t));
-                                  });
+        break;
+      }
+      case 4: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint32_t));
+                                });
 
-          break;
-        }
-        case 8: {
-          status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint64_t));
-                                  });
-          break;
-        }
-
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Element_size of: ", element_size, " is not supported.",
-                                 " type: ", type);
+        break;
+      }
+      case 8: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint64_t));
+                                });
+        break;
+      }
+      case 16: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  constexpr size_t element_size = 16;
+                                  const auto* src = static_cast<const uint8_t*>(sparse_data) + from_idx * element_size;
+                                  auto* dst = static_cast<uint8_t*>(dense_data) + to_idx * element_size;
+                                  memcpy(dst, src, element_size);
+                                });
+        break;
       }
 
-      ORT_RETURN_IF_ERROR(status);
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Element_size of: ", element_size, " is not supported.",
+                               " type: ", type);
     }
-    utils::SetRawDataInTensorProto(dense, std::move(dense_data_storage));
-  } else {
-    // No request for std::string
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
-                             ONNX_NAMESPACE::TensorProto_DataType_STRING);
+
+    ORT_RETURN_IF_ERROR(status);
   }
+  utils::SetRawDataInTensorProto(dense, std::move(dense_data_storage));
   return status;
 }
 
@@ -2767,6 +2921,28 @@ template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONN
                                                                        size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+template <typename ComponentType, typename RepeatedField>
+Status UnpackComplexInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                    const RepeatedField& typed_data,
+                                    std::vector<uint8_t>& unpacked_tensor) {
+  if (initializer.has_raw_data()) {
+    const size_t tensor_byte_size = initializer.raw_data().size();
+    const size_t component_count = tensor_byte_size / sizeof(ComponentType);
+    unpacked_tensor.resize(tensor_byte_size);
+    return UnpackTensorWithRawDataImpl(initializer.raw_data().data(), tensor_byte_size, component_count,
+                                       sizeof(ComponentType), unpacked_tensor.data());
+  }
+
+  unpacked_tensor.resize(SafeInt<size_t>(typed_data.size()) * sizeof(ComponentType));
+  auto* output = unpacked_tensor.data();
+  for (const ComponentType component : typed_data) {
+    memcpy(output, &component, sizeof(component));
+    output += sizeof(component);
+  }
+
+  return Status::OK();
+}
+
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                                   \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {                                          \
     SafeInt<size_t> tensor_byte_size;                                                                                \
@@ -2784,6 +2960,12 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
                                             initializer.has_raw_data() ? initializer.raw_data().size() : 0,          \
                                             reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.data()), element_count); \
     break;                                                                                                           \
+  }
+
+#define CASE_UNPACK_COMPLEX(TYPE, COMPONENT_TYPE, DATA)                                  \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {              \
+    return UnpackComplexInitializerData<COMPONENT_TYPE>(initializer, initializer.DATA(), \
+                                                        unpacked_tensor);                \
   }
 
 // Sub-byte types (2-bit and 4-bit) are stored in a packed format.
@@ -2816,9 +2998,15 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     return Status::OK();
   }
 
+  if (HasRawData(initializer)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(initializer));
+  }
+
   switch (initializer.data_type()) {
     CASE_UNPACK(FLOAT, float, float_data_size);
     CASE_UNPACK(DOUBLE, double, double_data_size);
+    CASE_UNPACK_COMPLEX(COMPLEX64, float, float_data);
+    CASE_UNPACK_COMPLEX(COMPLEX128, double, double_data);
     CASE_UNPACK(BOOL, bool, int32_data_size);
     CASE_UNPACK(INT8, int8_t, int32_data_size);
     CASE_UNPACK(INT16, int16_t, int32_data_size);
@@ -2851,6 +3039,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type: ", initializer.data_type());
 }
+#undef CASE_UNPACK_COMPLEX
 #undef CASE_UNPACK
 
 Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer, std::vector<uint8_t>& unpacked_tensor) {

@@ -288,6 +288,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* /* resource_accountant */) const override;
 
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer&) const override {
+    return dump_ep_context_model_ && ep_context_embed_mode_ == 0 ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                                                 : OrtEpContextDataCallbackSupportFlags_NONE;
+  }
+
   int GetDeviceId() const { return device_id_; }
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,

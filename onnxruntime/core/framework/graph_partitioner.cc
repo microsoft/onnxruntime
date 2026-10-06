@@ -5,10 +5,14 @@
 
 #include <cassert>
 #include <functional>
+#include <limits>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/ep_context_utils.h"
@@ -70,7 +74,9 @@ struct PartitionParams {
   std::reference_wrapper<int> fused_node_unique_id;
   std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout_function;
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
+  bool ep_context_data_write_callback_required;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  uint32_t registered_ep_context_data_callbacks;
   std::reference_wrapper<const OnPartitionAssignmentFunction> on_partition_assignment_fn;
   LayeringIndex* layering_index;
 };
@@ -162,6 +168,25 @@ static bool TryAssignSingleNode(Graph& graph,
   return false;
 }
 
+static Status CheckEpContextDataSupport(const IExecutionProvider& ep, uint32_t required_flags) {
+  if (required_flags == OrtEpContextDataCallbackSupportFlags_NONE) {
+    return Status::OK();
+  }
+
+  uint32_t supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+  ORT_RETURN_IF_ERROR(ep.GetEpContextDataCallbackSupport(supported_flags));
+  ORT_RETURN_IF((required_flags & OrtEpContextDataCallbackSupportFlags_READ) != 0 &&
+                    (supported_flags & OrtEpContextDataCallbackSupportFlags_READ) == 0,
+                "EP '", ep.Type(),
+                "' does not support the registered EPContext data read callback.");
+  ORT_RETURN_IF((required_flags & OrtEpContextDataCallbackSupportFlags_WRITE) != 0 &&
+                    (supported_flags & OrtEpContextDataCallbackSupportFlags_WRITE) == 0,
+                "EP '", ep.Type(),
+                "' does not support the registered EPContext data write callback.");
+
+  return Status::OK();
+}
+
 namespace {
 struct GetCapabilityForEPParams {
   std::reference_wrapper<Graph> graph;
@@ -178,14 +203,21 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
   std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
   LayeringIndex* layering_index;  // Added member
+  uint32_t registered_ep_context_data_callbacks;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
                            const GraphViewer& graph_viewer,
                            const IExecutionProvider::IKernelLookup& kernel_lookup,
                            IResourceAccountant* resource_accountant,
-                           const GraphOptimizerRegistry& graph_optimizer_registry) {
-  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
+                           const GraphOptimizerRegistry& graph_optimizer_registry,
+                           uint32_t registered_ep_context_data_callbacks,
+                           std::vector<std::unique_ptr<ComputeCapability>>& capabilities) -> Status {
+  if (registered_ep_context_data_callbacks != OrtEpContextDataCallbackSupportFlags_NONE) {
+    ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(
+        ep, ep.GetEpContextDataCallbackRequirements(graph_viewer) & registered_ep_context_data_callbacks));
+  }
+  capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
@@ -194,7 +226,7 @@ auto get_capabilities = [](const IExecutionProvider& ep,
                                     }),
                      capabilities.end());
 
-  return capabilities;
+  return Status::OK();
 };
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -284,34 +316,40 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     return Status::OK();
   };
   // Helper to un-assign nodes that were assigned to this EP but not claimed by updated capabilities.
-  auto reset_assignment_unclaimed_nodes = [&]() {
+  auto reset_assignment_unclaimed_nodes =
+      [&](const InlinedHashSet<NodeIndex>* additionally_claimed_nodes = nullptr) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    if (params.layering_index) {
-      auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
-      if (rules_opt) {
-        const auto& ep_rules = rules_opt->get();
-        InlinedHashSet<NodeIndex> claimed;
-        for (const auto& cap : capabilities) {
-          if (cap && cap->sub_graph) {
-            for (auto idx : cap->sub_graph->nodes) claimed.insert(idx);
-          }
-        }
-
-        // Check if all assigned filtered-in nodes are claimed
-        // and if not make them available for subsequent EPs
-        for (auto& node_index : assigned_filtered_in_nodes) {
-          if (claimed.count(node_index) == 0) {
-            auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node_index);
-            if (rule_idx_opt && ep_rules.count(*rule_idx_opt) > 0) {
-              params.layering_index->MakeNodeUnassigned(graph, node_index);
+        if (params.layering_index) {
+          auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
+          if (rules_opt) {
+            const auto& ep_rules = rules_opt->get();
+            InlinedHashSet<NodeIndex> claimed;
+            for (const auto& cap : capabilities) {
+              if (cap && cap->sub_graph) {
+                for (auto idx : cap->sub_graph->nodes) claimed.insert(idx);
+              }
             }
+            if (additionally_claimed_nodes != nullptr) {
+              claimed.insert(additionally_claimed_nodes->begin(), additionally_claimed_nodes->end());
+            }
+
+            // Check if all assigned filtered-in nodes are claimed
+            // and if not make them available for subsequent EPs
+            for (auto& node_index : assigned_filtered_in_nodes) {
+              if (claimed.count(node_index) == 0) {
+                auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node_index);
+                if (rule_idx_opt && ep_rules.count(*rule_idx_opt) > 0) {
+                  params.layering_index->MakeNodeUnassigned(graph, node_index);
+                }
+              }
+            }
+            assigned_filtered_in_nodes.clear();
           }
         }
-        assigned_filtered_in_nodes.clear();
-      }
-    }
+#else
+        ORT_UNUSED_PARAMETER(additionally_claimed_nodes);
 #endif
-  };
+      };
 
   {
     std::unique_ptr<IndexedSubGraph> sub_graph_holder;
@@ -321,8 +359,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     if (params.resource_accountant) {
       params.resource_accountant->ResetForNewPass();
     }
-    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
-                                    graph_optimizer_registry);
+    ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
+                                         graph_optimizer_registry, params.registered_ep_context_data_callbacks,
+                                         capabilities));
 
     reset_assignment_unclaimed_nodes();
 
@@ -380,13 +419,33 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // be committed after the drop step below. The costs must be captured here because
     // capabilities.clear() destroys the pass-1 capabilities (and their costs) next.
     InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
+    InlinedHashMap<NodeIndex, WorkspaceEstimateSelection> pass1_workspace_estimates;
     if (params.resource_accountant != nullptr) {
+      const InlinedHashSet<NodeIndex> temporarily_assigned_nodes{
+          nodes_temporarily_assigned_to_ep.begin(), nodes_temporarily_assigned_to_ep.end()};
       for (const auto& capability : capabilities) {
         const auto& sub_graph = *capability->sub_graph;
         if (sub_graph.IsAccountingEnabled()) {
           for (size_t i = 0, limit = sub_graph.nodes.size(); i < limit; ++i) {
-            pass1_node_costs.insert_or_assign(sub_graph.nodes[i], sub_graph.GetNodeCost(i));
+            const NodeIndex node_index = sub_graph.nodes[i];
+            if (!temporarily_assigned_nodes.contains(node_index)) {
+              continue;
+            }
+
+            pass1_node_costs.insert_or_assign(node_index, sub_graph.GetNodeCost(i));
+            pass1_workspace_estimates.insert_or_assign(
+                node_index, params.resource_accountant->GetPendingWorkspaceEstimateSelection(node_index));
           }
+        }
+      }
+
+      // Provisionally reserve costs only for nodes that were actually tagged in pass 1. Pass 2 may
+      // introduce newly claimable nodes, and its admission decisions must include the cost of
+      // pass-1 survivors. Nodes that do not survive pass 2 are rolled back below.
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (const auto cost_it = pass1_node_costs.find(node_index);
+            cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->AddConsumedAmount(cost_it->second);
         }
       }
     }
@@ -414,17 +473,332 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     std::unique_ptr<GraphViewer> graph_viewer;
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
+    auto collect_pass2_nodes = [&](const std::vector<std::unique_ptr<ComputeCapability>>& pass_capabilities) {
+      std::pair<InlinedHashSet<NodeIndex>, InlinedHashSet<NodeIndex>> result;
+      auto& [pass2_nodes, new_nodes] = result;
+      for (const auto& capability : pass_capabilities) {
+        for (auto node_index : capability->sub_graph->nodes) {
+          pass2_nodes.insert(node_index);
+          if (node_index >= first_new_node) {
+            new_nodes.insert(node_index);
+          }
+        }
+      }
+      return result;
+    };
+
+    InlinedHashSet<NodeIndex> confirmed_pass1_survivors;
+    InlinedHashSet<NodeIndex> independently_runnable_survivors;
+    InlinedHashSet<NodeIndex> pass1_nodes_to_reprobe;
+    InlinedHashSet<NodeIndex> reserved_pass1_survivors;
+    std::vector<std::unique_ptr<ComputeCapability>> confirmed_survivor_capabilities;
     if (params.resource_accountant) {
-      // The existing result is still valid when the layout transformer made no graph changes.
       if (modified) {
         ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
       }
-      params.resource_accountant->ResetForNewPass();
-    }
-    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
-                                    graph_optimizer_registry);
 
-    reset_assignment_unclaimed_nodes();
+      // Discover the complete second-pass support set without budget gating. A budgeted
+      // GetCapability call can stop before visiting later pass-1 survivors, so absence from
+      // a truncated result does not prove that a provisional reservation should be removed.
+      params.resource_accountant->ResetForNewPass();
+      ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry,
+                                           params.registered_ep_context_data_callbacks, capabilities));
+
+      if (params.check_load_cancellation_fn()) {
+        ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "GetCapabilities was canceled by user request");
+      }
+
+      const auto [discovered_pass2_nodes, unused_discovered_new_nodes] =
+          collect_pass2_nodes(capabilities);
+      ORT_UNUSED_PARAMETER(unused_discovered_new_nodes);
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (discovered_pass2_nodes.contains(node_index)) {
+          confirmed_pass1_survivors.insert(node_index);
+        }
+      }
+
+      // Re-probe a survivor when it is grouped with a pass-2-only node, or when its
+      // capability has optimization work but no MetaDef. In both cases the pass-1 tag
+      // would either hide its cost or prevent the capability from being processed.
+      for (auto& capability : capabilities) {
+        const auto& nodes = capability->sub_graph->nodes;
+        const size_t confirmed_survivor_count =
+            static_cast<size_t>(std::count_if(
+                nodes.begin(), nodes.end(),
+                [&](NodeIndex node_index) {
+                  return confirmed_pass1_survivors.contains(node_index);
+                }));
+        if (confirmed_survivor_count == 0) {
+          continue;
+        }
+
+        if (confirmed_survivor_count != nodes.size()) {
+          for (NodeIndex node_index : nodes) {
+            if (confirmed_pass1_survivors.contains(node_index)) {
+              pass1_nodes_to_reprobe.insert(node_index);
+            }
+          }
+          continue;
+        }
+
+        if (capability->sub_graph->GetMetaDef() != nullptr) {
+          confirmed_survivor_capabilities.push_back(std::move(capability));
+        } else if (nodes.size() == 1 && capability->nodes_to_optimize.empty()) {
+          independently_runnable_survivors.insert(nodes.front());
+        } else {
+          pass1_nodes_to_reprobe.insert(nodes.begin(), nodes.end());
+        }
+      }
+
+      // Remove the original provisional reservations. The exact retained survivor set is
+      // determined below using an accountant-aware capability pass without budget truncation.
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        const auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
+        }
+      }
+      params.resource_accountant->ResetForNewPass();
+
+      for (NodeIndex node_index : pass1_nodes_to_reprobe) {
+        if (auto* node = graph.GetNode(node_index);
+            node != nullptr && node->GetExecutionProviderType() == ep_type) {
+          node->SetExecutionProviderType("");
+        }
+        pass1_workspace_estimates.erase(node_index);
+        pass1_node_costs.erase(node_index);
+      }
+
+      auto get_reconciled_capabilities =
+          [&](const std::vector<std::unique_ptr<ComputeCapability>>& pass_capabilities) {
+            InlinedVector<const ComputeCapability*> reconciled_capabilities;
+            reconciled_capabilities.reserve(
+                pass_capabilities.size() + confirmed_survivor_capabilities.size());
+            for (const auto& capability : pass_capabilities) {
+              reconciled_capabilities.push_back(capability.get());
+            }
+
+            for (const auto& survivor_capability : confirmed_survivor_capabilities) {
+              const auto& survivor_nodes = survivor_capability->sub_graph->nodes;
+              const InlinedHashSet<NodeIndex> survivor_node_set{
+                  survivor_nodes.begin(), survivor_nodes.end()};
+              const bool covered_by_final_capability =
+                  std::any_of(
+                      reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                      [&](const ComputeCapability* capability) {
+                        const auto& final_nodes = capability->sub_graph->nodes;
+                        return std::all_of(
+                            survivor_nodes.begin(), survivor_nodes.end(),
+                            [&](NodeIndex survivor_node_index) {
+                              return std::find(final_nodes.begin(), final_nodes.end(),
+                                               survivor_node_index) != final_nodes.end();
+                            });
+                      });
+              if (covered_by_final_capability) {
+                continue;
+              }
+
+              const bool overlaps_final_capabilities =
+                  std::any_of(
+                      reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                      [&](const ComputeCapability* capability) {
+                        const auto& nodes = capability->sub_graph->nodes;
+                        return std::any_of(
+                            nodes.begin(), nodes.end(),
+                            [&](NodeIndex node_index) {
+                              return survivor_node_set.contains(node_index);
+                            });
+                      });
+              if (overlaps_final_capabilities) {
+                const bool can_replace_overlapping_capabilities =
+                    std::all_of(
+                        reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                        [&](const ComputeCapability* capability) {
+                          const auto& nodes = capability->sub_graph->nodes;
+                          const bool overlaps_survivor =
+                              std::any_of(
+                                  nodes.begin(), nodes.end(),
+                                  [&](NodeIndex node_index) {
+                                    return survivor_node_set.contains(node_index);
+                                  });
+                          return !overlaps_survivor ||
+                                 (!capability->sub_graph->IsAccountingEnabled() &&
+                                  std::all_of(nodes.begin(), nodes.end(),
+                                              [&](NodeIndex node_index) {
+                                                return confirmed_pass1_survivors.contains(node_index);
+                                              }));
+                        });
+                if (!can_replace_overlapping_capabilities) {
+                  continue;
+                }
+
+                reconciled_capabilities.erase(
+                    std::remove_if(
+                        reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                        [&](const ComputeCapability* capability) {
+                          const auto& nodes = capability->sub_graph->nodes;
+                          return std::any_of(
+                              nodes.begin(), nodes.end(),
+                              [&](NodeIndex node_index) {
+                                return survivor_node_set.contains(node_index);
+                              });
+                        }),
+                    reconciled_capabilities.end());
+              }
+
+              reconciled_capabilities.push_back(survivor_capability.get());
+            }
+
+            return reconciled_capabilities;
+          };
+
+      auto collect_reconciled_pass2_nodes =
+          [&](const InlinedVector<const ComputeCapability*>& reconciled_capabilities) {
+            InlinedHashSet<NodeIndex> reconciled_nodes;
+            for (const ComputeCapability* capability : reconciled_capabilities) {
+              reconciled_nodes.insert(
+                  capability->sub_graph->nodes.begin(), capability->sub_graph->nodes.end());
+            }
+            reconciled_nodes.insert(independently_runnable_survivors.begin(),
+                                    independently_runnable_survivors.end());
+            return reconciled_nodes;
+          };
+
+      auto rebuild_survivor_reservations =
+          [&](const InlinedHashSet<NodeIndex>& retained_pass1_survivors) -> Status {
+        for (NodeIndex node_index : reserved_pass1_survivors) {
+          const auto cost_it = pass1_node_costs.find(node_index);
+          if (cost_it != pass1_node_costs.end()) {
+            params.resource_accountant->RemoveConsumedAmount(cost_it->second);
+          }
+        }
+        reserved_pass1_survivors.clear();
+        params.resource_accountant->ResetForNewPass();
+
+        // Recompute retained survivor costs together so shared initializers are charged
+        // exactly once to the finalized survivor set.
+        for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+          if (!retained_pass1_survivors.contains(node_index) ||
+              pass1_nodes_to_reprobe.contains(node_index)) {
+            continue;
+          }
+
+          const Node* node = graph.GetNode(node_index);
+          ORT_RETURN_IF_NOT(node != nullptr, "Pass-1 survivor node ", node_index, " no longer exists.");
+
+          std::optional<Level1MemoryEstimate> level1_memory_estimate;
+          const auto workspace_it = pass1_workspace_estimates.find(node_index);
+          if (workspace_it != pass1_workspace_estimates.end() &&
+              workspace_it->second.source != WorkspaceEstimateSource::kNone) {
+            const auto& selection = workspace_it->second;
+            Level1MemoryEstimate estimate;
+            if (selection.source == WorkspaceEstimateSource::kEstimator ||
+                selection.source == WorkspaceEstimateSource::kProfileAndEstimator) {
+              estimate.runtime_workspace_bytes = selection.level1_estimated_bytes;
+            } else {
+              estimate.runtime_transient_bytes = selection.level1_estimated_bytes;
+            }
+            estimate.persistent_prepack_bytes = selection.persistent_prepack_bytes;
+            estimate.initialization_scratch_bytes = selection.initialization_scratch_bytes;
+            level1_memory_estimate = estimate;
+          }
+
+          const ResourceCount recomputed_cost =
+              params.resource_accountant->ComputeResourceCount(*node, level1_memory_estimate);
+          pass1_node_costs.insert_or_assign(node_index, recomputed_cost);
+          params.resource_accountant->AddConsumedAmount(recomputed_cost);
+          reserved_pass1_survivors.insert(node_index);
+        }
+        return Status::OK();
+      };
+
+      if (confirmed_survivor_capabilities.empty()) {
+        ORT_RETURN_IF_ERROR(rebuild_survivor_reservations(confirmed_pass1_survivors));
+        capabilities.clear();
+        ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                             params.resource_accountant, graph_optimizer_registry,
+                                             params.registered_ep_context_data_callbacks, capabilities));
+      } else {
+        // First obtain the complete accountant-aware capability grouping. This identifies
+        // survivor capabilities displaced by newly accounted overlaps without allowing stale
+        // survivor reservations to truncate the result.
+        const auto original_threshold = params.resource_accountant->GetThreshold();
+        params.resource_accountant->SetThreshold(
+            ResourceCount{std::numeric_limits<size_t>::max()});
+        capabilities.clear();
+        const auto capability_status = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                                        params.resource_accountant, graph_optimizer_registry,
+                                                        params.registered_ep_context_data_callbacks, capabilities);
+        params.resource_accountant->SetThreshold(original_threshold);
+        ORT_RETURN_IF_ERROR(capability_status);
+
+        if (params.check_load_cancellation_fn()) {
+          ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                                 "GetCapabilities was canceled by user request");
+        }
+
+        auto expected_retained_nodes =
+            collect_reconciled_pass2_nodes(get_reconciled_capabilities(capabilities));
+        const size_t max_reconciliation_attempts = confirmed_pass1_survivors.size() + 2;
+        bool reconciliation_stable = false;
+        for (size_t attempt = 0; attempt < max_reconciliation_attempts; ++attempt) {
+          ORT_RETURN_IF_ERROR(rebuild_survivor_reservations(expected_retained_nodes));
+
+          capabilities.clear();
+          ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                               params.resource_accountant, graph_optimizer_registry,
+                                               params.registered_ep_context_data_callbacks, capabilities));
+
+          if (params.check_load_cancellation_fn()) {
+            ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+            return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                                   "GetCapabilities was canceled by user request");
+          }
+
+          auto actual_retained_nodes =
+              collect_reconciled_pass2_nodes(get_reconciled_capabilities(capabilities));
+          const bool retained_set_matches =
+              actual_retained_nodes.size() == expected_retained_nodes.size() &&
+              std::all_of(actual_retained_nodes.begin(), actual_retained_nodes.end(),
+                          [&](NodeIndex node_index) {
+                            return expected_retained_nodes.contains(node_index);
+                          });
+          if (retained_set_matches) {
+            reconciliation_stable = true;
+            break;
+          }
+
+          expected_retained_nodes = std::move(actual_retained_nodes);
+        }
+
+        ORT_RETURN_IF_NOT(
+            reconciliation_stable,
+            "NHWC capability/resource reconciliation did not converge for execution provider ",
+            ep_type, ".");
+
+        const auto reconciled_capabilities = get_reconciled_capabilities(capabilities);
+        const InlinedHashSet<const ComputeCapability*> retained_capabilities{
+            reconciled_capabilities.begin(), reconciled_capabilities.end()};
+        capabilities.erase(
+            std::remove_if(
+                capabilities.begin(), capabilities.end(),
+                [&](const std::unique_ptr<ComputeCapability>& capability) {
+                  return !retained_capabilities.contains(capability.get());
+                }),
+            capabilities.end());
+        for (auto& survivor_capability : confirmed_survivor_capabilities) {
+          if (retained_capabilities.contains(survivor_capability.get())) {
+            capabilities.push_back(std::move(survivor_capability));
+          }
+        }
+      }
+    } else {
+      ORT_RETURN_IF_ERROR(get_capabilities(current_ep, *graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry,
+                                           params.registered_ep_context_data_callbacks, capabilities));
+    }
 
     if (params.check_load_cancellation_fn()) {
       ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
@@ -432,56 +806,41 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
                              "GetCapabilities was canceled by user request");
     }
 
-    // Collect pass-2 node indices and track new nodes for NHWC domain validation.
-    InlinedHashSet<NodeIndex> pass2_node_indices;
-    InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
-    for (const auto& capability : capabilities) {
-      for (auto node_index : capability->sub_graph->nodes) {
-        pass2_node_indices.insert(node_index);
-        if (node_index >= first_new_node) {
-          new_nodes_in_capabilities.insert(node_index);
-        }
-      }
-    }
+    auto [pass2_node_indices, new_nodes_in_capabilities] = collect_pass2_nodes(capabilities);
+    pass2_node_indices.insert(independently_runnable_survivors.begin(),
+                              independently_runnable_survivors.end());
+    reset_assignment_unclaimed_nodes(&pass2_node_indices);
 
-    // Clear pass-1 temporary assignments for nodes NOT re-claimed in pass 2.
-    // Nodes present in both passes keep their EP tag for correct downstream assignment.
+    // Clear temporary assignments that were not reclaimed by the complete discovery pass.
     for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
-      if (pass2_node_indices.count(node_index) == 0) {
-        auto* node = graph.GetNode(node_index);
-        if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
-          node->SetExecutionProviderType("");
-        }
+      if (pass2_node_indices.count(node_index) != 0) continue;
+
+      auto* node = graph.GetNode(node_index);
+      if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
+        node->SetExecutionProviderType("");
       }
     }
 
-    // Commit resource-accountant budget for pass-1 tentatively-tagged nodes that survived
-    // the second pass (still claimed by this EP). Pass-1 deliberately deferred this commit
-    // (TryAssignNodes skipped accounting) so that nodes dropped in the loop above never
-    // leak phantom budget into later accounting decisions. New nodes introduced for the
-    // second pass (e.g. NHWC ops) carry their own costs and are accounted normally when
-    // their partitions are placed, so they are intentionally excluded here.
-    //
-    // Only the consumed total is adjusted here (AddConsumedAmount); the per-node initializer
-    // weight tracking (CommitWeightsForNode) is intentionally not replayed. The pending weight
-    // state computed in pass 1 is discarded by ResetForNewPass before pass 2 and cannot be
-    // committed for survivors without re-probing, which pass 2 does not do for already-tagged
-    // nodes. Leaving those weights uncommitted is the safe direction: in ad-hoc accounting mode
-    // a shared initializer may be re-counted in a later partitioning iteration (a conservative
-    // over-estimate) but is never under-counted, so the configured budget can never be exceeded.
+    // Finalize the rebuilt pass-1 survivor reservations. New nodes introduced for pass 2
+    // carry their own costs and are accounted normally when their partitions are placed.
     if (params.resource_accountant != nullptr) {
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
-        if (pass2_node_indices.count(node_index) == 0) {
+        if (!reserved_pass1_survivors.contains(node_index)) {
           continue;
         }
+
+        auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it == pass1_node_costs.end()) {
+          continue;
+        }
+
         const auto* node = graph.GetNode(node_index);
         if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
           continue;
         }
-        auto cost_it = pass1_node_costs.find(node_index);
-        if (cost_it != pass1_node_costs.end()) {
-          params.resource_accountant->AddConsumedAmount(cost_it->second);
-        }
+
+        params.resource_accountant->CommitResourcesForNode(node_index);
       }
     }
 
@@ -513,6 +872,7 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const IExecutionProvider& current_ep,
                                                const GraphOptimizerRegistry& graph_optimizer_registry,
                                                const logging::Logger& logger,
+                                               uint32_t registered_ep_context_data_callbacks,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   const auto& ep_type = current_ep.Type();
 
@@ -523,10 +883,13 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                    logger};
 
   // TODO: Provide EP with a capability to look inside the functions.
-  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry);
+  ORT_RETURN_IF_ERROR(get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry,
+                                       registered_ep_context_data_callbacks, capabilities));
 
   return Status::OK();
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 /**
  * Check whether the given IndexedSubGraph is available for assigning to a specific provider.
@@ -576,6 +939,38 @@ static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
   return true;
 }
 
+static bool IsExternalEpContextNode(const Node& node) {
+  if (node.Domain() != kMSDomain || node.OpType() != "EPContext") {
+    return false;
+  }
+
+  const auto& attributes = node.GetAttributes();
+  const auto embed_mode = attributes.find("embed_mode");
+  return embed_mode != attributes.end() && embed_mode->second.i() == 0;
+}
+
+static bool IndexedSubGraphHasExternalEpContextNode(const Graph& graph,
+                                                    const IndexedSubGraph& indexed_sub_graph) {
+  return std::any_of(indexed_sub_graph.nodes.cbegin(), indexed_sub_graph.nodes.cend(),
+                     [&graph](NodeIndex node_index) {
+                       const auto* node = graph.GetNode(node_index);
+                       return node != nullptr && IsExternalEpContextNode(*node);
+                     });
+}
+
+static bool GraphHasAssignedExternalEpContextNode(const Graph& graph, std::string_view provider_type) {
+  // NHWC survivors can remain assigned without a returned capability after resource-accountant reconciliation.
+  for (const auto& node : graph.Nodes()) {
+    if (node.GetExecutionProviderType() == provider_type && IsExternalEpContextNode(node)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+
 /**
  * Return a fused node or assign the nodes in the indexed subgraph to the current EP.
  *
@@ -619,7 +1014,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // Computing the cost for the newly created fused node would undercount
         // because the fused node often doesn't expose all original initializers,
         // and would commit weights for the wrong node index.
-        capability.AccountForAllNodes();
+        capability.AccountForAllNodes(fused_node->GetContainingGraph(), fused_node->Index());
       }
       result = fused_node;
     } else {
@@ -657,6 +1052,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry,
                                            bool disable_model_compile,
+                                           uint32_t registered_ep_context_data_callbacks,
+                                           bool ep_context_data_write_callback_required,
                                            LayeringIndex* layering_index) {  // Added arg
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -676,6 +1073,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant,
                                                        graph_optimizer_registry, disable_model_compile,
+                                                       registered_ep_context_data_callbacks,
+                                                       ep_context_data_write_callback_required,
                                                        layering_index));  // Pass through
     }
   }
@@ -703,12 +1102,10 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       resource_accountant,
       std::ref(graph_optimizer_registry),
       std::cref(check_load_cancellation_fn),
-      layering_index};  // Pass param
+      layering_index,
+      registered_ep_context_data_callbacks};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
-  if (capabilities.empty()) {
-    return Status::OK();
-  }
 
   const std::string& type = current_ep.Type();
   auto fusion_style = current_ep.GetFusionStyle();
@@ -722,12 +1119,14 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // filter out the ComputeCapability instances that do not need compiling so we have a std::vector that's 1:1 with
   // nodes_to_compile.
   std::vector<std::unique_ptr<ComputeCapability>> capabilities_to_compile;
+  bool accepted_external_ep_context_capability = false;
   capabilities_to_compile.reserve(std::count_if(capabilities.cbegin(), capabilities.cend(),
                                                 [](const std::unique_ptr<ComputeCapability>& entry) {
                                                   return entry != nullptr &&
                                                          entry->sub_graph != nullptr &&
                                                          entry->sub_graph->GetMetaDef() != nullptr;
                                                 }));
+
   for (auto& capability : capabilities) {
     // The <provider> can run a fused <sub_graph> in the <graph>.
     // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
@@ -750,6 +1149,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
     Node* n = nullptr;
     if (sub_graph_available_for_assignment) {
+      accepted_external_ep_context_capability |=
+          IndexedSubGraphHasExternalEpContextNode(graph, *capability->sub_graph);
+
       if (on_partition_assignment_fn) {
         // Call custom function provided by owner of GraphPartitioner whenever a subgraph is assigned to an EP.
         // This can be used, for example, to collect partitioning information.
@@ -758,7 +1160,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
       n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     }
-
     if (n != nullptr) {
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type, logger)) {
@@ -770,6 +1171,22 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         capabilities_to_complete_fuse.push_back(std::move(capability));
       }
     }
+  }
+
+  uint32_t required_ep_context_data_support = OrtEpContextDataCallbackSupportFlags_NONE;
+  if (ep_context_data_write_callback_required && !nodes_to_compile.empty()) {
+    required_ep_context_data_support |= OrtEpContextDataCallbackSupportFlags_WRITE;
+  }
+
+  if ((registered_ep_context_data_callbacks & OrtEpContextDataCallbackSupportFlags_READ) != 0 &&
+      (accepted_external_ep_context_capability || GraphHasAssignedExternalEpContextNode(graph, type))) {
+    required_ep_context_data_support |= OrtEpContextDataCallbackSupportFlags_READ;
+  }
+
+  ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(current_ep, required_ep_context_data_support));
+
+  if (capabilities.empty()) {
+    return Status::OK();
   }
 
   // Helper function that returns true if any of the nodes assigned to a compiling EP is not already compiled.
@@ -882,13 +1299,44 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   return Status::OK();
 }
 
+struct FunctionExpansionCost {
+  size_t node_count;
+  size_t proto_bytes;
+};
+
+enum class FunctionExpansionLimit {
+  kNone,
+  kNodes,
+  kProtoBytes,
+};
+
+static Status GetFunctionExpansionCost(const Node& node,
+                                       size_t remaining_node_budget,
+                                       size_t remaining_byte_budget,
+                                       FunctionExpansionCost& cost);
+
+static FunctionExpansionLimit TryChargeFunctionExpansion(const FunctionExpansionCost& cost,
+                                                         size_t node_limit,
+                                                         size_t& expanded_node_count,
+                                                         size_t byte_limit,
+                                                         size_t& expanded_proto_bytes);
+
 // expand any nodes that have an ONNX function definition but no matching ORT kernel
-static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* layering_index) {
+static Status InlineNodes(Graph& graph,
+                          bool& modified_graph,
+                          LayeringIndex* layering_index,
+                          const logging::Logger& logger,
+                          size_t expansion_node_limit,
+                          size_t& expanded_node_count,
+                          size_t expansion_byte_limit,
+                          size_t& expanded_proto_bytes) {
   // recurse into nested graphs first so we process from bottom up
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph, layering_index));
+      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph, layering_index, logger,
+                                      expansion_node_limit, expanded_node_count,
+                                      expansion_byte_limit, expanded_proto_bytes));
     }
   }
 
@@ -908,6 +1356,25 @@ static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* lay
   InlinedVector<NodeIndex> new_node_indices;
 
   for (auto* node : nodes_to_inline) {
+    FunctionExpansionCost expansion_cost{};
+    ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(
+        *node, expansion_node_limit - expanded_node_count,
+        expansion_byte_limit - expanded_proto_bytes, expansion_cost));
+    const auto limit_exceeded = TryChargeFunctionExpansion(expansion_cost,
+                                                           expansion_node_limit,
+                                                           expanded_node_count,
+                                                           expansion_byte_limit,
+                                                           expanded_proto_bytes);
+    if (limit_exceeded != FunctionExpansionLimit::kNone) {
+      const auto function_id =
+          function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "Function inlining exceeded the configured cumulative ",
+          limit_exceeded == FunctionExpansionLimit::kNodes ? "node" : "protobuf",
+          " expansion limit while expanding '", function_id, "'.");
+    }
+
     // Check for an effective layering assignment: either from an explicit annotation
     // on the node, or from an inherited assignment via the LayeringIndex (e.g., a function
     // call node inside an annotated If/Loop subgraph that inherited its parent's rule).
@@ -952,14 +1419,347 @@ static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* lay
   return Status::OK();
 }
 
+constexpr size_t kDefaultFunctionExpansionNodeLimit = 1'000'000;
+constexpr size_t kDefaultFunctionExpansionByteLimit = 1024ULL * 1024ULL * 1024ULL;
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::GraphProto& graph);
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::AttributeProto& attribute) {
+  SafeInt<size_t> node_count = 0;
+  if (attribute.has_g()) {
+    node_count += CountNodesIncludingSubgraphs(attribute.g());
+  }
+  for (const auto& attribute_graph : attribute.graphs()) {
+    node_count += CountNodesIncludingSubgraphs(attribute_graph);
+  }
+
+  return node_count;
+}
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::GraphProto& graph) {
+  SafeInt<size_t> node_count = graph.node_size();
+  for (const auto& node : graph.node()) {
+    for (const auto& attribute : node.attribute()) {
+      node_count += CountNodesIncludingSubgraphs(attribute);
+    }
+  }
+
+  return node_count;
+}
+
+static size_t EstimateNodeProtoBytes(const Node& node) {
+  constexpr size_t kFieldOverhead = 11;
+  SafeInt<size_t> proto_bytes = 0;
+  const auto add_string = [&proto_bytes](const std::string& value) {
+    proto_bytes += value.size() + kFieldOverhead;
+  };
+
+  add_string(node.Name());
+  add_string(node.OpType());
+  add_string(node.Description());
+  add_string(node.Domain());
+  for (const auto* input : node.InputDefs()) {
+    if (input != nullptr) {
+      add_string(input->Name());
+    }
+  }
+  for (const auto* output : node.OutputDefs()) {
+    if (output != nullptr) {
+      add_string(output->Name());
+    }
+  }
+  for (const auto& [name, attribute] : node.GetAttributes()) {
+    proto_bytes += name.size() + kFieldOverhead;
+    proto_bytes += attribute.ByteSizeLong() + kFieldOverhead;
+  }
+
+  return proto_bytes;
+}
+
+using FunctionNameBindings = InlinedHashMap<std::string_view, size_t>;
+
+static size_t SpecializedNameFieldCost(std::string_view name,
+                                       const FunctionNameBindings& name_bindings,
+                                       size_t prefix_overhead) {
+  constexpr size_t kFieldOverhead = 11;
+  const auto binding = name_bindings.find(name);
+  return SafeInt<size_t>(binding == name_bindings.end() ? name.size() + prefix_overhead
+                                                        : binding->second) +
+         kFieldOverhead;
+}
+
+static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
+                                        const FunctionNameBindings& name_bindings,
+                                        size_t prefix_overhead,
+                                        SafeInt<size_t>& proto_bytes);
+
+static FunctionNameBindings MakeScopedGraphNameBindings(const ONNX_NAMESPACE::GraphProto& graph,
+                                                        const FunctionNameBindings& name_bindings,
+                                                        size_t prefix_overhead) {
+  FunctionNameBindings scoped_name_bindings = name_bindings;
+  const auto add_local_binding = [&scoped_name_bindings, prefix_overhead](const std::string& name) {
+    scoped_name_bindings.insert_or_assign(name, SafeInt<size_t>(name.size()) + prefix_overhead);
+  };
+  for (const auto& input : graph.input()) {
+    add_local_binding(input.name());
+  }
+  for (const auto& output : graph.output()) {
+    add_local_binding(output.name());
+  }
+  for (const auto& initializer : graph.initializer()) {
+    add_local_binding(initializer.name());
+  }
+  for (const auto& initializer : graph.sparse_initializer()) {
+    add_local_binding(initializer.values().name());
+  }
+  return scoped_name_bindings;
+}
+
+static void AddSpecializedAttributeNameCost(const ONNX_NAMESPACE::AttributeProto& attribute,
+                                            const FunctionNameBindings& name_bindings,
+                                            size_t prefix_overhead,
+                                            SafeInt<size_t>& proto_bytes) {
+  if (attribute.has_g()) {
+    AddSpecializedGraphNameCost(attribute.g(), name_bindings, prefix_overhead, proto_bytes);
+  }
+  for (const auto& graph : attribute.graphs()) {
+    AddSpecializedGraphNameCost(graph, name_bindings, prefix_overhead, proto_bytes);
+  }
+}
+
+static void AddSpecializedNodeNameCost(const ONNX_NAMESPACE::NodeProto& node,
+                                       const FunctionNameBindings& name_bindings,
+                                       size_t prefix_overhead,
+                                       SafeInt<size_t>& proto_bytes) {
+  if (!node.name().empty()) {
+    proto_bytes += SafeInt<size_t>(node.name().size()) + prefix_overhead + 11;
+  }
+  for (const auto& input : node.input()) {
+    proto_bytes += SpecializedNameFieldCost(input, name_bindings, prefix_overhead);
+  }
+  for (const auto& output : node.output()) {
+    proto_bytes += SpecializedNameFieldCost(output, name_bindings, prefix_overhead);
+  }
+  for (const auto& attribute : node.attribute()) {
+    AddSpecializedAttributeNameCost(attribute, name_bindings, prefix_overhead, proto_bytes);
+  }
+}
+
+static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
+                                        const FunctionNameBindings& name_bindings,
+                                        size_t prefix_overhead,
+                                        SafeInt<size_t>& proto_bytes) {
+  const auto scoped_name_bindings = MakeScopedGraphNameBindings(graph, name_bindings, prefix_overhead);
+  for (const auto& input : graph.input()) {
+    proto_bytes += SpecializedNameFieldCost(input.name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& output : graph.output()) {
+    proto_bytes += SpecializedNameFieldCost(output.name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& initializer : graph.initializer()) {
+    proto_bytes += SpecializedNameFieldCost(initializer.name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& initializer : graph.sparse_initializer()) {
+    proto_bytes += SpecializedNameFieldCost(initializer.values().name(), scoped_name_bindings, prefix_overhead);
+  }
+  for (const auto& node : graph.node()) {
+    AddSpecializedNodeNameCost(node, scoped_name_bindings, prefix_overhead, proto_bytes);
+  }
+}
+
+static Status AddBoundAttributeCost(
+    const ONNX_NAMESPACE::AttributeProto& attribute,
+    const InlinedHashMap<std::string_view, const ONNX_NAMESPACE::AttributeProto*>& attribute_bindings,
+    const FunctionNameBindings& name_bindings,
+    size_t prefix_overhead,
+    InlinedHashSet<std::string_view>& resolving_attribute_bindings,
+    size_t remaining_node_budget,
+    size_t remaining_byte_budget,
+    SafeInt<size_t>& node_count,
+    SafeInt<size_t>& proto_bytes) {
+  if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+    return Status::OK();
+  }
+  const ONNX_NAMESPACE::AttributeProto* effective_attribute = &attribute;
+  bool bound_attribute = false;
+  if (!attribute.ref_attr_name().empty()) {
+    const auto binding = attribute_bindings.find(attribute.ref_attr_name());
+    if (binding != attribute_bindings.end()) {
+      ORT_RETURN_IF_NOT(resolving_attribute_bindings.insert(binding->first).second,
+                        "Recursive function attribute binding '", binding->first, "' is not supported.");
+      node_count += CountNodesIncludingSubgraphs(*binding->second);
+      proto_bytes += binding->second->ByteSizeLong();
+      effective_attribute = binding->second;
+      bound_attribute = true;
+    }
+  }
+
+  if (bound_attribute) {
+    AddSpecializedAttributeNameCost(*effective_attribute, name_bindings, prefix_overhead, proto_bytes);
+  }
+
+  const auto process_graph = [&](const ONNX_NAMESPACE::GraphProto& graph) -> Status {
+    const auto scoped_name_bindings = MakeScopedGraphNameBindings(graph, name_bindings, prefix_overhead);
+    for (const auto& node : graph.node()) {
+      for (const auto& nested_attribute : node.attribute()) {
+        ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
+            nested_attribute, attribute_bindings, scoped_name_bindings, prefix_overhead,
+            resolving_attribute_bindings, remaining_node_budget, remaining_byte_budget,
+            node_count, proto_bytes));
+        if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+          return Status::OK();
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  if (effective_attribute->has_g()) {
+    ORT_RETURN_IF_ERROR(process_graph(effective_attribute->g()));
+  }
+  for (const auto& graph : effective_attribute->graphs()) {
+    ORT_RETURN_IF_ERROR(process_graph(graph));
+  }
+
+  if (bound_attribute) {
+    resolving_attribute_bindings.erase(attribute.ref_attr_name());
+  }
+  return Status::OK();
+}
+
+static Status GetFunctionExpansionCost(const Node& node,
+                                       size_t remaining_node_budget,
+                                       size_t remaining_byte_budget,
+                                       FunctionExpansionCost& cost) {
+  if (const auto* function_body = node.GetFunctionBody()) {
+    const auto& body = function_body->Body();
+    SafeInt<size_t> proto_bytes = 0;
+    SafeInt<size_t> node_count = 0;
+    constexpr size_t kRenamedFieldOverhead = 64;
+    for (const auto& function_node : body.Nodes()) {
+      ++node_count;
+      proto_bytes += EstimateNodeProtoBytes(function_node);
+      if (!function_node.Name().empty()) {
+        proto_bytes += kRenamedFieldOverhead;
+      }
+      for (const auto& [name, attribute] : function_node.GetAttributes()) {
+        ORT_UNUSED_PARAMETER(name);
+        node_count += CountNodesIncludingSubgraphs(attribute);
+      }
+    }
+    for (const auto& [name, initializer] : body.GetAllInitializedTensors()) {
+      proto_bytes += initializer->ByteSizeLong();
+      proto_bytes += name.size() + kRenamedFieldOverhead;
+    }
+    cost = {node_count, proto_bytes};
+    return Status::OK();
+  }
+
+  ONNX_NAMESPACE::FunctionProto function_proto;
+  ORT_RETURN_IF_NOT(node.TryGetFunctionProto(function_proto),
+                    "Unable to get function body for node '", node.Name(), "'.");
+
+  InlinedHashMap<std::string_view, const ONNX_NAMESPACE::AttributeProto*> attribute_bindings;
+  attribute_bindings.reserve(node.GetAttributes().size() + function_proto.attribute_proto_size());
+  for (const auto& [name, attribute] : node.GetAttributes()) {
+    attribute_bindings.emplace(name, &attribute);
+  }
+  for (const auto& attribute : function_proto.attribute_proto()) {
+    attribute_bindings.emplace(attribute.name(), &attribute);
+  }
+
+  FunctionNameBindings name_bindings;
+  const auto add_name_bindings = [&name_bindings](const auto& formal_names, const auto& actual_defs) {
+    const size_t binding_count = std::min(static_cast<size_t>(formal_names.size()), actual_defs.size());
+    for (size_t i = 0; i < binding_count; ++i) {
+      if (actual_defs[i] != nullptr) {
+        name_bindings.emplace(formal_names.Get(static_cast<int>(i)), actual_defs[i]->Name().size());
+      }
+    }
+  };
+  add_name_bindings(function_proto.input(), node.InputDefs());
+  add_name_bindings(function_proto.output(), node.OutputDefs());
+
+  const size_t prefix_overhead = SafeInt<size_t>(node.OpType().size()) + 42;
+  SafeInt<size_t> node_count = function_proto.node_size();
+  SafeInt<size_t> proto_bytes = 0;
+  InlinedHashSet<std::string_view> resolving_attribute_bindings;
+  for (const auto& function_node : function_proto.node()) {
+    proto_bytes += function_node.ByteSizeLong();
+    AddSpecializedNodeNameCost(function_node, name_bindings, prefix_overhead, proto_bytes);
+    for (const auto& attribute : function_node.attribute()) {
+      node_count += CountNodesIncludingSubgraphs(attribute);
+      ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
+          attribute, attribute_bindings, name_bindings, prefix_overhead,
+          resolving_attribute_bindings, remaining_node_budget, remaining_byte_budget,
+          node_count, proto_bytes));
+      if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+        break;
+      }
+    }
+  }
+  cost = {node_count, proto_bytes};
+  return Status::OK();
+}
+
+static FunctionExpansionLimit TryChargeFunctionExpansion(const FunctionExpansionCost& cost,
+                                                         size_t node_limit,
+                                                         size_t& expanded_node_count,
+                                                         size_t byte_limit,
+                                                         size_t& expanded_proto_bytes) {
+  if (cost.node_count > node_limit - expanded_node_count) {
+    return FunctionExpansionLimit::kNodes;
+  }
+  if (cost.proto_bytes > byte_limit - expanded_proto_bytes) {
+    return FunctionExpansionLimit::kProtoBytes;
+  }
+
+  expanded_node_count += cost.node_count;
+  expanded_proto_bytes += cost.proto_bytes;
+  return FunctionExpansionLimit::kNone;
+}
+
+static Status InitializeFunctionExpansionLimits(const ConfigOptions& config_options,
+                                                bool& initialized,
+                                                size_t& node_limit,
+                                                size_t& byte_limit) {
+  if (initialized) {
+    return Status::OK();
+  }
+
+  const auto parse_limit = [&config_options](const char* config_key,
+                                             size_t default_value,
+                                             size_t& value) -> Status {
+    const auto config_value = config_options.GetConfigOrDefault(config_key, std::to_string(default_value));
+    if (!TryParseStringWithClassicLocale<size_t>(config_value, value) || value == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid positive integer value '", config_value,
+                             "' for session configuration '", config_key, "'.");
+    }
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(parse_limit(kOrtSessionOptionsFunctionExpansionNodeLimit,
+                                  kDefaultFunctionExpansionNodeLimit, node_limit));
+  ORT_RETURN_IF_ERROR(parse_limit(kOrtSessionOptionsFunctionExpansionByteLimit,
+                                  kDefaultFunctionExpansionByteLimit, byte_limit));
+  initialized = true;
+  return Status::OK();
+}
+
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
                                      const GraphOptimizerRegistry& graph_optimizer_registry,
                                      const logging::Logger& logger,
                                      const CheckLoadCancellationFn& check_load_cancellation_fn,
+                                     uint32_t registered_ep_context_data_callbacks,
                                      InlinedHashSet<std::string>& not_inlined,
-                                     size_t& inlined_count) {
+                                     size_t& inlined_count,
+                                     size_t expansion_node_limit,
+                                     size_t& expanded_node_count,
+                                     size_t expansion_byte_limit,
+                                     size_t& expanded_proto_bytes) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -976,8 +1776,13 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                                  graph_optimizer_registry,
                                                  logger,
                                                  check_load_cancellation_fn,
+                                                 registered_ep_context_data_callbacks,
                                                  not_inlined,
-                                                 inlined_count));
+                                                 inlined_count,
+                                                 expansion_node_limit,
+                                                 expanded_node_count,
+                                                 expansion_byte_limit,
+                                                 expanded_proto_bytes));
     }
   }
 
@@ -1001,6 +1806,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
     ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep,
                                                          graph_optimizer_registry, logger,
+                                                         registered_ep_context_data_callbacks,
                                                          capabilities));
     if (check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "AOT inlining is canceled due to user request.");
@@ -1030,6 +1836,25 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     auto* node = graph.GetNode(node_index);
     if (node != nullptr) {
       if (claimed_by_ep.count(node_index) == 0) {
+        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
+        FunctionExpansionCost expansion_cost{};
+        ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(
+            *node, expansion_node_limit - expanded_node_count,
+            expansion_byte_limit - expanded_proto_bytes, expansion_cost));
+        const auto limit_exceeded = TryChargeFunctionExpansion(expansion_cost,
+                                                               expansion_node_limit,
+                                                               expanded_node_count,
+                                                               expansion_byte_limit,
+                                                               expanded_proto_bytes);
+        if (limit_exceeded != FunctionExpansionLimit::kNone) {
+          LOGS(logger, WARNING) << "AOT function inlining reached the cumulative "
+                                << (limit_exceeded == FunctionExpansionLimit::kNodes ? "node" : "protobuf")
+                                << " expansion limit. "
+                                << "Retaining function call '" << function_id
+                                << "' for execution-provider partitioning.";
+          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(function_id));
+          continue;
+        }
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
         ++inlined_count;
       } else {
@@ -1164,7 +1989,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   {
     const GraphViewer graph_viewer(ep_graph);
     for (const auto& ep : execution_providers) {
-      try {
+      ORT_TRY {
         // Generate the compatibility string for this EP
         std::string compatibility_string = ep->GetCompiledModelCompatibilityInfo(graph_viewer);
         if (!compatibility_string.empty()) {
@@ -1180,8 +2005,11 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
           }
           LOGS(logger, VERBOSE) << "Added EP compatibility info for " << ep->Type() << " with key: " << metadata_key;
         }
-      } catch (const std::exception& ex) {
-        LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
+        });
       }
     }
   }
@@ -1198,7 +2026,11 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger, bool disable_model_compile) {  // Added arg
+                                       const logging::Logger& logger, bool disable_model_compile,
+                                       size_t expansion_node_limit,
+                                       size_t& expanded_node_count,
+                                       size_t expansion_byte_limit,
+                                       size_t& expanded_proto_bytes) {  // Added arg
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -1240,12 +2072,16 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant, graph_optimizer_registry,
                                                        disable_model_compile,
+                                                       partition_params.registered_ep_context_data_callbacks,
+                                                       partition_params.ep_context_data_write_callback_required,
                                                        partition_params.layering_index));  // Pass param
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
     modified_graph = false;
-    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph, partition_params.layering_index));
+    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph, partition_params.layering_index, logger,
+                                    expansion_node_limit, expanded_node_count,
+                                    expansion_byte_limit, expanded_proto_bytes));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {
@@ -1296,11 +2132,29 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       nullptr,
       std::ref(graph_optimizer_registry),
       partition_params.check_load_cancellation_fn,
-      partition_params.layering_index
+      partition_params.layering_index,
+      partition_params.registered_ep_context_data_callbacks
   };
   // clang-format on
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
+
+  const std::string& type = current_ep.Type();
+  if ((partition_params.registered_ep_context_data_callbacks & OrtEpContextDataCallbackSupportFlags_READ) != 0) {
+    const bool accepted_external_ep_context_capability =
+        GraphHasAssignedExternalEpContextNode(graph, type) ||
+        std::any_of(capabilities.cbegin(), capabilities.cend(),
+                    [&](const std::unique_ptr<ComputeCapability>& capability) {
+                      return IsIndexedSubGraphAvailableForAssignment(
+                                 graph, *capability->sub_graph,
+                                 GraphPartitioner::Mode::kOrtFormatLoad, type) &&
+                             IndexedSubGraphHasExternalEpContextNode(graph, *capability->sub_graph);
+                    });
+    if (accepted_external_ep_context_capability) {
+      ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(current_ep, OrtEpContextDataCallbackSupportFlags_READ));
+    }
+  }
+
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -1315,7 +2169,6 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
   compilation_entries.reserve(capabilities.size());
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-  const std::string& type = current_ep.Type();
   for (const auto& capability : capabilities) {
     const IndexedSubGraph& indexed_sub_graph = *capability->sub_graph;
     const IndexedSubGraph::MetaDef* metadef = indexed_sub_graph.GetMetaDef();
@@ -1330,7 +2183,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
       fused_node.SetExecutionProviderType(type);
       if (indexed_sub_graph.IsAccountingEnabled()) {
-        indexed_sub_graph.AccountForAllNodes();
+        indexed_sub_graph.AccountForAllNodes(fused_node.GetContainingGraph(), fused_node.Index());
       }
 
       // create filtered graph viewer for this set of nodes
@@ -1405,7 +2258,9 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager,
-                                            const logging::Logger& logger) const {
+                                            const ConfigOptions& config_options,
+                                            const logging::Logger& logger,
+                                            uint32_t registered_ep_context_data_callbacks) const {
   const auto local_functions_num = model.GetModelLocalFunctionTemplates().size();
   const bool is_there_local_functions = local_functions_num > 0;
 
@@ -1415,6 +2270,11 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
   }
 
   auto check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+  ORT_RETURN_IF_ERROR(InitializeFunctionExpansionLimits(
+      config_options,
+      function_expansion_limits_initialized_,
+      function_expansion_node_limit_,
+      function_expansion_byte_limit_));
 
   auto& graph = model.MainGraph();
   InlinedHashSet<std::string> not_inlined;
@@ -1426,8 +2286,13 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                                *graph_optimizer_registry_,
                                                logger,
                                                check_load_cancellation_fn,
+                                               registered_ep_context_data_callbacks,
                                                not_inlined,
-                                               inlined_count));
+                                               inlined_count,
+                                               function_expansion_node_limit_,
+                                               expanded_function_node_count_,
+                                               function_expansion_byte_limit_,
+                                               expanded_function_proto_bytes_));
 
     if (inlined_count == 0) {
       break;
@@ -1455,7 +2320,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
-                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
+                                   bool ep_context_data_read_callback_registered,
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn,
+                                   WorkspaceReservationMap* workspace_reservations) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -1467,8 +2334,14 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   if (providers_.Empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
+  if (workspace_reservations != nullptr) {
+    workspace_reservations->clear();
+  }
 
   CheckLoadCancellationFn check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+  uint32_t registered_ep_context_data_callbacks = ep_context_data_read_callback_registered
+                                                      ? OrtEpContextDataCallbackSupportFlags_READ
+                                                      : OrtEpContextDataCallbackSupportFlags_NONE;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
@@ -1477,6 +2350,21 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   // we make sure each fused node name is unique across the entire model for clarity
   int fused_node_unique_id = 0;
+  const bool ep_context_data_write_callback_registered = ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr;
+  if (ep_context_data_write_callback_registered) {
+    registered_ep_context_data_callbacks |= OrtEpContextDataCallbackSupportFlags_WRITE;
+    // Some EPs may produce external EPContext data as a side effect of GetCapability() itself (e.g. a
+    // direct-assignment path that compiles before Compile() is ever called), so this WRITE-support check must
+    // happen before GetCapability() is invoked on any provider.
+    const GraphViewer graph_viewer(graph);
+    for (const auto& ep : providers_) {
+      ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(
+          *ep, ep->GetEpContextDataCallbackRequirements(graph_viewer) & OrtEpContextDataCallbackSupportFlags_WRITE));
+    }
+  }
+  const bool ep_context_data_write_callback_required =
+      ep_context_data_write_callback_registered && ep_context_gen_options.enable &&
+      !ep_context_gen_options.embed_ep_context_in_model;
 
   PartitionParams partition_params{
       std::ref(graph),
@@ -1486,6 +2374,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
       std::cref(debug_graph_fn),
+      ep_context_data_write_callback_required,
+      registered_ep_context_data_callbacks,
       std::cref(on_partition_assignment_fn_),
       layering_index};
 
@@ -1497,6 +2387,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   PartitionParams partition_params{
       std::ref(graph),
       std::cref(check_load_cancellation_fn),
+      registered_ep_context_data_callbacks,
       std::cref(on_partition_assignment_fn_),
       layering_index};
 
@@ -1519,11 +2410,75 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     // The map is empty if not created if not enabled
     std::optional<ResourceAccountantMap> ep_acc_map;
     ORT_RETURN_IF_ERROR(CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
+    ORT_RETURN_IF_ERROR(InitializeFunctionExpansionLimits(
+        config_options,
+        function_expansion_limits_initialized_,
+        function_expansion_node_limit_,
+        function_expansion_byte_limit_));
 
     bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
-                                                 disable_model_compile));  // Pass param
+                                                 disable_model_compile,
+                                                 function_expansion_node_limit_,
+                                                 expanded_function_node_count_,
+                                                 function_expansion_byte_limit_,
+                                                 expanded_function_proto_bytes_));  // Pass param
+
+    if (ep_acc_map.has_value()) {
+      for (const auto& [ep_type, accountant] : *ep_acc_map) {
+        const auto consumed = accountant->GetConsumedAmount();
+        if (!std::holds_alternative<size_t>(consumed)) {
+          continue;
+        }
+
+        const size_t total_estimate = std::get<size_t>(consumed);
+        const size_t workspace_estimate = accountant->GetCommittedWorkspaceEstimate();
+        const size_t persistent_prepack_estimate =
+            accountant->GetCommittedPersistentPrepackEstimate();
+        const size_t initialization_scratch_estimate =
+            accountant->GetCommittedInitializationScratchEstimate();
+        const auto source_counts = accountant->GetWorkspaceEstimateSourceCounts();
+        const auto comparison = accountant->GetWorkspaceEstimateComparisonSummary();
+        const size_t categorized_estimate =
+            static_cast<size_t>(SafeInt<size_t>(workspace_estimate) +
+                                persistent_prepack_estimate);
+        const size_t non_workspace_estimate =
+            total_estimate >= categorized_estimate
+                ? total_estimate - categorized_estimate
+                : 0;
+        LOGS(logger, INFO) << "Resource estimation for EP '" << ep_type << "': "
+                           << "non-workspace memory: " << non_workspace_estimate << " bytes, "
+                           << "workspace memory: " << workspace_estimate << " bytes, "
+                           << "persistent prepack memory: " << persistent_prepack_estimate << " bytes, "
+                           << "peak initialization scratch memory (not included in budget): "
+                           << initialization_scratch_estimate << " bytes, "
+                           << "total estimated memory: " << total_estimate << " bytes, "
+                           << "workspace sources: fallback=" << source_counts.fallback
+                           << ", profile=" << source_counts.profile
+                           << ", estimator=" << source_counts.estimator
+                           << ", profile+estimator=" << source_counts.profile_and_estimator;
+        if (comparison.node_count > 0) {
+          LOGS(logger, INFO) << "Workspace profile-estimator comparison for EP '" << ep_type << "': "
+                             << comparison.node_count << " accepted node(s), "
+                             << "profile larger=" << comparison.profile_larger
+                             << ", estimator larger=" << comparison.estimator_larger
+                             << ", equal=" << comparison.equal
+                             << ", profiled workspace=" << comparison.profiled_bytes << " bytes"
+                             << ", Level-1 estimated workspace="
+                             << comparison.level1_estimated_bytes << " bytes";
+        }
+        if (workspace_reservations != nullptr) {
+          auto reservations = accountant->GetCommittedWorkspaceReservations();
+          for (auto& [graph_identity, node_reservations] : reservations) {
+            auto& destination = (*workspace_reservations)[graph_identity];
+            for (auto& [node_index, selection] : node_reservations) {
+              destination.insert_or_assign(node_index, selection);
+            }
+          }
+        }
+      }
+    }
 
     // Serialize here only when the output is EPContext-based (some EP produced EPContext nodes). The plain
     // form (no nodes compiled) is instead emitted by InferenceSession (epctx::BuildAndSaveOptimizedModel);

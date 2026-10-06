@@ -25,7 +25,7 @@ jobs:
       commit_sha: ${{ steps.extract_commit.outputs.commit_sha }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: true
 
@@ -56,6 +56,7 @@ jobs:
       extra_build_args: "--target onnxruntime_webassembly --skip_tests --disable_rtti"
       build_jsep: true
       build_webgpu: true
+      build_webgpu_static_plugin: true
 
   wasm_Release_static_library:
     needs: precheck

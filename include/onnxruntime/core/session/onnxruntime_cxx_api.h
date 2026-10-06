@@ -658,6 +658,7 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -786,6 +787,7 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
+struct EpContextConfig;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1187,9 +1189,15 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
 
 /** \brief Validate a compiled model's compatibility for one or more EP devices.
  *
- * Throws on error. Returns the resulting compatibility status.
- * /// \param ep_devices The EP devices to check compatibility against.
- * /// \param compatibility_info The compatibility string from the precompiled model to validate.
+ * The EP interprets the ordered device configuration using the same selection, fallback, and participation rules as
+ * OrtEpFactory::CreateEp. If the model is subsequently loaded, pass the same devices in the same order to
+ * Ort::SessionOptions::AppendExecutionProvider_V2.
+ *
+ * Throws on error.
+ *
+ * \param ep_devices The non-empty, ordered EP device configuration to check.
+ * \param compatibility_info The opaque compatibility string from the precompiled model.
+ * \return The compatibility status for the intended EP device configuration.
  */
 OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
     const std::vector<ConstEpDevice>& ep_devices,
@@ -1477,8 +1485,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   ///
   /// The function attempts to load the adapter from the specified file
   /// \param adapter_path The path to the Lora adapter
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                        OrtAllocator* allocator);
 
@@ -1487,8 +1496,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// The function attempts to load the adapter from the specified byte array.
   /// \param bytes The byte array containing file LoraAdapter format
   /// \param num_bytes The number of bytes in the byte array
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
                                                 OrtAllocator* allocator);
 };
@@ -1662,6 +1672,11 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
+  /// Register or clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state);
+  /// Clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
+  SessionOptionsImpl& ClearEpContextDataReadFunc();
+
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
   SessionOptionsImpl& AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& external_initializer_file_names,
@@ -1737,6 +1752,24 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
+/** \brief Move-only owner for the EPContext callback configuration used by plugin EPs.
+ *
+ * Construct during OrtEpFactory::CreateEp from the provided session options, retain for the EP lifetime, and query
+ * the application callbacks from Compile. The wrapper owns the OrtEpContextConfig handle, not the application state.
+ */
+struct EpContextConfig : detail::Base<OrtEpContextConfig> {
+  using Base = detail::Base<OrtEpContextConfig>;
+  using Base::Base;
+
+  explicit EpContextConfig(std::nullptr_t) noexcept {}
+  explicit EpContextConfig(const SessionOptions& session_options);  ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
+  explicit EpContextConfig(ConstSessionOptions session_options);    ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
+
+  /// Wraps OrtEpApi::EpContextConfigGetEpContextDataReadFunc.
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
+  void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;  ///< Wraps OrtEpApi::EpContextConfigGetEpContextDataWriteFunc.
+};
+
 /** \brief Options object used when compiling a model.
  *
  * Wraps ::OrtModelCompilationOptions object and methods
@@ -1768,6 +1801,9 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
+  /// Register or clear the external EPContext write callback. Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc.
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
@@ -3029,6 +3065,7 @@ struct KernelContext {
   // which can be compared to nullptr.
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  UnownedValue GetPreallocatedOutput(size_t index) const;
   void* GetGPUComputeStream() const;
   OrtSyncStream* GetSyncStream() const;
   Logger GetLogger() const;

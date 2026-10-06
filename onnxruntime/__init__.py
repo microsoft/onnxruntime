@@ -10,7 +10,7 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 import contextlib
 
-__version__ = "1.30.0"
+__version__ = "1.31.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -76,6 +76,9 @@ from onnxruntime.capi import onnxruntime_validation
 
 if import_capi_exception:
     raise import_capi_exception
+
+with contextlib.suppress(ImportError):
+    from onnxruntime.capi._pybind_state import OrtEpContextData, OrtEpContextDataBuffer  # noqa: F401
 
 from onnxruntime.capi.onnxruntime_inference_collection import (
     AdapterFormat,  # noqa: F401
@@ -467,6 +470,11 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
     # Try load DLLs from nvidia site packages.
     dll_paths = _get_nvidia_dll_paths(is_windows, cuda, cudnn)
     optional_dll_filenames = {relative_path[-1] for relative_path in _get_nvidia_dll_paths(is_windows, False, cudnn)}
+    optional_dll_filenames.update(
+        relative_path[-1]
+        for relative_path in dll_paths
+        if any(name in relative_path[-1] for name in ("cufft", "nvrtc"))
+    )
     loaded_dlls = []
     for relative_path in dll_paths:
         dll_path = (

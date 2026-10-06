@@ -455,7 +455,7 @@ def generate_triplet_for_posix_platform(
                     "-Wp,-D_GLIBCXX_ASSERTIONS",
                     "-fstack-protector-strong",
                 ]
-                if target_abi == "x64":
+                if os_name == "linux" and target_abi == "x64":
                     cflags_release += ["-fstack-clash-protection", "-fcf-protection"]
 
             elif enable_asan:
