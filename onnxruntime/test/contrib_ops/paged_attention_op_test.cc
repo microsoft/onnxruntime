@@ -337,7 +337,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   }
   ASSERT_TRUE(!c.replay_past_seqlens.empty() || !c.past_seqlens.empty() ||
               max_num_blocks_per_seq > past_seqlen / block_size);
-  ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
+  if (!c.allow_malformed_sequence_metadata) {
+    ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
+  }
   ASSERT_EQ(num_heads % kv_num_heads, 0);
   ASSERT_TRUE(c.block_table.empty() ||
               c.block_table.size() == static_cast<size_t>(batch_size * max_num_blocks_per_seq));
@@ -1977,6 +1979,20 @@ TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
 }
 
+TEST(PagedAttention, CudaRejectsZeroPhysicalCacheBlocks) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.num_blocks = 0;
+  c.max_num_blocks_per_seq = 1;
+  c.block_table = {-1};
+  c.allow_malformed_sequence_metadata = true;
+  c.expected_error = "requires at least one physical cache block";
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
 TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
 #if defined(USE_FLASH_ATTENTION)
 #if defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE) || defined(ORT_QUICK_BUILD) || defined(EXCLUDE_SM_80)
@@ -2005,12 +2021,12 @@ TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
   malformed.kv_num_heads = 1;
   malformed.head_size = 64;
   malformed.block_size = 256;
-  malformed.num_blocks = 2;
-  malformed.max_num_blocks_per_seq = 2;
+  malformed.num_blocks = 4;
+  malformed.max_num_blocks_per_seq = 4;
   malformed.cumulative_seqlens_q = {0, 1};
-  malformed.replay_past_seqlens = {{256}, {256}, {256}, {256}};
-  malformed.block_table = {0, malformed.num_blocks};
-  malformed.attention_metadata = {1, 257};
+  malformed.replay_past_seqlens = {{768}, {768}, {768}, {768}};
+  malformed.block_table = {0, malformed.num_blocks, malformed.num_blocks, malformed.num_blocks};
+  malformed.attention_metadata = {1, 769};
   malformed.allow_malformed_sequence_metadata = true;
   malformed.skip_reference_check = true;
   malformed.verify_malformed_cache_unchanged = true;

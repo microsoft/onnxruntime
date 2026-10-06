@@ -296,6 +296,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   if (parameters.token_count == 0) {
     return Status::OK();
   }
+  if (parameters.num_blocks <= 0) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "PagedAttention requires at least one physical cache block for non-empty input.");
+  }
 
   const SafeInt<size_t> safe_batch_size(parameters.batch_size);
   const size_t block_table_element_count =
@@ -304,6 +309,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_table element count exceeds the CUDA kernel indexing limit.");
   }
+  SafeInt<int64_t> safe_max_kv_len_capacity(parameters.max_num_blocks_per_seq);
+  safe_max_kv_len_capacity *= parameters.block_size;
+  if (safe_max_kv_len_capacity > std::numeric_limits<int32_t>::max()) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "block_table sequence capacity exceeds the CUDA int32 indexing limit.");
+  }
+  const int max_kv_len_capacity = static_cast<int>(safe_max_kv_len_capacity);
   auto sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
       reinterpret_cast<const int*>(block_table->Data<int>()),
@@ -446,7 +459,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // query tokens can belong to a single sequence, and a sequence can address at most
   // block_table.shape[1] * block_size cached tokens. Those are valid but loose, so they cost some
   // empty thread blocks rather than correctness.
-  const int max_kv_len_capacity = parameters.max_num_blocks_per_seq * parameters.block_size;
   const bool has_metadata_bounds = attention_metadata != nullptr;
   int max_query_len_bound = parameters.token_count;
   int max_kv_len_bound = max_kv_len_capacity;
