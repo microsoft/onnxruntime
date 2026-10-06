@@ -710,6 +710,9 @@ namespace Microsoft.ML.OnnxRuntime
                         DangerousAddRef(ref optionsRefAdded);
                         registration = _epContextDataReadRegistration;
                         registration?.AddRef();
+                        // Snapshot even an empty registration: the first delegate can be registered concurrently.
+                        // The native copy constructor copies value, custom_op_domains_, and provider_factories only.
+                        // Future bindings for other native fields must preserve their snapshot explicitly.
                         NativeApiStatus.VerifySuccess(
                             NativeMethods.OrtCloneSessionOptions(DangerousGetHandle(), out clonedOptions));
                     }

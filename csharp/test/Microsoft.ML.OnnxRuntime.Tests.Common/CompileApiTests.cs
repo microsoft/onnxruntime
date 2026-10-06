@@ -278,6 +278,33 @@ public class CompileApiTests
     }
 
     [Fact]
+    public void EpContextReadRegistrationDoesNotChangeActiveSnapshot()
+    {
+        using var sessionOptions = new SessionOptions();
+        IntPtr originalOptions = sessionOptions.DangerousGetHandle();
+        var registration = sessionOptions.InvokeWithEpContextDataReadRegistration(snapshotOptions =>
+        {
+            Assert.NotEqual(originalOptions, snapshotOptions);
+            Task registerTask = Task.Run(() =>
+                sessionOptions.SetEpContextDataReadDelegate((_, output) => output.Allocate(0), 1024));
+            Assert.True(registerTask.Wait(TimeSpan.FromSeconds(10)),
+                "Registering the first read callback from a worker thread must not deadlock.");
+        });
+
+        Assert.Null(registration);
+        var nextRegistration = sessionOptions.InvokeWithEpContextDataReadRegistration(snapshotOptions =>
+            Assert.NotEqual(originalOptions, snapshotOptions));
+        try
+        {
+            Assert.NotNull(nextRegistration);
+        }
+        finally
+        {
+            nextRegistration?.Release();
+        }
+    }
+
+    [Fact]
     public void EpContextReadBufferRequiresCpuAccessibleAllocator()
     {
         using var cpuMemoryInfo = new OrtMemoryInfo(
