@@ -16,6 +16,8 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
 // Convert OrtStatus* to onnxruntime::common::Status and release the OrtStatus*.
 Status ToStatusAndRelease(OrtStatus* ort_status,
                           common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
+
+_Ret_maybenull_ OrtStatus* CreateUnknownExceptionStatus(const char* function_name) noexcept;
 };  // namespace onnxruntime
 
 #ifndef ORT_NO_EXCEPTIONS
@@ -32,8 +34,7 @@ Status ToStatusAndRelease(OrtStatus* ort_status,
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());                \
   }                                                                                \
   catch (...) {                                                                    \
-    const auto msg = ::onnxruntime::MakeString("Unknown exception in ", __func__); \
-    return OrtApis::CreateStatus(ORT_FAIL, msg.c_str());                           \
+    return ::onnxruntime::CreateUnknownExceptionStatus(__func__);                   \
   }
 
 #else

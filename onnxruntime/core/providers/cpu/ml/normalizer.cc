@@ -128,6 +128,11 @@ Status Normalizer::Normalize(OpKernelContext* context) const {
   }
 
   const auto& x_dims = x_shape.GetDims();
+  if (x_dims.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input to Normalizer must have rank 1 or 2. Got rank 0.");
+  }
+
   int64_t num_batches = x_dims.size() == 1 ? 1 : x_dims[0];
   int64_t batch_size = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
 

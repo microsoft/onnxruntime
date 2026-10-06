@@ -548,7 +548,6 @@ def get_rst_doc(
 def _insert_diff(folder, docs, split=".. tag-diff-insert.", op_name=None, version=None, domain=None):
     """
     Splits a using `split`, insert HTML differences between pieces.
-    The function relies on package `pyquickhelper`.
     """
     spl = docs.split(split)
     if len(spl) <= 1:

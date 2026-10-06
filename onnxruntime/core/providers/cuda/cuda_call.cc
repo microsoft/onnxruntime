@@ -11,6 +11,7 @@
 #endif
 #ifndef USE_CUDA_MINIMAL
 #include "core/providers/cuda/cudnn_loader.h"
+#include "core/providers/cuda/cufft_loader.h"
 #endif
 
 #include <type_traits>
@@ -100,6 +101,18 @@ std::conditional_t<THRW, void, Status> CudaCall(
         auto status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                       "cuDNN is unavailable for CUDA Execution Provider: ",
                                       cuda::CudnnLibrary::Get().Error());
+        if constexpr (THRW) {
+          ORT_THROW(status.ErrorMessage());
+        } else {
+          return status;
+        }
+      }
+    }
+    if constexpr (std::is_same_v<ERRTYPE, cufftResult>) {
+      if (!cuda::CufftLibrary::Get().Available()) {
+        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                      "cuFFT is unavailable for CUDA Execution Provider: ",
+                                      cuda::CufftLibrary::Get().Error());
         if constexpr (THRW) {
           ORT_THROW(status.ErrorMessage());
         } else {

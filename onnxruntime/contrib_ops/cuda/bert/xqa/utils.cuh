@@ -47,7 +47,9 @@ inline constexpr float log2e = 1.4426950408889634f;  // std::log2(M_E)
 */
 // this reason, don't set safeInitRowMax with a huge absolute value.
 // #define SAFE_INIT_ROW_MAX (-1e+5F)  // moved to defines.h
-inline constexpr int32_t kBAD_PAGE_INDEX = -1;
+// Marked __constant__ (like kE4M3_MAX below) because the paged-KV kernels odr-use it from device
+// code (Vec::filled takes a const reference), which a plain host constexpr variable cannot satisfy.
+__constant__ constexpr int32_t kBAD_PAGE_INDEX = -1;
 __constant__ constexpr float kE4M3_MAX = 448.F;
 
 #ifdef __CUDA_ARCH__
@@ -69,7 +71,7 @@ __device__ inline void assertWarpConverged() {
 #define DEFINE_VEC_BINARY_FUNC(func)                                                               \
   template <typename T, uint32_t size>                                                             \
   __device__ __host__ inline Vec<decltype(func(mha::declval<T>(), mha::declval<T>())), size> func( \
-      Vec<T, size> const& a, Vec<T, size> const& b) {                                              \
+      const Vec<T, size>& a, const Vec<T, size>& b) {                                              \
     Vec<decltype(func(mha::declval<T>(), mha::declval<T>())), size> result;                        \
     XQA_UNROLL for (uint32_t i = 0; i < size; i++) {                                               \
       result[i] = func(a[i], b[i]);                                                                \
@@ -88,7 +90,7 @@ DEFINE_VEC_BINARY_FUNC(addFloat2)
 #define DEFINE_VEC_BINARY_OP(op)                                                                      \
   template <typename T, uint32_t size>                                                                \
   __device__ __host__ inline Vec<decltype(mha::declval<T>() op mha::declval<T>()), size> operator op( \
-      Vec<T, size> const& a, Vec<T, size> const& b) {                                                 \
+      const Vec<T, size>& a, const Vec<T, size>& b) {                                                 \
     Vec<decltype(mha::declval<T>() op mha::declval<T>()), size> result;                               \
     XQA_UNROLL for (uint32_t i = 0; i < size; i++) {                                                  \
       result[i] = a[i] op b[i];                                                                       \
@@ -97,7 +99,7 @@ DEFINE_VEC_BINARY_FUNC(addFloat2)
   }                                                                                                   \
   template <typename T, uint32_t size, typename Scalar>                                               \
   __device__ __host__ inline Vec<decltype(mha::declval<T>() op mha::declval<T>()), size> operator op( \
-      Vec<T, size> const& a, Scalar const& b) {                                                       \
+      const Vec<T, size>& a, const Scalar & b) {                                                      \
     Vec<decltype(mha::declval<T>() op mha::declval<Scalar>()), size> result;                          \
     XQA_UNROLL for (uint32_t i = 0; i < size; i++) {                                                  \
       result[i] = a[i] op b;                                                                          \
@@ -106,7 +108,7 @@ DEFINE_VEC_BINARY_FUNC(addFloat2)
   }                                                                                                   \
   template <typename Scalar, typename T, uint32_t size>                                               \
   __device__ __host__ inline Vec<decltype(mha::declval<T>() op mha::declval<T>()), size> operator op( \
-      Scalar const& a, Vec<T, size> const& b) {                                                       \
+      const Scalar & a, const Vec<T, size>& b) {                                                      \
     Vec<decltype(mha::declval<Scalar>() op mha::declval<T>()), size> result;                          \
     XQA_UNROLL for (uint32_t i = 0; i < size; i++) {                                                  \
       result[i] = a op b[i];                                                                          \
@@ -129,7 +131,7 @@ DEFINE_VEC_BINARY_OP(<=)
 #undef DEFINE_VEC_BINARY_OP
 
 template <uint32_t size>
-HOST_DEVICE_FUNC inline bool all(Vec<bool, size> const& src) {
+HOST_DEVICE_FUNC inline bool all(const Vec<bool, size>& src) {
   bool ret = true;
   XQA_UNROLL
   for (uint32_t i = 0; i < size; i++) {
@@ -139,7 +141,7 @@ HOST_DEVICE_FUNC inline bool all(Vec<bool, size> const& src) {
 }
 
 template <uint32_t size>
-HOST_DEVICE_FUNC inline bool any(Vec<bool, size> const& src) {
+HOST_DEVICE_FUNC inline bool any(const Vec<bool, size>& src) {
   bool ret = false;
   XQA_UNROLL
   for (uint32_t i = 0; i < size; i++) {
@@ -150,7 +152,7 @@ HOST_DEVICE_FUNC inline bool any(Vec<bool, size> const& src) {
 
 #define DEFINE_VEC_UNARY_OP(op)                                                                     \
   template <typename T, uint32_t size>                                                              \
-  __device__ __host__ inline Vec<decltype(op(mha::declval<T>())), size> op(Vec<T, size> const& a) { \
+  __device__ __host__ inline Vec<decltype(op(mha::declval<T>())), size> op(const Vec<T, size>& a) { \
     Vec<decltype(op(mha::declval<T>())), size> result;                                              \
     XQA_UNROLL for (uint32_t i = 0; i < size; i++) {                                                \
       result[i] = op(a[i]);                                                                         \
@@ -168,21 +170,21 @@ DEFINE_VEC_UNARY_OP(__frcp_rn)
 #undef DEFINE_VEC_UNARY_OP
 
 template <typename Dst, typename Src, uint32_t size>
-__device__ __host__ inline Vec<Dst, size> convert(Vec<Src, size> const& src) {
+__device__ __host__ inline Vec<Dst, size> convert(const Vec<Src, size>& src) {
   if constexpr (mha::is_same_v<mha::decay_t<Dst>, mha::decay_t<Src>>) {
     return src;
   }
   Vec<Dst, size> dst;
   if constexpr (mha::is_same_v<Src, half> && mha::is_same_v<Dst, float>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<float2&>(dst[i]) = __half22float2(reinterpret_cast<half2 const&>(src[i]));
+      reinterpret_cast<float2&>(dst[i]) = __half22float2(reinterpret_cast<const half2&>(src[i]));
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
     }
   } else if constexpr (mha::is_same_v<Src, float> && mha::is_same_v<Dst, half>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<half2&>(dst[i]) = __float22half2_rn(reinterpret_cast<float2 const&>(src[i]));
+      reinterpret_cast<half2&>(dst[i]) = __float22half2_rn(reinterpret_cast<const float2&>(src[i]));
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
@@ -190,21 +192,21 @@ __device__ __host__ inline Vec<Dst, size> convert(Vec<Src, size> const& src) {
   }
   if constexpr (mha::is_same_v<Src, __nv_bfloat16> && mha::is_same_v<Dst, float>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<float2&>(dst[i]) = __bfloat1622float2(reinterpret_cast<__nv_bfloat162 const&>(src[i]));
+      reinterpret_cast<float2&>(dst[i]) = __bfloat1622float2(reinterpret_cast<const __nv_bfloat162&>(src[i]));
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
     }
   } else if constexpr (mha::is_same_v<Src, float> && mha::is_same_v<Dst, __nv_bfloat16>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<__nv_bfloat162&>(dst[i]) = __float22bfloat162_rn(reinterpret_cast<float2 const&>(src[i]));
+      reinterpret_cast<__nv_bfloat162&>(dst[i]) = __float22bfloat162_rn(reinterpret_cast<const float2&>(src[i]));
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
     }
   } else if constexpr (mha::is_same_v<Src, __nv_fp8_e4m3> && mha::is_same_v<Dst, float>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<float2&>(dst[i]) = float2(reinterpret_cast<__nv_fp8x2_e4m3 const&>(src[i]));
+      reinterpret_cast<float2&>(dst[i]) = float2(reinterpret_cast<const __nv_fp8x2_e4m3&>(src[i]));
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
@@ -218,14 +220,14 @@ __device__ __host__ inline Vec<Dst, size> convert(Vec<Src, size> const& src) {
     }
   } else if constexpr (mha::is_same_v<Src, __nv_fp8_e4m3> && mha::is_same_v<Dst, half>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<half2&>(dst[i]) = half2(reinterpret_cast<__nv_fp8x2_e4m3 const&>(src[i]));
+      reinterpret_cast<half2&>(dst[i]) = half2(reinterpret_cast<const __nv_fp8x2_e4m3&>(src[i]));
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
     }
   } else if constexpr (mha::is_same_v<Src, half> && mha::is_same_v<Dst, __nv_fp8_e4m3>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<__nv_fp8x2_e4m3&>(dst[i]) = __nv_fp8x2_e4m3{reinterpret_cast<half2 const&>(src[i])};
+      reinterpret_cast<__nv_fp8x2_e4m3&>(dst[i]) = __nv_fp8x2_e4m3{reinterpret_cast<const half2&>(src[i])};
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
@@ -236,7 +238,7 @@ __device__ __host__ inline Vec<Dst, size> convert(Vec<Src, size> const& src) {
   // }
   else if constexpr (mha::is_same_v<Src, __nv_bfloat16> && mha::is_same_v<Dst, __nv_fp8_e4m3>) {
     for (uint32_t i = 0; i < size - 1; i += 2) {
-      reinterpret_cast<__nv_fp8x2_e4m3&>(dst[i]) = __nv_fp8x2_e4m3{reinterpret_cast<__nv_bfloat162 const&>(src[i])};
+      reinterpret_cast<__nv_fp8x2_e4m3&>(dst[i]) = __nv_fp8x2_e4m3{reinterpret_cast<const __nv_bfloat162&>(src[i])};
     }
     if constexpr (size % 2 != 0) {
       dst[size - 1] = Dst{src[size - 1]};
@@ -276,13 +278,13 @@ __device__ inline Warp this_warp() {
 
 // @fixme: check asm code to make sure UR is used and SHFL is not generated.
 template <typename T>
-__device__ inline T makeWarpUniform(Warp const& warp, T const& val) {
-  T const val0 = __shfl_sync(~0U, val, 0);
+__device__ inline T makeWarpUniform(const Warp& warp, const T& val) {
+  const T val0 = __shfl_sync(~0U, val, 0);
   assert(val == val0);
   return val0;
 }
 
-__device__ inline uint3 getWarpIdx(uint3 ctaShapeInWarps, Warp const& warp = this_warp()) {
+__device__ inline uint3 getWarpIdx(uint3 ctaShapeInWarps, const Warp& warp = this_warp()) {
   assert(ctaShapeInWarps.x % 128 == 0);
   return uint3{ctaShapeInWarps.x == 1 ? 0 : makeWarpUniform(warp, threadIdx.x / warp_size),
                ctaShapeInWarps.y == 1 ? 0 : makeWarpUniform(warp, threadIdx.y),
@@ -301,9 +303,9 @@ __device__ inline bool hasBankConflict(T* p) {
   static_assert(sizeof(T) % 4 == 0 && sizeof(T) <= 16 && alignof(T) == sizeof(T));
   constexpr uint32_t grpSize = 128 / sizeof(T);
   const uint32_t grpMask = static_cast<uint32_t>(((1ULL << grpSize) - 1ULL) << (laneId() / grpSize * grpSize));
-  uint32_t const x = reinterpret_cast<uintptr_t>(p) / sizeof(T) % grpSize;
-  auto const match = __match_any_sync(grpMask, x);
-  bool const conflict = __popc(match) > 1;
+  const uint32_t x = reinterpret_cast<uintptr_t>(p) / sizeof(T) % grpSize;
+  const auto match = __match_any_sync(grpMask, x);
+  const bool conflict = __popc(match) > 1;
   if (grpSize <= 8 && conflict) {
     char str[grpSize * 2 + 1] = {};
     for (uint32_t i = 0; i < grpSize; i++) {
@@ -335,8 +337,8 @@ struct CompactRangeList {
   mha::array<uint32_t, length> sizeList;
 
   struct Range {
-    Pointer const& data;
-    uint32_t const& size;
+    const Pointer& data;
+    const uint32_t& size;
   };
 
   __device__ inline Range operator[](uint32_t i) const {
@@ -354,20 +356,20 @@ struct alignas(mha::min<uint32_t>(maxArrayAlign<T>(rows_* cols_), cacheLineSize)
   static constexpr uint32_t rowBytes = sizeof(T) * cols;
 
   template <bool swizzle = false>
-  __device__ inline T const& at(uint32_t r, uint32_t c) const {
+  const __device__ inline T& at(uint32_t r, uint32_t c) const {
     assert(r < rows && c < cols);
     // two different swizzle styles
 #if 1
-    uint32_t const c_swizzled = [&] {
+    const uint32_t c_swizzled = [&] {
       if constexpr (swizzle) {
         static_assert(rowBytes % cacheLineSize == 0 || cacheLineSize % rowBytes == 0);
         static constexpr uint32_t rowsPerSliding = exactDiv(cacheLineSize, rowBytes % cacheLineSize == 0 ? cacheLineSize : rowBytes % cacheLineSize);
         constexpr uint32_t swizzleRowsRepeat = exactDiv(cacheLineSize, sizeof(Elem));
-        auto const runtimeBaseOffset = static_cast<uint32_t>(__cvta_generic_to_shared(this->data)) / rowBytes % rows;
-        uint32_t const baseOffset = alignedForSwizzle
+        const auto runtimeBaseOffset = static_cast<uint32_t>(__cvta_generic_to_shared(this->data)) / rowBytes % rows;
+        const uint32_t baseOffset = alignedForSwizzle
                                         ? 0
                                         : runtimeBaseOffset;  // To match TMA when array is not aligned to pattern boundary
-        uint32_t const xorMask = alignedForSwizzle
+        const uint32_t xorMask = alignedForSwizzle
                                      ? BoundedVal<rows>{r}
                                            .template divBy<rowsPerSliding>()
                                            .template mod<exactDiv(swizzleRowsRepeat, rowsPerSliding)>()
@@ -378,19 +380,19 @@ struct alignas(mha::min<uint32_t>(maxArrayAlign<T>(rows_* cols_), cacheLineSize)
       return c;
     }();
 #else
-    uint32_t const c_swizzled = swizzle ? (c + r / rowsPerSliding) % cols : c;
+    const uint32_t c_swizzled = swizzle ? (c + r / rowsPerSliding) % cols : c;
 #endif
-    T const& ret = (&data[0][0])[r * cols + c_swizzled];
+    const T& ret = (&data[0][0])[r * cols + c_swizzled];
     assert(&data[r][c_swizzled] == &ret);
     return ret;
   }
 
   template <bool swizzle = false>
   __device__ inline T& at(uint32_t r, uint32_t c) {
-    return const_cast<T&>(static_cast<Array2D const*>(this)->at<swizzle>(r, c));
+    return const_cast<T&>(static_cast<const Array2D*>(this)->at<swizzle>(r, c));
   }
 
-  __device__ inline T const& operator()(uint32_t r, uint32_t c) const {
+  const __device__ inline T& operator()(uint32_t r, uint32_t c) const {
     return at<false>(r, c);
   }
 
@@ -422,7 +424,7 @@ struct alignas(mha::min<uint32_t>(maxArrayAlign<T>(rows_* cols_), cacheLineSize)
 #define DEFINE_ARRAY2D_BINARY_OP(op)                                                                            \
   template <typename T, uint32_t rows, uint32_t cols>                                                           \
   __device__ __host__ inline Array2D<decltype(mha::declval<T>() op mha::declval<T>()), rows, cols> operator op( \
-      Array2D<T, rows, cols> const& a, Array2D<T, rows, cols> const& b) {                                       \
+      const Array2D<T, rows, cols>& a, const Array2D<T, rows, cols>& b) {                                       \
     Array2D<decltype(mha::declval<T>() op mha::declval<T>()), rows, cols> result;                               \
     XQA_UNROLL for (uint32_t i = 0; i < rows; i++) {                                                            \
       for (uint32_t j = 0; j < cols; j++) {                                                                     \
@@ -433,7 +435,7 @@ struct alignas(mha::min<uint32_t>(maxArrayAlign<T>(rows_* cols_), cacheLineSize)
   }                                                                                                             \
   template <typename T, uint32_t rows, uint32_t cols, typename Scalar>                                          \
   __device__ __host__ inline Array2D<decltype(mha::declval<T>() op mha::declval<T>()), rows, cols> operator op( \
-      Array2D<T, rows, cols> const& a, Scalar const& b) {                                                       \
+      const Array2D<T, rows, cols>& a, const Scalar & b) {                                                      \
     Array2D<decltype(mha::declval<T>() op mha::declval<Scalar>()), rows, cols> result;                          \
     XQA_UNROLL for (uint32_t i = 0; i < rows; i++) {                                                            \
       for (uint32_t j = 0; j < cols; j++) {                                                                     \
@@ -444,7 +446,7 @@ struct alignas(mha::min<uint32_t>(maxArrayAlign<T>(rows_* cols_), cacheLineSize)
   }                                                                                                             \
   template <typename Scalar, typename T, uint32_t rows, uint32_t cols>                                          \
   __device__ __host__ inline Array2D<decltype(mha::declval<T>() op mha::declval<T>()), rows, cols> operator op( \
-      Scalar const& a, Array2D<T, rows, cols> const& b) {                                                       \
+      const Scalar & a, const Array2D<T, rows, cols>& b) {                                                      \
     Array2D<decltype(mha::declval<Scalar>() op mha::declval<T>()), rows, cols> result;                          \
     XQA_UNROLL for (uint32_t i = 0; i < rows; i++) {                                                            \
       for (uint32_t j = 0; j < cols; j++) {                                                                     \
@@ -465,7 +467,7 @@ constexpr uint32_t grainBytes = sizeof(LdGrain);
 
 // wrapper for PTX ldmatrix
 template <bool transpose, uint32_t nbMat>
-__device__ inline Vec<uint32_t, nbMat> ldmatrix(LdGrain const* row) {
+__device__ inline Vec<uint32_t, nbMat> ldmatrix(const LdGrain* row) {
   assertWarpConverged();
   uint32_t a, b, c, d;
   if constexpr (nbMat == 4) {
@@ -481,13 +483,13 @@ __device__ inline Vec<uint32_t, nbMat> ldmatrix(LdGrain const* row) {
           : "memory");
     }
 #if 0
-        auto checkMat = [&](uint32_t val, uint32_t idxMat) -> Vec<uint16_t, 8> const& {
-            auto const v = (Vec<uint16_t, 2> const&)val;
-            uint32_t const lane = laneId();
+        auto checkMat = [&](uint32_t val, uint32_t idxMat) -> const Vec<uint16_t, 8>& {
+            const auto v = (const Vec<uint16_t, 2>&)val;
+            const uint32_t lane = laneId();
             auto getRow = [&](uint32_t r) {
                 assert(r<8);
-                auto const ret = __shfl_sync(~0U, reinterpret_cast<uint64_t const&>(row), 8*idxMat+r);
-                return *reinterpret_cast<Vec<uint16_t, 8> const*>(ret);
+                const auto ret = __shfl_sync(~0U, reinterpret_cast<const uint64_t&>(row), 8*idxMat+r);
+                return *reinterpret_cast<const Vec<uint16_t, 8>*>(ret);
             };
             auto checkEq = [](uint16_t x, uint16_t y) {
                 if (!(x==y)) {
@@ -541,12 +543,12 @@ __device__ inline Vec<uint32_t, nbMat> ldmatrix(LdGrain const* row) {
 }
 
 template <bool transpose>
-__device__ inline Vec<uint32_t, 4> ldmatrix_4x(Warp const& warp, LdGrain const* row) {
+__device__ inline Vec<uint32_t, 4> ldmatrix_4x(const Warp& warp, const LdGrain* row) {
   return ldmatrix<transpose, 4>(row);
 }
 
 template <uint32_t nbMat>
-__device__ inline Vec<uint32_t, nbMat * 2> ldmatrix_16x16_trans(LdGrain const* row) {
+__device__ inline Vec<uint32_t, nbMat * 2> ldmatrix_16x16_trans(const LdGrain* row) {
   uint32_t a, b, c, d;
   if constexpr (nbMat == 1) {
     asm("ldmatrix.sync.aligned.m16n16.x1.trans.shared::cta.b8 {%0, %1}, [%2];\n"
@@ -566,7 +568,7 @@ __device__ inline Vec<uint32_t, nbMat * 2> ldmatrix_16x16_trans(LdGrain const* r
 }
 
 template <bool transpose, uint32_t nbMat>
-__device__ inline void stmatrix(LdGrain* row, Vec<uint32_t, nbMat> const& data) {
+__device__ inline void stmatrix(LdGrain* row, const Vec<uint32_t, nbMat>& data) {
 #if __CUDA_ARCH__ >= 900
   assertWarpConverged();
   if constexpr (nbMat == 4) {
@@ -610,7 +612,7 @@ __device__ inline void stmatrix(LdGrain* row, Vec<uint32_t, nbMat> const& data) 
 }
 
 template <bool transpose>
-__device__ inline void stmatrix_4x(Warp const& warp, LdGrain* row, Vec<uint32_t, 4> const& data) {
+__device__ inline void stmatrix_4x(const Warp& warp, LdGrain* row, const Vec<uint32_t, 4>& data) {
   stmatrix<transpose, 4>(row, data);
 }
 
@@ -668,11 +670,48 @@ __device__ __host__ inline void assertClose([[maybe_unused]] half a, [[maybe_unu
   assertClose(__half2float(a), __half2float(b), threshold);
 }
 
+// Converts four packed signed int8 values into four half values without using I2F.
+//
+// A half whose bit pattern is 0x64XX is exactly 1024 + XX: the exponent field of 0x6400
+// selects 2^10, where the mantissa ULP is 1, so the low 8 mantissa bits hold the byte
+// verbatim. Splicing a byte in with prmt and subtracting a magic constant therefore
+// performs the conversion using only full-rate integer/half2 ALU instructions. The
+// generic path instead costs one quarter-rate I2F per element plus a sign-extension
+// sequence and a repack, which is the bulk of the int8-vs-fp8 gap in this kernel.
+//
+// Source bytes are biased first (XOR 0x80 maps two's-complement s to unsigned s + 128),
+// so the spliced value is 1152 + s and the constant to subtract is half(1152) == 0x6480.
+// 1152 + s lies in [1024, 1279] and the result s lies in [-128, 127]; both are exactly
+// representable in half, so this is bit-identical to the I2F path.
+//
+// selector0 / selector1 are prmt byte selectors choosing which source byte feeds the low
+// and high half of each output word, which lets callers fold a byte permutation in.
+template <uint32_t selector0, uint32_t selector1>
+__device__ inline Vec<uint32_t, 2> cvtS8x4ToF16x4(uint32_t i8data) {
+  static constexpr uint32_t kSignFlip = 0x80808080U;  // two's complement -> biased unsigned
+  static constexpr uint32_t kExpBytes = 0x64646464U;  // half exponent byte for 1024.0
+  static constexpr uint32_t kMagic = 0x64806480U;     // half2(1152.0, 1152.0)
+  uint32_t const biased = i8data ^ kSignFlip;
+  Vec<uint32_t, 2> ret;
+  asm("prmt.b32 %0, %1, %2, %3;\n" : "=r"(ret.data[0]) : "r"(biased), "n"(kExpBytes), "n"(selector0));
+  asm("prmt.b32 %0, %1, %2, %3;\n" : "=r"(ret.data[1]) : "r"(biased), "n"(kExpBytes), "n"(selector1));
+  // kMagic must be a register operand: f16x2 immediates are not encodable.
+  asm("sub.f16x2 %0, %1, %2;\n" : "=r"(ret.data[0]) : "r"(ret.data[0]), "r"(kMagic));
+  asm("sub.f16x2 %0, %1, %2;\n" : "=r"(ret.data[1]) : "r"(ret.data[1]), "r"(kMagic));
+  return ret;
+}
+
 template <typename InputElem, typename CacheElem>
 __device__ inline Vec<uint32_t, 2> convertKCacheWordToF16(uint32_t i8data) {
   static_assert(mha::is_same_v<InputElem, half> || mha::is_same_v<InputElem, __nv_bfloat16>, "not implemented");
   static_assert(sizeof(CacheElem) == 1);
   Vec<uint32_t, 2> ret;
+#if (defined __CUDA_ARCH__)
+  if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, int8_t>) {
+    // dst[i] = src[i], so byte i of the input feeds output half i.
+    return cvtS8x4ToF16x4<0x5150, 0x5352>(i8data);
+  }
+#endif
 #if (defined __CUDA_ARCH__) && (__CUDA_ARCH__ >= 890)
   if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, __nv_fp8_e4m3>) {
     uint16_t (&src)[2] = reinterpret_cast<uint16_t (&)[2]>(i8data);
@@ -686,7 +725,7 @@ __device__ inline Vec<uint32_t, 2> convertKCacheWordToF16(uint32_t i8data) {
     return ret;
   }
 #endif
-  CacheElem const(&src)[4] = reinterpret_cast<CacheElem(&)[4]>(i8data);
+  const CacheElem(&src)[4] = reinterpret_cast<CacheElem(&)[4]>(i8data);
   InputElem(&dst)[4] = reinterpret_cast<InputElem(&)[4]>(ret);
   XQA_UNROLL
   for (uint32_t i = 0; i < 4; i++) {
@@ -700,6 +739,13 @@ __device__ inline Vec<uint32_t, 2> convertVCacheWordToF16(uint32_t i8data) {
   static_assert(mha::is_same_v<InputElem, half> || mha::is_same_v<InputElem, __nv_bfloat16>, "not implemented");
   static_assert(sizeof(CacheElem) == 1);
   Vec<uint32_t, 2> ret;
+#if (defined __CUDA_ARCH__)
+  if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, int8_t>) {
+    // dst[i][j] = src[j][i], i.e. the 2x2 byte transpose {b0,b1,b2,b3} -> {b0,b2,b1,b3}.
+    // Folded into the prmt selectors, so it costs nothing extra here.
+    return cvtS8x4ToF16x4<0x5250, 0x5351>(i8data);
+  }
+#endif
 #if (defined __CUDA_ARCH__) && (__CUDA_ARCH__ >= 890)
   if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, __nv_fp8_e4m3>) {
     uint32_t (&dst)[2] = reinterpret_cast<uint32_t (&)[2]>(ret);
@@ -719,7 +765,7 @@ __device__ inline Vec<uint32_t, 2> convertVCacheWordToF16(uint32_t i8data) {
     return ret;
   }
 #endif
-  CacheElem const(&src)[2][2] = reinterpret_cast<CacheElem(&)[2][2]>(i8data);
+  const CacheElem(&src)[2][2] = reinterpret_cast<CacheElem(&)[2][2]>(i8data);
   InputElem(&dst)[2][2] = reinterpret_cast<InputElem(&)[2][2]>(ret);
   XQA_UNROLL
   for (uint32_t i = 0; i < 2; i++) {
@@ -743,7 +789,7 @@ static_assert(sizeof(PermuteOrder) == 2);
 
 __device__ inline uint32_t prmt(uint32_t a, uint32_t b, PermuteOrder order) {
   uint32_t d;
-  uint32_t const c = reinterpret_cast<uint16_t const&>(order);
+  const uint32_t c = reinterpret_cast<const uint16_t&>(order);
   asm("prmt.b32 %0, %1, %2, %3;\n" : "=r"(d) : "r"(a), "r"(b), "r"(c));
   return d;
 }
@@ -851,7 +897,7 @@ struct BarWaiter {
   }
 
   __device__ inline bool testWait() {
-    bool const parity = toParity<nbBufs>(idx);
+    const bool parity = toParity<nbBufs>(idx);
     skipBarWait = bar().produced.test_wait_parity(parity);
     return skipBarWait;
   }
@@ -881,8 +927,8 @@ class Timer {
     reset();
   }
 
-  __device__ inline void print(char const* name = "unnamed", bool reset = false) {
-    auto const toc = clock32();
+  __device__ inline void print(const char* name = "unnamed", bool reset = false) {
+    const auto toc = clock32();
     printf("%s: %u (block={%u, %u, %u})\n", name, toc - mTic, blockIdx.x, blockIdx.y, blockIdx.z);
     if (reset) {
       this->reset();

@@ -18,6 +18,12 @@ pub enum OrtError {
     /// For errors with libloading
     #[error("Failed to load or call onnxruntime library {0}")]
     Library(#[from] libloading::Error),
+    /// The loaded ONNX Runtime library does not provide the C API version used by these bindings.
+    #[error("Loaded ONNX Runtime does not support C API version {requested}")]
+    UnsupportedApiVersion {
+        /// C API version requested by the generated bindings.
+        requested: u32,
+    },
     /// The C API can message to the caller using a C `char *` which needs to be converted
     /// to Rust's `String`. This operation can fail.
     #[error("Failed to construct String")]
@@ -80,6 +86,21 @@ pub enum OrtError {
     /// Error occurred when extracting data from an ONNXRuntime tensor into an C array to be used as an `ndarray::ArrayView`
     #[error("Failed to get tensor data: {0}")]
     GetTensorMutableData(OrtApiError),
+    /// Error occurred when getting the total byte length of a string tensor
+    #[error("Failed to get string tensor data length: {0}")]
+    GetStringTensorDataLength(OrtApiError),
+    /// Error occurred when extracting string tensor content
+    #[error("Failed to get string tensor content: {0}")]
+    GetStringTensorContent(OrtApiError),
+    /// String tensors must use the dedicated string extraction APIs
+    #[error("String tensors cannot be accessed through GetTensorMutableData")]
+    StringTensorMutableData,
+    /// String tensor offsets did not describe the returned content buffer
+    #[error("String tensor content contains invalid offsets")]
+    InvalidStringTensorOffsets,
+    /// String tensor content was not valid UTF-8
+    #[error("String tensor content is not valid UTF-8: {0}")]
+    StringTensorUtf8(#[from] std::string::FromUtf8Error),
 
     /// Error occurred when downloading a pre-trained ONNX model from the [ONNX Model Zoo](https://github.com/onnx/models)
     #[error("Failed to download ONNX model: {0}")]
@@ -115,9 +136,27 @@ pub enum OrtError {
     /// The runtime type was undefined
     #[error("Undefined Tensor Element Type")]
     UndefinedTensorElementType,
+    /// The runtime tensor element type is not supported by this binding
+    #[error("Unsupported Tensor Element Type: {0}")]
+    UnsupportedTensorElementType(i64),
     /// Error occurred when checking if ONNXRuntime tensor was properly initialized
     #[error("Failed to check if tensor")]
     IsTensorCheck,
+}
+
+/// Error returned by an EPContext data read callback.
+///
+/// Callback errors are returned to ONNX Runtime and stop session initialization. They never
+/// cause ONNX Runtime to fall back to reading the requested data from disk.
+#[non_exhaustive]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum EpContextDataCallbackError {
+    /// The requested data name or callback input is invalid.
+    #[error("Invalid EPContext data request: {0}")]
+    InvalidArgument(String),
+    /// The callback could not provide the requested data.
+    #[error("Failed to read EPContext data: {0}")]
+    Fail(String),
 }
 
 /// Error used when dimensions of input (from model and from inference call)
@@ -238,6 +277,26 @@ pub(crate) fn status_to_result(
 ) -> std::result::Result<(), OrtApiError> {
     let status_wrapper: OrtStatusWrapper = status.into();
     status_wrapper.into()
+}
+
+pub(crate) fn status_to_result_with_api(
+    status: *const sys::OrtStatus,
+    api: *const sys::OrtApi,
+) -> std::result::Result<(), OrtApiError> {
+    if status.is_null() {
+        return Ok(());
+    }
+
+    let raw = unsafe { (*api).GetErrorMessage.unwrap()(status) };
+    let result = match char_p_to_string(raw) {
+        Ok(message) => Err(OrtApiError::Msg(message)),
+        Err(OrtError::StringConversion(OrtApiError::IntoStringError(error))) => {
+            Err(OrtApiError::IntoStringError(error))
+        }
+        Err(error) => Err(OrtApiError::Msg(error.to_string())),
+    };
+    unsafe { (*api).ReleaseStatus.unwrap()(status as *mut sys::OrtStatus) };
+    result
 }
 
 /// A wrapper around a function on `OrtApi` that maps the status code into [`OrtApiError`]

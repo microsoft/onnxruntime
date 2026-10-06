@@ -4,6 +4,7 @@
 #include "core/framework/error_code_helper.h"
 
 #include <cassert>
+#include <cstdio>
 #include <memory>
 
 #include "core/session/onnxruntime_c_api.h"
@@ -58,6 +59,13 @@ _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtEr
 }
 
 namespace onnxruntime {
+
+OrtStatus* CreateUnknownExceptionStatus(const char* function_name) noexcept {
+  // The last-resort handler must not allocate a diagnostic string before CreateStatus.
+  char message[256];
+  const int length = std::snprintf(message, sizeof(message), "Unknown exception in %s", function_name);
+  return OrtApis::CreateStatus(ORT_FAIL, length < 0 ? "Unknown Exception" : message);
+}
 
 namespace {
 

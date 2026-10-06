@@ -113,6 +113,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
   const std::string b_type = is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type) : TypeSnippet(inner_element_size_x, data_type);
   const std::string apply_activation = GetActivationSnippet(activation, res_type, data_type);
   std::stringstream user_code;
+  // Emit activation helpers before mm_write uses them.
+  user_code << GetActivationDeclaration(activation, res_type, data_type);
   user_code << "fn mm_readA(batch : i32, row : i32, colIn : i32) -> " << a_type << " {\n"
             << (is_channels_last_ ? sample_x.str() : sample_w.str())
             << "}\n"
@@ -219,7 +221,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     return oss.str();
   };
 
-  program.CacheHint(activation.ToString(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_b_outer, tile_inner, static_cast<uint32_t>(components)}))
+  program.CacheHint(activation.CacheKey(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_b_outer, tile_inner, static_cast<uint32_t>(components)}))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
@@ -232,6 +234,8 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
                             {dispatch[0]},
                             {dispatch[1]},
                             {dispatch[2]}});
+  // Activation uniforms must remain last because definitions and values are matched by index.
+  AppendActivationUniformsData(activation, program);
 
   return program;
 }

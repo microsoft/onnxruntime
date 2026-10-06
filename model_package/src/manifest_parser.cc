@@ -4,12 +4,15 @@
 #include "manifest_parser.h"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 
 #include "path_resolver.h"
@@ -55,7 +58,7 @@ constexpr const char* kDeviceKey = "device";
 constexpr const char* kCompatibilityStringKey = "compatibility_string";
 constexpr const char* kExecutorInfoKey = "executor_info";
 
-static const std::set<std::string> kManifestKnownKeys = {
+constexpr std::array<std::string_view, 8> kManifestKnownKeys = {
     kSchemaVersionKey,
     kPackageNameKey,
     kPackageVersionKey,
@@ -66,13 +69,13 @@ static const std::set<std::string> kManifestKnownKeys = {
     kAdditionalMetadataKey,
 };
 
-static const std::set<std::string> kComponentKnownKeys = {
+constexpr std::array<std::string_view, 3> kComponentKnownKeys = {
     kComponentNameKey,
     kVariantsKey,
     kAdditionalMetadataKey,
 };
 
-static const std::set<std::string> kVariantKnownKeys = {
+constexpr std::array<std::string_view, 6> kVariantKnownKeys = {
     kVariantDirectoryKey,
     kEpKey,
     kDeviceKey,
@@ -84,8 +87,9 @@ static const std::set<std::string> kVariantKnownKeys = {
 ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
   std::ifstream f(path, std::ios::binary);
   if (!f) {
+    const std::error_code error_code(errno, std::generic_category());
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "Cannot open file: '" + path.string() + "': " + std::strerror(errno));
+                      "Cannot open file: '" + path.string() + "': " + error_code.message());
   }
   std::ostringstream buf;
   buf << f.rdbuf();
@@ -96,11 +100,10 @@ ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
 ModelPackageStatus* ParseJsonFile(const fs::path& path, ordered_json* out) {
   std::string contents;
   if (auto* s = ReadFileToString(path, &contents)) return s;
-  try {
-    *out = ordered_json::parse(contents);
-  } catch (const ordered_json::parse_error& e) {
+  *out = ordered_json::parse(contents, nullptr, false);
+  if (out->is_discarded()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "Failed to parse JSON at '" + path.string() + "': " + e.what());
+                      "Failed to parse JSON at '" + path.string() + "'.");
   }
   return nullptr;
 }
@@ -112,13 +115,14 @@ ModelPackageStatus* ExpectObject(const ordered_json& j, const std::string& where
   return nullptr;
 }
 
+template <size_t N>
 ModelPackageStatus* CheckUnknownFields(const ordered_json& obj,
-                                       const std::set<std::string>& known,
+                                       const std::array<std::string_view, N>& known,
                                        const std::string& where,
                                        bool strict) {
   if (!strict) return nullptr;
   for (auto it = obj.begin(); it != obj.end(); ++it) {
-    if (known.find(it.key()) == known.end()) {
+    if (std::find(known.begin(), known.end(), std::string_view{it.key()}) == known.end()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         where + ": unknown field '" + it.key() + "'.");
     }
@@ -446,12 +450,8 @@ ModelPackageStatus* ParseSchemaVersion(ModelPackage* pkg) {
     const std::string minor_str = (dot == std::string::npos) ? std::string("0") : sv.substr(dot + 1);
     auto parse_part = [](const std::string& s, int64_t* out) -> bool {
       if (s.empty() || s.find_first_not_of("0123456789") != std::string::npos) return false;
-      try {
-        *out = std::stoll(s);
-      } catch (const std::exception&) {
-        return false;
-      }
-      return true;
+      const auto [end, error] = std::from_chars(s.data(), s.data() + s.size(), *out);
+      return error == std::errc{} && end == s.data() + s.size();
     };
     if (dot != std::string::npos && minor_str.find('.') != std::string::npos) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
@@ -624,13 +624,10 @@ ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
     std::ostringstream buf;
     buf << f.rdbuf();
     std::string contents = buf.str();
-    try {
-      auto _ = ordered_json::parse(contents);
-      (void)_;
-    } catch (const std::exception& e) {
+    if (ordered_json::parse(contents, nullptr, false).is_discarded()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         std::string("Failed to parse executor_info JSON at '") +
-                            resolved.string() + "': " + e.what());
+                            resolved.string() + "'.");
     }
     *dst_json = std::move(contents);
     return nullptr;
