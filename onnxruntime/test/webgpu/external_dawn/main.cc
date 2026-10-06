@@ -170,8 +170,9 @@ int main(int argc, char* argv[]) {
       if (!no_proc_table) {
         provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<uintptr_t>(&dawn::native::GetProcs()));
       }
+      const int custom_id = cache_pass == 2 ? std::numeric_limits<int16_t>::max() : static_cast<int>(cache_pass + 1);
       if (host_device_mode) {
-        provider_options["deviceId"] = std::to_string(cache_pass + 1);
+        provider_options["deviceId"] = std::to_string(custom_id);
         provider_options["webgpuInstance"] = std::to_string(reinterpret_cast<uintptr_t>(host_instance->Get()));
         provider_options["webgpuDevice"] = std::to_string(reinterpret_cast<uintptr_t>(host_device.Get()));
         provider_options["preserveDevice"] = "1";
@@ -235,7 +236,6 @@ int main(int argc, char* argv[]) {
           default_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
           append_provider(default_options, {{"dawnProcTable", provider_options.at("dawnProcTable")}});
           Ort::Session default_session{env, MODEL_DATA, sizeof(MODEL_DATA), default_options};
-          const int custom_id = static_cast<int>(cache_pass + 1);
           Ort::MemoryInfo default_memory{"WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault};
           Ort::MemoryInfo custom_memory{"WebGPU_Buffer", OrtDeviceAllocator, custom_id, OrtMemTypeDefault};
           Ort::Allocator default_allocator{default_session, default_memory};

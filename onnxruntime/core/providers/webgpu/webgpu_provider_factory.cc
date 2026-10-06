@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <limits>
 #include <mutex>
 
 #include "core/framework/error_code_helper.h"
+#include "core/framework/ortdevice.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
@@ -179,8 +181,12 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
-    ORT_ENFORCE(std::errc{} ==
-                std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(), config.context_id).ec);
+    const auto result = std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(),
+                                        config.context_id);
+    ORT_ENFORCE(result.ec == std::errc{} && result.ptr == context_id_str.data() + context_id_str.size() &&
+                    config.context_id >= 0 && config.context_id <= std::numeric_limits<OrtDevice::DeviceId>::max(),
+                "Invalid deviceId value: ", context_id_str, ". Must be an integer in the range 0 to ",
+                std::numeric_limits<OrtDevice::DeviceId>::max(), ".");
   }
 
   if (std::string adapter_index_str;
