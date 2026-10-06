@@ -39,14 +39,19 @@ class Env : public std::enable_shared_from_this<Env> {
     ortEnv_ = std::make_shared<Ort::Env>(logLevel, logid);
   }
 
-  inline void setTensorConstructor(
-      std::shared_ptr<facebook::jsi::WeakObject> tensorConstructor) {
-    tensorConstructor_ = tensorConstructor;
+  // Keep JS values in the runtime, not in an environment retained by native module teardown.
+  inline void setTensorConstructor(facebook::jsi::Runtime& runtime,
+                                   const facebook::jsi::Object& tensorConstructor) {
+    runtime.global()
+        .getPropertyAsObject(runtime, "OrtApi")
+        .setProperty(runtime, "__tensorConstructor", tensorConstructor);
   }
 
   inline facebook::jsi::Value
   getTensorConstructor(facebook::jsi::Runtime& runtime) const {
-    return tensorConstructor_->lock(runtime);
+    return runtime.global()
+        .getPropertyAsObject(runtime, "OrtApi")
+        .getProperty(runtime, "__tensorConstructor");
   }
 
   inline Ort::Env& getOrtEnv() const { return *ortEnv_; }
@@ -115,7 +120,6 @@ class Env : public std::enable_shared_from_this<Env> {
   std::shared_ptr<facebook::react::CallInvoker> jsInvoker_;
   std::vector<std::weak_ptr<EnvTeardownListener>> teardownListeners_;
   const std::thread::id jsThreadId_;
-  std::shared_ptr<facebook::jsi::WeakObject> tensorConstructor_;
   std::shared_ptr<Ort::Env> ortEnv_;
 };
 

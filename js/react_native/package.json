@@ -88,7 +88,7 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "prepare": "bob build",
-    "bootstrap-no-pods": "npm run test:cpp && npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e",
+    "bootstrap-no-pods": "npm run test:cpp && npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e && npm --prefix e2e run test:unit",
     "bootstrap": "npm run bootstrap-no-pods && npm run pods",
     "test": "jest",
     "test:cpp": "cmake -S cpp/test -B ../../build/react-native-cpp-test && cmake --build ../../build/react-native-cpp-test --config Release && ctest --test-dir ../../build/react-native-cpp-test -C Release --output-on-failure",

@@ -7,13 +7,15 @@ import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { Buffer } from 'buffer';
 import RNFS from 'react-native-fs';
 
-const ortApi = globalThis.OrtApi as typeof globalThis.OrtApi & {
-  testEpContextDataReadCallback(
-    callback: (name: string) => unknown,
-    maxDataSize: number,
-    name: string,
-  ): Promise<Uint8Array>;
-};
+// Metro's inline requires can evaluate this module before the native bindings are installed.
+const getOrtApi = () =>
+  globalThis.OrtApi as typeof globalThis.OrtApi & {
+    testEpContextDataReadCallback(
+      callback: (name: string) => unknown,
+      maxDataSize: number,
+      name: string,
+    ): Promise<Uint8Array>;
+  };
 
 interface TestResult {
   name: string;
@@ -170,6 +172,9 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
   };
 
   updateTestResult = (index: number, update: Partial<TestResult>) => {
+    if (update.status === 'error') {
+      console.error(`EPContext data read check "${CHECK_NAMES[index]}" failed: ${update.message}`);
+    }
     this.setState((prevState) => {
       const newResults = [...prevState.testResults];
       newResults[index] = { ...newResults[index], ...update };
@@ -178,7 +183,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
   };
 
   // Asserts that creating a session with the given options fails during option validation.
-  expectRejected = async (bytes: Buffer, index: number, options: unknown): Promise<void> => {
+  expectRejected = async (bytes: Uint8Array, index: number, options: unknown): Promise<void> => {
     this.updateTestResult(index, { status: 'running' });
     let session: InferenceSession | undefined;
     try {
@@ -200,7 +205,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     });
   };
 
-  runValidOptionCheck = async (bytes: Buffer, index: number): Promise<void> => {
+  runValidOptionCheck = async (bytes: Uint8Array, index: number): Promise<void> => {
     this.updateTestResult(index, { status: 'running' });
     try {
       let callbackCalls = 0;
@@ -242,7 +247,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     }
   };
 
-  runLifecycleCheck = async (bytes: Buffer, index: number): Promise<void> => {
+  runLifecycleCheck = async (bytes: Uint8Array, index: number): Promise<void> => {
     this.updateTestResult(index, { status: 'running' });
     try {
       for (let i = 0; i < 5; i++) {
@@ -269,7 +274,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
 
   // A session that fails to construct must release the callback state right away, and must leave a
   // subsequent load unaffected.
-  runFailedLoadCheck = async (bytes: Buffer, index: number): Promise<void> => {
+  runFailedLoadCheck = async (bytes: Uint8Array, index: number): Promise<void> => {
     this.updateTestResult(index, { status: 'running' });
     try {
       let callbackCalls = 0;
@@ -323,7 +328,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     this.updateTestResult(index, { status: 'running' });
     try {
       const expectedName = 'context/data.bin';
-      const result = await ortApi.testEpContextDataReadCallback(
+      const result = await getOrtApi().testEpContextDataReadCallback(
         (name) => {
           if (name !== expectedName) {
             throw new Error(`Unexpected callback name: ${name}`);
@@ -361,7 +366,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       ]) {
         let rejected = false;
         try {
-          await ortApi.testEpContextDataReadCallback(callback, 1, 'failure.bin');
+          await getOrtApi().testEpContextDataReadCallback(callback, 1, 'failure.bin');
         } catch {
           rejected = true;
         }
@@ -369,11 +374,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
           throw new Error('Invalid callback result unexpectedly succeeded');
         }
       }
-      const empty = await ortApi.testEpContextDataReadCallback(
-        () => new Uint8Array(0),
-        1,
-        'empty.bin',
-      );
+      const empty = await getOrtApi().testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');
       if (empty.length !== 0) {
         throw new Error('Expected an empty callback result');
       }
@@ -401,7 +402,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
           wasAborted: boolean;
         };
       };
-      const pendingRead = ortApi.testEpContextDataReadCallback(
+      const pendingRead = getOrtApi().testEpContextDataReadCallback(
         (name) => {
           if (name !== 'cancel.bin') {
             throw new Error(`Unexpected callback name: ${name}`);
@@ -416,7 +417,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
 
       const deadline = Date.now() + 5000;
       while (!pendingRead.testWorker.isFinished && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
       }
       if (!pendingRead.testWorker.isFinished) {
         pendingRead.testWorker.forceInvalidate();
@@ -473,6 +474,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       await this.runCallbackBridgeCancellationCheck(13);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      console.error('Failed to run EPContext data read checks:', message);
       this.setState((prevState) => ({
         testResults: prevState.testResults.map((result) =>
           result.status === 'pending' || result.status === 'running' ? { ...result, status: 'error', message } : result,

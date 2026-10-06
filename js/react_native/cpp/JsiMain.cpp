@@ -45,8 +45,7 @@ install(Runtime& runtime,
                   break;
               }
             }
-            env->setTensorConstructor(std::make_shared<WeakObject>(
-                runtime, arguments[1].asObject(runtime)));
+            env->setTensorConstructor(runtime, arguments[1].asObject(runtime));
             env->initOrtEnv(logLevel, "onnxruntime-react-native-jsi");
             return Value::undefined();
           } catch (const std::exception& e) {
