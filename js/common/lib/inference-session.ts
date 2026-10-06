@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
+import type { LoraAdapter } from './lora-adapter.js';
 import { OnnxModelOptions } from './onnx-model.js';
 import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
 import type { Tensor } from './tensor.js';
@@ -568,6 +569,19 @@ export declare namespace InferenceSession {
      * ```
      */
     extra?: Record<string, unknown>;
+
+    /**
+     * A list of LoRA adapters to activate for this run. See `LoraAdapter`.
+     *
+     * The adapters must be created by the same backend as the session. Parameters of different adapters that are
+     * active at the same time must not overlap.
+     *
+     * This setting is available only in WebAssembly backend. It is not supported yet in proxy mode
+     * (`env.wasm.proxy`), or for a session that uses IO binding. IO binding is used when an output is preferred to be
+     * on GPU (see `SessionOptions.preferredOutputLocation`), when graph capture is enabled, and in some cases with the
+     * WebNN execution provider.
+     */
+    activeLoraAdapters?: readonly LoraAdapter[];
   }
 
   // #endregion
