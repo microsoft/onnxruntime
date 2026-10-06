@@ -90,6 +90,8 @@ variables:
     value: rc
   ${{ else }}:
     value: dev
+- name: CudaVersion
+  value: 13.0
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -147,7 +149,7 @@ extends:
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
-        CudaVersion: ${{ parameters.CudaVersion }}
+        CudaVersion: ${{ variables.CudaVersion }}
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
         win_trt_home: ${{ variables.win_trt_home }}
