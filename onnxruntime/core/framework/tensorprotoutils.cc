@@ -1960,6 +1960,10 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
                                           const IExternalDataLoader& ext_data_loader,
                                           const AllocatorPtr& allocator,
                                           Tensor& tensor) {
+#if !defined(ENABLE_D3D12_FILE_LOADING)
+  ORT_UNUSED_PARAMETER(allocator);
+#endif
+
   ORT_ENFORCE(HasExternalData(tensor_proto));
   // Defense-in-depth path validation for callers reaching this function outside Graph::Resolve.
   // In-memory markers are passed through; rejected explicitly below as unsupported for this path.
