@@ -13,9 +13,16 @@
 #
 # The script sweeps SVE vector lengths (128/256/512/1024/2048 bits) because both
 # bugs fixed in #33040 were lane-position dependent. The vector length is set via
-# prctl(PR_SVE_SET_VL) from a small Python wrapper that itself runs under QEMU,
-# so the prctl is emulated for the guest and sets the vCPU's vector length before
-# exec'ing the test binary (the setting survives execve).
+# QEMU's `sve-default-vector-length` CPU property (in bytes), which sets the
+# emulated vCPU's default VL for the test process from startup.
+#
+# NOTE: an earlier revision set the VL via prctl() from a Python wrapper and then
+# os.execv()'d the test binary. That is broken: in QEMU user-mode the guest
+# execve is passed straight to the host kernel ("at the point of execve the
+# process leaves QEMU's control" -- linux-user/syscall.c), so the test binary
+# ran natively on the host, the emulated SVE state was lost, and the SVE tests
+# silently skipped. Never exec from inside the emulated process; pass the VL
+# to QEMU directly instead.
 #
 # Env overrides (mainly for local testing):
 #   GTEST_FILTER: gtest filter to use (default: the merged CI filter from #33054)
@@ -51,42 +58,6 @@ if ! command -v qemu-aarch64 >/dev/null 2>&1; then
   exit 1
 fi
 
-# Small helper (written to a temp file below): set the SVE vector length for the
-# emulated CPU via prctl, verify it took effect, then exec the test binary.
-# IMPORTANT: this script must itself run under `qemu-aarch64` so that the prctl
-# is emulated for the guest; a host-side prctl would fail on machines without
-# SVE hardware (which is the whole reason we are emulating).
-read -r -d '' VL_WRAPPER_PY <<'PYEOF' || true
-import ctypes
-import os
-import sys
-
-PR_SVE_SET_VL = 50
-PR_SVE_GET_VL = 51
-PR_SVE_VL_INHERIT = 1 << 17
-
-libc = ctypes.CDLL("libc.so.6", use_errno=True)
-vl_bits = int(sys.argv[1])
-if libc.prctl(PR_SVE_SET_VL, PR_SVE_VL_INHERIT | (vl_bits // 8)) == -1:
-    raise OSError(ctypes.get_errno(), "prctl(PR_SVE_SET_VL) failed for %d bits" % vl_bits)
-actual = libc.prctl(PR_SVE_GET_VL, 0)
-actual_bits = (actual & 0xFFFF) * 8
-if actual_bits != vl_bits:
-    raise OSError("prctl(PR_SVE_GET_VL) returned %d bits, requested %d bits" % (actual_bits, vl_bits))
-print("SVE vector length: %d bits (requested %d)" % (actual_bits, vl_bits), flush=True)
-os.execv(sys.argv[2], sys.argv[2:])
-PYEOF
-
-WRAPPER_PY="$(mktemp /tmp/sve_vl_wrapper_XXXXXX.py)"
-printf '%s\n' "${VL_WRAPPER_PY}" > "${WRAPPER_PY}"
-trap 'rm -f "${WRAPPER_PY}"' EXIT
-
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "ERROR: python3 not found (needed for the prctl wrapper)" >&2
-  exit 1
-fi
-PYTHON3="$(command -v python3)"
-
 echo "Running MLAS tests under qemu-aarch64 -cpu max (SVE enabled)"
 echo "Test binary: ${TEST_BIN}"
 echo "GTest filter: ${GTEST_FILTER}"
@@ -94,9 +65,23 @@ echo "GTest filter: ${GTEST_FILTER}"
 FAILED=0
 for VL in ${SVE_VLS}; do
   echo "=== SVE vector length: ${VL} bits ==="
-  if ! qemu-aarch64 -cpu max "${PYTHON3}" "${WRAPPER_PY}" "${VL}" \
-      "${TEST_BIN}" --gtest_filter="${GTEST_FILTER}"; then
+  # sve-default-vector-length takes bytes. The test binary is launched directly
+  # under QEMU (no exec from inside the emulated process), so it stays emulated
+  # for its whole lifetime and the VL applies. QEMU fails loudly on an unknown
+  # property, so an unsupported qemu-user version errors here instead of
+  # silently testing the wrong thing.
+  if ! OUTPUT=$(qemu-aarch64 -cpu max,sve-default-vector-length=$((VL / 8)) \
+      "${TEST_BIN}" --gtest_filter="${GTEST_FILTER}" 2>&1); then
+    echo "${OUTPUT}" >&2
     echo "ERROR: MLAS tests FAILED at SVE VL=${VL} bits" >&2
+    FAILED=1
+    continue
+  fi
+  echo "${OUTPUT}"
+  # Guard against silent skips: the whole point of this step is executing SVE
+  # tests, so fail loudly if no tests actually ran.
+  if ! grep -qE "[1-9][0-9]* tests? from [1-9][0-9]* test suites? ran" <<<"${OUTPUT}"; then
+    echo "ERROR: no tests ran at SVE VL=${VL} bits (all skipped?) -- refusing silent green" >&2
     FAILED=1
   fi
 done
