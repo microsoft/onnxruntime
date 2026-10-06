@@ -11,6 +11,25 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(ErrorCodeTest, CreateStatusPreservesNullAndEmptyMessages) {
+  for (const char* message : {static_cast<const char*>(nullptr), ""}) {
+    OrtStatus* status = OrtApis::CreateStatus(ORT_FAIL, message);
+    ASSERT_NE(status, nullptr);
+    EXPECT_EQ(OrtApis::GetErrorCode(status), ORT_FAIL);
+    EXPECT_STREQ(OrtApis::GetErrorMessage(status), "");
+    OrtApis::ReleaseStatus(status);
+  }
+}
+
+TEST(ErrorCodeTest, CreateStatusPreservesMessageLimit) {
+  const std::string message(kMaxStrLen + 1, 'x');
+  OrtStatus* status = OrtApis::CreateStatus(ORT_FAIL, message.c_str());
+  ASSERT_NE(status, nullptr);
+  EXPECT_EQ(OrtApis::GetErrorCode(status), ORT_FAIL);
+  EXPECT_EQ(std::strlen(OrtApis::GetErrorMessage(status)), kMaxStrLen);
+  OrtApis::ReleaseStatus(status);
+}
+
 TEST(ErrorCodeTest, UnknownExceptionIncludesFunctionName) {
   OrtStatus* status = CreateUnknownExceptionStatus("TestFunction");
   ASSERT_NE(status, nullptr);
