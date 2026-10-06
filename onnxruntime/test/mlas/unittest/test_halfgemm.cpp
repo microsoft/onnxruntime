@@ -1206,6 +1206,64 @@ TEST(HalfGemmKleidiAIPath, TransposedBRuntimePacking) {
 #endif
 }
 
+TEST(HalfGemmKleidiAIPath, TransposedBBackendNativePacking) {
+#if defined(MLAS_TARGET_ARM64)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArm_SME() && !cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "Transposed-B HalfGemm requires an SME or SME2 backend.";
+  }
+
+  constexpr size_t M = 2;
+  constexpr size_t N = 3;
+  constexpr size_t K = 4;
+  constexpr size_t ldb = K + 1;
+  std::vector<MLFp16> a(M * K);
+  std::vector<MLFp16> b(N * ldb, MLFp16(-1.0f));
+  std::vector<MLFp16> c(M * N, MLFp16(0.0f));
+
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t k = 0; k < K; ++k) {
+      a[m * K + k] = MLFp16(static_cast<float>(m * K + k + 1));
+    }
+  }
+  for (size_t n = 0; n < N; ++n) {
+    for (size_t k = 0; k < K; ++k) {
+      b[n * ldb + k] = MLFp16(static_cast<float>((n + 1) * (k + 1)));
+    }
+  }
+
+  const size_t packed_b_size =
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K);
+  ASSERT_NE(packed_b_size, size_t{0});
+  std::vector<std::byte> packed_b(packed_b_size);
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(b.data()), ldb, packed_b.data()));
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = a.data();
+  data.B = packed_b.data();
+  data.C = reinterpret_cast<MLAS_FP16*>(c.data());
+  data.lda = K;
+  data.ldb = 0;
+  data.ldc = N;
+  data.BIsBackendNativePacked = true;
+
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t n = 0; n < N; ++n) {
+      float expected = 0.0f;
+      for (size_t k = 0; k < K; ++k) {
+        expected += float(a[m * K + k]) * float(b[n * ldb + k]);
+      }
+      EXPECT_EQ(c[m * N + n], MLFp16(expected));
+    }
+  }
+#else
+  GTEST_SKIP() << "Transposed-B HalfGemm requires an ARM64 KleidiAI build.";
+#endif
+}
+
 TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithBiasIsRejected) {
   if (!MlasFp16AccelerationSupported()) {
     GTEST_SKIP();
