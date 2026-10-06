@@ -960,6 +960,32 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
     @parameterized.expand(
+        [(onnx_dtype, num_tokens, use_bias) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+         for num_tokens in (1, 6) for use_bias in (False, True)]
+    )
+    def test_nvfp4_offline_row_major_gemv_partial_k_blocks(self, onnx_dtype, num_tokens, use_bias):
+        shape = dict(
+            hidden_size=528,
+            inter_size=656,
+            num_experts=16,
+            top_k=10,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            use_bias=use_bias,
+            row_tile_size=2 if num_tokens > 1 else 0,
+            input_scale=0.1,
+        )
+        packed = self._run_nvfp4_moe_test(
+            **shape, gemv_mode="1", offline_prepacked=True, enable_cuda_graph=num_tokens == 1
+        )
+        legacy = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="0", offline_prepacked=True)
+        tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+        torch.testing.assert_close(packed, legacy, atol=tolerance, rtol=tolerance)
+        torch.testing.assert_close(packed, fallback, atol=tolerance, rtol=tolerance)
+
+    @parameterized.expand(
         [(onnx_dtype, disable_prepacking) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
          for disable_prepacking in (False, True)]
     )
