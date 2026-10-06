@@ -17,6 +17,7 @@
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/session/ort_env.h>
 #include <core/util/thread_utils.h>
+#include "test/util/include/telemetry_test_environment.h"
 
 #include <iostream>
 #include <unordered_map>
@@ -76,6 +77,7 @@ BENCHMARK(BM_ResolveGraph);
   } while (0);
 
 int main(int argc, char** argv) {
+  onnxruntime::test::SuppressTelemetryForTests();
   ::benchmark::Initialize(&argc, argv);
   if (::benchmark::ReportUnrecognizedArguments(argc, argv))
     return -1;

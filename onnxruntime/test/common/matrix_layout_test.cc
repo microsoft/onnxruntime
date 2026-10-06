@@ -21,6 +21,11 @@ constexpr bool PositionOperationsAreConstexpr() {
 }
 
 static_assert(PositionOperationsAreConstexpr());
+static_assert(make_Position(2, 3) + make_Position(4, 5) == make_Position(6, 8));
+static_assert(make_Position(4, 5) - make_Position(2, 3) == make_Position(2, 2));
+static_assert(make_Position(2, 3) * make_Position(4, 5) == make_Position(8, 15));
+static_assert(make_Position(8, 9) / make_Position(4, 3) == make_Position(2, 3));
+static_assert(make_Position(2, 3) != make_Position(3, 2));
 
 constexpr auto kPosition3D = make_Position(2, 3, 4);
 static_assert(decltype(kPosition3D)::kRank == 3);
@@ -28,8 +33,11 @@ static_assert(kPosition3D[0] == 2 && kPosition3D[1] == 3 && kPosition3D[2] == 4)
 static_assert(!std::is_constructible_v<Position<3>, Position<2>>);
 
 constexpr Position<2, int64_t> kWidePosition = make_Position<int64_t>(5, 7);
-constexpr Position<2> kConvertedPosition = kWidePosition;
+constexpr Position<2> kConvertedPosition{kWidePosition};
 static_assert(kConvertedPosition == make_Position(5, 7));
+static_assert(!std::is_convertible_v<Position<2, int64_t>, Position<2>>);
+static_assert(!std::is_convertible_v<Position<2, uint32_t>, Position<2>>);
+static_assert(std::is_convertible_v<Position<2>, Position<2, int64_t>>);
 
 using TestMatrixShape = MatrixShape<3, 4>;
 static_assert(TestMatrixShape::kCount == 12);

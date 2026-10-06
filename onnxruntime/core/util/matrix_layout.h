@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 #include <gsl/gsl>
@@ -71,9 +72,13 @@ struct Position {
   }
 
   template <typename I, typename L>
-  ORT_FORCEINLINE constexpr
+  ORT_FORCEINLINE constexpr explicit(
+      !std::is_integral_v<I> || !std::is_integral_v<Index> ||
+      std::numeric_limits<I>::digits > std::numeric_limits<Index>::digits ||
+      (std::is_signed_v<I> && std::is_unsigned_v<Index>))
   Position(Position<Rank_, I, L> const& other) {
     for (int i = 0; i < kRank; ++i) {
+      // Explicit narrowing conversions require caller-validated coordinate ranges.
       idx[i] = gsl::narrow_cast<Index>(other[i]);
     }
   }
@@ -205,7 +210,7 @@ template <
     int Column_  ///< columns of a matrix
     >
 struct MatrixShape {
-  static_assert(Row_ >= 0 && Column_ >= 0, "Matrix dimensions must not be negative.");
+  static_assert(Row_ > 0 && Column_ > 0, "Matrix dimensions must be positive.");
 
   static constexpr int kRow = Row_;              ///< rows of a matrix
   static constexpr int kColumn = Column_;        ///< columns of a matrix

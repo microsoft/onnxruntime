@@ -17,6 +17,7 @@ const getRequestData = (url, dir) => {
   let mimeType;
   if (
     pathname.startsWith('/test-wasm-path-override/') ||
+    pathname.startsWith('/test-data/') ||
     pathname.startsWith('/dist/') ||
     pathname.startsWith('/esm-loaders/')
   ) {
@@ -27,6 +28,8 @@ const getRequestData = (url, dir) => {
 
   if (filepath.endsWith('.wasm')) {
     mimeType = 'application/wasm';
+  } else if (filepath.endsWith('.jpg') || filepath.endsWith('.jpeg')) {
+    mimeType = 'image/jpeg';
   } else if (filepath.endsWith('.js') || filepath.endsWith('.mjs')) {
     mimeType = 'text/javascript';
   } else {
