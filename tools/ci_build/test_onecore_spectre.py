@@ -40,12 +40,14 @@ class OneCoreSpectreTest(unittest.TestCase):
         generic_spectre_dir = toolset_dir / "lib" / "spectre" / platform.lower()
         selected_platform = "ARM64" if platform == "ARM64EC" else platform
         spectre_onecore_dir = toolset_dir / "lib" / "spectre" / "onecore" / selected_platform
+        onecore_dir = toolset_dir / "lib" / "onecore" / platform
 
         source_dir.mkdir()
         compiler.parent.mkdir(parents=True)
         compiler.touch()
         generic_spectre_dir.mkdir(parents=True)
         spectre_onecore_dir.mkdir(parents=True)
+        onecore_dir.mkdir(parents=True)
         for library in _RUNTIME_LIBRARIES:
             if library != missing_library:
                 (spectre_onecore_dir / library).touch()
@@ -96,12 +98,18 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
         result, result_file, toolset_dir, output = self._configure(**kwargs)
         self.assertEqual(result.returncode, 0, output)
         link_directories = result_file.read_text(encoding="utf-8").split(";")
-        expected = (toolset_dir / expected_relative_path).as_posix()
-        generic_spectre_dir = (toolset_dir / "lib" / "spectre" / kwargs.get("platform", "x64").lower()).as_posix()
+        expected = toolset_dir / expected_relative_path
+        generic_spectre_dir = toolset_dir / "lib" / "spectre" / kwargs.get("platform", "x64").lower()
         self.assertEqual(len(link_directories), 2)
-        self.assertEqual(Path(link_directories[0]).as_posix(), expected)
-        self.assertEqual(Path(link_directories[1]).as_posix(), generic_spectre_dir)
-        self.assertIn(f"MSVC OneCore runtime library directory: {expected}", output)
+        self.assertTrue(Path(link_directories[0]).samefile(expected))
+        self.assertTrue(Path(link_directories[1]).samefile(generic_spectre_dir))
+        selected_lines = [
+            line.partition(": ")[2]
+            for line in output.splitlines()
+            if line.startswith("-- MSVC OneCore runtime library directory: ")
+        ]
+        self.assertEqual(len(selected_lines), 1)
+        self.assertTrue(Path(selected_lines[0]).samefile(expected))
 
     def _assert_override_skipped(self, **kwargs) -> None:
         result, result_file, _, output = self._configure(**kwargs)
@@ -128,6 +136,12 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
     def test_disabled_spectre_flag_preserves_existing_selection(self):
         self._assert_selected("lib/onecore/x64", cxx_flags="/Qspectre-")
 
+    def test_final_disabled_spectre_flag_preserves_existing_selection(self):
+        self._assert_selected("lib/onecore/x64", cxx_flags="/Qspectre /O2 /Qspectre-")
+
+    def test_final_enabled_spectre_flag_selects_spectre_libraries(self):
+        self._assert_selected("lib/spectre/onecore/x64", cxx_flags="/Qspectre- /O2 /Qspectre")
+
     def test_desktop_standard_libraries_skip_override(self):
         self._assert_override_skipped(standard_libraries="kernel32.lib")
 
@@ -142,7 +156,10 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
         expected = (toolset_dir / "lib" / "spectre" / "onecore" / "x64" / library).as_posix()
         self.assertNotEqual(result.returncode, 0, output)
         self.assertIn("Required Spectre-mitigated OneCore runtime library is missing:", output)
-        self.assertIn(expected, output)
+        emitted_paths = [Path(line.strip()) for line in output.splitlines() if line.strip().endswith(f"/{library}")]
+        self.assertEqual(len(emitted_paths), 1)
+        self.assertEqual(emitted_paths[0].name, library)
+        self.assertTrue(emitted_paths[0].parent.samefile(Path(expected).parent))
 
 
 def _add_missing_library_test(library: str) -> None:
