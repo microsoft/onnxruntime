@@ -4943,6 +4943,8 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::KernelContext_GetPreallocatedOutput,
     // End of Version 30 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SessionOptionsSetEpContextDataReadFunc,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
