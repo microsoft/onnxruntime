@@ -2173,6 +2173,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
 #endif
+    CASE_TYPE(FLOAT6E2M3)
+    CASE_TYPE(FLOAT6E3M2)
 
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
