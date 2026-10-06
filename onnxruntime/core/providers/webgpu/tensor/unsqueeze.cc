@@ -8,8 +8,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -17,12 +16,12 @@ KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(bool enable_int64) {
     return Status::OK();
   };
 
-  if constexpr (StartVersion >= 13) {
+  if (start_version >= 13) {
     return {
         KernelDefBuilder()
             .SetName("Unsqueeze")
             .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion, EndVersion)
+            .SinceVersion(start_version, end_version)
             .Provider(kWebGpuExecutionProvider)
             .TypeConstraint("T", type_constraints)
             .Alias(0, 0)
@@ -34,7 +33,7 @@ KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(bool enable_int64) {
         KernelDefBuilder()
             .SetName("Unsqueeze")
             .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion, EndVersion)
+            .SinceVersion(start_version, end_version)
             .Provider(kWebGpuExecutionProvider)
             .TypeConstraint("T", type_constraints)
             .Alias(0, 0)
@@ -43,8 +42,7 @@ KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(bool enable_int64) {
   }
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateUnsqueezeKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateUnsqueezeKernelInfo(int since_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -56,7 +54,7 @@ KernelCreateInfo CreateUnsqueezeKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Unsqueeze")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(SinceVersion)
+          .SinceVersion(since_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", type_constraints)
           .Alias(0, 0)
@@ -64,15 +62,6 @@ KernelCreateInfo CreateUnsqueezeKernelInfo(bool enable_int64) {
           .Build(),
       kernel_create_fn};
 }
-
-// Explicit template instantiations
-template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<1, 10>(bool);
-template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<11, 12>(bool);
-template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<13, 20>(bool);
-template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<21, 22>(bool);
-template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<23, 23>(bool);
-template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<24, 24>(bool);
-template KernelCreateInfo CreateUnsqueezeKernelInfo<25>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

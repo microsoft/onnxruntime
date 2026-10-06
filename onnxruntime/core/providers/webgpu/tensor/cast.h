@@ -36,7 +36,7 @@ class CastProgram final : public Program<CastProgram> {
 class Cast final : public WebGpuKernel {
  public:
   Cast(const OpKernelInfo& info) : WebGpuKernel(info) {
-    int64_t to;
+    int64_t to = 0;
     Status status = info.GetAttr("to", &to);
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
     to_ = onnxruntime::narrow<int32_t>(to);
@@ -50,9 +50,9 @@ class Cast final : public WebGpuKernel {
   int32_t to_;
 };
 
-// Create Cast kernel info with appropriate type constraints based on int64 support
-template <int StartVersion, int EndVersion = StartVersion>
-KernelCreateInfo CreateCastKernelInfo(bool enable_int64);
+// Create Cast kernel info with appropriate type constraints based on int64 support.
+KernelCreateInfo CreateCastVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateCastKernelInfo(int since_version, bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

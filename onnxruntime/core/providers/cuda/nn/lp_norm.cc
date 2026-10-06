@@ -35,6 +35,7 @@ REGISTER_LPNORM_VERSIONED_KERNEL(MLFloat16, 1, 21)
 
 REGISTER_LPNORM_KERNEL(float, 22)
 REGISTER_LPNORM_KERNEL(MLFloat16, 22)
+REGISTER_LPNORM_KERNEL(BFloat16, 22)
 
 template <typename T>
 Status LpNorm<T>::ComputeInternal(OpKernelContext* context) const {

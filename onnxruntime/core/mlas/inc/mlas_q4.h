@@ -25,6 +25,8 @@ Abstract:
 
 #include <math.h>
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 
 /**
  * @brief Define types of block quantization
@@ -425,6 +427,58 @@ MlasQDQQuantizeBlockwise(
     int quant_block_size,
     MLAS_THREADPOOL* thread_pool
 );
+
+/**
+ * @brief Check that QDQ blockwise quantization index arithmetic fits in int32.
+ */
+inline bool
+MlasQDQBlockwiseShapeIsValid(
+    int64_t rows,
+    int64_t columns,
+    int64_t quant_block_size,
+    int64_t qbits,
+    bool columnwise,
+    bool transpose
+    )
+{
+    constexpr int64_t kMaxIndex = std::numeric_limits<int32_t>::max();
+    constexpr int64_t kThreadBlockSize = 128;
+    if (rows <= 0 || columns <= 0 || quant_block_size <= 0 ||
+        (qbits != 2 && qbits != 4 && qbits != 8) ||
+        rows > kMaxIndex || columns > kMaxIndex || quant_block_size > kMaxIndex) {
+        return false;
+    }
+
+    const int64_t pack_size = 8 / qbits;
+    const int64_t max_column_addend = transpose ? pack_size - 1 : kThreadBlockSize - 1;
+    const bool uses_unaligned_quantize = !transpose && columnwise && (columns & 1) != 0;
+    if (uses_unaligned_quantize && quant_block_size > kMaxIndex / 2) {
+        return false;
+    }
+    const int64_t row_block_size = uses_unaligned_quantize ? quant_block_size * 2 : quant_block_size;
+    if (rows > kMaxIndex - (row_block_size - 1) ||
+        columns > kMaxIndex - max_column_addend ||
+        quant_block_size > (kMaxIndex - 7) / qbits ||
+        rows > kMaxIndex / columns) {
+        return false;
+    }
+
+    const int64_t block_count = (rows + quant_block_size - 1) / quant_block_size;
+    if (block_count > kMaxIndex - (pack_size - 1) ||
+        block_count > kMaxIndex / columns) {
+        return false;
+    }
+
+    if (transpose) {
+        const int64_t packed_block_bytes = (quant_block_size * qbits + 7) / 8;
+        if (block_count > kMaxIndex / packed_block_bytes ||
+            block_count * packed_block_bytes > kMaxIndex / columns) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 /**
  * @brief Transpose blockwise quantized tensors. The src tensors are row major. src weights and zero

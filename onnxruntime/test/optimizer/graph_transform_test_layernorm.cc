@@ -11,6 +11,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/framework/resource_accountant.h"
 #include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/graph_utils.h"
@@ -935,7 +936,8 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
   }
 }
 
-static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count, logging::Logger* logger) {
+static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count,
+                          logging::Logger* logger, bool verify_workspace_reservations = false) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -943,13 +945,74 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  NodeWorkspaceReservationMap reservations;
+  size_t total_reserved_bytes = 0;
+  if (verify_workspace_reservations) {
+    for (const Node& node : graph.Nodes()) {
+      reservations.insert_or_assign(
+          node.Index(), WorkspaceEstimateSelection{10, WorkspaceEstimateSource::kFallback});
+      total_reserved_bytes += 10;
+    }
+    graph.SetNodeReplacementCallback(
+        [&reservations](const Graph&,
+                        gsl::span<const NodeIndex> source_node_indices,
+                        NodeIndex destination_node_index) {
+          ConsolidateWorkspaceReservations(
+              reservations, source_node_indices, destination_node_index);
+        });
+  }
+
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+  graph.SetNodeReplacementCallback({});
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.MatMulNBits"] == matmulnbits_count);
   ASSERT_TRUE(op_to_count["MatMul"] == matmul_count);
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  if (verify_workspace_reservations) {
+    size_t consolidated_reserved_bytes = 0;
+    bool found_fused_projection_reservation = false;
+    for (const auto& [node_index, reservation] : reservations) {
+      const Node* node = graph.GetNode(node_index);
+      ASSERT_NE(node, nullptr) << "Workspace reservation was orphaned at node index " << node_index;
+      consolidated_reserved_bytes += reservation.bytes;
+      if ((node->OpType() == "MatMulNBits" || node->OpType() == "MatMul") &&
+          reservation.bytes > 10) {
+        found_fused_projection_reservation = true;
+      }
+    }
+    EXPECT_EQ(consolidated_reserved_bytes, total_reserved_bytes);
+    EXPECT_TRUE(found_fused_projection_reservation);
+  }
+}
+
+static void TestQuantizedGQAFusionRejectsInitializerShape(const std::string& initializer_name,
+                                                          logging::Logger* logger) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+
+  const TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, initializer));
+  TensorProto malformed_initializer = *initializer;
+  malformed_initializer.clear_dims();
+  malformed_initializer.add_dims(1);
+  graph.RemoveInitializedTensor(initializer_name);
+  graph.AddInitializedTensor(malformed_initializer);
+
+  GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(),
+                                                     TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.at("com.microsoft.MatMulNBits"), 3);
+  EXPECT_EQ(op_to_count.at("com.microsoft.RotaryEmbedding"), 2);
+  EXPECT_EQ(op_to_count.at("com.microsoft.GroupQueryAttention"), 1);
 }
 
 enum class RotaryEmbeddingDomain {
@@ -962,7 +1025,8 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
                                                bool include_position_ids,
                                                int64_t q_interleaved = 0,
                                                int64_t k_interleaved = 0,
-                                               int64_t rotary_embedding_dim = 0) {
+                                               int64_t rotary_embedding_dim = 0,
+                                               int64_t gqa_num_heads = 2) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t input_hidden_size = 8;
@@ -1047,7 +1111,7 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
                                seqlens_k, total_sequence_length},
                               {gqa_output},
                               kMSDomain);
-  gqa.AddAttribute("num_heads", num_heads);
+  gqa.AddAttribute("num_heads", gqa_num_heads);
   gqa.AddAttribute("kv_num_heads", kv_num_heads);
 }
 
@@ -1065,6 +1129,26 @@ static Status CheckOnnxRotaryEmbeddingGQANotFused(Graph& graph) {
     TEST_RETURN_IF_NOT(node.InputDefs().size() == 7);
     const auto& attrs = node.GetAttributes();
     auto do_rotary_attr = attrs.find("do_rotary");
+    TEST_RETURN_IF_NOT(do_rotary_attr == attrs.end() || do_rotary_attr->second.i() == 0);
+  }
+
+  return Status::OK();
+}
+
+static Status CheckMsRotaryEmbeddingGQANotFused(Graph& graph) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.RotaryEmbedding") == 2);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 3);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() != "GroupQueryAttention") {
+      continue;
+    }
+
+    TEST_RETURN_IF_NOT(node.InputDefs().size() == 7);
+    const auto& attrs = node.GetAttributes();
+    const auto do_rotary_attr = attrs.find("do_rotary");
     TEST_RETURN_IF_NOT(do_rotary_attr == attrs.end() || do_rotary_attr->second.i() == 0);
   }
 
@@ -1122,6 +1206,72 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count);
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == skip_ln_count);
   ASSERT_TRUE(op_to_count["Cast"] == cast_count);
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionZeroNormalizedDimension) {
+  for (int opset : {10, 17, 18}) {
+    for (int64_t axis : {-1, 1}) {
+      for (const std::vector<int64_t>& shape : {std::vector<int64_t>{1, 0}, {0, 4}, {2, 4}, {2, -1}}) {
+        SCOPED_TRACE(MakeString("opset=", opset, " axis=", axis, " shape=", shape[0], ",", shape[1]));
+        const bool symbolic = shape[1] == -1;
+        const bool should_fuse = shape[1] != 0;
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto* input = symbolic ? builder.MakeInput<float>(shape)
+                                 : builder.MakeInput<float>(shape, -1.0f, 1.0f);
+          const int64_t hidden_size = symbolic ? 4 : shape[1];
+          auto* scale = builder.MakeInitializer<float>({hidden_size}, std::vector<float>(hidden_size, 1.0f));
+          auto* bias = builder.MakeInitializer<float>({hidden_size}, std::vector<float>(hidden_size, 0.0f));
+          auto* two = builder.MakeInitializer<float>({}, {2.0f});
+          auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+          auto* mean = builder.MakeIntermediate();
+          auto* centered = builder.MakeIntermediate();
+          auto* squared = builder.MakeIntermediate();
+          auto* variance = builder.MakeIntermediate();
+          auto* variance_epsilon = builder.MakeIntermediate();
+          auto* stddev = builder.MakeIntermediate();
+          auto* normalized = builder.MakeIntermediate();
+          auto* scaled = builder.MakeIntermediate();
+          auto* output = builder.MakeOutput();
+          auto add_reduce_mean = [&](NodeArg* in, NodeArg* out) {
+            if (opset >= 18) {
+              auto* axes = builder.MakeInitializer<int64_t>({1}, {axis});
+              builder.AddNode("ReduceMean", {in, axes}, {out});
+            } else {
+              builder.AddNode("ReduceMean", {in}, {out}).AddAttribute("axes", std::vector<int64_t>{axis});
+            }
+          };
+          add_reduce_mean(input, mean);
+          builder.AddNode("Sub", {input, mean}, {centered});
+          builder.AddNode("Pow", {centered, two}, {squared});
+          add_reduce_mean(squared, variance);
+          builder.AddNode("Add", {variance, epsilon}, {variance_epsilon});
+          builder.AddNode("Sqrt", {variance_epsilon}, {stddev});
+          builder.AddNode("Div", {centered, stddev}, {normalized});
+          builder.AddNode("Mul", {scale, normalized}, {scaled});
+          builder.AddNode("Add", {scaled, bias}, {output});
+        };
+        auto check_graph = [&](const Graph& graph) {
+          auto counts = CountOpsInGraph(graph);
+          TEST_RETURN_IF_NOT(counts["LayerNormalization"] == (should_fuse ? 1 : 0));
+          TEST_RETURN_IF_NOT(counts["ReduceMean"] == (should_fuse ? 0 : 2));
+          return Status::OK();
+        };
+        const auto level = opset >= 17 ? TransformerLevel::Level1 : TransformerLevel::Level2;
+        const InlinedHashSet<std::string_view> compatible_eps = {};
+        if (symbolic) {
+          ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_,
+                                                std::make_unique<LayerNormFusion>(compatible_eps, level),
+                                                level, 1, nullptr, check_graph));
+        } else {
+          auto check_session = [&](InferenceSessionWrapper& session) {
+            ASSERT_STATUS_OK(check_graph(session.GetGraph()));
+          };
+          TransformerTester(build_test_case, check_session, TransformerLevel::Default, level, opset,
+                            1e-5, 1e-5, std::make_unique<LayerNormFusion>(compatible_eps, level));
+        }
+      }
+    }
+  }
 }
 
 // Current-opset regression tests for LayerNorm and SkipLayerNorm fusions.
@@ -1281,7 +1431,9 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_3DGamma_NoFusion) {
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
-  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
+  TestGQAFusion(
+      MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get(),
+      /*verify_workspace_reservations=*/true);
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 }
@@ -1353,6 +1505,25 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionMsRotaryEmbeddingForwa
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
                                         check_fused_graph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedProjectionSizesTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 0, 0, 0, 3);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckMsRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedScaleShape) {
+  TestQuantizedGQAFusionRejectsInitializerShape("scales_q", logger_.get());
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedZeroPointShape) {
+  TestQuantizedGQAFusionRejectsInitializerShape("zero_points_q", logger_.get());
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {

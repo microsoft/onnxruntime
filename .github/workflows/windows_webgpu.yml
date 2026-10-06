@@ -5,46 +5,50 @@ on:
     branches:
       - main
       - rel-*
+      - plugin-ep-webgpu/rel-*
   pull_request:
     branches:
       - main
       - rel-*
+      - plugin-ep-webgpu/rel-*
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
+env:
+  OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+  DocUpdateNeeded: false
+  ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
+
 jobs:
-  webgpu_build_x64_RelWithDebInfo:
+  webgpu_compile_x64_RelWithDebInfo:
+    name: webgpu_compile_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}-${{ matrix.wgsl_template }}"
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=webgpu_compile_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}"
       ]
     timeout-minutes: 300
     strategy:
-      matrix:
+      matrix: &webgpu_matrix
         vcpkg_option: [novcpkg, vcpkg]
-        wgsl_template: [static]
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
-      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
-      DocUpdateNeeded: false
       NVIDIA_TF32_OVERRIDE: "0"
-      ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -54,10 +58,12 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
+      - name: Setup VCPKG Cache
+        if: matrix.vcpkg_option == 'vcpkg'
+        uses: ./.github/actions/setup-vcpkg-cache
         with:
-          architecture: x64
+          key: windows-x64-webgpu-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
@@ -65,12 +71,12 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20.x"
+          node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: "temurin"
           java-version: "17"
@@ -87,14 +93,14 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
           dotnet-version: "8.x"
 
       - name: Use Nuget 6.x
-        uses: nuget/setup-nuget@v2
+        uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
         with:
           nuget-version: "6.x"
 
@@ -104,29 +110,27 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
-      - uses: actions/cache@v5
-        id: onnx-node-tests-cache
-        with:
-          path: ${{ github.workspace }}/js/test/
-          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
-
-      - name: Build and Test
+      - name: Build
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
             --config RelWithDebInfo `
             --build_dir ${{ github.workspace }} `
             --skip_submodule_sync `
+            --update `
+            --build `
+            --skip_tests `
             --build_csharp `
             --parallel `
             --use_binskim_compliant_compile_flags `
+            --enable_lto `
             --cmake_generator "Visual Studio 17 2022" `
             --build_shared_lib `
             --enable_onnx_tests `
             --build_nodejs `
             --build_java `
             --use_webgpu `
-            --wgsl_template ${{ matrix.wgsl_template }} `
+            --wgsl_template static `
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
@@ -134,7 +138,24 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+          $outputDir = "${{ github.workspace }}\RelWithDebInfo"
+          $depsDir = "$outputDir\_deps"
+          if (Test-Path -LiteralPath $depsDir) {
+            Remove-Item -LiteralPath $depsDir -Recurse -Force -ErrorAction Stop
+          }
+          Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+          Remove-Item -Path $outputDir -Include "*.pch" -Recurse
+          Remove-Item -Path $outputDir -Include "*.lib" -Recurse
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webgpu-build-${{ matrix.vcpkg_option }}
+          path: |
+            ${{ github.workspace }}/RelWithDebInfo
+            ${{ github.workspace }}/js/node/bin
+          if-no-files-found: error
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
@@ -142,29 +163,32 @@ jobs:
         working-directory: ${{ github.workspace }}\csharp
         continue-on-error: true
 
-  webgpu_plugin_build_x64_RelWithDebInfo:
+  webgpu_test_x64_RelWithDebInfo:
+    name: webgpu_test_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
+    needs: webgpu_compile_x64_RelWithDebInfo
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_plugin_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "JobId=webgpu_test_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}"
       ]
     timeout-minutes: 300
+    strategy:
+      matrix: *webgpu_matrix
     env:
-      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      OrtPackageId: Microsoft.ML.OnnxRuntime
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
-      DocUpdateNeeded: false
       NVIDIA_TF32_OVERRIDE: "0"
-      ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -174,34 +198,145 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
-        with:
-          architecture: x64
-
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20.x"
+          node-version: "24.x"
 
-      - uses: actions/cache@v5
+      - name: Setup Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          architecture: x64
+
+      - name: Install Node.js dependencies
+        shell: cmd
+        run: |
+          cd js && call npm ci
+          cd common && call npm ci
+          cd ..\node && call npm ci
+
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
-      - name: Build and Test
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: webgpu-build-${{ matrix.vcpkg_option }}
+          path: ${{ github.workspace }}
+
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py `
+            "${{ github.workspace }}\RelWithDebInfo\CTestTestfile.cmake" `
+            "${{ github.workspace }}\RelWithDebInfo"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --test `
+            --enable_onnx_tests `
+            --build_nodejs
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+  webgpu_build_x64_RelWithDebInfo:
+    # Preserve the legacy required-check name on an always-running gate so branch
+    # protection blocks the merge when the compile or test job fails or is skipped.
+    name: webgpu_build_x64_RelWithDebInfo (${{ matrix.vcpkg_option }}, static)
+    needs:
+      - webgpu_compile_x64_RelWithDebInfo
+      - webgpu_test_x64_RelWithDebInfo
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: *webgpu_matrix
+    steps:
+      - name: Check compile and test results
+        env:
+          COMPILE_RESULT: ${{ needs.webgpu_compile_x64_RelWithDebInfo.result }}
+          TEST_RESULT: ${{ needs.webgpu_test_x64_RelWithDebInfo.result }}
+        shell: bash
+        run: |
+          if [[ "$COMPILE_RESULT" != "success" ]]; then
+            echo "::error::WebGPU compile result: $COMPILE_RESULT"
+            exit 1
+          fi
+
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::WebGPU test result: $TEST_RESULT"
+            exit 1
+          fi
+
+  webgpu_plugin_compile_x64_RelWithDebInfo:
+    name: webgpu_plugin_compile_x64_RelWithDebInfo
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=webgpu_plugin_compile_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
+    timeout-minutes: 300
+    env:
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      NVIDIA_TF32_OVERRIDE: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-webgpu-plugin-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Build
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
             --config RelWithDebInfo `
             --build_dir ${{ github.workspace }} `
             --skip_submodule_sync `
+            --update `
+            --build `
+            --skip_tests `
             --parallel `
             --use_binskim_compliant_compile_flags `
             --cmake_generator "Visual Studio 17 2022" `
@@ -216,32 +351,54 @@ jobs:
             exit $lastExitCode
           }
 
+          $outputDir = "${{ github.workspace }}\RelWithDebInfo"
+          $depsDir = "$outputDir\_deps"
+          if (Test-Path -LiteralPath $depsDir) {
+            Remove-Item -LiteralPath $depsDir -Recurse -Force -ErrorAction Stop
+          }
+          Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+          Remove-Item -Path $outputDir -Include "*.pch" -Recurse
+          Remove-Item -Path $outputDir -Include "*.lib" -Recurse
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webgpu-plugin-test-artifacts
+          path: ${{ github.workspace }}/RelWithDebInfo
+          if-no-files-found: error
+
       - name: Publish artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: webgpu-plugin-binaries
           path: |
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.dll
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.pdb
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll
-            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
-  webgpu_external_dawn_build_x64_RelWithDebInfo:
+  webgpu_plugin_test_x64_RelWithDebInfo:
+    # Preserve the legacy required-check name so branch protection waits for GPU tests.
+    name: webgpu_plugin_build_x64_RelWithDebInfo
+    needs: webgpu_plugin_compile_x64_RelWithDebInfo
     runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu_external_dawn_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "JobId=webgpu_plugin_test_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
+    env:
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      NVIDIA_TF32_OVERRIDE: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -251,49 +408,55 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
-        with:
-          architecture: x64
-
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
         working-directory: ${{ github.workspace }}
 
-      - name: Generate onnxruntime.sln
+      - name: Download test artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: webgpu-plugin-test-artifacts
+          path: ${{ github.workspace }}/RelWithDebInfo
+
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
+
+      - name: Run tests
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py `
+            "${{ github.workspace }}\RelWithDebInfo\CTestTestfile.cmake" `
+            "${{ github.workspace }}\RelWithDebInfo"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
 
-      - name: Build
-        shell: pwsh
-        run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --test `
+            --enable_onnx_tests
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
 
-      - name: Run tests (onnxruntime_webgpu_external_dawn_test)
-        run: onnxruntime_webgpu_external_dawn_test.exe
-        shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
-
-      - name: Run tests (onnxruntime_webgpu_external_dawn_test) - no_proc_table
-        run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
-        shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
-
-  webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
+  # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
+  # instead of built as a separate shared library.
+  webgpu_static_plugin_build_x64_RelWithDebInfo:
     runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu_minimal_build_edge_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "JobId=webgpu_static_plugin_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 300
     env:
-      OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
       DocUpdateNeeded: false
+      NVIDIA_TF32_OVERRIDE: "0"
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
@@ -313,11 +476,6 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
-        with:
-          architecture: x64
-
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
@@ -328,8 +486,251 @@ jobs:
         with:
           node-version: "20.x"
 
+      - uses: actions/cache@v5
+        id: onnx-node-tests-cache
+        with:
+          path: ${{ github.workspace }}/js/test/
+          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
+      # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
+      # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
+      - name: Build and Test
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --skip_submodule_sync `
+            --parallel `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --enable_onnx_tests `
+            --use_webgpu static_plugin `
+            --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
+
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+  webgpu_external_dawn_build_x64_RelWithDebInfo:
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "JobId=webgpu_external_dawn_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Generate onnxruntime.sln
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime_webgpu_external_dawn_test
+
+      - name: Build
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime_webgpu_external_dawn_test
+
+      - name: Run tests (onnxruntime_webgpu_external_dawn_test)
+        run: onnxruntime_webgpu_external_dawn_test.exe
+        shell: cmd
+        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+
+      - name: Run tests (onnxruntime_webgpu_external_dawn_test) - no_proc_table
+        run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
+        shell: cmd
+        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+
+      - name: Export matching Dawn package and host
+        shell: pwsh
+        run: |
+          $inputs = "${{ github.workspace }}\external-dawn-inputs"
+          python.exe tools\ci_build\github\windows\package_external_dawn_test.py
+          if ($LASTEXITCODE -ne 0) { throw "Dawn exporter tests failed" }
+          python.exe tools\ci_build\github\windows\package_external_dawn.py --dawn-source RelWithDebInfo\_deps\dawn-src --dawn-build RelWithDebInfo\_deps\dawn-build --output "$inputs\dawn-api"
+          if ($LASTEXITCODE -ne 0) { throw "Dawn package export failed" }
+          $null = New-Item -ItemType Directory -Path "$inputs\host" -Force
+          Copy-Item RelWithDebInfo\RelWithDebInfo\onnxruntime_webgpu_external_dawn_test.exe "$inputs\host"
+          foreach ($name in @("dxcompiler.dll", "d3dcompiler_47.dll", "dxil.dll")) {
+            $runtime = "RelWithDebInfo\RelWithDebInfo\$name"
+            if (Test-Path $runtime) { Copy-Item $runtime "$inputs\host" }
+          }
+
+      - name: Upload Dawn package and host
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: external-dawn-inputs
+          path: ${{ github.workspace }}\external-dawn-inputs
+          if-no-files-found: error
+          retention-days: 1
+
+  webgpu_dawn_package_build_x64_RelWithDebInfo:
+    needs: webgpu_external_dawn_build_x64_RelWithDebInfo
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "JobId=webgpu_dawn_package_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+
+      - name: Download Dawn package and host
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: external-dawn-inputs
+          path: ${{ github.workspace }}\external-dawn-inputs
+
+      - name: Build package-backed ORT DLL
+        shell: pwsh
+        run: |
+          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed ORT build failed" }
+          if (Test-Path dawn-package-build\RelWithDebInfo\_deps\dawn-src) { throw "Package mode configured native Dawn" }
+          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
+
+      - name: Run package-backed host inference
+        run: onnxruntime_webgpu_external_dawn_test.exe
+        shell: cmd
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
+
+      - name: Reject missing host proc table
+        run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
+        shell: cmd
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
+
+      - name: Reject invalid Dawn packages
+        shell: pwsh
+        run: |
+          $package = "${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          $incomplete = "${{ runner.temp }}\incomplete-dawn-api"
+          $null = New-Item -ItemType Directory -Path $incomplete -Force
+          Copy-Item "$package\include" $incomplete -Recurse
+          $cases = @(
+            @{ Path = "$package\missing"; External = "ON"; Expected = "missing include/" },
+            @{ Path = $package; External = "OFF"; Expected = "requires onnxruntime_USE_WEBGPU" },
+            @{ Path = $incomplete; External = "ON"; Expected = "Dawn API package file not found" }
+          )
+          foreach ($header in @("dawn_version.h", "dawn_thread_dispatch_proc.h")) {
+            $missingHeaderPackage = "${{ runner.temp }}\dawn-api-without-$header"
+            Copy-Item $package $missingHeaderPackage -Recurse
+            Remove-Item "$missingHeaderPackage\include\dawn\$header"
+            $cases += @{ Path = $missingHeaderPackage; External = "ON"; Expected = "include/dawn/$header" }
+          }
+          foreach ($case in $cases) {
+            $output = & cmake -S cmake -B dawn-package-build\RelWithDebInfo "-Donnxruntime_DAWN_PREBUILT_DIR=$($case.Path)" "-Donnxruntime_USE_EXTERNAL_DAWN=$($case.External)" 2>&1
+            $diagnostic = ($output -join " ") -replace '\s+', ' '
+            if ($LASTEXITCODE -eq 0 -or !$diagnostic.Contains($case.Expected)) {
+              throw "Expected rejection '$($case.Expected)', received: $diagnostic"
+            }
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Build package-backed WebGPU plugin
+        shell: pwsh
+        run: |
+          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu shared_lib --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-mode ORT build failed" }
+          cmake --build dawn-package-build\RelWithDebInfo --config RelWithDebInfo --target onnxruntime_providers_webgpu --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed WebGPU plugin build failed" }
+          if (Test-Path dawn-package-build\RelWithDebInfo\_deps\dawn-src) { throw "Plugin package mode configured native Dawn" }
+          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
+          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll external-dawn-inputs\host
+
+      - name: Run package-backed WebGPU plugin tests
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
+        run: |
+          $plugin = Join-Path $PWD "onnxruntime_providers_webgpu.dll"
+          .\onnxruntime_webgpu_external_dawn_test.exe --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed host inference failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --plugin $plugin --no_proc_table
+          if ($LASTEXITCODE -ne 0) { throw "Plugin missing-proc-table rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --no_proc_table --plugin "$plugin.missing"
+          if ($LASTEXITCODE -eq 0) { throw "An unrelated plugin-load error passed the missing-proc-table test" }
+          $global:LASTEXITCODE = 0
+
+  webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-vs2022-latest",
+        "JobId=webgpu_minimal_build_edge_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
+    timeout-minutes: 300
+    env:
+      OrtPackageId: Microsoft.ML.OnnxRuntime
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.x"
+
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: "temurin"
           java-version: "17"
@@ -346,14 +747,14 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
           dotnet-version: "8.x"
 
       - name: Use Nuget 6.x
-        uses: nuget/setup-nuget@v2
+        uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
         with:
           nuget-version: "6.x"
 

@@ -199,58 +199,57 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
   return Status::OK();
 }
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
-  // Casting to int64 is always supported. Casting *from* int64 (int64 in T1/input) stays guarded by enable_int64.
+namespace {
+// Casting to int64 is always supported. Casting *from* int64 (int64 in T1/input) stays guarded by enable_int64.
+// T1 (input): plus uint8, so casts *from* a uint8 tensor (to int32/float/bool/etc.) run on the
+// WebGPU EP instead of falling back. Reading uint8 input unpacks the packed Uint8x4 storage via
+// GetByOffset.
+std::vector<MLDataType> GetCastT1TypeConstraints(bool enable_int64) {
   std::vector<MLDataType> t1_constraints = GetOpTypeConstraints(/*enable_int64=*/enable_int64, /*enable_bool=*/true);
-  // T1 (input): plus uint8, so casts *from* a uint8 tensor (to int32/float/bool/etc.) run on the
-  // WebGPU EP instead of falling back. Reading uint8 input unpacks the packed Uint8x4 storage via
-  // GetByOffset.
   t1_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
-  // T2 (output): the int64+bool set, plus uint8 so the WebGPU EP can produce uint8 output directly
-  // (e.g. a terminal bool->uint8 cast at a graph output) instead of falling back. Casting *to* uint8
-  // packs via the Uint8x4 SetByOffset.
-  std::vector<MLDataType> t2_constraints = GetOpTypeConstraints(/*enable_int64=*/true, /*enable_bool=*/true);
-  t2_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
-
-  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Cast>(info);
-    return Status::OK();
-  };
-
-  if constexpr (StartVersion == EndVersion) {
-    return {
-        KernelDefBuilder()
-            .SetName("Cast")
-            .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion)
-            .Provider(kWebGpuExecutionProvider)
-            .TypeConstraint("T1", t1_constraints)
-            .TypeConstraint("T2", t2_constraints)
-            .Build(),
-        kernel_create_fn};
-  } else {
-    return {
-        KernelDefBuilder()
-            .SetName("Cast")
-            .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion, EndVersion)
-            .Provider(kWebGpuExecutionProvider)
-            .TypeConstraint("T1", t1_constraints)
-            .TypeConstraint("T2", t2_constraints)
-            .Build(),
-        kernel_create_fn};
-  }
+  return t1_constraints;
 }
 
-// Explicit template instantiations
-template KernelCreateInfo CreateCastKernelInfo<6, 8>(bool);
-template KernelCreateInfo CreateCastKernelInfo<9, 12>(bool);
-template KernelCreateInfo CreateCastKernelInfo<13, 18>(bool);
-template KernelCreateInfo CreateCastKernelInfo<19, 20>(bool);
-template KernelCreateInfo CreateCastKernelInfo<21, 22>(bool);
-template KernelCreateInfo CreateCastKernelInfo<23, 23>(bool);
-template KernelCreateInfo CreateCastKernelInfo<24>(bool);
+// T2 (output): the int64+bool set, plus uint8 so the WebGPU EP can produce uint8 output directly
+// (e.g. a terminal bool->uint8 cast at a graph output) instead of falling back. Casting *to* uint8
+// packs via the Uint8x4 SetByOffset.
+std::vector<MLDataType> GetCastT2TypeConstraints() {
+  std::vector<MLDataType> t2_constraints = GetOpTypeConstraints(/*enable_int64=*/true, /*enable_bool=*/true);
+  t2_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
+  return t2_constraints;
+}
+
+Status CreateCastKernel(FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<Cast>(info);
+  return Status::OK();
+}
+}  // namespace
+
+KernelCreateInfo CreateCastVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
+  return {
+      KernelDefBuilder()
+          .SetName("Cast")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(start_version, end_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T1", GetCastT1TypeConstraints(enable_int64))
+          .TypeConstraint("T2", GetCastT2TypeConstraints())
+          .Build(),
+      CreateCastKernel};
+}
+
+KernelCreateInfo CreateCastKernelInfo(int since_version, bool enable_int64) {
+  return {
+      KernelDefBuilder()
+          .SetName("Cast")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(since_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T1", GetCastT1TypeConstraints(enable_int64))
+          .TypeConstraint("T2", GetCastT2TypeConstraints())
+          .Build(),
+      CreateCastKernel};
+}
 
 }  // namespace webgpu
 }  // namespace onnxruntime
