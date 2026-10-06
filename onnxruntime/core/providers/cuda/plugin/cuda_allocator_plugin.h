@@ -29,17 +29,21 @@ enum class CudaAllocatorKind {
 /// Base class for CUDA allocators implementing the OrtAllocator C interface.
 class CudaAllocatorBase : public OrtAllocator {
  public:
-  explicit CudaAllocatorBase(CudaAllocatorKind kind, const OrtMemoryInfo* memory_info)
+  explicit CudaAllocatorBase(CudaAllocatorKind kind, const OrtMemoryInfo* memory_info,
+                             bool is_external_device_allocator = false)
       : OrtAllocator{},
         kind_(kind),
-        memory_info_(memory_info) {}
+        memory_info_(memory_info),
+        is_external_device_allocator_(is_external_device_allocator) {}
 
   CudaAllocatorKind GetKind() const { return kind_; }
   const OrtMemoryInfo* GetMemoryInfo() const { return memory_info_; }
+  bool IsExternalDeviceAllocator() const { return is_external_device_allocator_; }
 
  private:
   CudaAllocatorKind kind_;
   const OrtMemoryInfo* memory_info_;
+  bool is_external_device_allocator_;
 };
 
 // CudaAllocatorBase derives from OrtAllocator via single non-virtual inheritance.

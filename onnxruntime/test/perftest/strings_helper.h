@@ -2,8 +2,13 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
-#include <string_view>
+
+#pragma once
+
+#include <cstdint>
 #include <map>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -26,5 +31,11 @@ void ParseEpOptions(const std::string& input, std::vector<std::unordered_map<std
 void ParseEpDeviceIndexList(const std::string& input, std::vector<int>& result);
 
 void ParseEpDeviceFilterKeyValuePairs(const std::string& input, std::vector<std::pair<std::string, std::string>>& result);
+
+bool ParseDataShapeGroups(const std::string& input,
+                          std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups);
+
+std::string FormatShapeGroup(const std::map<std::string, std::vector<std::vector<int64_t>>>& groups, size_t g);
+
 }  // namespace perftest
 }  // namespace onnxruntime

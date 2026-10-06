@@ -26,14 +26,14 @@ using WarpAccT = Array2D<InstAcc, exactDiv(m, 16), exactDiv(n, 8)>;
 
 template <uint32_t accRows, uint32_t accCols>
 __device__ inline void applyMask(
-    Warp const& warp, Array2D<InstAcc, accRows, accCols>& acc, uint32_t validColBeg, uint32_t validColEnd) {
-  uint32_t const idxInQuad = laneId() % 4;
-  uint32_t const idxQuad = laneId() / 4;
+    const Warp& warp, Array2D<InstAcc, accRows, accCols>& acc, uint32_t validColBeg, uint32_t validColEnd) {
+  const uint32_t idxInQuad = laneId() % 4;
+  const uint32_t idxQuad = laneId() / 4;
 #pragma unroll
   for (uint32_t n = 0; n < acc.cols; n++) {
 #pragma unroll
     for (uint32_t j = 0; j < InstAcc::cols; j++) {
-      uint32_t const col = 8 * n + InstAcc::cols * idxInQuad + j;
+      const uint32_t col = 8 * n + InstAcc::cols * idxInQuad + j;
       if (col >= validColBeg && col < validColEnd) {
         continue;
       }
@@ -58,15 +58,15 @@ inline constexpr uint32_t quadPerWarp = warp_size / 4;
 
 // idxMat8 is the reduced row index in 8-row unit.
 template <uint32_t n>
-__device__ inline float replicateValForQuad(Warp const& warp, Vec<float, n> const& src, uint32_t idxMat8) {
+__device__ inline float replicateValForQuad(const Warp& warp, const Vec<float, n>& src, uint32_t idxMat8) {
   assertWarpConverged();
-  uint32_t const i = idxMat8 / 4;
-  uint32_t const j = idxMat8 % 4;
+  const uint32_t i = idxMat8 / 4;
+  const uint32_t j = idxMat8 % 4;
   return __shfl_sync(~0U, src[i], quadPerWarp * j + laneId() / 4);
 }
 
 template <uint32_t n>
-__device__ inline QuadRegRowMaxT<n * warp_size> replicateForQuad(Warp const& warp, Vec<float, n> const& src) {
+__device__ inline QuadRegRowMaxT<n * warp_size> replicateForQuad(const Warp& warp, const Vec<float, n>& src) {
   assertWarpConverged();
   QuadRegRowMaxT<n * warp_size> dst{};
 #pragma unroll
@@ -81,21 +81,21 @@ __device__ inline QuadRegRowMaxT<n * warp_size> replicateForQuad(Warp const& war
 }
 
 template <uint32_t n>
-__device__ inline ThrdRegRowMaxT<warp_size * exactDiv(n, 4)> dedupFromQuad(Warp const& warp, Vec<float, n> const& src) {
+__device__ inline ThrdRegRowMaxT<warp_size * exactDiv(n, 4)> dedupFromQuad(const Warp& warp, const Vec<float, n>& src) {
 #ifndef NDEBUG
   for (uint32_t i = 0; i < src.size; i++) {
     assert(__float_as_int(src[i]) == __float_as_int(__shfl_sync(~0U, src[i], laneId() / 4 * 4)));
   }
 #endif
   ThrdRegRowMaxT<warp_size * exactDiv(n, 4)> dst{};
-  uint32_t const lane = laneId();
-  uint32_t const idxMat = lane / 8;
-  uint32_t const idxRow = lane % 8;
+  const uint32_t lane = laneId();
+  const uint32_t idxMat = lane / 8;
+  const uint32_t idxRow = lane % 8;
 #pragma unroll
   for (uint32_t i = 0; i < dst.size; i++) {
 #pragma unroll
     for (uint32_t j = 0; j < 4; j++) {
-      float const val = __shfl_sync(~0U, src[i * 4 + j], 4 * idxRow);
+      const float val = __shfl_sync(~0U, src[i * 4 + j], 4 * idxRow);
       if (idxMat == j) {
         dst[i] = val;
       }
@@ -114,17 +114,17 @@ __device__ inline ThrdRegRowMaxT<warp_size * exactDiv(n, 4)> dedupFromQuad(Warp 
 
 template <uint32_t tileM, uint32_t tileN>
 __device__ inline ThrdRegRowMaxT<tileM> computeRowSumF8(
-    Warp const& warp, Array2D<Array2D<uint32_t, 2, 1>, exactDiv(tileM, 16), exactDiv(tileN, 16)> const& src) {
+    const Warp& warp, const Array2D<Array2D<uint32_t, 2, 1>, exactDiv(tileM, 16), exactDiv(tileN, 16)>& src) {
   using WarpAcc = WarpAccT<tileM, 8>;
   WarpAcc acc{};
-  Vec<__nv_fp8x2_e4m3, 2> const bWord = {__nv_fp8x2_e4m3{float2{1, 1}}, __nv_fp8x2_e4m3{float2{1, 1}}};
-  uint32_t const b[2][1] = {reinterpret_cast<uint32_t const&>(bWord), reinterpret_cast<uint32_t const&>(bWord)};
+  const Vec<__nv_fp8x2_e4m3, 2> bWord = {__nv_fp8x2_e4m3{float2{1, 1}}, __nv_fp8x2_e4m3{float2{1, 1}}};
+  const uint32_t b[2][1] = {reinterpret_cast<const uint32_t&>(bWord), reinterpret_cast<const uint32_t&>(bWord)};
 #pragma unroll
   for (uint32_t i = 0; i < WarpAcc::rows; i++) {
 #pragma unroll
     for (uint32_t k = 0; k < exactDiv(src.cols, 2); k++) {
       mma<__nv_fp8_e4m3>(reinterpret_cast<float (&)[2][2]>(acc(i, 0)),
-                         reinterpret_cast<uint32_t const(&)[2][2]>(src(i, k * 2)), b);
+                         reinterpret_cast<const uint32_t (&)[2][2]>(src(i, k * 2)), b);
     }
   }
   QuadRegRowMaxT<tileM> rowSum;
@@ -141,7 +141,7 @@ __device__ inline ThrdRegRowMaxT<tileM> computeRowSumF8(
 }
 
 template <uint32_t tileM, uint32_t tileN>
-__device__ inline ThrdRegRowMaxT<tileM> computeRowSumF32(Warp const& warp, WarpAccT<tileM, tileN> const& src) {
+__device__ inline ThrdRegRowMaxT<tileM> computeRowSumF32(const Warp& warp, const WarpAccT<tileM, tileN>& src) {
   QuadRegRowMaxT<tileM> rowSum{};
 #pragma unroll
   for (uint32_t n = 0; n < src.cols; n++) {
@@ -160,7 +160,7 @@ __device__ inline ThrdRegRowMaxT<tileM> computeRowSumF32(Warp const& warp, WarpA
       }
     }
   }
-  uint32_t const lane = laneId();
+  const uint32_t lane = laneId();
 #pragma unroll
   for (uint32_t mask = 2; mask != 0; mask /= 2) {
 #pragma unroll
