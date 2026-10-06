@@ -862,20 +862,21 @@ static bool EpSharedContextsHasAllGraphs(const std::vector<IExecutionProvider::F
   return true;
 }
 
+static bool IsMainQnnEpContextNode(const Node& node) {
+  if (node.OpType() != qnn::EPCONTEXT_OP) {
+    return false;
+  }
+  NodeAttrHelper node_helper(node);
+  const bool is_main_context = node_helper.Get(qnn::MAIN_CONTEXT, static_cast<int64_t>(0));
+  const auto cache_source = qnn::utils::GetLowercaseString(node_helper.Get(qnn::SOURCE, ""));
+  return is_main_context && (cache_source == "qnnexecutionprovider" || cache_source == "qnn");
+}
+
 static void GetMainEPCtxNodes(const onnxruntime::GraphViewer& graph_viewer,
                               std::unordered_set<const Node*>& ep_context_nodes,
                               const logging::Logger& logger) {
   for (const auto& node : graph_viewer.Nodes()) {
-    NodeAttrHelper node_helper(node);
-    bool is_main_context = node_helper.Get(qnn::MAIN_CONTEXT, static_cast<int64_t>(0));
-    std::string cache_source = node_helper.Get(qnn::SOURCE, "");
-
-    std::transform(cache_source.begin(),
-                   cache_source.end(),
-                   cache_source.begin(),
-                   [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-
-    if (is_main_context && qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+    if (IsMainQnnEpContextNode(node)) {
       LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node.Index()
                             << "] name: [" << node.Name();
       ep_context_nodes.insert(&node);
@@ -942,6 +943,22 @@ static void GetContextOnnxModelFilePath(const std::string& user_context_cache_pa
   } else if (!model_path_string.empty()) {  // model loaded from file
     context_model_path = model_path_string;
   }
+}
+
+uint32_t QNNExecutionProvider::GetEpContextDataCallbackRequirements(const GraphViewer& graph_viewer) const {
+  if (graph_viewer.IsSubgraph() || (!enable_vtcm_backup_buffer_sharing_ && !enable_file_mapped_weights_)) {
+    return OrtEpContextDataCallbackSupportFlags_NONE;
+  }
+
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (IsMainQnnEpContextNode(node)) {
+      NodeAttrHelper node_helper(node);
+      if (!node_helper.Get(qnn::EMBED_MODE, true) && !node_helper.Get(qnn::EP_CACHE_CONTEXT, "").empty()) {
+        return OrtEpContextDataCallbackSupportFlags_READ;
+      }
+    }
+  }
+  return OrtEpContextDataCallbackSupportFlags_NONE;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

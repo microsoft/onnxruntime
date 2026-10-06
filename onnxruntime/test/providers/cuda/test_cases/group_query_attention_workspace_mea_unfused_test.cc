@@ -1,0 +1,521 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "gtest/gtest.h"
+
+#include <limits>
+
+#include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#include "contrib_ops/cuda/bert/unfused_attention.h"
+
+namespace onnxruntime {
+namespace test {
+
+using contrib::cuda::GetGQACompleteWorkspaceRecipe;
+using contrib::cuda::GetGQAFlashWorkspaceRecipe;
+using contrib::cuda::GetGQAMemoryEfficientWorkspaceRecipe;
+using contrib::cuda::GetGQAUnfusedWorkspaceRecipe;
+using contrib::cuda::GQABackend;
+using contrib::cuda::GQAConcreteRoute;
+using contrib::cuda::GQAPreprocessMode;
+using contrib::cuda::GQAWorkspaceError;
+using contrib::cuda::GQAWorkspaceProblem;
+using contrib::cuda::GQAXqaConfig;
+using contrib::cuda::ValidateGQACompleteWorkspaceRecipe;
+using contrib::cuda::ValidateGQAMemoryEfficientWorkspaceRecipe;
+using contrib::cuda::ValidateGQAUnfusedWorkspaceRecipe;
+
+namespace {
+
+GQAWorkspaceProblem Problem() {
+  GQAWorkspaceProblem problem;
+  problem.qkv_element_size = 2;
+  problem.cache_element_size = 2;
+  problem.batch_size = 2;
+  problem.sequence_length = 3;
+  problem.num_heads = 4;
+  problem.kv_num_heads = 2;
+  problem.head_size = 64;
+  problem.present_kv_cache_capacity = 5;
+  return problem;
+}
+
+GQAWorkspaceProblem DecodeProblem() {
+  auto problem = Problem();
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 8;
+  problem.kv_num_heads = 2;
+  problem.present_kv_cache_capacity = 512;
+  return problem;
+}
+
+GQAXqaConfig XqaConfig() {
+  GQAXqaConfig config;
+  config.device_major = 8;
+  config.device_minor = 0;
+  config.multi_processor_count = 80;
+  return config;
+}
+
+}  // namespace
+
+TEST(GroupQueryAttentionMeaWorkspaceTest, HandCalculatedGqaExpansionUsesEffectiveCapacity) {
+  const auto result = GetGQAMemoryEfficientWorkspaceRecipe(Problem(), 5);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  const auto& recipe = result.recipe;
+  // sizeof(T)*B*Nq*C*H = 2*2*4*5*64 = 5120, separately for K and V.
+  EXPECT_EQ(recipe.expanded_key_offset_bytes, 0U);
+  EXPECT_EQ(recipe.expanded_key_bytes, 5120U);
+  EXPECT_EQ(recipe.expanded_value_offset_bytes, 5120U);
+  EXPECT_EQ(recipe.expanded_value_bytes, 5120U);
+  EXPECT_EQ(recipe.output_accumulator_bytes, 0U);
+  EXPECT_EQ(recipe.total_backend_bytes, 10240U);
+  EXPECT_TRUE(ValidateGQAMemoryEfficientWorkspaceRecipe(recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionMeaWorkspaceTest, MhaHeadsAvoidExpansionAndLargeHeadsUseFp32Accumulator) {
+  auto problem = Problem();
+  problem.kv_num_heads = problem.num_heads;
+  auto result = GetGQAMemoryEfficientWorkspaceRecipe(problem, 5);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  EXPECT_EQ(result.recipe.total_backend_bytes, 0U);
+
+  problem.head_size = 256;
+  result = GetGQAMemoryEfficientWorkspaceRecipe(problem, 5);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  EXPECT_EQ(result.recipe.expanded_key_bytes, 0U);
+  // sizeof(float)*B*S*N*H = 4*2*3*4*256 = 24576.
+  EXPECT_EQ(result.recipe.output_accumulator_bytes, 24576U);
+  EXPECT_EQ(result.recipe.output_accumulator_offset_bytes, 0U);
+  EXPECT_EQ(result.recipe.total_backend_bytes, 24576U);
+}
+
+TEST(GroupQueryAttentionMeaWorkspaceTest, CompleteRouteUsesStagedCapacityAndIncludesPreprocessOnce) {
+  auto problem = Problem();
+  problem.is_windowed_kv_cache = true;
+  problem.is_packed_qkv = true;
+  GQAConcreteRoute route;
+  route.backend = GQABackend::MemoryEfficient;
+  route.preparation.preprocess_mode = GQAPreprocessMode::MemoryEfficient;
+
+  const auto result = GetGQACompleteWorkspaceRecipe(problem, route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  const auto& recipe = result.recipe;
+  EXPECT_EQ(recipe.preparation.effective_kv_cache_capacity, 8);
+  // Q + K + V = 3072 + 1536 + 1536.
+  EXPECT_EQ(recipe.preparation.qkv_preprocess_bytes, 6144U);
+  EXPECT_EQ(recipe.memory_efficient.expanded_key_bytes, 8192U);
+  EXPECT_EQ(recipe.memory_efficient.expanded_value_bytes, 8192U);
+  EXPECT_EQ(recipe.backend_offset_bytes % 256, 0U);
+  EXPECT_GE(recipe.backend_offset_bytes, recipe.preparation.total_preparation_bytes);
+  EXPECT_EQ(recipe.total_workspace_bytes,
+            recipe.backend_offset_bytes + recipe.backend_bytes);
+  EXPECT_TRUE(ValidateGQACompleteWorkspaceRecipe(recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionUnfusedWorkspaceTest, HandCalculatedCombinedAllocationUsesRuntimeHeadSize) {
+  const auto result = GetGQAUnfusedWorkspaceRecipe(Problem(), 5);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  const auto& recipe = result.recipe;
+  // GQA runtime requires H_v == H. Q and Y are each
+  // align(2*2*4*3*64,256)=3072.
+  EXPECT_EQ(recipe.q_bnsh_offset_bytes, 0U);
+  EXPECT_EQ(recipe.q_bnsh_bytes, 3072U);
+  EXPECT_EQ(recipe.y_bnsh_offset_bytes, 3072U);
+  EXPECT_EQ(recipe.y_bnsh_bytes, 3072U);
+  // QK and softmax: align(4*2*4*3*5,256)=512 each.
+  EXPECT_EQ(recipe.qk_offset_bytes, 6144U);
+  EXPECT_EQ(recipe.qk_bytes, 512U);
+  EXPECT_EQ(recipe.softmax_offset_bytes, 6656U);
+  EXPECT_EQ(recipe.softmax_bytes, 512U);
+  EXPECT_EQ(recipe.total_backend_bytes, 7168U);
+  EXPECT_TRUE(ValidateGQAUnfusedWorkspaceRecipe(recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionUnfusedWorkspaceTest, MatchesExistingWorkspaceHelperAcrossFiniteDomain) {
+  for (int batch : {1, 2, 7}) {
+    for (int heads : {1, 4, 16}) {
+      for (int query_length : {1, 3, 64}) {
+        for (int kv_length : {1, 5, 257}) {
+          auto problem = Problem();
+          problem.batch_size = batch;
+          problem.num_heads = heads;
+          problem.kv_num_heads = 1;
+          problem.sequence_length = query_length;
+          const auto recipe =
+              GetGQAUnfusedWorkspaceRecipe(problem, kv_length);
+          ASSERT_TRUE(recipe.status.IsOK()) << recipe.status.message;
+          const size_t expected =
+              contrib::cuda::GetUnfusedAttentionWorkspaceSize(
+                  batch, heads, query_length, kv_length);
+          EXPECT_EQ(
+              recipe.recipe.qk_bytes + recipe.recipe.softmax_bytes, expected);
+        }
+      }
+    }
+  }
+}
+
+TEST(GroupQueryAttentionUnfusedWorkspaceTest, CompleteRootAlignsAndDoesNotOverlapPreparation) {
+  auto problem = Problem();
+  problem.do_rotary = true;
+  problem.past_kv_cache_capacity = 5;
+  problem.requires_separate_past_buffer = true;
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Unfused;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  route.unfused.total_sequence_length = 5;
+
+  const auto result = GetGQACompleteWorkspaceRecipe(problem, route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  const auto& recipe = result.recipe;
+  // sizeof(U)*B*Nk*P*H = 2*2*2*5*64 = 2560.
+  EXPECT_EQ(recipe.preparation.separate_past_bytes, 2560U);
+  EXPECT_EQ(recipe.preparation.qkv_preprocess_bytes, 3072U);
+  EXPECT_EQ(recipe.backend_offset_bytes % 256, 0U);
+  EXPECT_GE(recipe.backend_offset_bytes, recipe.preparation.total_preparation_bytes);
+  EXPECT_EQ(recipe.total_workspace_bytes,
+            recipe.backend_offset_bytes + recipe.unfused.total_backend_bytes);
+  EXPECT_TRUE(ValidateGQACompleteWorkspaceRecipe(recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, WindowedRoutesUseRuntimeEffectiveKvLength) {
+  const auto expect_route_parity = [](const GQAWorkspaceProblem& problem,
+                                      int64_t total_sequence_length,
+                                      int64_t expected_kv_length) {
+    GQAConcreteRoute flash_route;
+    flash_route.backend = GQABackend::Flash;
+    flash_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+    flash_route.flash.total_sequence_length = total_sequence_length;
+    flash_route.flash.multi_processor_count = 108;
+    const auto flash = GetGQACompleteWorkspaceRecipe(problem, flash_route);
+    ASSERT_TRUE(flash.status.IsOK()) << flash.status.message;
+    EXPECT_EQ(flash.recipe.flash.split_heuristic_kv_length,
+              static_cast<size_t>(expected_kv_length));
+
+    auto expected_flash_config = flash_route.flash;
+    expected_flash_config.total_sequence_length = expected_kv_length;
+    const auto expected_flash =
+        GetGQAFlashWorkspaceRecipe(problem, expected_flash_config);
+    ASSERT_TRUE(expected_flash.status.IsOK()) << expected_flash.status.message;
+    EXPECT_EQ(flash.recipe.flash.total_backend_bytes,
+              expected_flash.recipe.total_backend_bytes);
+
+    GQAConcreteRoute unfused_route;
+    unfused_route.backend = GQABackend::Unfused;
+    unfused_route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+    unfused_route.unfused.total_sequence_length = total_sequence_length;
+    const auto unfused = GetGQACompleteWorkspaceRecipe(problem, unfused_route);
+    ASSERT_TRUE(unfused.status.IsOK()) << unfused.status.message;
+
+    const auto expected_unfused =
+        GetGQAUnfusedWorkspaceRecipe(problem, expected_kv_length);
+    ASSERT_TRUE(expected_unfused.status.IsOK()) << expected_unfused.status.message;
+    EXPECT_EQ(unfused.recipe.unfused.qk_bytes,
+              expected_unfused.recipe.qk_bytes);
+    EXPECT_EQ(unfused.recipe.unfused.softmax_bytes,
+              expected_unfused.recipe.softmax_bytes);
+    EXPECT_EQ(unfused.recipe.unfused.total_backend_bytes,
+              expected_unfused.recipe.total_backend_bytes);
+  };
+
+  auto problem = Problem();
+  problem.present_kv_cache_capacity = 8;
+  problem.is_windowed_kv_cache = true;
+  expect_route_parity(problem, 257, 11);
+
+  problem.sequence_length = 1;
+  expect_route_parity(problem, 257, 8);
+
+  problem.sequence_length = 3;
+  expect_route_parity(problem, 5, 5);
+
+  problem.is_windowed_kv_cache = false;
+  expect_route_parity(problem, 257, 257);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsMeaCapacityMismatch) {
+  GQAConcreteRoute route;
+  route.backend = GQABackend::MemoryEfficient;
+  route.preparation.preprocess_mode = GQAPreprocessMode::MemoryEfficient;
+  auto result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+
+  ++result.recipe.memory_efficient.effective_kv_cache_capacity;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsFastDecodePreparationOnUnfusedRoute) {
+  auto problem = DecodeProblem();
+  problem.num_heads = 2;
+  problem.kv_num_heads = 2;
+  GQAConcreteRoute flash_route;
+  flash_route.backend = GQABackend::Flash;
+  flash_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  flash_route.preparation.use_flash_attention_fast_decode = true;
+  flash_route.flash.fast_decode = true;
+  flash_route.flash.total_sequence_length = 512;
+  flash_route.flash.multi_processor_count = 80;
+  const auto flash_result = GetGQACompleteWorkspaceRecipe(problem, flash_route);
+  ASSERT_TRUE(flash_result.status.IsOK()) << flash_result.status.message;
+  ASSERT_EQ(flash_result.recipe.preparation.sequence_length_vector_count, 0U);
+
+  GQAConcreteRoute unfused_route;
+  unfused_route.backend = GQABackend::Unfused;
+  unfused_route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  unfused_route.unfused.total_sequence_length = 512;
+  auto unfused_result = GetGQACompleteWorkspaceRecipe(problem, unfused_route);
+  ASSERT_TRUE(unfused_result.status.IsOK()) << unfused_result.status.message;
+  unfused_result.recipe.preparation = flash_result.recipe.preparation;
+  unfused_result.recipe.backend_offset_bytes = 0;
+  unfused_result.recipe.total_workspace_bytes = unfused_result.recipe.backend_bytes;
+
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(unfused_result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsFastDecodePreparationOnRegularFlashRoute) {
+  auto problem = DecodeProblem();
+  problem.num_heads = 2;
+  problem.kv_num_heads = 2;
+  GQAConcreteRoute fast_decode_route;
+  fast_decode_route.backend = GQABackend::Flash;
+  fast_decode_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  fast_decode_route.preparation.use_flash_attention_fast_decode = true;
+  fast_decode_route.flash.fast_decode = true;
+  fast_decode_route.flash.total_sequence_length = 512;
+  fast_decode_route.flash.multi_processor_count = 80;
+  const auto fast_decode_result =
+      GetGQACompleteWorkspaceRecipe(problem, fast_decode_route);
+  ASSERT_TRUE(fast_decode_result.status.IsOK()) << fast_decode_result.status.message;
+  ASSERT_TRUE(fast_decode_result.recipe.flash.fast_decode);
+  ASSERT_EQ(fast_decode_result.recipe.preparation.sequence_length_vector_count, 0U);
+
+  GQAConcreteRoute regular_route;
+  regular_route.backend = GQABackend::Flash;
+  regular_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  regular_route.flash.total_sequence_length = 512;
+  regular_route.flash.multi_processor_count = 80;
+  auto regular_result = GetGQACompleteWorkspaceRecipe(problem, regular_route);
+  ASSERT_TRUE(regular_result.status.IsOK()) << regular_result.status.message;
+  ASSERT_FALSE(regular_result.recipe.flash.fast_decode);
+  regular_result.recipe.preparation = fast_decode_result.recipe.preparation;
+  regular_result.recipe.backend_offset_bytes = 0;
+  regular_result.recipe.total_workspace_bytes = regular_result.recipe.backend_bytes;
+
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(regular_result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsSeparatePastPreparationOnSharedOnlyBackends) {
+  auto separate_problem = DecodeProblem();
+  separate_problem.past_kv_cache_capacity =
+      separate_problem.present_kv_cache_capacity;
+  separate_problem.requires_separate_past_buffer = true;
+  GQAConcreteRoute unfused_route;
+  unfused_route.backend = GQABackend::Unfused;
+  unfused_route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  unfused_route.unfused.total_sequence_length = 512;
+  const auto separate_result =
+      GetGQACompleteWorkspaceRecipe(separate_problem, unfused_route);
+  ASSERT_TRUE(separate_result.status.IsOK()) << separate_result.status.message;
+  ASSERT_TRUE(separate_result.recipe.preparation.uses_separate_past_buffer);
+
+  auto shared_problem = DecodeProblem();
+  GQAConcreteRoute xqa_route;
+  xqa_route.backend = GQABackend::Xqa;
+  xqa_route.preparation.preprocess_mode = GQAPreprocessMode::Xqa;
+  xqa_route.xqa = XqaConfig();
+  auto xqa_result = GetGQACompleteWorkspaceRecipe(shared_problem, xqa_route);
+  ASSERT_TRUE(xqa_result.status.IsOK()) << xqa_result.status.message;
+  xqa_result.recipe.preparation = separate_result.recipe.preparation;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(xqa_result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+
+  shared_problem.num_heads = 2;
+  shared_problem.kv_num_heads = 2;
+  GQAConcreteRoute flash_route;
+  flash_route.backend = GQABackend::Flash;
+  flash_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  flash_route.preparation.use_flash_attention_fast_decode = true;
+  flash_route.flash.fast_decode = true;
+  flash_route.flash.total_sequence_length = 512;
+  flash_route.flash.multi_processor_count = 80;
+  auto flash_result =
+      GetGQACompleteWorkspaceRecipe(shared_problem, flash_route);
+  ASSERT_TRUE(flash_result.status.IsOK()) << flash_result.status.message;
+  flash_result.recipe.preparation = separate_result.recipe.preparation;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(flash_result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, FlashRootIncludesPreparationExactlyOnce) {
+  auto problem = DecodeProblem();
+  problem.num_heads = 2;
+  problem.kv_num_heads = 2;
+  problem.do_rotary = true;
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Flash;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  route.flash.total_sequence_length = 4096;
+  route.flash.multi_processor_count = 108;
+
+  const auto result = GetGQACompleteWorkspaceRecipe(problem, route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  EXPECT_EQ(result.recipe.preparation.qkv_preprocess_bytes, 256U);
+  EXPECT_EQ(result.recipe.backend_offset_bytes % 256, 0U);
+  EXPECT_GE(
+      result.recipe.backend_offset_bytes,
+      result.recipe.preparation.total_preparation_bytes);
+  EXPECT_EQ(
+      result.recipe.total_workspace_bytes,
+      result.recipe.backend_offset_bytes + result.recipe.flash.total_backend_bytes);
+  EXPECT_TRUE(ValidateGQACompleteWorkspaceRecipe(result.recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, XqaRootKeepsPreparationQAndXqaRopeBuffers) {
+  auto problem = DecodeProblem();
+  problem.do_rotary = true;
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Xqa;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Xqa;
+  route.xqa = XqaConfig();
+
+  const auto result = GetGQACompleteWorkspaceRecipe(problem, route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  EXPECT_EQ(result.recipe.preparation.qkv_preprocess_bytes, 1024U);
+  EXPECT_EQ(result.recipe.xqa.rotary_q_bytes, 1024U);
+  EXPECT_EQ(result.recipe.xqa.rotary_k_bytes, 256U);
+  EXPECT_EQ(result.recipe.backend_offset_bytes, 1280U);
+  EXPECT_EQ(result.recipe.total_workspace_bytes,
+            result.recipe.backend_offset_bytes + result.recipe.backend_bytes);
+  EXPECT_TRUE(ValidateGQACompleteWorkspaceRecipe(result.recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsContradictoryFlashFastDecodeFacts) {
+  auto problem = DecodeProblem();
+  problem.num_heads = 2;
+  problem.kv_num_heads = 2;
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Flash;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  route.preparation.use_flash_attention_fast_decode = true;
+  route.flash.fast_decode = false;
+  route.flash.total_sequence_length = 512;
+  route.flash.multi_processor_count = 80;
+
+  EXPECT_EQ(GetGQACompleteWorkspaceRecipe(problem, route).status.error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsNondefaultInactiveXqaRecipe) {
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Unfused;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  route.unfused.total_sequence_length = 5;
+  auto result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+
+  result.recipe.xqa.sequence_count = 1;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsNondefaultInactiveFlashRecipe) {
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Unfused;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  route.unfused.total_sequence_length = 5;
+  auto result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  ASSERT_EQ(result.recipe.flash.selected_split_count, 1U);
+
+  result.recipe.flash.softmax_lse_offset_bytes = 1;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsNondefaultInactiveMeaRecipe) {
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Unfused;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  route.unfused.total_sequence_length = 5;
+  auto result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+
+  result.recipe.memory_efficient.expanded_value_offset_bytes = 1;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsNondefaultInactiveUnfusedRecipe) {
+  GQAConcreteRoute route;
+  route.backend = GQABackend::MemoryEfficient;
+  route.preparation.preprocess_mode = GQAPreprocessMode::MemoryEfficient;
+  auto result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+
+  result.recipe.unfused.softmax_offset_bytes = 1;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionBackendWorkspaceTest, CheckedOverflowReturnsNoPartialRecipe) {
+  auto problem = Problem();
+  problem.batch_size = std::numeric_limits<int32_t>::max();
+  problem.sequence_length = std::numeric_limits<int32_t>::max();
+  problem.num_heads = std::numeric_limits<int32_t>::max();
+  problem.kv_num_heads = 1;
+  problem.head_size = std::numeric_limits<int32_t>::max() - 7;
+
+  auto unfused = GetGQAUnfusedWorkspaceRecipe(
+      problem, std::numeric_limits<int32_t>::max());
+  EXPECT_EQ(unfused.status.error, GQAWorkspaceError::Overflow);
+  EXPECT_EQ(unfused.recipe.total_backend_bytes, 0U);
+
+  auto mea = GetGQAMemoryEfficientWorkspaceRecipe(
+      problem, std::numeric_limits<int32_t>::max());
+  EXPECT_EQ(mea.status.error, GQAWorkspaceError::Overflow);
+  EXPECT_EQ(mea.recipe.total_backend_bytes, 0U);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, CudnnIsUnavailableRatherThanZero) {
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Cudnn;
+  const auto result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  EXPECT_EQ(result.status.error, GQAWorkspaceError::Unavailable);
+  EXPECT_EQ(result.recipe.total_workspace_bytes, 0U);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, InvalidBackendIsInvalidArgument) {
+  GQAConcreteRoute route;
+  route.backend = static_cast<GQABackend>(999);
+  const auto result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  EXPECT_EQ(result.status.error, GQAWorkspaceError::InvalidArgument);
+
+  route.backend = GQABackend::Unfused;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  route.unfused.total_sequence_length = 5;
+  const auto valid_result = GetGQACompleteWorkspaceRecipe(Problem(), route);
+  ASSERT_TRUE(valid_result.status.IsOK()) << valid_result.status.message;
+  auto recipe = valid_result.recipe;
+  route.backend = static_cast<GQABackend>(999);
+  recipe.backend = route.backend;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsMismatchedBackendAndPreparation) {
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Flash;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  route.flash.total_sequence_length = 5;
+  route.flash.multi_processor_count = 80;
+  EXPECT_EQ(GetGQACompleteWorkspaceRecipe(Problem(), route).status.error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+}  // namespace test
+}  // namespace onnxruntime

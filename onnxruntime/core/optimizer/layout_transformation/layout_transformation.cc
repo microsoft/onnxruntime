@@ -122,19 +122,23 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         continue;
       }
 
-      // Skip if unknown rank
-      auto shape = api_graph->GetValueInfo(node->Inputs()[0])->Shape();
-      if (!shape.has_value()) {
+      // The NCHW<->NHWC permutation depends only on rank. For Conv/ConvTranspose (and FusedConv, which is treated as Conv
+      // here) the data input and the weight share the same rank, so an unknown input[0] rank can be recovered from the
+      // weight at input[1].
+      std::optional<size_t> input_rank = api_graph->GetValueInfo(node->Inputs()[0])->ShapeRank();
+      if (!input_rank.has_value() && (op_type == "Conv" || op_type == "ConvTranspose")) {
+        input_rank = api_graph->GetValueInfo(node->Inputs()[1])->ShapeRank();
+      }
+
+      // Skip if rank is still unknown.
+      if (!input_rank.has_value()) {
         continue;
       }
 
       // Convert to channels last
-      size_t rank = shape->size();
+      size_t rank = *input_rank;
 
-      bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value() ? true : false;
-      if (has_channel_last_attr) {
-        node->SetAttributeInt("channels_last", 1);
-      }
+      bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value();
 
       auto input_perm = onnx_transpose_optimization::ChannelFirstToLastPerm(rank);
       auto output_perm = onnx_transpose_optimization::ChannelLastToFirstPerm(rank);
@@ -167,9 +171,17 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
             input_perms.push_back(nullptr);
           }
         }
-        WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
+        if (!WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm})) {
+          continue;
+        }
       } else {
-        WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
+        if (!WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm})) {
+          continue;
+        }
+      }
+
+      if (has_channel_last_attr) {
+        node->SetAttributeInt("channels_last", 1);
       }
 
       SwapNodeOpTypeAndDomain(*api_graph, *node, op_type, kMSInternalNHWCDomain);
@@ -209,13 +221,21 @@ bool IsSupportedOpset(const Graph& graph) {
           onnx_version->second <= kMaxSupportedOpset);
 }
 
-void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
+bool WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
                               const std::vector<const std::vector<int64_t>*>& input_perms,
                               const std::vector<const std::vector<int64_t>*>& output_perms) {
   for (size_t i = 0; i < input_perms.size(); ++i) {
     const std::vector<int64_t>* input_perm = input_perms[i];
-    if (input_perm != nullptr) {
-      TransposeInput(graph, node, i, *input_perm, InvertPerm(*input_perm));
+    if (input_perm != nullptr && !CanTransposeInput(graph, node, i, InvertPerm(*input_perm))) {
+      return false;
+    }
+  }
+
+  for (size_t i = 0; i < input_perms.size(); ++i) {
+    const std::vector<int64_t>* input_perm = input_perms[i];
+    if (input_perm != nullptr &&
+        !TransposeInput(graph, node, i, *input_perm, InvertPerm(*input_perm))) {
+      return false;
     }
   }
   for (size_t i = 0; i < output_perms.size(); ++i) {
@@ -224,6 +244,8 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
       TransposeOutput(graph, node, i, *output_perm, InvertPerm(*output_perm));
     }
   }
+
+  return true;
 }
 }  // namespace layout_transformation
 }  // namespace onnxruntime

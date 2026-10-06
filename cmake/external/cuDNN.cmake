@@ -12,10 +12,22 @@ string(REGEX MATCH "#define CUDNN_MAJOR [1-9]+" macrodef "${cudnn_version_header
 string(REGEX MATCH "[1-9]+" CUDNN_MAJOR_VERSION "${macrodef}")
 
 function(find_cudnn_library NAME)
+    if(WIN32)
+        # Since CUDA 13.x, Windows cuDNN import libraries live under an architecture-specific
+        # subdirectory (lib/x64 for win-x64, lib/arm64 for win-arm64). A single cuDNN package
+        # may ship both arches, so only search the subdirectory matching the current target
+        # platform — otherwise find_library could pick the wrong arch (it returns the first
+        # match in PATH_SUFFIXES order).
+        if(onnxruntime_target_platform STREQUAL "ARM64" OR onnxruntime_target_platform STREQUAL "ARM64EC")
+            set(_cudnn_arch_suffixes lib/arm64 lib/${onnxruntime_CUDA_VERSION}/arm64)
+        else()
+            set(_cudnn_arch_suffixes lib/x64 lib/${onnxruntime_CUDA_VERSION}/x64)
+        endif()
+    endif()
     find_library(
         ${NAME}_LIBRARY ${NAME} "lib${NAME}.so.${CUDNN_MAJOR_VERSION}"
         HINTS $ENV{CUDNN_PATH} ${CUDNN_PATH} ${Python_SITEARCH}/nvidia/cudnn ${CUDAToolkit_LIBRARY_DIR}
-        PATH_SUFFIXES lib64 lib/x64 lib lib/${onnxruntime_CUDA_VERSION}/x64
+        PATH_SUFFIXES lib64 ${_cudnn_arch_suffixes} lib
         REQUIRED
     )
 

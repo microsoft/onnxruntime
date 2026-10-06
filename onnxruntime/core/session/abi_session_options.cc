@@ -34,10 +34,20 @@ const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const no
   return value.config_options;
 }
 
+void OrtSessionOptions::GetEpContextDataCallbacks(_Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** read_state,
+                                                  _Out_ OrtWriteNamedBufferFunc* write_func,
+                                                  _Out_ void** write_state) const noexcept {
+  *read_func = value.ep_context_data_read_func;
+  *read_state = value.ep_context_data_read_func != nullptr ? value.ep_context_data_read_state : nullptr;
+  const auto* write_config = value.ep_context_gen_options.TryGetEpContextDataWriteFunc();
+  *write_func = write_config != nullptr ? write_config->write_func : nullptr;
+  *write_state = write_config != nullptr ? write_config->state : nullptr;
+}
+
 onnxruntime::Status OrtSessionOptions::AddProviderOptionsToConfigOptions(
     const std::unordered_map<std::string, std::string>& provider_options, const char* provider_name) {
   // Add provider options to the session config options.
-  // Use a new key with the format: "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>"
+  // Use the provider-specific prefix from GetProviderOptionPrefix().
   auto key_prefix = GetProviderOptionPrefix(provider_name);
   for (const auto& [ep_key, ep_value] : provider_options) {
     const std::string new_key = key_prefix + ep_key;
@@ -48,6 +58,10 @@ onnxruntime::Status OrtSessionOptions::AddProviderOptionsToConfigOptions(
 
 // static
 std::string OrtSessionOptions::GetProviderOptionPrefix(const char* provider_name) {
+  if (std::string_view{provider_name} == "CUDAExecutionProvider") {
+    return "ep.cuda.";
+  }
+
   std::string key_prefix = "ep.";
   key_prefix += onnxruntime::utils::GetLowercaseString(provider_name);
   key_prefix += ".";
@@ -647,6 +661,17 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicyDelegate, _In_ Or
   options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
   options->value.ep_selection_policy.delegate = delegate;
   options->value.ep_selection_policy.state = state;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
+                    _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
+
+  options->value.ep_context_data_read_func = read_func;
+  options->value.ep_context_data_read_state = read_func != nullptr ? state : nullptr;
   return nullptr;
   API_IMPL_END
 }
