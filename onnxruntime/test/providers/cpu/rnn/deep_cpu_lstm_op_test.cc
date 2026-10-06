@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <vector>
@@ -22,15 +23,13 @@ TEST(LSTMTest, StateElementCountUsesSizeTArithmetic) {
   EXPECT_EQ(CalculateBufferElementCount({std::numeric_limits<int>::max(), 2}),
             static_cast<size_t>(std::numeric_limits<int>::max()) * 2);
   EXPECT_EQ(CalculateBufferElementCount({65535, 65537}), static_cast<size_t>(4294967295ULL));
-  if constexpr (sizeof(size_t) > sizeof(uint32_t)) {
-    EXPECT_EQ(CalculateBufferElementCount({65536, 65536}), static_cast<size_t>(4294967296ULL));
-    EXPECT_EQ(CalculateBufferElementCount({65536, 65537}), static_cast<size_t>(4295032832ULL));
-#ifndef ORT_NO_EXCEPTIONS
-  } else {
-    EXPECT_THROW((void)CalculateBufferElementCount({65536, 65536}), OnnxRuntimeException);
-    EXPECT_THROW((void)CalculateBufferElementCount({65536, 65537}), OnnxRuntimeException);
+#if SIZE_MAX > UINT32_MAX
+  EXPECT_EQ(CalculateBufferElementCount({65536, 65536}), static_cast<size_t>(4294967296ULL));
+  EXPECT_EQ(CalculateBufferElementCount({65536, 65537}), static_cast<size_t>(4295032832ULL));
+#elif !defined(ORT_NO_EXCEPTIONS)
+  EXPECT_THROW((void)CalculateBufferElementCount({65536, 65536}), OnnxRuntimeException);
+  EXPECT_THROW((void)CalculateBufferElementCount({65536, 65537}), OnnxRuntimeException);
 #endif
-  }
 }
 
 TEST(LSTMTest, RejectsUnrepresentableOutputStrideBeforeAllocation) {
