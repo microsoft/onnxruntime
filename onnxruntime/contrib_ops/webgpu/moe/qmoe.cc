@@ -495,6 +495,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                                fc1_size, moe_params.hidden_size));
     ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc2_scales, "fc2_scales", moe_params.num_experts,
                                                moe_params.hidden_size, moe_params.inter_size));
+    ORT_RETURN_IF(fc3_scales_optional != nullptr && fc3_experts_weights_optional == nullptr,
+                  "Block-scaled FP8 QMoE fc3_scales requires fc3_experts_weights.");
     if (fc3_experts_weights_optional) {
       ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc3_scales_optional, "fc3_scales", moe_params.num_experts,
                                                  moe_params.inter_size, moe_params.hidden_size));
