@@ -61,8 +61,6 @@ constexpr bool TensorProtoElementSizesAreConstexpr() {
       sizeof(uint8_t),   // FLOAT8E8M0
       sizeof(uint8_t),   // UINT2
       sizeof(uint8_t),   // INT2
-      sizeof(uint8_t),   // FLOAT6E2M3
-      sizeof(uint8_t),   // FLOAT6E3M2
   };
 
   for (size_t index = 0; index < expected_sizes.size(); ++index) {
@@ -1663,6 +1661,77 @@ TEST(ConstantNodeProtoToTensorProtoMarkerTest, RejectsInMemoryMarkerOnDenseTenso
   ASSERT_FALSE(status.IsOK())
       << "Constant node tensor attribute with an in-memory address marker must be rejected.";
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
+// A Constant node reaches this helper from model-local function bodies and subgraphs, where the
+// output list and the attribute set are model controlled and need not match the op schema.
+TEST(ConstantNodeProtoToTensorProtoTest, RejectsUnexpectedOutputCountAndAttributeType) {
+  // No output: the tensor name is derived from output(0), which must not be indexed blindly.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("no_output_constant");
+
+    auto* attr = node.add_attribute();
+    attr->set_name("value_int");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attr->set_i(1);
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("should have 1 output"));
+  }
+
+  // More than one output.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("two_output_constant");
+    node.add_output("c0");
+    node.add_output("c1");
+
+    auto* attr = node.add_attribute();
+    attr->set_name("value_int");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attr->set_i(1);
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("should have 1 output"));
+  }
+
+  // No attributes at all.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("no_attribute_constant");
+    node.add_output("c");
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("has no data attributes"));
+  }
+
+  // An attribute whose type carries no value must produce a Status, not an exception, so that
+  // builds without exception support reject the model instead of terminating.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("undefined_attribute_constant");
+    node.add_output("c");
+
+    auto* attr = node.add_attribute();
+    attr->set_name("value");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_UNDEFINED);
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unsupported attribute value type"));
+  }
 }
 
 // Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when

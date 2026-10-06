@@ -290,12 +290,20 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                         (fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr),
                     "WebGPU QMoE does not support explicit zero points on the optimized single-token path.");
 
-  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
-      fc2_expert_weight_bits_ != expert_weight_bits_ ||
-      fc3_expert_weight_bits_ != expert_weight_bits_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Mixed-width QMoE execution is not yet implemented on WebGPU.");
-  }
+  // MatMulNBits addresses packed rows and blocks as u32 words; partial words would drop weights.
+  const auto has_word_aligned_rows = [&](int64_t k, int64_t n, int64_t bits) {
+    const int64_t packed_block = block_size_ != 0 && block_size_ != k * n ? block_size_ : k;
+    return (k * bits) % 32 == 0 && (packed_block * bits) % 32 == 0;
+  };
+  ORT_RETURN_IF_NOT(has_word_aligned_rows(moe_params.hidden_size,
+                                          is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size,
+                                          fc1_expert_weight_bits_),
+                    "WebGPU QMoE FC1 packed rows and blocks must be 32-bit aligned.");
+  ORT_RETURN_IF_NOT(has_word_aligned_rows(moe_params.inter_size, moe_params.hidden_size, fc2_expert_weight_bits_),
+                    "WebGPU QMoE FC2 packed rows and blocks must be 32-bit aligned.");
+  ORT_RETURN_IF_NOT(fc3_experts_weights_optional == nullptr ||
+                        has_word_aligned_rows(moe_params.hidden_size, moe_params.inter_size, fc3_expert_weight_bits_),
+                    "WebGPU QMoE FC3 packed rows and blocks must be 32-bit aligned.");
 
   const auto& input_shape = hidden_state->Shape();
 
@@ -363,7 +371,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     TensorShape fc1_output_shape({static_cast<int64_t>(k), fc1_output_size});
     Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
     status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, fc1_zero_points, fc1_experts_bias_optional,
-                              K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
+                              K_fc1, N_fc1, block_size_fc1, accuracy_level, fc1_expert_weight_bits_, context,
                               &fc1_outputs, 0, &indirect_experts, /*override_M=*/k);
     ORT_RETURN_IF_ERROR(status);
 
@@ -376,7 +384,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       ORT_RETURN_IF_ERROR(ApplyMatMulNBits(hidden_state, fc3_experts_weights_optional, fc3_scales_optional,
                                            fc3_zero_points, fc3_experts_bias_optional,
                                            K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
-                                           expert_weight_bits_, context, &*fc3_outputs, 0, &indirect_experts,
+                                           fc3_expert_weight_bits_, context, &*fc3_outputs, 0, &indirect_experts,
                                            /*override_M=*/k));
     }
     MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
@@ -398,7 +406,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     TensorShape fc2_output_shape({static_cast<int64_t>(k), N_fc2});
     Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
     status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points, fc2_experts_bias_optional,
-                              K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
+                              K_fc2, N_fc2, block_size_fc2, accuracy_level, fc2_expert_weight_bits_, context,
                               &fc2_outputs, 0, &indirect_experts, /*override_M=*/0);
     ORT_RETURN_IF_ERROR(status);
 
@@ -515,7 +523,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       // Step 3: matmul the hidden_state with fc1 (gate_up) of the selected experts
       //
       status = ApplyMatMulNBits(&expert_hidden, fc1_experts_weights, fc1_scales, fc1_zero_points, fc1_experts_bias_optional,
-                                K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
+                                K_fc1, N_fc1, block_size_fc1, accuracy_level, fc1_expert_weight_bits_, context,
                                 &fc1_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 
@@ -528,7 +536,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
         ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&expert_hidden, fc3_experts_weights_optional, fc3_scales_optional,
                                              fc3_zero_points, fc3_experts_bias_optional,
                                              K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
-                                             expert_weight_bits_, context, &*fc3_outputs, expert_idx));
+                                             fc3_expert_weight_bits_, context, &*fc3_outputs, expert_idx));
       }
       MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
       activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}});
@@ -548,7 +556,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       // Step 5: multiply fc1_activated with fc2 (gate_down) of the selected experts
       //
       status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points, fc2_experts_bias_optional,
-                                K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
+                                K_fc2, N_fc2, block_size_fc2, accuracy_level, fc2_expert_weight_bits_, context,
                                 &fc2_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 
