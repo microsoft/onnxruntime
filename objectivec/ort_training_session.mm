@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 @implementation ORTTrainingSession {
   ORTEnv* _env;  // keep a strong reference so the ORTEnv doesn't get destroyed before this does
   ORTCheckpoint* _checkpoint;
+  id _epContextDataReadRegistration;
   std::optional<Ort::TrainingSession> _session;
 }
 
@@ -50,19 +51,35 @@ NS_ASSUME_NONNULL_BEGIN
     std::optional<std::string> evalPath = utils::toStdOptionalString(evalModelPath);
     std::optional<std::string> optimizerPath = utils::toStdOptionalString(optimizerModelPath);
 
-    _env = env;
-    _checkpoint = checkpoint;
-    _session = Ort::TrainingSession{
+    id registrationSnapshot;
+    Ort::SessionOptions sessionOptionsSnapshot{nullptr};
+    @synchronized(sessionOptions) {
+      registrationSnapshot = [sessionOptions epContextDataReadRegistrationSnapshot];
+      sessionOptionsSnapshot = [sessionOptions CXXAPIOrtSessionOptions].Clone();
+    }
+
+    std::optional<Ort::TrainingSession> session;
+    session.emplace(
         [env CXXAPIOrtEnv],
-        [sessionOptions CXXAPIOrtSessionOptions],
+        sessionOptionsSnapshot,
         [checkpoint CXXAPIOrtCheckpoint],
         trainModelPath.UTF8String,
         evalPath,
-        optimizerPath};
+        optimizerPath);
 
+    _env = env;
+    _checkpoint = checkpoint;
+    _epContextDataReadRegistration = registrationSnapshot;
+    _session = std::move(session);
     return self;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
+- (void)dealloc {
+  // Execution providers may retain the raw callback state, so release the native session first.
+  _session.reset();
+  _epContextDataReadRegistration = nil;
 }
 
 - (nullable NSArray<ORTValue*>*)trainStepWithInputValues:(NSArray<ORTValue*>*)inputs
