@@ -159,9 +159,9 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeO
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    setEpContextDataReadCallback
- * Signature: (JJLai/onnxruntime/OrtSession/SessionOptions/EpContextDataReadCallback;J)J
+ * Signature: (JJLai/onnxruntime/OrtSession$SessionOptions$EpContextDataReadCallback;J)Lai/onnxruntime/OrtSession$SessionOptions$EpContextDataReadCallbackRegistration;
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setEpContextDataReadCallback
+JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setEpContextDataReadCallback
     (JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jlong optionsHandle,
      jobject callback, jlong maxDataSize) {
   (void)jclazz;
@@ -169,13 +169,31 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setEp
   if (maxDataSize <= 0 ||
       (sizeof(size_t) < sizeof(uint64_t) && (uint64_t)maxDataSize > SIZE_MAX)) {
     throwOrtException(jniEnv, ORT_INVALID_ARGUMENT, "maxDataSize must be finite and greater than zero");
-    return 0;
+    return NULL;
   }
 
   EpContextDataCallbackState* callbackState = createEpContextDataCallbackState(
       jniEnv, api, callback, "read", "(Ljava/lang/String;)[B", (size_t)maxDataSize);
   if (callbackState == NULL) {
-    return 0;
+    return NULL;
+  }
+
+  jclass registrationClass = (*jniEnv)->FindClass(
+      jniEnv, "ai/onnxruntime/OrtSession$SessionOptions$EpContextDataReadCallbackRegistration");
+  if (registrationClass == NULL) {
+    releaseEpContextDataCallbackState(jniEnv, callbackState);
+    return NULL;
+  }
+
+  jmethodID constructor = (*jniEnv)->GetMethodID(jniEnv, registrationClass, "<init>", "(J)V");
+  jobject registration = NULL;
+  if (constructor != NULL) {
+    registration = (*jniEnv)->NewObject(jniEnv, registrationClass, constructor, (jlong)callbackState);
+  }
+  (*jniEnv)->DeleteLocalRef(jniEnv, registrationClass);
+  if (registration == NULL) {
+    releaseEpContextDataCallbackState(jniEnv, callbackState);
+    return NULL;
   }
 
   OrtStatus* status = api->SessionOptionsSetEpContextDataReadFunc(
@@ -183,11 +201,12 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setEp
 
   if (status != NULL) {
     releaseEpContextDataCallbackState(jniEnv, callbackState);
+    (*jniEnv)->DeleteLocalRef(jniEnv, registration);
     checkOrtStatus(jniEnv, api, status);
-    return 0;
+    return NULL;
   }
 
-  return (jlong)callbackState;
+  return registration;
 }
 
 JNIEXPORT jboolean JNICALL

@@ -949,7 +949,8 @@ public class OrtSession implements AutoCloseable {
      *
      * <p>The callback and its captured state are retained until these options and every session or
      * model compilation options created from them are closed. Replacing or clearing the callback
-     * does not affect existing sessions or compilation options.
+     * does not affect existing sessions or compilation options. If registration fails, the
+     * previously registered callback remains unchanged.
      *
      * <p>The Java binding retains {@code maxDataSize} in the callback state and checks the returned
      * array before allocating the native output buffer. The native API stores only the callback and
@@ -970,12 +971,11 @@ public class OrtSession implements AutoCloseable {
         throw new IllegalArgumentException("maxDataSize must be greater than zero");
       }
 
-      long callbackHandle =
+      EpContextDataReadCallbackRegistration registration =
           setEpContextDataReadCallback(
               OnnxRuntime.ortApiHandle, nativeHandle, callback, maxDataSize);
       EpContextDataReadCallbackRegistration previous = epContextDataReadCallbackRegistration;
-      epContextDataReadCallbackRegistration =
-          new EpContextDataReadCallbackRegistration(callbackHandle);
+      epContextDataReadCallbackRegistration = registration;
       if (previous != null) {
         previous.release();
       }
@@ -1691,7 +1691,7 @@ public class OrtSession implements AutoCloseable {
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 
-    private static native long setEpContextDataReadCallback(
+    private static native EpContextDataReadCallbackRegistration setEpContextDataReadCallback(
         long apiHandle, long nativeHandle, EpContextDataReadCallback callback, long maxDataSize)
         throws OrtException;
 

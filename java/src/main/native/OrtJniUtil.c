@@ -348,11 +348,12 @@ OrtStatus* ORT_API_CALL javaEpContextDataReadCallback(
                 state, ORT_INVALID_ARGUMENT,
                 "EPContext data read callback result exceeds the configured maximum size");
         } else if (outputSize != 0) {
-            void* output = allocator->Alloc(allocator, outputSize);
-            if (output == NULL) {
+            void* output = NULL;
+            status = state->api->AllocatorAlloc(allocator, outputSize, &output);
+            if (status == NULL && output == NULL) {
                 status = createCallbackStatus(
                     state, ORT_FAIL, "Failed to allocate the EPContext data read result");
-            } else {
+            } else if (status == NULL) {
                 (*jniEnv)->GetByteArrayRegion(
                     jniEnv, javaData, 0, length, (jbyte*)output);
                 if ((*jniEnv)->ExceptionCheck(jniEnv)) {
