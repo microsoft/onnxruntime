@@ -436,15 +436,16 @@ static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
   auto fp16_logits = ToFloat16(logits);
   auto fp32_logits = logits;
   const size_t element_size = use_fp16 ? sizeof(MLFloat16) : sizeof(float);
+  const size_t buffer_size = (cols * element_size + 3) & ~size_t{3};
   wgpu::BufferDescriptor logits_desc{};
-  logits_desc.size = std::max<size_t>(4, cols * element_size);
+  logits_desc.size = buffer_size;
   logits_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
   auto logits_buffer = context.Device().CreateBuffer(&logits_desc);
   ASSERT_NE(logits_buffer.Get(), nullptr);
   webgpu_ep.BufferManager().Upload(recording, use_fp16 ? static_cast<void*>(fp16_logits.data()) : static_cast<void*>(fp32_logits.data()),
                                    logits_buffer.Get(), cols * element_size);
   wgpu::BufferDescriptor weights_desc{};
-  weights_desc.size = std::max<size_t>(4, cols * element_size);
+  weights_desc.size = buffer_size;
   weights_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc;
   auto weights_buffer = context.Device().CreateBuffer(&weights_desc);
   wgpu::BufferDescriptor indices_desc{};
