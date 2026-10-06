@@ -383,28 +383,6 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
   return CUDA_CALL(cudaGetLastError());
 }
 
-// FlashAttention and cuDNN cannot skip a block. A -1 is only legal where the mask already excludes it
-// (below the window or past kv_len), so redirecting invalid entries to block 0 keeps reads in bounds.
-__global__ void ClampBlockTable(int* __restrict__ clamped_block_table, const int* __restrict__ block_table,
-                                const int num_blocks, const int64_t total_entries) {
-  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
-  for (int64_t i = threadIdx.x + static_cast<int64_t>(blockIdx.x) * blockDim.x; i < total_entries; i += stride) {
-    const int block_id = block_table[i];
-    clamped_block_table[i] = (block_id < 0 || block_id >= num_blocks) ? 0 : block_id;
-  }
-}
-
-Status LaunchClampBlockTable(int* clamped_block_table, const int* block_table, const int num_blocks,
-                             const int64_t total_entries, cudaStream_t stream) {
-  if (total_entries == 0) {
-    return Status::OK();
-  }
-  constexpr int kThreads = 256;
-  const int blocks = static_cast<int>(std::min<int64_t>((total_entries + kThreads - 1) / kThreads, 65535));
-  ClampBlockTable<<<blocks, kThreads, 0, stream>>>(clamped_block_table, block_table, num_blocks, total_entries);
-  return CUDA_CALL(cudaGetLastError());
-}
-
 // Fills seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i])
 // for the cuDNN paged SDPA graph's per-batch KV padding-mask input. Deriving the query count from
 // cumulative_seqlens_q rather than hard-coding +1 avoids baking the "decode-only" invariant into
@@ -1613,8 +1591,10 @@ Status PagedDecodeAttention(
 //  3. Attention sinks. XQA consumes them as fp32, laid out [kv_head][group] -- which is ORT's
 //     [num_heads] order -- so only a dtype conversion is needed.
 
-// block_table [batch, max_num_blocks_per_seq] -> page_table [batch, max_num_blocks_per_seq *
-// pages_per_block]. Invalid blocks map to block 0, as in ClampBlockTable.
+// block_table [batch, max_num_blocks_per_seq] -> page_table [batch, max_num_blocks_per_seq * pages_per_block],
+// for the backends that cannot skip a block (FlashAttention, cuDNN, XQA). A -1 is only legal where the mask
+// already excludes it (below the window or past kv_len), so redirecting invalid entries to block 0 keeps
+// reads in bounds.
 __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
                                         int* __restrict__ page_table,
                                         const int max_num_blocks_per_seq,
@@ -1632,6 +1612,20 @@ __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
     }
     page_table[i] = block_id * pages_per_block + (page_in_seq % pages_per_block);
   }
+}
+
+Status LaunchExpandBlockTableToPages(const int* block_table, int* page_table, const int batch_size,
+                                     const int max_num_blocks_per_seq, const int pages_per_block,
+                                     const int num_blocks, cudaStream_t stream) {
+  const int64_t total_pages = static_cast<int64_t>(batch_size) * max_num_blocks_per_seq * pages_per_block;
+  if (total_pages == 0) {
+    return Status::OK();
+  }
+  constexpr int kThreads = 256;
+  const int blocks = static_cast<int>(std::min<int64_t>((total_pages + kThreads - 1) / kThreads, 65535));
+  ExpandBlockTableToPages<<<blocks, kThreads, 0, stream>>>(block_table, page_table, max_num_blocks_per_seq,
+                                                           pages_per_block, num_blocks, total_pages);
+  return CUDA_CALL(cudaGetLastError());
 }
 
 // Multiply every head vector by a PER_CHANNEL scale indexed [kv_head, channel]. Used to fold
@@ -1779,15 +1773,9 @@ Status PagedXqaDecodeAttention(
   const int pages_per_block = parameters.block_size / onnxruntime::contrib::cuda::kXqaTokensPerPage;
   const int max_pages_per_seq = parameters.max_num_blocks_per_seq * pages_per_block;
   ORT_RETURN_IF_NOT(data.xqa_page_table_scratch, "XQA page-table scratch was not allocated.");
-  const int64_t total_pages = static_cast<int64_t>(batch_size) * max_pages_per_seq;
-  if (total_pages > 0) {
-    const int blocks =
-        static_cast<int>(std::min<int64_t>((total_pages + max_threads_per_block - 1) / max_threads_per_block, 65535));
-    ExpandBlockTableToPages<<<blocks, max_threads_per_block, 0, stream>>>(
-        data.block_table, data.xqa_page_table_scratch,
-        parameters.max_num_blocks_per_seq, pages_per_block, parameters.num_blocks, total_pages);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  }
+  ORT_RETURN_IF_ERROR(LaunchExpandBlockTableToPages(data.block_table, data.xqa_page_table_scratch, batch_size,
+                                                    parameters.max_num_blocks_per_seq, pages_per_block,
+                                                    parameters.num_blocks, stream));
   const int* page_table = data.xqa_page_table_scratch;
 
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
@@ -1914,9 +1902,9 @@ Status CudnnPagedAttention(
       parameters.batch_size, stream));
 
   ORT_RETURN_IF_NOT(data.clamped_block_table, "Clamped block-table scratch was not allocated.");
-  ORT_RETURN_IF_ERROR(LaunchClampBlockTable(
-      data.clamped_block_table, data.block_table, parameters.num_blocks,
-      static_cast<int64_t>(parameters.batch_size) * parameters.max_num_blocks_per_seq, stream));
+  ORT_RETURN_IF_ERROR(LaunchExpandBlockTableToPages(data.block_table, data.clamped_block_table, parameters.batch_size,
+                                                    parameters.max_num_blocks_per_seq, 1, parameters.num_blocks,
+                                                    stream));
 
   cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
   const bool ok = onnxruntime::cudnn_sdpa::run_paged(
@@ -2021,8 +2009,8 @@ Status FlashAttention(
         data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
   } else {
     ORT_RETURN_IF_NOT(data.clamped_block_table, "Clamped block-table scratch was not allocated.");
-    ORT_RETURN_IF_ERROR(LaunchClampBlockTable(data.clamped_block_table, block_table, parameters.num_blocks,
-                                              static_cast<int64_t>(batch_size) * max_num_blocks_per_seq, stream));
+    ORT_RETURN_IF_ERROR(LaunchExpandBlockTableToPages(block_table, data.clamped_block_table, batch_size,
+                                                      max_num_blocks_per_seq, 1, parameters.num_blocks, stream));
     void* key_cache = reinterpret_cast<void*>(data.key_cache);
     void* value_cache = reinterpret_cast<void*>(data.value_cache);
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(

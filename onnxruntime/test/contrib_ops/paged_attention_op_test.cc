@@ -333,7 +333,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   }
   ASSERT_TRUE(!c.replay_past_seqlens.empty() || !c.past_seqlens.empty() ||
               max_num_blocks_per_seq > past_seqlen / block_size);
-  ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
+  ASSERT_TRUE(c.allow_out_of_range_block_table || batch_size * max_num_blocks_per_seq <= num_blocks);
   ASSERT_EQ(num_heads % kv_num_heads, 0);
   ASSERT_TRUE(c.block_table.empty() ||
               c.block_table.size() == static_cast<size_t>(batch_size * max_num_blocks_per_seq));
@@ -1791,39 +1791,23 @@ TEST(PagedAttention, Cuda_XqaSpecDecFp8CacheHeadSize256Group6) {
 }
 #endif
 
-// Paged decode skips an out-of-range block_table entry like -1.
+// Paged decode treats an out-of-range block_table entry like -1: skipped on read, never written.
 TEST(PagedAttention, Cuda_OutOfRangeBlockTableTreatedAsUnmapped) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
   }
 
-  for (int32_t sentinel : {-1, 99}) {
-    IoBindingCase c;
-    c.block_size = 16;
-    c.num_blocks = 3;
-    c.max_num_blocks_per_seq = 2;
-    c.past_seqlen = 16;
-    c.block_table = {sentinel, 1};
-    c.allow_out_of_range_block_table = true;
-    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
-  }
-}
-
-// A write through an out-of-range block must leave both caches unchanged.
-TEST(PagedAttention, Cuda_OutOfRangeBlockTableSkipsCacheWrite) {
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    GTEST_SKIP() << "CUDA EP not available.";
-  }
-
   for (int32_t sentinel : {-1, 3, 99}) {
-    IoBindingCase c;
-    c.block_size = 16;
-    c.num_blocks = 3;
-    c.max_num_blocks_per_seq = 2;
-    c.past_seqlen = 16;
-    c.block_table = {0, sentinel};
-    c.allow_out_of_range_block_table = true;
-    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+    for (const std::vector<int32_t>& block_table : {std::vector<int32_t>{sentinel, 1}, {0, sentinel}}) {
+      IoBindingCase c;
+      c.block_size = 16;
+      c.num_blocks = 3;
+      c.max_num_blocks_per_seq = 2;
+      c.past_seqlen = 16;
+      c.block_table = block_table;
+      c.allow_out_of_range_block_table = true;
+      RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+    }
   }
 }
 
@@ -1840,6 +1824,35 @@ TEST(PagedAttention, Cuda_ZeroBlockCacheRejected) {
   c.allow_out_of_range_block_table = true;
   c.expected_error = "zero blocks";
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+// An empty query never launches a backend, so it needs no physical block.
+TEST(PagedAttention, Cuda_ZeroBlockCacheEmptyQuery) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int head_size = 8;
+  constexpr int block_size = 256;
+  OpTester test("PagedAttention", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 1);
+  test.AddAttribute<int64_t>("kv_num_heads", 1);
+  test.AddInput<MLFloat16>("query", {0, head_size}, {});
+  test.AddInput<MLFloat16>("key", {0, head_size}, {});
+  test.AddInput<MLFloat16>("value", {0, head_size}, {});
+  test.AddInput<MLFloat16>("key_cache", {0, block_size, 1, head_size}, {});
+  test.AddInput<MLFloat16>("value_cache", {0, block_size, 1, head_size}, {});
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 0});
+  test.AddInput<int32_t>("past_seqlens", {1}, {0});
+  test.AddInput<int32_t>("block_table", {1, 1}, {-1});
+  test.AddOutput<MLFloat16>("output", {0, head_size}, {});
+  test.AddOutput<MLFloat16>("key_cache_out", {0, block_size, 1, head_size}, {});
+  test.AddOutput<MLFloat16>("value_cache_out", {0, block_size, 1, head_size}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // FlashAttention never dereferences a block below the sliding window, so an invalid entry there is masked.
@@ -1898,7 +1911,7 @@ TEST(PagedAttention, Cuda_OutOfRangeBlockTableXqaEligible) {
     GTEST_SKIP() << "XQA requires compute capability 8.0 or later.";
   }
 
-  auto make_case = [](int32_t sentinel) {
+  for (int32_t sentinel : {-1, 99}) {
     IoBindingCase c;
     c.num_heads = 6;
     c.kv_num_heads = 1;
@@ -1910,22 +1923,16 @@ TEST(PagedAttention, Cuda_OutOfRangeBlockTableXqaEligible) {
     c.block_table = {2, 1, sentinel};
     c.allow_out_of_range_block_table = true;
     c.attention_metadata = {1, 256};
-    return c;
-  };
 
-  testing::internal::CaptureStdout();
-  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, make_case(-1));
-  const std::string baseline_debug_output = testing::internal::GetCapturedStdout();
-  if (baseline_debug_output.find("SdpaKernel=XQA") == std::string::npos) {
-    GTEST_SKIP() << "Paged XQA H256/group6 (pages_per_block=1) is not runnable in this "
-                    "build/device configuration.\n"
-                 << baseline_debug_output;
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+    const std::string debug_output = testing::internal::GetCapturedStdout();
+    if (debug_output.find("SdpaKernel=XQA") == std::string::npos) {
+      GTEST_SKIP() << "Paged XQA H256/group6 (pages_per_block=1) is not runnable in this "
+                      "build/device configuration.\n"
+                   << debug_output;
+    }
   }
-
-  testing::internal::CaptureStdout();
-  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, make_case(99));
-  const std::string debug_output = testing::internal::GetCapturedStdout();
-  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
 }
 
 TEST(PagedAttention, Cuda_AttentionMetadataValidation) {
