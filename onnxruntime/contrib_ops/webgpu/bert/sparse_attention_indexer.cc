@@ -40,12 +40,40 @@ constexpr uint32_t kElementwiseWorkgroupSize = 64;
 constexpr uint32_t kSerialWorkgroupSize = 1;
 constexpr std::string_view kWgslNegativeMax =
     "const NEGATIVE_MAX_F32: f32 = -3.4028234663852886e+38;\n";
+constexpr uint32_t kQsaSelectWorkgroupSize = 64;
+// Both caches and the count fit within WebGPU's guaranteed 16 KiB workgroup storage.
+constexpr uint32_t kQsaCachedBlocks = 768;
+constexpr uint32_t kQsaCachedVisibleTokens = 3072;
 
 Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<int64_t> expected) {
   ORT_RETURN_IF(tensor == nullptr, "SparseAttentionIndexer: ", name, " is required");
   const TensorShape expected_shape(expected);
   ORT_RETURN_IF_NOT(tensor->Shape() == expected_shape, "SparseAttentionIndexer: ", name, " must have shape ",
                     expected_shape.ToString(), ", got ", tensor->Shape().ToString());
+  return Status::OK();
+}
+
+struct RotaryCacheShape {
+  bool batched;
+  int64_t max_rotary_length;
+  int64_t rotary_width;
+};
+
+Status CheckRotaryCache(const Tensor* cos_cache, const Tensor* sin_cache, int64_t batch_size,
+                        RotaryCacheShape& out) {
+  ORT_RETURN_IF(cos_cache == nullptr, "SparseAttentionIndexer: cos_cache is required");
+  const auto& cos_shape = cos_cache->Shape();
+  out.batched = cos_shape.NumDimensions() == 3;
+  ORT_RETURN_IF_NOT(
+      (out.batched && cos_shape[0] == batch_size && cos_shape[1] > 0) ||
+          (cos_shape.NumDimensions() == 2 && cos_shape[0] > 0),
+      "SparseAttentionIndexer: cos_cache must have shape (max_rotary_sequence_length, rotary_width) or "
+      "(batch_size, max_rotary_sequence_length, rotary_width), got ",
+      cos_shape.ToString());
+  out.max_rotary_length = out.batched ? cos_shape[1] : cos_shape[0];
+  out.rotary_width = out.batched ? cos_shape[2] : cos_shape[1];
+  ORT_RETURN_IF_NOT(sin_cache != nullptr && sin_cache->Shape() == cos_shape,
+                    "SparseAttentionIndexer: sin_cache must have the same shape as cos_cache");
   return Status::OK();
 }
 
@@ -129,21 +157,34 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   const auto& key_norm = shader.AddInput("key_norm_weight", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
-  const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
   const auto& selected = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
+      << "var<workgroup> block_scores: array<f32, " << kQsaCachedBlocks << ">;\n"
+      << "var<workgroup> visible_tokens: array<u32, " << kQsaCachedVisibleTokens << ">;\n"
+      << "var<workgroup> visible_count_shared: u32;\n"
       << "fn visible(row: u32, token: u32) -> bool {\n"
-      << "  let batch = row / uniforms.sequence_length;\n"
-      << "  let query = row % uniforms.sequence_length;\n"
-      << "  let offset = batch * uniforms.total_sequence_length + token;\n"
-      << "  let mask_value = " << mask.GetByOffset("offset", true) << ";\n"
-      << "  return token <= uniforms.past_sequence_length + query && "
-         "(mask_value.x != 0u || mask_value.y != 0u);\n"
+      << "  let query = row % uniforms.sequence_length;\n";
+  if (has_mask_) {
+    const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
+    shader.AdditionalImplementation()
+        << "  let batch = row / uniforms.sequence_length;\n"
+        << "  let offset = batch * uniforms.total_sequence_length + token;\n"
+        << "  let mask_value = " << mask.GetByOffset("offset", true) << ";\n"
+        << "  return token <= uniforms.past_sequence_length + query && "
+           "(mask_value.x != 0u || mask_value.y != 0u);\n";
+  } else {
+    shader.AdditionalImplementation()
+        << "  return token <= uniforms.past_sequence_length + query;\n";
+  }
+  shader.AdditionalImplementation()
       << "}\n"
       << "fn visible_at(row: u32, ordinal: u32) -> u32 {\n"
-      << "  var seen = 0u;\n"
-      << "  for (var token = 0u; token < uniforms.total_sequence_length; token++) {\n"
+      << "  if (ordinal >= visible_count_shared) { return uniforms.total_sequence_length; }\n"
+      << "  if (ordinal < " << kQsaCachedVisibleTokens << "u) { return visible_tokens[ordinal]; }\n"
+      << "  var seen = " << kQsaCachedVisibleTokens << "u;\n"
+      << "  for (var token = visible_tokens[" << kQsaCachedVisibleTokens - 1 << "u] + 1u;\n"
+      << "       token < uniforms.total_sequence_length; token++) {\n"
       << "    if (visible(row, token)) {\n"
       << "      if (seen == ordinal) { return token; }\n"
       << "      seen++;\n"
@@ -154,29 +195,23 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "fn clamp_position(position: u32) -> u32 {\n"
       << "  return min(position, uniforms.max_rotary_length - 1u);\n"
       << "}\n"
-      << "fn normalized_query_value(row: u32, head: u32, d: u32) -> f32 {\n"
+      << "fn normalized_query_value(row: u32, head: u32, d: u32, inv_rms: f32) -> f32 {\n"
       << "  let base = row * uniforms.query_row_stride + head * uniforms.head_size;\n"
-      << "  var square_sum = 0.0;\n"
-      << "  for (var k = 0u; k < uniforms.head_size; k++) {\n"
-      << "    let value = f32(" << query.GetByOffset("base + k") << ");\n"
-      << "    square_sum += value * value;\n"
-      << "  }\n"
       << "  return f32(" << query.GetByOffset("base + d")
-      << ") * inverseSqrt(square_sum / f32(uniforms.head_size) + uniforms.epsilon) * f32("
+      << ") * inv_rms * f32("
       << query_norm.GetByOffset("d") << ");\n"
       << "}\n"
-      << "fn query_value(row: u32, head: u32, d: u32) -> f32 {\n"
-      << "  let base = (row * uniforms.num_heads + head) * uniforms.head_size;\n"
-      << "  var value = normalized_query_value(row, head, d);\n"
+      << "fn query_value(row: u32, head: u32, d: u32, inv_rms: f32) -> f32 {\n"
+      << "  var value = normalized_query_value(row, head, d, inv_rms);\n"
       << "  if (d < uniforms.rotary_width) {\n"
       << "    let half = uniforms.rotary_width / 2u;\n"
       << "    let pair_d = select(d - half, d + half, d < half);\n"
       << "    let sign = select(1.0, -1.0, d < half);\n"
-      << "    let paired = sign * normalized_query_value(row, head, pair_d);\n"
+      << "    let paired = sign * normalized_query_value(row, head, pair_d, inv_rms);\n"
       << "    let batch = row / uniforms.sequence_length;\n"
       << "    let token = row % uniforms.sequence_length;\n"
       << "    let position = clamp_position(uniforms.past_sequence_length + token);\n"
-      << "    let cache = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width + d;\n"
+      << "    let cache = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width + d;\n"
       << "    value = value * f32(" << cos_cache.GetByOffset("cache") << ") + paired * f32("
       << sin_cache.GetByOffset("cache") << ");\n"
       << "  }\n"
@@ -192,37 +227,44 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "  }\n"
       << "  return sum / f32(uniforms.compress_ratio);\n"
       << "}\n"
-      << "fn normalized_value(row: u32, block: u32, d: u32) -> f32 {\n"
-      << "  var square_sum = 0.0;\n"
-      << "  for (var k = 0u; k < uniforms.head_size; k++) {\n"
-      << "    let value = pooled_value(row, block, k);\n"
-      << "    square_sum += value * value;\n"
-      << "  }\n"
-      << "  return pooled_value(row, block, d) * inverseSqrt(square_sum / f32(uniforms.head_size) + "
-         "uniforms.epsilon) * f32("
+      << "fn normalized_value(row: u32, block: u32, d: u32, inv_rms: f32) -> f32 {\n"
+      << "  return pooled_value(row, block, d) * inv_rms * f32("
       << key_norm.GetByOffset("d") << ");\n"
       << "}\n"
-      << "fn key_value(row: u32, block: u32, d: u32) -> f32 {\n"
-      << "  var value = normalized_value(row, block, d);\n"
+      << "fn key_value(row: u32, block: u32, d: u32, inv_rms: f32, position: u32) -> f32 {\n"
+      << "  var value = normalized_value(row, block, d, inv_rms);\n"
       << "  if (d < uniforms.rotary_width) {\n"
       << "    let half = uniforms.rotary_width / 2u;\n"
       << "    let pair_d = select(d - half, d + half, d < half);\n"
       << "    let sign = select(1.0, -1.0, d < half);\n"
-      << "    let paired = sign * normalized_value(row, block, pair_d);\n"
+      << "    let paired = sign * normalized_value(row, block, pair_d, inv_rms);\n"
       << "    let batch = row / uniforms.sequence_length;\n"
-      << "    let position = clamp_position(visible_at(row, block * uniforms.compress_ratio));\n"
-      << "    let cache = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width + d;\n"
+      << "    let cache = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width + d;\n"
       << "    value = value * f32(" << cos_cache.GetByOffset("cache") << ") + paired * f32("
       << sin_cache.GetByOffset("cache") << ");\n"
       << "  }\n"
       << "  return value;\n"
       << "}\n"
       << "fn block_score(row: u32, block: u32) -> f32 {\n"
+      << "  var key_square_sum = 0.0;\n"
+      << "  for (var k = 0u; k < uniforms.head_size; k++) {\n"
+      << "    let value = pooled_value(row, block, k);\n"
+      << "    key_square_sum += value * value;\n"
+      << "  }\n"
+      << "  let key_inv_rms = inverseSqrt(key_square_sum / f32(uniforms.head_size) + uniforms.epsilon);\n"
+      << "  let position = clamp_position(visible_at(row, block * uniforms.compress_ratio));\n"
       << "  var score = 0.0;\n"
       << "  for (var head = 0u; head < uniforms.num_heads; head++) {\n"
+      << "    let query_base = row * uniforms.query_row_stride + head * uniforms.head_size;\n"
+      << "    var query_square_sum = 0.0;\n"
+      << "    for (var k = 0u; k < uniforms.head_size; k++) {\n"
+      << "      let value = f32(" << query.GetByOffset("query_base + k") << ");\n"
+      << "      query_square_sum += value * value;\n"
+      << "    }\n"
+      << "    let query_inv_rms = inverseSqrt(query_square_sum / f32(uniforms.head_size) + uniforms.epsilon);\n"
       << "    var dot = 0.0;\n"
       << "    for (var d = 0u; d < uniforms.head_size; d++) {\n"
-      << "      dot += query_value(row, head, d) * key_value(row, block, d);\n"
+      << "      dot += query_value(row, head, d, query_inv_rms) * key_value(row, block, d, key_inv_rms, position);\n"
       << "    }\n"
       << "    score += max(dot, 0.0);\n"
       << "  }\n"
@@ -232,15 +274,31 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   shader.MainFunctionBody()
       << "  let row = workgroup_idx;\n"
       << "  if (row >= uniforms.rows) { return; }\n"
+      << "  if (local_idx == 0u) {\n"
+      << "    var count = 0u;\n"
+      << "    for (var token = 0u; token < uniforms.total_sequence_length; token++) {\n"
+      << "      if (visible(row, token)) {\n"
+      << "        if (count < " << kQsaCachedVisibleTokens << "u) { visible_tokens[count] = token; }\n"
+      << "        count++;\n"
+      << "      }\n"
+      << "    }\n"
+      << "    visible_count_shared = count;\n"
+      << "  }\n"
+      << "  workgroupBarrier();\n"
+      << "  let visible_count = visible_count_shared;\n"
+      << "  let block_count = visible_count / uniforms.compress_ratio;\n"
+      << "  if (block_count <= " << kQsaCachedBlocks << "u) {\n"
+      << "    for (var candidate = local_idx; candidate < block_count; candidate += "
+      << kQsaSelectWorkgroupSize << "u) {\n"
+      << "      block_scores[candidate] = block_score(row, candidate);\n"
+      << "    }\n"
+      << "  }\n"
+      << "  workgroupBarrier();\n"
+      << "  if (local_idx != 0u) { return; }\n"
       << "  let output_base = row * uniforms.capacity;\n"
       << "  for (var i = 0u; i < uniforms.capacity; i++) {\n"
       << "    " << selected.SetByOffset("output_base + i", "-1") << "\n"
       << "  }\n"
-      << "  var visible_count = 0u;\n"
-      << "  for (var token = 0u; token < uniforms.total_sequence_length; token++) {\n"
-      << "    if (visible(row, token)) { visible_count++; }\n"
-      << "  }\n"
-      << "  let block_count = visible_count / uniforms.compress_ratio;\n"
       << "  let selected_blocks = min(uniforms.block_topk, block_count);\n"
       << "  var previous_score = 0.0;\n"
       << "  var previous_index = -1i;\n"
@@ -248,7 +306,12 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "    var best_score = 0.0;\n"
       << "    var best_index = -1i;\n"
       << "    for (var candidate = 0u; candidate < block_count; candidate++) {\n"
-      << "      let score = block_score(row, candidate);\n"
+      << "      var score = 0.0;\n"
+      << "      if (block_count <= " << kQsaCachedBlocks << "u) {\n"
+      << "        score = block_scores[candidate];\n"
+      << "      } else {\n"
+      << "        score = block_score(row, candidate);\n"
+      << "      }\n"
       << "      if (previous_index >= 0 && !(score < previous_score || "
          "(score == previous_score && i32(candidate) > previous_index))) { continue; }\n"
       << "      if (best_index < 0 || score > best_score || (score == best_score && i32(candidate) < best_index)) {\n"
@@ -398,7 +461,7 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
       << "  let max_position = uniforms.max_rotary_length - 1u;\n"
       << "  let position = select(entry * uniforms.compress_ratio, max_position, "
          "entry > max_position / uniforms.compress_ratio);\n"
-      << "  let cache_base = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width;\n"
+      << "  let cache_base = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width;\n"
       << "  let rotary_base = uniforms.head_size - 2u * uniforms.rotary_width;\n"
       << "  for (var d = 0u; d < uniforms.head_size; d++) {\n"
       << "    var value = pooled_value(batch, window, d) * inverse_rms * f32(" << norm.GetByOffset("d") << ");\n"
@@ -529,7 +592,7 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "    let paired = sign * normalized_query_value(row, head, pair_d);\n"
       << "    let batch = row / uniforms.sequence_length;\n"
       << "    let position = clamped_position(row, uniforms.max_rotary_length - 1u);\n"
-      << "    let cache = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width + offset / 2u;\n"
+      << "    let cache = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width + offset / 2u;\n"
       << "    value = value * f32(" << cos_cache.GetByOffset("cache") << ") + paired * f32("
       << sin_cache.GetByOffset("cache") << ");\n"
       << "  }\n"
@@ -617,14 +680,16 @@ Status SparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeConte
   const bool is_qsa = policy_ == sai::Policy::kQsa;
   ORT_RETURN_IF(!is_qsa && context.Input(sai::kKey) == nullptr,
                 "SparseAttentionIndexer: key is required for policy_mode 'csa'");
-  for (int index : {sai::kMask, sai::kGate, sai::kPositionBias, sai::kHeadWeights,
+  for (int index : {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                     sai::kPositionIds, sai::kPastProjBuffer}) {
-    const bool policy_owns_slot = is_qsa ? index == sai::kMask : index != sai::kMask;
+    const bool policy_owns_slot = !is_qsa;
     const bool provided = index < context.InputCount() && context.Input(index) != nullptr;
     ORT_RETURN_IF(provided != policy_owns_slot, "SparseAttentionIndexer: input ", index,
                   provided ? " must be omitted for policy_mode '" : " is required for policy_mode '",
                   is_qsa ? sai::kPolicyModeQsa : sai::kPolicyModeCsa, "'");
   }
+  ORT_RETURN_IF(!is_qsa && context.Input(sai::kMask) != nullptr,
+                "SparseAttentionIndexer: mask must be omitted for policy_mode 'csa'");
   return is_qsa ? ComputeQsa(context) : ComputeCsa(context);
 }
 
@@ -677,18 +742,18 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   }
   ORT_RETURN_IF_ERROR(CheckShape(query_norm, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm, "key_norm_weight", {head_size}));
-  const auto& cos_shape = cos_cache->Shape();
-  ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
-                    "SparseAttentionIndexer: invalid cos_cache shape");
-  const int64_t max_rotary_length = cos_shape[1];
-  const int64_t rotary_width = cos_shape[2];
-  ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape && rotary_width > 0 && rotary_width % 2 == 0 &&
-                        rotary_width <= head_size,
+  RotaryCacheShape rotary_cache_shape;
+  ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary_cache_shape));
+  const int64_t max_rotary_length = rotary_cache_shape.max_rotary_length;
+  const int64_t rotary_width = rotary_cache_shape.rotary_width;
+  ORT_RETURN_IF_NOT(rotary_width > 0 && rotary_width % 2 == 0 && rotary_width <= head_size,
                     "SparseAttentionIndexer: invalid qsa rotary cache shape");
-  const auto& mask_shape = mask->Shape();
-  ORT_RETURN_IF_NOT(
-      mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_length,
-      "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
+  if (mask != nullptr) {
+    const auto& mask_shape = mask->Shape();
+    ORT_RETURN_IF_NOT(
+        mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_length,
+        "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
+  }
 
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
   ORT_RETURN_IF_ERROR(CheckUint32({{max_rotary_length, "rotary cache length"},
@@ -701,8 +766,11 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   ORT_RETURN_IF_ERROR(CheckUint32Product("present key element count", {batch_size, total_length, head_size}));
   ORT_RETURN_IF_ERROR(CheckUint32Product("selected index element count", {batch_size, sequence_length, capacity}));
   ORT_RETURN_IF_ERROR(CheckUint32Product("rotary cache element count",
-                                         {batch_size, max_rotary_length, rotary_width}));
-  ORT_RETURN_IF_ERROR(CheckUint32Product("mask element count", {batch_size, total_length}));
+                                         {rotary_cache_shape.batched ? batch_size : 1,
+                                          max_rotary_length, rotary_width}));
+  if (mask != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckUint32Product("mask element count", {batch_size, total_length}));
+  }
   Tensor* selected =
       context.Output(sai::kSelectedIndices, TensorShape({batch_size, sequence_length, capacity}));
   Tensor* present = context.Output(sai::kPresentKey, TensorShape({batch_size, total_length, head_size}));
@@ -735,17 +803,20 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   if (rows == 0) {
     return Status::OK();
   }
-  SparseAttentionIndexerQsaSelectProgram select;
-  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity)
+  SparseAttentionIndexerQsaSelectProgram select{mask != nullptr};
+  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity,
+                   mask != nullptr)
       .AddInputs({{query, ProgramTensorMetadataDependency::Type},
                   {present, ProgramTensorMetadataDependency::Type},
                   {query_norm, ProgramTensorMetadataDependency::Type},
                   {key_norm, ProgramTensorMetadataDependency::Type},
                   {cos_cache, ProgramTensorMetadataDependency::Type},
-                  {sin_cache, ProgramTensorMetadataDependency::Type}})
-      .AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1})
-      .AddOutput({selected, ProgramTensorMetadataDependency::Type})
-      .SetWorkgroupSize(kSerialWorkgroupSize)
+                  {sin_cache, ProgramTensorMetadataDependency::Type}});
+  if (mask != nullptr) {
+    select.AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1});
+  }
+  select.AddOutput({selected, ProgramTensorMetadataDependency::Type})
+      .SetWorkgroupSize(kQsaSelectWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
       .AddUniformVariables({{ToUint32(rows)},
                             {ToUint32(sequence_length)},
@@ -754,6 +825,7 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
                             {ToUint32(query_shape[2])},
                             {ToUint32(rotary_width)},
                             {ToUint32(max_rotary_length)},
+                            {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
                             {ToUint32(compress_ratio_)},
                             {ToUint32(capacity)},
                             {ToUint32(past_length)},
@@ -804,12 +876,11 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
   ORT_RETURN_IF_ERROR(CheckShape(head_weights, "head_weights", {batch_size, sequence_length, num_heads}));
   ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {batch_size, sequence_length}));
 
-  const auto& cos_shape = cos_cache->Shape();
-  ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
-                    "SparseAttentionIndexer: invalid cos_cache shape");
-  const int64_t max_rotary_length = cos_shape[1];
-  const int64_t rotary_width = cos_shape[2];
-  ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape && rotary_width > 0 && 2 * rotary_width <= head_size,
+  RotaryCacheShape rotary_cache_shape;
+  ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary_cache_shape));
+  const int64_t max_rotary_length = rotary_cache_shape.max_rotary_length;
+  const int64_t rotary_width = rotary_cache_shape.rotary_width;
+  ORT_RETURN_IF_NOT(rotary_width > 0 && 2 * rotary_width <= head_size,
                     "SparseAttentionIndexer: invalid csa rotary cache shape");
   const auto& past_compressed_shape = past_compressed->Shape();
   ORT_RETURN_IF_NOT(past_compressed_shape.NumDimensions() == 3 &&
@@ -863,7 +934,8 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
       CheckUint32Product("projection buffer element count", {2, batch_size, plan.present_buffer_length, width}));
   ORT_RETURN_IF_ERROR(CheckUint32Product("selected index element count", {batch_size, sequence_length, capacity}));
   ORT_RETURN_IF_ERROR(CheckUint32Product("rotary cache element count",
-                                         {batch_size, max_rotary_length, rotary_width}));
+                                         {rotary_cache_shape.batched ? batch_size : 1,
+                                          max_rotary_length, rotary_width}));
   Tensor* selected =
       context.Output(sai::kSelectedIndices, TensorShape({batch_size, sequence_length, capacity}));
   Tensor* present_compressed =
@@ -914,6 +986,7 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                               {ToUint32(head_size)},
                               {ToUint32(rotary_width)},
                               {ToUint32(max_rotary_length)},
+                              {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
                               {ToUint32(compress_ratio_)},
                               {ToUint32(past_compressed_length)},
                               {ToUint32(present_compressed_length)},
@@ -980,6 +1053,7 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                             {ToUint32(head_size)},
                             {ToUint32(rotary_width)},
                             {ToUint32(max_rotary_length)},
+                            {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
                             {ToUint32(compress_ratio_)},
                             {ToUint32(capacity)},
                             {ToUint32(present_compressed_length)},

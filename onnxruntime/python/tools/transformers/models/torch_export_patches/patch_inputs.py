@@ -5,7 +5,7 @@ import torch
 from transformers.cache_utils import DynamicCache
 
 from . import string_type
-from .cache_helper import make_dynamic_cache
+from .cache_helper import get_dynamic_cache_key_value, make_dynamic_cache
 
 
 def _process_cache(k: str, v):
@@ -28,7 +28,8 @@ def _make_shape(subset: dict, cls: type, value: Any) -> Any:
         assert len(values) == 1, (
             f"Inconsistencies in subset={subset}, found={values}, it cannot be a {cls}, value={string_type(value)}"
         )
-        cache_length = len(value.key_cache)
+        key_cache, _ = get_dynamic_cache_key_value(value)
+        cache_length = len(key_cache)
         for v in subset.values():
             axes = v
             break
