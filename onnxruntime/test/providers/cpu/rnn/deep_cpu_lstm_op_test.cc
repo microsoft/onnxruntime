@@ -25,6 +25,11 @@ TEST(LSTMTest, StateElementCountUsesSizeTArithmetic) {
   if constexpr (sizeof(size_t) > sizeof(uint32_t)) {
     EXPECT_EQ(CalculateBufferElementCount({65536, 65536}), static_cast<size_t>(4294967296ULL));
     EXPECT_EQ(CalculateBufferElementCount({65536, 65537}), static_cast<size_t>(4295032832ULL));
+#ifndef ORT_NO_EXCEPTIONS
+  } else {
+    EXPECT_THROW((void)CalculateBufferElementCount({65536, 65536}), OnnxRuntimeException);
+    EXPECT_THROW((void)CalculateBufferElementCount({65536, 65537}), OnnxRuntimeException);
+#endif
   }
 }
 

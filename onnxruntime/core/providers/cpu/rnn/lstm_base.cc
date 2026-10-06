@@ -52,8 +52,8 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
 
   // The compute path uses int output strides. Validate them before allocating outputs or scratch buffers.
   if (batch_size > std::numeric_limits<int>::max() / hidden_size_ / num_directions_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "LSTM output stride exceeds the maximum supported int value. ",
-                           "batch_size=", batch_size, ", hidden_size=", hidden_size_, ", num_directions=", num_directions_);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "LSTM output stride exceeds the maximum supported int value.",
+                           " batch_size=", batch_size, ", hidden_size=", hidden_size_, ", num_directions=", num_directions_);
   }
   const size_t state_size_per_direction = CalculateBufferElementCount({batch_size, hidden_size_});
 
