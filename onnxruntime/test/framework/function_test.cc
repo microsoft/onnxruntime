@@ -1418,7 +1418,7 @@ TEST(FunctionTest, RegisteredSchemaTakesPrecedenceOverCollidingRootLocalFunction
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
 }
 
-TEST(FunctionTest, RegisteredSchemaTakesPrecedenceInsideLocalFunctionBody) {
+TEST(FunctionTest, FunctionInferenceRegistryTakesPrecedenceInsideLocalFunctionBody) {
   auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
   model_proto.mutable_graph()->mutable_node(0)->set_op_type("wrapper");
 
@@ -1441,7 +1441,10 @@ TEST(FunctionTest, RegisteredSchemaTakesPrecedenceInsideLocalFunctionBody) {
 
   IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
   Model model(std::move(model_proto), &registries, DefaultLoggingManager().DefaultLogger());
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
 TEST(FunctionTest, RepeatedLocalFunctionCallDagDepthValidationCompletes) {
@@ -2572,6 +2575,9 @@ static ONNX_NAMESPACE::ModelProto MakeModelWithDefaultGraphAttributeFunction(
   auto* onnx_opset = function.add_opset_import();
   onnx_opset->set_domain(kOnnxDomain);
   onnx_opset->set_version(16);
+  auto* local_opset = function.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
   *model_proto.mutable_functions(0) = std::move(function);
   return model_proto;
 }
@@ -2621,6 +2627,80 @@ TEST(FunctionTest, ResolveAllowsSequentialDefaultGraphAttributeReuse) {
       MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
       nullptr, logger);
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
+
+TEST(FunctionTest, ResolveRejectsMutuallyRecursiveDefaultGraphAttributes) {
+  ONNX_NAMESPACE::AttributeProto first;
+  first.set_name("first");
+  first.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *first.mutable_g() = MakeRecursiveDefaultGraph("second");
+
+  ONNX_NAMESPACE::AttributeProto second;
+  second.set_name("second");
+  second.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *second.mutable_g() = MakeRecursiveDefaultGraph("first");
+
+  auto function = MakeFunctionWithDefaultGraphAttributes(
+      {first, second},
+      {MakeGraphRefAttribute("body_attr", first.name(), first.type())});
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(
+      MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
+      nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(
+      status.ErrorMessage(),
+      testing::HasSubstr("Recursive model-local function graph attribute expansion"));
+}
+
+TEST(FunctionTest, TransitiveDefaultGraphBindingsContributeToFunctionDepth) {
+  ONNX_NAMESPACE::AttributeProto first;
+  first.set_name("first");
+  first.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *first.mutable_g() = MakeRecursiveDefaultGraph("second");
+
+  ONNX_NAMESPACE::AttributeProto second;
+  second.set_name("second");
+  second.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *second.mutable_g() = MakeRecursiveDefaultGraph("third");
+
+  ONNX_NAMESPACE::AttributeProto third;
+  third.set_name("third");
+  third.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* third_graph = third.mutable_g();
+  third_graph->set_name("third_graph");
+  auto* call = third_graph->add_node();
+  call->set_domain("local");
+  call->set_op_type("function_0");
+  call->add_input("x");
+  call->add_output("y");
+  auto* third_output = third_graph->add_output();
+  third_output->set_name("y");
+  third_output->mutable_type()->mutable_tensor_type()->set_elem_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto wrapper = MakeFunctionWithDefaultGraphAttributes(
+      {first, second, third},
+      {MakeGraphRefAttribute("body_attr", first.name(), first.type())});
+  wrapper.set_name("wrapper");
+  auto* onnx_opset = wrapper.add_opset_import();
+  onnx_opset->set_domain(kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* local_opset = wrapper.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+  model_proto.mutable_graph()->mutable_node(0)->set_op_type("wrapper");
+  *model_proto.add_functions() = std::move(wrapper);
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
 TEST(FunctionTest, SpecializeRejectsRecursiveDefaultGraphAttributeExpansion) {

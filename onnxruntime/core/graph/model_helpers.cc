@@ -228,6 +228,20 @@ bool HasRegisteredSchema(const std::string& domain,
   return schema != nullptr && !schema->Deprecated();
 }
 
+bool HasOnnxRegisteredSchema(const std::string& domain,
+                             const std::string& op_type,
+                             const DomainToVersionMap& domain_to_version) {
+  const auto& lookup_domain = domain == kOnnxDomainAlias ? kOnnxDomain : domain;
+  const auto version_it = domain_to_version.find(lookup_domain);
+  if (version_it == domain_to_version.end()) {
+    return false;
+  }
+
+  const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(
+      op_type, version_it->second, lookup_domain);
+  return schema != nullptr && !schema->Deprecated();
+}
+
 DomainToVersionMap GetFunctionDomainToVersionMap(
     const ONNX_NAMESPACE::FunctionProto& function_proto) {
   DomainToVersionMap domain_to_version;
@@ -399,6 +413,23 @@ std::shared_ptr<const AttributeBindingContext> InternRelevantAttributeBindingCon
     return nullptr;
   }
 
+  InlinedHashSet<std::string_view> expanded_attribute_names;
+  bool added_dependencies = true;
+  while (added_dependencies) {
+    added_dependencies = false;
+    for (const auto& binding : bindings) {
+      if (referenced_attribute_names.find(binding.name) == referenced_attribute_names.end() ||
+          !expanded_attribute_names.insert(binding.name).second ||
+          binding.attribute.proto == nullptr) {
+        continue;
+      }
+
+      const size_t previous_size = referenced_attribute_names.size();
+      CollectReferencedAttributeNames(*binding.attribute.proto, referenced_attribute_names);
+      added_dependencies = added_dependencies || referenced_attribute_names.size() != previous_size;
+    }
+  }
+
   AttributeBindings relevant_bindings;
   for (const auto& binding : bindings) {
     if (referenced_attribute_names.find(binding.name) != referenced_attribute_names.end()) {
@@ -550,7 +581,7 @@ Status ValidateProtoNodesCallDepth(
         node.domain(), node.op_type(), node.overload());
     const auto function_it = model_local_functions.find(function_id);
     if (function_it != model_local_functions.end() &&
-        !HasRegisteredSchema(node.domain(), node.op_type(), domain_to_version, schema_registry)) {
+        !HasOnnxRegisteredSchema(node.domain(), node.op_type(), domain_to_version)) {
       AttributeBindings callee_bindings;
       for (const auto& attr : node.attribute()) {
         auto resolved_attr = ResolveAttribute(attr, bindings);
