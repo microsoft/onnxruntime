@@ -62,7 +62,7 @@ CudaSyncStream::~CudaSyncStream() {
   }
 
   if (has_deferred_cpu_buffers) {
-    if (cuda_stream_ != nullptr) {
+    if (initialized_) {
       OrtStatus* status = OnSessionRunEndImpl(this);
       if (status != nullptr) {
         Ort::GetApi().ReleaseStatus(status);
@@ -78,38 +78,36 @@ CudaSyncStream::~CudaSyncStream() {
   if (cublas_handle_) cublasDestroy(cublas_handle_);
   if (cudnn_handle_) cudnnDestroy(cudnn_handle_);
   if (cublas_lt_handle_) cublasLtDestroy(cublas_lt_handle_);
-  if (cuda_stream_) {
-    // Unregister the stream from the global map *after* destroying handles but
-    // *before* destroying the stream itself. This ordering ensures:
-    //   1. No concurrent kernel can obtain cuBLAS/cuDNN handles from a destroyed
-    //      CudaSyncStream during the brief window before unregistration.
-    //   2. UnregisterStream bumps the TLS generation counter, invalidating cached
-    //      lookups in other threads.
-    //   3. The stream is destroyed only after it is no longer discoverable.
-    // Only unregister if the stream was actually registered (InitHandles
-    // succeeded fully). Otherwise we'd bump the global generation counter
-    // for a stream that was never in the map, causing unnecessary TLS
-    // invalidations in other threads.
-    if (registered_) {
-      UnregisterStream(cuda_stream_);
-    }
-
-    if (owns_stream_) {
-      auto destroy_result = cudaStreamDestroy(cuda_stream_);
-      if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
-        // Fallback: we only reach here when the earlier cudaStreamSynchronize in
-        // OnSessionRunEndImpl failed, leaving some buffers un-freed.
-        // cudaStreamDestroy on a non-blocking stream returns immediately (async
-        // cleanup), so in-flight ops may still reference these buffers. However,
-        // a prior sync failure indicates a serious CUDA error, so best-effort
-        // cleanup is the most we can do here.
-        OrtStatus* status = CleanupDeferredCPUBuffers();
-        if (status != nullptr) {
-          Ort::GetApi().ReleaseStatus(status);
-        }
-      }
-    }  // else: external stream — do NOT destroy it.
+  // Unregister the stream from the global map *after* destroying handles but
+  // *before* destroying the stream itself. This ordering ensures:
+  //   1. No concurrent kernel can obtain cuBLAS/cuDNN handles from a destroyed
+  //      CudaSyncStream during the brief window before unregistration.
+  //   2. UnregisterStream bumps the TLS generation counter, invalidating cached
+  //      lookups in other threads.
+  //   3. The stream is destroyed only after it is no longer discoverable.
+  // Only unregister if the stream was actually registered (InitHandles
+  // succeeded fully). Otherwise we'd bump the global generation counter
+  // for a stream that was never in the map, causing unnecessary TLS
+  // invalidations in other threads.
+  if (registered_) {
+    UnregisterStream(cuda_stream_);
   }
+
+  if (owns_stream_ && cuda_stream_ != nullptr) {
+    auto destroy_result = cudaStreamDestroy(cuda_stream_);
+    if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
+      // Fallback: we only reach here when the earlier cudaStreamSynchronize in
+      // OnSessionRunEndImpl failed, leaving some buffers un-freed.
+      // cudaStreamDestroy on a non-blocking stream returns immediately (async
+      // cleanup), so in-flight ops may still reference these buffers. However,
+      // a prior sync failure indicates a serious CUDA error, so best-effort
+      // cleanup is the most we can do here.
+      OrtStatus* status = CleanupDeferredCPUBuffers();
+      if (status != nullptr) {
+        Ort::GetApi().ReleaseStatus(status);
+      }
+    }
+  }  // else: external stream — do NOT destroy it.
 }
 
 OrtStatus* CudaSyncStream::InitHandles() {
@@ -146,6 +144,7 @@ OrtStatus* CudaSyncStream::InitHandles() {
   if (status.IsOK()) {
     RegisterStream(cuda_stream_, this);
     registered_ = true;
+    initialized_ = true;
   }
 
   return status.release();
@@ -173,6 +172,7 @@ OrtStatus* CudaSyncStream::InitHandlesWithExternalStream(cudaStream_t external_s
   if (status.IsOK()) {
     RegisterStream(cuda_stream_, this);
     registered_ = true;
+    initialized_ = true;
   }
 
   return status.release();
@@ -214,6 +214,7 @@ OrtStatus* CudaSyncStream::InitHandlesWithUserStream(cudaStream_t user_stream) {
   if (status.IsOK()) {
     RegisterStream(cuda_stream_, this);
     registered_ = true;
+    initialized_ = true;
   }
 
   return status.release();
@@ -232,12 +233,28 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
   }
 
   OrtStatus* first_error = nullptr;
-  for (void* buf : buffers_to_free) {
-    cudaError_t err = cudaFreeHost(buf);
-    if (err != cudaSuccess && first_error == nullptr) {
-      first_error = Ort::GetApi().CreateStatus(
-          ORT_EP_FAIL,
-          (std::string("CUDA error: ") + cudaGetErrorName(err) + ": " + cudaGetErrorString(err)).c_str());
+  size_t failed_count = 0;
+  for (void* buffer : buffers_to_free) {
+    cudaError_t err = cudaFreeHost(buffer);
+    if (err != cudaSuccess) {
+      buffers_to_free[failed_count++] = buffer;
+      if (first_error == nullptr) {
+        first_error = Ort::GetApi().CreateStatus(
+            ORT_EP_FAIL,
+            (std::string("CUDA error: ") + cudaGetErrorName(err) + ": " + cudaGetErrorString(err)).c_str());
+      }
+    }
+  }
+
+  if (failed_count > 0) {
+    ORT_TRY {
+      std::lock_guard<std::mutex> lock(deferred_cpu_buffers_mutex_);
+      deferred_cpu_buffers_.insert(deferred_cpu_buffers_.end(),
+                                   buffers_to_free.begin(), buffers_to_free.begin() + failed_count);
+    }
+    ORT_CATCH(...) {
+      // The pinned buffers cannot be safely freed or forgotten after a failed cudaFreeHost.
+      // Preserve process safety by intentionally abandoning these pointers.
     }
   }
   return first_error;
@@ -278,7 +295,8 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 
 /*static*/ OrtStatus* ORT_API_CALL CudaSyncStream::OnSessionRunEndImpl(OrtSyncStreamImpl* this_ptr) noexcept {
   auto* stream = static_cast<CudaSyncStream*>(this_ptr);
-  if (stream->cuda_stream_ == nullptr) {
+  stream->stream_synchronized_and_chunks_reset_ = false;
+  if (!stream->initialized_) {
     return stream->CleanupDeferredCPUBuffers();
   }
   // Synchronize before releasing deferred CPU buffers to ensure
@@ -293,16 +311,73 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
     OrtStatus* arena_status = stream->factory_.ResetDeviceArenaChunksUsingStream(
         stream->device_id_, this_ptr);
     if (arena_status != nullptr) {
-      // Ignore the arena reset error and continue session run end — buffer cleanup is more critical.
-      Ort::GetApi().ReleaseStatus(arena_status);
+      return arena_status;
     }
   }
+
+  stream->stream_synchronized_and_chunks_reset_ = true;
 
   return stream->CleanupDeferredCPUBuffers();
 }
 
+/// Run OnSessionRunEnd on the stream's own device. Release happens at teardown on a
+/// thread whose current device is arbitrary, and stream calls made against the wrong
+/// device fail with an invalid-handle error, so the device is selected explicitly.
+/// Returns false if the stream could not be drained, leaving no sticky error latched.
+bool CudaSyncStream::DrainOnOwningDevice() noexcept {
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  bool drained = false;
+  if (cudaSetDevice(device_id_) == cudaSuccess) {
+    // Synchronizing an active capture is prohibited. Treat capture-query failure
+    // conservatively because completion cannot be established.
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    const cudaError_t capture_error = cudaStreamIsCapturing(cuda_stream_, &capture_status);
+    if (capture_error == cudaSuccess && capture_status != cudaStreamCaptureStatusActive) {
+      OrtStatus* status = OnSessionRunEndImpl(this);
+      drained = status == nullptr || stream_synchronized_and_chunks_reset_;
+      Ort::GetApi().ReleaseStatus(status);
+    }
+  }
+
+  if (!drained) {
+    // Do not leave a sticky error behind for the next kernel launch to trip over.
+    static_cast<void>(cudaGetLastError());
+  }
+
+  if (restore_prev_device) {
+    static_cast<void>(cudaSetDevice(prev_device));
+  }
+
+  return drained;
+}
+
 /*static*/ void ORT_API_CALL CudaSyncStream::ReleaseImpl(OrtSyncStreamImpl* this_ptr) noexcept {
-  delete static_cast<CudaSyncStream*>(this_ptr);
+  auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+
+  if (!stream->initialized_ || stream->DrainOnOwningDevice()) {
+    delete stream;
+    return;
+  }
+
+  // The stream could not be drained, so device work may still be in flight and arena
+  // chunks must not become reusable. Detach the outer OrtSyncStream pointer before ORT
+  // releases it, and permanently quarantine the associated arena capacity.
+  OrtStatus* quarantine_status = stream->factory_.QuarantineAndAbandonDeviceArena(
+      stream->device_id_, this_ptr);
+  if (quarantine_status != nullptr) {
+    Ort::GetApi().ReleaseStatus(quarantine_status);
+  }
+
+  // Keep the inner wrapper alive because destroying its CUDA resources is unsafe while
+  // completion is unknown, but drop it from the lookup map first: the raw
+  // cudaStream_t value can be recycled by a later stream creation, and a stale entry
+  // would resolve that new handle to this abandoned wrapper.
+  if (stream->registered_) {
+    UnregisterStream(stream->cuda_stream_);
+    stream->registered_ = false;
+  }
 }
 
 /*static*/ CudaSyncStream* CudaSyncStream::FromCudaStream(cudaStream_t stream) {

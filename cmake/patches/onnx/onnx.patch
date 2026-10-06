@@ -46,3 +46,16 @@ index 3887169..8432613 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/defs/nn/defs.cc b/onnx/defs/nn/defs.cc
+index 0c271d5..6d64da7 100644
+--- a/onnx/defs/nn/defs.cc
++++ b/onnx/defs/nn/defs.cc
+@@ -2670,7 +2670,7 @@ ONNX_OPERATOR_SET_SCHEMA(
+                               // positive value.
+                               axis += input_ndim;
+                          }
+-          if (axis < 0) {
++          if (axis < 0 || axis >= input_ndim) {
+                               fail_shape_inference(
+                                         "Unexpected axis value (",
+                                         axis,

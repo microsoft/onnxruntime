@@ -6,13 +6,23 @@
 
 import logging
 
+import packaging.version as pv
 import torch
+from transformers import __version__ as transformers_version
+from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 
 logger = logging.getLogger(__name__)
 
 
 class PastKeyValuesHelper:
     """Helper functions to process past key values for encoder-decoder model"""
+
+    @staticmethod
+    def _unpack_layer(present_layer):
+        if len(present_layer) == 6:
+            return present_layer[0], present_layer[1], present_layer[3], present_layer[4]
+        assert len(present_layer) == 4, f"Expected to have four or six items. Got {len(present_layer)}"
+        return present_layer
 
     @staticmethod
     def get_past_names(num_layers, present: bool = False):
@@ -41,13 +51,12 @@ class PastKeyValuesHelper:
         present_self = []
         present_cross = []
         for _i, present_layer_i in enumerate(present_key_values):
-            assert len(present_layer_i) == 4, f"Expected to have four items. Got {len(present_layer_i)}"
             (
                 present_key_self,
                 present_value_self,
                 present_key_cross,
                 present_value_cross,
-            ) = present_layer_i
+            ) = PastKeyValuesHelper._unpack_layer(present_layer_i)
             present_self.extend([present_key_self, present_value_self])
             present_cross.extend([present_key_cross, present_value_cross])
         return present_self, present_cross
@@ -59,7 +68,7 @@ class PastKeyValuesHelper:
         After: (past_key_self_0, past_value_self_0, past_key_cross_0, past_value_cross_0), (past_key_self_1, past_value_self_1, past_key_cross_1, past_value_cross_1),
         """
         assert len(past) == 4 * num_layers
-        return tuple(
+        layers = tuple(
             [
                 past[2 * i],
                 past[2 * i + 1],
@@ -68,6 +77,11 @@ class PastKeyValuesHelper:
             ]
             for i in range(num_layers)
         )
+        if pv.Version(transformers_version) >= pv.Version("5.0"):
+            self_attention_cache = DynamicCache((layer[0], layer[1]) for layer in layers)
+            cross_attention_cache = DynamicCache((layer[2], layer[3]) for layer in layers)
+            return EncoderDecoderCache(self_attention_cache, cross_attention_cache)
+        return layers
 
     @staticmethod
     def back_group_by_layer(past_key_values: tuple[tuple[torch.Tensor]]):
@@ -120,8 +134,9 @@ class PastKeyValuesHelper:
         present_self: list[torch.Tensor] = []
         present_cross: list[torch.Tensor] = []
         for _, present_layer_i in enumerate(present_key_values):
-            assert len(present_layer_i) == 4, f"Expected to have four items. Got {len(present_layer_i)}"
-            present_key_self, present_value_self, present_key_cross, present_value_cross = present_layer_i
+            present_key_self, present_value_self, present_key_cross, present_value_cross = (
+                PastKeyValuesHelper._unpack_layer(present_layer_i)
+            )
             present_self.extend([present_key_self, present_value_self])
             present_cross.extend([present_key_cross, present_value_cross])
         if concat:

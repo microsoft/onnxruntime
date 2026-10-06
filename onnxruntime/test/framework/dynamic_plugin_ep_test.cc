@@ -72,10 +72,27 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigDefaultsUnsetOptionalFie
   EXPECT_TRUE(config.tests_to_skip.empty());
 }
 
+TEST(DynamicPluginEpInfraTest, ParseInitializationConfigAllowsMissingEpLibraryPath) {
+  // `ep_library_path` may be omitted when the EP library is already registered, e.g. a statically linked plugin EP.
+  constexpr std::string_view kConfigJson = R"json(
+{
+  "ep_library_registration_name": "WebGpuExecutionProvider",
+  "selected_ep_name": "WebGpuExecutionProvider"
+}
+)json";
+
+  dynamic_plugin_ep_test_infra::InitializationConfig config{};
+  ASSERT_STATUS_OK(dynamic_plugin_ep_test_infra::ParseInitializationConfig(kConfigJson, config));
+
+  EXPECT_EQ(config.ep_library_registration_name, "WebGpuExecutionProvider");
+  EXPECT_TRUE(config.ep_library_path.empty());
+  EXPECT_EQ(config.selected_ep_name, "WebGpuExecutionProvider");
+}
+
 TEST(DynamicPluginEpInfraTest, ParseInitializationConfigRejectsMissingRequiredFields) {
   constexpr std::string_view kConfigJson = R"json(
 {
-  "ep_library_registration_name": "CUDAExecutionProvider"
+  "ep_library_path": "/tmp/libonnxruntime_providers_cuda.so"
 }
 )json";
 
@@ -150,6 +167,18 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterTryBytesForCountNormalCase) {
   size_t bytes = 0;
   ASSERT_TRUE(onnxruntime::cuda::detail::TryBytesForCount(10, 4, bytes));
   EXPECT_EQ(bytes, size_t{40});
+}
+
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRetainsGraphCaptureHostBuffer) {
+  std::weak_ptr<int> retained_buffer;
+  {
+    onnxruntime::cuda::detail::CudaKernelAdapterRuntimeConfig config;
+    auto buffer = std::make_shared<int>(42);
+    retained_buffer = buffer;
+    config.RetainBufferForGraphCapture(std::move(buffer));
+    EXPECT_FALSE(retained_buffer.expired());
+  }
+  EXPECT_TRUE(retained_buffer.expired());
 }
 #endif
 
