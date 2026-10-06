@@ -1323,9 +1323,10 @@ static ONNX_NAMESPACE::ModelProto CreateLocalFunctionChainModel(size_t call_dept
   return model_proto;
 }
 
-static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t call_depth) {
+static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(
+    size_t call_depth, bool graph_references_alpha = false) {
   auto model_proto = CreateLocalFunctionChainModel(call_depth);
-  const auto populate_graph_attribute = [](ONNX_NAMESPACE::AttributeProto& attribute) {
+  const auto populate_graph_attribute = [graph_references_alpha](ONNX_NAMESPACE::AttributeProto& attribute) {
     attribute.set_name("tag");
     attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
     auto* graph = attribute.mutable_g();
@@ -1333,7 +1334,17 @@ static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t
     auto* identity = graph->add_node();
     identity->set_op_type("Identity");
     identity->add_input("x");
-    identity->add_output("tag_output");
+    identity->add_output(graph_references_alpha ? "tag_identity_output" : "tag_output");
+    if (graph_references_alpha) {
+      auto* leaky_relu = graph->add_node();
+      leaky_relu->set_op_type("LeakyRelu");
+      leaky_relu->add_input("tag_identity_output");
+      leaky_relu->add_output("tag_output");
+      auto* alpha = leaky_relu->add_attribute();
+      alpha->set_name("alpha");
+      alpha->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+      alpha->set_ref_attr_name("alpha");
+    }
     auto* output = graph->add_output();
     output->set_name("tag_output");
     output->mutable_type()->mutable_tensor_type()->set_elem_type(
@@ -1436,6 +1447,12 @@ TEST(FunctionTest, RegisteredSchemaTakesPrecedenceInsideLocalFunctionBody) {
 TEST(FunctionTest, RepeatedLocalFunctionCallDagDepthValidationCompletes) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(CreateRepeatedLocalFunctionCallDagModel(30), nullptr, logger);
+  ASSERT_STATUS_OK(model.ValidateLocalFunctionCallDepth(model.MainGraph()));
+}
+
+TEST(FunctionTest, RepeatedLocalFunctionCallDagWithReferencedGraphDepthValidationCompletes) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateRepeatedLocalFunctionCallDagModel(30, true), nullptr, logger);
   ASSERT_STATUS_OK(model.ValidateLocalFunctionCallDepth(model.MainGraph()));
 }
 

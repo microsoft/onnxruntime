@@ -278,8 +278,56 @@ struct FunctionValidationStateHash {
   }
 };
 
-using ValidatedFunctionStates =
-    std::unordered_set<FunctionValidationState, FunctionValidationStateHash>;
+bool AttributeBindingContextsEqual(const AttributeBindingContext& lhs,
+                                   const AttributeBindingContext& rhs) {
+  return lhs.domain_to_version == rhs.domain_to_version &&
+         lhs.bindings.size() == rhs.bindings.size() &&
+         std::equal(lhs.bindings.begin(), lhs.bindings.end(), rhs.bindings.begin(),
+                    [](const AttributeBinding& lhs_binding, const AttributeBinding& rhs_binding) {
+                      return lhs_binding.name == rhs_binding.name &&
+                             lhs_binding.attribute.proto == rhs_binding.attribute.proto &&
+                             lhs_binding.attribute.graph == rhs_binding.attribute.graph &&
+                             lhs_binding.attribute.context == rhs_binding.attribute.context;
+                    });
+}
+
+struct AttributeBindingContextPtrHash {
+  size_t operator()(const std::shared_ptr<const AttributeBindingContext>& context) const {
+    size_t result = 0;
+    const auto combine = [&result](size_t value) {
+      result ^= value + 0x9e3779b9 + (result << 6) + (result >> 2);
+    };
+    for (const auto& binding : context->bindings) {
+      combine(std::hash<std::string_view>{}(binding.name));
+      combine(std::hash<const void*>{}(binding.attribute.proto));
+      combine(std::hash<const void*>{}(binding.attribute.graph));
+      combine(std::hash<const void*>{}(binding.attribute.context.get()));
+    }
+
+    size_t domain_hash = 0;
+    for (const auto& [domain, version] : context->domain_to_version) {
+      domain_hash ^= std::hash<std::string>{}(domain) ^
+                     (std::hash<int>{}(version) + 0x9e3779b9);
+    }
+    combine(domain_hash);
+    return result;
+  }
+};
+
+struct AttributeBindingContextPtrEqual {
+  bool operator()(const std::shared_ptr<const AttributeBindingContext>& lhs,
+                  const std::shared_ptr<const AttributeBindingContext>& rhs) const {
+    return AttributeBindingContextsEqual(*lhs, *rhs);
+  }
+};
+
+struct ValidatedFunctionStates {
+  std::unordered_set<FunctionValidationState, FunctionValidationStateHash> states;
+  std::unordered_set<std::shared_ptr<const AttributeBindingContext>,
+                     AttributeBindingContextPtrHash,
+                     AttributeBindingContextPtrEqual>
+      contexts;
+};
 
 const BoundAttribute* FindAttributeBinding(const AttributeBindings& bindings,
                                            std::string_view name) {
@@ -417,7 +465,7 @@ Status ValidateFunctionCallDepth(
   }
 
   FunctionValidationState validation_state{&function_proto, call_depth, std::move(graph_bindings)};
-  if (!validated_states.insert(std::move(validation_state)).second) {
+  if (!validated_states.states.insert(std::move(validation_state)).second) {
     return Status::OK();
   }
 
@@ -435,8 +483,11 @@ Status ValidateProtoNodesCallDepth(
     const ModelLocalFunctions& model_local_functions,
     const IOnnxRuntimeOpSchemaCollection& schema_registry,
     ValidatedFunctionStates& validated_states) {
-  const auto context = std::make_shared<AttributeBindingContext>(
+  auto context_candidate = std::make_shared<AttributeBindingContext>(
       AttributeBindingContext{bindings, domain_to_version});
+  const auto [context_it, inserted] = validated_states.contexts.insert(std::move(context_candidate));
+  ORT_UNUSED_PARAMETER(inserted);
+  const auto& context = *context_it;
 
   for (const auto& node : nodes) {
     const auto function_id = function_utils::GetFunctionIdentifier(
