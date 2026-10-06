@@ -508,6 +508,16 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    // The unfused graph can return an empty tensor, but LayerNormalization rejects
+    // a zero-sized normalized extent. Do not count symbolic dimensions as zero.
+    if (input_shape != nullptr &&
+        std::any_of(axes_values.begin(), axes_values.end(), [input_shape, rank](int64_t axis) {
+          const auto& dim = input_shape->dim(static_cast<int>(axis + rank));
+          return dim.has_dim_value() && dim.dim_value() == 0;
+        })) {
+      continue;
+    }
+
 #ifdef ENABLE_TRAINING_CORE
 #else
     // scale as 1D

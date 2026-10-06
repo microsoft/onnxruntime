@@ -469,9 +469,10 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
-if(LINUX)
+if(LINUX AND NOT onnxruntime_DISABLE_DEVICE_DISCOVERY)
   list(APPEND onnxruntime_test_framework_src_patterns
-    "${TEST_SRC_DIR}/platform/linux/*.cc" )
+    "${TEST_SRC_DIR}/platform/linux/npu_device_discovery_test.cc"
+    "${TEST_SRC_DIR}/platform/linux/pci_device_discovery_test.cc")
 endif()
 
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -1108,6 +1109,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
     list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp4_to_fp8_kernel_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp8_compaction_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
     )
   endif()
