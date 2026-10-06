@@ -135,6 +135,27 @@ def _make_blocked_node_model(num_nodes=2, use_empty_names=True):
     return model
 
 
+def _make_mixed_float_bfloat16_model():
+    """Create a model where one value feeds both a FLOAT and a BFLOAT16 cast."""
+    data_input = helper.make_tensor_value_info("data", TensorProto.FLOAT, [1, 1, 2, 2])
+    shared_input = helper.make_tensor_value_info("shared", TensorProto.FLOAT, [4])
+    resize_output = helper.make_tensor_value_info("resize_output", TensorProto.FLOAT, [1, 1, 4, 4])
+    upsample_output = helper.make_tensor_value_info("upsample_output", TensorProto.FLOAT, [1, 1, 4, 4])
+    nodes = [
+        helper.make_node("Resize", ["data", "roi", "shared"], ["resize_output"], mode="nearest"),
+        helper.make_node("Upsample", ["data", "shared"], ["upsample_output"], mode="nearest"),
+    ]
+    roi = numpy_helper.from_array(np.array([], dtype=np.float32), name="roi")
+    graph = helper.make_graph(
+        nodes,
+        "mixed_float_bfloat16_test",
+        [data_input, shared_input],
+        [resize_output, upsample_output],
+        initializer=[roi],
+    )
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
+
+
 class TestFloat16Conversion(unittest.TestCase):
     """Tests for convert_float_to_float16 correctness."""
 
@@ -253,6 +274,19 @@ class TestFloat16Conversion(unittest.TestCase):
         self.assertEqual(
             len(cast_outputs), len(set(cast_outputs)), f"Duplicate Cast output names found: {cast_outputs}"
         )
+
+    def test_mixed_float_bfloat16_cast_naming_unique(self):
+        """A shared input for FLOAT and BFLOAT16 consumers should get distinct Cast names."""
+        model = _make_mixed_float_bfloat16_model()
+        converted = convert_float_to_float16(
+            model, keep_io_types=False, use_bfloat16_as_blocked_nodes_dtype=True, disable_shape_infer=True
+        )
+
+        shared_casts = [n for n in converted.graph.node if n.op_type == "Cast" and n.input[0] == "shared"]
+        cast_types = {next(a.i for a in n.attribute if a.name == "to") for n in shared_casts}
+        self.assertEqual(cast_types, {TensorProto.FLOAT, TensorProto.BFLOAT16})
+        self.assertEqual(len({n.name for n in shared_casts}), 2)
+        self.assertEqual(len({n.output[0] for n in shared_casts}), 2)
 
     def test_resize_with_op_block_list(self):
         """When Resize is in op_block_list, Cast nodes should have unique names."""

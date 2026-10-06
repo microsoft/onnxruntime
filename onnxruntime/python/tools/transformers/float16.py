@@ -463,11 +463,12 @@ def convert_float_to_float16(
                         # create new value_info for the shared Cast output
                         new_value_info = model.graph.value_info.add()
                         new_value_info.CopyFrom(value_info)
-                        output_name = input_name + "_cast_to_fp32"
+                        cast_type_name = "fp32" if accuracy_type == TensorProto.FLOAT else "bfloat16"
+                        output_name = input_name + f"_cast_to_{cast_type_name}"
                         new_value_info.name = output_name
                         new_value_info.type.tensor_type.elem_type = accuracy_type
                         # add Cast node (from tensor(float16) to tensor(float) before current node
-                        node_name = input_name + "_cast_to_fp32_node"
+                        node_name = input_name + f"_cast_to_{cast_type_name}_node"
                         new_node = [
                             helper.make_node("Cast", [input_name], [output_name], to=accuracy_type, name=node_name)
                         ]
