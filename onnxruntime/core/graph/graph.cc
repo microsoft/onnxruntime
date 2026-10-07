@@ -38,6 +38,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "data_propagation/custom_data_propagation.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -880,7 +881,22 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
     ORT_RETURN_IF(nullptr == fbs_input_arg_counts, "Node::LoadFromOrtFormat, input_arg_counts is missing");
     auto& input_arg_count = definitions_.input_arg_count;
     input_arg_count.reserve(fbs_input_arg_counts->size());
-    input_arg_count.insert(input_arg_count.begin(), fbs_input_arg_counts->cbegin(), fbs_input_arg_counts->cend());
+    size_t total_arg_count = 0;
+    for (int32_t count : *fbs_input_arg_counts) {
+      ORT_RETURN_IF(count < 0,
+                    "Node::LoadFromOrtFormat, input_arg_counts contains a negative value for node ", name_,
+                    ". Invalid ORT format model.");
+      const auto count_size_t = static_cast<size_t>(count);
+      ORT_RETURN_IF(count_size_t > std::numeric_limits<size_t>::max() - total_arg_count,
+                    "Node::LoadFromOrtFormat, input_arg_counts total overflows size_t for node ", name_,
+                    ". Invalid ORT format model.");
+      total_arg_count += count_size_t;
+      input_arg_count.push_back(count);
+    }
+    ORT_RETURN_IF(total_arg_count != definitions_.input_defs.size(),
+                  "Node::LoadFromOrtFormat, input_arg_counts total (", total_arg_count,
+                  ") does not match number of explicit inputs (", definitions_.input_defs.size(),
+                  ") for node ", name_, ". Invalid ORT format model.");
   }
 
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.outputs(), definitions_.output_defs));
@@ -1098,15 +1114,26 @@ int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attrib
 Status Node::UpdateInputArgCount() {
   // The node refers to a primitive operator.
   // Infer and verify node input arg type information.
-  int total_arg_count = std::accumulate(definitions_.input_arg_count.cbegin(),
-                                        definitions_.input_arg_count.cend(), 0);
+  size_t total_arg_count = 0;
+  for (int arg_count : definitions_.input_arg_count) {
+    ORT_RETURN_IF(arg_count < 0,
+                  "This is an invalid model. Node (", name_, ") has a negative input arg count.");
 
-  if (total_arg_count < 0 || static_cast<size_t>(total_arg_count) != definitions_.input_defs.size()) {
+    const auto arg_count_size_t = static_cast<size_t>(arg_count);
+    ORT_RETURN_IF(arg_count_size_t > std::numeric_limits<size_t>::max() - total_arg_count,
+                  "This is an invalid model. Node (", name_, ") input arg count total overflows size_t.");
+    total_arg_count += arg_count_size_t;
+  }
+
+  if (total_arg_count != definitions_.input_defs.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "This is an invalid model. "
                            "The sum of input arg count is not equal to size of input defs in node (",
                            name_, ")");
   }
+
+  ORT_RETURN_IF(total_arg_count > static_cast<size_t>(std::numeric_limits<int>::max()),
+                "This is an invalid model. Node (", name_, ") input arg count total exceeds int range.");
 
   // op_ is always valid when this is called
   const ONNX_NAMESPACE::OpSchema& op = *Op();
@@ -1135,7 +1162,7 @@ Status Node::UpdateInputArgCount() {
     auto& input_arg_count = definitions_.input_arg_count;
     input_arg_count.clear();
     size_t m = 0;
-    auto arg_count_left = total_arg_count;
+    auto arg_count_left = static_cast<int>(total_arg_count);
 
     for (; m < op.inputs().size() - 1; ++m) {
       if (arg_count_left > 0) {
@@ -1800,6 +1827,9 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             // Create relationship between this node (node), and the node providing the output (output_node).
             Node& output_node = *entry->second.first;
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
+
+            // Preserve type information when a locally produced value is captured by a nested subgraph.
+            value_info_.insert(node_arg);
 
             // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
             // the graph outputs if it is present there.
@@ -2750,6 +2780,15 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
                           node_output_types_.size(), " outputs");
     }
     return &node_output_types_[index];
+  }
+
+  bool hasOutput(size_t index) override {
+    if (index >= node_.OutputDefs().size()) {
+      return false;
+    }
+
+    const auto* node_arg = node_.OutputDefs()[index];
+    return node_arg != nullptr && node_arg->Exists();
   }
 
   const TensorProto* getInputData(size_t index) const override {
@@ -5274,6 +5313,13 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
     for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
       gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
       gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
+
+      // The recursive call regenerates nested initializers according to model_saving_options.
+      subgraph_proto->clear_initializer();
+#if !defined(DISABLE_SPARSE_TENSORS)
+      subgraph_proto->clear_sparse_initializer();
+#endif
+
       ORT_RETURN_IF_ERROR(subgraph->AddExternalInitializersToGraphProtoImpl(
           model_path, external_file_path,
           model_external_file_path, model_saving_options,
@@ -6156,6 +6202,11 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 
 Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& node_proto,
                                             std::optional<std::string_view> new_name) {
+  // The node proto originates from a model-local function body or a subgraph, so its output list is
+  // model controlled and may not match the single output the Constant schema declares.
+  ORT_RETURN_IF_NOT(node_proto.output_size() == 1, "Constant node: '", node_proto.name(),
+                    "' is expected to have exactly 1 output. Got: ", node_proto.output_size());
+
   ONNX_NAMESPACE::TensorProto tensor_proto;
   ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node_proto, ModelPath(), tensor_proto, node_proto.output(0)));
   if (new_name.has_value()) {
@@ -6586,7 +6637,7 @@ Status Graph::InlineFunction(Node& callnode) {
     ORT_ENFORCE(callnode.TryGetFunctionProto(inlined_fp), "Node has no function body and cannot be inlined.");
 
     // Make all the names unique and resolve nested graphs inputs to the outer scope.
-    function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
+    ORT_RETURN_IF_ERROR(function_utils::Specialize(inlined_fp, callnode, uniq_identifier));
 
     // In this case, global Resolve() will take care of everything.
     ORT_RETURN_IF_ERROR(InlineFunctionProto(inlined_fp, parent_annotation));
@@ -7101,7 +7152,7 @@ ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInf
 
   auto* tensor = value_info_proto.mutable_type()->mutable_tensor_type();
   const OrtTensorTypeAndShapeInfo& tensor_info = *vi.type_info->tensor_type_info;
-  tensor->set_elem_type(tensor_info.GetElementType());
+  tensor->set_elem_type(utils::ToTensorProtoElementType(tensor_info.GetElementType()));
 
   if (tensor_info.HasShape()) {
     auto& shape = *tensor->mutable_shape();

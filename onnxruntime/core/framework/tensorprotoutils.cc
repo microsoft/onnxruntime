@@ -1452,7 +1452,9 @@ common::Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto
 
 template Status GetSizeInBytesFromTensorTypeProto<0>(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
 
-common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    size_t max_embedded_initializer_size_in_bytes) {
   ORT_RETURN_IF(HasExternalData(tensor_proto), "Expected to validate an embedded (non-external) TensorProto");
 
   TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
@@ -1477,21 +1479,32 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
     ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
                                                                     &byte_size_from_shape));
   }
-  ORT_RETURN_IF_NOT(byte_size_from_shape <= kMaxEmbeddedInitializerSizeInBytes,
+  ORT_RETURN_IF_NOT(byte_size_from_shape <= max_embedded_initializer_size_in_bytes,
                     "Initializer '", tensor_proto.name(), "' declares a size of ", byte_size_from_shape,
-                    " bytes which exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                    " bytes which exceeds the ", max_embedded_initializer_size_in_bytes,
                     " byte limit for embedded initializer data. Use external data for large initializers.");
 
-  if (HasRawData(tensor_proto)) {
-    ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == byte_size_from_shape,
-                      "Initializer '", tensor_proto.name(), "': raw_data size (", tensor_proto.raw_data().size(),
-                      " bytes) does not match expected size from shape and data type (",
-                      byte_size_from_shape, " bytes)");
-  } else if (HasString(tensor_proto)) {
+  if (HasString(tensor_proto)) {
+    ORT_RETURN_IF(HasRawData(tensor_proto),
+                  "Initializer '", tensor_proto.name(), "': string tensor can not have raw data");
     ORT_RETURN_IF_NOT(tensor_proto.string_data_size() == num_elems_signed,
                       "Initializer '", tensor_proto.name(), "': string_data count (", tensor_proto.string_data_size(),
                       ") does not match expected count from shape (",
                       num_elems_signed, ")");
+
+    size_t total_string_storage_size = byte_size_from_shape;
+    for (const auto& string_data : tensor_proto.string_data()) {
+      ORT_RETURN_IF(string_data.size() > max_embedded_initializer_size_in_bytes - total_string_storage_size,
+                    "Initializer '", tensor_proto.name(), "': string_data shape bytes + payload exceeds the ",
+                    max_embedded_initializer_size_in_bytes,
+                    " byte limit for embedded initializer data. Use external data for large initializers.");
+      total_string_storage_size += string_data.size();
+    }
+  } else if (HasRawData(tensor_proto)) {
+    ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == byte_size_from_shape,
+                      "Initializer '", tensor_proto.name(), "': raw_data size (", tensor_proto.raw_data().size(),
+                      " bytes) does not match expected size from shape and data type (",
+                      byte_size_from_shape, " bytes)");
   } else {
     // Typed data fields. Each data type maps to a specific repeated field in the proto.
     int64_t expected_count = 0;
@@ -1573,6 +1586,10 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
   return Status::OK();
 }
 
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  return ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kMaxEmbeddedInitializerSizeInBytes);
+}
+
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
   const auto& dims = tensor_shape_proto.dim();
   TensorShapeVector tensor_shape_vec(static_cast<size_t>(dims.size()));
@@ -1637,12 +1654,16 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
                              size_t length, IAllocatorUniquePtr<void>& external_data) {
   ORT_RETURN_IF_ERROR(file.ValidateRange(offset, length));
   {
-    Env::MappedMemoryPtr mapped_memory{};
+    RandomAccessFile::MappedMemoryPtr mapped_memory{};
     auto status = file.Map(offset, length, mapped_memory);
     if (status.IsOK()) {
-      IAllocatorUniquePtr<void> raw_buffer(mapped_memory.get(),
-                                           std::move(mapped_memory.get_deleter()));
-      mapped_memory.release();
+      const auto mapped_memory_deleter = mapped_memory.get_deleter();
+      IAllocatorUniquePtr<void>::deleter_type raw_buffer_deleter =
+          [mapped_memory_deleter](void* p) {
+            mapped_memory_deleter(static_cast<char*>(p));
+          };
+      auto* mapped_data = mapped_memory.release();
+      IAllocatorUniquePtr<void> raw_buffer(mapped_data, std::move(raw_buffer_deleter));
       external_data.swap(raw_buffer);
       return Status::OK();
     }
@@ -1918,7 +1939,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const onnxruntime::Mod
   std::unique_ptr<RandomAccessFile> file;
   ORT_RETURN_IF_ERROR(OpenExternalFileForTensor(env, model_path, tensor_proto, file));
   ORT_RETURN_IF_ERROR(file->ValidateRange(file_offset, raw_data_safe_len));
-  return ext_data_loader.LoadTensorFromFile(*file, file_offset, raw_data_safe_len, tensor);
+  return ext_data_loader.LoadTensor(*file, file_offset, raw_data_safe_len, tensor);
 #endif
 }
 
@@ -2249,8 +2270,8 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       ORT_UNUSED_PARAMETER(model_path);
 #endif
     default:
-      ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(), " in 'Constant' node '", node.name(),
-                "'");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Unsupported attribute value type of ",
+                             constant_attribute.type(), " in 'Constant' node '", node.name(), "'");
   }
 
   // set name last in case attribute type was tensor (would copy over name)
@@ -2262,7 +2283,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const onnxruntime::ModelPath& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
-  ORT_ENFORCE(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
+  ORT_RETURN_IF_NOT(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
 }
 
@@ -2946,6 +2967,10 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
         unpacked_tensor,
         &model_path));
     return Status::OK();
+  }
+
+  if (HasRawData(initializer)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(initializer));
   }
 
   switch (initializer.data_type()) {

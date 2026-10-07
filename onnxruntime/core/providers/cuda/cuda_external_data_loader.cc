@@ -186,18 +186,10 @@ void ExternalDataLoader::ReleaseResources() const noexcept {
   }
 }
 
-common::Status ExternalDataLoader::LoadTensor(const Env& env,
-                                              const std::filesystem::path& data_file_path,
+common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
                                               FileOffsetType data_offset,
                                               SafeInt<size_t> data_length,
                                               Tensor& tensor) const {
-  std::unique_ptr<RandomAccessFile> file;
-  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(data_file_path.c_str(), file));
-  return LoadTensorFromFile(*file, data_offset, data_length, tensor);
-}
-
-common::Status ExternalDataLoader::LoadTensorFromFile(const RandomAccessFile& file, FileOffsetType data_offset,
-                                                      size_t data_length, Tensor& tensor) const {
   ORT_RETURN_IF_NOT(CanLoad(tensor.Location()), "Unsupported tensor location: ",
                     tensor.Location().ToString());
   ORT_RETURN_IF(tensor.IsDataTypeString(),

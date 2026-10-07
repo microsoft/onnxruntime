@@ -38,6 +38,12 @@ The following table lists the supported versions of ONNX Runtime Node.js binding
 
 To use on platforms without pre-built binaries, you can build Node.js binding from source and consume it by `npm install <onnxruntime_repo_root>/js/node/`. See also [instructions](https://onnxruntime.ai/docs/build/inferencing.html#apis-and-language-bindings) for building ONNX Runtime Node.js binding locally.
 
+## Session creation
+
+`InferenceSession.create()` defers native initialization and model loading to the next event-loop turn.
+Sessions with `epContextDataRead` load on a native worker thread so JavaScript can service read callbacks.
+Other sessions retain the synchronous native fast path after that initial deferral.
+
 # GPU Support
 
 Right now, the Windows version supports WebGPU execution provider and DML execution provider. Linux x64 can use CUDA and TensorRT.
