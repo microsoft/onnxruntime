@@ -49,9 +49,10 @@ a tensor-presence Boolean, a dtype enum, an owned permutation, or the activation
 kind and its source-selection flags. Do not copy numerical activation parameters
 into configuration when the shader reads those parameters from uniforms.
 
-String views must refer to immutable text that remains alive throughout program
-execution and source generation. Their contents, rather than their addresses,
-participate in identity.
+String views and spans must refer to immutable values that remain alive throughout
+program execution and source generation. Their contents, rather than their
+addresses, participate in identity. Einsum borrows its invocation's const indexing
+recipe this way, avoiding additional recipe allocations on cache hits.
 
 ## Runtime data and shape specialization
 

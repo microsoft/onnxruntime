@@ -70,7 +70,7 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
       ORT_THROW("Invalid LHS term");
     }
     auto dims = inputs[input_idx]->Shape().GetDims();
-    lhs_.push_back(ProcessTerm(term, true, dims, input_idx));
+    lhs_.push_back(ProcessTerm(term, true, dims));
     pos = find + 1;
     input_idx++;
   }
@@ -79,7 +79,7 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
     ORT_THROW("Invalid LHS term");
   }
   auto dims = inputs[input_idx]->Shape().GetDims();
-  lhs_.push_back(ProcessTerm(last_term, true, dims, input_idx));
+  lhs_.push_back(ProcessTerm(last_term, true, dims));
 
   if (!rhs.empty() && !std::regex_match(rhs, term_pattern)) {
     ORT_THROW("Invalid RHS term");
@@ -134,27 +134,24 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
   rhs_ = ProcessTerm(rhs, false, output_dims);
 }
 
-void EinsumEquation::AddSymbol(const std::string& symbol, int64_t dim_value, int input_index) {
+void EinsumEquation::AddSymbol(const std::string& symbol, int64_t dim_value) {
   auto it = symbol_to_info_.find(symbol);
   if (it != symbol_to_info_.end()) {
     if (it->second.dim_value != dim_value && it->second.count != 1) {
       ORT_THROW("Dimension mismatch");
     }
     it->second.count++;
-    it->second.input_indices.push_back(input_index);
   } else {
     SymbolInfo info;
     info.count = 1;
     info.dim_value = dim_value;
-    info.input_indices.push_back(input_index);
     symbol_to_info_[symbol] = info;
   }
 }
 
 EinsumTerm EinsumEquation::ProcessTerm(const std::string& term, bool is_input,
-                                       gsl::span<const int64_t> dims, int index) {
+                                       gsl::span<const int64_t> dims) {
   EinsumTerm einsum_term;
-  einsum_term.input_index = index;
 
   // If the term is empty, return the einsum_term with empty symbol_to_indices.
   // This is important for the case where the equation contains scalar like ",i...,->i...", in which
@@ -199,18 +196,19 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term, bool is_input,
       for (size_t j = 0; j < ellipsis_dims.size(); ++j) {
         std::string symbol_j = std::to_string(j);
         einsum_term.symbol_to_indices[symbol_j].push_back(i + j);
-        AddSymbol(symbol_j, dims[next_dim++], index);
+        AddSymbol(symbol_j, dims[next_dim++]);
       }
     } else {
       einsum_term.symbol_to_indices[symbol].push_back(
           i + (has_ellipsis_ ? ellipsis_dims_.size() - 1 : 0));
-      AddSymbol(symbol, dims[next_dim++], index);
+      AddSymbol(symbol, dims[next_dim++]);
     }
   }
   return einsum_term;
 }
 
 Status EinsumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+  const size_t input_count = shader.InputCount();
   // Add inputs and output.
   const ShaderVariableHelper& input0 =
       shader.AddInput("input0", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
@@ -218,7 +216,7 @@ Status EinsumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& co
   std::vector<std::reference_wrapper<const ShaderVariableHelper>> inputs;
   inputs.push_back(input0);
 
-  for (size_t i = 1; i < config.input_count_; ++i) {
+  for (size_t i = 1; i < input_count; ++i) {
     inputs.push_back(shader.AddInput("input" + std::to_string(i),
                                      ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
   }
@@ -236,32 +234,29 @@ Status EinsumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& co
   std::vector<std::string> reduce_ops_loop_headers;
   std::vector<std::string> reduce_ops_loop_footers;
   std::vector<std::string> reduce_op_compute;
-  bool is_reduce_ops_without_loop = config.symbol_to_inputs_.size() == config.output_indices_.size();
+  std::set<std::string> symbols;
+  for (const auto& term : config.input_terms_) {
+    for (const auto& entry : term.symbol_to_indices) symbols.insert(entry.first);
+  }
+  const auto& output_indices = config.output_terms_[0].symbol_to_indices;
+  const bool is_reduce_ops_without_loop = symbols.size() == output_indices.size();
   std::set<std::string> uniform_symbol_set;
-  for (const auto& pair : config.symbol_to_inputs_) {
-    const std::string& symbol = pair.first;
-    const auto& input_indices = pair.second;
-    if (config.output_indices_.find(symbol) != config.output_indices_.end()) {
+  for (const auto& symbol : symbols) {
+    if (output_indices.find(symbol) != output_indices.end()) {
       // Find the indices in the right-hand side (output) term for the current symbol
-      auto rhs_indices = config.output_indices_.find(symbol);
+      auto rhs_indices = output_indices.find(symbol);
       // Skip if symbol doesn't appear in output or has no indices
       // This means this symbol is not needed for output calculation
-      if (rhs_indices == config.output_indices_.end() || rhs_indices->second.empty()) {
+      if (rhs_indices == output_indices.end() || rhs_indices->second.empty()) {
         continue;
       }
 
       int lhs_term_index = 0;
-      for (const auto& term : config.input_indices_) {
-        // Skip if the current input tensor index is not associated with this symbol
-        // This check ensures we only process input indices that actually have this symbol.
-        if (std::find(input_indices.begin(), input_indices.end(), lhs_term_index) == input_indices.end()) {
-          lhs_term_index++;
+      for (const auto& term : config.input_terms_) {
+        auto it = term.symbol_to_indices.find(symbol);
+        if (it == term.symbol_to_indices.end()) {
+          ++lhs_term_index;
           continue;
-        }
-
-        auto it = term.find(symbol);
-        if (it == term.end()) {
-          ORT_THROW("Invalid symbol error");
         }
 
         // For each input index associated with the current symbol in this term
@@ -279,7 +274,7 @@ Status EinsumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& co
       }
     } else {
       int lhs_term_index = 0;
-      for (const auto& term : config.input_indices_) {
+      for (const auto& term : config.input_terms_) {
         // Always construct the string for multiplying the input value to the product accumulator
         // Format like: prod *= get_input0_by_indices(input0Indices);
         std::string get_indices_str = "prod *= " +
@@ -295,16 +290,10 @@ Status EinsumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& co
           reduce_op_compute.push_back(get_indices_str);
         }
 
-        // Skip if the current input tensor index is not associated with this symbol
-        // This check ensures we only process input indices that actually have this symbol.
-        if (std::find(input_indices.begin(), input_indices.end(), lhs_term_index) == input_indices.end()) {
-          lhs_term_index++;
+        auto it = term.symbol_to_indices.find(symbol);
+        if (it == term.symbol_to_indices.end()) {
+          ++lhs_term_index;
           continue;
-        }
-
-        auto it = term.find(symbol);
-        if (it == term.end()) {
-          ORT_THROW("Invalid symbol error");
         }
 
         for (auto input_index : it->second) {
@@ -391,7 +380,7 @@ Status EinsumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& co
   }
 
   // Define input indices with appropriate types.
-  for (size_t i = 0; i < config.input_count_; i++) {
+  for (size_t i = 0; i < input_count; i++) {
     shader.MainFunctionBody() << "var input" << i << "Indices: input" << std::to_string(i)
                               << "_indices_t;\n";
   }
@@ -433,7 +422,7 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
   // TODO: The EinsumEquation initialization could potentially be done during model loading
   // based on input/output shape inference results. This would improve runtime performance
   // by avoiding redundant initialization on every compute call.
-  EinsumEquation equation(input_tensors, equation_);
+  const EinsumEquation equation(input_tensors, equation_);
   const std::vector<int64_t>& output_dims = equation.output_dims;
   Tensor* Y = context.Output(0, output_dims);
   int64_t output_size = Y->Shape().Size();
@@ -441,8 +430,8 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  // Create program with input count and the parsed equation.
-  EinsumProgram program{input_tensors.size(), std::move(equation)};
+  // Borrow the immutable indexing recipe while this invocation is alive.
+  EinsumProgram program{equation};
 
   for (size_t i = 0; i < input_tensors.size(); ++i) {
     program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::None});
