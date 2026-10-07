@@ -553,6 +553,8 @@ Status Model::Load(const ModelProto& model_proto,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger,
                    const ModelOptions& options) {
+  // Keep potentially aliased input data alive while clearing the output.
+  [[maybe_unused]] auto previous_model = std::move(model);
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -564,8 +566,9 @@ Status Model::Load(const ModelProto& model_proto,
   GSL_SUPPRESS(r .11)
 
   auto status = Status::OK();
+  std::shared_ptr<Model> loaded_model;
   ORT_TRY {
-    model = std::make_unique<Model>(model_proto, model_path, local_registries, logger, options);
+    loaded_model = std::make_unique<Model>(model_proto, model_path, local_registries, logger, options);
   }
   ORT_CATCH(const OnnxRuntimeException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -581,8 +584,9 @@ Status Model::Load(const ModelProto& model_proto,
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(resolve_options));
+  ORT_RETURN_IF_ERROR(loaded_model->MainGraph().Resolve(resolve_options));
 
+  model = std::move(loaded_model);
   return status;
 }
 
@@ -600,6 +604,7 @@ Status Model::Load(ModelProto&& model_proto,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger,
                    const ModelOptions& options) {
+  [[maybe_unused]] auto previous_model = std::move(model);
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -610,8 +615,9 @@ Status Model::Load(ModelProto&& model_proto,
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   auto status = Status::OK();
+  std::shared_ptr<Model> loaded_model;
   ORT_TRY {
-    model = std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger, options);
+    loaded_model = std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger, options);
   }
   ORT_CATCH(const OnnxRuntimeException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -627,8 +633,9 @@ Status Model::Load(ModelProto&& model_proto,
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(resolve_options));
+  ORT_RETURN_IF_ERROR(loaded_model->MainGraph().Resolve(resolve_options));
 
+  model = std::move(loaded_model);
   return status;
 }
 
@@ -707,6 +714,7 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                         const logging::Logger& logger, const ModelOptions& options,
                         const onnxruntime::ModelPath* graph_model_path = nullptr) {
+  [[maybe_unused]] auto previous_model = std::move(p_model);
   const auto loader = [&](auto& file, const onnxruntime::ModelPath& captured_path) {
     onnxruntime::ModelPath model_path = graph_model_path != nullptr ? *graph_model_path : captured_path;
     if (model_path.GetExternalDataDirectories() == nullptr) {
@@ -714,12 +722,13 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
     }
     ModelProto model_proto;
     ORT_RETURN_IF_ERROR(Model::Load(file, model_proto));
-    p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger, options);
-    Graph::ResolveOptions resolve_options;
-    resolve_options.no_proto_sync_required = true;
-    return p_model->MainGraph().Resolve(resolve_options);
+    return Model::Load(std::move(model_proto), model_path, p_model, local_registries, logger, options);
   };
-  return LoadModelHelper(file_path, loader);
+  auto status = LoadModelHelper(file_path, loader);
+  if (!status.IsOK()) {
+    p_model.reset();
+  }
+  return status;
 }
 
 template <typename T>
@@ -853,6 +862,7 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
 Status Model::LoadFromBytes(int count, void* p_bytes, const onnxruntime::ModelPath& model_path,
                             std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                             const logging::Logger& logger, const ModelOptions& options) {
+  [[maybe_unused]] auto previous_model = std::move(p_model);
   ModelProto model_proto;
 
   auto status = LoadFromBytes(count, p_bytes, model_proto);
@@ -966,6 +976,7 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
 Status Model::Load(int fd, const onnxruntime::ModelPath& model_path, std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
                    const ModelOptions& options) {
+  [[maybe_unused]] auto previous_model = std::move(p_model);
   onnxruntime::ModelPath captured_path = model_path;
   if (captured_path.GetExternalDataDirectories() == nullptr) {
     ORT_RETURN_IF_ERROR(Env::Default().CaptureModelPath(model_path.Path(), captured_path, false));

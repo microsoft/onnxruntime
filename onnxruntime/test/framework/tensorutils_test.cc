@@ -2630,15 +2630,39 @@ TEST_F(ExternalDataFileTest, ModelLoadingReturnsStatusForInvalidContent) {
   EXPECT_EQ(model_path.GetExternalDataDirectories(), directories);
 
   std::shared_ptr<Model> model;
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  auto initialize_output = [&]() {
+    ASSERT_STATUS_OK(Model::Load(MakeModel(), ModelPath(path), model, nullptr, logger));
+    ASSERT_NE(model, nullptr);
+  };
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
   status = Model::Load(path.native(), model, nullptr, DefaultLoggingManager().DefaultLogger());
   EXPECT_EQ(status.Code(), common::INVALID_PROTOBUF);
   EXPECT_EQ(model, nullptr);
 
+  std::string invalid_bytes = "not a protobuf model";
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
+  status = Model::LoadFromBytes(narrow<int>(invalid_bytes.size()), invalid_bytes.data(), model, nullptr, logger);
+  EXPECT_EQ(status.Code(), common::INVALID_PROTOBUF);
+  EXPECT_EQ(model, nullptr);
+
+  {
+    ASSERT_NO_FATAL_FAILURE(initialize_output());
+    int fd = -1;
+    ASSERT_STATUS_OK(Env::Default().FileOpenRd(path.c_str(), fd));
+    auto close_file = gsl::finally([&]() { EXPECT_STATUS_OK(Env::Default().FileClose(fd)); });
+    status = Model::Load(fd, ModelPath(path), model, nullptr, logger);
+    EXPECT_EQ(status.Code(), common::INVALID_PROTOBUF);
+    EXPECT_EQ(model, nullptr);
+  }
+
   auto invalid_model = MakeModel();
   invalid_model.mutable_graph()->mutable_node(0)->set_op_type("UnregisteredExternalFileTestOp");
   ASSERT_STATUS_OK(Write(path, invalid_model.SerializeAsString()));
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
   status = Model::Load(path.native(), model, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "UnregisteredExternalFileTestOp");
+  EXPECT_EQ(model, nullptr);
 }
 
 TEST_F(ExternalDataFileTest, SessionKeepsTheOriginalDirectory) {

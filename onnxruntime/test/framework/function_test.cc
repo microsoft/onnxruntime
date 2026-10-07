@@ -2310,14 +2310,21 @@ void CheckFunctionNodeCountRejection(const ONNX_NAMESPACE::ModelProto& model_pro
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_error));
     EXPECT_EQ(model, nullptr);
   };
+  auto initialize_output = [&]() {
+    ASSERT_STATUS_OK(Model::Load(MakeModelWithFunctionConstant(1), model, nullptr, logger));
+    ASSERT_NE(model, nullptr);
+  };
 
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
   check_status(Model::Load(model_proto, model, nullptr, logger));
   auto copy = model_proto;
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
   check_status(Model::Load(std::move(copy), model, nullptr, logger));
 
   std::string serialized_model;
   ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
   const int size = narrow<int>(serialized_model.size());
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
   check_status(Model::LoadFromBytes(size, serialized_model.data(), model, nullptr, logger));
 
   InferenceSession session{SessionOptions(), GetEnvironment()};
@@ -2330,7 +2337,21 @@ void CheckFunctionNodeCountRejection(const ONNX_NAMESPACE::ModelProto& model_pro
   std::unique_ptr<FILE, int (*)(FILE*)> file_owner(file, fclose);
   ASSERT_EQ(serialized_model.size(), fwrite(serialized_model.data(), 1, serialized_model.size(), file));
   ASSERT_EQ(0, fclose(file_owner.release()));
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
   check_status(Model::Load(path, model, nullptr, logger));
+  ModelPath captured_path;
+  ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, captured_path, false));
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
+  check_status(Model::Load(path, captured_path, model, nullptr, logger));
+  for (const bool explicit_path : {false, true}) {
+    SCOPED_TRACE(explicit_path);
+    int fd = -1;
+    ASSERT_STATUS_OK(Env::Default().FileOpenRd(path.c_str(), fd));
+    auto close_file = gsl::finally([&]() { EXPECT_STATUS_OK(Env::Default().FileClose(fd)); });
+    ASSERT_NO_FATAL_FAILURE(initialize_output());
+    check_status(explicit_path ? Model::Load(fd, captured_path, model, nullptr, logger)
+                               : Model::Load(fd, model, nullptr, logger));
+  }
 }
 }  // namespace
 
