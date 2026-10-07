@@ -4422,6 +4422,7 @@ TEST(ModOpTest, FloorMod_opset28_provider_fallback) {
     test.AddInput<float>("X", shape, x);
     test.AddInput<float>("Y", shape, y);
     test.AddOutput<float>("Z", shape, {1.0f, -1.0f, infinity, -infinity});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
     std::string model_data;
     auto& model = test.BuildModel();
     ASSERT_STATUS_OK(model.MainGraph().Resolve());
