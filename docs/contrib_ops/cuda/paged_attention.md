@@ -181,6 +181,24 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage and their last
 dimension is `(head_size + 1) / 2`, not `head_size`.
 
+`cumulative_sequence_length`, `past_seqlens`, and `block_table` are sanitized on the CUDA compute
+stream before any cache address is resolved:
+
+- cumulative query offsets are clamped to `[0, token_count]`, made nondecreasing, and fixed to start
+  at zero and end at `token_count`;
+- a negative `past_seqlens` value, or one that leaves insufficient capacity for that sequence's
+  query tokens, suppresses that sequence's cache writes and produces zero output;
+- `block_table == -1` remains the supported unmapped-page sentinel; values `< -1` or
+  `>= num_blocks` are converted to that sentinel. Sentinel pages are excluded from attention while
+  mapped pages remain attendable.
+
+When `attention_metadata` supplies replay-wide bounds, or while a CUDA Graph is being captured or
+replayed, sanitization is entirely device-side and malformed values follow the behavior above.
+Without metadata, a backend that needs exact host lengths for workspace sizing or XQA eligibility
+performs the existing device-to-host length readback. On that diagnostic path, malformed
+`cumulative_sequence_length` or `past_seqlens` returns `INVALID_ARGUMENT` instead of being silently
+sanitized. Block-table safety remains device-side on every path.
+
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
 
@@ -520,9 +538,8 @@ measurable win for large batches and eliminates the OOB failure mode. The kernel
 
 - Rank 1, `shape[0] == token_count`.
 - Element type `int32`.
-- Range checking on device is a debug-build assertion only; host-side range checking would require a
-  D→H copy per step. The op documents that out-of-range values are undefined behavior, consistent
-  with `block_table` today.
+- Range checking is performed on device without a host synchronization. `-1` suppresses the write;
+  values below `-1` or at/above `num_blocks * block_size` are also treated as suppressed writes.
 
 ### 5.5 Why not derive-only
 

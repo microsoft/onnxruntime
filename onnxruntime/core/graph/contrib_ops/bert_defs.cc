@@ -1906,12 +1906,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "S")
         .Input(6,
                "past_seqlens",
-               "A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.",
+               "A tensor with shape (batch_size). It specifies the past lengths of cached sequences. "
+               "CUDA sanitizes malformed values on device: an invalid value suppresses that sequence's cache writes "
+               "and produces zero output. A backend requiring exact host lengths may instead return INVALID_ARGUMENT "
+               "when attention_metadata is absent.",
                "S")
         .Input(7,
                "block_table",
                "2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to its"
-               "corresponding blocks in the KV cache.",
+               "corresponding blocks in the KV cache. -1 denotes an unmapped page. CUDA converts values below -1 or "
+               "greater than or equal to num_blocks to the unmapped sentinel before resolving cache addresses; mapped "
+               "pages remain attendable.",
                "S")
         .Input(8,
                "cos_cache",
