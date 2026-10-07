@@ -77,12 +77,27 @@ MlasHalfGemmTryGetPackedBSize(
 
     const size_t AlignedK = aligned_k_input & ~(PackedK - 1);
 
+#if defined(MLAS_TARGET_POWER)
+    size_t aligned_n_input = 0;
+    if (MlasAddOverflowsSizeT(N, 15, &aligned_n_input)) {
+        return false;
+    }
+    const size_t AlignedN = aligned_n_input & ~15;
+
+    size_t BytesRequired = 0;
+    if (MlasMultiplyOverflowsSizeT(AlignedN, AlignedK, &BytesRequired) ||
+        MlasMultiplyOverflowsSizeT(BytesRequired, sizeof(_mlas_fp16_), &BytesRequired) ||
+        MlasAddOverflowsSizeT(BytesRequired, Padding, &BytesRequired)) {
+        return false;
+    }
+#else
     size_t BytesRequired = 0;
     if (MlasMultiplyOverflowsSizeT(N, AlignedK, &BytesRequired) ||
         MlasMultiplyOverflowsSizeT(BytesRequired, sizeof(_mlas_fp16_), &BytesRequired) ||
         MlasAddOverflowsSizeT(BytesRequired, Padding, &BytesRequired)) {
         return false;
     }
+#endif
 
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     size_t aligned_bytes_input = 0;
@@ -201,6 +216,62 @@ MlasHalfGemmConvertPackB(
     size_t CountN,
     size_t CountK
 );
+
+/**
+ * @brief Pack transposed matrix B (shape [N, K], row-major with leading dimension ldb)
+ *
+ * @tparam KernelType
+ * @param[out] D         Address of packing buffer
+ * @param[in]  B         Address of source matrix B in fp16
+ * @param[in]  ldb       Leading dimension of B
+ * @param[in]  CountN    # of columns of final GEMM to pack (rows in transposed B)
+ * @param[in]  CountK    # of rows of final GEMM to pack (cols in transposed B)
+ */
+template <typename KernelType>
+inline void
+MlasHalfGemmCopyPackB_Transposed(
+    _mlas_fp16_* D,
+    const _mlas_fp16_* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(D);
+    MLAS_UNREFERENCED_PARAMETER(B);
+    MLAS_UNREFERENCED_PARAMETER(ldb);
+    MLAS_UNREFERENCED_PARAMETER(CountN);
+    MLAS_UNREFERENCED_PARAMETER(CountK);
+    MLAS_THROW_EX(std::runtime_error, "Transposed FP16 B is not supported by current MLAS halfgemm kernel");
+}
+
+/**
+ * @brief Convert and pack transposed matrix B in fp32 (shape [N, K], row-major with leading dimension ldb)
+ *
+ * @tparam KernelType
+ * @param[out] D         Address of packing buffer
+ * @param[in]  B         Address of source matrix B in fp32
+ * @param[in]  ldb       Leading dimension of B
+ * @param[in]  CountN    # of columns of final GEMM to pack (rows in transposed B)
+ * @param[in]  CountK    # of rows of final GEMM to pack (cols in transposed B)
+ */
+template <typename KernelType>
+inline void
+MlasHalfGemmConvertPackB_Transposed(
+    _mlas_fp16_* D,
+    const float* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(D);
+    MLAS_UNREFERENCED_PARAMETER(B);
+    MLAS_UNREFERENCED_PARAMETER(ldb);
+    MLAS_UNREFERENCED_PARAMETER(CountN);
+    MLAS_UNREFERENCED_PARAMETER(CountK);
+    MLAS_THROW_EX(std::runtime_error, "Transposed FP32 B is not supported by current MLAS halfgemm kernel");
+}
 
 /**
  * @brief Find the location of PackedB[StartK, StartN]
@@ -369,7 +440,11 @@ MlasHalfGemmOperation(
     const size_t ldb = Data->ldb;
     const size_t ldc = Data->ldc;
 
+#if defined(MLAS_TARGET_POWER)
+    if (!Data->AIsfp32 && !Data->BIsTransposed && (ldb == 0 || (!KernelType::PackNeeded && !Data->BIsfp32))) {
+#else
     if (!Data->AIsfp32 && (ldb == 0 || (!KernelType::PackNeeded && !Data->BIsfp32))) {
+#endif
         // !Data->AIsfp32 => A is fp16, no packing on the left hand side
         // ldb == 0 => B is already packed, no packing on the right hand side
         // !KernelType::PackNeeded && !Data->BIsfp32  => B is fp16 and the kernel
@@ -436,6 +511,28 @@ MlasHalfGemmOperation(
                     RangeStartN + n,
                     k);
                 ld_pb = MlasHalfGemmPackedBLeadingDim<KernelType>(N, K);
+#if defined(MLAS_TARGET_POWER)
+            } else if (Data->BIsTransposed) {
+                if (Data->BIsfp32) {
+                    MlasHalfGemmConvertPackB_Transposed<KernelType>(
+                        PanelB,
+                        reinterpret_cast<const float*>(Data->B) + (RangeStartN + n) * ldb + k,
+                        ldb,
+                        CountN,
+                        CountK);
+                    pb = PanelB;
+                    ld_pb = MlasHalfGemmPackedBLeadingDim<KernelType>(CountN, CountK);
+                } else {
+                    MlasHalfGemmCopyPackB_Transposed<KernelType>(
+                        PanelB,
+                        reinterpret_cast<const _mlas_fp16_*>(Data->B) + (RangeStartN + n) * ldb + k,
+                        ldb,
+                        CountN,
+                        CountK);
+                    pb = PanelB;
+                    ld_pb = MlasHalfGemmPackedBLeadingDim<KernelType>(CountN, CountK);
+                }
+#endif
             } else if (Data->BIsfp32) {
                 // fp32, need conversion and packing
                 MlasHalfGemmConvertPackB<KernelType>(
@@ -578,6 +675,8 @@ struct MLAS_HALFGEMM_DISPATCH {
     size_t PackededK;
     size_t StrideM;
     size_t BufOverRead;
+    MLAS_HALFGEMM_COPYPACKB_ROUTINE* CopyPackB_TransposedRoutine = nullptr;
+    MLAS_HALFGEMM_CONVERTPACKB_ROUTINE* ConvertPackB_TransposedRoutine = nullptr;
 };
 
 extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault;
@@ -588,6 +687,12 @@ extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon;
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH)
 extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchRvv;
+#endif
+
+#if defined(MLAS_TARGET_POWER)
+extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchPOWER10;
+extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchPOWER9;
+const MLAS_HALFGEMM_DISPATCH* MlasGetPowerDispatch();
 #endif
 
 MLAS_FORCEINLINE
@@ -604,6 +709,8 @@ MlasHalfGemmGetDispatch()
         return &MlasHalfGemmDispatchRvv;
     }
     return &MlasHalfGemmDispatchDefault;
+#elif defined(MLAS_TARGET_POWER)
+    return MlasGetPowerDispatch();
 #else
     return &MlasHalfGemmDispatchDefault;
 #endif

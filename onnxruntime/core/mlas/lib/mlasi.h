@@ -1521,6 +1521,11 @@ MlasReorderOutputNchwBlock16Avx512F(
     MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelRvv;
 #endif
 
+#if defined(MLAS_TARGET_POWER)
+    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelPowerVSX;
+    MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelPowerVSX;
+#endif
+
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
     MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelRvv;
 #endif

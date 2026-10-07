@@ -62,6 +62,20 @@
 #endif
 #endif  // RISCV64
 
+#if defined(CPUIDINFO_ARCH_POWER)
+#include <sys/auxv.h>
+// Support building with older kernel headers that may not define these bits.
+#ifndef PPC_FEATURE2_ARCH_3_00
+#define PPC_FEATURE2_ARCH_3_00 0x00800000  // POWER9
+#endif
+#ifndef PPC_FEATURE2_ARCH_3_1
+#define PPC_FEATURE2_ARCH_3_1  0x00040000  // POWER10
+#endif
+#ifndef PPC_FEATURE2_MMA
+#define PPC_FEATURE2_MMA       0x00020000  // POWER10 MMA
+#endif
+#endif  // POWER (Linux)
+
 #endif  // Linux
 
 #if _WIN32
@@ -387,6 +401,40 @@ void CPUIDInfo::RiscvLinuxInit() {
 }
 #endif  // defined(CPUIDINFO_ARCH_RISCV64) && defined(__linux__)
 
+#if defined(CPUIDINFO_ARCH_POWER)
+#if defined(__linux__) || defined(__FreeBSD__)
+void CPUIDInfo::PowerLinuxInit() {
+  unsigned long hwcap2 = getauxval(AT_HWCAP2);
+  bool has_p9 = (hwcap2 & PPC_FEATURE2_ARCH_3_00) != 0;
+  bool has_p10_mma = (hwcap2 & PPC_FEATURE2_ARCH_3_1) != 0 && (hwcap2 & PPC_FEATURE2_MMA) != 0;
+  has_fp16_ = has_p10_mma || has_p9;
+}
+#elif defined(_AIX)
+#include <sys/systemcfg.h>
+#ifndef POWER_9
+#define POWER_9       0x20000
+#endif
+#ifndef POWER_9_ANDUP
+#define POWER_9_ANDUP (POWER_9)
+#endif
+#ifndef POWER_10
+#define POWER_10       0x40000
+#endif
+#ifndef POWER_10_ANDUP
+#define POWER_10_ANDUP (POWER_10)
+#endif
+#ifndef MMA_V31
+#define MMA_V31 3
+#endif
+void CPUIDInfo::PowerAIXInit() {
+  bool has_p9 = (_system_configuration.implementation & POWER_9_ANDUP) != 0;
+  bool has_p10_mma = (_system_configuration.implementation & POWER_10_ANDUP) != 0 &&
+                     __power_mma_version() == MMA_V31;
+  has_fp16_ = has_p10_mma || has_p9;
+}
+#endif  // __linux__ || __FreeBSD__
+#endif  // defined(CPUIDINFO_ARCH_POWER)
+
 uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 #ifdef _WIN32
   return GetCurrentProcessorNumber();
@@ -432,6 +480,14 @@ CPUIDInfo::CPUIDInfo() {
   RiscvLinuxInit();
 #endif
 #endif  // defined(CPUIDINFO_ARCH_RISCV64)
+
+#if defined(CPUIDINFO_ARCH_POWER)
+#if defined(__linux__) || defined(__FreeBSD__)
+  PowerLinuxInit();
+#elif defined(_AIX)
+  PowerAIXInit();
+#endif
+#endif  // defined(CPUIDINFO_ARCH_POWER)
 }
 
 CPUIDInfo::~CPUIDInfo() {

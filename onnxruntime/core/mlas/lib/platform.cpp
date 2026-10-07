@@ -980,6 +980,8 @@ Return Value:
     if (HasP9Instructions) {
         this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
         this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelVSX;
+        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelPowerVSX;
+        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelPowerVSX;
     }
 
 #if defined(POWER10)

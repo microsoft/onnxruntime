@@ -144,6 +144,14 @@ class CPUIDInfo {
 #endif
 #endif  // defined(CPUIDINFO_ARCH_RISCV64)
 
+#if defined(CPUIDINFO_ARCH_POWER)
+#if defined(__linux__) || defined(__FreeBSD__)
+  void PowerLinuxInit();
+#elif defined(_AIX)
+  void PowerAIXInit();
+#endif
+#endif  // defined(CPUIDINFO_ARCH_POWER)
+
 #if defined(CPUINFO_SUPPORTED)
   bool pytorch_cpuinfo_init_{false};
 #endif  // defined(CPUINFO_SUPPORTED)

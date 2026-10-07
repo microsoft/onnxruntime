@@ -68,7 +68,7 @@ Abstract:
 #define MLAS_TARGET_RISCV64
 #endif
 
-#if defined(__VSX__)
+#if defined(__VSX__) || defined(__powerpc__) || defined(__ppc__) || defined(_ARCH_PPC)
 #define MLAS_TARGET_POWER
 #endif
 #if defined(__wasm__)
@@ -122,7 +122,8 @@ Abstract:
 // Define whether an accelerated half-GEMM backend can be available for this build.
 //
 #if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
-    (defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)) || defined(MLAS_TARGET_RISCV64)
+    (defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)) || defined(MLAS_TARGET_RISCV64) || \
+    defined(MLAS_TARGET_POWER)
 #define MLAS_HALF_GEMM_ACCELERATION_POSSIBLE
 #endif
 
@@ -1905,6 +1906,13 @@ MlasHalfGemmAccelerationSupported(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 /**
+ * @brief Checks if half-precision GEMM supports transposed matrix B
+ *        directly without external transposition.
+ */
+bool MLASCALL
+MlasHalfGemmTransposedBSupported();
+
+/**
  * @brief Interface for half gemm post processors.
  *
  * Example implementation of this interface includes activations,
@@ -2028,6 +2036,7 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
      * Bias must be nullptr, and OutputProcessor must be nullptr.
      */
     bool BIsBackendNativePacked = false;
+    bool BIsTransposed = false; /**< matrix B is transposed (shape [N, K]), needs transposed packing */
 };
 
 /**
@@ -2097,6 +2106,26 @@ MlasHalfGemmPackBSize(
 void
 MLASCALL
 MlasHalfGemmPackB(
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+/**
+ * @brief For half precision GEMM, pack transposed right hand side matrix B
+ *        (shape [N, K], row-major with leading dimension ldb >= K).
+ *
+ * @param[in]  N        Number of columns
+ * @param[in]  K        Number of rows
+ * @param[in]  B        Address of transposed matrix B (shape [N, K])
+ * @param[in]  ldb      leading dimension of transposed matrix B (ldb >= K)
+ * @param[out] PackedB  Address of the packed matrix
+*/
+void
+MLASCALL
+MlasHalfGemmPackB_Transposed(
     size_t N,
     size_t K,
     const MLAS_FP16* B,
