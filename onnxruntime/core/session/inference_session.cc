@@ -3683,6 +3683,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // A queued run must retain its cancellation state even if RunOptions is reset before it acquires the session lock.
+  const auto terminate_token = run_options.GetTerminateToken();
   // Serialize graph-state checks and replay as well as normal execution. Keep the
   // lock here so RunImpl's internal capture retries do not acquire it recursively.
   std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
@@ -3690,7 +3692,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
     sequential_run_lock.emplace(session_mutex_);
   }
 
-  const auto terminate_token = run_options.GetTerminateToken();
   return RunImpl(run_options, terminate_token, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
                  /*graph_capture_depth=*/0);
 }
