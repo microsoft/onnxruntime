@@ -128,6 +128,19 @@ def _make_blocked_node_model(num_nodes=2, use_empty_names=True):
     return model
 
 
+def _make_constant_of_shape_model():
+    """Create a model with a ConstantOfShape node that omits its optional value attribute."""
+    graph_input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 4])
+    graph_output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 4])
+    nodes = [
+        helper.make_node("Shape", ["input"], ["shape"]),
+        helper.make_node("ConstantOfShape", ["shape"], ["constant"]),
+        helper.make_node("Add", ["input", "constant"], ["output"]),
+    ]
+    graph = helper.make_graph(nodes, "constant_of_shape_test", [graph_input], [graph_output])
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=8)
+
+
 class TestFloat16Conversion(unittest.TestCase):
     """Tests for convert_float_to_float16 correctness."""
 
@@ -269,6 +282,17 @@ class TestFloat16Conversion(unittest.TestCase):
             TensorProto.FLOAT16,
             "With force_fp16_initializers, scales should be converted to fp16",
         )
+
+    def test_constant_of_shape_without_value_gets_fp16_value(self):
+        """ConstantOfShape without value should get an explicit float16 zero."""
+        model = _make_constant_of_shape_model()
+        converted = convert_float_to_float16(model, keep_io_types=True)
+
+        constant_of_shape = next(node for node in converted.graph.node if node.op_type == "ConstantOfShape")
+        value = next((attribute.t for attribute in constant_of_shape.attribute if attribute.name == "value"), None)
+        self.assertIsNotNone(value)
+        self.assertEqual(value.data_type, TensorProto.FLOAT16)
+        np.testing.assert_array_equal(numpy_helper.to_array(value), np.array([0], dtype=np.float16))
 
 
 if __name__ == "__main__":

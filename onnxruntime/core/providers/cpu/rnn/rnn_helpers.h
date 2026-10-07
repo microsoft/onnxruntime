@@ -100,7 +100,12 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                const Tensor* sequence_lens,
                                const Tensor* initial_h,
                                int64_t num_directions,
-                               int64_t hidden_size);
+                               int64_t hidden_size,
+                               // When true, the W and R gate dimension and input/hidden dimension are
+                               // swapped, i.e. W is [num_directions, input_size, mult*hidden_size] and
+                               // R is [num_directions, hidden_size, mult*hidden_size]. This is the layout
+                               // used by the quantized LSTM (DynamicQuantizeLSTM).
+                               bool weights_transposed = false);
 
 /// Copy an input array repeatedly to an output array
 /// @param input_begin Beginning of input

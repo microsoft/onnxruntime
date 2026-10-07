@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/graph/constants.h"
 #include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
@@ -34,13 +35,17 @@ class CudaEpFactory : public OrtEpFactory {
   const OrtEpApi& GetEpApi() const { return ep_api_; }
   const std::string& GetEpName() const { return ep_name_; }
 
-  /// Get the device arena allocator for the given CUDA ordinal, or nullptr if none.
-  CudaArenaAllocator* GetDeviceArenaForDevice(int device_id);
-
-  /// Reset arena chunk-to-stream assignments for a device while holding the arena lock.
-  /// This avoids the use-after-free risk of calling GetDeviceArenaForDevice() and then
-  /// using the raw pointer after the arena_mutex is released.
+  /// Reset chunk-to-stream assignments in every device arena of a device while holding the arena lock.
   OrtStatus* ResetDeviceArenaChunksUsingStream(int device_id, const OrtSyncStreamImpl* stream_impl);
+
+  /// Permanently quarantine chunks when stream completion cannot be established.
+  OrtStatus* QuarantineDeviceArenaChunksUsingStream(int device_id, const OrtSyncStreamImpl* stream_impl);
+
+  /// Abandon every device arena, then detach stream pointers from tagged chunks.
+  OrtStatus* QuarantineAndAbandonDeviceArena(int device_id, const OrtSyncStreamImpl* stream_impl) noexcept;
+
+  /// Abandon every device arena of a device when chunk-level detachment cannot be guaranteed.
+  void AbandonDeviceArena(int device_id) noexcept;
 
   /// Get or create the shared kernel registry for this factory.
   /// Lazily created on first call; subsequent calls return the cached instance.
@@ -97,10 +102,16 @@ class CudaEpFactory : public OrtEpFactory {
   const OrtEpApi& ep_api_;
   const OrtLogger& default_logger_;
 
-  const std::string ep_name_{"CudaPluginExecutionProvider"};
+  const std::string ep_name_{kCudaExecutionProvider};
   const std::string vendor_{"NVIDIA"};
   const uint32_t vendor_id_ = 0x10DE;  // NVIDIA PCI vendor ID
   const std::string ep_version_{ORT_PLUGIN_EP_VERSION};
+
+  struct DeviceArena {
+    std::unique_ptr<CudaArenaAllocator> allocator;
+    bool has_quarantine = false;
+    bool abandoned = false;
+  };
 
   struct DeviceCacheEntry {
     int cuda_device_id{-1};
@@ -109,23 +120,12 @@ class CudaEpFactory : public OrtEpFactory {
 
     // Arena members
     std::mutex arena_mutex;
-    std::unique_ptr<CudaArenaAllocator> device_arena;
+    // One arena per CreateAllocator call: captured CUDA graphs keep using chunks their session freed.
+    std::vector<DeviceArena> device_arenas;
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
     std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
-    std::unique_ptr<CudaExternalDeviceAllocator> external_device_allocator;
-    int num_device_arena_users = 0;
     int num_pinned_arena_users = 0;
     int num_mempool_users = 0;
-    int num_external_allocator_users = 0;
-
-    // External allocator function pointers (set during CreateEpImpl when configured).
-    void* external_alloc = nullptr;
-    void* external_free = nullptr;
-    void* external_empty_cache = nullptr;
-
-    bool UseExternalAllocator() const {
-      return external_alloc != nullptr && external_free != nullptr;
-    }
   };
 
   struct HardwareDeviceKey {
@@ -158,6 +158,11 @@ class CudaEpFactory : public OrtEpFactory {
 
   // Ordinal-to-HardwareDeviceKey mapping built during GetSupportedDevicesImpl.
   InlinedHashMap<int, HardwareDeviceKey> ordinal_to_device_key_;
+
+  // Hardware devices created for CUDA-visible ordinals that platform discovery did not expose.
+  // This occurs on WSL, where CUDA devices are available through /dev/dxg while Linux sysfs only
+  // reports Microsoft synthetic display adapters.
+  InlinedHashMap<int, OrtHardwareDevice*> runtime_discovered_hardware_devices_;
 
   /// Find the DeviceCacheEntry for a given CUDA ordinal.
   /// Returns nullptr if the ordinal has not been registered.

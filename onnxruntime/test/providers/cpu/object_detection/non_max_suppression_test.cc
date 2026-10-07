@@ -4,6 +4,10 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
+#ifdef USE_CUDA
+#include "test/util/include/default_providers.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -403,6 +407,29 @@ TEST(NonMaxSuppressionOpTest, WithIOUThresholdOpset11) {
                            0L, 0L, 5L});
   test.Run();
 }
+
+#ifdef USE_CUDA
+TEST(NonMaxSuppressionOpTest, CudaRejectsMaskSizeOutsideIntRange) {
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  if (cuda_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  constexpr int64_t num_boxes = 262144;
+  OpTester test("NonMaxSuppression", 11, kOnnxDomain);
+  test.AddInput<float>("boxes", {1, num_boxes, 4}, std::vector<float>(num_boxes * 4));
+  test.AddInput<float>("scores", {1, 1, num_boxes}, std::vector<float>(num_boxes));
+  test.AddInput<int64_t>("max_output_boxes_per_class", {}, {1});
+  test.AddInput<float>("iou_threshold", {}, {0.5f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<int64_t>("selected_indices", {0, 3}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_provider));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "mask size exceeds the int index range",
+           {}, nullptr, &execution_providers);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -35,10 +35,12 @@ Abstract:
 #include "core/mlas/lib/qnbitgemm.h"
 #include "core/mlas/lib/mlasi.h"
 #include "core/mlas/lib/sqnbitgemm_kernel_avx512_2bit.h"
+#include "core/mlas/lib/sqnbitgemm_kernel_avx2_2bit.h"
 
 namespace {
 
 namespace sq2 = onnxruntime::mlas::sq2bit_avx512;
+namespace sq2a = onnxruntime::mlas::sq2bit_avx2;
 
 constexpr size_t kBlkLen = sq2::kBlkLen;      // 64
 constexpr size_t kBlkBytes = sq2::kBlkBytes;  // 16
@@ -1501,3 +1503,195 @@ TEST(MlasSq2BitTest, AvailabilityContract_BlkLens) {
   EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, SQNBIT_CompFp32));
   EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, HQNBIT_CompFp16));
 }
+
+#if defined(MLAS_TARGET_AMD64)
+
+// =============================================================================
+// AVX2 / AVX2-VNNI W2 coverage. Reuses the same RunW2Case* harnesses and
+// kSimdShapes* tables as the AVX-512 tests above. The non-VNNI tests guard on
+// Avx2Supported_, so they also run on AVX-512 hosts and exercise the
+// vpmaddubsw + vpmaddwd fallback there. The VNNI tests guard on the AVX2-VNNI
+// dispatch being the active one (the SIMD path uses _mm256_dpbusds_avx_epi32).
+// =============================================================================
+
+TEST(MlasSq2BitTest, BlkLen64_Avx2) {
+  if (!GetMlasPlatform().Avx2Supported_) {
+    GTEST_SKIP() << "AVX2 not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes) {
+      for (bool bias : {false, true}) {
+        RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                  /*WithZeroPoints=*/false,
+                  sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2_Dispatch, "AVX2");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen64_Avx2_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx2Supported_) {
+    GTEST_SKIP() << "AVX2 not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes) {
+      for (bool bias : {false, true}) {
+        RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                  /*WithZeroPoints=*/true,
+                  sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2_Dispatch, "AVX2");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen64_Avx2Vnni) {
+  if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx2vnni) {
+    GTEST_SKIP() << "AVX2-VNNI not selected as the active dispatch on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes) {
+      for (bool bias : {false, true}) {
+        RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                  /*WithZeroPoints=*/false,
+                  sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2Vnni_Dispatch, "AVX2-VNNI");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen64_Avx2Vnni_WithZeroPoints) {
+  if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx2vnni) {
+    GTEST_SKIP() << "AVX2-VNNI not selected as the active dispatch on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes) {
+      for (bool bias : {false, true}) {
+        RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                  /*WithZeroPoints=*/true,
+                  sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2Vnni_Dispatch, "AVX2-VNNI");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx2) {
+  if (!GetMlasPlatform().Avx2Supported_) {
+    GTEST_SKIP() << "AVX2 not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/false,
+                            sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2_Dispatch, "AVX2");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx2_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx2Supported_) {
+    GTEST_SKIP() << "AVX2 not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/true,
+                            sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2_Dispatch, "AVX2");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx2Vnni) {
+  if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx2vnni) {
+    GTEST_SKIP() << "AVX2-VNNI not selected as the active dispatch on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/false,
+                            sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2Vnni_Dispatch, "AVX2-VNNI");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx2Vnni_WithZeroPoints) {
+  if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx2vnni) {
+    GTEST_SKIP() << "AVX2-VNNI not selected as the active dispatch on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/true,
+                            sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2Vnni_Dispatch, "AVX2-VNNI");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx2) {
+  if (!GetMlasPlatform().Avx2Supported_) {
+    GTEST_SKIP() << "AVX2 not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/false,
+                           sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2_Dispatch, "AVX2");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx2_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx2Supported_) {
+    GTEST_SKIP() << "AVX2 not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/true,
+                           sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2_Dispatch, "AVX2");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx2Vnni) {
+  if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx2vnni) {
+    GTEST_SKIP() << "AVX2-VNNI not selected as the active dispatch on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/false,
+                           sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2Vnni_Dispatch, "AVX2-VNNI");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx2Vnni_WithZeroPoints) {
+  if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx2vnni) {
+    GTEST_SKIP() << "AVX2-VNNI not selected as the active dispatch on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/true,
+                           sq2a::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2Vnni_Dispatch, "AVX2-VNNI");
+      }
+    }
+  }
+}
+
+#endif  // defined(MLAS_TARGET_AMD64)

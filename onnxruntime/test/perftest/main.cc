@@ -11,6 +11,7 @@
 #include "performance_runner.h"
 #include "utils.h"
 #include "strings_helper.h"
+#include "test/util/include/telemetry_test_environment.h"
 #include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
@@ -107,6 +108,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  onnxruntime::test::SuppressTelemetryForTests();
   int retval = -1;
   ORT_TRY {
     retval = real_main(argc, argv);

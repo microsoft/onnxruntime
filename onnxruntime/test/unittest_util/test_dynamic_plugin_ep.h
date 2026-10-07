@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -29,7 +30,8 @@ namespace test {
 // unit testing infrastructure.
 namespace dynamic_plugin_ep_infra {
 
-inline constexpr std::string_view kCudaPluginExecutionProviderName{"CudaPluginExecutionProvider"};
+inline constexpr std::string_view kCudaExecutionProviderPluginName{"CUDAExecutionProvider"};
+inline constexpr std::string_view kWebGpuExecutionProviderPluginName{"WebGpuExecutionProvider"};
 
 // Note: `Initialize()` and `Shutdown()` are not thread-safe.
 // They should be called before and after calls to most of the other functions in this namespace.
@@ -38,6 +40,8 @@ inline constexpr std::string_view kCudaPluginExecutionProviderName{"CudaPluginEx
 // Configuration for initializing the dynamic plugin EP infrastructure.
 struct InitializationConfig {
   std::string ep_library_registration_name{};
+  // Path to the EP library to register. May be empty if the EP does not need to be registered by the test
+  // infrastructure, e.g. a plugin EP that is statically linked into the ORT binary and registered by ORT core.
   std::string ep_library_path{};
 
   // Note: Exactly one of `selected_ep_name` or `selected_ep_device_indices` should be set.
@@ -57,6 +61,8 @@ struct InitializationConfig {
 
 // Parses `InitializationConfig` from JSON.
 // The configuration JSON object should have keys and values that match the `InitializationConfig` fields.
+// `ep_library_path` may be omitted for a plugin EP that is already registered (e.g. statically linked into the ORT
+// binary and registered by ORT core).
 // E.g.:
 // {
 //   "ep_library_registration_name": "example_plugin_ep",
@@ -75,6 +81,12 @@ bool IsInitialized();
 // Shuts down dynamic plugin EP infrastructure.
 // This does not require a previously successful call to `Initialize()`.
 void Shutdown();
+
+// Test-only helper. Temporarily presents an uninitialized/shutdown infrastructure state to `test_body`,
+// then restores the previous global state (even if `test_body` throws). This lets a test exercise
+// uninitialized-state behavior without disturbing the shared global infrastructure that unit test main
+// initialized and that other tests (e.g. those routing CUDA to the plugin EP) depend on.
+void RunWithTemporaryShutdownForTesting(const std::function<void()>& test_body);
 
 // Returns a dynamic plugin EP `IExecutionProvider` instance, or `nullptr` if uninitialized.
 // `ep_options` provides additional EP-specific option overrides (key-value pairs) on top of the defaults.

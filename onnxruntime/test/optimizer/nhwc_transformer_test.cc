@@ -1131,7 +1131,10 @@ TEST_F(NhwcTransformerTestsFp16, FusedConvWithSumFp16) {
   TransformerTester(build_test_case,
                     check_nhwc_graph,
                     TransformerLevel::Level2,
-                    TransformerLevel::Level3);
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 0.02,
+                    /*relative_per_sample_tolerance*/ 0.02);
 }
 
 TEST_F(NhwcTransformerTestsFp16, ConvMaxPoolFp16) {

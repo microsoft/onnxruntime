@@ -14,94 +14,6 @@ OrtMapTypeInfo::OrtMapTypeInfo(ONNXTensorElementDataType map_key_type,
 
 OrtMapTypeInfo::~OrtMapTypeInfo() = default;
 
-static ONNXTensorElementDataType
-ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
-  using TensorType = ONNX_NAMESPACE::TensorProto_DataType;
-  switch (data_type) {
-    case TensorType::TensorProto_DataType_BOOL: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-    }
-    case TensorType::TensorProto_DataType_STRING: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-    }  // maps to c++ type std::string
-    case TensorType::TensorProto_DataType_FLOAT16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-    }  // maps to c type float16
-    case TensorType::TensorProto_DataType_FLOAT: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-    }  // maps to c type float
-    case TensorType::TensorProto_DataType_DOUBLE: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-    }  // maps to c type double
-    case TensorType::TensorProto_DataType_INT8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-    }  // maps to c type int8_t
-    case TensorType::TensorProto_DataType_INT16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
-    }  // maps to c type int16_t
-    case TensorType::TensorProto_DataType_INT32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-    }  // maps to c type int32_t
-    case TensorType::TensorProto_DataType_INT64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-    }  // maps to c type int64_t
-    case TensorType::TensorProto_DataType_UINT8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-    }  // maps to c type uint8_t
-    case TensorType::TensorProto_DataType_UINT16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
-    }  // maps to c type uint16_t
-    case TensorType::TensorProto_DataType_UINT32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
-    }  // maps to c type uint32_t
-    case TensorType::TensorProto_DataType_UINT64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
-    }  // maps to c type uint64_t
-    case TensorType::TensorProto_DataType_COMPLEX64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
-    }  // complex with float32 real and imaginary components
-    case TensorType::TensorProto_DataType_COMPLEX128: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
-    }  // complex with float64 real and imaginary components
-    case TensorType::TensorProto_DataType_BFLOAT16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
-    }  // Non-IEEE floating-point format based on IEEE754 single-precision
-    case TensorType::TensorProto_DataType_FLOAT8E4M3FN: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
-    }  // Non-IEEE floating-point format based on IEEE754 single-precision
-    case TensorType::TensorProto_DataType_FLOAT8E4M3FNUZ: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
-    }  // Non-IEEE floating-point format based on IEEE754 single-precision
-    case TensorType::TensorProto_DataType_FLOAT8E5M2: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
-    }  // Non-IEEE floating-point format based on IEEE754 single-precision
-    case TensorType::TensorProto_DataType_FLOAT8E5M2FNUZ: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
-    }  // Non-IEEE floating-point format based on IEEE754 single-precision
-    case TensorType::TensorProto_DataType_FLOAT8E8M0: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0;
-    }  // Non-IEEE floating-point format, all values are powers of two
-    case TensorType::TensorProto_DataType_INT4: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
-    }  // maps to a pair of int4 (size == 1 byte)
-    case TensorType::TensorProto_DataType_UINT4: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
-    }  // maps to a pair of uint4 (size == 1 byte)
-    case TensorType::TensorProto_DataType_FLOAT4E2M1: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1;
-    }  // maps to a pair of float4 (size == 1 byte)
-    case TensorType::TensorProto_DataType_INT2: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
-    }  // maps to 4 packed int2 values (size == 1 byte)
-    case TensorType::TensorProto_DataType_UINT2: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
-    }  // maps to 4 packed uint2 values (size == 1 byte)
-    default: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    }
-  }
-}
-
 std::unique_ptr<OrtMapTypeInfo> OrtMapTypeInfo::FromTypeProto(
     const ONNX_NAMESPACE::TypeProto& type_proto) {
   auto value_case = type_proto.value_case();
@@ -110,7 +22,7 @@ std::unique_ptr<OrtMapTypeInfo> OrtMapTypeInfo::FromTypeProto(
 
   // Get the key type of the map
   const auto& type_proto_map = type_proto.map_type();
-  const auto map_key_type = ToONNXTensorElementDataType(
+  const auto map_key_type = onnxruntime::type_info_internal::ToONNXTensorElementDataType(
       ONNX_NAMESPACE::TensorProto_DataType(type_proto_map.key_type()));
 
   // Get the value type of the map

@@ -16,6 +16,7 @@ let initAsyncImpl = () => {
   //
   // Currently in ASYNCIFY build, we only use this for the following functions:
   // - OrtAppendExecutionProvider()
+  // - OrtAppendExecutionProviderV2()
   // - OrtCreateSession()
   // - OrtRun()
   // - OrtRunWithBinding()
@@ -49,6 +50,7 @@ let initAsyncImpl = () => {
 
   wrapAsyncAPIs([
     "_OrtAppendExecutionProvider",
+    "_OrtAppendExecutionProviderV2",
     "_OrtCreateSession",
     "_OrtRun",
     "_OrtRunWithBinding",

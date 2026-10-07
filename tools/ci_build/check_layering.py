@@ -33,6 +33,7 @@ baselined entry disappears (a reminder to tighten the baseline).
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -61,11 +62,16 @@ _MAX_SOURCE_RANK = _LAYER_RANKS["framework"]
 
 _SOURCE_SUFFIXES = (".h", ".hpp", ".cc", ".cpp", ".cxx", ".cu", ".cuh")
 
-# Matches  #include "core/<layer>/<rest>"  (quoted includes only).
-_INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"(core/([A-Za-z0-9_]+)/[^"]+)"')
+_INCLUDE_RE = re.compile(r'^\s*#\s*include\s*(?:"(?P<quoted>core/[^"]+)"|<(?P<angled>core/[^>]+)>)')
+_CPP_TOKEN_RE = re.compile(
+    r'(?P<raw>R"([^ ()\\\t\r\n]{0,16})\(.*?\)\2")|"(?:\\.|[^"\\])*"|'
+    r"\'(?:\\.|[^\'\\])*\'|(?P<comment>//[^\n]*|/\*.*?\*/)",
+    re.DOTALL,
+)
 
 # Frozen set of (source_file, included_header) upward edges that exist today and
-# are accepted (legacy / intentional ABI glue). Regenerate with --update-baseline.
+# are accepted (legacy / intentional ABI glue), frozen against main 3d9d664a45.
+# Regenerate with --update-baseline and review every new edge.
 # This set must only ever shrink.
 _BASELINE: frozenset[tuple[str, str]] = frozenset(
     {
@@ -126,6 +132,7 @@ _BASELINE: frozenset[tuple[str, str]] = frozenset(
         ("onnxruntime/core/graph/model_editor_api_types.h", "core/session/ort_apis.h"),
         ("onnxruntime/core/graph/node_attr_utils.cc", "core/framework/tensorprotoutils.h"),
         ("onnxruntime/core/platform/device_discovery.h", "core/session/abi_devices.h"),
+        ("onnxruntime/core/platform/linux/drm_device_discovery.h", "core/session/abi_devices.h"),
         ("onnxruntime/core/platform/linux/npu_device_discovery.h", "core/session/abi_devices.h"),
         ("onnxruntime/core/platform/linux/pci_device_discovery.h", "core/session/abi_devices.h"),
         ("onnxruntime/core/platform/windows/device_discovery.cc", "core/session/abi_devices.h"),
@@ -153,6 +160,15 @@ def _is_public_api(target: str, repo_root: Path) -> bool:
 
 def find_upward_includes(repo_root: Path) -> set[tuple[str, str]]:
     """Return (source_rel_posix, included_target) for every upward cross-layer include."""
+
+    def raise_walk_error(error: OSError) -> None:
+        raise error
+
+    def strip_non_directive(match: re.Match[str]) -> str:
+        if match.group("raw") is not None or match.group("comment") is not None:
+            return re.sub(r"[^\n]", " ", match.group())
+        return match.group()
+
     scan_roots = [
         repo_root / "onnxruntime" / "core",
         repo_root / "include" / "onnxruntime" / "core",
@@ -160,33 +176,34 @@ def find_upward_includes(repo_root: Path) -> set[tuple[str, str]]:
     hits: set[tuple[str, str]] = set()
     for scan_root in scan_roots:
         if not scan_root.is_dir():
-            continue
-        for path in scan_root.rglob("*"):
-            if path.suffix not in _SOURCE_SUFFIXES or not path.is_file():
-                continue
-            source_layer = _layer_of_path(path, repo_root)
-            if source_layer is None:
-                continue
-            source_rank = _LAYER_RANKS[source_layer]
-            if source_rank > _MAX_SOURCE_RANK:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8", errors="replace")
-            except OSError as exc:  # pragma: no cover - defensive I/O guard
-                print(f"warning: could not read {path}: {exc}", file=sys.stderr)
-                continue
-            for line in text.splitlines():
-                match = _INCLUDE_RE.match(line)
-                if not match:
+            raise NotADirectoryError(f"core source directory not found: {scan_root}")
+        for directory, _, filenames in os.walk(scan_root, onerror=raise_walk_error):
+            for filename in filenames:
+                path = Path(directory) / filename
+                if path.suffix not in _SOURCE_SUFFIXES:
                     continue
-                target, target_layer = match.group(1), match.group(2)
-                if target_layer not in _LAYER_RANKS:
+                source_layer = _layer_of_path(path, repo_root)
+                if source_layer is None:
                     continue
-                if _LAYER_RANKS[target_layer] <= source_rank:
+                source_rank = _LAYER_RANKS[source_layer]
+                if source_rank > _MAX_SOURCE_RANK:
                     continue
-                if _is_public_api(target, repo_root):
-                    continue
-                hits.add((path.relative_to(repo_root).as_posix(), target))
+                text = path.read_text(encoding="utf-8")
+                text = re.sub(r"\\\r?\n", "", text)
+                text = _CPP_TOKEN_RE.sub(strip_non_directive, text)
+                for line in text.splitlines():
+                    match = _INCLUDE_RE.match(line)
+                    if not match:
+                        continue
+                    target = match.group("quoted") or match.group("angled")
+                    target_layer = target.split("/", 2)[1]
+                    if target_layer not in _LAYER_RANKS:
+                        continue
+                    if _LAYER_RANKS[target_layer] <= source_rank:
+                        continue
+                    if _is_public_api(target, repo_root):
+                        continue
+                    hits.add((path.relative_to(repo_root).as_posix(), target))
     return hits
 
 
@@ -210,7 +227,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    hits = find_upward_includes(repo_root)
+    try:
+        hits = find_upward_includes(repo_root)
+    except (OSError, UnicodeError) as exc:
+        print(f"error: cannot scan include layering: {exc}", file=sys.stderr)
+        return 2
 
     if args.list:
         for source, target in sorted(hits):
