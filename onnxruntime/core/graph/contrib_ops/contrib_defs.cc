@@ -1488,7 +1488,7 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
       [num_experts, ceil(N / block_size), ceil(K / block_size)]:
         dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
-      Partial edge blocks are allowed. No zero points or activation scales are used.
+      Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
       The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
