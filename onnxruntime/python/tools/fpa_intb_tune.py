@@ -33,6 +33,7 @@ import ctypes
 import gc
 import os
 import sys
+import tempfile
 from urllib.parse import unquote
 
 import numpy as np
@@ -107,7 +108,16 @@ def _make_dummy_inputs(session, m: int) -> dict:
 
 def _current_signature(device_id: int) -> dict[str, str]:
     # Use the CUDA driver for device identity and the wheel metadata for the toolkit it was built with.
-    from onnxruntime.capi.build_and_package_info import cuda_version  # noqa: PLC0415
+    try:
+        from onnxruntime.capi.build_and_package_info import cuda_version  # noqa: PLC0415
+    except ImportError as exc:
+        raise RuntimeError(
+            "The tuning tool requires an ONNX Runtime package built with CUDA. "
+            "CPU packages with a registered CUDA plugin are not supported because their "
+            "metadata does not identify the plugin's CUDA build. Use a built-in CUDA package instead."
+        ) from exc
+    if not cuda_version:
+        raise RuntimeError("The tuning tool requires a package with built-in CUDA version metadata.")
 
     driver = ctypes.WinDLL("nvcuda.dll") if sys.platform == "win32" else ctypes.CDLL("libcuda.so.1")
 
@@ -132,7 +142,7 @@ def _current_signature(device_id: int) -> dict[str, str]:
     }
 
 
-def _summarize_cache(cache_path: str, signature: dict[str, str]) -> None:
+def _summarize_cache(cache_path: str, signature: dict[str, str], *, display: bool = True) -> set[tuple[str, ...]]:
     if not os.path.exists(cache_path):
         raise RuntimeError(
             f"No tactic cache was produced at {cache_path}; check that the model uses fpA_intB MatMulNBits."
@@ -143,6 +153,7 @@ def _summarize_cache(cache_path: str, signature: dict[str, str]) -> None:
     n_key_col = None
     rows = 0
     unique_keys = set()
+    entries = set()
     with open(cache_path, encoding="utf-8") as f:
         for raw_line in f:
             line = raw_line.rstrip("\n")
@@ -170,12 +181,14 @@ def _summarize_cache(cache_path: str, signature: dict[str, str]) -> None:
                 "bits",
                 "block_size",
                 "has_zero_points",
+                "zero_point_dtype",
                 "gemv_enabled",
                 "has_bias",
                 "packing_sm",
             ]
             key = tuple(fields[n_key_col[c]] for c in key_cols if c in n_key_col)
             unique_keys.add(key)
+            entries.add((*key, fields[n_key_col["m_bucket"]]))
 
     expected = {
         **signature,
@@ -188,6 +201,8 @@ def _summarize_cache(cache_path: str, signature: dict[str, str]) -> None:
             raise RuntimeError(f"Inapplicable tactic cache: {key}={header.get(key)!r}, expected {value!r}")
     if rows == 0:
         raise RuntimeError(f"No successful tactics in {cache_path}")
+    if not display:
+        return entries
     print(f"Cache ready: {cache_path}")
     print(f"  device_name      : {header.get('device_name', '?')}")
     print(f"  sm               : {header.get('sm', '?')}")
@@ -196,6 +211,7 @@ def _summarize_cache(cache_path: str, signature: dict[str, str]) -> None:
     print(f"  ort_git_commit   : {header.get('ort_git_commit', '?')}")
     print(f"  unique shapes    : {len(unique_keys)}")
     print(f"  tuned (shape, M) : {rows}")
+    return entries
 
 
 def tune(model: str, output_prefix: str, m_values: list[int], run_inference: bool) -> str:
@@ -207,28 +223,40 @@ def tune(model: str, output_prefix: str, m_values: list[int], run_inference: boo
 
     print(f"Creating CUDA session for {model} (this profiles the M buckets)...")
     sess_options = _make_session_options(output_prefix, m_values)
-    session = ort.InferenceSession(model, sess_options, providers=["CUDAExecutionProvider"], enable_fallback=False)
-    if "CUDAExecutionProvider" not in session.get_providers():
-        raise RuntimeError("Tuning session did not activate CUDAExecutionProvider")
-    session.disable_fallback()
-    device_id = int(session.get_provider_options().get("CUDAExecutionProvider", {}).get("device_id", "0"))
-    signature = _current_signature(device_id)
+    with tempfile.TemporaryDirectory(prefix="ort_fpa_intb_tune_") as directory:
+        results_prefix = os.path.join(directory, "selected")
+        sess_options.add_session_config_entry("ep.cuda.gemm_tactic_cache_tuning_results_prefix", results_prefix)
+        session = ort.InferenceSession(model, sess_options, providers=["CUDAExecutionProvider"], enable_fallback=False)
+        try:
+            if "CUDAExecutionProvider" not in session.get_providers():
+                raise RuntimeError("Tuning session did not activate CUDAExecutionProvider")
+            session.disable_fallback()
+            device_id = int(session.get_provider_options().get("CUDAExecutionProvider", {}).get("device_id", "0"))
+            signature = _current_signature(device_id)
 
-    if run_inference:
-        for m in m_values:
-            try:
-                feeds = _make_dummy_inputs(session, m)
-                session.run_with_ort_values(None, feeds)
-                print(f"  ran dummy inference for M={m}")
-            except Exception as exc:
-                print(f"  skipped dummy inference for M={m}: {exc}")
+            if run_inference:
+                for m in m_values:
+                    try:
+                        feeds = _make_dummy_inputs(session, m)
+                        session.run_with_ort_values(None, feeds)
+                        print(f"  ran dummy inference for M={m}")
+                    except Exception as exc:
+                        print(f"  skipped dummy inference for M={m}: {exc}")
+        finally:
+            # Both initial and lazy tactics reach disk at CUDA EP teardown.
+            del session
+            gc.collect()
 
-    # Lazily profiled buckets reach disk only when the CUDA execution provider is torn down.
-    del session
-    gc.collect()
-
-    cache_path = output_prefix + _CACHE_TABLE_SUFFIX
-    _summarize_cache(cache_path, signature)
+        results_path = results_prefix + _CACHE_TABLE_SUFFIX
+        if not os.path.exists(results_path):
+            raise RuntimeError("This session did not select any successful fpA_intB MatMulNBits tactics for the model.")
+        selected = _summarize_cache(results_path, signature, display=False)
+        cache_path = output_prefix + _CACHE_TABLE_SUFFIX
+        persisted = _summarize_cache(cache_path, signature, display=False)
+        if not selected.issubset(persisted):
+            raise RuntimeError(f"Selected tactics for this model were not persisted in {cache_path}")
+        _summarize_cache(cache_path, signature)
+        print(f"  selected this run: {len(selected)}")
     return cache_path
 
 

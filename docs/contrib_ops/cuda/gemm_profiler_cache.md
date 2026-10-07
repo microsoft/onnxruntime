@@ -15,11 +15,22 @@ avoids repeating that work in a new process.
 | Initial sweep | Small configurable M set, default `{1,2,4,...,2048}`; missing runtime buckets are profiled lazily |
 | Persistence | Opt-in MatMulNBits TSV file; no file I/O when no location is configured |
 | Reuse guard | GPU name, SM, CUDA runtime, ORT version, and tactic-selection version |
-| Loaded tactics | Candidate membership plus an untimed execution on profiler scratch checks problem-specific constraints and compiled kernel support before reuse |
+| Loaded tactics | Candidate membership plus an untimed execution on profiler scratch checks problem-specific constraints and compiled kernel support before reuse; buckets above the session's launch limit are skipped |
 | Failed profiling | No negative results are saved; old negative rows are ignored and retried |
 | Flush boundary | Construction and lazy results are staged in memory, then batched at CUDA EP teardown for both built-in and plugin EPs |
-| Shared maps | Newly added buckets observed on exact or rounded hits are staged once per attached profiler, including different cache prefixes |
+| Shared maps | Newly added buckets observed on exact or rounded hits, including CUDA graph capture, are staged once per attached profiler, including different cache prefixes |
 | Concurrency | Only locally changed rows are merged into a complete disk snapshot; read errors preserve the old file and dirty rows; all failed writes clean up their temporary file |
+
+### Startup validation measurement
+
+On an H200 with CUDA 13.0 and the compact fpA_intB build, a 750 MB synthetic model
+with 32 distinct MatMulNBits shapes (`K=8192`, `N=4096,4160,...,6080`) and five M
+buckets (`1,8,64,512,2048`) took 3.01 s to construct cold. Three fresh-process
+cached runs took 1.79–1.96 s (median 1.82 s); forcing 64-row chunks reduced cached
+startup to 1.74 s by skipping the larger validation buckets. These are total
+session-construction times, including model loading and weight packing, not
+isolated validation timings. All problem-specific execution checks remain enabled;
+stream/scratch reuse is deferred pending evidence that validation dominates startup.
 
 ## 3. Goals / non-goals
 
@@ -266,6 +277,7 @@ unit-testable.
 | `ORT_FPA_INTB_PROFILE_M` | Comma-separated M buckets to profile (overrides the default set for MatMulNBits/fpA_intB). |
 | `ep.cuda.gemm_tactic_cache_dir` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_DIR`. |
 | `ep.cuda.gemm_tactic_cache_prefix` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX`. |
+| `ep.cuda.gemm_tactic_cache_tuning_results_prefix` | Optional separate TSV output of this session's selected tactics (including valid cache hits), flushed at EP teardown. The tuning tool uses a fresh temporary prefix to verify that the current model actually selected successful tactics. No environment-variable fallback. |
 
 ## 10. Original roadmap file inventory (includes future work)
 

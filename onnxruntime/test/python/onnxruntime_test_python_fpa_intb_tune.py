@@ -69,14 +69,67 @@ class TestFpAIntBTune(unittest.TestCase):
             session = MagicMock()
             session.get_providers.return_value = ["CUDAExecutionProvider"]
             session.get_provider_options.return_value = {"CUDAExecutionProvider": {"device_id": "0"}}
+
+            def create_session(_model, options, **_kwargs):
+                self.write_cache(options.get_session_config_entry("ep.cuda.gemm_tactic_cache_tuning_results_prefix"))
+                return session
+
             with (
                 patch.object(ort, "get_available_providers", return_value=["CUDAExecutionProvider"]),
-                patch.object(ort, "InferenceSession", return_value=session),
+                patch.object(ort, "InferenceSession", side_effect=create_session),
                 patch.object(tune, "_current_signature", return_value=self.signature),
             ):
                 self.assertEqual(tune.tune("model.onnx", prefix, [1], False), str(path))
             session.disable_fallback.assert_called_once()
             self.assertEqual(timestamp, path.stat().st_mtime_ns)
+
+    def test_unrelated_existing_cache_does_not_report_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = str(Path(directory) / "cache")
+            path = self.write_cache(prefix)
+            original = path.read_bytes()
+            session = MagicMock()
+            session.get_providers.return_value = ["CUDAExecutionProvider"]
+            session.get_provider_options.return_value = {"CUDAExecutionProvider": {"device_id": "0"}}
+            with (
+                patch.object(ort, "get_available_providers", return_value=["CUDAExecutionProvider"]),
+                patch.object(ort, "InferenceSession", return_value=session),
+                patch.object(tune, "_current_signature", return_value=self.signature),
+                self.assertRaisesRegex(RuntimeError, "did not select any successful"),
+            ):
+                tune.tune("unrelated.onnx", prefix, [1], False)
+            self.assertEqual(original, path.read_bytes())
+
+    def test_cpu_package_with_cuda_plugin_reports_metadata_limitation(self):
+        with (
+            patch.dict(sys.modules, {"onnxruntime.capi.build_and_package_info": types.SimpleNamespace()}),
+            self.assertRaisesRegex(RuntimeError, "CPU packages with a registered CUDA plugin are not supported"),
+        ):
+            tune._current_signature(0)
+
+    def test_selected_model_entries_must_reach_output_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = str(Path(directory) / "cache")
+            path = self.write_cache(prefix)
+            session = MagicMock()
+            session.get_providers.return_value = ["CUDAExecutionProvider"]
+            session.get_provider_options.return_value = {"CUDAExecutionProvider": {"device_id": "0"}}
+
+            def create_session(_model, options, **_kwargs):
+                report = self.write_cache(
+                    options.get_session_config_entry("ep.cuda.gemm_tactic_cache_tuning_results_prefix")
+                )
+                report.write_text(report.read_text().replace("16\t1\t1", "32\t1\t1"), encoding="utf-8")
+                return session
+
+            with (
+                patch.object(ort, "get_available_providers", return_value=["CUDAExecutionProvider"]),
+                patch.object(ort, "InferenceSession", side_effect=create_session),
+                patch.object(tune, "_current_signature", return_value=self.signature),
+                self.assertRaisesRegex(RuntimeError, "not persisted"),
+            ):
+                tune.tune("model.onnx", prefix, [1], False)
+            self.assertTrue(path.exists())
 
     def test_incompatible_or_missing_cache_is_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -150,12 +203,15 @@ def _unlock_file(file):
         fcntl.flock(file, fcntl.LOCK_UN)
 
 
-def _gpu_worker(model, prefix, output):
+def _gpu_worker(model, prefix, output, chunk="0"):
     plugin = os.environ.get("ORT_CUDA_PLUGIN_PATH")
     if plugin:
         ort.register_execution_provider_library("CUDAExecutionProvider", plugin)
     ort.set_default_logger_severity(1)
     options = tune._make_session_options(prefix, [1, 64])
+    if chunk != "0":
+        os.environ["ORT_MATMULNBITS_FORCE_CHUNKED"] = "1"
+        options.add_session_config_entry("ep.cuda.matmul_nbits_m_chunk_size", chunk)
     options.log_severity_level = 1
     session = ort.InferenceSession(model, options, providers=["CUDAExecutionProvider"], enable_fallback=False)
     if "CUDAExecutionProvider" not in session.get_providers():
@@ -205,12 +261,14 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
             save(model, model_path)
             prefix = str(root / "cache")
 
-            def command(output):
-                return [sys.executable, __file__, "--gpu-worker", str(model_path), prefix, str(output)]
+            def command(output, chunk=0):
+                return [sys.executable, __file__, "--gpu-worker", str(model_path), prefix, str(output), str(chunk)]
 
-            def run(name):
+            def run(name, chunk=0):
                 output = root / f"{name}.npz"
-                result = subprocess.run(command(output), check=False, capture_output=True, text=True, timeout=180)
+                result = subprocess.run(
+                    command(output, chunk), check=False, capture_output=True, text=True, timeout=180
+                )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 with np.load(output) as arrays:
                     return {key: arrays[key] for key in arrays.files}, result.stderr
@@ -225,9 +283,69 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
             for key in cold:
                 np.testing.assert_allclose(warm[key], cold[key], rtol=1e-3, atol=1e-3)
 
+            # Exercise the actual tool's session-specific evidence, not just its file parser.
+            if not os.environ.get("ORT_CUDA_PLUGIN_PATH"):
+                args = [
+                    sys.executable,
+                    "-m",
+                    "onnxruntime.tools.fpa_intb_tune",
+                    "--model",
+                    str(model_path),
+                    "--output-prefix",
+                    prefix,
+                    "--m-values",
+                    "1,64",
+                    "--no-inference",
+                ]
+                result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=180)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("selected this run:", result.stdout)
+                self.assertEqual(original, cache_path.read_bytes())
+
+                unrelated = helper.make_model(
+                    helper.make_graph(
+                        [helper.make_node("Identity", ["A"], ["Y"])],
+                        "unrelated",
+                        [helper.make_tensor_value_info("A", TensorProto.FLOAT, [1])],
+                        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
+                    ),
+                    opset_imports=[helper.make_opsetid("", 21)],
+                    ir_version=10,
+                )
+                unrelated_path = root / "unrelated.onnx"
+                save(unrelated, unrelated_path)
+                args[args.index("--model") + 1] = str(unrelated_path)
+                result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=180)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("did not select any successful", result.stderr)
+                self.assertNotIn("Cache ready", result.stdout)
+                self.assertEqual(original, cache_path.read_bytes())
+
             lines = cache_path.read_text(encoding="utf-8").splitlines()
             header_index = next(i for i, line in enumerate(lines) if not line.startswith("#"))
             columns = lines[header_index].split("\t")
+            large = next(
+                line.split("\t")
+                for line in lines[header_index + 1 :]
+                if line.split("\t")[columns.index("m_bucket")] == "64"
+            )
+            large[columns.index("m_bucket")] = "8192"
+            cache_path.write_text("\n".join([*lines, "\t".join(large)]) + "\n", encoding="utf-8")
+            chunked, log = run("chunked", chunk=64)
+            self.assertIn("Loaded 2 validated fpA_intB tactics", log)
+            unpacked = np.empty((64, 128), dtype=np.float32)
+            packed = weights.reshape(64, 64)
+            unpacked[:, ::2] = packed & 15
+            unpacked[:, 1::2] = packed >> 4
+            dense = (unpacked - 8) * 0.125
+            for key, m in zip(cold, (1, 64, 65), strict=True):
+                inputs = (np.arange(m * 128, dtype=np.float32).reshape(m, 128) % 17 / 17).astype(np.float16)
+                reference = inputs.astype(np.float32) @ dense.T
+                # A final one-row chunk uses GEMV instead of GEMM, with different FP16 rounding.
+                np.testing.assert_allclose(chunked[key], reference, rtol=1e-3, atol=1e-2)
+                np.testing.assert_allclose(cold[key], reference, rtol=1e-3, atol=1e-2)
+            cache_path.write_bytes(original)
+
             for i in range(header_index + 1, len(lines)):
                 row = lines[i].split("\t")
                 if row[columns.index("m_bucket")] == "64":

@@ -226,7 +226,7 @@ class GemmPluginProfiler {
     mAllocator = std::move(allocator);
   }
 
-  std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
+  std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId);
 
   // Like getBestConfig, but if the requested M bucket has not been profiled yet, profiles it
   // lazily (single bucket) and inserts it into the in-process map. This briefly blocks the caller
@@ -238,6 +238,11 @@ class GemmPluginProfiler {
   std::optional<Config> getBestConfigOrProfile(int m, GemmIdType const& gemmId);
 
   virtual int getMaxProfileM() const;
+
+  void setMaxProfileM(int max_m) {
+    ORT_ENFORCE(max_m > 0, "The GEMM launch limit must be positive.");
+    mMaxProfileM = std::min(max_m, kMaxProfileM);
+  }
 
  protected:
   // An untimed launch checks the runner's problem-specific constraints and compiled kernel support.
@@ -334,6 +339,8 @@ class GemmPluginProfiler {
 
   bool mSkip{false};
 
+  int mMaxProfileM{kMaxProfileM};
+
   // Remembered from the initial profileTactics call so lazy single-bucket profiling can
   // reproduce the same tactic candidate set and cache key.
   bool mHasWeightOnlyCudaKernel{false};
@@ -379,7 +386,7 @@ GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginPro
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxProfileM() const {
-  return kMaxProfileM;
+  return mMaxProfileM;
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -471,7 +478,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getBestConfig(
-    int m, GemmIdType const& gemmId) const {
+    int m, GemmIdType const& gemmId) {
   ORT_LLM_LOG_ENTRY();
   reader_lock lock(mMNKProfileMap->mutex);
 
@@ -482,6 +489,10 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
   int const mRounded = RoundUpProfileM(std::max(1, m), getMaxProfileM());
   fflush(stdout);
+
+  // Capture-time hits may observe buckets added by another session after construction.
+  // Staging touches only host memory, never CUDA APIs or the filesystem.
+  stageNewPersistentBuckets(gemmId, *mMNKProfileMap->getMProfileMap(gemmId));
 
   if (mMNKProfileMap->getMProfileMap(gemmId)->count(m) > 0) {
     return mMNKProfileMap->getMProfileMap(gemmId)->at(m);

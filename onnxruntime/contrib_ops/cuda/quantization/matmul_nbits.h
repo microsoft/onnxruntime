@@ -279,6 +279,8 @@ class MatMulNBits final : public CudaKernel {
         if (m_chunk_size_ > 0) {
           const int64_t max_unchunked_m =
               force_chunked_ ? m_chunk_size_ : std::max<int64_t>(m_chunk_size_, m_chunk_min_rows_);
+          gemmProfiler_->setMaxProfileM(static_cast<int>(
+              std::min<int64_t>(max_unchunked_m, onnxruntime::llm::kernels::weight_only::kMaxProfileM)));
           max_m = static_cast<int>(std::min<int64_t>(max_m, max_unchunked_m));
         }
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);

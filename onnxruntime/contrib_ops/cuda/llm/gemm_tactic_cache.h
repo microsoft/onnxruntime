@@ -58,6 +58,8 @@ constexpr const char* kEnvCachePrefix = "ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX";
 // genai_config.json (any unrecognized session_options key is forwarded to AddConfigEntry).
 constexpr const char* kSessionConfigCacheDir = "ep.cuda.gemm_tactic_cache_dir";
 constexpr const char* kSessionConfigCachePrefix = "ep.cuda.gemm_tactic_cache_prefix";
+// Optional separate output containing only tactics selected by the tuning session.
+constexpr const char* kSessionConfigTuningResultsPrefix = "ep.cuda.gemm_tactic_cache_tuning_results_prefix";
 
 // Hardware / build signature used both to name cache files and as a stored guard.
 // Reuse is rejected on mismatch of any strict field (see StrictMatches).

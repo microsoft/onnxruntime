@@ -136,6 +136,8 @@ jobs:
             -v ${{ runner.temp }}/Release:/build/Release \
             -e NVIDIA_VISIBLE_DEVICES=all \
             -e ORT_TEST_CUDA_PLUGIN_EP=1 \
+            -e ORT_RUN_CUDA_TACTIC_CACHE_TESTS=1 \
+            -e ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda.so \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "
               set -ex
@@ -144,6 +146,8 @@ jobs:
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl
               python -m pip install numpy onnx
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              cd /build/Release/Release
+              python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_python_fpa_intb_tune.py
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "

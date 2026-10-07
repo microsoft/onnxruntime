@@ -710,6 +710,12 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   const std::string cache_prefix =
       config_options.GetConfigOrDefault(onnxruntime::llm::gemm_cache::kSessionConfigCachePrefix, "");
   gemmProfiler_->setPersistentCache(GetGlobalMatMulNBitsTacticCache(cache_dir, cache_prefix, this->GetDeviceProp()));
+  const std::string tuning_results_prefix =
+      config_options.GetConfigOrDefault(onnxruntime::llm::gemm_cache::kSessionConfigTuningResultsPrefix, "");
+  if (!tuning_results_prefix.empty()) {
+    gemmProfiler_->setTuningResultsCache(
+        GetGlobalMatMulNBitsTacticCache("", tuning_results_prefix, this->GetDeviceProp()));
+  }
 
   auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
   gemmProfiler_->setAllocator(allocator);

@@ -307,13 +307,19 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
 
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
     GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
-  if (mCache == nullptr) {
+  if (mCache == nullptr && mTuningResultsCache == nullptr) {
     return false;
   }
   auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
   bool added = false;
   for (auto const& [m, config] : map) {
     if (!config.has_value()) {
+      continue;
+    }
+    if (mTuningResultsCache != nullptr) {
+      mTuningResultsCache->Put(key, m, config);
+    }
+    if (mCache == nullptr) {
       continue;
     }
     // Skip buckets already recorded with the same tactic (cache hits). A row rejected on load is still

@@ -113,6 +113,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mCache = std::move(cache);
   }
 
+  void setTuningResultsCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+    mTuningResultsCache = std::move(cache);
+  }
+
  protected:
   void runTactic(int m, int n, int k, Config const& tactic,
                  char* workspace, cudaStream_t const& stream) override;
@@ -150,6 +154,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mArch;
   size_t mL2CacheBytes = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
+  std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
   std::vector<int> mProfileMOverride;
 };
 

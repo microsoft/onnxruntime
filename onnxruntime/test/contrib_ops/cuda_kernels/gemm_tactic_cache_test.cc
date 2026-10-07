@@ -27,6 +27,9 @@
 
 #include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#endif
 #include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime {
@@ -705,7 +708,7 @@ TEST(GemmTacticCacheTest, SharedExactAndRoundedHitsReachSeparatePrefixes) {
     ASSERT_TRUE(b.getBestConfigOrProfile(64, id).has_value());
     (*shared->getMProfileMap(id))[128] = MakeSm90Config();
     ASSERT_TRUE(a.getBestConfigOrProfile(128, id).has_value());
-    ASSERT_TRUE(b.getBestConfigOrProfile(65, id).has_value());
+    ASSERT_TRUE(b.getBestConfig(65, id).has_value());  // Capture-time rounded hit.
     ASSERT_TRUE(b.getBestConfigOrProfile(65, id).has_value());
     EXPECT_EQ(b.stages, 2);  // Repeated inference performs no staging work.
     ASSERT_TRUE(b.cache->Flush().IsOK());
@@ -716,6 +719,47 @@ TEST(GemmTacticCacheTest, SharedExactAndRoundedHitsReachSeparatePrefixes) {
     CleanUp(file_b);
   }
 }
+
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+TEST(GemmTacticCacheTest, CachedValidationRespectsSessionLaunchLimit) {
+  using namespace onnxruntime::llm::kernels::weight_only;
+  class Profiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    std::vector<int> validated;
+
+    void load(const GemmIdCore& id, MProfileMap& map) {
+      loadPersistentCache(id, map, true);
+    }
+
+   protected:
+    std::vector<Config> getTactics(int, int, int) const override { return {MakeSm80Config()}; }
+    bool validatePersistentTactic(int m, int, int, const Config&) override {
+      validated.push_back(m);
+      return true;
+    }
+  };
+  const auto file = UniqueTempPrefix("launch_limit") + ".matmulnbits_fpa_intb.tsv";
+  auto cache = std::make_shared<gc::MatMulNBitsTacticCache>(file, MakeSignature());
+  const auto key = MakeKey();
+  cache->Put(key, 64, MakeSm80Config());
+  cache->Put(key, 8192, MakeSm80Config());
+  ASSERT_TRUE(cache->Flush().IsOK());
+
+  Profiler profiler;
+  profiler.setQuant(4, false, true);
+  profiler.setGroupSize(64);
+  profiler.setCudaKernelType(KernelType::FP16Int4Groupwise, 80);
+  profiler.setMaxProfileM(64);
+  profiler.setPersistentCache(cache);
+  Profiler::MProfileMap map;
+  profiler.load(GemmIdCore(key.n_16b, key.k, onnxruntime::llm::nvinfer::DataType::kHALF), map);
+  EXPECT_EQ(profiler.validated, std::vector<int>({64}));
+  EXPECT_EQ(map.size(), 1u);
+  EXPECT_EQ(profiler.getMaxProfileM(), 64);
+  EXPECT_TRUE(cache->Get(key, 8192).has_value());
+  CleanUp(file);
+}
+#endif
 
 TEST(GemmTacticCacheCudaTest, TemporaryRunnerFailureDoesNotPoisonNextProfiler) {
   int device_count = 0;

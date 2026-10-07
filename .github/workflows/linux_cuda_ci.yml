@@ -137,4 +137,4 @@ jobs:
             --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
             --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
             --cmake_extra_defines onnxruntime_BUILD_CUDA_QUANT_PREPROCESS=ON
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+          python_path_prefix: 'ORT_RUN_CUDA_TACTIC_CACHE_TESTS=1 PATH=/opt/python/cp310-cp310/bin:$PATH'

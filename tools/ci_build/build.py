@@ -1930,6 +1930,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
+            run_subprocess(
+                [sys.executable, "onnxruntime_test_python_fpa_intb_tune.py"],
+                cwd=cwd,
+                dll_path=dll_path,
+                python_path=python_path,
+            )
 
             if not args.disable_contrib_ops:
                 log.info("Testing QMoE expert distribution analysis")
