@@ -449,12 +449,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       parameters.block_size,
       parameters.token_count,
       cuda_stream));
-  auto has_unmapped_live_page = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
-  ORT_RETURN_IF_ERROR(LaunchCheckLiveBlockTable(
-      sanitized_block_table.get(), cumulative_seqlens_kv_ptr,
-      parameters.batch_size, parameters.max_num_blocks_per_seq,
-      parameters.block_size, has_unmapped_live_page.get(), cuda_stream));
-
   int total_kv_tokens = 0;
   int max_query_len = 0;
   int max_kv_len = 0;
@@ -578,75 +572,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
       (std::is_same_v<TCACHE, uint8_t> || (kIsQuantizedCache && per_channel_k && !enable_per_channel_xqa_));
-  // cuDNN paged SDPA (decode-only, unquantized cache). Preferred over FlashAttention when eligible;
-  // XQA still wins its target case (fp16, group_size 6, head_size 256, native page size). The
-  // eligibility is intentionally metadata-gated so the selection never triggers a new D->H readback
-  // -- max_query_len_bound == 1 with has_metadata_bounds is the same signal XQA uses. The
-  // xqa_spec_dec_candidate / portable_spec_dec_candidate paths are orthogonal because they require
-  // max_query_len_bound > 1.
-  // Enablement mirrors GroupQueryAttention's cuDNN tier: explicit opt-in via the sdpa_kernel bit /
-  // ORT_ENABLE_CUDNN_FLASH_ATTENTION=1, plus auto-on for sm>=90. The env var set to 0 kills every
-  // cuDNN attention path uniformly.
-  const bool cudnn_paged_enabled =
-      enable_cudnn_paged_ || (auto_enable_cudnn_paged_ && device_prop.major >= 9);
-  bool cudnn_page_table_valid = false;
-  if (cudnn_paged_enabled && has_metadata_bounds &&
-      !onnxruntime::llm::common::isCapturing(cuda_stream)) {
-    int32_t host_has_unmapped_page = 0;
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        &host_has_unmapped_page, has_unmapped_live_page.get(), sizeof(int32_t),
-        cudaMemcpyDeviceToHost, cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-    cudnn_page_table_valid = host_has_unmapped_page == 0;
-  }
-  const bool cudnn_paged_eligible =
-      cudnn_page_table_valid &&
-      has_metadata_bounds &&
-      max_query_len_bound == 1 &&
-      parameters.token_count == parameters.batch_size &&
-      !use_latent_attention &&
-      !kIsQuantizedCache &&
-      parameters.is_causal &&
-      parameters.softcap == 0.0f &&
-      parameters.local_window_size <= 0 &&
-      !parameters.use_smooth_softmax &&
-      onnxruntime::cudnn_sdpa::is_stable() &&
-      onnxruntime::cudnn_sdpa::is_supported_paged(
-          device_prop,
-          parameters.num_heads, parameters.kv_num_heads,
-          parameters.head_size, parameters.head_size,
-          /*sequence_length_q=*/1,
-          parameters.block_size);
-  bool use_cudnn_paged = cudnn_paged_eligible && !fp16_xqa_eligible;
-
-  // Pre-dispatch buildability probe for cuDNN paged. is_supported_paged only checks static shapes;
-  // the planner may still reject the compiled graph, and we cannot fall back once dispatch has
-  // committed. The graph cache in run_paged is thread_local and keyed on the full PagedGraphParams
-  // (shape + handle), so a node-wide scalar latch would be wrong on two axes: (a) after a
-  // successful probe for one shape, a later Compute with a different batch_size /
-  // max_num_blocks_per_seq / num_blocks would skip the check and hit an unbuildable dispatch, and
-  // (b) a second worker thread has its own empty thread_local cache. So probe the *current* shape
-  // and handle every Run using the same key run_paged will use. try_build_paged_graph is a
-  // cache-first read (returns true on hit without touching cuDNN) and folds isCapturing()
-  // internally: on a cache miss during graph capture it returns false rather than attempting a
-  // non-capturable build. A false result clears use_cudnn_paged for this Run only, so the cascade
-  // drops to FlashAttention / MemoryEfficientAttention.
-  if (use_cudnn_paged) {
-    const bool ok = onnxruntime::cudnn_sdpa::try_build_paged_graph(
-        parameters.batch_size,
-        parameters.num_heads, parameters.kv_num_heads,
-        parameters.head_size, parameters.head_size,
-        parameters.num_blocks,
-        parameters.block_size,
-        parameters.max_num_blocks_per_seq,
-        cudnn_scale,
-        std::is_same<T, BFloat16>::value,
-        GetCudnnHandle(context),
-        ort_stream.get());
-    if (!ok) {
-      use_cudnn_paged = false;
-    }
-  }
+  // cuDNN consumes every page-table entry and has no unmapped-page mask. Runtime page validity is
+  // available only on device, so selecting cuDNN would require a per-Run host synchronization.
+  // Keep the capture-safe kernels until cuDNN can consume a device-side validity mask.
+  constexpr bool use_cudnn_paged = false;
 
   // cuDNN paged SDPA is causal-only. FlashAttention, paged decode, and CUTLASS all consume the
   // causality flag directly.
@@ -799,33 +728,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     }
     use_xqa_decode = (xqa_smem_ok != 0);
     use_xqa_spec_dec = use_xqa_decode && use_xqa_spec_dec;
-  }
-  // XQA was statically preferred over cuDNN paged (see the `!fp16_xqa_eligible` term above), so
-  // when the XQA shared-memory / symbol probe fails at runtime the documented cascade drops to
-  // cuDNN paged before FlashAttention -- not straight to FlashAttention. Retry the shape-keyed
-  // buildability probe now; it is cache-first, so on steady-state Runs this is one hash lookup,
-  // and it only pays for a real cuDNN graph build when cuDNN is about to serve the Run. Guarding
-  // on `fp16_xqa_eligible` scopes the retry to the specific "XQA-preferred-but-runtime-failed"
-  // case, so we don't re-run a probe that already failed at line ~527 for a non-XQA path (that
-  // failure is a definitive per-Run decision).
-  if (fp16_xqa_eligible && cudnn_paged_eligible && !use_cudnn_paged && !use_xqa_decode) {
-    if (onnxruntime::cudnn_sdpa::try_build_paged_graph(
-            parameters.batch_size,
-            parameters.num_heads, parameters.kv_num_heads,
-            parameters.head_size, parameters.head_size,
-            parameters.num_blocks,
-            parameters.block_size,
-            parameters.max_num_blocks_per_seq,
-            cudnn_scale,
-            std::is_same<T, BFloat16>::value,
-            GetCudnnHandle(context),
-            ort_stream.get())) {
-      use_cudnn_paged = true;
-      use_paged_decode = false;
-      use_flash_attention = false;
-      // MemoryEfficientAttention is ineligible here: this branch requires fp16_xqa_eligible,
-      // which implies a FlashAttention-supported shape, while MEA requires !flash_eligible.
-    }
   }
   // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
   // checks pass. Restore Flash for ragged decode steps and unsupported devices instead of leaving

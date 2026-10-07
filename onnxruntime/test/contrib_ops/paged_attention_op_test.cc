@@ -2001,11 +2001,13 @@ TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithoutReadback) {
   }
 
   IoBindingCase c;
-  c.cumulative_seqlens_q = {0, 0};
+  c.cumulative_seqlens_q = {0, 1};
   c.past_seqlens = {-4};
   c.block_table = {-2};
   c.allow_malformed_sequence_metadata = true;
   c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
 }
 
@@ -2015,12 +2017,14 @@ TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
   }
 
   IoBindingCase c;
-  c.cumulative_seqlens_q = {0, 0};
+  c.cumulative_seqlens_q = {0, 1};
   c.past_seqlens = {-4};
   c.block_table = {-2};
   c.attention_metadata = {1, 1};
   c.allow_malformed_sequence_metadata = true;
   c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
 }
 
