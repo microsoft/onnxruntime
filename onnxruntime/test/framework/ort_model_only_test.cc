@@ -152,8 +152,8 @@ std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t d
   });
 }
 
-std::vector<uint8_t> BuildOrtModelWithConflictingEdgeProducers() {
-  return BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+std::vector<uint8_t> BuildOrtModelWithConflictingEdgeProducers(bool include_edges = true) {
+  return BuildOrtModelBuffer([include_edges](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
         fbs::CreateValueInfoDirect(builder, "input_0", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "input_1", "", CreateFloatTensorTypeInfo(builder, 1)),
@@ -184,7 +184,8 @@ std::vector<uint8_t> BuildOrtModelWithConflictingEdgeProducers() {
         builder.CreateSharedString("input_0"), builder.CreateSharedString("input_1")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
     return fbs::CreateGraphDirect(
-        builder, nullptr, &node_args, &nodes, 3, &node_edges, &graph_inputs, &graph_outputs);
+        builder, nullptr, &node_args, &nodes, 3, include_edges ? &node_edges : nullptr,
+        &graph_inputs, &graph_outputs);
   });
 }
 
@@ -518,7 +519,7 @@ TEST(OrtModelTest, RejectsControlEdgeCycle) {
   const auto status = LoadOrtModel(
       BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true, true), model);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_EQ(status.ErrorMessage(), "This is an invalid model. Error: the graph is not acyclic.");
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("the graph is not acyclic"));
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -603,9 +604,11 @@ TEST(OrtModelTest, RejectsAsymmetricControlEdgeSlots) {
 }
 
 TEST(OrtModelTest, RejectsMultipleProducersForOneDestinationSlot) {
-  const auto status = LoadOrtBuffer(BuildOrtModelWithConflictingEdgeProducers());
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("has multiple producers"));
+  for (const bool include_edges : {false, true}) {
+    const auto status = LoadOrtBuffer(BuildOrtModelWithConflictingEdgeProducers(include_edges));
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("multiple producers"));
+  }
 }
 
 TEST(OrtModelTest, RejectsGraphInputWithUnknownNodeArg) {
