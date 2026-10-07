@@ -658,7 +658,7 @@ class SessionState {
     std::vector<std::unique_ptr<DeviceStreamCollection>> device_streams;
   };
 
-  // Graph capture requires thread-affine pools keyed by a per-thread lifetime token.
+  // Graph capture and streams without a device-selection callback require thread affinity.
   // Otherwise, nullptr keys a shared pool so idle streams can be reused across threads.
   // Buckets for exited threads are pruned lazily on acquire/recycle.
   mutable std::mutex device_stream_pool_mutex_;

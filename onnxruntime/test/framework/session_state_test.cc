@@ -166,9 +166,10 @@ class StreamPoolTestStream : public Stream {
 
 class StreamPoolTestExecutionProvider : public CPUExecutionProvider {
  public:
-  explicit StreamPoolTestExecutionProvider(bool enable_graph_capture)
+  explicit StreamPoolTestExecutionProvider(bool enable_graph_capture, bool register_set_device)
       : CPUExecutionProvider(CPUExecutionProviderInfo(false)),
-        enable_graph_capture_(enable_graph_capture) {}
+        enable_graph_capture_(enable_graph_capture),
+        register_set_device_(register_set_device) {}
 
   bool IsGraphCaptureEnabled() const override { return enable_graph_capture_; }
 
@@ -177,17 +178,21 @@ class StreamPoolTestExecutionProvider : public CPUExecutionProvider {
       ++num_streams_created_;
       return std::make_unique<StreamPoolTestStream>(device);
     });
-    registry.RegisterSetDeviceFn(OrtDevice::CPU, StreamPoolTestStream::SetDevice);
+    if (register_set_device_) {
+      registry.RegisterSetDeviceFn(OrtDevice::CPU, StreamPoolTestStream::SetDevice);
+    }
   }
 
   size_t NumStreamsCreated() const { return num_streams_created_.load(); }
 
  private:
   const bool enable_graph_capture_;
+  const bool register_set_device_;
   mutable std::atomic<size_t> num_streams_created_{0};
 };
 
-static void TestDeviceStreamPool(bool enable_graph_capture) {
+static void TestDeviceStreamPool(bool enable_graph_capture, bool register_set_device = true) {
+  const bool expect_thread_affinity = enable_graph_capture || !register_set_device;
   Model model("stream_pool_test", false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   TypeProto tensor_type;
@@ -199,7 +204,7 @@ static void TestDeviceStreamPool(bool enable_graph_capture) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   ExecutionProviders execution_providers;
-  auto ep = std::make_unique<StreamPoolTestExecutionProvider>(enable_graph_capture);
+  auto ep = std::make_unique<StreamPoolTestExecutionProvider>(enable_graph_capture, register_set_device);
   const auto* ep_ptr = ep.get();
   ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(ep)));
   DataTransferManager data_transfer_manager;
@@ -229,10 +234,10 @@ static void TestDeviceStreamPool(bool enable_graph_capture) {
   for (size_t i = 0; i < num_threads; ++i) {
     std::promise<void> ran;
     auto completed = ran.get_future();
-    threads.emplace_back([&session_state, main_collection, enable_graph_capture, ran = std::move(ran), released]() mutable {
+    threads.emplace_back([&session_state, main_collection, expect_thread_affinity, ran = std::move(ran), released]() mutable {
       auto first = session_state.AcquireDeviceStreamCollection();
       EXPECT_NE(first, nullptr);
-      if (enable_graph_capture) {
+      if (expect_thread_affinity) {
         EXPECT_NE(first.get(), main_collection);
       } else {
         EXPECT_EQ(first.get(), main_collection);
@@ -254,7 +259,7 @@ static void TestDeviceStreamPool(bool enable_graph_capture) {
     });
     completed.wait();
   }
-  EXPECT_EQ(ep_ptr->NumStreamsCreated(), enable_graph_capture ? num_threads + 1 : 1);
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), expect_thread_affinity ? num_threads + 1 : 1);
 
   collection = session_state.AcquireDeviceStreamCollection();
   EXPECT_EQ(collection.get(), main_collection);
@@ -266,7 +271,7 @@ static void TestDeviceStreamPool(bool enable_graph_capture) {
     session_state.RecycleDeviceStreamCollection(std::move(other));
   });
   overlapping_caller.join();
-  EXPECT_EQ(ep_ptr->NumStreamsCreated(), enable_graph_capture ? num_threads + 2 : 2);
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), expect_thread_affinity ? num_threads + 2 : 2);
 
   release_threads.set_value();
   for (auto& thread : threads) {
@@ -275,7 +280,7 @@ static void TestDeviceStreamPool(bool enable_graph_capture) {
   session_state.RecycleDeviceStreamCollection(std::move(collection));
   collection = session_state.AcquireDeviceStreamCollection();
   EXPECT_EQ(collection.get(), main_collection);
-  EXPECT_EQ(ep_ptr->NumStreamsCreated(), enable_graph_capture ? num_threads + 2 : 2);
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), expect_thread_affinity ? num_threads + 2 : 2);
   session_state.RecycleDeviceStreamCollection(std::move(collection));
 }
 
@@ -285,6 +290,10 @@ TEST(SessionStateTest, DeviceStreamPoolSharedAcrossThreads) {
 
 TEST(SessionStateTest, DeviceStreamPoolGraphCaptureThreadAffinity) {
   TestDeviceStreamPool(true);
+}
+
+TEST(SessionStateTest, DeviceStreamPoolWithoutDeviceSelectionThreadAffinity) {
+  TestDeviceStreamPool(false, false);
 }
 #endif
 

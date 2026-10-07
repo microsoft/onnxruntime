@@ -1933,8 +1933,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   auto& eps = GetExecutionProviders();
   use_thread_affine_stream_pool_ = false;
   for (auto& ep : eps) {
-    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
-    use_thread_affine_stream_pool_ = use_thread_affine_stream_pool_ || ep->IsGraphCaptureEnabled();
+    auto& stream_handle_registry = GetStreamHandleRegistryInstance();
+    ep->RegisterStreamHandlers(stream_handle_registry, *allocators_);
+    const auto device_type = ep->GetDevice().Type();
+    use_thread_affine_stream_pool_ =
+        use_thread_affine_stream_pool_ || ep->IsGraphCaptureEnabled() ||
+        (stream_handle_registry.GetCreateStreamFn(device_type) &&
+         !stream_handle_registry.GetSetDeviceFn(device_type).has_value());
   }
 #endif
 
