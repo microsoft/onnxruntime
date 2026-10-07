@@ -40,6 +40,9 @@ inline Status CheckAttentionWeights(gsl::span<const int64_t> weights_dims,
 
   std::array<int64_t, 3> sizes{weights_dims[1] / 3, weights_dims[1] / 3, weights_dims[1] / 3};
   if (!qkv_hidden_sizes.empty()) {
+    ORT_RETURN_IF_NOT(std::all_of(qkv_hidden_sizes.begin(), qkv_hidden_sizes.end(),
+                                  [](int64_t size) { return size > 0; }),
+                      "qkv_hidden_sizes values should be positive");
     std::copy(qkv_hidden_sizes.begin(), qkv_hidden_sizes.end(), sizes.begin());
   }
 

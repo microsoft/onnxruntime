@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <cmath>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
-
-#include <google/protobuf/stubs/common.h>
 
 #include "dawn/native/DawnNative.h"
 
@@ -14,16 +16,21 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  bool no_proc_table = argc > 0 &&
-#ifdef _WIN32
-                       wcscmp(L"--no_proc_table", argv[argc - 1]) == 0;
-#else
-                       strcmp("--no_proc_table", argv[argc - 1]) == 0;
-#endif
-
+  bool no_proc_table = false;
+  std::basic_string<ORTCHAR_T> plugin_path;
   int retval = 0;
   Ort::Env env{nullptr};
   try {
+    for (int argument_index = 1; argument_index < argc; ++argument_index) {
+      const std::basic_string<ORTCHAR_T> argument{argv[argument_index]};
+      if (argument == ORT_TSTR("--no_proc_table")) {
+        no_proc_table = true;
+      } else if (argument == ORT_TSTR("--plugin") && argument_index + 1 < argc) {
+        plugin_path = argv[++argument_index];
+      } else {
+        throw std::runtime_error("Invalid external Dawn test argument.");
+      }
+    }
     env = Ort::Env{ORT_LOGGING_LEVEL_WARNING, "Default"};
 
     // model is https://github.com/onnx/onnx/blob/v1.15.0/onnx/backend/test/data/node/test_abs/model.onnx
@@ -40,25 +47,64 @@ int main(int argc, char* argv[]) {
 
     Ort::SessionOptions session_options;
     session_options.DisableMemPattern();
+    session_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
     std::unordered_map<std::string, std::string> provider_options;
     if (!no_proc_table) {
       provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<size_t>(&dawn::native::GetProcs()));
     }
-    session_options.AppendExecutionProvider("WebGPU", provider_options);
+    if (plugin_path.empty()) {
+      session_options.AppendExecutionProvider("WebGPU", provider_options);
+    } else {
+      env.RegisterExecutionProviderLibrary("external_dawn_webgpu", plugin_path);
+      Ort::ConstEpDevice webgpu_device{nullptr};
+      for (const auto& ep_device : env.GetEpDevices()) {
+        if (std::string(ep_device.EpName()) == "WebGpuExecutionProvider") {
+          webgpu_device = ep_device;
+          break;
+        }
+      }
+      if (!webgpu_device) {
+        throw std::runtime_error("External Dawn WebGPU plugin device was not found.");
+      }
+      session_options.AppendExecutionProvider_V2(env, {webgpu_device}, provider_options);
+    }
     Ort::Session session{env, MODEL_DATA, sizeof(MODEL_DATA), session_options};
 
     if (no_proc_table) {
       std::cerr << "DawnProcTable is not passing to ONNX Runtime, but no exception is thrown." << std::endl;
       retval = -1;
     } else {
-      // successfully initialized
-      std::cout << "Successfully initialized WebGPU EP." << std::endl;
+      const std::array<int64_t, 3> shape{3, 4, 5};
+      std::array<float, 60> input_data;
+      for (size_t index = 0; index < input_data.size(); ++index) {
+        input_data[index] = static_cast<float>(index) - 30.0f;
+      }
+      auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+      auto input = Ort::Value::CreateTensor<float>(
+          memory_info, input_data.data(), input_data.size(), shape.data(), shape.size());
+      const char* input_names[] = {"x"};
+      const char* output_names[] = {"y"};
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 1);
+      if (outputs.size() != 1 ||
+          outputs[0].GetTensorTypeAndShapeInfo().GetElementCount() != input_data.size()) {
+        throw std::runtime_error("Unexpected Abs output shape.");
+      }
+      const float* output_data = outputs[0].GetTensorData<float>();
+      for (size_t index = 0; index < input_data.size(); ++index) {
+        if (output_data[index] != std::abs(input_data[index])) {
+          throw std::runtime_error("Unexpected Abs output value.");
+        }
+      }
+      std::cout << "WebGPU Abs inference passed with CPU fallback disabled." << std::endl;
+      if (!plugin_path.empty()) {
+        std::cout << "WebGPU plugin EP was registered and selected explicitly." << std::endl;
+      }
       retval = 0;
     }
   } catch (const std::exception& ex) {
     std::cerr << ex.what() << std::endl;
 
-    if (no_proc_table) {
+    if (no_proc_table && std::string(ex.what()).find("DawnProcTable must be provided") != std::string::npos) {
       std::cout << "DawnProcTable is not passing to ONNX Runtime, so an exception is thrown as expected." << std::endl;
       retval = 0;
     } else {
@@ -67,6 +113,5 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }

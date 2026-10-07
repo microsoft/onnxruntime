@@ -52,6 +52,7 @@
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_saving_options.h"
+#include "core/providers/providers.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_optimizer_registry.h"
@@ -1096,16 +1097,11 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
-#if defined(ORT_USE_TELEMETRY)
 #define ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status) status = [&]() -> Status {
 #define ORT_TELEMETRY_CAPTURE_STATUS_END() \
   return Status::OK();                     \
   }                                        \
   ()
-#else
-#define ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
-#define ORT_TELEMETRY_CAPTURE_STATUS_END()
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::RegisterGraphTransformer(
@@ -1180,11 +1176,11 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
-#if defined(ORT_USE_TELEMETRY)
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
 #endif
   ORT_TRY {
-#if defined(ORT_USE_TELEMETRY)
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
     env.GetTelemetryProvider().LogModelLoadStart(session_id_);
 #endif
 
@@ -1226,6 +1222,8 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+#elif defined(_WIN32)
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
 #endif
 
   return status;
@@ -1622,10 +1620,18 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
           session_options_.config_options.GetConfigOrDefault(
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
       !disable_aot_function_inlining) {
+    uint32_t registered_ep_context_data_callbacks = session_options_.ep_context_data_read_func != nullptr
+                                                        ? OrtEpContextDataCallbackSupportFlags_READ
+                                                        : OrtEpContextDataCallbackSupportFlags_NONE;
+    if (session_options_.ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr) {
+      registered_ep_context_data_callbacks |= OrtEpContextDataCallbackSupportFlags_WRITE;
+    }
     ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.InlineFunctionsAOT(*model_,
                                                                   execution_providers_,
                                                                   kernel_registry_manager_,
-                                                                  *session_logger_));
+                                                                  session_options_.config_options,
+                                                                  *session_logger_,
+                                                                  registered_ep_context_data_callbacks));
   }
 
   // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
@@ -1877,7 +1883,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, ep_context_gen_options, debug_graph_fn,
+                                                       mode, ep_context_gen_options,
+                                                       session_options_.ep_context_data_read_func != nullptr,
+                                                       debug_graph_fn,
                                                        &workspace_reservations));
   graph.SetNodeReplacementCallback(
       [&workspace_reservations](const Graph& modified_graph,
@@ -2181,9 +2189,13 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
-#if defined(ORT_USE_TELEMETRY)
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
+#if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
+#endif
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadStart(session_id_);
 #endif
 
@@ -2328,6 +2340,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+#elif defined(_WIN32)
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
 #endif
   return status;
 }
@@ -2617,7 +2631,9 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             sess_options.config_options,
                                             logger,
                                             nullptr /*layering_index*/,
-                                            GraphPartitioner::Mode::kOrtFormatLoad));
+                                            GraphPartitioner::Mode::kOrtFormatLoad,
+                                            {},
+                                            sess_options.ep_context_data_read_func != nullptr));
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
   // kOrtFormatLoad does compile and fuse, unlike the kAssignOnly pass used when writing an ORT format
@@ -2695,11 +2711,6 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
   return Status::OK();
 }
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
-#pragma warning(disable : 26117)
-#endif
 common::Status InferenceSession::Initialize() {
   const auto start_timing = [this]() {
     TimePoint start_time{};
@@ -2709,63 +2720,45 @@ common::Status InferenceSession::Initialize() {
     if (session_profiler_.IsEnabled()) {
       start_time = session_profiler_.Start();
     }
-#if defined(ORT_USE_TELEMETRY)
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
     Env::Default().GetTelemetryProvider().LogSessionCreationStart(session_id_);
 #endif
     return start_time;
   };
 
+  Status status = Status::OK();
+  bool have_cpu_ep = false;
   if (session_options_.IsLoadCancellationFlagSet()) {
-    const Status status = ORT_MAKE_STATUS(
+    status = ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "Session initialization canceled due to user request.");
-#if defined(ORT_USE_TELEMETRY)
-    return RecordSessionCreationEndTelemetry(start_timing(), status);
-#else
-    return status;
-#endif
-  }
-
-  bool have_cpu_ep = false;
-  {
-    std::unique_lock<std::mutex> initial_guard(session_mutex_);
-
+  } else {
+    std::lock_guard<std::mutex> initial_guard(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      const Status status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
-#if defined(ORT_USE_TELEMETRY)
-      initial_guard.unlock();
-      return RecordSessionCreationEndTelemetry(start_timing(), status);
-#else
-      return status;
-#endif
-    }
-
-    if (is_inited_) {
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+    } else if (is_inited_) {
       LOGS(*session_logger_, INFO) << "Session has already been initialized.";
       return common::Status::OK();
-    }
-
+    } else {
 #if !defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
-    for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
-      if (key == kOrtSessionOptionsGqaValueLayout) {
-        const Status status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "GQA layout disabled");
-#if defined(ORT_USE_TELEMETRY)
-        initial_guard.unlock();
-        return RecordSessionCreationEndTelemetry(start_timing(), status);
-#else
-        return status;
+      for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
+        if (key == kOrtSessionOptionsGqaValueLayout) {
+          status = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "GQA layout disabled");
+          break;
+        }
+      }
 #endif
+      if (status.IsOK()) {
+        have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
       }
     }
-#endif
-
-    have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
   }
 
-  Status status = Status::OK();
   const TimePoint tp = start_timing();
+  if (!status.IsOK()) {
+    return RecordSessionCreationEndTelemetry(tp, status);
+  }
 
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
@@ -3168,19 +3161,6 @@ common::Status InferenceSession::Initialize() {
       // If the user disabled fallback, but also explicitly added the CPU EP to the session, return an error status.
       // If the user disabled fallback and any graph node is assigned to the CPU EP, return an error status.
       if (disable_cpu_ep_fallback) {
-        // Returns true if any graph nodes have been assigned to the CPU EP.
-        auto are_nodes_assigned_to_cpu_ep = [](const Graph& graph) -> bool {
-          for (const auto& node : graph.Nodes()) {
-            const auto& node_provider = node.GetExecutionProviderType();
-
-            if (node_provider.empty() || node_provider == onnxruntime::kCpuExecutionProvider) {
-              return true;
-            }
-          }
-
-          return false;
-        };
-
         if (!execution_providers_.GetCpuProviderWasImplicitlyAdded()) {
           const char* err_msg =
               "Conflicting session configuration: explicitly added the CPU EP to the "
@@ -3188,7 +3168,7 @@ common::Status InferenceSession::Initialize() {
 
           LOGS(*session_logger_, ERROR) << err_msg;
           ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, err_msg));
-        } else if (are_nodes_assigned_to_cpu_ep(graph)) {
+        } else if (inference_session_utils::AreAnyNodesAssignedToCpuEp(graph)) {
           const char* err_msg =
               "This session contains graph nodes that are assigned to the default CPU EP, "
               "but fallback to CPU EP has been explicitly disabled by the user.";
@@ -3336,9 +3316,6 @@ common::Status InferenceSession::Initialize() {
 
   return RecordSessionCreationEndTelemetry(tp, status);
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
 
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
@@ -3705,6 +3682,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // Serialize graph-state checks and replay as well as normal execution. Keep the
+  // lock here so RunImpl's internal capture retries do not acquire it recursively.
+  std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
+  if (!is_concurrent_run_supported_) {
+    sequential_run_lock.emplace(session_mutex_);
+  }
+
   return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
                  /*graph_capture_depth=*/0);
 }
@@ -3850,11 +3834,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         moe_run_active = true;
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-      std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
-      if (is_concurrent_run_supported_ == false) {
-        sequential_run_lock.emplace(session_mutex_);
-      }
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
@@ -4781,6 +4760,8 @@ common::Status InferenceSession::RecordSessionCreationEndTelemetry(const TimePoi
 #if defined(ORT_USE_TELEMETRY)
   Env::Default().GetTelemetryProvider().LogSessionCreationEnd(
       session_id_, status, TimeDiffMicroSeconds(tp));
+#elif defined(_WIN32)
+  Env::Default().GetTelemetryProvider().LogSessionCreationEnd(session_id_, status, 0);
 #endif
   return status;
 }
@@ -5020,25 +5001,63 @@ void InferenceSession::LogAllSessions() {
       continue;
     }
 
-    auto model = session->model_;
-    if (nullptr != model) {
-      onnxruntime::Graph& graph = model->MainGraph();
-      std::filesystem::path model_path = graph.ModelPath();
-      std::string model_file_name = PathToUTF8String(model_path.filename().native());
-      bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
-      std::string model_weight_type = session->GetWeightDataType();
-      std::string model_graph_hash = session->GetGraphHash();
-      std::string model_weight_hash = session->GetWeightHash();
-      env.GetTelemetryProvider().LogSessionCreation(
-          session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
-          graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(),
-          session->telemetry_.ep_device_types_summary_, session->telemetry_.ep_device_vendor_ids_summary_,
-          session->telemetry_.ep_versions_summary_,
-          model_has_fp16_inputs, true);
+    std::function<void()> log_snapshot;
+    {
+      std::unique_lock<std::mutex> session_lock(session->session_mutex_, std::try_to_lock);
+      if (!session_lock.owns_lock()) {
+        continue;
+      }
+
+      const auto session_options = session->session_options_;
+      const auto* session_logger = session->session_logger_;
+      auto model = session->model_;
+      if (nullptr != model) {
+        const onnxruntime::Graph& graph = model->MainGraph();
+        auto provider_options = session->execution_providers_.GetProviderOptionsSnapshot();
+        std::vector<std::string> provider_ids;
+        provider_ids.reserve(provider_options.size());
+        for (auto& [provider_id, options] : provider_options) {
+          ORT_UNUSED_PARAMETER(options);
+          provider_ids.push_back(std::move(provider_id));
+        }
+
+        log_snapshot = [&env,
+                        session_options,
+                        session_logger,
+                        session_id = session->session_id_,
+                        ir_version = model->IrVersion(),
+                        producer_name = model->ProducerName(),
+                        producer_version = model->ProducerVersion(),
+                        domain = model->Domain(),
+                        domain_to_version = graph.DomainToVersionMap(),
+                        model_file_name = PathToUTF8String(graph.ModelPath().filename().native()),
+                        graph_name = graph.Name(),
+                        model_weight_type = session->GetWeightDataType(),
+                        model_graph_hash = session->GetGraphHash(),
+                        model_weight_hash = session->GetWeightHash(),
+                        model_metadata = model->MetaData(),
+                        event_name = session->telemetry_.event_name_,
+                        provider_ids = std::move(provider_ids),
+                        ep_device_types_summary = session->telemetry_.ep_device_types_summary_,
+                        ep_device_vendor_ids_summary = session->telemetry_.ep_device_vendor_ids_summary_,
+                        ep_versions_summary = session->telemetry_.ep_versions_summary_,
+                        model_has_fp16_inputs = ModelHasFP16Inputs(graph)]() {
+          env.GetTelemetryProvider().LogSessionCreation(
+              session_id, ir_version, producer_name, producer_version, domain,
+              domain_to_version, model_file_name, graph_name, model_weight_type, model_graph_hash, model_weight_hash,
+              model_metadata, event_name, provider_ids,
+              ep_device_types_summary, ep_device_vendor_ids_summary, ep_versions_summary,
+              model_has_fp16_inputs, true);
+          InferenceSession::TraceSessionOptions(session_options, true, *session_logger);
+        };
+      } else {
+        log_snapshot = [session_options, session_logger]() {
+          InferenceSession::TraceSessionOptions(session_options, true, *session_logger);
+        };
+      }
     }
 
-    InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);
+    log_snapshot();
   }
 }
 #endif
