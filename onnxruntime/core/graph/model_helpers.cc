@@ -212,6 +212,38 @@ void CollectReferencedAttributeNames(
   }
 }
 
+void CollectReferencedAttributeNames(
+    const Graph& graph,
+    InlinedHashSet<std::string_view>& referenced_attribute_names) {
+  InlinedVector<const Graph*> pending_graphs{&graph};
+  while (!pending_graphs.empty()) {
+    const auto* current_graph = pending_graphs.back();
+    pending_graphs.pop_back();
+    for (const auto& node : current_graph->Nodes()) {
+      for (const auto& [name, attribute] : node.GetAttributes()) {
+        ORT_UNUSED_PARAMETER(name);
+        if (!attribute.ref_attr_name().empty()) {
+          referenced_attribute_names.insert(attribute.ref_attr_name());
+        }
+      }
+      for (const auto& subgraph : node.GetSubgraphs()) {
+        pending_graphs.push_back(subgraph);
+      }
+    }
+  }
+}
+
+void CollectReferencedAttributeNames(
+    const BoundAttribute& attribute,
+    InlinedHashSet<std::string_view>& referenced_attribute_names) {
+  if (attribute.proto != nullptr) {
+    CollectReferencedAttributeNames(*attribute.proto, referenced_attribute_names);
+  }
+  if (attribute.graph != nullptr) {
+    CollectReferencedAttributeNames(*attribute.graph, referenced_attribute_names);
+  }
+}
+
 using ModelLocalFunctions =
     std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>;
 
@@ -451,7 +483,7 @@ void SetAttributeBinding(AttributeBindings& bindings,
 }
 
 std::shared_ptr<const AttributeBindingContext> InternRelevantAttributeBindingContext(
-    const ONNX_NAMESPACE::AttributeProto& attribute,
+    const BoundAttribute& attribute,
     const AttributeBindings& bindings,
     const DomainToVersionMap& domain_to_version,
     ValidatedFunctionStates& validated_states) {
@@ -470,7 +502,7 @@ std::shared_ptr<const AttributeBindingContext> InternRelevantAttributeBindingCon
       }
 
       const size_t previous_size = referenced_attribute_names.size();
-      CollectReferencedAttributeNames(*binding.attribute.proto, referenced_attribute_names);
+      CollectReferencedAttributeNames(binding.attribute, referenced_attribute_names);
       added_dependencies = added_dependencies || referenced_attribute_names.size() != previous_size;
     }
   }
@@ -487,6 +519,33 @@ std::shared_ptr<const AttributeBindingContext> InternRelevantAttributeBindingCon
   const auto [context_it, inserted] = validated_states.contexts.insert(std::move(candidate));
   ORT_UNUSED_PARAMETER(inserted);
   return *context_it;
+}
+
+void CaptureLiteralGraphArgumentContexts(
+    const InlinedHashSet<std::string_view>& literal_graph_binding_names,
+    const AttributeBindings& caller_bindings,
+    const DomainToVersionMap& caller_domain_to_version,
+    AttributeBindings& callee_bindings,
+    ValidatedFunctionStates& validated_states) {
+  AttributeBindings complete_caller_bindings = caller_bindings;
+  for (const auto& binding : callee_bindings) {
+    SetAttributeBinding(complete_caller_bindings, binding.name, binding.attribute);
+  }
+  std::sort(complete_caller_bindings.begin(), complete_caller_bindings.end(),
+            [](const AttributeBinding& lhs, const AttributeBinding& rhs) {
+              return lhs.name < rhs.name;
+            });
+
+  for (auto& binding : callee_bindings) {
+    auto& attribute = binding.attribute;
+    if (literal_graph_binding_names.find(binding.name) !=
+            literal_graph_binding_names.end() &&
+        attribute.context == nullptr && CanContainGraph(attribute)) {
+      attribute.context = InternRelevantAttributeBindingContext(
+          attribute, complete_caller_bindings, caller_domain_to_version,
+          validated_states);
+    }
+  }
 }
 
 void CompleteFunctionAttributeBindings(
@@ -515,7 +574,7 @@ void CompleteFunctionAttributeBindings(
               ? caller_domain_to_version
               : callee_domain_to_version;
       attribute.context = InternRelevantAttributeBindingContext(
-          *attribute.proto, complete_bindings, defining_domain_to_version, validated_states);
+          attribute, complete_bindings, defining_domain_to_version, validated_states);
     }
   }
 }
@@ -565,7 +624,7 @@ Status ValidateBoundAttributeCallDepth(
 
   if (attribute.context == nullptr) {
     attribute.context = InternRelevantAttributeBindingContext(
-        *attribute.proto, bindings, domain_to_version, validated_states);
+        attribute, bindings, domain_to_version, validated_states);
   }
 
   const BoundAttributeExpansionState expansion_state{
@@ -686,13 +745,20 @@ Status ValidateProtoNodesCallDepth(
         !HasOnnxRegisteredSchema(node.domain(), node.op_type(), domain_to_version)) {
       AttributeBindings callee_bindings;
       InlinedHashSet<std::string_view> explicit_binding_names;
+      InlinedHashSet<std::string_view> literal_graph_binding_names;
       for (const auto& attr : node.attribute()) {
         auto resolved_attr = ResolveAttribute(attr, bindings);
         if (resolved_attr.proto != nullptr) {
           SetAttributeBinding(callee_bindings, attr.name(), resolved_attr);
           explicit_binding_names.insert(attr.name());
+          if (attr.ref_attr_name().empty() && CanContainGraph(resolved_attr)) {
+            literal_graph_binding_names.insert(attr.name());
+          }
         }
       }
+      CaptureLiteralGraphArgumentContexts(
+          literal_graph_binding_names, bindings, domain_to_version,
+          callee_bindings, validated_states);
       CompleteFunctionAttributeBindings(
           *function_it->second, explicit_binding_names, domain_to_version,
           callee_bindings, validated_states);
@@ -738,6 +804,7 @@ Status ValidateGraphCallDepth(
               : HasRegisteredSchema(node.Domain(), node.OpType(), domain_to_version, schema_registry))) {
       AttributeBindings callee_bindings;
       InlinedHashSet<std::string_view> explicit_binding_names;
+      InlinedHashSet<std::string_view> literal_graph_binding_names;
       for (const auto& [attr_name, attr] : node.GetAttributes()) {
         const Graph* attribute_graph = nullptr;
         if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
@@ -747,8 +814,14 @@ Status ValidateGraphCallDepth(
         if (resolved_attr.proto != nullptr) {
           SetAttributeBinding(callee_bindings, attr_name, resolved_attr);
           explicit_binding_names.insert(attr_name);
+          if (attr.ref_attr_name().empty() && CanContainGraph(resolved_attr)) {
+            literal_graph_binding_names.insert(attr_name);
+          }
         }
       }
+      CaptureLiteralGraphArgumentContexts(
+          literal_graph_binding_names, bindings, domain_to_version,
+          callee_bindings, validated_states);
       CompleteFunctionAttributeBindings(
           *function_it->second, explicit_binding_names, domain_to_version,
           callee_bindings, validated_states);
