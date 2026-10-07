@@ -839,8 +839,9 @@ static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_l
 // - "0": disable. (default)
 // - "1": enable.
 //
-// \deprecated Since version 1.30. Use "ep.enable_weightless_mode" instead, which selects a specific
-// OrtWeightlessSupport mode. This option is ignored if "ep.enable_weightless_mode" is set.
+// \deprecated Since version 1.31. Use "ep.enable_weightless_mode" instead, which selects a specific
+// OrtWeightlessSupport mode. If "ep.enable_weightless_mode" is set, ORT overrides this option to match it
+// ("0" for OrtWeightlessSupport_NONE, "1" otherwise) before creating the EP.
 //
 // \since Version 1.29.
 static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weightless";
@@ -850,9 +851,9 @@ static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weight
 // When a mode other than OrtWeightlessSupport_NONE is selected, ONNX Runtime requests that the execution provider
 // operate without embedding or copying the constant initializers covered by that mode.
 //
-// Applications can inspect the "weightless_support" EP metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport)
-// of each OrtEpDevice to discover the modes supported by an EP and choose the one that best fits the use case
-// (or none at all).
+// Applications can inspect the "weightless_supported_modes" EP metadata entry
+// (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes), or "weightless_support" if it is not present, of each
+// OrtEpDevice to discover the modes supported by an EP and choose the one that best fits the use case (or none at all).
 //
 // This option works in both JIT (non-cached) and AOT (EPContext model) flows. The EP either keeps the
 // initializers as inputs of the compiled/fused node (drop_constant_initializers = false in OrtNodeFusionOptions)
@@ -864,8 +865,15 @@ static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weight
 // - With OrtWeightlessSupport_ALL, the source model must also be available, e.g. via the
 //   "ep.context_source_model_path" session option.
 //
-// ORT checks that the EP supports the selected mode by calling OrtEp::GetWeightlessSupport().
-// If the EP does not support it, ORT returns an error.
+// Before creating the EP, ORT:
+// - returns an INVALID_ARGUMENT error if the value is not one of the values below,
+// - returns an error if the selected mode is not supported according to the EP metadata entries above, and
+// - sets the deprecated "ep.enable_weightless" option to "0" for OrtWeightlessSupport_NONE and to "1" otherwise,
+//   for EPs built for earlier versions, which only know that option.
+// When compiling, ORT also checks that the EP supports the selected mode by calling OrtEp::GetWeightlessSupport(),
+// and returns an error if it does not.
+//
+// If this option is not set, the deprecated "ep.enable_weightless" option keeps its previous behavior.
 //
 // ORT records the selected mode in the metadata of generated EPContext models under the "weightless_mode" key
 // (kOrtModelMetadata_WeightlessMode). The option does not need to be set again when creating a session from the
@@ -878,7 +886,7 @@ static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weight
 // - "1": weightless mode for external initializers only (OrtWeightlessSupport_EXTERNAL_ONLY).
 // - "2": weightless mode for all initializers, internal and external (OrtWeightlessSupport_ALL).
 //
-// \since Version 1.30.
+// \since Version 1.31.
 static const char* const kOrtSessionOptionEpEnableWeightlessMode = "ep.enable_weightless_mode";
 
 // Specifies the file path to the original (source) ONNX model when creating a session with a weightless

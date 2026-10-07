@@ -9,6 +9,7 @@ std::atomic<uint64_t> g_sync_count{0};
 std::atomic<int> g_preallocated_output_query_result{-1};
 std::atomic<int> g_preallocated_output_bad_index_rejected{-1};
 std::atomic<bool> g_create_data_transfer_should_fail{false};
+std::atomic<int> g_enable_weightless_option{-2};
 
 extern "C" void ExampleEpTestHooks_ResetSyncCount() { g_sync_count.store(0); }
 extern "C" uint64_t ExampleEpTestHooks_GetSyncCount() { return g_sync_count.load(); }
@@ -34,3 +35,6 @@ void RecordPreallocatedOutputBadIndexRejected(int rejected) {
 bool ShouldFailCreateDataTransfer() {
   return g_create_data_transfer_should_fail.load();
 }
+extern "C" void ExampleEpTestHooks_ResetEnableWeightlessOption() { g_enable_weightless_option.store(-2); }
+extern "C" int ExampleEpTestHooks_GetEnableWeightlessOption() { return g_enable_weightless_option.load(); }
+void RecordEnableWeightlessOption(int value) { g_enable_weightless_option.store(value); }

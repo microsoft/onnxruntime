@@ -1,7 +1,7 @@
 # Weightless mode
 
 Status: implemented
-Last updated: 2026-09-28
+Last updated: 2026-10-06
 
 ## Motivation
 
@@ -26,59 +26,73 @@ device.
 
 | Item | Decision |
 |---|---|
-| Mode type | `OrtWeightlessSupport` enum (`onnxruntime_c_api.h`). Each non-zero value is a single bit. Future values must be a power of 2 (1, 2, 4, 8, ...). |
-| EP discovery | `"weightless_support"` EP metadata entry (`kOrtEpDevice_EpMetadataKey_WeightlessSupport`) on each `OrtEpDevice`. The value is the bitwise OR of the supported modes, as a base-10 string. |
-| EP enforcement | `OrtEp::GetWeightlessSupport(const OrtEp*, uint32_t* supported_modes)` returns the same bitmask. ORT calls it during `Compile()`. |
+| Mode type | `OrtWeightlessSupport` enum (`onnxruntime_c_api.h`), a sequential enum. Values that cover several modes, such as `OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY`, describe EP capabilities only. Future versions may add values. |
+| EP discovery | `"weightless_supported_modes"` EP metadata entry (`kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes`) on each `OrtEpDevice`, with `"weightless_support"` (`kOrtEpDevice_EpMetadataKey_WeightlessSupport`) as the fallback for EPs built for earlier versions. |
+| EP enforcement | `OrtEp::GetWeightlessSupport(const OrtEp*, OrtWeightlessSupport* support)` returns the same value. ORT calls it during `Compile()`. |
 | Application request | Exactly **one** mode, via `OrtCompileApi::ModelCompilationOptions_SetWeightlessMode()` or the `"ep.enable_weightless_mode"` session option (`kOrtSessionOptionEpEnableWeightlessMode`). |
-| Validation | ORT rejects combined or unknown values and fails if the requested mode is not among the modes the EP supports. |
+| Validation | Before creating the EP, ORT rejects unknown values, checks the requested mode against the EP metadata, and sets the deprecated `"ep.enable_weightless"` option to match. During `Compile()`, ORT checks the mode against `GetWeightlessSupport()`. |
 | Compiled model | ORT records the mode in the compiled model's metadata under `"weightless_mode"` (`kOrtModelMetadata_WeightlessMode`). |
-| Deprecated | `ModelCompilationOptions_SetWeightlessEnabled(bool)`, `"ep.enable_weightless"` (since 1.30) and `"ep.enable_weightless_ep_context_nodes"` (since 1.29). |
+| Deprecated | `ModelCompilationOptions_SetWeightlessEnabled(bool)`, `"ep.enable_weightless"` (since 1.31) and `"ep.enable_weightless_ep_context_nodes"` (since 1.29). |
 
 ### Modes
 
-| Value | Name | Meaning |
-|---|---|---|
-| `0` | `OrtWeightlessSupport_NONE` | EP: weightless mode not supported. Application: weightless mode disabled (default). |
-| `1` | `OrtWeightlessSupport_EXTERNAL_ONLY` | Weightless for initializers stored **outside** the ONNX file (external data). Initializers stored inside the ONNX file are still copied by the EP during compilation. |
-| `2` | `OrtWeightlessSupport_ALL` | Weightless for **all** initializers, internal and external. The source model must be available at runtime (see [section 4](#4-runtime-and-packaging-requirements)). |
+| Value | Name | EP metadata value | Meaning |
+|---|---|---|---|
+| `0` | `OrtWeightlessSupport_NONE` | `"none"` | EP: weightless mode not supported. Application: weightless mode disabled (default). |
+| `1` | `OrtWeightlessSupport_EXTERNAL_ONLY` | `"external_only"` | Weightless for initializers stored **outside** the ONNX file (external data). Initializers stored inside the ONNX file are still copied by the EP during compilation. |
+| `2` | `OrtWeightlessSupport_ALL` | `"all"` | Weightless for **all** initializers, internal and external. The source model must be available at runtime (see [section 4](#4-runtime-and-packaging-requirements)). |
+| `3` | `OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY` | `"all_or_external_only"` | EP capability only: the EP supports both `EXTERNAL_ONLY` and `ALL`. Applications can't request it. |
 
-Because the values are bit flags, an EP that supports both `EXTERNAL_ONLY` and `ALL` reports `3`.
-An application never requests `3`; it chooses one mode.
+An application selects `NONE`, `EXTERNAL_ONLY` or `ALL`. Future versions may add values, both modes and
+capabilities. Applications must expect values they don't recognize, in the EP metadata or elsewhere, and ignore
+them, i.e., not select a weightless mode based on them.
 
 ## 1. EP reports its supported modes
 
 An EP reports its weightless modes in two places. The two must agree (see [1.4](#1-ep-reports-its-supported-modes)).
 
 **1.1 EP metadata (discovery, before a session exists).** In `OrtEpFactory::GetSupportedDevices()` the EP adds
-the `"weightless_support"` entry to the metadata passed to `OrtEpApi::CreateEpDevice()`. The value may differ
-per device, for example when older hardware or drivers only support `EXTERNAL_ONLY`.
+weightless entries to the metadata passed to `OrtEpApi::CreateEpDevice()`. The values may differ per device, for
+example when older hardware or drivers only support `EXTERNAL_ONLY`.
+
+| Key | Since | Values |
+|---|---|---|
+| `"weightless_supported_modes"` | 1.31 | `"none"`, `"external_only"`, `"all"`, `"all_or_external_only"`, and values added later. |
+| `"weightless_support"` | 1.29 | `"none"`, `"external_only"`, `"all"`. |
+
+An EP reports `"weightless_supported_modes"` and keeps reporting `"weightless_support"` with the value it reported
+before, so that applications written for earlier versions keep working. For example, an EP that reported
+`"weightless_support"` = `"all"` and now also supports `EXTERNAL_ONLY`:
 
 ```cpp
-// Supports both modes on this device: EXTERNAL_ONLY (1) | ALL (2) = 3.
-ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "3");
+ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
+ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes, "all_or_external_only");
 ```
 
-If the entry is missing, applications must assume `"0"` (not supported).
+ORT uses `"weightless_supported_modes"` when present, and `"weightless_support"` otherwise. If neither is present,
+the EP does not support weightless mode on the device.
 
 **1.2 `OrtEp::GetWeightlessSupport()` (enforcement, during compilation).** When the application requests a
 weightless mode, ORT calls this function from `PluginExecutionProvider::Compile()`:
 
 ```cpp
-OrtStatus* ORT_API_CALL MyEp::GetWeightlessSupportImpl(const OrtEp* this_ptr, uint32_t* supported_modes) noexcept {
-  *supported_modes = OrtWeightlessSupport_EXTERNAL_ONLY | OrtWeightlessSupport_ALL;
+OrtStatus* ORT_API_CALL MyEp::GetWeightlessSupportImpl(const OrtEp* this_ptr, OrtWeightlessSupport* support) noexcept {
+  *support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
   return nullptr;
 }
 ```
 
-> In 1.29 the output parameter of `GetWeightlessSupport` was `OrtWeightlessSupport*`. Since 1.30 it is
-> `uint32_t*` so that it can hold a combination of modes. Both are 32 bits wide, so EP binaries built against
-> 1.29 keep working. EP sources need the signature updated.
+The callback signature is unchanged since 1.29. ORT versions before 1.31 only check that the value isn't
+`OrtWeightlessSupport_NONE`, so an EP can report `OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY` to them as well.
 
 **1.3 How the EP gets the weights.** The EP reads the mode the application chose from the
-`"ep.enable_weightless_mode"` session config entry (`OrtEpApi::GetSessionConfigEntry`). When it later creates a
-session from the compiled model, it can read the recorded mode from the model metadata
-(`OrtApi::Graph_GetModelMetadata()`, key `"weightless_mode"`). Weightless mode does not prescribe how the EP
-obtains the initializer data. There are two strategies, and an EP may pick either one:
+`"ep.enable_weightless_mode"` session config entry (`OrtEpApi::GetSessionConfigEntry`). An EP that supports
+several modes must honor that entry. When it isn't set but the deprecated `"ep.enable_weightless"` entry is `"1"`,
+the EP keeps the behavior it had before 1.31. When the EP later creates a session from the compiled model, it can
+read the recorded mode from the model metadata (`OrtApi::Graph_GetModelMetadata()`, key `"weightless_mode"`).
+
+Weightless mode does not prescribe how the EP obtains the initializer data. There are two strategies, and an EP may
+pick either one:
 
 | | ORT-provided initializers | EP-managed initializers |
 |---|---|---|
@@ -91,30 +105,36 @@ The EP-managed strategy lets the EP prepare the weights once at session creation
 through the kernel context. The ORT-provided strategy needs no file handling in the EP.
 
 **1.4 Consistency check.** Applications choose a mode from the EP metadata, while ORT validates the request
-against `GetWeightlessSupport()`. After calling `GetWeightlessSupport()`, ORT compares its result with the
-`"weightless_support"` metadata of every `OrtEpDevice` the EP was created for. A missing entry counts as `"0"`.
-The 1.29 string values `"none"`, `"external_only"` and `"all"` are accepted as `"0"`, `"1"` and `"2"`. If a
-device's value differs:
+against `GetWeightlessSupport()` during compilation. After calling `GetWeightlessSupport()`, ORT compares its
+result with the weightless metadata of every `OrtEpDevice` the EP was created for (`"weightless_supported_modes"`,
+or `"weightless_support"` if not present; no entry counts as `"none"`). If a device's value differs:
 
 - ORT logs a warning naming the device and both values. A mismatch is an EP bug, but the requested mode may
   still be supported, so compilation continues.
 - If the requested mode is also unsupported, the `ORT_EP_FAIL` error includes the same description. That is the
   case where an application chose a mode the metadata advertised and `GetWeightlessSupport()` rejected it.
 
+An EP that only reports `"weightless_support"` but returns `OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY` gets this
+warning: it should also report `"weightless_supported_modes"`.
+
 ## 2. Application checks the supported modes
 
-The application reads the metadata of the `OrtEpDevice` it plans to use and tests the bit for each mode:
+The application reads the metadata of the `OrtEpDevice` it plans to use. It prefers `"weightless_supported_modes"`,
+falls back to `"weightless_support"`, and ignores values it doesn't recognize:
 
 ```cpp
 Ort::ConstEpDevice ep_device = /* selected from env.GetEpDevices() */;
+Ort::ConstKeyValuePairs metadata = ep_device.EpMetadata();
 
-uint32_t supported_modes = OrtWeightlessSupport_NONE;
-if (const char* value = ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport)) {
-  supported_modes = static_cast<uint32_t>(std::stoul(value));
+const char* value = metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes);
+if (value == nullptr) {
+  value = metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport);
 }
 
-const bool supports_external_only = (supported_modes & OrtWeightlessSupport_EXTERNAL_ONLY) != 0;
-const bool supports_all = (supported_modes & OrtWeightlessSupport_ALL) != 0;
+const std::string supported = value != nullptr ? value : "none";
+// Unrecognized values (from later versions) support neither mode.
+const bool supports_external_only = supported == "external_only" || supported == "all_or_external_only";
+const bool supports_all = supported == "all" || supported == "all_or_external_only";
 ```
 
 ## 3. Application chooses a mode and requests it
@@ -158,22 +178,42 @@ not select a mode. The application does not need to set `"ep.enable_weightless_m
 session from the compiled model. It can read the recorded mode from the model metadata to find out what the
 model needs at runtime.
 
+### Compatibility with EPs built for earlier versions
+
+EPs built for 1.29 or 1.30 don't know `"ep.enable_weightless_mode"`; they only read `"ep.enable_weightless"`.
+When `"ep.enable_weightless_mode"` is set, ORT therefore prepares the session options each plugin EP receives in
+`OrtEpFactory::CreateEp()`:
+
+| `"ep.enable_weightless_mode"` | EP metadata (`"weightless_supported_modes"`, else `"weightless_support"`) | Result |
+|---|---|---|
+| Not set | Any | No change: `"ep.enable_weightless"` keeps its previous behavior. |
+| `"0"` (`NONE`) | Any | The EP sees `"ep.enable_weightless"` = `"0"`. |
+| `"1"` (`EXTERNAL_ONLY`) | `"external_only"` or `"all_or_external_only"` | The EP sees `"ep.enable_weightless"` = `"1"`. |
+| `"2"` (`ALL`) | `"all"` or `"all_or_external_only"` | The EP sees `"ep.enable_weightless"` = `"1"`. |
+| `"1"` or `"2"` | Another value, an unrecognized value, or no entry | `ORT_EP_FAIL` before the EP is created. |
+| Any other value, including `"3"` | Any | `ORT_INVALID_ARGUMENT` before the EP is created. |
+
+The EP gets a copy of the session options; the application's session options are not modified. An EP built for an
+earlier version that reports `"weightless_support"` = `"all"` therefore works with `ALL`, and is rejected with
+`EXTERNAL_ONLY` instead of silently running in a mode the application didn't ask for.
+
 ### Validation and errors
 
 | Condition | Result |
 |---|---|
 | `ModelCompilationOptions_SetWeightlessMode()` called with a value other than 0, 1 or 2 (e.g. `3`) | `ORT_INVALID_ARGUMENT`, returned immediately. |
-| `"ep.enable_weightless_mode"` set to a value other than `"0"`, `"1"` or `"2"` | `ORT_INVALID_ARGUMENT` from `Compile()` or when the compiled model is written. |
+| `"ep.enable_weightless_mode"` set to a value other than `"0"`, `"1"` or `"2"` | `ORT_INVALID_ARGUMENT` before the EP is created. |
 | Mode is `NONE` | No weightless checks. |
+| The EP metadata of a device doesn't include the requested mode | `ORT_EP_FAIL` before the EP is created. |
 | EP built against API 29 or later does not implement `GetWeightlessSupport` | `ORT_NOT_IMPLEMENTED`. |
-| `(supported_modes & requested_mode) == 0`, including an EP reporting `0` | `ORT_EP_FAIL`. The message lists the supported modes and any mismatch with the EP metadata. |
-| `GetWeightlessSupport()` differs from the `"weightless_support"` EP metadata of a device | Warning (see [1.4](#1-ep-reports-its-supported-modes)). |
-| EP built against an API older than 29 | No check. ORT logs an INFO message and lets the EP handle the request. |
+| `GetWeightlessSupport()` returns a value that doesn't include the requested mode, including `NONE` and unrecognized values | `ORT_EP_FAIL`. The message names the value and any mismatch with the EP metadata. |
+| `GetWeightlessSupport()` differs from the weightless EP metadata of a device | Warning (see [1.4](#1-ep-reports-its-supported-modes)). |
+| EP built against an API older than 29 | No `GetWeightlessSupport` check. ORT logs an INFO message and lets the EP handle the request. |
 | Session created from a model with `"weightless_mode"` = `"2"` without `"ep.context_source_model_path"` or a source model buffer | Warning. The EP may still find the source model through `"onnx_model_filename"` (see [4.2](#42-requirements-per-mode)). |
 
-The deprecated `"ep.enable_weightless"` = `"1"` (and `SetWeightlessEnabled(true)`, which sets it) still works. It
-does not select a mode, so ORT accepts any mode the EP supports. It is ignored if `"ep.enable_weightless_mode"`
-is set.
+The deprecated `"ep.enable_weightless"` = `"1"` (and `SetWeightlessEnabled(true)`, which sets it) still works when
+`"ep.enable_weightless_mode"` isn't set. It does not select a mode, so ORT accepts any mode the EP supports
+(any value of `GetWeightlessSupport()` other than `NONE`).
 
 ## 4. Runtime and packaging requirements
 
