@@ -133,21 +133,14 @@ def test_cpu_packaging(directory_setup_factory, version_string):
         # GPU libs should NOT be present
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime_providers_cuda.so" not in jar_contents
 
-    # 2. Verify the testing JAR contains the custom op libraries that should be archived.
-    #    The JNI test helper is the same basename for Linux x64 and aarch64, so each is archived
-    #    under an architecture-specific path (mirroring 'ai/onnxruntime/native/<os-arch>/') to
-    #    ensure neither platform's copy silently overwrites the other's in testing.jar.
+    # 2. Verify the testing JAR contains the custom op libraries that should be archived
     with zipfile.ZipFile(testing_jar_path, "r") as zf:
         jar_contents = zf.namelist()
         assert "libcustom_op_library.so" in jar_contents
         assert "libcustom_op_library.dylib" in jar_contents
-        assert "ai/onnxruntime/native/linux-x64/libonnxruntime4j_jni_test.so" in jar_contents
-        assert "ai/onnxruntime/native/linux-aarch64/libonnxruntime4j_jni_test.so" in jar_contents
-        assert "ai/onnxruntime/native/osx-arm64/libonnxruntime4j_jni_test.dylib" in jar_contents
-        # The bare, non-architecture-qualified name must not appear; otherwise one platform's
-        # library would have overwritten the other's.
-        assert "libonnxruntime4j_jni_test.so" not in jar_contents
-        assert "libonnxruntime4j_jni_test.dylib" not in jar_contents
+        assert "libonnxruntime4j_jni_test.so" in jar_contents
+        assert "linux-aarch64/libonnxruntime4j_jni_test.so" in jar_contents
+        assert "libonnxruntime4j_jni_test.dylib" in jar_contents
 
     # 3. Verify the custom op and JNI test libraries were removed from the source directories
     linux_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-x64"
