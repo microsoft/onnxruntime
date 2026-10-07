@@ -655,7 +655,13 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
 
   std::unique_ptr<RandomAccessFile> file;
   ORT_RETURN_IF_ERROR(OpenRandomAccessFile(file_path, file));
-  return file->Map(offset, length, mapped_memory);
+  RandomAccessFile::MappedMemoryPtr mapping;
+  ORT_RETURN_IF_ERROR(file->Map(offset, length, mapping));
+  const auto deleter = mapping.get_deleter();
+  MappedMemoryPtr result{mapping.get(), [deleter](void* p) { deleter(static_cast<char*>(p)); }};
+  mapping.release();
+  mapped_memory = std::move(result);
+  return Status::OK();
 }
 
 bool WindowsEnv::FolderExists(const std::wstring& path) const {
