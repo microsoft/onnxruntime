@@ -247,9 +247,7 @@ static Status FinalizeWorkspaceVerificationTestSession(
           NodesToOptimize::NodeType::kTarget, 0};
       ReplaceWithNewFixed replacement{
           kOnnxDomain, "WorkspaceVerificationTestOp", {MoveAll(target, ArgType::kOutput)}};
-      bool replacement_applied = false;
-      ORT_RETURN_IF_ERROR(replacement.Run(graph, selected_nodes, replacement_applied));
-      ORT_RETURN_IF_NOT(replacement_applied, "Workspace verification replacement was skipped.");
+      ORT_RETURN_IF_ERROR(replacement.Run(graph, selected_nodes));
     } else {
       Node& replacement_node =
           graph.AddNode("workspace_fused", "WorkspaceVerificationTestOp", "", {}, {});

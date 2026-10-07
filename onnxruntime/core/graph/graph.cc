@@ -562,12 +562,6 @@ Node::EdgeEnd::EdgeEnd(const Node& node) noexcept
     : EdgeEnd(node, INT_MAX, INT_MAX) {
 }
 
-void Node::AddControlEdgeBetweenNodes(Node& src_node, Node& dst_node) {
-  src_node.relationships_.output_edges.emplace(dst_node);
-  dst_node.relationships_.input_edges.emplace(src_node);
-  dst_node.relationships_.control_inputs.insert(src_node.Name());
-}
-
 Node::NodeConstIterator::NodeConstIterator(EdgeConstIterator p_iter) {
   m_iter = p_iter;
 }
@@ -895,68 +889,53 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
   return Status::OK();
 }
 
-static Status InvalidOrtFormatEdge(const char* reason) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, reason);
-}
-
 Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edges,
-                                    Graph& graph) {
+                                    const Graph& graph) {
   ORT_RETURN_IF(fbs_node_edges.node_index() != index_,
                 "input index: ", fbs_node_edges.node_index(), " is not the same as this node's index:", index_);
 
-  auto add_edges = [this, &graph](const flatbuffers::Vector<const onnxruntime::fbs::EdgeEnd*>* fbs_edges,
-                                  bool input_edges) -> Status {
+  auto add_edges = [this, &graph](
+                       const flatbuffers::Vector<const onnxruntime::fbs::EdgeEnd*>* fbs_edges,
+                       bool input_edges) -> Status {
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
-        if (fbs_edge == nullptr) {
-          return InvalidOrtFormatEdge("missing edge");
-        }
+        ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing.");
         const auto edge_node_index = fbs_edge->node_index();
         const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
-        if (static_cast<size_t>(edge_node_index) >= node_slot_count) {
-          return InvalidOrtFormatEdge("out-of-range node index");
-        }
-        auto* edge_node = graph.GetNode(edge_node_index);
-        if (edge_node == nullptr) {
-          return InvalidOrtFormatEdge("references missing node");
-        }
+        ORT_RETURN_IF(static_cast<size_t>(edge_node_index) >= node_slot_count,
+                      "Node::LoadEdgesFromOrtFormat, edge has out-of-range node index ",
+                      edge_node_index, ". Invalid ORT format model.");
+        const auto* edge_node = graph.GetNode(edge_node_index);
+        ORT_RETURN_IF(edge_node == nullptr,
+                      "Node::LoadEdgesFromOrtFormat, edge references missing node ",
+                      edge_node_index, ". Invalid ORT format model.");
 
-        Node& src_node = input_edges ? *edge_node : *this;
-        Node& dst_node = input_edges ? *this : *edge_node;
-        const int32_t src_arg_index = fbs_edge->src_arg_index();
-        const int32_t dst_arg_index = fbs_edge->dst_arg_index();
-        const bool is_control_edge = src_arg_index == INT_MAX && dst_arg_index == INT_MAX;
-        if ((src_arg_index == INT_MAX) != (dst_arg_index == INT_MAX)) {
-          return InvalidOrtFormatEdge("invalid control-edge slot pair");
-        }
-        if (is_control_edge) {
-          AddControlEdgeBetweenNodes(src_node, dst_node);
-          continue;
-        }
+        const int src_arg_index = fbs_edge->src_arg_index();
+        const int dst_arg_index = fbs_edge->dst_arg_index();
+        ORT_RETURN_IF(src_arg_index == INT_MAX || dst_arg_index == INT_MAX,
+                      "Node::LoadEdgesFromOrtFormat, control edges are not supported.");
 
-        if (src_arg_index < 0 ||
-            static_cast<size_t>(src_arg_index) >= src_node.OutputDefs().size()) {
-          return InvalidOrtFormatEdge("out-of-range src_arg_index");
-        }
-        const size_t dst_arg_count = dst_node.InputDefs().size() + dst_node.ImplicitInputDefs().size();
-        if (dst_arg_index < 0 || static_cast<size_t>(dst_arg_index) >= dst_arg_count) {
-          return InvalidOrtFormatEdge("out-of-range dst_arg_index");
-        }
+        const Node& src_node = input_edges ? *edge_node : *this;
+        const Node& dst_node = input_edges ? *this : *edge_node;
+        ORT_RETURN_IF(src_arg_index < 0 ||
+                          static_cast<size_t>(src_arg_index) >= src_node.OutputDefs().size(),
+                      "Node::LoadEdgesFromOrtFormat, edge has out-of-range src_arg_index.");
+        const size_t explicit_input_count = dst_node.InputDefs().size();
+        const size_t input_count = explicit_input_count + dst_node.ImplicitInputDefs().size();
+        ORT_RETURN_IF(dst_arg_index < 0 || static_cast<size_t>(dst_arg_index) >= input_count,
+                      "Node::LoadEdgesFromOrtFormat, edge has out-of-range dst_arg_index.");
 
         const NodeArg* src_arg = src_node.OutputDefs()[src_arg_index];
-        const auto explicit_dst_arg_count = dst_node.InputDefs().size();
-        const NodeArg* dst_arg = static_cast<size_t>(dst_arg_index) < explicit_dst_arg_count
+        const NodeArg* dst_arg = static_cast<size_t>(dst_arg_index) < explicit_input_count
                                      ? dst_node.InputDefs()[dst_arg_index]
-                                     : dst_node.ImplicitInputDefs()[dst_arg_index - explicit_dst_arg_count];
-        if (!src_arg->Exists() || !dst_arg->Exists()) {
-          return InvalidOrtFormatEdge("missing optional NodeArg");
-        }
-        if (src_arg != dst_arg) {
-          return InvalidOrtFormatEdge("connects mismatched NodeArgs");
-        }
+                                     : dst_node.ImplicitInputDefs()[dst_arg_index - explicit_input_count];
+        ORT_RETURN_IF(!src_arg->Exists() || !dst_arg->Exists(),
+                      "Node::LoadEdgesFromOrtFormat, edge references a missing optional NodeArg.");
+        ORT_RETURN_IF(src_arg != dst_arg,
+                      "Node::LoadEdgesFromOrtFormat, edge connects mismatched NodeArgs.");
 
-        src_node.relationships_.output_edges.emplace(dst_node, src_arg_index, dst_arg_index);
-        dst_node.relationships_.input_edges.emplace(src_node, src_arg_index, dst_arg_index);
+        auto& edge_set = input_edges ? relationships_.input_edges : relationships_.output_edges;
+        edge_set.emplace(*edge_node, src_arg_index, dst_arg_index);
       }
     }
     return Status::OK();
@@ -1745,24 +1724,10 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
 }
 
 void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
-  if (nodes_.size() <= src_node_index || nodes_.size() <= dst_node_index ||
+  if (nodes_.size() <= src_node_index || src_arg_slot < 0 || nodes_.size() <= dst_node_index || dst_arg_slot < 0 ||
       nullptr == nodes_[src_node_index] || nullptr == nodes_[dst_node_index]) {
     // Invalid node indexes specified.
     ORT_THROW("Invalid node indexes specified when removing edge.");
-  }
-
-  if (src_arg_slot == INT_MAX && dst_arg_slot == INT_MAX) {
-    auto& src_node = *nodes_[src_node_index];
-    auto& dst_node = *nodes_[dst_node_index];
-    src_node.MutableRelationships().output_edges.erase(Node::EdgeEnd(dst_node));
-    dst_node.MutableRelationships().input_edges.erase(Node::EdgeEnd(src_node));
-    dst_node.MutableRelationships().control_inputs.erase(src_node.Name());
-    UnregisterOrtFormatControlEdge(src_node_index, dst_node_index);
-    return;
-  }
-
-  if (src_arg_slot < 0 || dst_arg_slot < 0) {
-    ORT_THROW("Invalid node arg slots specified when removing edge.");
   }
 
   const NodeArg* src_arg = nullptr;
@@ -1940,7 +1905,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
           }
         }
       }
-    } else if (node.OutputDefs().empty() && !HasOrtFormatControlEdge(node.Index())) {
+    } else if (node.OutputDefs().empty()) {
       // This is a useless node.
       // It has no input/output.
       if (node.ContainsSubgraph()) {
@@ -2070,52 +2035,6 @@ struct VisitorPriorityQueue {
   void pop() { list_.pop_back(); }
 };
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-static uint64_t OrtFormatControlEdgeKey(NodeIndex src_node_index, NodeIndex dst_node_index) {
-  return (static_cast<uint64_t>(static_cast<uint32_t>(src_node_index)) << 32) |
-         static_cast<uint32_t>(dst_node_index);
-}
-
-void Graph::RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
-  if (!ort_format_control_edge_index_.insert(
-                                         OrtFormatControlEdgeKey(src_node_index, dst_node_index))
-           .second) {
-    return;
-  }
-
-  const std::pair<NodeIndex, NodeIndex> edge{src_node_index, dst_node_index};
-  ort_format_control_edges_.push_back(edge);
-  ++ort_format_control_edge_incident_counts_[src_node_index];
-  if (src_node_index != dst_node_index) {
-    ++ort_format_control_edge_incident_counts_[dst_node_index];
-  }
-}
-
-void Graph::UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
-  if (ort_format_control_edge_index_.erase(
-          OrtFormatControlEdgeKey(src_node_index, dst_node_index)) == 0) {
-    return;
-  }
-
-  const std::pair<NodeIndex, NodeIndex> edge{src_node_index, dst_node_index};
-  const auto it = std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), edge);
-  if (it != ort_format_control_edges_.end()) {
-    ort_format_control_edges_.erase(it);
-  }
-  const auto decrement_incident_count = [this](NodeIndex node_index) {
-    auto count_it = ort_format_control_edge_incident_counts_.find(node_index);
-    ORT_ENFORCE(count_it != ort_format_control_edge_incident_counts_.end());
-    if (--count_it->second == 0) {
-      ort_format_control_edge_incident_counts_.erase(count_it);
-    }
-  };
-  decrement_incident_count(src_node_index);
-  if (src_node_index != dst_node_index) {
-    decrement_incident_count(dst_node_index);
-  }
-}
-#endif
-
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
@@ -2196,10 +2115,6 @@ struct GroupNode {
 
       for (auto output_edge_it = node->OutputEdgesBegin(); output_edge_it != node->OutputEdgesEnd();
            ++output_edge_it) {
-        if (output_edge_it->IsControlEdge()) {
-          continue;
-        }
-
         const Node* output_node = &output_edge_it->GetNode();
         // Only if the output arg is used by nodes outside the group, then it is an output arg.
         if (std::find(nodes.begin(), nodes.end(), output_node) == nodes.end()) {
@@ -2395,10 +2310,6 @@ void FindBranchGraph(
     }
 
     for (auto output_it = n->OutputEdgesBegin(); output_it != n->OutputEdgesEnd(); ++output_it) {
-      if (output_it->IsControlEdge()) {
-        continue;
-      }
-
       const Node* output_node = &output_it->GetNode();
       const size_t dest_in_port = output_it->GetDstArgIndex();
       if (std::find(branch_graph.begin(), branch_graph.end(), output_node) == branch_graph.end()) {
@@ -2583,10 +2494,6 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
 
     for (auto input_edge_it = current->InputEdgesBegin(); input_edge_it != current->InputEdgesEnd();
          ++input_edge_it) {
-      if (input_edge_it->IsControlEdge()) {
-        continue;
-      }
-
       const NodeArg* input_arg = current->InputDefs()[input_edge_it->GetDstArgIndex()];
       if (!input_arg->Exists()) {
         continue;
@@ -3893,25 +3800,6 @@ Status Graph::VerifyInputAndInitializerNames() {
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-void Graph::RestoreOrtFormatControlEdges() {
-  for (const auto& [src_node_index, dst_node_index] : ort_format_control_edges_) {
-    auto* src_node = GetNode(src_node_index);
-    auto* dst_node = GetNode(dst_node_index);
-    if (src_node == nullptr || dst_node == nullptr) {
-      continue;
-    }
-
-    const auto control_edge = src_node->relationships_.output_edges.find(Node::EdgeEnd(*dst_node));
-    if (control_edge != src_node->relationships_.output_edges.end()) {
-      dst_node->relationships_.control_inputs.insert(src_node->Name());
-    } else {
-      Node::AddControlEdgeBetweenNodes(*src_node, *dst_node);
-    }
-  }
-}
-#endif
-
 Status Graph::InitInputsInitializersOutputs() {
   // clear the previous relationships, as we re-create them when resolving.
   // same applies to the implicit input defs as they are built from any subgraphs within this graph.
@@ -3992,12 +3880,6 @@ Status Graph::Resolve(const ResolveOptions& options) {
     all_subgraphs.clear();
     FindAllSubgraphs(all_subgraphs);
   }
-
-  auto restore_control_edges = [](Graph& graph) {
-    graph.RestoreOrtFormatControlEdges();
-    return Status::OK();
-  };
-  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, restore_control_edges));
 
   // topological sort of this and any subgraphs is non-recursive
   auto topo_sort_func = [](Graph& graph) { return graph.PerformTopologicalSortAndCheckIsAcyclic(); };
@@ -5144,43 +5026,6 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     return false;
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  if (HasOrtFormatControlEdge(p_index)) {
-    Node* replacement = nullptr;
-    for (const auto* output : node->OutputDefs()) {
-      for (auto& candidate : Nodes()) {
-        if (candidate.Index() != p_index &&
-            std::find(candidate.OutputDefs().begin(), candidate.OutputDefs().end(), output) !=
-                candidate.OutputDefs().end()) {
-          replacement = &candidate;
-          break;
-        }
-      }
-      if (replacement != nullptr) {
-        break;
-      }
-    }
-    if (replacement == nullptr) {
-      return false;
-    }
-
-    InlinedVector<std::pair<NodeIndex, NodeIndex>> incident_control_edges;
-    for (const auto& edge : ort_format_control_edges_) {
-      if (edge.first == p_index || edge.second == p_index) {
-        incident_control_edges.push_back(edge);
-      }
-    }
-    for (const auto& [src, dst] : incident_control_edges) {
-      RemoveEdge(src, dst, INT_MAX, INT_MAX);
-      const NodeIndex replacement_src = src == p_index ? replacement->Index() : src;
-      const NodeIndex replacement_dst = dst == p_index ? replacement->Index() : dst;
-      if (replacement_src != replacement_dst) {
-        AddControlEdge(replacement_src, replacement_dst);
-      }
-    }
-  }
-#endif
-
   // Node must be disconnected from any downstream nodes before removal
   ORT_ENFORCE(node->GetOutputEdgesCount() == 0, "Can't remove node ", node->Name(), " as it still has output edges.");
 
@@ -5264,10 +5109,11 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
     return false;
   }
 
-  Node::AddControlEdgeBetweenNodes(*nodes_[src_node_index], *nodes_[dst_node_index]);
-  RegisterOrtFormatControlEdge(src_node_index, dst_node_index);
-  SetGraphResolveNeeded();
-  SetGraphProtoSyncNeeded();
+  GSL_SUPPRESS(es.84) {  // ignoring return from insert()
+    nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index]));
+    nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index]));
+    nodes_[dst_node_index]->MutableRelationships().control_inputs.insert(nodes_[src_node_index]->Name());
+  }
 
   return true;
 }
@@ -6281,23 +6127,6 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
   }
 
   auto new_node_idx = fused_node.Index();
-  const InlinedHashSet<NodeIndex> fused_node_indices(sub_graph.nodes.begin(), sub_graph.nodes.end());
-  InlinedVector<std::pair<NodeIndex, NodeIndex>> replaced_control_edges;
-  InlinedVector<std::pair<NodeIndex, NodeIndex>> replacement_control_edges;
-  for (const auto& control_edge : ort_format_control_edges_) {
-    const bool replace_src = fused_node_indices.find(control_edge.first) != fused_node_indices.end();
-    const bool replace_dst = fused_node_indices.find(control_edge.second) != fused_node_indices.end();
-    if (!replace_src && !replace_dst) {
-      continue;
-    }
-
-    replaced_control_edges.push_back(control_edge);
-    if (replace_src != replace_dst) {
-      replacement_control_edges.emplace_back(
-          replace_src ? new_node_idx : control_edge.first,
-          replace_dst ? new_node_idx : control_edge.second);
-    }
-  }
 
   // Remove nodes that were fused
   for (auto node_index : sub_graph.nodes) {
@@ -6313,11 +6142,6 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto producer_idx = producer.Index();
       auto src_idx = input_edge.GetSrcArgIndex();
       auto dst_idx = input_edge.GetDstArgIndex();
-
-      if (input_edge.IsControlEdge()) {
-        RemoveEdge(producer_idx, node_index, src_idx, dst_idx);
-        continue;
-      }
 
       // if this input is an input of the fused node add an edge for that
       if (dst_idx < static_cast<int>(node->InputDefs().size())) {
@@ -6344,11 +6168,6 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto src_idx = output_edge.GetSrcArgIndex();
       auto dst_idx = output_edge.GetDstArgIndex();
 
-      if (output_edge.IsControlEdge()) {
-        RemoveEdge(node_index, consumer_idx, src_idx, dst_idx);
-        continue;
-      }
-
       // if this output is an output of the fused node add an edge for that
       auto it = output_indexes.find(node->OutputDefs()[src_idx]->Name());
       if (it != output_indexes.cend()) {
@@ -6359,17 +6178,6 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
     }
 
     RemoveNode(node_index);
-  }
-
-  for (const auto& control_edge : replaced_control_edges) {
-    UnregisterOrtFormatControlEdge(control_edge.first, control_edge.second);
-  }
-  for (const auto& control_edge : replacement_control_edges) {
-    auto* src_node = GetNode(control_edge.first);
-    auto* dst_node = GetNode(control_edge.second);
-    ORT_ENFORCE(src_node != nullptr && dst_node != nullptr);
-    Node::AddControlEdgeBetweenNodes(*src_node, *dst_node);
-    RegisterOrtFormatControlEdge(control_edge.first, control_edge.second);
   }
 
   NotifyNodeReplacement(gsl::make_span(sub_graph.nodes), new_node_idx);
@@ -7286,16 +7094,6 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     }
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  for (const auto& node : Nodes()) {
-    for (auto edge = node.OutputEdgesBegin(); edge != node.OutputEdgesEnd(); ++edge) {
-      if (edge->IsControlEdge()) {
-        RegisterOrtFormatControlEdge(node.Index(), edge->GetNode().Index());
-      }
-    }
-  }
-#endif
-
   // Inputs/Outputs/outer_scope_node_args
   auto add_node_args = [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_args,
                            std::vector<const NodeArg*>& node_args) -> Status {
@@ -7322,77 +7120,6 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   ComputeOverridableInitializers();
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
-
-#if defined(ORT_MINIMAL_BUILD)
-  struct NodeArgProducer {
-    std::string_view node_arg_name;
-    Node* node;
-    int output_idx;
-  };
-  std::vector<NodeArgProducer> producer_lookup;
-  for (auto& node : Nodes()) {
-    const auto& outputs = node.OutputDefs();
-    for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
-      if (outputs[output_idx]->Exists()) {
-        producer_lookup.push_back(
-            {outputs[output_idx]->Name(), &node, static_cast<int>(output_idx)});
-      }
-    }
-  }
-  std::sort(producer_lookup.begin(), producer_lookup.end(),
-            [](const NodeArgProducer& lhs, const NodeArgProducer& rhs) {
-              return lhs.node_arg_name < rhs.node_arg_name;
-            });
-  for (size_t i = 1; i < producer_lookup.size(); ++i) {
-    ORT_RETURN_IF_NOT(producer_lookup[i - 1].node_arg_name != producer_lookup[i].node_arg_name,
-                      "slot has multiple producers");
-  }
-
-  for (auto& node : Nodes()) {
-    const auto& explicit_inputs = node.InputDefs();
-    const auto& implicit_inputs = node.ImplicitInputDefs();
-    const size_t input_count = explicit_inputs.size() + implicit_inputs.size();
-    for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
-      const auto* input = input_idx < explicit_inputs.size()
-                              ? explicit_inputs[input_idx]
-                              : implicit_inputs[input_idx - explicit_inputs.size()];
-      if (input->Exists()) {
-        const auto producer = std::lower_bound(
-            producer_lookup.begin(), producer_lookup.end(), std::string_view{input->Name()},
-            [](const NodeArgProducer& candidate, std::string_view value) {
-              return candidate.node_arg_name < value;
-            });
-        if (producer != producer_lookup.end() &&
-            producer->node_arg_name == input->Name()) {
-          producer->node->relationships_.output_edges.emplace(
-              node, producer->output_idx, static_cast<int>(input_idx));
-          node.relationships_.input_edges.emplace(
-              *producer->node, producer->output_idx, static_cast<int>(input_idx));
-        }
-      }
-    }
-  }
-
-  nodes_in_topological_order_.clear();
-  std::vector<size_t> in_degree(nodes_.size());
-  for (const auto& node : Nodes()) {
-    in_degree[node.Index()] = node.GetInputEdgesCount();
-    if (in_degree[node.Index()] == 0) {
-      nodes_in_topological_order_.push_back(node.Index());
-    }
-  }
-  for (size_t i = 0; i < nodes_in_topological_order_.size(); ++i) {
-    const auto* node = GetNode(nodes_in_topological_order_[i]);
-    for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
-      auto& degree = in_degree[edge->GetNode().Index()];
-      if (--degree == 0) {
-        nodes_in_topological_order_.push_back(edge->GetNode().Index());
-      }
-    }
-  }
-  ORT_RETURN_IF_NOT(nodes_in_topological_order_.size() == static_cast<size_t>(num_of_nodes_),
-                    "This is an invalid model. Error: the graph is not acyclic.");
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // populate NodeArg lookups after loading Nodes and NodeArgs

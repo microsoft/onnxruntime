@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <tuple>
-
 #include "core/optimizer/selectors_actions/actions.h"
 
 #include "core/framework/op_kernel.h"
@@ -32,15 +30,6 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
   return safe;
 }
 
-bool HasControlEdge(const Graph& graph, gsl::span<Node* const> nodes_to_replace) {
-  for (const Node* node : nodes_to_replace) {
-    if (node != nullptr && graph.HasOrtFormatControlEdge(node->Index())) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // remove nodes if it is 'safe' to do so according to the checks in CanSafelyRemoveNode.
 InlinedVector<NodeIndex> SafelyRemoveNodes(
     Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
@@ -54,15 +43,6 @@ InlinedVector<NodeIndex> SafelyRemoveNodes(
       // TODO: It's slightly insane we don't support optionally removing the output edges as part of Graph::RemoveNode
       // but to make that change we need to validate a lot of existing code
       const NodeIndex node_index = node->Index();
-      InlinedVector<std::tuple<NodeIndex, int, int>> control_edges;
-      for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
-        if (edge->IsControlEdge()) {
-          control_edges.emplace_back(edge->GetNode().Index(), edge->GetSrcArgIndex(), edge->GetDstArgIndex());
-        }
-      }
-      for (const auto& [dst_node_index, src_arg_index, dst_arg_index] : control_edges) {
-        graph.RemoveEdge(node_index, dst_node_index, src_arg_index, dst_arg_index);
-      }
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       if (graph.RemoveNode(node_index)) {
         removed_node_indices.push_back(node_index);
@@ -73,22 +53,16 @@ InlinedVector<NodeIndex> SafelyRemoveNodes(
 }
 }  // namespace
 
-Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const {
+Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   Node* ignore_target = preserve_target_node_ ? &selected_nodes.Target() : nullptr;
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), ignore_target);
   graph.NotifyNodesRemoved(removed_node_indices);
-  action_applied = !removed_node_indices.empty();
 
   return Status::OK();
 }
 
-Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const {
-  if (HasControlEdge(graph, selected_nodes.AllNodes())) {
-    action_applied = false;
-    return Status::OK();
-  }
-
+Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   const RuntimeState runtime_state{graph, selected_nodes};
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), ValueMoves(runtime_state),
                                       /* only_update_dest_definitions */ false));
@@ -96,7 +70,6 @@ Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes,
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), &selected_nodes.Target());
   graph.NotifyNodeReplacement(removed_node_indices, selected_nodes.Target().Index());
-  action_applied = true;
   return Status::OK();
 }
 
@@ -142,12 +115,7 @@ static Status CreateReplacementNode(Graph& graph,
   return Status::OK();
 }
 
-Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const {
-  if (HasControlEdge(graph, selected_nodes.AllNodes())) {
-    action_applied = false;
-    return Status::OK();
-  }
-
+Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   const RuntimeState runtime_state{graph, selected_nodes};
   Node* replacement{};
   ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
@@ -160,7 +128,6 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes, 
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), nullptr);
   graph.NotifyNodeReplacement(removed_node_indices, replacement->Index());
-  action_applied = true;
   return Status::OK();
 }
 
@@ -168,11 +135,6 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes, 
 Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
                                   const SatRuntimeOptimizationSaveContext& /*save_context*/,
                                   SavedState& saved_state, bool& graph_modified) const {
-  if (HasControlEdge(graph, selected_nodes.AllNodes())) {
-    saved_state.save_record = false;
-    return Status::OK();
-  }
-
   // make temporary node, save its op schema, remove temporary node
   const RuntimeState runtime_state{graph, selected_nodes};
   Node* replacement{};

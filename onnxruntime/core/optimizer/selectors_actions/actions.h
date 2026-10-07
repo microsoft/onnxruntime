@@ -27,13 +27,12 @@ class Node;
 struct Action {
   virtual ~Action() = default;
 
-  virtual Status Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const = 0;
+  virtual Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const = 0;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // per-action saved state
   struct SavedState {
     std::vector<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> produced_node_op_schemas;
-    bool save_record = true;
   };
 
   // saving interface
@@ -53,17 +52,11 @@ struct Action {
 struct MultiAction : public Action {
   MultiAction(std::vector<std::unique_ptr<Action>>&& actions) : actions_{std::move(actions)} {}
 
-  Status Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const override {
+  Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override {
     for (const auto& action : actions_) {
-      bool sub_action_applied = false;
-      ORT_RETURN_IF_ERROR(action->Run(graph, selected_nodes, sub_action_applied));
-      if (!sub_action_applied) {
-        action_applied = false;
-        return Status::OK();
-      }
+      ORT_RETURN_IF_ERROR(action->Run(graph, selected_nodes));
     }
 
-    action_applied = true;
     return Status::OK();
   }
 
@@ -93,7 +86,7 @@ struct RemoveNodes : public Action {
   RemoveNodes(bool preserve_target_node = false) : preserve_target_node_{preserve_target_node} {
   }
 
-  Status Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const override;
+  Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
  private:
   bool preserve_target_node_;
@@ -104,7 +97,7 @@ struct RemoveNodes : public Action {
 struct MergeIntoTarget : public Action {
   MergeIntoTarget() = default;
 
-  Status Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const override;
+  Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
  protected:
   // contains runtime state that may be used when overriding virtual methods below
@@ -133,7 +126,7 @@ struct MergeIntoTargetFixed : public MergeIntoTarget {
 struct ReplaceWithNew : public Action {
   ReplaceWithNew() = default;
 
-  Status Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const override;
+  Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,

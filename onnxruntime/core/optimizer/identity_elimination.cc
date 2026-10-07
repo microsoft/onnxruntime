@@ -68,8 +68,7 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
   bool node_output_is_graph_output = graph.NodeProducesGraphOutput(node);
 
   // relax the condition if Identity is connecting to graph output
-  if (graph.HasOrtFormatControlEdge(node.Index()) ||
-      node.GetOutputEdgesCount() != 0 ||
+  if (node.GetOutputEdgesCount() != 0 ||
       node.OutputDefs().size() != 1 ||
       !node_output_is_graph_output) {
     return false;

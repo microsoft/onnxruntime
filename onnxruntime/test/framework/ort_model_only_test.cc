@@ -6,7 +6,6 @@
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -88,104 +87,37 @@ Status LoadOrtBuffer(const std::vector<uint8_t>& buffer, bool use_buffer_for_ini
   return session_object.Load(buffer.data(), static_cast<int>(buffer.size()));
 }
 
-Status LoadOrtModel(const std::vector<uint8_t>& buffer, std::unique_ptr<Model>& model) {
-  const auto* session = fbs::GetInferenceSession(buffer.data());
-  ORT_RETURN_IF(session == nullptr || session->model() == nullptr, "Invalid ORT test model buffer.");
-  OrtFormatLoadOptions load_options;
-  return Model::LoadFromOrtFormat(*session->model(),
-#if !defined(ORT_MINIMAL_BUILD)
-                                  nullptr,
-#endif
-                                  load_options,
-                                  DefaultLoggingManager().DefaultLogger(), model);
-}
-
-std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t dst_arg_index,
-                                                bool input_edge = true, bool mismatched_args = false,
-                                                bool include_reciprocal_edge = false,
-                                                bool control_only = false,
-                                                bool include_reverse_control_edge = false) {
+std::vector<uint8_t> BuildOrtModelWithEdge(int32_t src_arg_index, int32_t dst_arg_index,
+                                           bool input_edge = true, bool mismatched_args = false) {
   return BuildOrtModelBuffer([&](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
         fbs::CreateValueInfoDirect(builder, "input", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
-        fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
+        fbs::CreateValueInfoDirect(builder, "other", "", CreateFloatTensorTypeInfo(builder, 1))};
     std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
     std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{builder.CreateSharedString("input")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{
-        builder.CreateSharedString(mismatched_args ? "z" : control_only ? "input"
-                                                                        : "x")};
+        builder.CreateSharedString(mismatched_args ? "other" : "x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("y")};
-    std::vector<int32_t> empty_arg_counts;
-    std::vector<int32_t> source_arg_counts{1};
-    std::vector<int32_t> destination_arg_counts{1};
+    std::vector<int32_t> arg_counts{1};
     std::vector<flatbuffers::Offset<fbs::Node>> nodes{
         fbs::CreateNodeDirect(builder, "source", "", "", 1, 0, "Identity",
                               fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
-                              nullptr, &source_arg_counts, &empty_args),
+                              nullptr, &arg_counts, &empty_args),
         fbs::CreateNodeDirect(builder, "destination", "", "", 1, 1, "Identity",
                               fbs::NodeType::Primitive, nullptr, &destination_inputs, &destination_outputs,
-                              nullptr, &destination_arg_counts, &empty_args)};
+                              nullptr, &arg_counts, &empty_args)};
     std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, src_arg_index, dst_arg_index)};
     std::vector<fbs::EdgeEnd> output_edges{fbs::EdgeEnd(1, src_arg_index, dst_arg_index)};
-    if (src_arg_index == INT_MAX && dst_arg_index == INT_MAX && !control_only) {
-      input_edges.emplace_back(0, 0, 0);
-      output_edges.emplace_back(1, 0, 0);
-    }
-    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges;
-    node_edges.push_back(input_edge ? fbs::CreateNodeEdgeDirect(builder, 1, &input_edges)
-                                    : fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges));
-    if (include_reciprocal_edge) {
-      node_edges.push_back(input_edge ? fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges)
-                                      : fbs::CreateNodeEdgeDirect(builder, 1, &input_edges));
-    }
-    if (include_reverse_control_edge) {
-      std::vector<fbs::EdgeEnd> reverse_input_edges{fbs::EdgeEnd(1, INT_MAX, INT_MAX)};
-      node_edges.push_back(fbs::CreateNodeEdgeDirect(builder, 0, &reverse_input_edges));
-    }
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
+        input_edge ? fbs::CreateNodeEdgeDirect(builder, 1, &input_edges)
+                   : fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges)};
     std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("input")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
     return fbs::CreateGraphDirect(
         builder, nullptr, &node_args, &nodes, 2, &node_edges, &graph_inputs, &graph_outputs);
-  });
-}
-
-std::vector<uint8_t> BuildOrtModelWithConflictingEdgeProducers(bool include_edges = true) {
-  return BuildOrtModelBuffer([include_edges](flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
-        fbs::CreateValueInfoDirect(builder, "input_0", "", CreateFloatTensorTypeInfo(builder, 1)),
-        fbs::CreateValueInfoDirect(builder, "input_1", "", CreateFloatTensorTypeInfo(builder, 1)),
-        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
-        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
-    std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("x")};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{builder.CreateSharedString("x")};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("y")};
-    std::vector<int32_t> source_arg_counts{1};
-    std::vector<int32_t> destination_arg_counts{1};
-    auto make_source = [&](const char* name, uint32_t index) {
-      std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{
-          builder.CreateSharedString(index == 0 ? "input_0" : "input_1")};
-      return fbs::CreateNodeDirect(builder, name, "", "", 1, index, "Identity",
-                                   fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
-                                   nullptr, &source_arg_counts, &empty_args);
-    };
-    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
-        make_source("source_0", 0), make_source("source_1", 1),
-        fbs::CreateNodeDirect(builder, "destination", "", "", 1, 2, "Identity",
-                              fbs::NodeType::Primitive, nullptr, &destination_inputs, &destination_outputs,
-                              nullptr, &destination_arg_counts, &empty_args)};
-    std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, 0, 0), fbs::EdgeEnd(1, 0, 0)};
-    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
-        fbs::CreateNodeEdgeDirect(builder, 2, &input_edges)};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{
-        builder.CreateSharedString("input_0"), builder.CreateSharedString("input_1")};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
-    return fbs::CreateGraphDirect(
-        builder, nullptr, &node_args, &nodes, 3, include_edges ? &node_edges : nullptr,
-        &graph_inputs, &graph_outputs);
   });
 }
 
@@ -323,6 +255,24 @@ TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw data size mismatch"));
 }
 
+TEST(OrtModelTest, RejectsInvalidSerializedEdges) {
+  for (const bool input_edge : {false, true}) {
+    for (const auto [src_arg_index, dst_arg_index, error] : {
+             std::tuple{1, 0, "out-of-range src_arg_index"},
+             std::tuple{0, 1, "out-of-range dst_arg_index"},
+             std::tuple{INT_MAX, INT_MAX, "control edges are not supported"}}) {
+      const auto status = LoadOrtBuffer(
+          BuildOrtModelWithEdge(src_arg_index, dst_arg_index, input_edge));
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(error));
+    }
+
+    const auto status = LoadOrtBuffer(BuildOrtModelWithEdge(0, 0, input_edge, true));
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("mismatched NodeArgs"));
+  }
+}
+
 TEST(OrtModelTest, RejectsDanglingNodeEdge) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
@@ -333,51 +283,6 @@ TEST(OrtModelTest, RejectsDanglingNodeEdge) {
   const auto status = LoadOrtBuffer(buffer);
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("references missing node"));
-}
-
-TEST(OrtModelTest, ReconstructsMissingDataEdge) {
-#if defined(ORT_MINIMAL_BUILD)
-  for (const bool implicit_input : {false, true}) {
-#else
-  for (const bool implicit_input : {false}) {
-#endif
-    SCOPED_TRACE(implicit_input);
-    const auto buffer = BuildOrtModelBuffer([implicit_input](flatbuffers::FlatBufferBuilder& builder) {
-      std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
-          fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
-          fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
-          fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
-      std::vector<int32_t> input_arg_counts{1};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
-      std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{builder.CreateSharedString("x")};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("y")};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{
-          builder.CreateSharedString(implicit_input ? "x" : "y")};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("z")};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
-      if (implicit_input) {
-        implicit_inputs.push_back(builder.CreateSharedString("y"));
-      }
-      std::vector<flatbuffers::Offset<fbs::Node>> nodes{
-          fbs::CreateNodeDirect(builder, "n0", "", "", 1, 0, "Identity",
-                                fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
-                                nullptr, &input_arg_counts, &empty_args),
-          fbs::CreateNodeDirect(builder, "n1", "", "", 1, 1, "Identity",
-                                fbs::NodeType::Primitive, nullptr, &destination_inputs, &destination_outputs,
-                                nullptr, &input_arg_counts, &implicit_inputs)};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("x")};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("z")};
-      return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 2, nullptr,
-                                    &graph_inputs, &graph_outputs);
-    });
-
-    std::unique_ptr<Model> model;
-    ASSERT_STATUS_OK(LoadOrtModel(buffer, model));
-    const auto* destination = model->MainGraph().GetNode(1);
-    ASSERT_NE(destination, nullptr);
-    ASSERT_EQ(destination->GetInputEdgesCount(), 1);
-    EXPECT_EQ(destination->InputEdgesBegin()->GetDstArgIndex(), implicit_input ? 1 : 0);
-  }
 }
 
 TEST(OrtModelTest, RejectsAdversarialLargeNodeIndex) {
@@ -444,211 +349,6 @@ TEST(OrtModelTest, RejectsEdgeEndReferencingNullNodeSlot) {
   const auto status = LoadOrtBuffer(buffer);
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("references missing node"));
-}
-
-TEST(OrtModelTest, RejectsOutOfRangeEdgeSourceArgIndex) {
-  for (const bool input_edge : {true, false}) {
-    for (const int32_t src_arg_index : {-1, 1}) {
-      const auto status = LoadOrtBuffer(BuildOrtModelWithEdgeSlots(src_arg_index, 0, input_edge));
-      ASSERT_FALSE(status.IsOK());
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("out-of-range src_arg_index"));
-    }
-  }
-}
-
-TEST(OrtModelTest, RejectsOutOfRangeEdgeDestinationArgIndex) {
-  for (const bool input_edge : {true, false}) {
-    for (const int32_t dst_arg_index : {-1, 1}) {
-      const auto status = LoadOrtBuffer(BuildOrtModelWithEdgeSlots(0, dst_arg_index, input_edge));
-      ASSERT_FALSE(status.IsOK());
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("out-of-range dst_arg_index"));
-    }
-  }
-}
-
-TEST(OrtModelTest, RejectsEdgeWithMismatchedNodeArgs) {
-  for (const bool input_edge : {true, false}) {
-    const auto status = LoadOrtBuffer(BuildOrtModelWithEdgeSlots(0, 0, input_edge, true));
-    ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("connects mismatched NodeArgs"));
-  }
-}
-
-TEST(OrtModelTest, LoadsOneSidedAndReciprocalEdgeRecordsCanonically) {
-  for (const bool input_edge : {true, false}) {
-    for (const bool include_reciprocal_edge : {false, true}) {
-      std::unique_ptr<Model> model;
-      ASSERT_STATUS_OK(LoadOrtModel(
-          BuildOrtModelWithEdgeSlots(0, 0, input_edge, false, include_reciprocal_edge), model));
-      const auto* source = model->MainGraph().GetNode(0);
-      const auto* destination = model->MainGraph().GetNode(1);
-      ASSERT_NE(source, nullptr);
-      ASSERT_NE(destination, nullptr);
-      EXPECT_EQ(source->GetOutputEdgesCount(), 1);
-      EXPECT_EQ(destination->GetInputEdgesCount(), 1);
-      EXPECT_TRUE(destination->ControlInputs().empty());
-    }
-  }
-}
-
-TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
-  for (const bool control_only : {false, true}) {
-    for (const bool input_edge : {true, false}) {
-      for (const bool include_reciprocal_edge : {false, true}) {
-        std::unique_ptr<Model> model;
-        ASSERT_STATUS_OK(LoadOrtModel(
-            BuildOrtModelWithEdgeSlots(
-                INT_MAX, INT_MAX, input_edge, false, include_reciprocal_edge, control_only),
-            model));
-        auto& graph = model->MainGraph();
-#if !defined(ORT_MINIMAL_BUILD)
-        graph.SetGraphResolveNeeded();
-        ASSERT_STATUS_OK(graph.Resolve());
-#endif
-        const auto* source = graph.GetNode(0);
-        const auto* destination = graph.GetNode(1);
-        ASSERT_NE(source, nullptr);
-        ASSERT_NE(destination, nullptr);
-        const size_t expected_edge_count = control_only ? 1 : 2;
-        EXPECT_EQ(source->GetOutputEdgesCount(), expected_edge_count);
-        EXPECT_EQ(destination->GetInputEdgesCount(), expected_edge_count);
-        EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"source"});
-      }
-    }
-  }
-}
-
-TEST(OrtModelTest, LoadsManyControlEdgesWithIndexedRegistration) {
-#if defined(ORT_MINIMAL_BUILD)
-  constexpr uint32_t kControlEdgeCount = 2048;
-  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
-    std::vector<int32_t> empty_arg_counts;
-    std::vector<flatbuffers::Offset<fbs::Node>> nodes;
-    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges;
-    nodes.reserve(kControlEdgeCount + 1);
-    node_edges.reserve(kControlEdgeCount);
-    for (uint32_t index = 0; index <= kControlEdgeCount; ++index) {
-      nodes.push_back(fbs::CreateNodeDirect(
-          builder, "", "", "", 1, index, "Identity",
-          fbs::NodeType::Primitive, nullptr, &empty_args, &empty_args,
-          nullptr, &empty_arg_counts, &empty_args));
-      if (index != 0) {
-        std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, INT_MAX, INT_MAX)};
-        node_edges.push_back(fbs::CreateNodeEdgeDirect(builder, index, &input_edges));
-      }
-    }
-    return fbs::CreateGraphDirect(
-        builder, nullptr, nullptr, &nodes, kControlEdgeCount + 1, &node_edges);
-  });
-
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(LoadOrtModel(buffer, model));
-  const auto& graph = model->MainGraph();
-  ASSERT_EQ(graph.GetNode(0)->GetOutputEdgesCount(), kControlEdgeCount);
-  for (uint32_t index = 1; index <= kControlEdgeCount; ++index) {
-    EXPECT_EQ(graph.GetNode(index)->GetInputEdgesCount(), 1);
-  }
-#else
-  GTEST_SKIP() << "The synthetic empty-node fixture is valid only for minimal builds.";
-#endif
-}
-
-TEST(OrtModelTest, RejectsControlEdgeCycle) {
-  std::unique_ptr<Model> model;
-  const auto status = LoadOrtModel(
-      BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true, true), model);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("the graph is not acyclic"));
-}
-
-#if !defined(ORT_MINIMAL_BUILD)
-TEST(OrtModelTest, AddControlEdgeMarksResolvedGraphDirty) {
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(LoadOrtModel(BuildOrtModelWithEdgeSlots(0, 0, true), model));
-  auto& graph = model->MainGraph();
-  ORT_IGNORE_RETURN_VALUE(graph.ToGraphProto());
-  ASSERT_FALSE(graph.GraphResolveNeeded());
-  ASSERT_FALSE(graph.GraphProtoSyncNeeded());
-
-  ASSERT_TRUE(graph.AddControlEdge(1, 0));
-  EXPECT_TRUE(graph.GraphResolveNeeded());
-  EXPECT_TRUE(graph.GraphProtoSyncNeeded());
-  const auto status = graph.Resolve();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_EQ(status.ErrorMessage(), "This is an invalid model. Error: the graph is not acyclic.");
-}
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD)
-TEST(OrtModelTest, FusingControlEdgeEndpointPreservesDependency) {
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(LoadOrtModel(
-      BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true), model));
-  auto& graph = model->MainGraph();
-
-  IndexedSubGraph sub_graph;
-  sub_graph.nodes.push_back(0);
-  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->name = "FusedSource";
-  meta_def->domain = "test";
-  meta_def->since_version = 1;
-  sub_graph.SetMetaDef(std::move(meta_def));
-
-  auto& fused_node = graph.BeginFuseSubGraph(sub_graph, "fused_source");
-  const auto fused_node_index = fused_node.Index();
-  graph.FinalizeFuseSubGraph(sub_graph, fused_node);
-
-  auto* destination = graph.GetNode(1);
-  ASSERT_NE(destination, nullptr);
-  EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"fused_source"});
-  ASSERT_EQ(destination->GetInputEdgesCount(), 1);
-  EXPECT_TRUE(destination->InputEdgesBegin()->IsControlEdge());
-  EXPECT_EQ(destination->InputEdgesBegin()->GetNode().Index(), fused_node_index);
-
-  graph.SetGraphResolveNeeded();
-  ASSERT_STATUS_OK(graph.Resolve());
-  destination = graph.GetNode(1);
-  ASSERT_NE(destination, nullptr);
-  EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"fused_source"});
-  ASSERT_EQ(destination->GetInputEdgesCount(), 1);
-  EXPECT_EQ(destination->InputEdgesBegin()->GetNode().Index(), fused_node_index);
-}
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD)
-TEST(OrtModelTest, RemovedControlEdgeIsNotRestored) {
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(LoadOrtModel(BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true), model));
-  auto& graph = model->MainGraph();
-  graph.RemoveEdge(0, 1, INT_MAX, INT_MAX);
-  graph.SetGraphResolveNeeded();
-  ASSERT_STATUS_OK(graph.Resolve());
-
-  const auto* destination = graph.GetNode(1);
-  ASSERT_NE(destination, nullptr);
-  EXPECT_TRUE(destination->ControlInputs().empty());
-}
-#endif
-
-TEST(OrtModelTest, RejectsAsymmetricControlEdgeSlots) {
-  for (const bool input_edge : {true, false}) {
-    for (const auto& [src_arg_index, dst_arg_index] :
-         {std::pair{INT_MAX, 0}, std::pair{0, INT_MAX}}) {
-      const auto status = LoadOrtBuffer(
-          BuildOrtModelWithEdgeSlots(src_arg_index, dst_arg_index, input_edge));
-      ASSERT_FALSE(status.IsOK());
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("invalid control-edge slot pair"));
-    }
-  }
-}
-
-TEST(OrtModelTest, RejectsMultipleProducersForOneDestinationSlot) {
-  for (const bool include_edges : {false, true}) {
-    const auto status = LoadOrtBuffer(BuildOrtModelWithConflictingEdgeProducers(include_edges));
-    ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("multiple producers"));
-  }
 }
 
 TEST(OrtModelTest, RejectsGraphInputWithUnknownNodeArg) {

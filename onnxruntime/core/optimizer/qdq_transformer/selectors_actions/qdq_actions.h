@@ -26,7 +26,7 @@ struct QDQReplaceWithNew : public ReplaceWithNewFixed {
                     std::vector<NodeAndMoveInfo>&& value_moves)
       : ReplaceWithNewFixed{std::move(domain), std::move(op_type), std::move(value_moves)} {}
 
-  Status Run(Graph&, const NodesToOptimize& selected_nodes, bool& action_applied) const override;
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
@@ -70,13 +70,13 @@ struct WhereReplaceWithQLinear : ReplaceWithQLinear {
   WhereReplaceWithQLinear();
 };
 struct SplitReplaceWithQuant : public Action {
-  Status Run(Graph&, const NodesToOptimize& selected_nodes, bool& action_applied) const override;
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 };
 
 struct MatMulReplaceWithQLinear : public Action {
   MatMulReplaceWithQLinear();
 
-  Status Run(Graph&, const NodesToOptimize& selected_nodes, bool& action_applied) const override;
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
  private:
   QDQReplaceWithNew matmul_int_to_float_replacer_;
@@ -112,7 +112,7 @@ struct DQMatMulToMatMulNBitsAction : public ReplaceWithNew {
 struct GemmReplaceWithQuant : public Action {
   GemmReplaceWithQuant();
 
-  Status Run(Graph&, const NodesToOptimize& selected_nodes, bool& action_applied) const override;
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
