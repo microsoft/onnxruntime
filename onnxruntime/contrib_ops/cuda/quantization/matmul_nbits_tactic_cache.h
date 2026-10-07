@@ -13,7 +13,7 @@ namespace cuda {
 // this function performs the disk write. It is invoked at CUDA EP teardown: ~CUDAExecutionProvider for
 // the built-in EP and ~CudaEp for the CUDA plugin EP. In builds without onnxruntime_USE_FPA_INTB_GEMM
 // there is no tactic cache and this is a no-op.
-#if USE_FPA_INTB_GEMM && !defined(DISABLE_CONTRIB_OPS)
+#if USE_FPA_INTB_GEMM && !defined(DISABLE_CONTRIB_OPS) && !defined(USE_CUDA_MINIMAL)
 void FlushMatMulNBitsTacticCaches();
 #else
 inline void FlushMatMulNBitsTacticCaches() {}

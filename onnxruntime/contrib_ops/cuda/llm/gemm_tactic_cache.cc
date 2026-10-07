@@ -458,18 +458,28 @@ MatMulNBitsTacticCache::BucketMap MatMulNBitsTacticCache::GetAll(const MatMulNBi
 
 void MatMulNBitsTacticCache::Put(const MatMulNBitsKey& key, int m_bucket,
                                  const std::optional<CutlassGemmConfig>& config) {
+  if (!config.has_value()) {
+    return;  // A failed profiling attempt can be transient and must not survive a process restart.
+  }
   std::lock_guard<std::mutex> guard(mutex_);
   table_[key][m_bucket] = config;
-  dirty_ = true;
-  ++generation_;
+  dirty_rows_[key][m_bucket] = config;
 }
 
 onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
   std::ifstream in(Utf8Path(file_path_));
   if (!in.is_open()) {
-    return onnxruntime::common::Status::OK();
+    std::error_code ec;
+    const bool exists = std::filesystem::exists(Utf8Path(file_path_), ec);
+    if (!exists && !ec) {
+      return onnxruntime::common::Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to read gemm tactic cache: ", file_path_);
   }
+  return Load(in);
+}
 
+onnxruntime::common::Status MatMulNBitsTacticCache::Load(std::istream& in) {
   HardwareSignature file_sig;
   file_sig.ort_build_config.clear();
   std::string magic_ok_version;
@@ -574,10 +584,14 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
       }
     }
     auto parsed = ParseConfigColumns(values, valid_config_index);
-    if (!parsed.has_value()) {
+    if (!parsed.has_value() || !parsed->has_value() || m_bucket <= 0) {
       continue;
     }
     loaded[key][m_bucket] = *parsed;
+  }
+
+  if (in.bad() || !in.eof()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Incomplete read of gemm tactic cache: ", file_path_);
   }
 
   // Reject the file if the format, selection policy, table, or hardware/build signature does not match.
@@ -604,6 +618,13 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
                                std::to_string(tmp_counter.fetch_add(1));
   const std::filesystem::path tmp_fs_path = Utf8Path(tmp_path);
   const std::filesystem::path fs_path = Utf8Path(file_path_);
+  struct TempFileCleanup {
+    const std::filesystem::path& path;
+    ~TempFileCleanup() {
+      std::error_code ec;
+      std::filesystem::remove(path, ec);
+    }
+  } cleanup{tmp_fs_path};
   {
     std::ofstream out(tmp_fs_path, std::ios::trunc);
     if (!out.is_open()) {
@@ -649,7 +670,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
       }
     }
 
-    out.flush();
+    out.close();
     if (!out.good()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Failed while writing gemm tactic cache temp file: ", tmp_path);
@@ -658,16 +679,12 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
 
 #if defined(_WIN32)
   if (::MoveFileExW(tmp_fs_path.c_str(), fs_path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0) {
-    std::error_code ec;
-    std::filesystem::remove(tmp_fs_path, ec);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to atomically replace gemm tactic cache file: ", file_path_,
                            ", Windows error: ", ::GetLastError());
   }
 #else
   if (std::rename(tmp_fs_path.c_str(), fs_path.c_str()) != 0) {
-    std::error_code ec;
-    std::filesystem::remove(tmp_fs_path, ec);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to atomically replace gemm tactic cache file: ", file_path_);
   }
@@ -678,7 +695,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
 onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
   {
     std::lock_guard<std::mutex> guard(mutex_);
-    if (!dirty_) {
+    if (dirty_rows_.empty()) {
       return onnxruntime::common::Status::OK();
     }
   }
@@ -701,7 +718,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
   }
 
   // Reload the current on-disk file so concurrently-written rows are not dropped,
-  // then overlay the in-memory table (in-memory wins on conflict).
+  // then overlay only locally changed rows.
   MatMulNBitsTacticCache disk(file_path_, signature_);
   ORT_RETURN_IF_ERROR(disk.Load());
 
@@ -710,30 +727,41 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
     std::lock_guard<std::mutex> disk_guard(disk.mutex_);
     merged = disk.table_;
   }
-  size_t flush_generation = 0;
+  decltype(dirty_rows_) pending;
   {
     std::lock_guard<std::mutex> guard(mutex_);
-    if (!dirty_) {
+    if (dirty_rows_.empty()) {
       return onnxruntime::common::Status::OK();
     }
-    flush_generation = generation_;
-    for (const auto& [key, buckets] : table_) {
+    pending = dirty_rows_;
+    for (const auto& [key, buckets] : pending) {
       auto& dest = merged[key];
       for (const auto& [m, cfg] : buckets) {
         dest[m] = cfg;
       }
     }
+    dirty_rows_.clear();
   }
 
-  ORT_RETURN_IF_ERROR(WriteAllLocked(merged));
-
-  {
+  auto restore_pending = [&]() {
     std::lock_guard<std::mutex> guard(mutex_);
-    if (generation_ == flush_generation) {
-      dirty_ = false;
+    for (const auto& [key, buckets] : pending) {
+      for (const auto& [m, cfg] : buckets) {
+        dirty_rows_[key].emplace(m, cfg);  // Keep newer changes made while the write was in flight.
+      }
     }
+  };
+  onnxruntime::common::Status status;
+  try {
+    status = WriteAllLocked(merged);
+  } catch (...) {
+    restore_pending();
+    throw;
   }
-  return onnxruntime::common::Status::OK();
+  if (!status.IsOK()) {
+    restore_pending();
+  }
+  return status;
 }
 
 }  // namespace onnxruntime::llm::gemm_cache

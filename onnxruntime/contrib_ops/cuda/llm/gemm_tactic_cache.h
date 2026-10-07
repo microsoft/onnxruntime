@@ -24,7 +24,9 @@
 #pragma once
 
 #include <cstdint>
+#include <istream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -132,10 +134,10 @@ struct MatMulNBitsKeyHash {
 // Disk-backed tactic cache for MatMulNBits fpA_intB. Thread-safe.
 //
 // Lookup/merge semantics:
-//   * Get(key, m) -> outer nullopt means "not cached, must profile"; inner optional
-//     is the tactic (inner nullopt means "profiled, no valid tactic").
-//   * Put(key, m, config) records a bucket in memory.
-//   * Flush() atomically merges the in-memory table into the on-disk file under a
+//   * Get(key, m) -> outer nullopt means "not cached, must profile".
+//     Only successful tactics are returned; legacy negative rows are ignored.
+//   * Put(key, m, config) records a successful tactic in memory; nullopt is ignored.
+//   * Flush() atomically merges locally changed rows into the on-disk file under a
 //     file lock so concurrent sessions tuning different shapes do not lose updates.
 class MatMulNBitsTacticCache {
  public:
@@ -171,7 +173,10 @@ class MatMulNBitsTacticCache {
   // returns OK (treated as an empty/rejected cache).
   onnxruntime::common::Status Load();
 
-  // Atomically merges the in-memory table with the current on-disk file and writes
+  // Parses a complete snapshot. No rows are accepted if the stream reports a read error.
+  onnxruntime::common::Status Load(std::istream& in);
+
+  // Atomically merges locally changed rows with the current on-disk file and writes
   // it back. No-op (OK) if there is nothing to persist.
   onnxruntime::common::Status Flush();
 
@@ -184,8 +189,8 @@ class MatMulNBitsTacticCache {
 
   mutable std::mutex mutex_;
   std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> table_;
-  bool dirty_ = false;
-  size_t generation_ = 0;
+  // Only locally changed rows participate in a flush; loaded rows must not undo another writer's update.
+  std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> dirty_rows_;
 };
 
 }  // namespace onnxruntime::llm::gemm_cache

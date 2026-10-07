@@ -550,9 +550,11 @@ lazily profiled bucket is **staged** into the process-global in-memory cache
 right after it is profiled, and the cache is written to disk at CUDA EP
 teardown (`~CUDAExecutionProvider` for the built-in EP, `~CudaEp` for the CUDA
 plugin EP). Disk
-persistence therefore covers the construction-time sweep (flushed eagerly so the
-file exists while the session runs), the offline tuning tool, and the
-EP-teardown flush of lazily-discovered buckets. Lazy profiling is also skipped
+persistence covers both the construction-time sweep and lazily discovered buckets,
+batched into one flush at teardown. Release the session before inspecting the file.
+Only successful tactics are saved; temporary profiling failures are retried in a
+new process. Different cache prefixes also receive new buckets from shared-map hits.
+Lazy profiling is also skipped
 while a CUDA graph is being captured (profiling kernels/events/allocations are
 illegal during capture), so run a
 warmup inference **before** capture to tune any `M` buckets your captured graph
@@ -616,8 +618,10 @@ python -m onnxruntime.tools.fpa_intb_tune \
 It enables the fpA_intB path, the cache prefix, and the profile bucket set through
 session config entries, creates a CUDA-EP session (which profiles the bucket set during
 kernel construction), best-effort runs dummy inferences at each `M`, releases the session
-so lazily profiled buckets are flushed, then prints the cache path and a summary of tuned
-shapes.
+so all staged buckets are flushed, validates the cache signature against the active CUDA
+device and installed wheel, then prints the cache path and a summary of tuned shapes.
+CPU fallback, missing files, incompatible signatures, and caches without successful
+tactics are errors. BF16 dummy inputs use explicitly typed OrtValues.
 
 **onnxruntime-genai integration.** Two options:
 

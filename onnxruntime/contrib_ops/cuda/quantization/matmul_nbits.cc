@@ -176,21 +176,31 @@ static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> Get
 // a no-op when nothing new was staged), so calling it once per CUDA EP teardown is cheap even when
 // several sessions share the process. Safe to call from a destructor: never throws.
 void FlushMatMulNBitsTacticCaches() {
-  auto& registry = GetGlobalTacticCacheRegistry();
-  std::lock_guard<std::mutex> lock(registry.mutex);
-  for (auto& [key, cache] : registry.caches) {
-    static_cast<void>(key);
-    if (cache == nullptr) {
-      continue;
-    }
-    try {
-      auto status = cache->Flush();
-      if (!status.IsOK()) {
-        ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+  try {
+    auto& registry = GetGlobalTacticCacheRegistry();
+    std::vector<std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
+    {
+      std::lock_guard<std::mutex> lock(registry.mutex);
+      caches.reserve(registry.caches.size());
+      for (const auto& entry : registry.caches) {
+        caches.push_back(entry.second);
       }
-    } catch (...) {
-      // Swallow: cache persistence is best-effort and must not escape EP teardown.
     }
+    for (const auto& cache : caches) {
+      if (cache == nullptr) {
+        continue;
+      }
+      try {
+        auto status = cache->Flush();
+        if (!status.IsOK()) {
+          ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+        }
+      } catch (...) {
+        // Swallow: cache persistence is best-effort and must not escape EP teardown.
+      }
+    }
+  } catch (...) {
+    // Registry snapshot allocation must not escape EP teardown either.
   }
 }
 

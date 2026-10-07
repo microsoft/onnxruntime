@@ -130,9 +130,6 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
                            bool hasWeightOnlyCudaKernel) override;
 
-  void storePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
-                            bool hasWeightOnlyCudaKernel) override;
-
   void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
                             bool hasWeightOnlyCudaKernel) override;
 

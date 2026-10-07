@@ -11,10 +11,10 @@ later runs (see docs/contrib_ops/cuda/gemm_profiler_cache.md).
 How it works:
   * It creates a CUDA execution-provider session for the model with the fpA_intB path and the
     cache prefix enabled through session config entries. Kernel construction profiles the
-    configured M buckets and writes them to ``<output-prefix>.matmulnbits_fpa_intb.tsv``.
+    configured M buckets and stages their successful tactics in memory.
   * It then (best-effort) runs dummy inferences at each requested M value so that any
-    additional buckets are profiled lazily. Those are written to the same cache file when the
-    session (and its CUDA execution provider) is released.
+    additional buckets are profiled lazily. All staged tactics are written to
+    ``<output-prefix>.matmulnbits_fpa_intb.tsv`` when the session is released.
 
 The generated cache is hardware/build specific: it is only reused on the same GPU
 model + SM + CUDA runtime + ORT version.
@@ -29,18 +29,15 @@ Example:
 from __future__ import annotations
 
 import argparse
+import ctypes
 import gc
 import os
 import sys
+from urllib.parse import unquote
 
 import numpy as np
 
 import onnxruntime as ort
-
-try:
-    import ml_dtypes
-except ImportError:
-    ml_dtypes = None
 
 _CACHE_TABLE_SUFFIX = ".matmulnbits_fpa_intb.tsv"
 
@@ -80,9 +77,9 @@ def _numpy_dtype_for(ort_type: str):
         "tensor(uint8)": np.uint8,
         "tensor(bool)": np.bool_,
     }
-    if ml_dtypes is not None:
-        mapping["tensor(bfloat16)"] = ml_dtypes.bfloat16
-    return mapping.get(ort_type, np.float32)
+    if ort_type not in mapping:
+        raise ValueError(f"Unsupported dummy input type: {ort_type}")
+    return mapping[ort_type]
 
 
 def _make_dummy_inputs(session, m: int) -> dict:
@@ -100,18 +97,45 @@ def _make_dummy_inputs(session, m: int) -> dict:
             else:
                 shape.append(m if not replaced else 1)
                 replaced = True
-        if not shape:
-            shape = [1]
-        feeds[inp.name] = np.zeros(shape, dtype=_numpy_dtype_for(inp.type))
+        if inp.type == "tensor(bfloat16)":
+            # BF16 zero has the same bits as uint16 zero; NumPy extension dtypes are not accepted by run().
+            feeds[inp.name] = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(np.zeros(shape, dtype=np.uint16), 16)
+        else:
+            feeds[inp.name] = ort.OrtValue.ortvalue_from_numpy(np.zeros(shape, dtype=_numpy_dtype_for(inp.type)))
     return feeds
 
 
-def _summarize_cache(cache_path: str) -> None:
+def _current_signature(device_id: int) -> dict[str, str]:
+    # Use the CUDA driver for device identity and the wheel metadata for the toolkit it was built with.
+    from onnxruntime.capi.build_and_package_info import cuda_version  # noqa: PLC0415
+
+    driver = ctypes.WinDLL("nvcuda.dll") if sys.platform == "win32" else ctypes.CDLL("libcuda.so.1")
+
+    def check(code):
+        if code != 0:
+            raise RuntimeError(f"Cannot query the CUDA cache signature (CUDA driver error {code})")
+
+    check(driver.cuInit(0))
+    device = ctypes.c_int()
+    check(driver.cuDeviceGet(ctypes.byref(device), device_id))
+    name = ctypes.create_string_buffer(256)
+    check(driver.cuDeviceGetName(name, len(name), device))
+    major, minor = ctypes.c_int(), ctypes.c_int()
+    check(driver.cuDeviceComputeCapability(ctypes.byref(major), ctypes.byref(minor), device))
+    toolkit = cuda_version.split(".")
+    return {
+        "device_name": name.value.decode("utf-8"),
+        "sm": str(major.value * 10 + minor.value),
+        "cuda_runtime": str(int(toolkit[0]) * 1000 + int(toolkit[1]) * 10),
+        "ort_version": ort.__version__,
+    }
+
+
+def _summarize_cache(cache_path: str, signature: dict[str, str]) -> None:
     if not os.path.exists(cache_path):
-        print(f"WARNING: no cache file was produced at {cache_path}.")
-        print("  The model may have no fp16/bf16 MatMulNBits nodes on the fpA_intB path,")
-        print("  or the CUDA execution provider was not used.")
-        return
+        raise RuntimeError(
+            f"No tactic cache was produced at {cache_path}; check that the model uses fpA_intB MatMulNBits."
+        )
 
     header = {}
     columns = None
@@ -126,13 +150,15 @@ def _summarize_cache(cache_path: str) -> None:
             if line.startswith("#"):
                 parts = line[1:].strip().split("\t")
                 if len(parts) >= 2:
-                    header[parts[0]] = parts[1]
+                    header[parts[0]] = unquote(parts[1])
                 continue
             fields = line.split("\t")
             if columns is None:
                 columns = fields
                 n_key_col = {name: i for i, name in enumerate(columns)}
                 continue
+            if len(fields) != len(columns) or fields[n_key_col["valid_config"]] != "1":
+                raise RuntimeError(f"Invalid or unsuccessful tactic in {cache_path}")
             rows += 1
             # Build a key tuple from the problem-key columns for a unique-shape count.
             key_cols = [
@@ -150,7 +176,18 @@ def _summarize_cache(cache_path: str) -> None:
             key = tuple(fields[n_key_col[c]] for c in key_cols if c in n_key_col)
             unique_keys.add(key)
 
-    print(f"Cache written: {cache_path}")
+    expected = {
+        **signature,
+        "ort_cuda_gemm_tactic_cache": "v1",
+        "table": "matmulnbits_fpa_intb",
+        "tactic_selection_version": "2",
+    }
+    for key, value in expected.items():
+        if header.get(key) != value:
+            raise RuntimeError(f"Inapplicable tactic cache: {key}={header.get(key)!r}, expected {value!r}")
+    if rows == 0:
+        raise RuntimeError(f"No successful tactics in {cache_path}")
+    print(f"Cache ready: {cache_path}")
     print(f"  device_name      : {header.get('device_name', '?')}")
     print(f"  sm               : {header.get('sm', '?')}")
     print(f"  cuda_runtime     : {header.get('cuda_runtime', '?')}")
@@ -169,13 +206,18 @@ def tune(model: str, output_prefix: str, m_values: list[int], run_inference: boo
 
     print(f"Creating CUDA session for {model} (this profiles the M buckets)...")
     sess_options = _make_session_options(output_prefix, m_values)
-    session = ort.InferenceSession(model, sess_options, providers=["CUDAExecutionProvider"])
+    session = ort.InferenceSession(model, sess_options, providers=["CUDAExecutionProvider"], enable_fallback=False)
+    if "CUDAExecutionProvider" not in session.get_providers():
+        raise RuntimeError("Tuning session did not activate CUDAExecutionProvider")
+    session.disable_fallback()
+    device_id = int(session.get_provider_options().get("CUDAExecutionProvider", {}).get("device_id", "0"))
+    signature = _current_signature(device_id)
 
     if run_inference:
         for m in m_values:
             try:
                 feeds = _make_dummy_inputs(session, m)
-                session.run(None, feeds)
+                session.run_with_ort_values(None, feeds)
                 print(f"  ran dummy inference for M={m}")
             except Exception as exc:
                 print(f"  skipped dummy inference for M={m}: {exc}")
@@ -185,7 +227,7 @@ def tune(model: str, output_prefix: str, m_values: list[int], run_inference: boo
     gc.collect()
 
     cache_path = output_prefix + _CACHE_TABLE_SUFFIX
-    _summarize_cache(cache_path)
+    _summarize_cache(cache_path, signature)
     return cache_path
 
 

@@ -2,21 +2,28 @@
 // Licensed under the MIT License.
 
 // Unit tests for the fpA_intB / MatMulNBits GEMM tactic cache utilities.
-// These are pure-logic tests (no GPU required): HardwareSignature is constructed
-// manually and only the (de)serialization, TSV parsing, and file round-trip paths
-// are exercised.
+// GemmTacticCacheTest uses synthetic signatures and needs no GPU.
+// GemmTacticCacheCudaTest additionally exercises the profiler's CUDA events.
 //
 // Built into onnxruntime_providers_cuda_ut (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON); run like:
 //  ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.All
+// Plugin builds register these directly: --gtest_filter=GemmTacticCache*.*
 #if USE_FPA_INTB_GEMM
 #include <gtest/gtest.h>
 
 #include <cstdio>
+#include <barrier>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <thread>
+#include <stdexcept>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
@@ -250,8 +257,7 @@ TEST(GemmTacticCacheTest, StoreLoadRoundTrip) {
   ExpectConfigEqual(MakeSm90Config(), **c64);
 
   auto c128 = reloaded.Get(key, 128);
-  ASSERT_TRUE(c128.has_value());    // present in the cache
-  EXPECT_FALSE(c128->has_value());  // but no valid tactic
+  EXPECT_FALSE(c128.has_value());  // Temporary profiling failures are never persisted.
 
   EXPECT_FALSE(reloaded.Get(key, 999).has_value());  // never profiled
 
@@ -360,7 +366,7 @@ TEST(GemmTacticCacheTest, AppendedColumnTolerated) {
   CleanUp(file);
 }
 
-TEST(GemmTacticCacheTest, FlushMergesConcurrentRows) {
+TEST(GemmTacticCacheTest, FlushMergesSequentialRows) {
   const std::string prefix = UniqueTempPrefix("merge");
   const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
   const gc::HardwareSignature sig = MakeSignature();
@@ -515,6 +521,245 @@ TEST(GemmTacticCacheTest, FlushFailsWhenFileLockUnavailable) {
   EXPECT_FALSE(cache.Flush().IsOK());
   EXPECT_FALSE(std::filesystem::exists(file));
 
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, StaleReaderDoesNotOverwriteRetunedBucket) {
+  const auto file = UniqueTempPrefix("stale") + ".matmulnbits_fpa_intb.tsv";
+  const auto key = MakeKey();
+  gc::MatMulNBitsTacticCache first(file, MakeSignature());
+  first.Put(key, 1, MakeSm80Config());
+  ASSERT_TRUE(first.Flush().IsOK());
+  gc::MatMulNBitsTacticCache stale(file, MakeSignature());
+  ASSERT_TRUE(stale.Load().IsOK());
+  first.Put(key, 1, MakeSm90Config());
+  ASSERT_TRUE(first.Flush().IsOK());
+  stale.Put(key, 64, MakeSm80Config());
+  ASSERT_TRUE(stale.Flush().IsOK());
+  gc::MatMulNBitsTacticCache result(file, MakeSignature());
+  ASSERT_TRUE(result.Load().IsOK());
+  ASSERT_TRUE(result.Get(key, 1).has_value());
+  ExpectConfigEqual(**result.Get(key, 1), MakeSm90Config());
+  EXPECT_TRUE(result.Get(key, 64).has_value());
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, ConcurrentWritersPreserveAllBuckets) {
+  const auto file = UniqueTempPrefix("concurrent") + ".matmulnbits_fpa_intb.tsv";
+  constexpr int writers = 8;
+  std::barrier start(writers);
+  std::vector<std::thread> threads;
+  for (int i = 1; i <= writers; ++i) {
+    threads.emplace_back([&, i] {
+      gc::MatMulNBitsTacticCache cache(file, MakeSignature());
+      cache.Put(MakeKey(), i, MakeSm80Config());
+      start.arrive_and_wait();
+      EXPECT_TRUE(cache.Flush().IsOK());
+    });
+  }
+  for (auto& thread : threads) thread.join();
+  gc::MatMulNBitsTacticCache result(file, MakeSignature());
+  ASSERT_TRUE(result.Load().IsOK());
+  EXPECT_EQ(result.GetAll(MakeKey()).size(), writers);
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, ProfilingFailureIsRetriedAfterReload) {
+  const auto file = UniqueTempPrefix("retry") + ".matmulnbits_fpa_intb.tsv";
+  gc::MatMulNBitsTacticCache failed(file, MakeSignature());
+  failed.Put(MakeKey(), 1, std::nullopt);
+  ASSERT_TRUE(failed.Flush().IsOK());
+  gc::MatMulNBitsTacticCache healthy(file, MakeSignature());
+  ASSERT_TRUE(healthy.Load().IsOK());
+  ASSERT_FALSE(healthy.Get(MakeKey(), 1).has_value());
+  healthy.Put(MakeKey(), 1, MakeSm80Config());
+  ASSERT_TRUE(healthy.Flush().IsOK());
+  gc::MatMulNBitsTacticCache result(file, MakeSignature());
+  ASSERT_TRUE(result.Load().IsOK());
+  ASSERT_TRUE(result.Get(MakeKey(), 1).has_value());
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, PartialReadDoesNotAcceptRows) {
+  const auto file = UniqueTempPrefix("partial") + ".matmulnbits_fpa_intb.tsv";
+  gc::MatMulNBitsTacticCache writer(file, MakeSignature());
+  writer.Put(MakeKey(), 1, MakeSm80Config());
+  ASSERT_TRUE(writer.Flush().IsOK());
+  std::ifstream input(file);
+  std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  input.close();
+  class FailingBuffer : public std::streambuf {
+   public:
+    explicit FailingBuffer(std::string& data) { setg(data.data(), data.data(), data.data() + data.size()); }
+    int_type underflow() override { throw std::runtime_error("injected read error after a complete row"); }
+  } buffer(contents);
+  std::istream broken(&buffer);
+  gc::MatMulNBitsTacticCache reader(file, MakeSignature());
+  EXPECT_FALSE(reader.Load(broken).IsOK());
+  EXPECT_TRUE(reader.GetAll(MakeKey()).empty());
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, LegacyNegativeRowsAreIgnored) {
+  const auto file = UniqueTempPrefix("legacy_negative") + ".matmulnbits_fpa_intb.tsv";
+  gc::MatMulNBitsTacticCache writer(file, MakeSignature());
+  writer.Put(MakeKey(), 1, MakeSm80Config());
+  ASSERT_TRUE(writer.Flush().IsOK());
+  std::ifstream input(file);
+  std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  input.close();
+  auto columns_text = [](const std::optional<CutlassGemmConfig>& config) {
+    std::vector<std::string> columns;
+    gc::AppendConfigColumns(columns, config);
+    std::string text;
+    for (const auto& column : columns) text += "\t" + column;
+    return text;
+  };
+  const auto successful = columns_text(MakeSm80Config());
+  const auto position = contents.find(successful);
+  ASSERT_NE(position, std::string::npos);
+  contents.replace(position, successful.size(), columns_text(std::nullopt));
+  std::istringstream legacy(contents);
+  gc::MatMulNBitsTacticCache reader(file, MakeSignature());
+  ASSERT_TRUE(reader.Load(legacy).IsOK());
+  EXPECT_FALSE(reader.Get(MakeKey(), 1).has_value());
+  CleanUp(file);
+}
+
+#ifdef _WIN32
+TEST(GemmTacticCacheTest, UnreadableSnapshotIsNotReplaced) {
+  const auto file = UniqueTempPrefix("unreadable") + ".matmulnbits_fpa_intb.tsv";
+  gc::MatMulNBitsTacticCache cache(file, MakeSignature());
+  cache.Put(MakeKey(), 1, MakeSm80Config());
+  ASSERT_TRUE(cache.Flush().IsOK());
+  // Deny reads while still permitting replacement. Flush must fail at the read, not the rename.
+  HANDLE handle = CreateFileA(file.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  ASSERT_NE(handle, INVALID_HANDLE_VALUE);
+  cache.Put(MakeKey(), 64, MakeSm90Config());
+  EXPECT_FALSE(cache.Load().IsOK());
+  EXPECT_FALSE(cache.Flush().IsOK());
+  CloseHandle(handle);
+  gc::MatMulNBitsTacticCache reader(file, MakeSignature());
+  ASSERT_TRUE(reader.Load().IsOK());
+  EXPECT_TRUE(reader.Get(MakeKey(), 1).has_value());
+  EXPECT_FALSE(reader.Get(MakeKey(), 64).has_value());
+  EXPECT_TRUE(cache.Flush().IsOK());  // Failed writes retain their dirty rows.
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, FailedReplacementRemovesTemporaryFile) {
+  const auto file = UniqueTempPrefix("replacefail") + ".matmulnbits_fpa_intb.tsv";
+  gc::MatMulNBitsTacticCache cache(file, MakeSignature());
+  cache.Put(MakeKey(), 1, MakeSm80Config());
+  ASSERT_TRUE(cache.Flush().IsOK());
+  HANDLE handle = CreateFileA(file.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  ASSERT_NE(handle, INVALID_HANDLE_VALUE);
+  cache.Put(MakeKey(), 64, MakeSm90Config());
+  EXPECT_FALSE(cache.Flush().IsOK());
+  CloseHandle(handle);
+  const auto path = std::filesystem::path(file);
+  for (const auto& entry : std::filesystem::directory_iterator(path.parent_path())) {
+    EXPECT_NE(entry.path().filename().string().find(path.filename().string() + ".tmp."), 0u);
+  }
+  gc::MatMulNBitsTacticCache reader(file, MakeSignature());
+  ASSERT_TRUE(reader.Load().IsOK());
+  EXPECT_FALSE(reader.Get(MakeKey(), 64).has_value());
+  EXPECT_TRUE(cache.Flush().IsOK());
+  CleanUp(file);
+}
+#endif
+
+TEST(GemmTacticCacheTest, SharedExactAndRoundedHitsReachSeparatePrefixes) {
+  using namespace onnxruntime::llm::kernels::weight_only;
+  class Profiler : public GemmPluginProfiler<CutlassGemmConfig, std::shared_ptr<int>, GemmIdCore, GemmIdCoreHash> {
+   public:
+    std::shared_ptr<gc::MatMulNBitsTacticCache> cache;
+    int stages = 0;
+
+   protected:
+    void runTactic(int, int, int, const CutlassGemmConfig&, char*, const cudaStream_t&) override {}
+    size_t computeTmpSize(size_t, size_t, size_t) override { return 0; }
+    std::vector<CutlassGemmConfig> getTactics(int, int, int) const override { return {}; }
+    void stagePersistentCache(const GemmIdCore&, const MProfileMap& map, bool) override {
+      ++stages;
+      if (cache) {
+        for (const auto& [m, config] : map) cache->Put(MakeKey(), m, config);
+      }
+    }
+  };
+  const auto file_a = UniqueTempPrefix("shared_a") + ".matmulnbits_fpa_intb.tsv";
+  const auto file_b = UniqueTempPrefix("shared_b") + ".matmulnbits_fpa_intb.tsv";
+  for (bool persist_a : {false, true}) {
+    auto shared = std::make_shared<Profiler::MNKProfileMap>();
+    GemmIdCore id(3072, 4096, onnxruntime::llm::nvinfer::DataType::kHALF);
+    shared->createMProfileMap(id);
+    Profiler a, b;
+    a.setSelectionTactics(shared);
+    b.setSelectionTactics(shared);
+    if (persist_a) a.cache = std::make_shared<gc::MatMulNBitsTacticCache>(file_a, MakeSignature());
+    b.cache = std::make_shared<gc::MatMulNBitsTacticCache>(file_b, MakeSignature());
+    (*shared->getMProfileMap(id))[64] = MakeSm80Config();
+    ASSERT_TRUE(a.getBestConfigOrProfile(64, id).has_value());
+    ASSERT_TRUE(b.getBestConfigOrProfile(64, id).has_value());
+    (*shared->getMProfileMap(id))[128] = MakeSm90Config();
+    ASSERT_TRUE(a.getBestConfigOrProfile(128, id).has_value());
+    ASSERT_TRUE(b.getBestConfigOrProfile(65, id).has_value());
+    ASSERT_TRUE(b.getBestConfigOrProfile(65, id).has_value());
+    EXPECT_EQ(b.stages, 2);  // Repeated inference performs no staging work.
+    ASSERT_TRUE(b.cache->Flush().IsOK());
+    gc::MatMulNBitsTacticCache result(file_b, MakeSignature());
+    ASSERT_TRUE(result.Load().IsOK());
+    EXPECT_EQ(result.GetAll(MakeKey()).size(), 2u);
+    CleanUp(file_a);
+    CleanUp(file_b);
+  }
+}
+
+TEST(GemmTacticCacheCudaTest, TemporaryRunnerFailureDoesNotPoisonNextProfiler) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "CUDA device required for profiler events";
+  }
+  using namespace onnxruntime::llm::kernels::weight_only;
+  class Profiler : public GemmPluginProfiler<CutlassGemmConfig, std::shared_ptr<int>, GemmIdCore, GemmIdCoreHash> {
+   public:
+    std::shared_ptr<gc::MatMulNBitsTacticCache> cache;
+    bool fail = false;
+    int launches = 0;
+
+   protected:
+    void runTactic(int, int, int, const CutlassGemmConfig&, char*, const cudaStream_t&) override {
+      ++launches;
+      if (fail) throw std::runtime_error("temporary runner failure");
+    }
+    size_t computeTmpSize(size_t, size_t, size_t) override { return 1; }
+    std::vector<CutlassGemmConfig> getTactics(int, int, int) const override { return {MakeSm80Config()}; }
+    void loadPersistentCache(const GemmIdCore&, MProfileMap& map, bool) override {
+      for (const auto& entry : cache->GetAll(MakeKey())) map.insert(entry);
+    }
+    void stagePersistentCache(const GemmIdCore&, const MProfileMap& map, bool) override {
+      for (const auto& [m, config] : map) cache->Put(MakeKey(), m, config);
+    }
+  };
+  const auto file = UniqueTempPrefix("runner_failure") + ".matmulnbits_fpa_intb.tsv";
+  const auto dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+  const GemmIdCore id(3072, 4096, dtype);
+  for (bool fail : {true, false}) {
+    Profiler profiler;
+    profiler.fail = fail;
+    profiler.cache = std::make_shared<gc::MatMulNBitsTacticCache>(file, MakeSignature());
+    ASSERT_TRUE(profiler.cache->Load().IsOK());
+    profiler.setAllocator(std::make_shared<CPUAllocator>());  // Fake runner never dereferences workspace.
+    profiler.profileTactics(std::make_shared<int>(0), dtype, GemmDims(1, 1, id.n, id.k), id);
+    EXPECT_GT(profiler.launches, 0);
+    EXPECT_EQ(profiler.getBestConfig(1, id).has_value(), !fail);
+    ASSERT_TRUE(profiler.cache->Flush().IsOK());
+  }
+  gc::MatMulNBitsTacticCache result(file, MakeSignature());
+  ASSERT_TRUE(result.Load().IsOK());
+  EXPECT_TRUE(result.Get(MakeKey(), 1).has_value());
   CleanUp(file);
 }
 

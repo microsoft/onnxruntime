@@ -19,6 +19,7 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -239,6 +240,35 @@ class GemmPluginProfiler {
   virtual int getMaxProfileM() const;
 
  protected:
+  // An untimed launch checks the runner's problem-specific constraints and compiled kernel support.
+  // This is used only during construction, before a disk tactic can enter the shared profile map.
+  virtual bool validatePersistentTactic(int m, int n, int k, Config const& tactic) {
+    onnxruntime::IAllocatorUniquePtr<char> workspace{nullptr};
+    struct Stream {
+      cudaStream_t value = nullptr;
+      ~Stream() {
+        if (value != nullptr) {
+          cudaStreamSynchronize(value);
+          cudaStreamDestroy(value);
+        }
+      }
+    } stream;
+    try {
+      const size_t bytes = computeTmpSize(m, n, k);
+      workspace = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, bytes, true);
+      CUDA_CALL_THROW(cudaStreamCreate(&stream.value));
+      CUDA_CALL_THROW(cudaMemsetAsync(workspace.get(), 0, bytes, stream.value));
+      initTmpData(m, n, k, workspace.get(), bytes, stream.value);
+      runTactic(m, n, k, tactic, workspace.get(), stream.value);
+      CUDA_CALL_THROW(cudaStreamSynchronize(stream.value));
+      return true;
+    } catch (const std::exception& e) {
+      cudaGetLastError();
+      ORT_LLM_LOG_WARNING(std::string("Rejecting cached GEMM tactic: ") + e.what());
+      return false;
+    }
+  }
+
   virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
 
   virtual size_t computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
@@ -269,17 +299,23 @@ class GemmPluginProfiler {
   virtual void loadPersistentCache(GemmIdType const& /*gemmId*/, MProfileMap& /*map*/,
                                    bool /*hasWeightOnlyCudaKernel*/) {}
 
-  // Called from the construction-time sweep: stage the profiled tactics AND write them to disk
-  // immediately (so the file exists while the session is alive, e.g. for the offline tuning tool).
-  virtual void storePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
-                                    bool /*hasWeightOnlyCudaKernel*/) {}
-
   // Called after a lazily profiled bucket is inserted: stage the tactics into the in-memory cache
   // WITHOUT writing to disk, so any later flush point (e.g. CUDA EP teardown) persists them.
   virtual void stagePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 
  private:
+  void stageNewPersistentBuckets(GemmIdType const& gemmId, MProfileMap const& map) {
+    // Profile maps only grow. A shared-map addition is staged once per attached profiler,
+    // including exact and rounded hits discovered by a different session.
+    if (mStagedBucketCount.load(std::memory_order_relaxed) != map.size()) {
+      stagePersistentCache(gemmId, map, mHasWeightOnlyCudaKernel);
+      mStagedBucketCount.store(map.size(), std::memory_order_relaxed);
+    }
+  }
+
+  std::atomic<size_t> mStagedBucketCount{0};
+
   std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics,
                                                  char* workspace, cudaStream_t stream);
 
@@ -429,8 +465,8 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   }
   CUDA_CALL_THROW(cudaStreamDestroy(stream));
 
-  // Persist any newly profiled tactics to the disk cache (if configured).
-  storePersistentCache(gemmId, *mProfileMap, hasWeightOnlyCudaKernel);
+  // Stage only. EP teardown batches disk writes without holding the profile-map lock.
+  stageNewPersistentBuckets(gemmId, *mProfileMap);
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -495,6 +531,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     reader_lock lock(mMNKProfileMap->mutex);
     if (mMNKProfileMap->existsMProfileMap(gemmId)) {
       auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
+      stageNewPersistentBuckets(gemmId, *mProfileMap);
       if (mProfileMap->count(m) > 0) {
         return mProfileMap->at(m);
       }
@@ -531,6 +568,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   }
   auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
 
+  stageNewPersistentBuckets(gemmId, *mProfileMap);
   if (mProfileMap->count(m) > 0) {
     return mProfileMap->at(m);
   }
@@ -541,7 +579,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   mProfileMap->insert({target, best});
 
   // In-memory staging only; the disk write happens at CUDA EP teardown, off the inference path.
-  stagePersistentCache(gemmId, *mProfileMap, mHasWeightOnlyCudaKernel);
+  stageNewPersistentBuckets(gemmId, *mProfileMap);
   return best;
 }
 

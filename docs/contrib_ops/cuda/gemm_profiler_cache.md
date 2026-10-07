@@ -1,40 +1,29 @@
 # fpA_intB / QMoE GEMM Tactic Autotune Cache — Design & Plan
 
-## 1. Motivation
+## 1. Scope and motivation
 
-ONNX Runtime's weight-only GEMM paths (`MatMulNBits` fpA_intB and QMoE grouped GEMM) autotune
-CUTLASS/CUDA tactics at load or first inference. Today this has four problems:
+This PR implements persistent tactic caching for **MatMulNBits fpA_intB only**.
+QMoE caching and automatic model-sidecar selection are future work. The reduced
+initial M sweep and lazy profiling already exist in the base branch; persistence
+avoids repeating that work in a new process.
 
-1. **Slow first run.** `MatMulNBits` profiles a full `M = 1 … 8291` sweep at kernel construction;
-   QMoE profiles per node at first inference. Many of those sequence lengths are never used.
-2. **No cross-run persistence.** Results live only in process memory and are recomputed every session.
-3. **Redundant work across nodes.** A model with many same-shape MoE nodes re-profiles each node
-   (QMoE `MoeGemmProfiler` is per-kernel and does not dedup across nodes).
-4. **No hardware guard.** The current cache key is `(n, k, dtype)` only. There is nothing to prevent
-   reusing an RTX 4090 result on a different GPU.
+## 2. Current implementation
 
-This document specifies persistent, hardware-keyed tactic caches for both operators, an optional
-model-attached cache, and an offline tuning tool. The implementation should share cache utilities,
-signature checks, TSV parsing, and `CutlassGemmConfig` serialization, but keep **separate logical
-tables/files for MatMulNBits and QMoE** because their safe cache keys are different.
-
-## 2. Current state (as researched)
-
-| Concern | Location | Notes |
-|---|---|---|
-| Profiler template | `contrib_ops/cuda/llm/gemm_profiler.h` | `GemmPluginProfiler<Config,Runner,GemmId,Hash>`; `MNKProfileMap` = `GemmId -> (M -> optional<Config>)` |
-| Cache key | `gemm_profiler.h` `GemmIdCore` | `(n, k, dtype)` only — **no SM/device** |
-| First-run M sweep | `gemm_profiler.h::profileTactics` | weight-only: `M=1..15` step 1, then `16,32,… ×2`; cap `getMaxProfileM()==8192` |
-| Serialize hooks | `gemm_profiler.h` | `serialize`/`deserialize`/`getSerializationSize` present but **commented out** |
-| Tactic type | `cutlass_extensions/gemm_configs.h::CutlassGemmConfig` | tile configs (sm80/90/100/120), split-k, stages, schedules, cluster, `enableCudaKernel`, `sm_version`, `is_tma_warp_specialized`; has `toString()` but no parser |
-| MatMulNBits driver | `contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` | ctor reads `ORT_FPA_INTB_GEMM`, calls `InitGemmProfiler(FpAIntBPackingSmForKernel())` then `RunGemmProfile(has_fpA_intB_gemv_, 1, 8291)` at **construction**; static process-global `s_profilerManager` shares `mMNKProfileMap` and dedups `(n,k,dtype)` in-process |
-| QMoE driver | `contrib_ops/cuda/moe/moe_quantization.cc`, `llm/moe_gemm/moe_gemm_profiler.{h,cc}` | per-kernel `MoeGemmProfiler`; `MoeGemmId=(n,k,dtype,wtype,gemm_type)`; `bucketM` pow2 cap 8192; profiles lazily at first inference; `config_cache_` is per-node (no cross-node dedup) |
-| HW helpers | `llm/common/cuda_runtime_utils.h` | `getSMVersion()`, `getMultiProcessorCount()`; device `.name` reachable via `CudaKernel::GetDeviceProp().name` but unused |
-| Persistence | — | none anywhere; ORT core/contrib has **no JSON dependency** |
+| Concern | Behavior |
+|---|---|
+| In-process identity | Shape, activation dtype, packing SM, quantization bits/group size, zero points, bias, GEMV support, and GPU name |
+| Initial sweep | Small configurable M set, default `{1,2,4,...,2048}`; missing runtime buckets are profiled lazily |
+| Persistence | Opt-in MatMulNBits TSV file; no file I/O when no location is configured |
+| Reuse guard | GPU name, SM, CUDA runtime, ORT version, and tactic-selection version |
+| Loaded tactics | Candidate membership plus an untimed execution on profiler scratch checks problem-specific constraints and compiled kernel support before reuse |
+| Failed profiling | No negative results are saved; old negative rows are ignored and retried |
+| Flush boundary | Construction and lazy results are staged in memory, then batched at CUDA EP teardown for both built-in and plugin EPs |
+| Shared maps | Newly added buckets observed on exact or rounded hits are staged once per attached profiler, including different cache prefixes |
+| Concurrency | Only locally changed rows are merged into a complete disk snapshot; read errors preserve the old file and dirty rows; all failed writes clean up their temporary file |
 
 ## 3. Goals / non-goals
 
-**Goals**
+**Goals (including future work)**
 - Reduce first-time tuning by profiling a small, configurable set of M buckets.
 - Persist tuned tactics to disk and reuse across sessions.
 - Deduplicate identical shapes across nodes (single cache entry per unique problem).
@@ -70,11 +59,11 @@ MatMulNBits and QMoE should use **separate cache tables**. They can be implement
 - QMoE is a grouped-GEMM problem keyed by expert topology, activation, bias, parallelism, and GEMM
   role (`Gemm1` or `Gemm2`).
 
-Recommended physical files:
+Physical files (only the MatMulNBits table is implemented):
 
 ```
 <cache_prefix>.matmulnbits_fpa_intb.tsv
-<cache_prefix>.qmoe_gemm.tsv
+<cache_prefix>.qmoe_gemm.tsv  # planned
 ```
 
 For a user cache directory, `<cache_prefix>` is derived from the hardware/build signature. For a
@@ -114,7 +103,7 @@ n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_
 ...
 ```
 
-**QMoE file layout** (`<cache_prefix>.qmoe_gemm.tsv`):
+**QMoE file layout** (`<cache_prefix>.qmoe_gemm.tsv  # planned`):
 
 ```
 # ort_cuda_gemm_tactic_cache	v1
@@ -139,8 +128,8 @@ schema_version	n	k	activation_dtype	weight_dtype	quant_format	gemm_type	num_expe
 - Enum/config fields are stored as their integer values (mirror of `CutlassGemmConfig`).
 - Free-text fields must not contain raw tabs or newlines. Use percent-encoding for `%`, `\t`, and
   `\n` when writing and decode on read.
-- `valid_config=0` represents a profiled bucket with no valid tactic. Persisting negative results
-  avoids retrying known-failing shapes every session.
+- `valid_config=0` is understood for format compatibility but ignored on load. Only successful
+  tactics are persisted, because a profiling failure can be temporary.
 - Writes are atomic: acquire a lock, reload the current file, merge the new rows, write to a temp
   file, then `rename` and release the lock. The lock prevents lost updates from two sessions tuning
   different shapes concurrently.
@@ -194,38 +183,32 @@ collapse to one entry. For `MatMulNBits`, `n_16b` is the value used by the exist
 For QMoE, the key includes the profiler parameters that affect `GemmProfilerBackend::init` so that
 cache reuse remains conservative.
 
-## 7. Architecture
+## 7. Implemented architecture
 
-New shared module: `contrib_ops/cuda/llm/gemm_tactic_cache.{h,cc}`
-- `HardwareSignature Compute();` and TSV read/write helpers.
-- `SerializeConfig(CutlassGemmConfig)` / `ParseConfig(...)`.
-- `MatMulNBitsTacticCache` and `QMoETacticCache` wrappers backed by shared TSV utilities.
-- Load/store keyed by signature + op-specific problem key, with file locking, atomic write, and
-  in-memory merge.
+The shared module `contrib_ops/cuda/llm/gemm_tactic_cache.{h,cc}` provides hardware
+signatures, TSV encoding, config parsing, and the `MatMulNBitsTacticCache` wrapper.
+There is no QMoE wrapper yet.
 
-Persistent cache is **opt-in**. If no cache directory or explicit cache prefix is configured, ORT
-keeps today's in-process behavior and does not write to disk.
-
-Lookup order when persistence is enabled: **explicit/model sidecar prefix → user cache directory →
-profile (then write configured targets)**.
+Location precedence is session prefix, session directory, environment prefix,
+then environment directory. This selects one file, not a sequence of fallback
+files. No location means in-process caching only.
 
 ```mermaid
 flowchart TD
-  A[Profiler init] --> Z{Persistent cache configured?}
-  Z -- no --> D[Profile using in-process cache only]
-  Z -- yes --> B{Explicit/model sidecar hit?}
-  B -- yes --> H[Populate in-proc map, skip profiling]
-  B -- no --> C{User-dir cache hit?}
-  C -- yes --> H
-  C -- no --> D[Profile small M-bucket set]
-  D --> E[Merge into user-dir cache, atomic write]
-  E --> F{cache_to_model enabled?}
-  F -- yes --> G[Write model sidecar]
-  F -- no --> H
-  G --> H
+  A[Kernel construction] --> B{Persistent cache configured?}
+  B -- yes --> C[Load matching signature and validate tactics]
+  B -- no --> D[Profile missing initial buckets]
+  C --> D
+  D --> E[Stage successful tactics in memory]
+  F[Lazy profiling or new shared-map hit] --> E
+  E --> G[EP teardown: snapshot registry, release registry lock]
+  G --> H[Lock file, read complete snapshot, merge dirty rows, atomic replace]
 ```
 
-## 8. Implementation phases
+## 8. Original roadmap and future extensions
+
+This roadmap includes unimplemented QMoE and model-sidecar work. Section 2 is the
+authoritative description of shipped behavior; phases below are not an options list.
 
 ### Phase 1 — Foundation (`gemm_tactic_cache.{h,cc}`)
 Hardware signature, TSV (de)serialization, `CutlassGemmConfig` serialize/parse, problem key,
@@ -274,18 +257,17 @@ unit-testable.
 - A100 validation: 2nd session reuses cache (profiling skipped, tune time ≈ 0); outputs unchanged;
   many same-shape MoE nodes yield one entry per unique shape.
 
-## 9. Environment variables & options
+## 9. Supported environment variables & options
 
 | Name | Effect |
 |---|---|
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | Directory for persistent cache files. Unset means persistent cache disabled. |
-| `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | Explicit file prefix. Writes `<prefix>.matmulnbits_fpa_intb.tsv` and/or `<prefix>.qmoe_gemm.tsv`. |
-| `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `1` → offline/tooling may derive model sidecar prefix when a model path is known. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | Explicit file prefix. Writes `<prefix>.matmulnbits_fpa_intb.tsv`. |
 | `ORT_FPA_INTB_PROFILE_M` | Comma-separated M buckets to profile (overrides the default set for MatMulNBits/fpA_intB). |
 | `ep.cuda.gemm_tactic_cache_dir` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_DIR`. |
 | `ep.cuda.gemm_tactic_cache_prefix` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX`. |
 
-## 10. Files to add / modify
+## 10. Original roadmap file inventory (includes future work)
 
 **Add**
 - `contrib_ops/cuda/llm/gemm_tactic_cache.h` / `.cc`
@@ -302,7 +284,7 @@ Note: normal and plugin CUDA provider builds glob `contrib_ops/cuda/*.cc`, so no
 is expected for `gemm_tactic_cache.cc`. The new `.cc` still needs a `#if defined(USE_CUDA) && defined(ORT_USE_CUDA_GEMM)` (or analogous) guard
 and must avoid dependencies on non-plugin CUDA EP internals.
 
-## 11. Resolved considerations (from prior reviews)
+## 11. Roadmap decisions (not all implemented)
 
 1. **QMoE in-process dedup**: Added to Phase 2. A global MoE profiler manager is necessary to prevent duplicate profiling in the very first session before the cache is cleanly merged.
 2. **Cache miss strategy**: Added to Phase 3. Lazy profile of the exact missing bucket is the chosen strategy over nearest-neighbor fallback.
