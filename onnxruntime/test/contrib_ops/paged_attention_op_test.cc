@@ -2304,10 +2304,10 @@ TEST(PagedAttention, Cuda_CudnnPagedCudaGraphReplay) {
   // varies across Runs but is not part of the cache key.
   c.replay_past_seqlens = {
       {511},
-      {511},
-      {511},
-      {511},
-      {511},
+      {510},
+      {509},
+      {508},
+      {507},
   };
 
   testing::internal::CaptureStdout();

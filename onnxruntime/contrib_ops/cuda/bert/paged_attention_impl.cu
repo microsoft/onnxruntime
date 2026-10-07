@@ -2127,7 +2127,7 @@ Status CudnnPagedAttention(
       /*q=*/reinterpret_cast<void*>(query),
       /*k_cache=*/reinterpret_cast<void*>(data.key_cache),
       /*v_cache=*/reinterpret_cast<void*>(data.value_cache),
-      /*block_table=*/const_cast<int*>(data.block_table),
+      /*block_table=*/const_cast<int*>(data.cudnn_block_table),
       /*mask_sequence_lengths_kv=*/data.cudnn_seqlens_kv,
       parameters.batch_size,
       parameters.num_heads,

@@ -989,8 +989,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.past_seqlens = sanitized_past_seqlens;
   data.sequence_validity = sequence_validity.get();
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
-  data.block_table = use_cudnn_paged ? cudnn_block_table_buffer.get()
-                                     : sanitized_block_table.get();
+  data.block_table = sanitized_block_table.get();
+  data.cudnn_block_table =
+      use_cudnn_paged ? cudnn_block_table_buffer.get() : nullptr;
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());
   data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
