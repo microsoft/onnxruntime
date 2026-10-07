@@ -94,6 +94,61 @@ target_link_libraries(consumer PRIVATE onnxruntime::onnxruntime_common)
 
 
 class TelemetryPackageTest(unittest.TestCase):
+    def test_direct_cmake_backend_selection(self):
+        cmake = (_ROOT / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")
+        start = cmake.index("option(onnxruntime_USE_TELEMETRY ")
+        selector = cmake[start : cmake.index("# Optional 1DS ingestion token", start)]
+        cases = (
+            ("Windows", "ON", None, "OFF", "ON", "ON"),
+            ("Windows", "ON", "AUTO", "OFF", "ON", "ON"),
+            ("Linux", "ON", None, "OFF", "ON", "ON"),
+            ("Darwin", "ON", "AUTO", "OFF", "ON", "ON"),
+            ("Windows", "OFF", None, "OFF", "OFF", "OFF"),
+            ("Windows", "ON", "1ds", "OFF", "ON", "ON"),
+            ("Windows", "OFF", "WINDOWS", "OFF", "ON", "OFF"),
+            ("Windows", "OFF", None, "ON", "ON", "OFF"),
+            ("WindowsStore", "ON", "AUTO", "OFF", "OFF", "OFF"),
+            ("WindowsStore", "ON", "WINDOWS", "OFF", "ON", "OFF"),
+        )
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-backend-") as temporary:
+            script = Path(temporary) / "selector.cmake"
+            for platform_name, enabled, backend, legacy, expected_enabled, expected_1ds in cases:
+                with self.subTest(platform_name=platform_name, enabled=enabled, backend=backend, legacy=legacy):
+                    setup = (
+                        f'set(CMAKE_SYSTEM_NAME "{platform_name}")\n'
+                        f"set(WIN32 {'TRUE' if platform_name.startswith('Windows') else 'FALSE'})\n"
+                        f'set(onnxruntime_USE_TELEMETRY {enabled} CACHE BOOL "")\n'
+                        f'set(onnxruntime_USE_WINDOWS_TELEMETRY {legacy} CACHE BOOL "")\n'
+                    )
+                    if backend is not None:
+                        setup += f'set(onnxruntime_TELEMETRY_BACKEND "{backend}" CACHE STRING "")\n'
+                    script.write_text(
+                        setup
+                        + selector
+                        + f'\nif(NOT onnxruntime_USE_TELEMETRY STREQUAL "{expected_enabled}" OR\n'
+                        + f'   NOT onnxruntime_USE_1DS_TELEMETRY STREQUAL "{expected_1ds}")\n'
+                        + '  message(FATAL_ERROR "Unexpected telemetry backend")\nendif()\n',
+                        encoding="utf-8",
+                    )
+                    self._run("cmake", "-P", str(script))
+
+            for platform_name, backend, error in (
+                ("Linux", "WINDOWS", "only supported on Windows"),
+                ("Windows", "invalid", "Expected AUTO, 1DS, or WINDOWS"),
+            ):
+                with self.subTest(platform_name=platform_name, backend=backend):
+                    script.write_text(
+                        f'set(CMAKE_SYSTEM_NAME "{platform_name}")\n'
+                        f"set(WIN32 {'TRUE' if platform_name == 'Windows' else 'FALSE'})\n"
+                        f'set(onnxruntime_TELEMETRY_BACKEND "{backend}" CACHE STRING "")\n' + selector,
+                        encoding="utf-8",
+                    )
+                    result = subprocess.run(
+                        ["cmake", "-P", str(script)], capture_output=True, text=True, check=False, timeout=30
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(error, " ".join(result.stderr.split()))
+
     def test_source_sdk_selection_with_and_without_vcpkg(self):
         external = (_ROOT / "cmake" / "external" / "onnxruntime_external_deps.cmake").read_text(encoding="utf-8")
         telemetry = external[external.index("# 1DS SDK (cpp_client_telemetry)") :]

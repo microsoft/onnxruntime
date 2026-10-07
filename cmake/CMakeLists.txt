@@ -172,8 +172,7 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
-# AUTO preserves the historical direct-CMake behavior: USE_TELEMETRY=ON selects TraceLogging on
-# Windows and 1DS elsewhere. Repository build scripts pass 1DS explicitly.
+# AUTO selects 1DS on supported native platforms; TraceLogging requires an explicit Windows opt-in.
 set(onnxruntime_TELEMETRY_BACKEND "AUTO" CACHE STRING "Telemetry backend: AUTO, 1DS, or WINDOWS")
 set_property(CACHE onnxruntime_TELEMETRY_BACKEND PROPERTY STRINGS AUTO 1DS WINDOWS)
 string(TOUPPER "${onnxruntime_TELEMETRY_BACKEND}" onnxruntime_TELEMETRY_BACKEND)
@@ -199,7 +198,7 @@ endif()
 set(onnxruntime_USE_1DS_TELEMETRY OFF)
 if(onnxruntime_USE_TELEMETRY)
   if(onnxruntime_TELEMETRY_BACKEND STREQUAL "1DS" OR
-     (onnxruntime_TELEMETRY_BACKEND STREQUAL "AUTO" AND NOT WIN32))
+     onnxruntime_TELEMETRY_BACKEND STREQUAL "AUTO")
     set(onnxruntime_USE_1DS_TELEMETRY ON)
   endif()
 endif()

@@ -62,6 +62,16 @@ class BuildArgsTest(unittest.TestCase):
         self.assertTrue(args.use_telemetry)
         self.assertFalse(args.use_windows_telemetry)
 
+    def test_legacy_use_telemetry_selects_1ds_for_android_on_every_host(self):
+        for platform_name in ("windows", "linux", "macos"):
+            with (
+                self.subTest(platform_name=platform_name),
+                self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"),
+            ):
+                args = self._parse("--android", "--use_telemetry", platform_name=platform_name)
+                self.assertTrue(args.use_telemetry)
+                self.assertFalse(args.use_windows_telemetry)
+
     def test_windows_telemetry_backend_is_rejected_elsewhere(self):
         with self.assertRaises(SystemExit):
             self._parse("--use_windows_telemetry", platform_name="linux")

@@ -87,6 +87,24 @@ inline bool AppendTelemetryString(std::string& output, std::string_view value,
   return offset == value.size();
 }
 
+// Commit a complete comma-separated row or leave every summary unchanged.
+template <size_t Columns>
+bool AppendTelemetryRow(const std::array<std::string*, Columns>& summaries,
+                        const std::array<std::string_view, Columns>& values, bool first) {
+  std::array<std::string, Columns> staged;
+  for (size_t i = 0; i < Columns; ++i) {
+    staged[i] = *summaries[i];
+    if ((!first && !AppendTelemetryString(staged[i], ",")) ||
+        !AppendTelemetryString(staged[i], values[i])) {
+      return false;
+    }
+  }
+  for (size_t i = 0; i < Columns; ++i) {
+    summaries[i]->swap(staged[i]);
+  }
+  return true;
+}
+
 inline std::string BoundedTelemetryString(std::string_view value,
                                           size_t max_bytes = kMaxTelemetryStringLength) {
   std::string result;

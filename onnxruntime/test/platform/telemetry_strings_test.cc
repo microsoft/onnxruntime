@@ -118,6 +118,69 @@ TEST(TelemetryStringsTest, BoundsAggregatesAndCollectionCounts) {
   EXPECT_EQ(std::count(formatted.begin(), formatted.end(), '='), 128);
 }
 
+TEST(TelemetryStringsTest, AppendsCompleteAlignedRows) {
+  std::array<std::string, 3> summaries;
+  const std::array outputs{&summaries[0], &summaries[1], &summaries[2]};
+  EXPECT_TRUE(AppendTelemetryRow(outputs, std::array<std::string_view, 3>{"CPU", "0x0000", "CPUExecutionProvider:"},
+                                 true));
+  EXPECT_TRUE(AppendTelemetryRow(outputs, std::array<std::string_view, 3>{"GPU", "0x10DE", "CUDAExecutionProvider:1"},
+                                 false));
+  EXPECT_EQ(summaries[0], "CPU,GPU");
+  EXPECT_EQ(summaries[1], "0x0000,0x10DE");
+  EXPECT_EQ(summaries[2], "CPUExecutionProvider:,CUDAExecutionProvider:1");
+}
+
+TEST(TelemetryStringsTest, RejectsPartialRowsWithoutChangingAnySummary) {
+  const std::array<std::string_view, 3> row{"CPU", "0x0000", "CPUExecutionProvider:"};
+  for (size_t full_column = 0; full_column < row.size(); ++full_column) {
+    for (size_t size : {kMaxTelemetryStringLength, kMaxTelemetryStringLength - 1,
+                        kMaxTelemetryStringLength - row[full_column].size()}) {
+      SCOPED_TRACE(full_column);
+      SCOPED_TRACE(size);
+      std::array<std::string, 3> summaries{"type", "vendor", "version"};
+      summaries[full_column].assign(size, 'x');
+      const auto before = summaries;
+      EXPECT_FALSE(AppendTelemetryRow(std::array{&summaries[0], &summaries[1], &summaries[2]}, row, false));
+      EXPECT_EQ(summaries, before);
+    }
+  }
+}
+
+TEST(TelemetryStringsTest, RejectsOversizedFirstRowsAndIncompleteUtf8Rows) {
+  for (size_t column = 0; column < 3; ++column) {
+    SCOPED_TRACE(column);
+    std::array<std::string, 3> summaries;
+    std::array<std::string, 3> row{"CPU", "0x0000", "CPUExecutionProvider:"};
+    row[column].assign(kMaxTelemetryStringLength + 1, 'x');
+    const std::array<std::string_view, 3> values{row[0], row[1], row[2]};
+    EXPECT_FALSE(AppendTelemetryRow(std::array{&summaries[0], &summaries[1], &summaries[2]}, values, true));
+    EXPECT_EQ(summaries, (std::array<std::string, 3>{}));
+
+    summaries[column].assign(kMaxTelemetryStringLength - 2, 'x');
+    row[column] = "\xe2\x82\xac";
+    const auto before = summaries;
+    EXPECT_FALSE(AppendTelemetryRow(std::array{&summaries[0], &summaries[1], &summaries[2]},
+                                    std::array<std::string_view, 3>{row[0], row[1], row[2]}, false));
+    EXPECT_EQ(summaries, before);
+  }
+}
+
+TEST(TelemetryStringsTest, AcceptsExactBudgetRowsAndNormalizesMalformedUtf8) {
+  std::array<std::string, 3> summaries;
+  const std::array outputs{&summaries[0], &summaries[1], &summaries[2]};
+  EXPECT_TRUE(AppendTelemetryRow(outputs, std::array<std::string_view, 3>{"", "\x80", "version"}, true));
+  EXPECT_EQ(summaries, (std::array<std::string, 3>{"", "?", "version"}));
+  const std::array<std::string, 3> row{
+      std::string(kMaxTelemetryStringLength - 1, 't'),
+      std::string(kMaxTelemetryStringLength - 2, 'v'),
+      std::string(kMaxTelemetryStringLength - 8, 'r')};
+  EXPECT_TRUE(AppendTelemetryRow(outputs, std::array<std::string_view, 3>{row[0], row[1], row[2]}, false));
+  for (const auto& summary : summaries) {
+    EXPECT_EQ(summary.size(), kMaxTelemetryStringLength);
+    EXPECT_EQ(std::count(summary.begin(), summary.end(), ','), 1);
+  }
+}
+
 TEST(TelemetryStringsTest, RetainsPointersAcrossAdditionalFields) {
   TelemetryStrings strings;
   const char* first = strings.Utf8("first");

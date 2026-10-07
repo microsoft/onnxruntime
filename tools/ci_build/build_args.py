@@ -1045,7 +1045,7 @@ def parse_arguments() -> argparse.Namespace:
     if args.use_telemetry_legacy:
         warnings.warn(
             "--use_telemetry is deprecated because telemetry is enabled by default. "
-            "On Windows it retains its historical TraceLogging behavior; use "
+            "For native Windows targets it retains its historical TraceLogging behavior; use "
             "--use_windows_telemetry to request that backend explicitly.",
             FutureWarning,
             stacklevel=2,
@@ -1053,7 +1053,7 @@ def parse_arguments() -> argparse.Namespace:
         if not target_supports_telemetry(args):
             parser.error("--use_telemetry requires a telemetry-capable target")
         args.use_telemetry = True
-        if is_windows():
+        if is_windows() and not args.android:
             args.use_windows_telemetry = True
 
     if not target_supports_telemetry(args):

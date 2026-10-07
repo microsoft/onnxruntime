@@ -4703,22 +4703,20 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   // by position against the existing executionProviderIds field.
   bool first = true;
   for (const auto& entry : telemetry_.ep_device_info_) {
-    if (!first) {
-      if (!telemetry_detail::AppendTelemetryString(telemetry_.ep_device_types_summary_, ",") ||
-          !telemetry_detail::AppendTelemetryString(telemetry_.ep_device_vendor_ids_summary_, ",") ||
-          !telemetry_detail::AppendTelemetryString(telemetry_.ep_versions_summary_, ",")) break;
-    }
-    first = false;
-    if (!telemetry_detail::AppendTelemetryString(telemetry_.ep_device_types_summary_, entry.hardware_device_type)) break;
     // Format vendor IDs as hex for readability (PCI IDs are conventionally hex).
     std::ostringstream vendor_id;
     vendor_id << "0x" << std::hex << std::uppercase << std::setw(4)
               << std::setfill('0') << entry.vendor_id
               << std::dec << std::nouppercase << std::setfill(' ');
-    if (!telemetry_detail::AppendTelemetryString(telemetry_.ep_device_vendor_ids_summary_, vendor_id.str()) ||
-        !telemetry_detail::AppendTelemetryString(telemetry_.ep_versions_summary_, entry.ep_type) ||
-        !telemetry_detail::AppendTelemetryString(telemetry_.ep_versions_summary_, ":") ||
-        !telemetry_detail::AppendTelemetryString(telemetry_.ep_versions_summary_, entry.ep_version)) break;
+    if (!telemetry_detail::AppendTelemetryRow(
+            std::array{&telemetry_.ep_device_types_summary_, &telemetry_.ep_device_vendor_ids_summary_,
+                       &telemetry_.ep_versions_summary_},
+            std::array<std::string_view, 3>{entry.hardware_device_type, vendor_id.str(),
+                                            entry.ep_type + ":" + entry.ep_version},
+            first)) {
+      break;
+    }
+    first = false;
   }
 }
 
