@@ -227,6 +227,41 @@ TEST(PagedAttentionHelperTest, SanitizeBlockTableRejectsUnsupportedElementCount)
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the CUDA kernel indexing limit"));
 }
 
+TEST(PagedAttentionHelperTest, LiveBlockTableIgnoresTrailingUnmappedCapacity) {
+  const std::vector<int32_t> block_table{0, -1};
+  int32_t* block_table_device = nullptr;
+  int32_t* cumulative_device = nullptr;
+  int32_t* flag_device = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&block_table_device, block_table.size() * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&cumulative_device, 2 * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&flag_device, sizeof(int32_t)));
+  auto cleanup = gsl::finally([&]() {
+    cudaFree(block_table_device);
+    cudaFree(cumulative_device);
+    cudaFree(flag_device);
+  });
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(
+                             block_table_device, block_table.data(),
+                             block_table.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+
+  const auto check_flag = [&](int sequence_length) {
+    const int32_t cumulative[] = {0, sequence_length};
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(
+                               cumulative_device, cumulative, sizeof(cumulative),
+                               cudaMemcpyHostToDevice));
+    const auto status = onnxruntime::contrib::cuda::LaunchCheckLiveBlockTable(
+        block_table_device, cumulative_device, 1, 2, 16, flag_device, nullptr);
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    int32_t flag = -1;
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(
+                               &flag, flag_device, sizeof(int32_t), cudaMemcpyDeviceToHost));
+    return flag;
+  };
+
+  EXPECT_EQ(check_flag(16), 0);
+  EXPECT_EQ(check_flag(17), 1);
+}
+
 TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsCanonicalizesUnsafeInputs) {
   const std::vector<int32_t> cumulative_seqlens_q{5, -2, 1};
   const std::vector<int32_t> past_seqlens{-4, 100};
@@ -236,7 +271,7 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsCanonicalizesUnsafeInputs)
   int32_t* output_device = nullptr;
   void* workspace_device = nullptr;
   ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, 5 * sizeof(int32_t)));
-  ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, 8 * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, 10 * sizeof(int32_t)));
   size_t workspace_bytes = 0;
   const auto workspace_status = onnxruntime::contrib::cuda::GetSanitizeSequenceLengthsWorkspaceSize(
       batch_size, workspace_bytes, nullptr);
@@ -254,15 +289,15 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsCanonicalizesUnsafeInputs)
             cudaMemcpy(input_device + 3, past_seqlens.data(), 2 * sizeof(int32_t), cudaMemcpyHostToDevice));
 
   const auto status = onnxruntime::contrib::cuda::LaunchSanitizeSequenceLengths(
-      output_device, output_device + 3, output_device + 5,
+      output_device, output_device + 3, output_device + 5, output_device + 7,
       input_device, input_device + 3, workspace_device, workspace_bytes,
       batch_size, 2, 16, 3, nullptr);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  std::vector<int32_t> actual(8);
+  std::vector<int32_t> actual(10);
   ASSERT_EQ(cudaSuccess,
             cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
-  EXPECT_EQ(actual, (std::vector<int32_t>{0, 0, 3, -1, -1, 0, 0, 0}));
+  EXPECT_EQ(actual, (std::vector<int32_t>{0, 0, 3, 0, 0, 0, 0, 0, 0, 0}));
 }
 
 TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsPreservesPastWithLeadingEvictedBlock) {
@@ -274,7 +309,7 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsPreservesPastWithLeadingEv
   int32_t* output_device = nullptr;
   void* workspace_device = nullptr;
   ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, 3 * sizeof(int32_t)));
-  ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, 5 * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, 6 * sizeof(int32_t)));
   size_t workspace_bytes = 0;
   const auto workspace_status = onnxruntime::contrib::cuda::GetSanitizeSequenceLengthsWorkspaceSize(
       batch_size, workspace_bytes, nullptr);
@@ -292,15 +327,15 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsPreservesPastWithLeadingEv
             cudaMemcpy(input_device + 2, past_seqlens.data(), sizeof(int32_t), cudaMemcpyHostToDevice));
 
   const auto status = onnxruntime::contrib::cuda::LaunchSanitizeSequenceLengths(
-      output_device, output_device + 2, output_device + 3,
+      output_device, output_device + 2, output_device + 3, output_device + 4,
       input_device, input_device + 2, workspace_device, workspace_bytes,
       batch_size, 2, 16, 1, nullptr);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  std::vector<int32_t> actual(5);
+  std::vector<int32_t> actual(6);
   ASSERT_EQ(cudaSuccess,
             cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
-  EXPECT_EQ(actual, (std::vector<int32_t>{0, 1, 31, 0, 32}));
+  EXPECT_EQ(actual, (std::vector<int32_t>{0, 1, 31, 1, 0, 32}));
 }
 
 TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsSupportsBatchAboveFormerBlockScanLimit) {
@@ -313,7 +348,8 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsSupportsBatchAboveFormerBl
   int32_t* output_device = nullptr;
   void* workspace_device = nullptr;
   const size_t input_count = cumulative_seqlens_q.size() + past_seqlens.size();
-  const size_t output_count = cumulative_seqlens_q.size() * 2 + past_seqlens.size();
+  const size_t output_count =
+      cumulative_seqlens_q.size() * 2 + past_seqlens.size() * 2;
   ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, input_count * sizeof(int32_t)));
   ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, output_count * sizeof(int32_t)));
   size_t workspace_bytes = 0;
@@ -338,6 +374,7 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsSupportsBatchAboveFormerBl
       output_device,
       output_device + cumulative_seqlens_q.size(),
       output_device + cumulative_seqlens_q.size() + past_seqlens.size(),
+      output_device + cumulative_seqlens_q.size() + past_seqlens.size() * 2,
       input_device,
       input_device + cumulative_seqlens_q.size(),
       workspace_device, workspace_bytes,
@@ -351,8 +388,12 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsSupportsBatchAboveFormerBl
   EXPECT_TRUE(std::all_of(actual.begin() + cumulative_seqlens_q.size(),
                           actual.begin() + cumulative_seqlens_q.size() + past_seqlens.size(),
                           [](int32_t value) { return value == 0; }));
+  EXPECT_TRUE(std::all_of(
+      actual.begin() + cumulative_seqlens_q.size() + past_seqlens.size(),
+      actual.begin() + cumulative_seqlens_q.size() + past_seqlens.size() * 2,
+      [](int32_t value) { return value == 1; }));
   EXPECT_TRUE(std::equal(cumulative_seqlens_q.begin(), cumulative_seqlens_q.end(),
-                         actual.begin() + cumulative_seqlens_q.size() + past_seqlens.size()));
+                         actual.begin() + cumulative_seqlens_q.size() + past_seqlens.size() * 2));
 }
 
 }  // namespace test

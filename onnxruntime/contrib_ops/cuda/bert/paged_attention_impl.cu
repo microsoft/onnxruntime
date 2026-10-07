@@ -34,7 +34,7 @@ __global__ void SanitizeBlockTableKernel(const int32_t* block_table, int32_t* sa
   if (index < element_count) {
     const int32_t block_id = block_table[index];
     sanitized_block_table[index] = block_id >= -1 && block_id < num_blocks ? block_id : -1;
-    if (sanitized_block_table[index] < 0) {
+    if (has_unmapped_page != nullptr && sanitized_block_table[index] < 0) {
       atomicExch(has_unmapped_page, 1);
     }
   }
@@ -52,10 +52,46 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
                            "block_table element count exceeds the CUDA kernel indexing limit.");
   }
   constexpr int kThreadsPerBlock = 256;
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(has_unmapped_page, 0, sizeof(int32_t), stream));
+  if (has_unmapped_page != nullptr) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(has_unmapped_page, 0, sizeof(int32_t), stream));
+  }
   const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
   SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
       block_table, sanitized_block_table, element_count, num_blocks, has_unmapped_page);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+__global__ void CheckLiveBlockTableKernel(
+    const int32_t* block_table, const int32_t* cumulative_seqlens_kv,
+    int batch_size, int max_num_blocks_per_seq, int block_size,
+    int32_t* has_unmapped_live_page) {
+  const int batch = blockIdx.x * blockDim.x + threadIdx.x;
+  if (batch >= batch_size) {
+    return;
+  }
+
+  const int sequence_length =
+      cumulative_seqlens_kv[batch + 1] - cumulative_seqlens_kv[batch];
+  const int live_blocks = (sequence_length + block_size - 1) / block_size;
+  for (int block = 0; block < live_blocks; ++block) {
+    if (block_table[batch * max_num_blocks_per_seq + block] < 0) {
+      atomicExch(has_unmapped_live_page, 1);
+      return;
+    }
+  }
+}
+
+Status LaunchCheckLiveBlockTable(
+    const int32_t* block_table, const int32_t* cumulative_seqlens_kv,
+    int batch_size, int max_num_blocks_per_seq, int block_size,
+    int32_t* has_unmapped_live_page, cudaStream_t stream) {
+  CUDA_RETURN_IF_ERROR(
+      cudaMemsetAsync(has_unmapped_live_page, 0, sizeof(int32_t), stream));
+  constexpr int kThreadsPerBlock = 256;
+  const int blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  CheckLiveBlockTableKernel<<<blocks, kThreadsPerBlock, 0, stream>>>(
+      block_table, cumulative_seqlens_kv, batch_size, max_num_blocks_per_seq, block_size,
+      has_unmapped_live_page);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -402,6 +438,7 @@ __global__ void ClampCumulativeSequenceLengths(int32_t* sanitized_cumulative_seq
 }
 
 __global__ void SanitizePastSequenceLengths(int32_t* sanitized_past_seqlens,
+                                            int32_t* sequence_validity,
                                             int32_t* cumulative_seqlens_kv,
                                             const int32_t* sanitized_cumulative_seqlens_q,
                                             const int32_t* past_seqlens,
@@ -417,12 +454,13 @@ __global__ void SanitizePastSequenceLengths(int32_t* sanitized_past_seqlens,
     const int64_t max_past_length = available_past_capacity > 0 ? available_past_capacity : 0;
     const int64_t input_past_length = past_seqlens[b];
     if (input_past_length < 0 || input_past_length > max_past_length) {
-      // Preserve an invalid sentinel so ReshapeAndCache suppresses writes for this sequence.
-      sanitized_past_seqlens[b] = -1;
+      sanitized_past_seqlens[b] = 0;
+      sequence_validity[b] = 0;
       cumulative_seqlens_kv[b + 1] = 0;
       if (b == 0) {
         cumulative_seqlens_kv[0] = 0;
       }
+      sequence_validity[b] = 1;
       return;
     }
     const int64_t bounded_past_length =
@@ -461,6 +499,7 @@ Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
 
 Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
                                      int32_t* sanitized_past_seqlens,
+                                     int32_t* sequence_validity,
                                      int32_t* cumulative_seqlens_kv,
                                      const int32_t* cumulative_seqlens_q,
                                      const int32_t* past_seqlens,
@@ -488,7 +527,7 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
 
   const int batch_blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
   SanitizePastSequenceLengths<<<batch_blocks, kThreadsPerBlock, 0, stream>>>(
-      sanitized_past_seqlens, cumulative_seqlens_kv, sanitized_cumulative_seqlens_q,
+      sanitized_past_seqlens, sequence_validity, cumulative_seqlens_kv, sanitized_cumulative_seqlens_q,
       past_seqlens, batch_size, max_num_blocks_per_seq, block_size);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
@@ -531,31 +570,38 @@ Status LaunchGetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
 // past_seqlens[b] + (token_id - cumulative_seqlens_q[b]) of its own sequence. The binary search is
 // guarded against token_id >= cumulative_seqlens_q[batch_size], which previously walked off the end
 // of past_seqlens / block_table.
+__device__ __forceinline__ int FindTokenBatch(
+    int token_id, const int* cumulative_seqlens_q, int batch_size) {
+  if (token_id < 0 || token_id >= cumulative_seqlens_q[batch_size]) {
+    return -1;
+  }
+  int left = 0;
+  int right = batch_size - 1;
+  while (left < right) {
+    const int mid = left + (right - left) / 2;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      right = mid;
+    } else {
+      left = mid + 1;
+    }
+  }
+  return left;
+}
+
 struct DerivedSlotResolver {
   const int* __restrict__ block_table;
   const int* __restrict__ past_seqlens;
   const int* __restrict__ cumulative_seqlens_q;
+  const int* __restrict__ sequence_validity;
   int batch_size;
   int max_num_blocks_per_seq;
   int block_size;
 
   __device__ __forceinline__ int operator()(int token_id) const {
-    if (token_id < 0 || token_id >= cumulative_seqlens_q[batch_size]) {
+    const int batch_id = FindTokenBatch(token_id, cumulative_seqlens_q, batch_size);
+    if (batch_id < 0 || sequence_validity[batch_id] == 0) {
       return -1;
     }
-    // cumulative_seqlens_q is a non-decreasing prefix sum, so binary search finds the owning
-    // sequence in log2(batch_size) steps instead of the previous O(batch_size) scan.
-    int left = 0;
-    int right = batch_size - 1;
-    while (left < right) {
-      const int mid = left + (right - left) / 2;
-      if (token_id < cumulative_seqlens_q[mid + 1]) {
-        right = mid;
-      } else {
-        left = mid + 1;
-      }
-    }
-    const int batch_id = left;
     const int position = past_seqlens[batch_id] + (token_id - cumulative_seqlens_q[batch_id]);
     const int block_idx_in_seq = position / block_size;
     if (block_idx_in_seq < 0 || block_idx_in_seq >= max_num_blocks_per_seq) {
@@ -574,8 +620,17 @@ struct DerivedSlotResolver {
 // kernel, owns block placement. It also removes the per-thread binary search entirely.
 struct ExplicitSlotResolver {
   const int* __restrict__ slot_mapping;
+  const int* __restrict__ cumulative_seqlens_q = nullptr;
+  const int* __restrict__ sequence_validity = nullptr;
+  int batch_size = 0;
 
   __device__ __forceinline__ int operator()(int token_id) const {
+    if (sequence_validity != nullptr) {
+      const int batch_id = FindTokenBatch(token_id, cumulative_seqlens_q, batch_size);
+      if (batch_id < 0 || sequence_validity[batch_id] == 0) {
+        return -1;
+      }
+    }
     return slot_mapping[token_id];
   }
 };
@@ -691,20 +746,23 @@ template <typename T, typename TCACHE>
 Status LaunchReshapeAndCache(const T* key, const T* value, TCACHE* key_cache, TCACHE* value_cache,
                              const float* k_scale, const float* v_scale, const bool k_per_channel,
                              const bool v_per_channel, const int* block_table,
-                             const int* past_seqlens, const int* cumulative_seqlens_q, const int* slot_mapping,
+                             const int* past_seqlens, const int* cumulative_seqlens_q,
+                             const int* sequence_validity, const int* slot_mapping,
                              const int batch_size, const int max_num_blocks_per_seq, const int token_count,
                              const int kv_hidden_size, const int block_size, const int num_blocks,
                              const int key_stride, const int value_stride, cudaStream_t stream,
                              const int max_threads_per_block) {
   const int64_t num_slots = static_cast<int64_t>(num_blocks) * block_size;
   if (slot_mapping != nullptr) {
-    ExplicitSlotResolver resolver{slot_mapping};
+    ExplicitSlotResolver resolver{
+        slot_mapping, cumulative_seqlens_q, sequence_validity, batch_size};
     return LaunchReshapeAndCacheImpl<T, TCACHE, ExplicitSlotResolver>(
         key, value, key_cache, value_cache, k_scale, v_scale, k_per_channel, v_per_channel, resolver,
         token_count, kv_hidden_size, key_stride, value_stride, num_slots, stream, max_threads_per_block);
   }
-  DerivedSlotResolver resolver{block_table, past_seqlens, cumulative_seqlens_q, batch_size,
-                               max_num_blocks_per_seq, block_size};
+  DerivedSlotResolver resolver{
+      block_table, past_seqlens, cumulative_seqlens_q, sequence_validity,
+      batch_size, max_num_blocks_per_seq, block_size};
   return LaunchReshapeAndCacheImpl<T, TCACHE, DerivedSlotResolver>(
       key, value, key_cache, value_cache, k_scale, v_scale, k_per_channel, v_per_channel, resolver,
       token_count, kv_hidden_size, key_stride, value_stride, num_slots, stream, max_threads_per_block);
@@ -1589,17 +1647,24 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
   if constexpr (std::is_same_v<TCACHE, uint8_t>) {
     if (data.slot_mapping != nullptr) {
-      ORT_RETURN_IF_ERROR(LaunchCacheHeads(key, value, data, parameters, ExplicitSlotResolver{data.slot_mapping},
-                                           key_stride, value_stride, stream));
+      ORT_RETURN_IF_ERROR(LaunchCacheHeads(
+          key, value, data, parameters,
+          ExplicitSlotResolver{
+              data.slot_mapping, cumulative_seqlens_q,
+              data.sequence_validity, batch_size},
+          key_stride, value_stride, stream));
     } else {
-      DerivedSlotResolver resolver{data.block_table, past_seqlens, cumulative_seqlens_q, batch_size,
-                                   parameters.max_num_blocks_per_seq, parameters.block_size};
+      DerivedSlotResolver resolver{
+          data.block_table, past_seqlens, cumulative_seqlens_q,
+          data.sequence_validity, batch_size,
+          parameters.max_num_blocks_per_seq, parameters.block_size};
       ORT_RETURN_IF_ERROR(LaunchCacheHeads(key, value, data, parameters, resolver, key_stride, value_stride, stream));
     }
   } else {
     ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
         key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
-        const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
+        const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q,
+        data.sequence_validity, data.slot_mapping, batch_size,
         parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
         parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
   }

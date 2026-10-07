@@ -231,6 +231,7 @@ struct PagedAttentionData {
   const float* v_scale = nullptr;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
+  const int* sequence_validity = nullptr;
   const int* block_table = nullptr;
   // Optional explicit write slots, one per query token, into the cache viewed as
   // [num_blocks * block_size, kv_num_heads, head_size]. A value of -1 suppresses the K/V store

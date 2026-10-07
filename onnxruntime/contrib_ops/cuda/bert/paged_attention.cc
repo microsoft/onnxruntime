@@ -318,11 +318,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   const int max_kv_len_capacity = static_cast<int>(safe_max_kv_len_capacity);
   auto sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
-  auto has_unmapped_page = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
       reinterpret_cast<const int*>(block_table->Data<int>()),
       sanitized_block_table.get(), block_table_element_count, parameters.num_blocks,
-      has_unmapped_page.get(), cuda_stream));
+      nullptr, cuda_stream));
 
   // Kernel backend selection. The choice depends only on static shapes and on the optional
   // 'attention_metadata' bounds, never on a device-to-host readback, so it is identical on every
@@ -409,6 +408,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       GetScratchBuffer<int>(sanitized_sequence_length_count, GetComputeStream(context));
   int* sanitized_cumulative_seqlens_q = sanitized_sequence_lengths.get();
   int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + cumulative_sequence_length_count;
+  auto sequence_validity = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
   size_t sequence_sanitizer_workspace_bytes = 0;
   ORT_RETURN_IF_ERROR(GetSanitizeSequenceLengthsWorkspaceSize(
       parameters.batch_size, sequence_sanitizer_workspace_bytes, cuda_stream));
@@ -432,6 +432,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   ORT_RETURN_IF_ERROR(LaunchSanitizeSequenceLengths(
       sanitized_cumulative_seqlens_q,
       sanitized_past_seqlens,
+      sequence_validity.get(),
       cumulative_seqlens_kv_ptr,
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
       reinterpret_cast<const int*>(past_seqlens->Data<int>()),
@@ -442,6 +443,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       parameters.block_size,
       parameters.token_count,
       cuda_stream));
+  auto has_unmapped_live_page = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+  ORT_RETURN_IF_ERROR(LaunchCheckLiveBlockTable(
+      sanitized_block_table.get(), cumulative_seqlens_kv_ptr,
+      parameters.batch_size, parameters.max_num_blocks_per_seq,
+      parameters.block_size, has_unmapped_live_page.get(), cuda_stream));
 
   int total_kv_tokens = 0;
   int max_query_len = 0;
@@ -578,10 +584,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool cudnn_paged_enabled =
       enable_cudnn_paged_ || (auto_enable_cudnn_paged_ && device_prop.major >= 9);
   bool cudnn_page_table_valid = false;
-  if (cudnn_paged_enabled && !onnxruntime::llm::common::isCapturing(cuda_stream)) {
+  if (cudnn_paged_enabled && has_metadata_bounds &&
+      !onnxruntime::llm::common::isCapturing(cuda_stream)) {
     int32_t host_has_unmapped_page = 0;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        &host_has_unmapped_page, has_unmapped_page.get(), sizeof(int32_t),
+        &host_has_unmapped_page, has_unmapped_live_page.get(), sizeof(int32_t),
         cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
     cudnn_page_table_valid = host_has_unmapped_page == 0;
@@ -1035,6 +1042,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.v_scale = v_scale == nullptr ? nullptr : v_scale->Data<float>();
   data.cumulative_seqlens_q = sanitized_cumulative_seqlens_q;
   data.past_seqlens = sanitized_past_seqlens;
+  data.sequence_validity = sequence_validity.get();
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
   data.block_table = sanitized_block_table.get();
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());
