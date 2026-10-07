@@ -478,13 +478,16 @@ class IExecutionProvider {
   }
 
   /**
-   * Returns whether this EP may produce external EPContext data without a Compile() call.
+   * Reports provider-specific EPContext data callback requirements before GetCapability(), including AOT discovery.
    *
-   * This query must not have side effects. ORT uses it to validate WRITE callback support before capability
-   * discovery or GetEpContextNodes() can create external artifacts. Embedded EPContext data does not require it.
+   * This query must not have side effects. Report READ if capability discovery may read external context data.
+   * Report WRITE if the EP's effective configuration produces external EPContext data without a Compile() call
+   * (e.g. as a side effect of GetCapability() or GetEpContextNodes()), independently of ORT's embed mode. ORT uses
+   * a WRITE result here to validate write-callback support before such side effects can occur. Embedded EPContext
+   * data does not require either flag.
    */
-  virtual bool MayProduceExternalEpContextDataWithoutCompilation() const {
-    return false;
+  virtual uint32_t GetEpContextDataCallbackRequirements(const GraphViewer&) const {
+    return OrtEpContextDataCallbackSupportFlags_NONE;
   }
 
  private:

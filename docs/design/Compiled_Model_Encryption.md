@@ -569,13 +569,19 @@ Plugin EPs implement the `OrtEp` struct and access ORT functionality through `Or
 
 ### Adoption by EPs
 
+- **OpenVINO:** snapshots session callbacks and supports native external EPContext import and export. Embedded
+  contexts bypass the callbacks. Callback errors propagate without filesystem fallback, and import buffers are
+  released after deserialization. Callbacks are incompatible with shared EP contexts; callback-backed binaries with
+  external shared-weight metadata are rejected before inference. External OVIR (XML plus weights) remains a
+  filesystem-only format and is explicitly rejected when a read callback is registered.
 - **New EPs:** extract the `OrtEpContextConfig` in `CreateEp()` and store it (e.g. as a
   `Ort::EpContextConfig` member). During `Compile()`, read/write EPContext binaries
   through the config (directly via the getters, or via the reference helper, which handles the
   callback-vs-disk fallback transparently). Enforce EP-specific limits before deserialization, advertise the implemented
   flags through `GetEpContextDataCallbackSupport`, and release the config in the destructor.
 - **Old EPs / no callback registered:** with no callback, EPs continue reading/writing files directly. If a callback
-  is required for external EPContext data, an old or non-advertising EP is rejected before `Compile()`.
+  is required for external EPContext data, an old or non-advertising EP is rejected before accessing that data,
+  including access during capability discovery rather than only during `Compile()`.
 
 ### Example: TensorRT-style EP (Compilation — Writing)
 
@@ -627,11 +633,18 @@ tests before it can claim support.
 An EP should claim support only after its tests prove callback write/read, callback-error propagation without disk
 fallback, no extra payload copy on read, legacy disk behavior with no callback, and embed-mode bypass.
 
-Built-in EPs that can generate external context data without `Compile()` must report that through
-`IExecutionProvider::MayProduceExternalEpContextDataWithoutCompilation()`. ORT checks WRITE support before capability
-discovery for these EPs. VitisAI has a direct-assignment path through `GetComputeCapabilityOps()` and compiles its
-backend model in `GetCapability()`. Merely moving context-node creation into its `Compile()` would skip
-direct-assignment-only sessions; changing that lifecycle requires coordinated VAIP changes.
+Built-in EPs report provider-specific EPContext data callback requirements through the side-effect-free
+`IExecutionProvider::GetEpContextDataCallbackRequirements()` query. ORT checks the registered callbacks against these
+requirements before each `GetCapability()` call, including AOT inlining, NHWC passes, and ORT-format loading — this
+same check covers EPs, such as VitisAI, that can produce external EPContext data as a side effect of
+`GetCapability()` itself, before `Compile()` is ever called. VitisAI has a direct-assignment path through
+`GetComputeCapabilityOps()` and compiles its backend model in `GetCapability()`; it reports WRITE from
+`GetEpContextDataCallbackRequirements()` whenever its effective configuration would produce external context data.
+Merely moving context-node creation into its `Compile()` would skip direct-assignment-only sessions; changing that
+lifecycle requires coordinated VAIP changes. TensorRT reports WRITE when its effective provider options select
+external context output, even if ORT's compilation options request embedded output. QNN reports READ before
+capability-time loading of external contexts for VTCM backup buffer sharing or file-mapped weights. Embedded data
+and sessions without the corresponding callback do not require that callback's support.
 
 ## API Summary
 

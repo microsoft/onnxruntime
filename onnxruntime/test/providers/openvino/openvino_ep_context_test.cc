@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -29,6 +30,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "gsl/gsl"
+#include "nlohmann/json.hpp"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
@@ -782,6 +784,33 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiExternalDataUsesCallbacks) 
   ASSERT_NO_THROW((Ort::Session(*ort_env, substring_model.c_str(), session_options)));
   EXPECT_TRUE(callback_state.read_called);
   EXPECT_FALSE(std::filesystem::exists(substring_model.parent_path() / substring_name));
+
+  // Keep the native-format header but supply shared-weight metadata without enabling session sharing.
+  std::array<uint64_t, 5> header{};
+  ASSERT_GE(callback_state.payload.size(), sizeof(header));
+  std::memcpy(header.data(), callback_state.payload.data(), sizeof(header));
+  const nlohmann::json metadata = {
+      {"version", "1.0.0"},
+      {"weights_metadata_map", {{"weight", {{"location", "missing_shared_weights.bin"}, {"data_offset", 0}, {"size", 1}}}}},
+      {"blob_metadata_map", nlohmann::json::object()}};
+  const auto bson = nlohmann::json::to_bson(metadata);
+  header[3] = sizeof(header);
+  header[4] = bson.size();
+  callback_state.payload.resize(sizeof(header) + bson.size());
+  std::memcpy(callback_state.payload.data(), header.data(), sizeof(header));
+  std::memcpy(callback_state.payload.data() + sizeof(header), bson.data(), bson.size());
+  callback_state.max_data_size = callback_state.payload.size();
+  callback_state.read_called = false;
+  try {
+    Ort::Session shared_weight_session(*ort_env, substring_model.c_str(), session_options);
+    FAIL() << "Expected callback-backed external shared weights to be rejected";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_THAT(ex.what(),
+                testing::HasSubstr("OpenVINO callback-backed EPContext does not support external shared weights"));
+    EXPECT_THAT(ex.what(), testing::Not(testing::HasSubstr("Failed to open weight file")));
+  }
+  EXPECT_TRUE(callback_state.read_called);
+  EXPECT_FALSE(std::filesystem::exists(out_dir / "missing_shared_weights.bin"));
 }
 
 TEST_F(OVEPOVIRModelsExportEPContextTests, ReadCallbackUsesDistinctExternalNames) {

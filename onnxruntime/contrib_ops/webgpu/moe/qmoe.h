@@ -20,8 +20,8 @@ class QMoE final : public MoE {
  public:
   QMoE(const OpKernelInfo& info) : MoE(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-    ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
-                "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
+    ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
+                "expert_weight_bits must be 2, 4, or 8, but got ", expert_weight_bits_);
     fc1_expert_weight_bits_ = info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
     fc2_expert_weight_bits_ = info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
     fc3_expert_weight_bits_ = info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
