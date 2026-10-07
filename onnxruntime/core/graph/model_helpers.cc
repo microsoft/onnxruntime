@@ -477,6 +477,37 @@ std::shared_ptr<const AttributeBindingContext> InternRelevantAttributeBindingCon
   return *context_it;
 }
 
+void CompleteFunctionAttributeBindings(
+    const ONNX_NAMESPACE::FunctionProto& function_proto,
+    const InlinedHashSet<std::string_view>& explicit_binding_names,
+    const DomainToVersionMap& caller_domain_to_version,
+    AttributeBindings& callee_bindings,
+    ValidatedFunctionStates& validated_states) {
+  for (const auto& attr : function_proto.attribute_proto()) {
+    if (FindAttributeBinding(callee_bindings, attr.name()) == nullptr) {
+      SetAttributeBinding(callee_bindings, attr.name(), {&attr, nullptr, nullptr});
+    }
+  }
+
+  std::sort(callee_bindings.begin(), callee_bindings.end(),
+            [](const AttributeBinding& lhs, const AttributeBinding& rhs) {
+              return lhs.name < rhs.name;
+            });
+  const AttributeBindings complete_bindings = callee_bindings;
+  const auto callee_domain_to_version = GetFunctionDomainToVersionMap(function_proto);
+  for (auto& binding : callee_bindings) {
+    auto& attribute = binding.attribute;
+    if (attribute.context == nullptr && CanContainGraph(attribute)) {
+      const auto& defining_domain_to_version =
+          explicit_binding_names.find(binding.name) != explicit_binding_names.end()
+              ? caller_domain_to_version
+              : callee_domain_to_version;
+      attribute.context = InternRelevantAttributeBindingContext(
+          *attribute.proto, complete_bindings, defining_domain_to_version, validated_states);
+    }
+  }
+}
+
 Status ValidateFunctionCallDepth(
     const ONNX_NAMESPACE::FunctionProto& function_proto,
     AttributeBindings bindings,
@@ -642,18 +673,17 @@ Status ValidateProtoNodesCallDepth(
     if (function_it != model_local_functions.end() &&
         !HasOnnxRegisteredSchema(node.domain(), node.op_type(), domain_to_version)) {
       AttributeBindings callee_bindings;
+      InlinedHashSet<std::string_view> explicit_binding_names;
       for (const auto& attr : node.attribute()) {
         auto resolved_attr = ResolveAttribute(attr, bindings);
         if (resolved_attr.proto != nullptr) {
-          if (resolved_attr.context == nullptr &&
-              CanContainGraph(resolved_attr)) {
-            // FunctionProto attributes are specialized in the caller's binding environment.
-            resolved_attr.context = InternRelevantAttributeBindingContext(
-                *resolved_attr.proto, bindings, domain_to_version, validated_states);
-          }
           SetAttributeBinding(callee_bindings, attr.name(), resolved_attr);
+          explicit_binding_names.insert(attr.name());
         }
       }
+      CompleteFunctionAttributeBindings(
+          *function_it->second, explicit_binding_names, domain_to_version,
+          callee_bindings, validated_states);
       ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
           *function_it->second, std::move(callee_bindings), call_depth + 1,
           model_local_functions, schema_registry, validated_states));
@@ -694,6 +724,7 @@ Status ValidateGraphCallDepth(
               ? HasOnnxRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap())
               : HasRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap(), schema_registry))) {
       AttributeBindings callee_bindings;
+      InlinedHashSet<std::string_view> explicit_binding_names;
       for (const auto& [attr_name, attr] : node.GetAttributes()) {
         const Graph* attribute_graph = nullptr;
         if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
@@ -701,14 +732,13 @@ Status ValidateGraphCallDepth(
         }
         auto resolved_attr = ResolveAttribute(attr, bindings, attribute_graph);
         if (resolved_attr.proto != nullptr) {
-          if (resolved_attr.context == nullptr && CanContainGraph(resolved_attr)) {
-            resolved_attr.context = InternRelevantAttributeBindingContext(
-                *resolved_attr.proto, bindings, graph.DomainToVersionMap(),
-                validated_states);
-          }
           SetAttributeBinding(callee_bindings, attr_name, resolved_attr);
+          explicit_binding_names.insert(attr_name);
         }
       }
+      CompleteFunctionAttributeBindings(
+          *function_it->second, explicit_binding_names, graph.DomainToVersionMap(),
+          callee_bindings, validated_states);
       ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
           *function_it->second, std::move(callee_bindings), call_depth + 1,
           model_local_functions, schema_registry, validated_states));

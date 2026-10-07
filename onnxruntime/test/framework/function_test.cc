@@ -1413,6 +1413,9 @@ static std::shared_ptr<OnnxRuntimeOpSchemaRegistry> CreateLocalFunctionCollision
 
 static void WrapLocalFunctionChainInReferencedGraphAttribute(
     ONNX_NAMESPACE::ModelProto& model_proto);
+static ONNX_NAMESPACE::AttributeProto MakeGraphRefAttribute(
+    const std::string& name, const std::string& ref_attr_name,
+    ONNX_NAMESPACE::AttributeProto_AttributeType type);
 
 TEST(FunctionTest, RegisteredSchemaTakesPrecedenceOverCollidingRootLocalFunction) {
   auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
