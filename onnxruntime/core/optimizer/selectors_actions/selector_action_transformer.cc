@@ -173,12 +173,13 @@ static Status MatchAndProcess(
                                                     std::move(runtime_optimization_record));
 
     } else {
-      status = action.Run(graph, node_group);
+      bool action_applied = false;
+      status = action.Run(graph, node_group, action_applied);
       if (!status.IsOK()) {
         break;
       }
 
-      modified = true;
+      modified = modified || action_applied;
     }
   } while (false);
 
@@ -288,7 +289,13 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
 
     const NodeIndex pre_action_num_nodes = graph.MaxNodeIndex();
 
-    ORT_RETURN_IF_ERROR(selector_action_entry->action->Run(graph, nodes_to_optimize));
+    bool action_applied = false;
+    ORT_RETURN_IF_ERROR(selector_action_entry->action->Run(graph, nodes_to_optimize, action_applied));
+    if (!action_applied) {
+      LOGS(logger, VERBOSE) << "Runtime optimization action was skipped because its selected nodes "
+                               "are no longer safe to replace.";
+      continue;
+    }
     const NodeIndex post_action_num_nodes = graph.MaxNodeIndex();
     if (post_action_num_nodes == pre_action_num_nodes && !record.produced_op_ids.empty()) {
       LOGS(logger, VERBOSE) << "Runtime optimization action was skipped because its selected nodes "

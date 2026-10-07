@@ -530,9 +530,15 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
 
 }  // namespace
 
-Status QDQReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status QDQReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const {
+  for (const Node* node : selected_nodes.AllNodes()) {
+    if (node != nullptr && graph.HasOrtFormatControlEdge(node->Index())) {
+      action_applied = false;
+      return Status::OK();
+    }
+  }
   SetOptionalZeroPoint::UpdateNodes(graph, selected_nodes);
-  return ReplaceWithNew::Run(graph, selected_nodes);
+  return ReplaceWithNew::Run(graph, selected_nodes, action_applied);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -577,23 +583,25 @@ MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
       qlinear_matmul_replacer_{kOnnxDomain} {
 }
 
-Status SplitReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status SplitReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes,
+                                  bool& action_applied) const {
   const auto& target_node = selected_nodes.Target();
   const auto& input_defs = target_node.InputDefs();
 
   // The 'split' attribute became an optional input at opset 13.
   bool has_split_as_input = target_node.SinceVersion() >= 13 && input_defs.size() == 2;
-  return SplitReplacer(has_split_as_input).Run(graph, selected_nodes);
+  return SplitReplacer(has_split_as_input).Run(graph, selected_nodes, action_applied);
 }
 
-Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes,
+                                     bool& action_applied) const {
   // if the output is empty there were no Q nodes selected, so replace with MatMulIntegerToFloat
   // otherwise replace with QLinearMatMul
   bool matmul_integer_to_float = selected_nodes.num_outputs == 0;
   if (matmul_integer_to_float) {
-    return matmul_int_to_float_replacer_.Run(graph, selected_nodes);
+    return matmul_int_to_float_replacer_.Run(graph, selected_nodes, action_applied);
   } else {
-    return qlinear_matmul_replacer_.Run(graph, selected_nodes);
+    return qlinear_matmul_replacer_.Run(graph, selected_nodes, action_applied);
   }
 }
 
@@ -746,14 +754,15 @@ GemmReplaceWithQuant::GemmReplaceWithQuant()
       qgemm_with_8bits_as_output_replacer_(kMSDomain, "QGemm", GetGemmMoveInfo(true)) {
 }
 
-Status GemmReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status GemmReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes,
+                                 bool& action_applied) const {
   RemoveAttrBeta(selected_nodes);
   bool is_output_float = selected_nodes.num_outputs == 0;
   if (is_output_float) {
-    return qgemm_with_float_as_output_replacer_.Run(graph, selected_nodes);
+    return qgemm_with_float_as_output_replacer_.Run(graph, selected_nodes, action_applied);
   }
 
-  return qgemm_with_8bits_as_output_replacer_.Run(graph, selected_nodes);
+  return qgemm_with_8bits_as_output_replacer_.Run(graph, selected_nodes, action_applied);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

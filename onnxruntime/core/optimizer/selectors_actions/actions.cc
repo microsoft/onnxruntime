@@ -73,17 +73,19 @@ InlinedVector<NodeIndex> SafelyRemoveNodes(
 }
 }  // namespace
 
-Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const {
   Node* ignore_target = preserve_target_node_ ? &selected_nodes.Target() : nullptr;
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), ignore_target);
   graph.NotifyNodesRemoved(removed_node_indices);
+  action_applied = !removed_node_indices.empty();
 
   return Status::OK();
 }
 
-Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const {
   if (HasControlEdge(graph, selected_nodes.AllNodes())) {
+    action_applied = false;
     return Status::OK();
   }
 
@@ -94,6 +96,7 @@ Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes)
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), &selected_nodes.Target());
   graph.NotifyNodeReplacement(removed_node_indices, selected_nodes.Target().Index());
+  action_applied = true;
   return Status::OK();
 }
 
@@ -139,8 +142,9 @@ static Status CreateReplacementNode(Graph& graph,
   return Status::OK();
 }
 
-Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes, bool& action_applied) const {
   if (HasControlEdge(graph, selected_nodes.AllNodes())) {
+    action_applied = false;
     return Status::OK();
   }
 
@@ -156,6 +160,7 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
   const auto removed_node_indices =
       SafelyRemoveNodes(graph, selected_nodes.AllNodes(), nullptr);
   graph.NotifyNodeReplacement(removed_node_indices, replacement->Index());
+  action_applied = true;
   return Status::OK();
 }
 
