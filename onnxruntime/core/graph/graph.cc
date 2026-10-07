@@ -7292,26 +7292,6 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
-  struct NodeArgProducer {
-    const NodeArg* node_arg;
-    Node* node;
-    int output_idx;
-  };
-  InlinedVector<NodeArgProducer> producer_lookup;
-  for (auto& node : Nodes()) {
-    for (size_t output_idx = 0; output_idx < node.OutputDefs().size(); ++output_idx) {
-      const auto* output = node.OutputDefs()[output_idx];
-      if (!output->Exists()) {
-        continue;
-      }
-      for (const auto& producer : producer_lookup) {
-        ORT_RETURN_IF_NOT(producer.node_arg != output,
-                          "Node input has multiple producers.");
-      }
-      producer_lookup.push_back({output, &node, static_cast<int>(output_idx)});
-    }
-  }
-
   for (auto& node : Nodes()) {
     const auto& explicit_inputs = node.InputDefs();
     const auto& implicit_inputs = node.ImplicitInputDefs();
@@ -7321,14 +7301,24 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
                               ? explicit_inputs[input_idx]
                               : implicit_inputs[input_idx - explicit_inputs.size()];
       if (input->Exists()) {
-        for (const auto& producer : producer_lookup) {
-          if (producer.node_arg == input) {
-            producer.node->relationships_.output_edges.emplace(
-                node, producer.output_idx, static_cast<int>(input_idx));
-            node.relationships_.input_edges.emplace(
-                *producer.node, producer.output_idx, static_cast<int>(input_idx));
-            break;
+        Node* matched_producer = nullptr;
+        int matched_output_idx = 0;
+        for (auto& producer : Nodes()) {
+          const auto& outputs = producer.OutputDefs();
+          for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
+            if (outputs[output_idx] == input) {
+              ORT_RETURN_IF_NOT(matched_producer == nullptr,
+                                "slot has multiple producers");
+              matched_producer = &producer;
+              matched_output_idx = static_cast<int>(output_idx);
+            }
           }
+        }
+        if (matched_producer != nullptr) {
+          matched_producer->relationships_.output_edges.emplace(
+              node, matched_output_idx, static_cast<int>(input_idx));
+          node.relationships_.input_edges.emplace(
+              *matched_producer, matched_output_idx, static_cast<int>(input_idx));
         }
       }
     }
