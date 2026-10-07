@@ -607,8 +607,11 @@ bool test_shared_asset_root_must_exist() {
   CHECK_OK(ModelPackage_ResolveStringRef(pkg.get(), nullptr, uri, false, &resolved));
   CHECK(resolved != nullptr);
   CHECK(!fs::exists(fs::u8path(resolved)));
+  const char* const sentinel = "unchanged";
+  resolved = sentinel;
   CHECK_ERR(ModelPackage_ResolveStringRef(pkg.get(), nullptr, uri, true, &resolved),
             MODEL_PACKAGE_ERR_NOT_FOUND);
+  CHECK(resolved == sentinel);
 
   fs::create_directory(s.root() / "asset");
   CHECK_OK(ModelPackage_ResolveStringRef(pkg.get(), nullptr, uri, true, &resolved));

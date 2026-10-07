@@ -267,10 +267,12 @@ bool test_directory_hash_uses_forward_slash() {
 }
 
 bool test_missing_directory_errors() {
-  const char* uri = nullptr;
+  const char* const sentinel = "unchanged";
+  const char* uri = sentinel;
   ModelPackageStatus* s = ModelPackage_ComputeDirectoryHash("/tmp/does_not_exist_xyzzy_zzz", &uri);
   CHECK(s != nullptr);
   CHECK(ModelPackageStatus_Code(s) == MODEL_PACKAGE_ERR_NOT_FOUND);
+  CHECK(uri == sentinel);
   ModelPackageStatus_Release(s);
   return true;
 }

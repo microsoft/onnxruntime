@@ -291,7 +291,6 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!input) return NullArg("input");
   if (!out_path) return NullArg("out_path");
-  *out_path = nullptr;
   static thread_local std::string slot;
 
   std::string uri_part, tail_part;
@@ -391,7 +390,6 @@ ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
                                                       const char** out_uri) try {
   if (!source_dir) return NullArg("source_dir");
   if (!out_uri) return NullArg("out_uri");
-  *out_uri = nullptr;
   static thread_local std::string slot;
   if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::u8path(source_dir), &slot)) {
     return s;
