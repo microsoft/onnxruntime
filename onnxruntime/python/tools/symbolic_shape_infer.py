@@ -2070,11 +2070,19 @@ class SymbolicShapeInference:
         axis = handle_negative_axis(get_attribute(node, "axis", 0), len(output_shape))
         if len(node.input) > 1 and node.input[1]:
             split = self._try_get_value(node, 1)
-            if split is not None and np.ndim(split) == 1 and len(set(np.ravel(split).tolist())) == 1:
-                output_shape[axis] = int(np.ravel(split)[0])
-            else:
+            chunk = None
+            if split is not None and np.ndim(split) == 0:
+                # A scalar split gives chunks of that size, the last one may be smaller.
+                split = as_scalar(split)
+                if is_literal(split) and is_literal(output_shape[axis]) and int(output_shape[axis]) % int(split) == 0:
+                    chunk = int(split)
+            elif split is not None and len(set(as_list(split, keep_none=False))) == 1:
+                chunk = as_list(split, keep_none=False)[0]
+                chunk = int(chunk) if is_literal(chunk) else str(chunk)
+            if chunk is None:
                 # The chunks can have different sizes, so their dim along axis is unknown.
-                output_shape[axis] = str(self._new_symbolic_dim_from_output(node, 0, axis))
+                chunk = str(self._new_symbolic_dim_from_output(node, 0, axis))
+            output_shape[axis] = chunk
         elif get_attribute(node, "keepdims", 1):
             output_shape[axis] = 1
         else:

@@ -894,9 +894,10 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
     def test_split_to_sequence(self):
-        def infer(split_to_sequence_node, initializers):
+        def infer(split_to_sequence_node, initializers, nodes=()):
             graph = helper.make_graph(
                 [
+                    *nodes,
                     split_to_sequence_node,
                     helper.make_node("SequenceAt", ["sequence", "position"], ["output"]),
                 ],
@@ -920,6 +921,33 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         output_shape = infer(node, [split])
         self.assertEqual(output_shape[:2], ["b", 3])
         self.assertIsInstance(output_shape[2], str)
+
+        # equal 1-D split
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=1)
+        split = helper.make_tensor("split", TensorProto.INT64, [3], [1, 1, 1])
+        self.assertEqual(infer(node, [split]), ["b", 1, 5])
+
+        # scalar split that divides the axis, and one that does not
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=1)
+        split = helper.make_tensor("split", TensorProto.INT64, [], [3])
+        self.assertEqual(infer(node, [split]), ["b", 3, 5])
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=-1)
+        split = helper.make_tensor("split", TensorProto.INT64, [], [2])
+        output_shape = infer(node, [split])
+        self.assertEqual(output_shape[:2], ["b", 3])
+        self.assertIsInstance(output_shape[2], str)
+
+        # symbolic split computed from the input shape
+        nodes = [
+            helper.make_node("Shape", ["input"], ["input_shape"]),
+            helper.make_node("Slice", ["input_shape", "starts", "ends"], ["split"]),
+        ]
+        initializers = [
+            helper.make_tensor("starts", TensorProto.INT64, [1], [0]),
+            helper.make_tensor("ends", TensorProto.INT64, [1], [1]),
+        ]
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=0)
+        self.assertEqual(infer(node, initializers, nodes), ["b", 3, 5])
 
     def test_gather_indices(self):
         graph = helper.make_graph(
