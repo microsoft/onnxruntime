@@ -1463,6 +1463,10 @@ struct ProviderHost {
       const void* data, concurrency::ThreadPool* thread_pool) = 0;
 
   virtual concurrency::ThreadPool* OpKernelContext__GetOperatorThreadPool(const OpKernelContext* p) = 0;
+
+  virtual void MlasGemmBatch__Run(
+      size_t M, size_t N, size_t K, size_t batch_size,
+      const void* data, concurrency::ThreadPool* thread_pool) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

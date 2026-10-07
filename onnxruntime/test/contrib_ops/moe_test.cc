@@ -4320,7 +4320,17 @@ TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
   EXPECT_EQ(event["node_type"], "MoE");
 }
 
-TEST(MoETest, MoECudaFp16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage) {
+template <typename T>
+std::vector<T> ToMoeCpuOffloadType(const std::vector<float>& values) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(values);
+  } else {
+    return ToBFloat16(values);
+  }
+}
+
+template <typename T>
+void RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage() {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
@@ -4365,22 +4375,22 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCou
     tester.AddAttribute<int64_t>("k", 1);
     tester.AddAttribute<std::string>("activation_type", "relu");
     tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-    tester.AddInput<MLFloat16>("input", {num_rows, hidden_size},
-                               ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
-    tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
-                               ToFloat16({4.0f, 0.0f, 0.0f, 4.0f}));
-    tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, inter_size, hidden_size},
-                               ToFloat16(fc1_weights), cpu_offload_expert_count > 0);
-    tester.AddInput<MLFloat16>("fc1_experts_bias", {num_experts, inter_size},
-                               ToFloat16(fc1_bias), cpu_offload_expert_count > 0);
-    tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
-                               ToFloat16(fc2_weights), cpu_offload_expert_count > 0);
-    tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size},
-                               ToFloat16(fc2_bias), cpu_offload_expert_count > 0);
-    tester.AddOptionalInputEdge<MLFloat16>();
-    tester.AddOptionalInputEdge<MLFloat16>();
-    tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
-    tester.SetOutputTolerance(0.01f);
+    tester.AddInput<T>("input", {num_rows, hidden_size},
+                       ToMoeCpuOffloadType<T>(std::vector<float>(num_rows * hidden_size, 1.0f)));
+    tester.AddInput<T>("router_probs", {num_rows, num_experts},
+                       ToMoeCpuOffloadType<T>({4.0f, 0.0f, 0.0f, 4.0f}));
+    tester.AddInput<T>("fc1_experts_weights", {num_experts, inter_size, hidden_size},
+                       ToMoeCpuOffloadType<T>(fc1_weights), cpu_offload_expert_count > 0);
+    tester.AddInput<T>("fc1_experts_bias", {num_experts, inter_size},
+                       ToMoeCpuOffloadType<T>(fc1_bias), cpu_offload_expert_count > 0);
+    tester.AddInput<T>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
+                       ToMoeCpuOffloadType<T>(fc2_weights), cpu_offload_expert_count > 0);
+    tester.AddInput<T>("fc2_experts_bias", {num_experts, hidden_size},
+                       ToMoeCpuOffloadType<T>(fc2_bias), cpu_offload_expert_count > 0);
+    tester.AddOptionalInputEdge<T>();
+    tester.AddOptionalInputEdge<T>();
+    tester.AddOutput<T>("output", {num_rows, hidden_size}, ToMoeCpuOffloadType<T>(expected));
+    tester.SetOutputTolerance(std::is_same_v<T, BFloat16> ? 0.02f : 0.01f);
 
     SessionOptions session_options;
     session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
@@ -4394,7 +4404,8 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCou
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsDisableCPUEPFallback, "1"));
     RunOptions run_options;
-    run_options.run_tag = MakeString("fp16 static offload ", cpu_offload_expert_count);
+    run_options.run_tag = MakeString(std::is_same_v<T, BFloat16> ? "bf16" : "fp16",
+                                     " static offload ", cpu_offload_expert_count);
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     testing::internal::CaptureStderr();
@@ -4405,6 +4416,14 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCou
     EXPECT_EQ(routing_events[0]["selected_experts"], nlohmann::json({0, 1}));
     EXPECT_EQ(routing_events[0]["counters"], nlohmann::json({0.1, 0.1}));
   }
+}
+
+TEST(MoETest, MoECudaFp16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage) {
+  RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage<MLFloat16>();
+}
+
+TEST(MoETest, MoECudaBf16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage) {
+  RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage<BFloat16>();
 }
 
 TEST(MoETest, MoECudaFp16StaticCpuOffloadCombinesCpuAndCudaExpertsForOneToken) {
@@ -4782,7 +4801,7 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsSparseMixer) {
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(options, OpTester::ExpectResult::kExpectFailure,
-               "FP16 MoE CPU offload does not support sparse_mixer.", {}, nullptr, &providers);
+               "FP16/BF16 MoE CPU offload does not support sparse_mixer.", {}, nullptr, &providers);
   }
 }
 

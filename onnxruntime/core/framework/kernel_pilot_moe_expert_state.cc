@@ -154,17 +154,21 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
       const auto* input_type = kernel->Node().InputDefs().empty()
                                    ? nullptr
                                    : kernel->Node().InputDefs()[0]->TypeAsProto();
+      const int32_t element_type =
+          input_type != nullptr && input_type->has_tensor_type()
+              ? input_type->tensor_type().elem_type()
+              : ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
       if (kernel->Node().GetExecutionProviderType() == kCudaExecutionProvider &&
-          kernel->Node().Domain() == kMSDomain && kernel->Node().OpType() == "MoE" && input_type != nullptr &&
-          input_type->has_tensor_type() &&
-          input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          kernel->Node().Domain() == kMSDomain && kernel->Node().OpType() == "MoE" &&
+          (element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+           element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)) {
         cuda_kernels.push_back(&state);
         cuda_eligible_expert_count += state.experts.count;
       }
     }
     ORT_RETURN_IF(cpu_offload_expert_count_ > cuda_eligible_expert_count,
                   "session.moe_cpu_offload_experts is ", cpu_offload_expert_count_,
-                  ", but CUDA FP16 MoE nodes contain only ", cuda_eligible_expert_count, " experts.");
+                  ", but CUDA FP16/BF16 MoE nodes contain only ", cuda_eligible_expert_count, " experts.");
     const size_t cuda_expert_count = cuda_eligible_expert_count - cpu_offload_expert_count_;
 
     std::sort(cuda_kernels.begin(), cuda_kernels.end(), [](const KernelState* lhs, const KernelState* rhs) {

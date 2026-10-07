@@ -1908,7 +1908,7 @@ static void AccumulateAllNestedSubgraphsInfo(
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-static bool IsCudaFp16MoeNode(const Node& node) {
+static bool IsCudaCpuOffloadMoeNode(const Node& node) {
   if (node.Domain() != kMSDomain || node.OpType() != "MoE" ||
       node.GetExecutionProviderType() != kCudaExecutionProvider ||
       node.InputDefs().empty()) {
@@ -1916,8 +1916,12 @@ static bool IsCudaFp16MoeNode(const Node& node) {
   }
 
   const auto* input_type = node.InputDefs()[0]->TypeAsProto();
-  return input_type != nullptr && input_type->has_tensor_type() &&
-         input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  if (input_type == nullptr || !input_type->has_tensor_type()) {
+    return false;
+  }
+  const int32_t element_type = input_type->tensor_type().elem_type();
+  return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 }
 
 static bool IsMoeCpuOffloadOuterScopeValue(const Graph& graph, const std::string& name) {
@@ -1949,9 +1953,9 @@ static Status FindMoeCpuOffloadInitializerUses(
       }
 
       ORT_RETURN_IF_NOT(
-          IsCudaFp16MoeNode(node) && input_idx >= 2 && input_idx < 8,
-          "FP16 MoE CPU offload requires expert initializer ", initializer_name,
-          " to be used only as an expert input of CUDA FP16 MoE nodes.");
+          IsCudaCpuOffloadMoeNode(node) && input_idx >= 2 && input_idx < 8,
+          "FP16/BF16 MoE CPU offload requires expert initializer ", initializer_name,
+          " to be used only as an expert input of CUDA FP16/BF16 MoE nodes.");
       found_moe_expert_use = true;
     }
 
@@ -1963,7 +1967,7 @@ static Status FindMoeCpuOffloadInitializerUses(
 
   for (const NodeArg* output : graph.GetOutputs()) {
     ORT_RETURN_IF(output->Exists() && output->Name() == initializer_name,
-                  "FP16 MoE CPU offload requires expert initializer ", initializer_name,
+                  "FP16/BF16 MoE CPU offload requires expert initializer ", initializer_name,
                   " not to be exposed as a graph output.");
   }
 
@@ -1974,7 +1978,7 @@ static void CollectMoeCpuOffloadInitializerNames(
     const Graph& graph,
     InlinedHashSet<std::string>& initializer_names) {
   for (const auto& node : graph.Nodes()) {
-    if (IsCudaFp16MoeNode(node)) {
+    if (IsCudaCpuOffloadMoeNode(node)) {
       const auto& input_defs = node.InputDefs();
       for (size_t input_idx = 2; input_idx < std::min<size_t>(input_defs.size(), 8); ++input_idx) {
         if (input_defs[input_idx]->Exists()) {

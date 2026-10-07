@@ -49,7 +49,7 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
+  if constexpr (kCpuOffloadSupported) {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     const auto cpu_offload_experts = op_kernel_info.GetConfigOptions().GetConfigOrDefault(
         kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
@@ -81,7 +81,7 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
                        bool& is_packed, PrePackedWeights* prepacked_weights) {
   is_packed = false;
   ORT_UNUSED_PARAMETER(prepacked_weights);
-  if constexpr (!std::is_same_v<T, MLFloat16>) {
+  if constexpr (!kCpuOffloadSupported) {
     return Status::OK();
   }
 
@@ -95,12 +95,12 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   packed.bytes = tensor.SizeInBytes();
   packed.present = true;
 
-  ORT_RETURN_IF_NOT(packed.bytes % sizeof(MLFloat16) == 0,
-                    "FP16 MoE input ", input_idx, " has an invalid byte size.");
-  packed.cpu_data.resize(packed.bytes / sizeof(MLFloat16));
+  ORT_RETURN_IF_NOT(packed.bytes % sizeof(T) == 0,
+                    "FP16/BF16 MoE input ", input_idx, " has an invalid byte size.");
+  packed.cpu_data.resize(packed.bytes / sizeof(T));
   if (tensor.Location().device.Type() == OrtDevice::CPU) {
     std::memcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes);
-  } else {
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
     CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes, cudaMemcpyDeviceToHost));
   }
 
@@ -111,14 +111,14 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 template <typename T>
 Status MoE<T>::InitializeKernelPilot(KernelPilot* pilot) {
-  if constexpr (!std::is_same_v<T, MLFloat16>) {
+  if constexpr (!kCpuOffloadSupported) {
     return Status::OK();
   }
   if (!cpu_offload_enabled_) {
     return Status::OK();
   }
 
-  ORT_RETURN_IF_NOT(pilot, "FP16 MoE CPU offload requires a KernelPilot.");
+  ORT_RETURN_IF_NOT(pilot, "FP16/BF16 MoE CPU offload requires a KernelPilot.");
   gsl::span<const int> cuda_experts;
   ORT_RETURN_IF_ERROR(pilot->GetMoeCudaExperts(cuda_experts));
   return InitializeCudaExpertWeights(cuda_experts);
@@ -126,42 +126,42 @@ Status MoE<T>::InitializeKernelPilot(KernelPilot* pilot) {
 
 template <typename T>
 Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
-  if constexpr (!std::is_same_v<T, MLFloat16>) {
+  if constexpr (!kCpuOffloadSupported) {
     ORT_UNUSED_PARAMETER(cuda_experts);
     return Status::OK();
   }
 
   ORT_RETURN_IF_NOT(packed_inputs_[2].present && packed_inputs_[4].present,
-                    "FP16 MoE CPU offload requires constant FC1 and FC2 weights.");
+                    "FP16/BF16 MoE CPU offload requires constant FC1 and FC2 weights.");
   for (int input_idx : {3, 5, 6, 7}) {
     const auto& input_defs = Info().node().InputDefs();
     const bool connected = static_cast<size_t>(input_idx) < input_defs.size() &&
                            input_defs[static_cast<size_t>(input_idx)]->Exists();
     ORT_RETURN_IF(connected && !packed_inputs_[static_cast<size_t>(input_idx)].present,
-                  "FP16 MoE CPU offload requires optional expert input ", input_idx,
+                  "FP16/BF16 MoE CPU offload requires optional expert input ", input_idx,
                   " to be constant or absent.");
   }
   ORT_RETURN_IF(packed_inputs_[6].present || packed_inputs_[7].present,
-                "FP16 MoE CPU offload does not yet support separate FC3 weights or bias.");
+                "FP16/BF16 MoE CPU offload does not yet support separate FC3 weights or bias.");
   ORT_RETURN_IF(activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
                     swiglu_fusion_ == 2,
-                "FP16 MoE CPU offload does not support chunked SwiGLU.");
+                "FP16/BF16 MoE CPU offload does not support chunked SwiGLU.");
 
   const auto& fc1_shape = packed_inputs_[2].shape;
   const auto& fc2_shape = packed_inputs_[4].shape;
   ORT_RETURN_IF_NOT(fc1_shape.NumDimensions() == 3 && fc2_shape.NumDimensions() == 3 &&
                         fc1_shape[0] > 0 && fc2_shape[0] == fc1_shape[0],
-                    "FP16 MoE FC1 and FC2 weights must be rank 3 with matching positive expert dimensions.");
+                    "FP16/BF16 MoE FC1 and FC2 weights must be rank 3 with matching positive expert dimensions.");
   const size_t num_experts = static_cast<size_t>(fc1_shape[0]);
   const auto& input_defs = Info().node().InputDefs();
   const auto* input_shape = input_defs[0]->Shape();
   ORT_RETURN_IF_NOT(input_shape != nullptr && input_shape->dim_size() > 0 &&
                         input_shape->dim(input_shape->dim_size() - 1).has_dim_value(),
-                    "FP16 MoE CPU offload requires a static input hidden dimension.");
+                    "FP16/BF16 MoE CPU offload requires a static input hidden dimension.");
   const int64_t hidden_size = input_shape->dim(input_shape->dim_size() - 1).dim_value();
   const int64_t fc2_elements_per_expert = fc2_shape.SizeFromDimension(1);
   ORT_RETURN_IF_NOT(hidden_size > 0 && fc2_elements_per_expert % hidden_size == 0,
-                    "FP16 MoE FC2 weights have an invalid shape for hidden size ", hidden_size, ".");
+                    "FP16/BF16 MoE FC2 weights have an invalid shape for hidden size ", hidden_size, ".");
   const int64_t inter_size = fc2_elements_per_expert / hidden_size;
   const bool is_fused_swiglu =
       activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
@@ -180,7 +180,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
                        bias.shape.NumDimensions() != 2 ||
                        bias.shape[0] != static_cast<int64_t>(num_experts) ||
                        bias.shape[1] != logical_output_sizes[static_cast<size_t>(bias_idx)]),
-                  "FP16 MoE input ", bias_idx, " has an invalid bias shape.");
+                  "FP16/BF16 MoE input ", bias_idx, " has an invalid bias shape.");
   }
   cuda_experts_.assign(cuda_experts.begin(), cuda_experts.end());
   expert_map_.assign(num_experts, -1);
@@ -199,7 +199,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
     ORT_RETURN_IF_NOT(packed.shape.NumDimensions() >= 1 &&
                           packed.shape[0] == static_cast<int64_t>(num_experts) &&
                           packed.bytes % num_experts == 0,
-                      "FP16 MoE input ", input_idx, " has an invalid expert-major layout.");
+                      "FP16/BF16 MoE input ", input_idx, " has an invalid expert-major layout.");
     const size_t expert_bytes = packed.bytes / num_experts;
     const size_t cuda_bytes = SafeInt<size_t>(cuda_experts_.size()) * expert_bytes;
     if (cuda_bytes == 0) {
@@ -229,20 +229,33 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
         packed.shape.SizeFromDimension(1) == static_cast<int64_t>(expert_element_count) &&
             (legacy_shape ? packed.shape[1] == static_cast<int64_t>(input_size)
                           : packed.shape[1] == static_cast<int64_t>(output_size)),
-        "FP16 MoE input ", input_idx, " has an invalid ",
+        "FP16/BF16 MoE input ", input_idx, " has an invalid ",
         legacy_shape ? "legacy" : "standard", " expert weight shape.");
     // Legacy shapes do not change CUTLASS's physical column-major K x N bytes; MLAS needs row-major K x N.
-    packed.cpu_gemm_data.resize(packed.cpu_data.size());
-    for (size_t expert = 0; expert < num_experts; ++expert) {
-      const MLFloat16* source = packed.cpu_data.data() + expert * expert_element_count;
-      MLFloat16* destination = packed.cpu_gemm_data.data() + expert * expert_element_count;
-      for (size_t output = 0; output < output_size; ++output) {
-        for (size_t input = 0; input < input_size; ++input) {
-          destination[input * output_size + output] = source[output * input_size + input];
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      packed.cpu_gemm_data.resize(packed.cpu_data.size());
+      for (size_t expert = 0; expert < num_experts; ++expert) {
+        const T* source = packed.cpu_data.data() + expert * expert_element_count;
+        T* destination = packed.cpu_gemm_data.data() + expert * expert_element_count;
+        for (size_t output = 0; output < output_size; ++output) {
+          for (size_t input = 0; input < input_size; ++input) {
+            destination[input * output_size + output] = source[output * input_size + input];
+          }
+        }
+      }
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      packed.cpu_gemm_float_data.resize(packed.cpu_data.size());
+      for (size_t expert = 0; expert < num_experts; ++expert) {
+        const T* source = packed.cpu_data.data() + expert * expert_element_count;
+        float* destination = packed.cpu_gemm_float_data.data() + expert * expert_element_count;
+        for (size_t output = 0; output < output_size; ++output) {
+          for (size_t input = 0; input < input_size; ++input) {
+            destination[input * output_size + output] = source[output * input_size + input].ToFloat();
+          }
         }
       }
     }
-    std::vector<MLFloat16>{}.swap(packed.cpu_data);
+    std::vector<T>{}.swap(packed.cpu_data);
   }
 
   if (!cuda_experts_.empty()) {
@@ -269,15 +282,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_experts_bias_optional = input_if_not_packed(5);
   const Tensor* fc3_experts_weights_optional = input_if_not_packed(6);
   const Tensor* fc3_experts_bias_optional = input_if_not_packed(7);
-  const bool use_packed_fp16_weights =
-      std::is_same_v<T, MLFloat16> && packed_inputs_[2].present && packed_inputs_[4].present;
+  const bool use_packed_weights =
+      kCpuOffloadSupported && packed_inputs_[2].present && packed_inputs_[4].present;
 
   const TensorShape* fc1_experts_weights_shape =
-      use_packed_fp16_weights ? &packed_inputs_[2].shape : &fc1_experts_weights->Shape();
+      use_packed_weights ? &packed_inputs_[2].shape : &fc1_experts_weights->Shape();
   const TensorShape* fc2_experts_weights_shape =
-      use_packed_fp16_weights ? &packed_inputs_[4].shape : &fc2_experts_weights->Shape();
+      use_packed_weights ? &packed_inputs_[4].shape : &fc2_experts_weights->Shape();
   const TensorShape* fc3_experts_weights_shape =
-      use_packed_fp16_weights
+      use_packed_weights
           ? (packed_inputs_[6].present ? &packed_inputs_[6].shape : nullptr)
           : (fc3_experts_weights_optional != nullptr ? &fc3_experts_weights_optional->Shape() : nullptr);
 
@@ -302,9 +315,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights_shape, use_packed_fp16_weights ? nullptr : fc1_experts_bias_optional, nullptr, nullptr,
-      fc2_experts_weights_shape, use_packed_fp16_weights ? nullptr : fc2_experts_bias_optional, nullptr, nullptr,
-      fc3_experts_weights_shape, use_packed_fp16_weights ? nullptr : fc3_experts_bias_optional, nullptr, nullptr,
+      fc1_experts_weights_shape, use_packed_weights ? nullptr : fc1_experts_bias_optional, nullptr, nullptr,
+      fc2_experts_weights_shape, use_packed_weights ? nullptr : fc2_experts_bias_optional, nullptr, nullptr,
+      fc3_experts_weights_shape, use_packed_weights ? nullptr : fc3_experts_bias_optional, nullptr, nullptr,
       1, is_fused_swiglu, 0));
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "MoE requires 0 < k <= num_experts, got k=", k_,
@@ -371,7 +384,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       if (!tactics.empty()) {
         moe_runner.setTactic(tactics[0], tactics[0]);
       }
-    } else {
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
       std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
       AllocatorPtr allocator;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -459,10 +472,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   int* unpermuted_row_to_permuted_row = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes + indices_bytes);
 
   ORT_RETURN_IF(cpu_offload_enabled_ && use_sparse_mixer_,
-                "FP16 MoE CPU offload does not support sparse_mixer.");
+                "FP16/BF16 MoE CPU offload does not support sparse_mixer.");
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  IAllocatorUniquePtr<MLFloat16> host_input;
+  IAllocatorUniquePtr<T> host_input;
   IAllocatorUniquePtr<int> host_expert_indices;
   IAllocatorUniquePtr<float> host_expert_scales;
   KernelPilot* moe_pilot = nullptr;
@@ -495,15 +508,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (cpu_offload_enabled_) {
     host_expert_indices = AllocateBufferOnCPUPinned<int>(expanded_rows);
     ORT_RETURN_IF_NOT(host_expert_indices,
-                      "Failed to allocate a pinned routing buffer for FP16 MoE CPU offload.");
+                      "Failed to allocate a pinned routing buffer for FP16/BF16 MoE CPU offload.");
     CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&routing_copy_ready, cudaEventDisableTiming));
     if (run_cpu_experts) {
       const size_t host_element_count =
           static_cast<size_t>(SafeInt<int64_t>(moe_params.num_rows) * moe_params.hidden_size);
-      host_input = AllocateBufferOnCPUPinned<MLFloat16>(host_element_count);
+      host_input = AllocateBufferOnCPUPinned<T>(host_element_count);
       host_expert_scales = AllocateBufferOnCPUPinned<float>(expanded_rows);
       ORT_RETURN_IF_NOT(host_input && host_expert_scales,
-                        "Failed to allocate pinned host buffers for FP16 MoE CPU execution.");
+                        "Failed to allocate pinned host buffers for FP16/BF16 MoE CPU execution.");
 
       CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&input_ready, cudaEventDisableTiming));
       CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&input_copy_ready, cudaEventDisableTiming));
@@ -599,10 +612,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   if (cpu_offload_enabled_) {
-    ORT_RETURN_IF_NOT(use_packed_fp16_weights && expert_map_.size() == static_cast<size_t>(moe_params.num_experts),
-                      "FP16 MoE CPU offload weights were not initialized.");
+    ORT_RETURN_IF_NOT(use_packed_weights && expert_map_.size() == static_cast<size_t>(moe_params.num_experts),
+                      "FP16/BF16 MoE CPU offload weights were not initialized.");
     moe_pilot = context->GetKernelPilot();
-    ORT_RETURN_IF_NOT(moe_pilot, "FP16 MoE CPU offload requires a KernelPilot.");
+    ORT_RETURN_IF_NOT(moe_pilot, "FP16/BF16 MoE CPU offload requires a KernelPilot.");
     ORT_RETURN_IF_ERROR(moe_pilot->Moe().BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
@@ -653,7 +666,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     std::array<IAllocatorUniquePtr<void>, 8> runtime_cuda_inputs;
     const auto packed_cuda_data = [&](int input_idx, const Tensor* tensor) -> const CudaT* {
-      if constexpr (std::is_same_v<T, MLFloat16>) {
+      if constexpr (kCpuOffloadSupported) {
         const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
         if (packed.present) {
           return static_cast<const CudaT*>(packed.cuda_data.get());
@@ -693,11 +706,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     const CudaT* fc2_processed_ptr = packed_cuda_data(4, fc2_experts_weights);
     const CudaT* fc1_bias_ptr =
-        use_packed_fp16_weights
+        use_packed_weights
             ? (packed_inputs_[3].present ? static_cast<const CudaT*>(packed_inputs_[3].cuda_data.get()) : nullptr)
             : (fc1_experts_bias_optional == nullptr ? nullptr : packed_cuda_data(3, fc1_experts_bias_optional));
     const CudaT* fc2_bias_ptr =
-        use_packed_fp16_weights
+        use_packed_weights
             ? (packed_inputs_[5].present ? static_cast<const CudaT*>(packed_inputs_[5].cuda_data.get()) : nullptr)
             : (fc2_experts_bias_optional == nullptr ? nullptr : packed_cuda_data(5, fc2_experts_bias_optional));
 
@@ -740,7 +753,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   if (cpu_offload_enabled_) {
     // The CUDA path is already enqueued above, so mixed execution overlaps its kernels with the host GEMMs.
-    ORT_RETURN_IF_NOT(moe_pilot, "FP16 MoE CPU offload requires a KernelPilot.");
+    ORT_RETURN_IF_NOT(moe_pilot, "FP16/BF16 MoE CPU offload requires a KernelPilot.");
     CUDA_RETURN_IF_ERROR(cudaEventSynchronize(routing_copy_ready));
     routing_copy_complete = true;
     ORT_RETURN_IF_ERROR(
@@ -769,31 +782,45 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           break;
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                                 "Unsupported FP16 MoE CPU-offload activation.");
+                                 "Unsupported FP16/BF16 MoE CPU-offload activation.");
       }
 
-      auto host_data = [&](int input_idx) {
-        return gsl::make_span(packed_inputs_[static_cast<size_t>(input_idx)].cpu_gemm_data);
-      };
-      auto optional_host_data = [&](int input_idx) -> gsl::span<const MLFloat16> {
+      auto optional_host_data = [&](int input_idx) -> gsl::span<const T> {
         const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-        return packed.present ? gsl::make_span(packed.cpu_data) : gsl::span<const MLFloat16>{};
+        return packed.present ? gsl::make_span(packed.cpu_data) : gsl::span<const T>{};
       };
 
       const size_t host_element_count =
           static_cast<size_t>(SafeInt<int64_t>(moe_params.num_rows) * moe_params.hidden_size);
-      auto host_cpu_output = AllocateBufferOnCPUPinned<MLFloat16>(host_element_count);
-      ORT_RETURN_IF_NOT(host_cpu_output, "Failed to allocate the pinned FP16 MoE CPU output buffer.");
+      auto host_cpu_output = AllocateBufferOnCPUPinned<T>(host_element_count);
+      ORT_RETURN_IF_NOT(host_cpu_output, "Failed to allocate the pinned FP16/BF16 MoE CPU output buffer.");
       const ::onnxruntime::contrib::MoeCpuOffloadParameters cpu_parameters{
           cpu_activation_type, activation_alpha_, activation_beta_, swiglu_limit_, is_fused_swiglu};
-      ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsFp16(
-          gsl::make_span(host_input.get(), host_element_count),
-          gsl::make_span(host_expert_indices.get(), expanded_rows),
-          gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
-          host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
-          moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-          cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
-          context->GetOperatorThreadPool()));
+      if constexpr (std::is_same_v<T, MLFloat16>) {
+        auto host_data = [&](int input_idx) {
+          return gsl::make_span(packed_inputs_[static_cast<size_t>(input_idx)].cpu_gemm_data);
+        };
+        ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsFp16(
+            gsl::make_span(host_input.get(), host_element_count),
+            gsl::make_span(host_expert_indices.get(), expanded_rows),
+            gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
+            host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
+            moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+            cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
+            context->GetOperatorThreadPool()));
+      } else if constexpr (std::is_same_v<T, BFloat16>) {
+        auto host_data = [&](int input_idx) {
+          return gsl::make_span(packed_inputs_[static_cast<size_t>(input_idx)].cpu_gemm_float_data);
+        };
+        ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsBFloat16(
+            gsl::make_span(host_input.get(), host_element_count),
+            gsl::make_span(host_expert_indices.get(), expanded_rows),
+            gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
+            host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
+            moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+            cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
+            context->GetOperatorThreadPool()));
+      }
 
       void* cpu_output_destination = output->MutableDataRaw();
       if (!cuda_experts_.empty()) {
@@ -808,10 +835,17 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   if (run_cpu_experts && !cuda_experts_.empty()) {
-    LaunchAddMoeFp16Output(
-        reinterpret_cast<half*>(output->MutableDataRaw()),
-        static_cast<const half*>(cpu_output_device_buffer.get()),
-        static_cast<size_t>(output->Shape().Size()), stream);
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      LaunchAddMoeFp16Output(
+          reinterpret_cast<half*>(output->MutableDataRaw()),
+          static_cast<const half*>(cpu_output_device_buffer.get()),
+          static_cast<size_t>(output->Shape().Size()), stream);
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      LaunchAddMoeBf16Output(
+          reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw()),
+          static_cast<const __nv_bfloat16*>(cpu_output_device_buffer.get()),
+          static_cast<size_t>(output->Shape().Size()), stream);
+    }
   }
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
