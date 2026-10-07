@@ -98,17 +98,18 @@ Status LaunchCheckLiveBlockTable(
 template <typename T>
 __global__ void MaskInvalidSequenceOutputs(
     T* output, const int32_t* sequence_validity,
-    const int32_t* cumulative_seqlens_q, int v_hidden_size) {
-  const int batch = blockIdx.y;
-  if (sequence_validity[batch] != 0) {
-    return;
-  }
+    const int32_t* cumulative_seqlens_q, int batch_size, int v_hidden_size) {
+  for (int batch = blockIdx.x; batch < batch_size; batch += gridDim.x) {
+    if (sequence_validity[batch] != 0) {
+      continue;
+    }
 
-  const int query_start = cumulative_seqlens_q[batch];
-  const int query_length = cumulative_seqlens_q[batch + 1] - query_start;
-  const int offset = blockIdx.x * blockDim.x + threadIdx.x;
-  if (offset < query_length * v_hidden_size) {
-    output[query_start * v_hidden_size + offset] = static_cast<T>(0.0f);
+    const int64_t query_start = cumulative_seqlens_q[batch];
+    const int64_t query_length = cumulative_seqlens_q[batch + 1] - query_start;
+    const int64_t element_count = query_length * v_hidden_size;
+    for (int64_t offset = threadIdx.x; offset < element_count; offset += blockDim.x) {
+      output[query_start * v_hidden_size + offset] = static_cast<T>(0.0f);
+    }
   }
 }
 
@@ -116,14 +117,13 @@ template <typename T>
 Status LaunchMaskInvalidSequenceOutputs(
     T* output, const int32_t* sequence_validity,
     const int32_t* cumulative_seqlens_q, int batch_size,
-    int max_query_len, int v_hidden_size, cudaStream_t stream) {
+    int v_hidden_size, cudaStream_t stream) {
   constexpr int kThreadsPerBlock = 256;
-  const int elements_per_sequence = max_query_len * v_hidden_size;
-  if (batch_size > 0 && elements_per_sequence > 0) {
-    const dim3 grid((elements_per_sequence + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                    batch_size);
-    MaskInvalidSequenceOutputs<<<grid, kThreadsPerBlock, 0, stream>>>(
-        output, sequence_validity, cumulative_seqlens_q, v_hidden_size);
+  constexpr int kMaxBlocks = 65535;
+  if (batch_size > 0 && v_hidden_size > 0) {
+    const int blocks = std::min(batch_size, kMaxBlocks);
+    MaskInvalidSequenceOutputs<<<blocks, kThreadsPerBlock, 0, stream>>>(
+        output, sequence_validity, cumulative_seqlens_q, batch_size, v_hidden_size);
   }
   return CUDA_CALL(cudaGetLastError());
 }
@@ -1621,7 +1621,8 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
 template <typename T, typename TCACHE>
 Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParameters& parameters,
                             PagedAttentionData<T, TCACHE>& data, const int max_threads_per_block,
-                            T** query_out) {
+                            T** query_out, T** key_out = nullptr, T** value_out = nullptr,
+                            int* key_stride_out = nullptr, int* value_stride_out = nullptr) {
   const int batch_size = parameters.batch_size;
   const int token_count = parameters.token_count;
   const int q_hidden_size = parameters.hidden_size;
@@ -1703,6 +1704,12 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   }
 
   *query_out = query;
+  if (key_out != nullptr) {
+    *key_out = key;
+    *value_out = value;
+    *key_stride_out = key_stride;
+    *value_stride_out = value_stride;
+  }
   return Status::OK();
 }
 
@@ -2072,8 +2079,7 @@ Status CudnnPagedAttention(
     const cudaDeviceProp& device_prop,
     Stream* ort_stream,
     contrib::PagedAttentionParameters& parameters,
-    PagedAttentionData<T, TCACHE>& data,
-    float scale) {
+    PagedAttentionData<T, TCACHE>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
 
@@ -2091,6 +2097,7 @@ Status CudnnPagedAttention(
       parameters.batch_size, stream));
 
   cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
+  bool cache_hit = false;
   const bool ok = onnxruntime::cudnn_sdpa::run_paged(
       /*output=*/reinterpret_cast<void*>(data.output),
       /*q=*/reinterpret_cast<void*>(query),
@@ -2106,11 +2113,15 @@ Status CudnnPagedAttention(
       parameters.num_blocks,
       parameters.block_size,
       parameters.max_num_blocks_per_seq,
-      scale,
+      data.cudnn_scale,
       std::is_same<T, BFloat16>::value,
       cudnn_handle,
       ort_stream,
-      data.cudnn_allocator);
+      data.cudnn_allocator,
+      &cache_hit);
+  if (data.cudnn_debug_info) {
+    printf("Operator=PagedAttention CudnnPagedGraphCacheHit=%d\n", cache_hit ? 1 : 0);
+  }
   if (!ok) {
     // The cuDNN paged graph was not available at dispatch time. PagedAttention runs a
     // try_build_paged_graph probe before selecting this backend, so a false here means either the
@@ -2298,6 +2309,22 @@ Status EfficientAttention(
 ////////// API Functions
 
 template <typename T, typename TCACHE>
+Status PreparePagedAttentionQueryAndCache(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    T** query,
+    T** key,
+    T** value,
+    int* key_stride,
+    int* value_stride) {
+  return PrepareQueryAndCache<T, TCACHE>(
+      static_cast<cudaStream_t>(ort_stream->GetHandle()), parameters, data,
+      device_prop.maxThreadsPerBlock, query, key, value, key_stride, value_stride);
+}
+
+template <typename T, typename TCACHE>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& /*cublas*/,
@@ -2316,7 +2343,7 @@ Status QkvToContext(
   } else if (data.use_xqa_decode) {
     attention_status = PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale);
   } else if (data.use_cudnn_paged) {
-    attention_status = CudnnPagedAttention(device_prop, ort_stream, parameters, data, scale);
+    attention_status = CudnnPagedAttention(device_prop, ort_stream, parameters, data);
   } else if (data.use_paged_decode) {
     attention_status = PagedDecodeAttention(device_prop, stream, parameters, data, scale);
 #if USE_FLASH_ATTENTION
@@ -2334,16 +2361,21 @@ Status QkvToContext(
   ORT_RETURN_IF_ERROR(attention_status);
   return LaunchMaskInvalidSequenceOutputs(
       data.output, data.sequence_validity, data.cumulative_seqlens_q,
-      parameters.batch_size, data.max_query_len, parameters.v_hidden_size, stream);
+      parameters.batch_size, parameters.v_hidden_size, stream);
 }
 
-#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)       \
-  template struct PagedAttentionData<T, TCACHE>;     \
-  template Status QkvToContext<T, TCACHE>(           \
-      const cudaDeviceProp& device_prop,             \
-      cublasHandle_t& cublas,                        \
-      Stream* ort_stream,                            \
-      contrib::PagedAttentionParameters& parameters, \
+#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)                   \
+  template struct PagedAttentionData<T, TCACHE>;                 \
+  template Status PreparePagedAttentionQueryAndCache<T, TCACHE>( \
+      const cudaDeviceProp& device_prop, Stream* stream,         \
+      contrib::PagedAttentionParameters& parameters,             \
+      PagedAttentionData<T, TCACHE>& data, T** query, T** key,   \
+      T** value, int* key_stride, int* value_stride);            \
+  template Status QkvToContext<T, TCACHE>(                       \
+      const cudaDeviceProp& device_prop,                         \
+      cublasHandle_t& cublas,                                    \
+      Stream* ort_stream,                                        \
+      contrib::PagedAttentionParameters& parameters,             \
       PagedAttentionData<T, TCACHE>& data);
 
 INSTANTIATE_PAGED_ATTENTION(half, half)

@@ -38,6 +38,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "data_propagation/custom_data_propagation.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -2753,6 +2754,15 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
                           node_output_types_.size(), " outputs");
     }
     return &node_output_types_[index];
+  }
+
+  bool hasOutput(size_t index) override {
+    if (index >= node_.OutputDefs().size()) {
+      return false;
+    }
+
+    const auto* node_arg = node_.OutputDefs()[index];
+    return node_arg != nullptr && node_arg->Exists();
   }
 
   const TensorProto* getInputData(size_t index) const override {
@@ -6164,6 +6174,11 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 
 Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& node_proto,
                                             std::optional<std::string_view> new_name) {
+  // The node proto originates from a model-local function body or a subgraph, so its output list is
+  // model controlled and may not match the single output the Constant schema declares.
+  ORT_RETURN_IF_NOT(node_proto.output_size() == 1, "Constant node: '", node_proto.name(),
+                    "' is expected to have exactly 1 output. Got: ", node_proto.output_size());
+
   ONNX_NAMESPACE::TensorProto tensor_proto;
   ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node_proto, ModelPath(), tensor_proto, node_proto.output(0)));
   if (new_name.has_value()) {
@@ -6594,7 +6609,7 @@ Status Graph::InlineFunction(Node& callnode) {
     ORT_ENFORCE(callnode.TryGetFunctionProto(inlined_fp), "Node has no function body and cannot be inlined.");
 
     // Make all the names unique and resolve nested graphs inputs to the outer scope.
-    function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
+    ORT_RETURN_IF_ERROR(function_utils::Specialize(inlined_fp, callnode, uniq_identifier));
 
     // In this case, global Resolve() will take care of everything.
     ORT_RETURN_IF_ERROR(InlineFunctionProto(inlined_fp, parent_annotation));
@@ -7109,7 +7124,7 @@ ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInf
 
   auto* tensor = value_info_proto.mutable_type()->mutable_tensor_type();
   const OrtTensorTypeAndShapeInfo& tensor_info = *vi.type_info->tensor_type_info;
-  tensor->set_elem_type(tensor_info.GetElementType());
+  tensor->set_elem_type(utils::ToTensorProtoElementType(tensor_info.GetElementType()));
 
   if (tensor_info.HasShape()) {
     auto& shape = *tensor->mutable_shape();

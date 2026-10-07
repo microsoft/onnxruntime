@@ -32,6 +32,7 @@ onnxruntime_profile*.json
 /docs/python/*_LICENSE
 /LICENSE.txt
 /csharp/**/obj/
+/plugin-ep-*/csharp/**/obj/
 /csharp/**/bin/
 /plugin-ep-cuda/csharp/**/obj/
 /plugin-ep-cuda/csharp/**/bin/
