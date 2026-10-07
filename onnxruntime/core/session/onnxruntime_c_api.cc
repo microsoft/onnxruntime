@@ -53,6 +53,7 @@
 #include "core/session/model_editor_api.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/ort_version_check.h"
@@ -329,7 +330,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemor
                     _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
-  auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
+  auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(type))->GetElementType();
   auto value = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(ml_type, shape, shape_len, info, p_data, p_data_len, *value));
   *out = value.release();
@@ -343,7 +344,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtA
                     ONNXTensorElementDataType type,
                     _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
-  auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
+  auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(type))->GetElementType();
   auto value = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(ml_type, shape, shape_len, deleter, p_data, p_data_len, *value));
   *out = value.release();
@@ -355,7 +356,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
                     _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
                     _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
-  auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
+  auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(type))->GetElementType();
   auto value = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(ml_type, shape, shape_len, allocator, *value));
   *out = value.release();
@@ -368,7 +369,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
                     size_t dense_shape_len, ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
-  auto sparse_tensor_type = DataTypeImpl::SparseTensorTypeFromONNXEnum(type);
+  auto sparse_tensor_type = DataTypeImpl::SparseTensorTypeFromONNXEnum(utils::ToTensorProtoElementType(type));
   auto element_type = sparse_tensor_type->GetElementType();
   assert(element_type->AsPrimitiveDataType() != nullptr);
   TensorShape shape(dense_shape, dense_shape_len);
@@ -668,7 +669,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorWithValuesAsOrtValue, _In_ const 
                     ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
-  auto sparse_tensor_type = DataTypeImpl::SparseTensorTypeFromONNXEnum(type);
+  auto sparse_tensor_type = DataTypeImpl::SparseTensorTypeFromONNXEnum(utils::ToTensorProtoElementType(type));
   auto element_type = sparse_tensor_type->GetElementType();
   assert(element_type->AsPrimitiveDataType() != nullptr);
   if (utils::IsDataTypeString(element_type)) {
@@ -2113,13 +2114,13 @@ static ORT_STATUS_PTR OrtGetValueImplMapHelper(_In_ const OrtValue* p_ml_value, 
   MLDataType element_type;
   switch (index) {
     case 0: {  // user is requesting keys
-      element_type = DataTypeImpl::TensorTypeFromONNXEnum(GetONNXTensorElementDataType<TKey>())->GetElementType();
+      element_type = DataTypeImpl::GetType<TKey>();
       vec_keys.reserve(static_cast<size_t>(num_kv_pairs));
       std::transform(data.cbegin(), data.cend(), std::back_inserter(vec_keys), [](const auto& k) { return k.first; });
       data_ptr = vec_keys.data();
     } break;
     case 1: {  // user is requesting values
-      element_type = DataTypeImpl::TensorTypeFromONNXEnum(GetONNXTensorElementDataType<TVal>())->GetElementType();
+      element_type = DataTypeImpl::GetType<TVal>();
       vec_vals.reserve(static_cast<size_t>(num_kv_pairs));
       std::transform(data.cbegin(), data.cend(), std::back_inserter(vec_vals), [](const auto& k) { return k.second; });
       data_ptr = vec_vals.data();

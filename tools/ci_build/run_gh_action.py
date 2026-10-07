@@ -7,6 +7,9 @@ import zipfile
 from pathlib import Path
 
 import requests
+import truststore
+
+truststore.inject_into_ssl()
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_DIR = (SCRIPT_DIR / ".." / "..").resolve()

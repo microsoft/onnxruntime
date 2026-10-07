@@ -1482,7 +1482,9 @@ common::Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto
 
 template Status GetSizeInBytesFromTensorTypeProto<0>(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
 
-common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    size_t max_embedded_initializer_size_in_bytes) {
   ORT_RETURN_IF(HasExternalData(tensor_proto), "Expected to validate an embedded (non-external) TensorProto");
 
   TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
@@ -1507,21 +1509,32 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
     ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
                                                                     &byte_size_from_shape));
   }
-  ORT_RETURN_IF_NOT(byte_size_from_shape <= kMaxEmbeddedInitializerSizeInBytes,
+  ORT_RETURN_IF_NOT(byte_size_from_shape <= max_embedded_initializer_size_in_bytes,
                     "Initializer '", tensor_proto.name(), "' declares a size of ", byte_size_from_shape,
-                    " bytes which exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                    " bytes which exceeds the ", max_embedded_initializer_size_in_bytes,
                     " byte limit for embedded initializer data. Use external data for large initializers.");
 
-  if (HasRawData(tensor_proto)) {
-    ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == byte_size_from_shape,
-                      "Initializer '", tensor_proto.name(), "': raw_data size (", tensor_proto.raw_data().size(),
-                      " bytes) does not match expected size from shape and data type (",
-                      byte_size_from_shape, " bytes)");
-  } else if (HasString(tensor_proto)) {
+  if (HasString(tensor_proto)) {
+    ORT_RETURN_IF(HasRawData(tensor_proto),
+                  "Initializer '", tensor_proto.name(), "': string tensor can not have raw data");
     ORT_RETURN_IF_NOT(tensor_proto.string_data_size() == num_elems_signed,
                       "Initializer '", tensor_proto.name(), "': string_data count (", tensor_proto.string_data_size(),
                       ") does not match expected count from shape (",
                       num_elems_signed, ")");
+
+    size_t total_string_storage_size = byte_size_from_shape;
+    for (const auto& string_data : tensor_proto.string_data()) {
+      ORT_RETURN_IF(string_data.size() > max_embedded_initializer_size_in_bytes - total_string_storage_size,
+                    "Initializer '", tensor_proto.name(), "': string_data shape bytes + payload exceeds the ",
+                    max_embedded_initializer_size_in_bytes,
+                    " byte limit for embedded initializer data. Use external data for large initializers.");
+      total_string_storage_size += string_data.size();
+    }
+  } else if (HasRawData(tensor_proto)) {
+    ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == byte_size_from_shape,
+                      "Initializer '", tensor_proto.name(), "': raw_data size (", tensor_proto.raw_data().size(),
+                      " bytes) does not match expected size from shape and data type (",
+                      byte_size_from_shape, " bytes)");
   } else {
     // Typed data fields. Each data type maps to a specific repeated field in the proto.
     int64_t expected_count = 0;
@@ -1601,6 +1614,10 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
   }
 
   return Status::OK();
+}
+
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  return ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kMaxEmbeddedInitializerSizeInBytes);
 }
 
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
