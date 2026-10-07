@@ -179,14 +179,14 @@ inference t+1, node L
 ```
 
 CUDA devices expose their copy-engine count, but that value does not provide a portable expert-level concurrency
-guarantee. The initial implementation therefore permits at most two in-flight expert exchanges per CUDA device. Two
-independent pinned buffers, two extra CUDA staging slots, and separate device-to-host and host-to-device streams form a
-bidirectional pipeline. After exchange A finishes its device-to-host transfer, its host-to-device transfer may overlap
-the device-to-host transfer of exchange B. Events preserve the CPU-first ordering within each exchange; buffers and
+guarantee. The initial implementation therefore permits at most four in-flight expert exchanges per CUDA device.
+Independent pinned buffers, CUDA staging slots, and device-to-host and host-to-device streams form a bidirectional
+pipeline. After exchange A finishes its device-to-host transfer, its host-to-device transfer may overlap the
+device-to-host transfer of another exchange. Events preserve the CPU-first ordering within each exchange; buffers and
 CUDA slots are never shared by transfers that overlap. Hardware with one copy engine serializes the transfers without
 changing correctness. Additional exchanges remain queued for a later completion or inference boundary. For the
-measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this limit requires about 3.4 MiB of pinned staging
-memory and 3.4 MiB of temporary CUDA storage.
+measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this limit requires about 6.8 MiB of pinned staging
+memory and 6.8 MiB of temporary CUDA storage.
 
 ## End-of-inference redistribution
 
@@ -202,7 +202,7 @@ The allocation objective is lexicographic:
 Within each node, keep the experts with the highest counters. Redistribution may transfer slot ownership between
 nodes, whereas a per-node exchange changes the expert stored in a slot without changing that node's slot count.
 
-Redistribution never drains or waits for pending exchanges. It schedules up to the available two-exchange concurrency
+Redistribution never drains or waits for pending exchanges. It schedules up to the available four-exchange concurrency
 limit and leaves additional non-conflicting exchanges queued. A node with an incomplete exchange continues using its
 published pre-exchange placement. Slot metadata changes only after both transfer directions complete.
 
@@ -244,11 +244,11 @@ counter-update logic. These are internal C++ calls, not a public C API.
 Expert identity includes graph scope as well as node and expert IDs, so nodes in different
 subgraphs cannot collide. The state persists across `Run()` calls and is isolated from other sessions.
 
-The CUDA cache manager owns device-specific resources and execution state:
+Each CUDA kernel cache owns device-specific resources and execution state:
 
-- CUDA slots, two extra staging slots, and current immutable mappings;
-- two reusable pinned host staging buffers;
-- pending exchanges and redistribution transfers;
+- CUDA slots, one reusable staging slot, and the current immutable mapping;
+- one reusable pinned host staging buffer;
+- at most one pending exchange;
 - CUDA completion events.
 
 Initialization builds an immutable dictionary from `(OpKernel pointer, local expert ID)` to a global expert index.
@@ -300,14 +300,14 @@ Implemented in the adaptive-swap change:
 - Move the CUDA expert to pinned CPU staging before moving its replacement to the extra CUDA slot.
 - Use dedicated device-to-host and host-to-device streams, events, and separate staging allocations for each active
   exchange.
-- Permit at most two in-flight exchanges per CUDA device; additional eligible nodes are reconsidered at the next
+- Permit at most four in-flight exchanges per CUDA device; additional eligible nodes are reconsidered at the next
   inference boundary.
 - Pipeline the host-to-device transfer of one exchange with the device-to-host transfer of another when the hardware
   supports bidirectional copies.
 - Never wait for an incomplete exchange when a `MoE` starts. The old placement remains published until transfer
   completion; publication copies the staged expert into the persistent slot on that invocation's compute stream.
 - Preserve each node's CUDA slot count and therefore the session-global CUDA expert budget.
-- Test the strict epsilon boundary, deterministic tie-breaking, two-exchange concurrency, queued work, delayed
+- Test the strict epsilon boundary, deterministic tie-breaking, multi-exchange concurrency, delayed
   publication, and numerical parity before and after a swap.
 
 Still planned:

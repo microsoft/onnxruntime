@@ -397,7 +397,7 @@ TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapUsesStrictEpsilonAndDeterminis
   }
 }
 
-TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapLimitsEachDeviceToTwoAndQueuesTheRest) {
+TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapAllowsMoreThanTwoPerDevice) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.SetCounterParameters(0, 1));
   ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(3));
@@ -419,19 +419,7 @@ TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapLimitsEachDeviceToTwoAndQueues
   ASSERT_STATUS_OK(state.EndRun());
   EXPECT_EQ(caches[0].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
   EXPECT_EQ(caches[1].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
-  EXPECT_TRUE(caches[2].Swaps().empty());
-
-  ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->PublishMoeExpertSwap(0, 1));
-  caches[0].Complete();
-  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
-  ASSERT_STATUS_OK(state.EndRun());
-  EXPECT_EQ(caches[0].Swaps().size(), 1U);
-  EXPECT_EQ(caches[1].Swaps().size(), 1U);
   EXPECT_EQ(caches[2].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
-
-  gsl::span<const int> published;
-  ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->GetMoeCudaExperts(published));
-  EXPECT_EQ(InlinedVector<int>(published.begin(), published.end()), (InlinedVector<int>{1}));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {

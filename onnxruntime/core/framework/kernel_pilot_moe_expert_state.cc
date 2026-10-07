@@ -250,7 +250,7 @@ KernelPilot* KernelPilotMoeExpertState::GetKernelPilot(const OpKernel* kernel) {
 }
 
 Status KernelPilotMoeExpertState::ScheduleSwaps() {
-  constexpr size_t kMaxInFlightSwapsPerDevice = 2;
+  constexpr size_t kMaxInFlightSwapsPerDevice = 4;
   InlinedHashMap<int, size_t> pending_by_device;
   InlinedVector<KernelState*> ordered_states;
   ordered_states.reserve(kernels_.size());
