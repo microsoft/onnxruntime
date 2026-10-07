@@ -386,8 +386,8 @@ static void TestSTFTComplexInputWithWindow(bool use_radix2) {
 
   const vector<T> expected_output = use_radix2
                                         ? vector<T>{10, 10, -4, 0, -2, -2, 0, -4}
-                                        : vector<T>{6, 6, -2.3660254, -0.6339746,
-                                                    -0.6339746, -2.3660254};
+                                        : vector<T>{6, 6, static_cast<T>(-2.3660254), static_cast<T>(-0.6339746),
+                                                    static_cast<T>(-0.6339746), static_cast<T>(-2.3660254)};
   test.AddOutput<T>("output", {1, 1, frame_length, 2}, expected_output);
   test.SetOutputAbsErr("output", 0.0001f);
   test.ConfigExcludeEps({kDmlExecutionProvider});
