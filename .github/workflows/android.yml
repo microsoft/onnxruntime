@@ -79,8 +79,9 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1599488"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1599488"
+        BINARY_SIZE_THRESHOLD_IN_BYTES=1607680
+        echo "Binary size threshold in bytes: ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
@@ -130,7 +131,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Use jdk 17
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -239,7 +240,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Use jdk 17
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '17'

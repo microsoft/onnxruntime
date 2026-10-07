@@ -2647,6 +2647,60 @@ TEST(QDQTransformerTests, ConvRelu) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, false, false /*use_contrib_qdq*/);
 }
 
+// The QDQ selector treats a Relu/Clip made redundant by the Q node as part of the Conv group, even when
+// ReluQuantFusion/ClipQuantFusion cannot remove it. The Relu/Clip must be removed with the group. Otherwise the
+// original Conv survives and has the same name as the QLinearConv, and the graph fails to resolve.
+TEST(QDQTransformerTests, ConvRedundantActivationNotFusedIntoQ) {
+  DNNL_GTEST_SKIP();
+
+  auto test_case = [&](bool use_clip) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({1, 12, 37}, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<uint8_t>({32, 12, 5}, 0, 255);
+
+      // add QDQ + Conv
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* conv_output = builder.MakeIntermediate();
+      auto* dq_conv_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129);
+      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      builder.AddConvNode(dq_conv_output, dq_w_output, conv_output);
+
+      auto* activation_output = builder.MakeIntermediate();
+      if (use_clip) {
+        // Clip bounds produced by DQ nodes give the Clip multiple input edges, so ClipQuantFusion cannot remove it.
+        // [0, 6] covers the uint8 Q range [0, 255 * .0082940589], so the Clip is redundant.
+        auto* min_dq = builder.MakeIntermediate();
+        auto* max_dq = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(builder.MakeScalarInitializer<uint8_t>(128), .00784313772f, 128,
+                                                 min_dq);
+        builder.AddDequantizeLinearNode<uint8_t>(builder.MakeScalarInitializer<uint8_t>(255), .0235293377f, 0,
+                                                 max_dq);
+        builder.AddNode("Clip", {conv_output, min_dq, max_dq}, {activation_output});
+        builder.AddQuantizeLinearNode<uint8_t>(activation_output, .0082940589f, 0, output_arg);
+      } else {
+        // A Q node without a zero point input defaults to uint8 with zero point 0, which makes the Relu redundant,
+        // but ReluQuantFusion requires the zero point input to exist.
+        builder.AddNode("Relu", {conv_output}, {activation_output});
+        builder.AddQuantizeLinearNode(activation_output, .0039f, output_arg);
+      }
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["Conv"], 0);
+      EXPECT_EQ(op_to_count["Clip"], 0);
+      EXPECT_EQ(op_to_count["Relu"], 0);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  };
+
+  test_case(/*use_clip*/ false);
+  test_case(/*use_clip*/ true);
+}
+
 TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
   DNNL_GTEST_SKIP();
 
@@ -5636,10 +5690,7 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
 TEST(QDQTransformerTests, QDQFinalCleanupTransformerReportsIntentionalRemoval) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[kOnnxDomain] = 25;
-  Model model("QDQFinalCleanupRemovalTester", false, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Model model("QDQFinalCleanupRemovalTester", false, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder(graph);
 

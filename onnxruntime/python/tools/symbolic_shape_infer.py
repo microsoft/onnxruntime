@@ -202,8 +202,10 @@ class SymbolicShapeInference:
             "BiasAdd": self._infer_BiasAdd,
             "BiasGelu": self._infer_BiasGelu,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
+            "BranchwiseRMSNorm": self._infer_BranchwiseRMSNorm,
             "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
             "DequantizeLinear": self._infer_DequantizeLinear,
+            "DynamicSparseAttention": self._infer_DynamicSparseAttention,
             "DynamicTimeWarping": self._infer_DynamicTimeWarping,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
@@ -215,6 +217,8 @@ class SymbolicShapeInference:
             "GroupNorm": self._infer_GroupNorm,
             "GroupNormalization": self._infer_GroupNorm,
             "GroupQueryAttention": self._infer_GroupQueryAttention,
+            "HyperConnectionPostMix": self._infer_HyperConnectionPostMix,
+            "HyperConnectionPreMix": self._infer_HyperConnectionPreMix,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "MatMulNBits": self._infer_MatMulNBits,
@@ -223,11 +227,13 @@ class SymbolicShapeInference:
             "PackedAttention": self._infer_PackedAttention,
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
             "PagedAttention": self._infer_PagedAttention,
+            "SparsePagedAttention": self._infer_PagedAttention,
             "PythonOp": self._infer_PythonOp,
             "QLinearAdd": self._infer_QLinearBinary,
             "QLinearMul": self._infer_QLinearBinary,
             "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
+            "ScaledSiLU": self._infer_ScaledSiLU,
             "RelativePositionBias": self._infer_RelativePositionBias,
             "RemovePadding": self._infer_RemovePadding,
             "RestorePadding": self._infer_RestorePadding,
@@ -237,6 +243,8 @@ class SymbolicShapeInference:
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "SparseAttention": self._infer_SparseAttention,
+            "SparseAttentionIndexer": self._infer_SparseAttentionIndexer,
+            "PackedSparseAttentionIndexer": self._infer_PackedSparseAttentionIndexer,
             "UnfoldTensor": self._infer_UnfoldTensor,
         }
         self.aten_op_dispatcher_ = {
@@ -470,6 +478,7 @@ class SymbolicShapeInference:
             "BiasGelu",
             "BiasSplitGelu",
             "DequantizeLinear",
+            "DynamicSparseAttention",
             "DynamicTimeWarping",
             "EmbedLayerNormalization",
             "FastGelu",
@@ -485,6 +494,7 @@ class SymbolicShapeInference:
             "NhwcConv",
             "PackedAttention",
             "PagedAttention",
+            "SparsePagedAttention",
             "PythonOp",
             "QuantizeLinear",
             "QuickGelu",
@@ -496,6 +506,8 @@ class SymbolicShapeInference:
             "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "SparseAttention",
+            "SparseAttentionIndexer",
+            "PackedSparseAttentionIndexer",
             "SkipGroupNorm",
             "QLinearAdd",
             "QLinearMul",
@@ -2480,6 +2492,36 @@ class SymbolicShapeInference:
     def _infer_FastGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
+    def _infer_BranchwiseRMSNorm(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_HyperConnectionPostMix(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_HyperConnectionPreMix(self, node):  # noqa: N802
+        input_shape = self._get_sympy_shape(node, 0)
+        branches = get_attribute(node, "num_branches", 0)
+        if branches:
+            assert branches > 0, "num_branches must be positive"
+            assert len(input_shape) >= 1, "flattened streams must have rank at least 1"
+            width = input_shape[-1]
+            if is_literal(width):
+                assert width > 0 and width % branches == 0, (
+                    "flattened stream width must be positive and divisible by num_branches"
+                )
+            output_shape = [*input_shape[:-1], sympy.simplify(input_shape[-1] / branches)]
+        else:
+            assert len(input_shape) >= 2, "grouped streams must have rank at least 2"
+            output_shape = [*input_shape[:-2], input_shape[-1]]
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], output_dtype, get_shape_from_sympy_shape(output_shape))
+        )
+
+    def _infer_ScaledSiLU(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
     def _infer_Gelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
@@ -2623,8 +2665,193 @@ class SymbolicShapeInference:
                     vi = self.known_vi_[node.output[0]]
                     vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
 
+    def _infer_DynamicSparseAttention(self, node):  # noqa: N802
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        query_shape = self._get_shape(node, 0)
+        if query_shape is not None:
+            output_shape = query_shape.copy()
+            if node.input[1] == "" and node.input[2] == "":
+                num_heads = get_attribute(node, "num_heads")
+                kv_num_heads = get_attribute(node, "kv_num_heads")
+                if isinstance(output_shape[2], int):
+                    divisor = num_heads + 2 * kv_num_heads
+                    if output_shape[2] % divisor == 0:
+                        head_size = output_shape[2] // divisor
+                        output_shape[2] = num_heads * head_size
+                    else:
+                        output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
+                else:
+                    output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+        past_shape = self._try_get_shape(node, 3)
+        cache_shape = past_shape
+        if cache_shape is None and query_shape is not None and isinstance(query_shape[2], int):
+            num_heads = get_attribute(node, "num_heads")
+            kv_num_heads = get_attribute(node, "kv_num_heads")
+            packed = node.input[1] == "" and node.input[2] == ""
+            divisor = num_heads + 2 * kv_num_heads if packed else num_heads
+            if query_shape[2] % divisor == 0:
+                head_size = query_shape[2] // divisor
+                past_inputs_omitted = len(node.input) <= 4 or (not node.input[3] and not node.input[4])
+                total_length = self._try_get_value(node, 10) if past_inputs_omitted else None
+                cache_length = (
+                    as_scalar(total_length)
+                    if total_length is not None
+                    else str(self._new_symbolic_dim_from_output(node, 1, 2))
+                )
+                cache_shape = [query_shape[0], kv_num_heads, cache_length, head_size]
+
+        for output_index in (1, 2):
+            if len(node.output) > output_index and node.output[output_index]:
+                vi = self.known_vi_[node.output[output_index]]
+                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, cache_shape))
+
     def _infer_SparseAttention(self, node):  # noqa: N802
         self._infer_GroupQueryAttention(node)
+
+    def _infer_SparseAttentionIndexer(self, node):  # noqa: N802
+        policy_mode = get_attribute(node, "policy_mode", b"")
+        if isinstance(policy_mode, bytes):
+            policy_mode = policy_mode.decode("utf-8")
+        compress_ratio = get_attribute(node, "compress_ratio", 0)
+        query_shape = self._get_sympy_shape(node, 0)
+        head_size = self._get_sympy_shape(node, 2)[0]
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        if policy_mode == "qsa":
+            capacity = get_attribute(node, "token_budget", 0) + compress_ratio - 1
+        else:
+            capacity = get_attribute(node, "index_topk", 0)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(
+                node.output[0],
+                onnx.TensorProto.INT32,
+                get_shape_from_sympy_shape([*query_shape[:2], capacity]),
+            )
+        )
+
+        def set_output(index, sympy_shape):
+            if index >= len(node.output) or not node.output[index]:
+                return
+            out_vi = self.known_vi_[node.output[index]]
+            out_vi.CopyFrom(
+                helper.make_tensor_value_info(node.output[index], output_dtype, get_shape_from_sympy_shape(sympy_shape))
+            )
+
+        def past_shape(index):
+            if index >= len(node.input) or not node.input[index]:
+                return None
+            return self._get_sympy_shape(node, index)
+
+        if policy_mode == "qsa":
+            past_key_shape = past_shape(7)
+            if past_key_shape is None:
+                return
+            if len(node.input) > 12 and node.input[12]:
+                set_output(1, past_key_shape)
+            else:
+                set_output(1, [query_shape[0], past_key_shape[1] + query_shape[1], head_size])
+            return
+
+        past_compressed_shape = past_shape(7)
+        past_buffer_shape = past_shape(13)
+        if past_compressed_shape is None or past_buffer_shape is None:
+            return
+
+        buffer_length = past_buffer_shape[2]
+        sequence_length = query_shape[1]
+
+        # The number of compressed entries emitted by this call is known as soon as the buffer and
+        # query lengths are; otherwise fall back to fresh symbolic dimensions.
+        if compress_ratio > 0 and is_literal(buffer_length) and is_literal(sequence_length):
+            buffer_length = int(buffer_length)
+            sequence_length = int(sequence_length)
+            overlap_length = compress_ratio if buffer_length >= compress_ratio else 0
+            pending = buffer_length - overlap_length + sequence_length
+            new_window_count = pending // compress_ratio
+            present_buffer_length = (
+                compress_ratio + pending % compress_ratio if new_window_count > 0 else buffer_length + sequence_length
+            )
+            present_compressed_length = (
+                past_compressed_shape[1]
+                if len(node.input) > 12 and node.input[12]
+                else past_compressed_shape[1] + new_window_count
+            )
+        else:
+            present_compressed_length = (
+                past_compressed_shape[1]
+                if len(node.input) > 12 and node.input[12]
+                else self._new_symbolic_dim_from_output(node, 1, 1)
+            )
+            present_buffer_length = self._new_symbolic_dim_from_output(node, 2, 2)
+
+        set_output(1, [query_shape[0], present_compressed_length, head_size])
+        set_output(2, [2, query_shape[0], present_buffer_length, past_buffer_shape[3]])
+
+    def _infer_PackedSparseAttentionIndexer(self, node):  # noqa: N802
+        policy_mode = get_attribute(node, "policy_mode", b"")
+        if isinstance(policy_mode, bytes):
+            policy_mode = policy_mode.decode("utf-8")
+        compress_ratio = get_attribute(node, "compress_ratio", 0)
+        query_shape = self._get_sympy_shape(node, 0)
+        total_tokens = query_shape[0]
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        if policy_mode == "qsa":
+            capacity = get_attribute(node, "token_budget", 0) + compress_ratio - 1
+        else:
+            capacity = get_attribute(node, "index_topk", 0)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(
+                node.output[0],
+                onnx.TensorProto.INT32,
+                get_shape_from_sympy_shape([total_tokens, capacity]),
+            )
+        )
+        if len(node.output) > 1 and node.output[1]:
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[1], onnx.TensorProto.INT32, get_shape_from_sympy_shape([total_tokens])
+                )
+            )
+
+        def copy_state_output(output_index, input_index, dtype):
+            # State never grows: present_* always has exactly the same fixed shape as past_*, so
+            # shape inference can simply copy it, unlike the dense op's growing/concatenated state.
+            if output_index >= len(node.output) or not node.output[output_index]:
+                return
+            if input_index >= len(node.input) or not node.input[input_index]:
+                return
+            shape = self._get_sympy_shape(node, input_index)
+            out_vi = self.known_vi_[node.output[output_index]]
+            out_vi.CopyFrom(
+                helper.make_tensor_value_info(node.output[output_index], dtype, get_shape_from_sympy_shape(shape))
+            )
+
+        copy_state_output(2, 12, output_dtype)  # present_key_state <- past_key_state
+        copy_state_output(3, 13, output_dtype)  # present_kv_buffer <- past_kv_buffer
+        if policy_mode != "qsa":
+            copy_state_output(4, 14, output_dtype)  # present_gate_buffer <- past_gate_buffer
+        copy_state_output(5, 15, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
+        if policy_mode == "qsa" and len(node.output) > 6 and node.output[6]:
+            past_key_shape = self._get_sympy_shape(node, 12)
+            if past_key_shape is not None:
+                state_update_capacity = get_attribute(node, "state_update_capacity", 0)
+                vi = self.known_vi_[node.output[6]]
+                vi.CopyFrom(
+                    helper.make_tensor_value_info(
+                        node.output[6],
+                        output_dtype,
+                        get_shape_from_sympy_shape([past_key_shape[0], state_update_capacity, past_key_shape[2]]),
+                    )
+                )
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)
@@ -2874,6 +3101,9 @@ class SymbolicShapeInference:
                 if node.op_type == "RotaryEmbedding" and len(node.output) > 1:
                     # Skip symbolic shape inference for RotaryEmbedding functions that have extraneous outputs
                     # generated by `export_modules_as_functions`
+                    continue
+                if not node.output[i_o]:
+                    # A missing optional output is declared with an empty name and has no value info.
                     continue
 
                 vi = self.known_vi_[node.output[i_o]]

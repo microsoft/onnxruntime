@@ -13,6 +13,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#include "contrib_ops/cuda/bert/group_query_attention_eligibility.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
@@ -310,7 +311,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
           "k_scale must be provided when k_quant_type is not NONE");
     }
 
-    if (k_scale->DataType() != DataTypeImpl::GetType<float>()) {
+    if (!k_scale->IsDataType<float>()) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "k_scale must be float tensor");
@@ -323,7 +324,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
           ONNXRUNTIME, INVALID_ARGUMENT,
           "v_scale must be provided when v_quant_type is not NONE");
     }
-    if (v_scale->DataType() != DataTypeImpl::GetType<float>()) {
+    if (!v_scale->IsDataType<float>()) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "v_scale must be float tensor");
@@ -529,6 +530,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
+  const int original_present_kv_cache_capacity = parameters.seqlen_present_kv_cache;
+
   // The capacity C of a windowed cache is only guaranteed to cover the attention window, so a step
   // that appends S > 1 tokens can transiently need min(P, C) + S entries: the earliest queries of
   // the step still have to see keys that the last ones have already pushed out. Redirect such a
@@ -587,6 +590,39 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
   constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
 
+  // Keep the original cache capacity in the shared workspace problem. Flash, MEA, and unfused
+  // recipes receive their effective post-staging extents separately; XQA only handles single-token
+  // steps, which do not stage the cache.
+  GQAWorkspaceProblem workspace_problem;
+  workspace_problem.qkv_element_size = sizeof(T);
+  workspace_problem.cache_element_size = sizeof(U);
+  workspace_problem.batch_size = parameters.batch_size;
+  workspace_problem.sequence_length = parameters.sequence_length;
+  workspace_problem.num_heads = parameters.num_heads;
+  workspace_problem.kv_num_heads = parameters.kv_num_heads;
+  workspace_problem.head_size = parameters.head_size;
+  workspace_problem.present_kv_cache_capacity = original_present_kv_cache_capacity;
+  // XQA derives eight-bit INT8/FP8 storage from U even when legacy models omit the bit-width attribute.
+  // Normalize only the recipe input; preserve the original attribute for other runtime paths.
+  workspace_problem.kv_cache_bit_width =
+      parameters.kv_cache_bit_width == 0 && is_inputs_quantized && (is_int8 || is_fp8)
+          ? 8
+          : parameters.kv_cache_bit_width;
+  workspace_problem.k_quantization =
+      k_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (k_quant_type_ == KVQuantizationType::PER_CHANNEL ? GQAKvQuantizationType::PerChannel
+                                                              : GQAKvQuantizationType::None);
+  workspace_problem.v_quantization =
+      v_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (v_quant_type_ == KVQuantizationType::PER_CHANNEL ? GQAKvQuantizationType::PerChannel
+                                                              : GQAKvQuantizationType::None);
+  workspace_problem.is_windowed_kv_cache = parameters.is_windowed_kv_cache;
+  workspace_problem.is_first_prompt = parameters.is_first_prompt;
+  workspace_problem.do_rotary = parameters.do_rotary;
+  workspace_problem.use_qk_norm = parameters.use_qk_norm;
+
   // Allocate XQA scratch if needed (only for Flash Decoding path)
   IAllocatorUniquePtr<void> xqa_scratch_buffer;
   // Check conditions to enable XQA (Extreme Query Attention) kernel for optimized decoding.
@@ -614,51 +650,28 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   // The XQA kernel has no attention_bias input.
-  if (enable_xqa_ &&
-      parameters.is_unidirectional &&
-      !has_attention_bias &&
-      (device_prop.major >= 8) &&
-      !parameters.is_first_prompt &&
-      parameters.sequence_length == 1 &&
-      parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
-      parameters.past_present_share_buffer &&
-      parameters.softcap == 0.0f &&
-      xqa_qk_norm_ok &&
-      is_xqa_smooth_softmax_supported) {
-    int group_size = parameters.num_heads / parameters.kv_num_heads;
+  GQAXqaSeqFreeInputs xqa_inputs;
+  xqa_inputs.enable_xqa = enable_xqa_;
+  xqa_inputs.is_unidirectional = parameters.is_unidirectional;
+  xqa_inputs.has_attention_bias = has_attention_bias;
+  xqa_inputs.device_major = device_prop.major;
+  xqa_inputs.device_minor = device_prop.minor;
+  xqa_inputs.softcap = parameters.softcap;
+  xqa_inputs.qk_norm_ok = xqa_qk_norm_ok;
+  xqa_inputs.smooth_softmax_supported = is_xqa_smooth_softmax_supported;
+  xqa_inputs.is_inputs_quantized = is_inputs_quantized;
+  xqa_inputs.head_size = parameters.head_size;
+  xqa_inputs.num_heads = parameters.num_heads;
+  xqa_inputs.kv_num_heads = parameters.kv_num_heads;
+  xqa_inputs.k_quant_type = k_quant_type_;
+  xqa_inputs.v_quant_type = v_quant_type_;
 
-    // Sliding window (local_window_size > 0) is wired through to the quantized XQA kernels as well,
-    // so the INT8/FP8 variants no longer need to be restricted to global attention.
-    // K and V may use different scales: for PER_TENSOR the kernel folds k_scale into qkScale (applied
-    // to Q*K.T before softmax) and v_scale into voScale (applied to the P*V accumulator). PER_CHANNEL
-    // scales cannot be scalars inside the kernel, so ExtremeDecoding folds them into Q and into the
-    // attention output instead, which is exact and costs two O(num_heads * head_size) passes -- far
-    // cheaper than the alternative of dequantizing the whole cache on every decode step.
-    auto is_supported_quant_type = [](KVQuantizationType t) {
-      return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
-    };
-    bool is_int8_quantized_supported = is_int8 &&
-                                       (is_supported_quant_type(k_quant_type_) &&
-                                        is_supported_quant_type(v_quant_type_) &&
-                                        IsSupportedGQAXqaHeadSize(parameters.head_size) &&
-                                        IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true));
-
-#ifdef USE_FP8_KV_CACHE
-    bool is_fp8_quantized_supported = is_fp8 &&
-                                      (is_supported_quant_type(k_quant_type_) &&
-                                       is_supported_quant_type(v_quant_type_) &&
-                                       IsSupportedGQAXqaHeadSize(parameters.head_size) &&
-                                       IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true) &&
-                                       (device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));  // FP8 requires SM89+ (Ada Lovelace)
-#else
-    constexpr bool is_fp8_quantized_supported = false;
-#endif
-
-    bool is_non_quantized_supported = !is_inputs_quantized &&
-                                      IsSupportedGQAXqaHeadSize(parameters.head_size) &&
-                                      IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/false);
-
-    data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
+  // Phase and actual past/present buffer aliasing are per-Run facts, not partition-time inputs.
+  const bool xqa_phase_ok = !parameters.is_first_prompt &&
+                            parameters.sequence_length == 1 &&
+                            parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
+  if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
+    data.use_xqa = true;
 
     if (data.use_xqa) {
       // Consumer Blackwell (sm_120) and some other devices expose a smaller per-block opt-in
@@ -692,54 +705,44 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
 
     if (data.use_xqa) {
-      size_t xqa_internal_bytes = onnxruntime::contrib::cuda::GetXQAScratchSize(
-          GetDeviceProp(),
-          parameters.batch_size,
-          parameters.num_heads,
-          parameters.kv_num_heads,
-          parameters.head_size,
-          parameters.seqlen_present_kv_cache,
-          parameters.k_quant_type != KVQuantizationType::NONE ? (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8) : XqaQuantType::kNone,
-          std::is_same<T, BFloat16>::value);
-      assert(xqa_internal_bytes > 0);
-      // Calculate additional scratch needed for manual RoPE/Append in ExtremeDecoding
-      size_t xqa_total_bytes = xqa_internal_bytes;
-      size_t q_bytes = 0;
-      size_t k_bytes = 0;
-      if (parameters.do_rotary) {
-        // 1. Q_rotated buffer: B * N * H * sizeof(T) (if rotary)
-        // 2. K_rotated buffer: B * Nk * H * sizeof(T) (if rotary)
-        size_t element_size = sizeof(CudaT);
-        q_bytes = parameters.batch_size * parameters.num_heads * parameters.head_size * element_size;
-        k_bytes = parameters.batch_size * parameters.kv_num_heads * parameters.head_size * element_size;
-        q_bytes = (q_bytes + 255) / 256 * 256;
-        k_bytes = (k_bytes + 255) / 256 * 256;
-        xqa_total_bytes += q_bytes + k_bytes;
-      }
+      // Backend-internal XQA scratch (internal_scratch_bytes reproduces GetXQAScratchSize) plus the
+      // optional RoPE Q/K and dynamic head-sink regions come from the shared XQA workspace recipe.
+      // The recipe lays out those trailing regions in the same single allocation and byte order as
+      // the previous inline math (internal | rotary Q | rotary K | dynamic head sink).
+      GQAXqaConfig xqa_config;
+      xqa_config.device_major = device_prop.major;
+      xqa_config.device_minor = device_prop.minor;
+      xqa_config.multi_processor_count = device_prop.multiProcessorCount;
+      xqa_config.kv_type = parameters.k_quant_type != KVQuantizationType::NONE
+                               ? (is_fp8 ? GQAXqaKvType::Fp8 : GQAXqaKvType::Int8)
+                               : GQAXqaKvType::None;
       const bool use_prepacked_xqa_head_sink =
           use_xqa_attention_sinks && xqa_head_sink_ != nullptr && xqa_head_sink_count_ == parameters.num_heads;
       const bool convert_xqa_head_sink = use_xqa_attention_sinks && !use_prepacked_xqa_head_sink;
-      size_t xqa_head_sink_bytes = 0;
-      if (convert_xqa_head_sink) {
-        // No prepacked FP32 head_sink (dynamic input): reserve scratch for the per-launch conversion.
-        xqa_head_sink_bytes = parameters.num_heads * sizeof(float);
-        xqa_head_sink_bytes = (xqa_head_sink_bytes + 255) / 256 * 256;
-        xqa_total_bytes += xqa_head_sink_bytes;
-      }
+      xqa_config.head_sink_storage =
+          use_prepacked_xqa_head_sink
+              ? GQAXqaHeadSinkStorage::PrepackedFp32
+              : (convert_xqa_head_sink ? GQAXqaHeadSinkStorage::DynamicConversion
+                                       : GQAXqaHeadSinkStorage::None);
+      xqa_config.is_bf16 = std::is_same<T, BFloat16>::value;
 
-      xqa_scratch_buffer = this->GetScratchBuffer<void>(xqa_total_bytes, GetComputeStream(context));
+      const auto xqa = GetGQAXqaWorkspaceRecipe(workspace_problem, xqa_config);
+      ORT_RETURN_IF_NOT(xqa.status.IsOK(),
+                        "GQA XQA workspace sizing failed: ", xqa.status.message);
+      const GQAXqaWorkspaceRecipe& recipe = xqa.recipe;
+
+      xqa_scratch_buffer = this->GetScratchBuffer<void>(recipe.total_backend_bytes, GetComputeStream(context));
       data.xqa_buffer = xqa_scratch_buffer.get();
-      data.xqa_buffer_bytes = xqa_internal_bytes;
+      data.xqa_buffer_bytes = recipe.internal_scratch_bytes;
 
-      char* xqa_extra_buffer = reinterpret_cast<char*>(data.xqa_buffer) + xqa_internal_bytes;
+      char* xqa_base = reinterpret_cast<char*>(data.xqa_buffer);
       if (parameters.do_rotary) {
-        data.qkv_buffer = reinterpret_cast<CudaT*>(xqa_extra_buffer);
-        xqa_extra_buffer += q_bytes + k_bytes;
+        data.qkv_buffer = reinterpret_cast<CudaT*>(xqa_base + recipe.rotary_q_offset_bytes);
       }
       if (use_prepacked_xqa_head_sink) {
         data.xqa_head_sink = xqa_head_sink_.get();
       } else if (convert_xqa_head_sink) {
-        data.xqa_head_sink = reinterpret_cast<float*>(xqa_extra_buffer);
+        data.xqa_head_sink = reinterpret_cast<float*>(xqa_base + recipe.dynamic_head_sink_offset_bytes);
         data.xqa_head_sink_needs_conversion = true;
       }
     }
@@ -751,16 +754,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   bool use_cudnn_sdpa = !data.use_xqa &&
-                        !has_attention_bias &&
-                        !is_inputs_quantized &&
-                        std::is_same<T, U>::value &&
-                        parameters.softcap == 0.0f &&
-                        !parameters.use_smooth_softmax &&
-                        head_sink == nullptr &&
-                        parameters.local_window_size == -1 &&
-                        parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH &&
-                        (enable_cudnn_flash_attention_ ||
-                         (auto_enable_cudnn_flash_attention_ && device_prop.major >= 9)) &&
+                        IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
+                            has_attention_bias,
+                            is_inputs_quantized,
+                            parameters.softcap,
+                            parameters.use_smooth_softmax,
+                            head_sink != nullptr,
+                            parameters.local_window_size,
+                            parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH,
+                            enable_cudnn_flash_attention_ ||
+                                (auto_enable_cudnn_flash_attention_ && device_prop.major >= 9)) &&
                         onnxruntime::cudnn_sdpa::is_stable() &&
                         onnxruntime::cudnn_sdpa::is_supported(device_prop,
                                                               parameters.num_heads,
@@ -775,12 +778,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !data.use_xqa &&
                              !data.use_cudnn_sdpa &&
-                             !has_attention_bias &&  // flash_api.h has no bias parameter
-                             !disable_flash_attention_ &&
-                             onnxruntime::flash::is_supported<T>(device_prop,
-                                                                 parameters.head_size,
-                                                                 parameters.num_heads,
-                                                                 parameters.kv_num_heads);
+                             IsGQAFlashEligibleSeqFree<T>(device_prop,
+                                                          has_attention_bias,
+                                                          disable_flash_attention_,
+                                                          parameters.head_size,
+                                                          parameters.num_heads,
+                                                          parameters.kv_num_heads);
 
   data.use_flash_attention = use_flash_attention;
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
@@ -794,28 +797,27 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
 
   if (use_flash_attention) {
-    // Allocate Flash specific buffers (Softmax LSE, Accum)
-    size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+    // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
+    // shared Flash workspace recipe. The recipe reproduces get_num_splits_and_buffer_sizes,
+    // including the fast-decode correction that sizes the accumulators with num_heads rather than
+    // the kv_num_heads used by the split heuristic, and the get_softmax_lse_* helpers.
+    GQAFlashConfig flash_config;
+    flash_config.total_sequence_length = effective_workspace_kv_length;
+    flash_config.local_window_size = parameters.local_window_size;
+    flash_config.multi_processor_count = device_prop.multiProcessorCount;
+    flash_config.fast_decode = data.use_flash_attention_fast_decode;
 
-    int num_heads_for_split = data.use_flash_attention_fast_decode ? parameters.kv_num_heads : parameters.num_heads;
-    size_t sequence_length_for_split = static_cast<size_t>(effective_workspace_kv_length);
-    if (data.use_flash_attention_fast_decode && parameters.local_window_size > 0) {
-      sequence_length_for_split = std::min(sequence_length_for_split, static_cast<size_t>(parameters.local_window_size));
-    }
+    const auto flash_result = GetGQAFlashWorkspaceRecipe(workspace_problem, flash_config);
+    ORT_RETURN_IF_NOT(flash_result.status.IsOK(),
+                      "GQA flash attention workspace sizing failed: ", flash_result.status.message);
+    const GQAFlashWorkspaceRecipe& recipe = flash_result.recipe;
 
-    auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, sequence_length_for_split, num_heads_for_split,
-        parameters.head_size, device_prop.multiProcessorCount);
+    // Preserve the num_splits side effect: it feeds the kernel launch and debug info below.
+    parameters.num_splits = static_cast<int>(recipe.runtime_num_splits);
 
-    parameters.num_splits = static_cast<int>(num_splits);
-
-    if (data.use_flash_attention_fast_decode && num_splits > 1) {
-      // The heuristic used kv_num_heads to maximize occupancy for the GQA-aware kernel.
-      // However, the LSE and Accum buffers must store results for ALL num_heads.
-      softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
-      auto round_multiple = [](size_t x, size_t m) { return (x + m - 1) / m * m; };
-      out_accum_bytes = onnxruntime::flash::get_out_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, round_multiple(parameters.head_size, 32));
-    }
+    const size_t softmax_lse_bytes = recipe.softmax_lse_bytes;
+    const size_t softmax_lse_accum_bytes = recipe.softmax_lse_accumulator_bytes;
+    const size_t out_accum_bytes = recipe.output_accumulator_bytes;
 
     softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
     softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
@@ -897,20 +899,27 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
-        !disable_memory_efficient_attention_ &&
-        !is_inputs_quantized &&
-        !has_attention_bias &&
-        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
+        IsGQAMemoryEfficientEligibleSeqFree<T>(sm,
+                                               disable_memory_efficient_attention_,
+                                               is_inputs_quantized,
+                                               has_attention_bias,
+                                               parameters.head_size);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
-    // KV buffer for head expansion (when num_heads != kv_num_heads)
-    size_t kv_buffer_bytes = (use_memory_efficient_attention && (parameters.num_heads != parameters.kv_num_heads))
-                                 ? (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.seqlen_present_kv_cache * parameters.head_size)
-                                 : 0;
-    // FMHA workspace
-    size_t fmha_buffer_bytes = (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float)))
-                                   ? (sizeof(float) * parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size)
-                                   : 0;
+    // Head-expansion (K/V) and FP32 FMHA-accumulator scratch sizes come from the shared
+    // MEA workspace recipe. It returns zero for the expansion buffers when num_heads ==
+    // kv_num_heads and zero for the accumulator when head_size <= 128, matching the prior
+    // inline gating (MemoryEfficientAttentionParams::need_workspace).
+    size_t kv_buffer_bytes = 0;
+    size_t fmha_buffer_bytes = 0;
+    if (use_memory_efficient_attention) {
+      const auto mea = GetGQAMemoryEfficientWorkspaceRecipe(
+          workspace_problem, parameters.seqlen_present_kv_cache);
+      ORT_RETURN_IF_NOT(mea.status.IsOK(),
+                        "GQA memory-efficient attention workspace sizing failed: ", mea.status.message);
+      kv_buffer_bytes = mea.recipe.expanded_key_bytes;
+      fmha_buffer_bytes = mea.recipe.output_accumulator_bytes;
+    }
 
     k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
     v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
@@ -949,34 +958,22 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
     data.use_unfused = true;
 
-    const size_t B = static_cast<size_t>(parameters.batch_size);
-    const size_t N_q = static_cast<size_t>(parameters.num_heads);
-    const size_t S_q = static_cast<size_t>(parameters.sequence_length);
-    const size_t H = static_cast<size_t>(parameters.head_size);
-    // GQA guarantees head_size == v_head_size; use H_v for the Y output buffer
-    // so the allocation stays correct if a distinct v_head_size is ever exposed.
-    const size_t H_v = (parameters.v_head_size > 0)
-                           ? static_cast<size_t>(parameters.v_head_size)
-                           : H;
-    // This is the same resident/staged cache bound passed to the unfused kernel.
-    const size_t S_kv = static_cast<size_t>(effective_workspace_kv_length);
+    // CheckInputs validates equal Q/K/V head sizes; v_head_size == 0 means use head_size.
+    // Enforce the UnfusedGqaAttention invariant before sizing its Q/Y buffers.
+    ORT_RETURN_IF_NOT(parameters.v_head_size == 0 || parameters.v_head_size == parameters.head_size,
+                      "UnfusedGqaAttention requires head_size == v_head_size");
+    // The recipe retains the aligned Q/Y and FP32 QK/softmax layout, using the same
+    // resident/staged KV extent passed to the unfused kernel.
+    const auto unfused = GetGQAUnfusedWorkspaceRecipe(workspace_problem, effective_workspace_kv_length);
+    ORT_RETURN_IF_NOT(unfused.status.IsOK(),
+                      "GQA unfused attention workspace sizing failed: ", unfused.status.message);
+    const GQAUnfusedWorkspaceRecipe& recipe = unfused.recipe;
 
-    auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
-      return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
-    };
-    const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
-    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H_v * sizeof(T));
-    const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
-        onnxruntime::contrib::cuda::GetUnfusedAttentionWorkspaceSize(
-            static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
-    const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
-
-    unfused_scratch = GetScratchBuffer<void>(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
-                                             GetComputeStream(context));
+    unfused_scratch = GetScratchBuffer<void>(recipe.total_backend_bytes, GetComputeStream(context));
     auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
-    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
-    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
-    data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
+    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base + recipe.q_bnsh_offset_bytes);
+    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + recipe.y_bnsh_offset_bytes);
+    data.unfused_workspace = reinterpret_cast<void*>(base + recipe.qk_offset_bytes);
   }
 
   if (kernel_options_->AllowDebugInfo()) {
