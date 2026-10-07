@@ -66,7 +66,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool enable_weightless_ep_context_nodes = false;
     // Modes returned by GetWeightlessSupport(). Must match the kOrtEpDevice_EpMetadataKey_WeightlessSupport EP
     // metadata reported by the factory. Tests can override it to check that ORT detects a mismatch.
-    uint32_t weightless_support = OrtWeightlessSupport_EXTERNAL_ONLY | OrtWeightlessSupport_ALL;
+    OrtWeightlessSupport weightless_support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
     bool advertise_ep_context_data_support = true;
     bool use_default_cpu_allocator = false;
     bool test_read_ep_context_during_compile = false;
@@ -90,7 +90,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL GetWeightlessSupportImpl(const OrtEp* this_ptr,
-                                                          uint32_t* supported_modes) noexcept;
+                                                          OrtWeightlessSupport* support) noexcept;
   static OrtStatus* ORT_API_CALL GetEpContextDataCallbackSupportImpl(const OrtEp* this_ptr,
                                                                      uint32_t* supported_flags) noexcept;
 
