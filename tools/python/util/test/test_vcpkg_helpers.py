@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ..vcpkg_helpers import generate_triplet_for_posix_platform
+from ..vcpkg_helpers import generate_linux_triplets, generate_triplet_for_posix_platform
 
 
 class PosixTripletTest(unittest.TestCase):
@@ -40,6 +40,16 @@ class PosixTripletTest(unittest.TestCase):
                         for flag in ("-fstack-clash-protection", "-fcf-protection"):
                             self.assertEqual(flag in triplet, expect_x64_linux_flags, triplet)
                         self.assertEqual("-fstack-protector-strong" in triplet, enable_binskim, triplet)
+
+    def test_noexception_triplets_strip_unwind_tables_only_for_minimal_build(self):
+        with tempfile.TemporaryDirectory() as build_dir:
+            generate_linux_triplets(build_dir, {"Release"}, use_full_protobuf=False)
+            for folder, expect_unwind_stripped in (("noexception", False), ("noexception_minimal", True)):
+                with self.subTest(folder=folder):
+                    triplet = (Path(build_dir) / "Release" / folder / "x64-linux.cmake").read_text(encoding="utf-8")
+                    self.assertIn("-fno-exceptions", triplet)
+                    self.assertIn("-DONNX_DISABLE_EXCEPTIONS=ON", triplet)
+                    self.assertEqual("-fno-unwind-tables" in triplet, expect_unwind_stripped, triplet)
 
 
 if __name__ == "__main__":

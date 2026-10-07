@@ -83,9 +83,9 @@ jobs:
           path: ${{ runner.temp }}/minimal_build_test_data/
           if-no-files-found: error # Fail if test data wasn't generated
 
-  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
+  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED], then regular onnxruntime [exceptions DISABLED]
   build_minimal_exceptions_disabled:
-    name: 2. Build Minimal (Exceptions Disabled)
+    name: 2. Build Minimal and Regular (Exceptions Disabled)
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -158,6 +158,36 @@ jobs:
             --minimal_build
             --disable_exceptions
             --enable_training_ops
+
+      - name: Run Build 2b (Update)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: MinSizeRel
+          mode: 'update' # CMake configure step
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --parallel
+            --use_binskim_compliant_compile_flags
+            --use_cache
+            --skip_tests
+            --disable_exceptions
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+      - name: Run Build 2b (Build)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: MinSizeRel
+          mode: 'build' # Actual build step
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --parallel
+            --use_binskim_compliant_compile_flags
+            --use_cache
+            --skip_tests
+            --disable_exceptions
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
   # Job 3a: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
   build_minimal_custom_ops:

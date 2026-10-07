@@ -39,6 +39,7 @@ class BuildArgsTest(unittest.TestCase):
         cases = (
             (("--build_wasm",), "linux", "x86_64"),
             (("--minimal_build", "--disable_exceptions"), "linux", "x86_64"),
+            (("--disable_exceptions",), "linux", "x86_64"),
             (("--rv64",), "linux", "riscv64"),
             (("--visionos",), "macos", "arm64"),
             (("--tvos",), "macos", "arm64"),
@@ -49,6 +50,11 @@ class BuildArgsTest(unittest.TestCase):
             with self.subTest(arguments=arguments, platform_name=platform_name, machine=machine):
                 args = self._parse(*arguments, platform_name=platform_name, machine=machine)
                 self.assertFalse(args.use_telemetry)
+
+    def test_wasm_disable_exceptions_requires_minimal_build(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            self._parse("--build_wasm", "--disable_exceptions", platform_name="linux")
+        self._parse("--build_wasm", "--disable_exceptions", "--minimal_build", platform_name="linux")
 
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
