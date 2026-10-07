@@ -123,6 +123,7 @@ stages:
 
       # Rename the downloaded folder
       - script: |
+          mkdir -p $(Pipeline.Workspace)/build/onnxruntime-java
           mv $(Pipeline.Workspace)/cuda13/onnxruntime-java-gpu $(Pipeline.Workspace)/build/onnxruntime-java
 
       - task: Maven@4
