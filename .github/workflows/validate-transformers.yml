@@ -9,7 +9,7 @@ on:
       - 'onnxruntime/python/tools/transformers/models/llama/requirements.txt'
       - 'onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/**'
       - 'onnxruntime/python/tools/transformers/models/whisper/requirements.txt'
-      - '.github/workflows/transformers_model_requirements.yml'
+      - '.github/workflows/validate-transformers.yml'
   pull_request:
     branches:
       - main
@@ -18,7 +18,7 @@ on:
       - 'onnxruntime/python/tools/transformers/models/llama/requirements.txt'
       - 'onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/**'
       - 'onnxruntime/python/tools/transformers/models/whisper/requirements.txt'
-      - '.github/workflows/transformers_model_requirements.yml'
+      - '.github/workflows/validate-transformers.yml'
   workflow_dispatch:
     inputs:
       run_slow_tests:
