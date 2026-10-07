@@ -221,8 +221,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-      false,
-      []() { return true; });
+      false);
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
@@ -258,20 +257,17 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
-  // Env getters retain the context and an independent recording, not a Session EP.
-  // Keep the streamless ABI wrapper even though the shared implementation supports AllocOnStream.
+  // Env allocations submit their own clears and never borrow a Session recording.
   *allocator = new onnxruntime::ep::adapter::Allocator(
       memory_info,
       [](const OrtMemoryInfo&) -> AllocatorPtr {
         auto context = std::shared_ptr<WebGpuContext>(
             &WebGpuContextFactory::DefaultContext(),
             [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
-        auto recording = std::make_shared<CommandRecordingState>();
         return std::make_shared<GpuBufferAllocator>(
             [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
-            [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
-            false,
-            []() { return true; });
+            std::function<CommandRecordingState&()>{},
+            false);
       });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

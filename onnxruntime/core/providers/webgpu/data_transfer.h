@@ -19,7 +19,7 @@ struct CommandRecordingState;
 // - Built-in Env, plugin Env, and plugin framework Session:
 //     onnxruntime::plugin_ep::DataTransfer (core/framework/plugin_data_transfer.h)
 //       -> onnxruntime::WebGpuDataTransferImpl (derived from OrtDataTransferImpl)
-//       -> onnxruntime::webgpu::DataTransferImpl (data_transfer_, lazily allocated).
+//       -> onnxruntime::webgpu::DataTransferImpl (local to each CopyTensors call).
 //   The outer wrapper holds the C API object through an OrtDataTransferImpl&
 //   and releases it via its Release callback. OrtDataTransferImpl is the C API
 //   base/function table, not an additional, separately allocated wrapper.
@@ -45,12 +45,12 @@ struct CommandRecordingState;
 //   for its own adapter DataTransferManager. Adapter kernels use this object,
 //   bypassing the factory's C API wrapper.
 //
-// WebGpuDataTransferImpl, defined in webgpu_provider_factory.cc, owns private
-// recording state for streamless copies. Session-level creation alone does not
-// bind it to the requesting EP. In plugin builds, an explicit-stream copy uses
+// WebGpuDataTransferImpl, defined in webgpu_provider_factory.cc, uses per-call recording
+// for plugin streamless copies and object-owned recording in built-in builds. Session-level
+// creation alone does not bind it to the requesting EP. In plugin builds, an explicit-stream copy uses
 // ep/sync_stream.cc to construct a temporary webgpu::DataTransferImpl with the
 // owning EP's BufferManager and recording, rather than the C API wrapper's
-// cached data_transfer_.
+// call-local recording.
 //
 // DataTransferImpl is the shared raw-pointer copy implementation used by both
 // DataTransfer (IDataTransfer subclass) and the C API wrapper.

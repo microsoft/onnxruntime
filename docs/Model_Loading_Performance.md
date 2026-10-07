@@ -74,6 +74,23 @@ for external tensors of at least 16 MiB; smaller tensors use one read. The optim
 device and filesystem. If pinned buffers or CUDA streams cannot be created, loading falls back to a pageable buffer.
 Models with weights embedded in the ONNX file do not use this external-data path.
 
+### Opened-file path validation requirements
+
+For native models that use external data, ONNX Runtime validates the canonical path of the opened file handle before
+reading or mapping it. This prevents a pathname or symlink from being swapped between validation and access.
+
+- On Linux and Android, `/proc/self/fd` must be available. Containers, chroots, and sandboxes must mount procfs so
+  ONNX Runtime can resolve the opened handle securely.
+- Apple platforms use `F_GETPATH`, FreeBSD uses `F_KINFO`, and Windows uses
+  `GetFinalPathNameByHandle`.
+- Other native POSIX platforms without a secure handle-backed canonical-path API, including the current NetBSD and
+  AIX implementations, fail closed when loading external-data models. Embedded-data models remain supported.
+- WebAssembly does not provide native canonical-path validation. Its external-data loader uses the environment/path
+  interface instead of the native opened-file path.
+
+ONNX Runtime intentionally does not fall back to resolving and comparing a mutable pathname because that would
+reintroduce a time-of-check/time-of-use race.
+
 Configure the CUDA EP in Python:
 
 ```python

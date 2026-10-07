@@ -111,9 +111,11 @@ class BatchNorm : public OpKernel {
     }
 #endif
 
+    // For NC inputs, map each sample to a column to vectorize across contiguous channels.
+    const bool use_spatial_map = is_spatial_ && sample_size != 1;
     ConstEigenArrayMap<T> X_arr(X->Data<T>(),
-                                is_spatial_ ? sample_size : sample_size_incl_all_channels,
-                                is_spatial_ ? N * C : N);
+                                use_spatial_map ? sample_size : sample_size_incl_all_channels,
+                                use_spatial_map ? N * C : N);
     ConstEigenVectorArrayMap<T> scale_arr(scale->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
     ConstEigenVectorArrayMap<T> bias_arr(B->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
 
@@ -126,13 +128,22 @@ class BatchNorm : public OpKernel {
       saved_mean_arr.setZero();
       saved_var_arr.setZero();
 
-      for (size_t nc = 0; nc < N * C; ++nc) {
-        saved_mean_arr(nc % C) += X_arr.col(nc).sum();
-      }
-
-      saved_mean_arr /= static_cast<T>(N * sample_size);
-      for (size_t nc = 0; nc < N * C; ++nc) {
-        saved_var_arr(nc % C) += (X_arr.col(nc) - saved_mean_arr(nc % C)).matrix().squaredNorm();
+      if (sample_size == 1) {
+        for (size_t n = 0; n < N; ++n) {
+          saved_mean_arr += X_arr.col(n);
+        }
+        saved_mean_arr /= static_cast<T>(N);
+        for (size_t n = 0; n < N; ++n) {
+          saved_var_arr += (X_arr.col(n) - saved_mean_arr).square();
+        }
+      } else {
+        for (size_t nc = 0; nc < N * C; ++nc) {
+          saved_mean_arr(nc % C) += X_arr.col(nc).sum();
+        }
+        saved_mean_arr /= static_cast<T>(N * sample_size);
+        for (size_t nc = 0; nc < N * C; ++nc) {
+          saved_var_arr(nc % C) += (X_arr.col(nc) - saved_mean_arr(nc % C)).matrix().squaredNorm();
+        }
       }
       saved_var_arr /= static_cast<T>(N * sample_size);
 
@@ -191,14 +202,14 @@ class BatchNorm : public OpKernel {
     Eigen::Array<T, Eigen::Dynamic, 1> new_scale = inv_std * scale_arr;
     Eigen::Array<T, Eigen::Dynamic, 1> new_bias = bias_arr - mean_arr * new_scale;
     EigenArrayMap<T> Y_arr(Y->MutableData<T>(),
-                           is_spatial_ ? sample_size : sample_size_incl_all_channels,
-                           is_spatial_ ? N * C : N);
+                           use_spatial_map ? sample_size : sample_size_incl_all_channels,
+                           use_spatial_map ? N * C : N);
 
-    if (is_spatial_) {  // spatial == 1
+    if (use_spatial_map) {
       for (size_t nc = 0; nc < N * C; ++nc) {
         Y_arr.col(nc) = X_arr.col(nc) * new_scale(nc % C) + new_bias(nc % C);
       }
-    } else {  // spatial == 0
+    } else {
       for (size_t n = 0; n < N; ++n) {
         Y_arr.col(n) = X_arr.col(n) * new_scale.col(0) + new_bias.col(0);
       }
