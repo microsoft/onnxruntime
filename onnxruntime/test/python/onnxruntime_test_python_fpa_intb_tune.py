@@ -15,8 +15,7 @@ from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper, save
 
 import onnxruntime as ort
 from onnxruntime.tools import fpa_intb_tune as tune
@@ -109,6 +108,30 @@ class TestFpAIntBTune(unittest.TestCase):
         self.assertEqual(outputs[0].element_type(), TensorProto.BFLOAT16)
 
 
+def _lock_file(file):
+    if sys.platform == "win32":
+        import msvcrt  # noqa: PLC0415
+
+        file.seek(0)
+        msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        import fcntl  # noqa: PLC0415
+
+        fcntl.flock(file, fcntl.LOCK_EX)
+
+
+def _unlock_file(file):
+    if sys.platform == "win32":
+        import msvcrt  # noqa: PLC0415
+
+        file.seek(0)
+        msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl  # noqa: PLC0415
+
+        fcntl.flock(file, fcntl.LOCK_UN)
+
+
 def _gpu_worker(model, prefix, output):
     plugin = os.environ.get("ORT_CUDA_PLUGIN_PATH")
     if plugin:
@@ -161,7 +184,7 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
                 ir_version=10,
             )
             model_path = root / "model.onnx"
-            onnx.save(model, model_path)
+            save(model, model_path)
             prefix = str(root / "cache")
 
             def command(output):
@@ -207,15 +230,7 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
             ]
             cache_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             with open(str(cache_path) + ".lock", "a+b") as lock, tempfile.TemporaryFile(mode="w+t") as log_file:
-                lock.seek(0)
-                if sys.platform == "win32":
-                    import msvcrt  # noqa: PLC0415
-
-                    msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
-                else:
-                    import fcntl  # noqa: PLC0415
-
-                    fcntl.flock(lock, fcntl.LOCK_EX)
+                _lock_file(lock)
                 output = root / "locked.npz"
                 process = subprocess.Popen(command(output), stdout=log_file, stderr=subprocess.STDOUT, text=True)
                 try:
@@ -226,11 +241,7 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
                         time.sleep(0.1)
                     self.assertTrue(Path(str(output) + ".ready").exists())
                 finally:
-                    if sys.platform == "win32":
-                        lock.seek(0)
-                        msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-                    else:
-                        fcntl.flock(lock, fcntl.LOCK_UN)
+                    _unlock_file(lock)
                     try:
                         process.wait(timeout=60)
                     except subprocess.TimeoutExpired:
