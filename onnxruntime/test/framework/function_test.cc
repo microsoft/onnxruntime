@@ -1694,7 +1694,7 @@ TEST(FunctionTest, ForwardedGraphAttributePreservesNestedReferenceBindings) {
 TEST(FunctionTest, DirectGraphAttributePreservesNestedReferenceBindings) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(CreateDirectNestedGraphAttributeModel(), nullptr, logger);
-  const auto status = model.ValidateLocalFunctionCallDepth(model.MainGraph());
+  const auto status = model.MainGraph().Resolve();
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
@@ -2751,6 +2751,38 @@ TEST(FunctionTest, ResolveRejectsExcessiveDefaultGraphReferenceDepth) {
         status.ErrorMessage(),
         testing::HasSubstr("graph attribute expansion depth exceeds"));
   }
+}
+
+TEST(FunctionTest, MaximumDefaultGraphReferenceDepthAllowsScalarLeafAttribute) {
+  std::vector<ONNX_NAMESPACE::AttributeProto> defaults;
+  defaults.reserve(kMaxModelLocalFunctionCallDepth);
+  for (size_t i = 0; i < kMaxModelLocalFunctionCallDepth; ++i) {
+    const std::string name = "body_" + std::to_string(i);
+    if (i + 1 == kMaxModelLocalFunctionCallDepth) {
+      ONNX_NAMESPACE::AttributeProto leaf;
+      leaf.set_name(name);
+      leaf.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      *leaf.mutable_g() = MakeNonRecursiveDefaultGraph();
+      auto* scalar = leaf.mutable_g()->mutable_node(0)->add_attribute();
+      scalar->set_name("alpha");
+      scalar->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+      scalar->set_f(0.1f);
+      defaults.push_back(std::move(leaf));
+    } else {
+      defaults.push_back(MakeDefaultGraphReference(
+          name, "body_" + std::to_string(i + 1), false));
+    }
+  }
+
+  auto function = MakeFunctionWithDefaultGraphAttributes(
+      defaults,
+      {MakeGraphRefAttribute(
+          "body_attr", defaults.front().name(),
+          ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH)});
+  Model model(
+      MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
+      nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
 }
 
 TEST(FunctionTest, RepeatedDefaultGraphDagExpansionCompletes) {

@@ -518,8 +518,11 @@ Status ValidateBoundAttributeCallDepth(
   if (attribute.proto == nullptr) {
     return Status::OK();
   }
+  if (!CanContainGraph(attribute)) {
+    return Status::OK();
+  }
 
-  if (attribute.context == nullptr && CanContainGraph(attribute)) {
+  if (attribute.context == nullptr) {
     attribute.context = InternRelevantAttributeBindingContext(
         *attribute.proto, bindings, domain_to_version, validated_states);
   }
@@ -699,8 +702,13 @@ Status ValidateGraphCallDepth(
         if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
           attribute_graph = node.GetGraphAttribute(attr_name);
         }
-        const auto resolved_attr = ResolveAttribute(attr, bindings, attribute_graph);
+        auto resolved_attr = ResolveAttribute(attr, bindings, attribute_graph);
         if (resolved_attr.proto != nullptr) {
+          if (resolved_attr.context == nullptr && CanContainGraph(resolved_attr)) {
+            resolved_attr.context = InternRelevantAttributeBindingContext(
+                *resolved_attr.proto, bindings, graph.DomainToVersionMap(),
+                validated_states);
+          }
           SetAttributeBinding(callee_bindings, attr_name, resolved_attr);
         }
       }
