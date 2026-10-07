@@ -1565,15 +1565,54 @@ TEST_F(GraphTransformationTests, QDQFusionPreservesSharedZeroPoint) {
 }
 
 TEST_F(GraphTransformationTests, QDQFusionRequiresMatchingQuantizationParameters) {
+  enum class Mismatch { Scale, ZeroPoint, Axis };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 1);
+    TEST_RETURN_IF(op_count.count("com.microsoft.FakeQuant") != 0);
+    return Status::OK();
+  };
+
+  for (const auto mismatch : {Mismatch::Scale, Mismatch::ZeroPoint, Mismatch::Axis}) {
+    auto build_test_case = [mismatch](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({{2}});
+      auto* quantize_scale = builder.MakeScalarInitializer<float>(0.1f);
+      auto* dequantize_scale = mismatch == Mismatch::Scale
+                                   ? builder.MakeScalarInitializer<float>(0.2f)
+                                   : quantize_scale;
+      auto* quantize_zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+      auto* dequantize_zero_point = mismatch == Mismatch::ZeroPoint
+                                        ? builder.MakeScalarInitializer<uint8_t>(1)
+                                        : quantize_zero_point;
+      auto* quantized = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput<float>(std::vector<int64_t>{2});
+      auto& quantize = builder.AddNode(
+          "QuantizeLinear", {input, quantize_scale, quantize_zero_point}, {quantized});
+      builder.AddNode(
+          "DequantizeLinear", {quantized, dequantize_scale, dequantize_zero_point}, {output});
+      if (mismatch == Mismatch::Axis) {
+        quantize.AddAttribute("axis", static_cast<int64_t>(0));
+      }
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                          TransformerLevel::Level1, 1, check_not_fused, check_not_fused));
+  }
+}
+
+TEST_F(GraphTransformationTests, QDQFusionRejectsPerAxisParameters) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input = builder.MakeInput<float>({{2}});
-    auto* quantize_scale = builder.MakeScalarInitializer<float>(0.1f);
-    auto* dequantize_scale = builder.MakeScalarInitializer<float>(0.2f);
-    auto* zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* scale = builder.MakeInitializer<float>({2}, {0.1f, 0.2f});
+    auto* zero_point = builder.MakeInitializer<uint8_t>({2}, {0, 0});
     auto* quantized = builder.MakeIntermediate();
     auto* output = builder.MakeOutput<float>(std::vector<int64_t>{2});
-    builder.AddNode("QuantizeLinear", {input, quantize_scale, zero_point}, {quantized});
-    builder.AddNode("DequantizeLinear", {quantized, dequantize_scale, zero_point}, {output});
+    auto& quantize = builder.AddNode("QuantizeLinear", {input, scale, zero_point}, {quantized});
+    auto& dequantize = builder.AddNode("DequantizeLinear", {quantized, scale, zero_point}, {output});
+    quantize.AddAttribute("axis", static_cast<int64_t>(0));
+    dequantize.AddAttribute("axis", static_cast<int64_t>(0));
   };
 
   auto check_not_fused = [](Graph& graph) {

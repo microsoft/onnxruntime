@@ -5,6 +5,7 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
@@ -122,6 +123,11 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
   const auto* dequantize_axis = graph_utils::GetNodeAttribute(*dequantize_node_ptr, "axis");
   if (quantize_inputs.size() != dequantize_inputs.size() ||
       (quantize_axis ? quantize_axis->i() : 1) != (dequantize_axis ? dequantize_axis->i() : 1)) {
+    return {false, nullptr};
+  }
+
+  if (!optimizer_utils::IsScalar(*quantize_inputs[1]) ||
+      (quantize_inputs.size() > 2 && !optimizer_utils::IsScalar(*quantize_inputs[2]))) {
     return {false, nullptr};
   }
 
