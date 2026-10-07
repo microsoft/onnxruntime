@@ -473,6 +473,7 @@ static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_in
 /// Declared total KV-length envelope (accumulated past + current tokens) for CUDA
 /// GroupQueryAttention workspace estimation. A positive value enables non-windowed Level-1
 /// estimation using this bound; "0" or unset (default) leaves non-windowed estimation unavailable.
+/// The estimate also covers the allocated past cache capacity if it exceeds this envelope.
 /// Windowed estimation continues to use the cache capacity instead.
 /// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
 /// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating

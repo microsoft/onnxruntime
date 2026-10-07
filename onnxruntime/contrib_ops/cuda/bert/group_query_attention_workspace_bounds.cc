@@ -386,10 +386,9 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
   // copies the full past cache into preservation scratch before the backend
   // runs (group_query_attention.cc separate_past_buffer). That copy coexists
   // with the selected route's workspace, so charge its worst case on top of the
-  // per-route maximum. Bounding the copy by present_kv_cache_capacity_bound (the
-  // KV-length envelope) is sound because the past length never exceeds the total
-  // present length, and by head_size_bound because the stored per-head extent
-  // (halved for 4-bit) never exceeds the logical head size.
+  // per-route maximum. present_kv_cache_capacity_bound covers the full allocated
+  // past capacity, which can exceed the active total KV length for a static cache.
+  // The stored per-head extent (halved for 4-bit) never exceeds head_size_bound.
   if (aggregate.status.IsOK() && bounds.account_partial_alias_preservation) {
     size_t preservation = 0;
     auto status = Mul4(static_cast<size_t>(bounds.batch_size_bound),
