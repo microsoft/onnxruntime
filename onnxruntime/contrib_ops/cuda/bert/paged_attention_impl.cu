@@ -28,21 +28,16 @@ namespace contrib {
 namespace cuda {
 
 __global__ void SanitizeBlockTableKernel(const int32_t* block_table, int32_t* sanitized_block_table,
-                                         size_t element_count, int num_blocks,
-                                         int32_t* has_unmapped_page) {
+                                         size_t element_count, int num_blocks) {
   const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index < element_count) {
     const int32_t block_id = block_table[index];
     sanitized_block_table[index] = block_id >= -1 && block_id < num_blocks ? block_id : -1;
-    if (has_unmapped_page != nullptr && sanitized_block_table[index] < 0) {
-      atomicExch(has_unmapped_page, 1);
-    }
   }
 }
 
 Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
-                                size_t element_count, int num_blocks,
-                                int32_t* has_unmapped_page, cudaStream_t stream) {
+                                size_t element_count, int num_blocks, cudaStream_t stream) {
   if (element_count == 0) {
     return Status::OK();
   }
@@ -52,12 +47,9 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
                            "block_table element count exceeds the CUDA kernel indexing limit.");
   }
   constexpr int kThreadsPerBlock = 256;
-  if (has_unmapped_page != nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(has_unmapped_page, 0, sizeof(int32_t), stream));
-  }
   const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
   SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
-      block_table, sanitized_block_table, element_count, num_blocks, has_unmapped_page);
+      block_table, sanitized_block_table, element_count, num_blocks);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -114,40 +106,6 @@ Status LaunchPrepareCudnnBlockTable(
       block_table, cudnn_block_table, cumulative_seqlens_kv,
       cudnn_seqlens_kv, sequence_validity, batch_size,
       max_num_blocks_per_seq, block_size);
-  return CUDA_CALL(cudaGetLastError());
-}
-
-__global__ void CheckLiveBlockTableKernel(
-    const int32_t* block_table, const int32_t* cumulative_seqlens_kv,
-    int batch_size, int max_num_blocks_per_seq, int block_size,
-    int32_t* has_unmapped_live_page) {
-  const int batch = blockIdx.x * blockDim.x + threadIdx.x;
-  if (batch >= batch_size) {
-    return;
-  }
-
-  const int sequence_length =
-      cumulative_seqlens_kv[batch + 1] - cumulative_seqlens_kv[batch];
-  const int live_blocks = (sequence_length + block_size - 1) / block_size;
-  for (int block = 0; block < live_blocks; ++block) {
-    if (block_table[batch * max_num_blocks_per_seq + block] < 0) {
-      atomicExch(has_unmapped_live_page, 1);
-      return;
-    }
-  }
-}
-
-Status LaunchCheckLiveBlockTable(
-    const int32_t* block_table, const int32_t* cumulative_seqlens_kv,
-    int batch_size, int max_num_blocks_per_seq, int block_size,
-    int32_t* has_unmapped_live_page, cudaStream_t stream) {
-  CUDA_RETURN_IF_ERROR(
-      cudaMemsetAsync(has_unmapped_live_page, 0, sizeof(int32_t), stream));
-  constexpr int kThreadsPerBlock = 256;
-  const int blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  CheckLiveBlockTableKernel<<<blocks, kThreadsPerBlock, 0, stream>>>(
-      block_table, cumulative_seqlens_kv, batch_size, max_num_blocks_per_seq, block_size,
-      has_unmapped_live_page);
   return CUDA_CALL(cudaGetLastError());
 }
 

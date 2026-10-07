@@ -39,8 +39,6 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
                                  const int kv_num_heads, const int head_size, const int token_count, cudaStream_t stream,
                                  const int max_threads_per_block);
 
-// Exposed so paged_attention.cc can populate cumulative_seqlens_kv on both the FA and MEA
-// dispatch paths (producer hoisted out of FlashAttention/UnfusedAttention in impl.cu).
 Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
                                                size_t& workspace_bytes,
                                                cudaStream_t stream);
@@ -60,20 +58,13 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
                                      cudaStream_t stream);
 
 Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
-                                size_t element_count, int num_blocks,
-                                int32_t* has_unmapped_page, cudaStream_t stream);
+                                size_t element_count, int num_blocks, cudaStream_t stream);
 Status LaunchPrepareCudnnBlockTable(const int32_t* block_table, int32_t* cudnn_block_table,
                                     const int32_t* cumulative_seqlens_kv,
                                     int32_t* cudnn_seqlens_kv, int32_t* sequence_validity,
                                     size_t element_count, int batch_size,
                                     int max_num_blocks_per_seq, int block_size,
                                     cudaStream_t stream);
-Status LaunchCheckLiveBlockTable(const int32_t* block_table,
-                                 const int32_t* cumulative_seqlens_kv,
-                                 int batch_size, int max_num_blocks_per_seq,
-                                 int block_size, int32_t* has_unmapped_live_page,
-                                 cudaStream_t stream);
-
 // Paged decode backend sizing helpers, used by paged_attention.cc to test eligibility (the kernel
 // needs more dynamic shared memory than the device provides for very wide heads) and to size the
 // split-KV workspaces.

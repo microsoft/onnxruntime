@@ -326,7 +326,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
       reinterpret_cast<const int*>(block_table->Data<int>()),
       sanitized_block_table.get(), block_table_element_count, parameters.num_blocks,
-      nullptr, cuda_stream));
+      cuda_stream));
 
   // Kernel backend selection. The choice depends only on static shapes and on the optional
   // 'attention_metadata' bounds, never on a device-to-host readback, so it is identical on every

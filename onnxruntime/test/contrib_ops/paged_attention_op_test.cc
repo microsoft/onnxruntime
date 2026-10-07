@@ -946,6 +946,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     EXPECT_TRUE(execution_provider_ptr->IsGraphCaptured(1));
   }
 
+  if (c.skip_reference_check) {
+    return;
+  }
+
   const auto& outputs = io_binding->GetOutputs();
   MLDataType cache_data_type = c.int8_cache   ? DataTypeImpl::GetType<int8_t>()
                                : c.bf16_query ? DataTypeImpl::GetType<BFloat16>()
