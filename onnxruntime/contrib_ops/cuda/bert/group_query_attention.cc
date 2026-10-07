@@ -575,6 +575,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.is_windowed_kv_cache));
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
+  constexpr bool is_int8 = std::is_same<U, int8_t>::value;
   constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
 
   // Keep the original cache capacity in the shared workspace problem. Flash, MEA, and unfused
