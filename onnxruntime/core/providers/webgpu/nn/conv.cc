@@ -103,10 +103,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     const auto x_width = static_cast<uint32_t>(input_shape[is_channels_last ? 3 : 4]);
     const auto x_channels = static_cast<uint32_t>(input_shape[is_channels_last ? 4 : 1]);
     Conv3DNaiveProgram program(activation_, has_bias, is_channels_last);
-    program.CacheHint(activation_.CacheKey(), std::to_string(is_channels_last))
-        .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, 1})
-        .AddInput({kernel, ProgramTensorMetadataDependency::TypeAndRank, kernel_shape, 1})
-        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, 1})
+    program.AddInput({input, ProgramTensorMetadataDependency::None, input_shape, 1})
+        .AddInput({kernel, ProgramTensorMetadataDependency::None, kernel_shape, 1})
+        .AddOutput({output, ProgramTensorMetadataDependency::None, output_shape, 1})
         .AddUniformVariables({{output_size},
                               {std::vector<uint32_t>{kernel_depth, kernel_height, kernel_width}},
                               {pads_3d},
@@ -118,7 +117,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     // Activation uniforms must remain last because definitions and values are matched by index.
     AppendActivationUniformsData(activation_, program);
     if (has_bias) {
-      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), 1});
+      program.AddInput({bias, ProgramTensorMetadataDependency::None, bias->Shape(), 1});
     }
     return context.RunProgram(program);
   } else if (rank == 4) {
@@ -227,18 +226,21 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     auto x_components = is_depthwise_vec ? components : 1;
     auto reduced_x_shape = is_depthwise_vec ? ReduceShapeByComponents(modified_input_output_shapes[0], components)
                                             : modified_input_output_shapes[0];
-    program.CacheHint(activation_.CacheKey(), std::to_string(components), std::to_string(is_channels_last),
-                      std::to_string(is_depthwise_vec))
-        .AddInput({inputs[0], ProgramTensorMetadataDependency::TypeAndRank, reduced_x_shape, x_components})
-        .AddInput({inputs[1], ProgramTensorMetadataDependency::TypeAndRank, reduced_kernel_shape, components})
-        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
-        .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
+    program.AddInput({inputs[0], ProgramTensorMetadataDependency::None, reduced_x_shape, x_components})
+        .AddInput({inputs[1], ProgramTensorMetadataDependency::None, reduced_kernel_shape, components})
+        .AddOutput({output, ProgramTensorMetadataDependency::None, reduced_output_shape, components})
+        .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                              {dilations},
+                              {strides},
+                              {updated_pads},
+                              {static_cast<uint32_t>(output_channels_per_group)},
+                              {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
     // Activation uniforms must remain last because definitions and values are matched by index.
     AppendActivationUniformsData(activation_, program);
     if (has_bias) {
       auto reduced_bias_shape = ReduceShapeByComponents(modified_input_output_shapes[2], components);
-      program.AddInput({inputs[2], ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
+      program.AddInput({inputs[2], ProgramTensorMetadataDependency::None, reduced_bias_shape, components});
     }
     return context.RunProgram(program);
   }

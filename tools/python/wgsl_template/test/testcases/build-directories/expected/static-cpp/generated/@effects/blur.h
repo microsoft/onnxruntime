@@ -6,7 +6,7 @@
 // Source: @effects/blur.wgsl.template
 
 template <>
-Status ApplyTemplate<"@effects/blur.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"@effects/blur.wgsl.template">::type ) {
+Status ApplyTemplate<"@effects/blur.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"@effects/blur.wgsl.template">::type ) {
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
 ss << __str_1;

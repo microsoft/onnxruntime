@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/math/gemm.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -27,19 +28,30 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
 // cooperatively reduce the K dimension. trans_a / trans_b select the A / B load
 // majorness; has_c enables the beta * C epilogue (C broadcast to [M, N] via the
 // c_stride_m / c_stride_n uniforms).
-class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram> {
- public:
-  SubgroupMatrixGemmProgram(bool has_c, bool trans_a, bool trans_b, SubgroupMatrixConfig config,
-                            uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k)
-      : Program{"SubgroupMatrixGemm"},
-        has_c_(has_c),
-        trans_a_(trans_a),
-        trans_b_(trans_b),
-        config_(config),
-        sg_mat_count_m_(sg_mat_count_m),
-        sg_mat_count_n_(sg_mat_count_n),
-        split_k_(split_k) {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_CONFIG(F) \
+  F(bool, has_c_)                                     \
+  F(bool, trans_a_)                                   \
+  F(bool, trans_b_)                                   \
+  F(SubgroupMatrixConfig, config_)                    \
+  F(uint32_t, sg_mat_count_m_)                        \
+  F(uint32_t, sg_mat_count_n_)                        \
+  F(uint32_t, split_k_)
+
+struct SubgroupMatrixGemmProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_CONFIG);
+    Config(bool has_c, bool trans_a, bool trans_b, SubgroupMatrixConfig config, uint32_t sg_mat_count_m,
+           uint32_t sg_mat_count_n, uint32_t split_k)
+        : has_c_(has_c),
+          trans_a_(trans_a),
+          trans_b_(trans_b),
+          config_(config),
+          sg_mat_count_m_(sg_mat_count_m),
+          sg_mat_count_n_(sg_mat_count_n),
+          split_k_(split_k) {}
+  };
+  static constexpr std::string_view name = "SubgroupMatrixGemm";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
@@ -47,16 +59,10 @@ class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram
                                           {"beta", ProgramUniformVariableDataType::Float32},
                                           {"c_stride_m", ProgramUniformVariableDataType::Uint32},
                                           {"c_stride_n", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool has_c_;
-  const bool trans_a_;
-  const bool trans_b_;
-  const SubgroupMatrixConfig config_;
-  const uint32_t sg_mat_count_m_;
-  const uint32_t sg_mat_count_n_;
-  const uint32_t split_k_;
 };
+#undef WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_CONFIG
+
+using SubgroupMatrixGemmProgram = ConfiguredProgram<SubgroupMatrixGemmProgramShader>;
 
 }  // namespace webgpu
 }  // namespace onnxruntime

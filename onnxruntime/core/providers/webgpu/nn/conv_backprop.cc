@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/providers/webgpu/configured_program.h"
 #include <vector>
 #include <string>
 #include <sstream>
@@ -9,32 +10,33 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status ConvTranspose2DProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                        ConfiguredShaderHelper& shader) {
   const auto& dy = shader.AddInput("dy", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.AddInput("bias");
   }
-  auto row_dim = is_channels_last_ ? 1 : 2;
-  auto col_dim = is_channels_last_ ? 2 : 3;
-  auto channel_dim = is_channels_last_ ? 3 : 1;
+  auto row_dim = config.is_channels_last_ ? 1 : 2;
+  auto col_dim = config.is_channels_last_ ? 2 : 3;
+  auto channel_dim = config.is_channels_last_ ? 3 : 1;
   auto calculate_result = [&]() -> std::string {
     std::stringstream ss;
-    if (pack_input_as4_) {
-      if (a_components_ == 4) {
+    if (config.pack_input_as4_) {
+      if (config.a_components_ == 4) {
         ss << "let xValue = " << dy.GetByOffset("x_offset") << ";\n"
            << "let wValue = " << w.GetByOffset("w_offset") << ";\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n"
            << "x_offset += 1;\n"
            << "w_offset += 1;\n";
-      } else if (a_components_ == 2) {
+      } else if (config.a_components_ == 2) {
         ss << "let xValue = vec4<dy_element_t>(" << dy.GetByOffset("x_offset") << ", " << dy.GetByOffset("x_offset + 1") << ");\n"
            << "let wValue = vec4<dy_element_t>(" << w.GetByOffset("w_offset") << ", " << w.GetByOffset("w_offset + 1u") << ");\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n"
            << "x_offset += 2;\n"
            << "w_offset += 2;\n";
-      } else if (a_components_ == 1) {
+      } else if (config.a_components_ == 1) {
         ss << "let xValue = vec4<dy_element_t>(" << dy.GetByOffset("x_offset") << ", " << dy.GetByOffset("x_offset + 1u") << ", " << dy.GetByOffset("x_offset + 2u") << ", " << dy.GetByOffset("x_offset + 3u") << ");\n"
            << "let wValue = vec4<dy_element_t>(" << w.GetByOffset("w_offset") << ", " << w.GetByOffset("w_offset + 1u") << ", " << w.GetByOffset("w_offset + 2u") << ", " << w.GetByOffset("w_offset + 3u") << ");\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n"
@@ -42,20 +44,26 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
            << "w_offset += 4;\n";
       }
     } else {
-      if (is_channels_last_) {
-        ss << "let xValue = " << dy.GetByIndices("dy_indices_t(batch, idyR, idyC, inputChannel / " + std::to_string(a_components_)) << ");\n";
+      if (config.is_channels_last_) {
+        ss << "let xValue = "
+           << dy.GetByIndices("dy_indices_t(batch, idyR, idyC, inputChannel / " + std::to_string(config.a_components_))
+           << ");\n";
       } else {
         ss << "let xValue = " << dy.GetByIndices("dy_indices_t(batch, inputChannel, idyR, idyC)") << ";\n";
       }
-      if (a_components_ == 1) {
-        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " + std::to_string(b_components_) + ")") << ";\n"
+      if (config.a_components_ == 1) {
+        ss << "let wValue = "
+           << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " +
+                             std::to_string(config.b_components_) + ")")
+           << ";\n"
            << "dotProd = dotProd + xValue * wValue;\n";
-      } else if (a_components_ == b_components_ && components_ == 1) {
+      } else if (config.a_components_ == config.b_components_ && config.components_ == 1) {
         ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n";
       } else {
-        for (uint32_t i = 0; i < a_components_; ++i) {
-          ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + " << i << ", wOutChannel / " << b_components_ << ");\n "
+        for (uint32_t i = 0; i < config.a_components_; ++i) {
+          ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + " << i
+             << ", wOutChannel / " << config.b_components_ << ");\n "
              << "let wValue" << i << " = " << w.GetByIndices("w_indices" + std::to_string(i)) << ";\n"
              << "dotProd = dotProd + xValue[" << i << "] * wValue" << i << ";\n";
         }
@@ -65,15 +73,15 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   };
   auto calculate_remainder = [&]() -> std::string {
     std::stringstream ss;
-    if (input_channels_remainder_ > 0) {
-      ORT_ENFORCE(pack_input_as4_, "Invalid input_channels_remainder: ", input_channels_remainder_);
-      if (a_components_ == 1) {
-        for (uint32_t i = 0; i < input_channels_remainder_; ++i) {
+    if (config.input_channels_remainder_ > 0) {
+      ORT_ENFORCE(config.pack_input_as4_, "Invalid input_channels_remainder: ", config.input_channels_remainder_);
+      if (config.a_components_ == 1) {
+        for (uint32_t i = 0; i < config.input_channels_remainder_; ++i) {
           ss << "dotProd = dotProd + " << dy.GetByOffset("x_offset + " + std::to_string(i)) << " * " << w.GetByOffset("w_offset + " + std::to_string(i)) << ";\n";
         }
-      } else if (a_components_ == 2) {
-        if (input_channels_remainder_ != 2) {
-          ORT_THROW("Invalid input_channels_remainder: ", input_channels_remainder_);
+      } else if (config.a_components_ == 2) {
+        if (config.input_channels_remainder_ != 2) {
+          ORT_THROW("Invalid input_channels_remainder: ", config.input_channels_remainder_);
         }
         ss << "let xValue = " << dy.GetByOffset("x_offset") << ";\n"
            << "let wValue = " << w.GetByOffset("w_offset") << ";\n"
@@ -82,69 +90,79 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
     return ss.str();
   };
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "let outputIndices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "let batch = " << output.IndicesGet("outputIndices", 0) << ";\n"
-                            << "let d1 = " << output.IndicesGet("outputIndices", channel_dim) << " * " << components_ << ";\n"
-                            << "let r = " << output.IndicesGet("outputIndices", row_dim) << ";\n"
-                            << "let c = " << output.IndicesGet("outputIndices", col_dim) << ";\n"
-                            << "let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(uniforms.pads);\n"
-                            << "let dyRCorner = dyCorner.x;\n"
-                            << "let dyCCorner = dyCorner.y;\n"
-                            << "let groupId = d1 / uniforms.output_channels_per_group;\n"
-                            << "let wOutChannel = d1 - groupId * uniforms.output_channels_per_group;\n"
-                            << "// Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).\n"
-                            << "// ? = to be determined. : = across all values in that axis.\n"
-                            << "var dotProd = output_value_t(0.0);\n"
-                            << "var wR: u32 = 0;\n"
-                            << "if (uniforms.dilations.x == 1) {\n"
-                            << "  // Minimum wR >= 0 that satisfies (dyRCorner + wR) % (uniforms.strides.x) == 0\n"
-                            << "  wR = u32(((dyRCorner + i32(uniforms.strides.x) - 1) / i32(uniforms.strides.x)) * i32(uniforms.strides.x) - dyRCorner);\n"
-                            << "}\n"
-                            << "for (; wR < uniforms.effective_filter_dims.x; wR = wR + 1) {\n"
-                            << "  if (wR % uniforms.dilations.x != 0) {\n"
-                            << "    continue;\n"
-                            << "  }\n"
-                            << "  let dyR = (dy_element_t(dyRCorner) + dy_element_t(wR)) / dy_element_t(uniforms.strides[0]);\n"
-                            << "  let wRPerm = uniforms.filter_dims.x - 1 - wR / uniforms.dilations.x;\n"
-                            << "  if (dyR < 0.0 || dyR >= dy_element_t(uniforms.dy_shape[" << row_dim << "]) || fract(dyR) > 0.0 || wRPerm < 0) {\n"
-                            << "    continue;\n"
-                            << "  }\n"
-                            << "  let idyR: u32 = u32(dyR);\n"
-                            << "  var wC: u32 = 0;\n"
-                            << "  if (uniforms.dilations.y == 1) {\n"
-                            << "    // Minimum wC >= 0 that satisfies (dyCCorner + wC) % (uniforms.strides.y) == 0\n"
-                            << "    wC = u32(((dyCCorner + i32(uniforms.strides.y) - 1) / i32(uniforms.strides.y)) * i32(uniforms.strides.y) - dyCCorner);\n"
-                            << "  }\n"
-                            << "  for (; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {\n"
-                            << "    if (wC % uniforms.dilations.y != 0) {"
-                            << "      continue;\n"
-                            << "    }\n"
-                            << "    let dyC = (dy_element_t(dyCCorner) + dy_element_t(wC)) / dy_element_t(uniforms.strides.y);\n"
-                            << "    let wCPerm = uniforms.filter_dims.y - 1 - wC / uniforms.dilations.y;\n"
-                            << "    if (dyC < 0.0 || dyC >= dy_element_t(uniforms.dy_shape[" << col_dim << "]) ||\n"
-                            << "        fract(dyC) > 0.0 || wCPerm < 0) {\n"
-                            << "      continue;\n"
-                            << "    }\n"
-                            << "    let idyC: u32 = u32(dyC);\n"
-                            << "    var inputChannel = groupId * uniforms.input_channels_per_group;\n";
-  if (pack_input_as4_) {
-    shader.MainFunctionBody() << "    let dy_indices = dy_indices_t(batch, idyR, idyC, inputChannel / " << a_components_ << ");\n"
-                              << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " << b_components_ << ");\n"
-                              << "    var x_offset = " << dy.IndicesToOffset("dy_indices") << ";\n"
-                              << "    var w_offset = " << w.IndicesToOffset("w_indices") << ";\n";
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+      << "let outputIndices = " << output.OffsetToIndices("global_idx") << ";\n"
+      << "let batch = " << output.IndicesGet("outputIndices", 0) << ";\n"
+      << "let d1 = " << output.IndicesGet("outputIndices", channel_dim) << " * " << config.components_ << ";\n"
+      << "let r = " << output.IndicesGet("outputIndices", row_dim) << ";\n"
+      << "let c = " << output.IndicesGet("outputIndices", col_dim) << ";\n"
+      << "let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(uniforms.pads);\n"
+      << "let dyRCorner = dyCorner.x;\n"
+      << "let dyCCorner = dyCorner.y;\n"
+      << "let groupId = d1 / uniforms.output_channels_per_group;\n"
+      << "let wOutChannel = d1 - groupId * uniforms.output_channels_per_group;\n"
+      << "// Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).\n"
+      << "// ? = to be determined. : = across all values in that axis.\n"
+      << "var dotProd = output_value_t(0.0);\n"
+      << "var wR: u32 = 0;\n"
+      << "if (uniforms.dilations.x == 1) {\n"
+      << "  // Minimum wR >= 0 that satisfies (dyRCorner + wR) % (uniforms.strides.x) == 0\n"
+      << "  wR = u32(((dyRCorner + i32(uniforms.strides.x) - 1) / i32(uniforms.strides.x)) * i32(uniforms.strides.x) - "
+         "dyRCorner);\n"
+      << "}\n"
+      << "for (; wR < uniforms.effective_filter_dims.x; wR = wR + 1) {\n"
+      << "  if (wR % uniforms.dilations.x != 0) {\n"
+      << "    continue;\n"
+      << "  }\n"
+      << "  let dyR = (dy_element_t(dyRCorner) + dy_element_t(wR)) / dy_element_t(uniforms.strides[0]);\n"
+      << "  let wRPerm = uniforms.filter_dims.x - 1 - wR / uniforms.dilations.x;\n"
+      << "  if (dyR < 0.0 || dyR >= dy_element_t(uniforms.dy_shape[" << row_dim
+      << "]) || fract(dyR) > 0.0 || wRPerm < 0) {\n"
+      << "    continue;\n"
+      << "  }\n"
+      << "  let idyR: u32 = u32(dyR);\n"
+      << "  var wC: u32 = 0;\n"
+      << "  if (uniforms.dilations.y == 1) {\n"
+      << "    // Minimum wC >= 0 that satisfies (dyCCorner + wC) % (uniforms.strides.y) == 0\n"
+      << "    wC = u32(((dyCCorner + i32(uniforms.strides.y) - 1) / i32(uniforms.strides.y)) * i32(uniforms.strides.y) "
+         "- dyCCorner);\n"
+      << "  }\n"
+      << "  for (; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {\n"
+      << "    if (wC % uniforms.dilations.y != 0) {"
+      << "      continue;\n"
+      << "    }\n"
+      << "    let dyC = (dy_element_t(dyCCorner) + dy_element_t(wC)) / dy_element_t(uniforms.strides.y);\n"
+      << "    let wCPerm = uniforms.filter_dims.y - 1 - wC / uniforms.dilations.y;\n"
+      << "    if (dyC < 0.0 || dyC >= dy_element_t(uniforms.dy_shape[" << col_dim << "]) ||\n"
+      << "        fract(dyC) > 0.0 || wCPerm < 0) {\n"
+      << "      continue;\n"
+      << "    }\n"
+      << "    let idyC: u32 = u32(dyC);\n"
+      << "    var inputChannel = groupId * uniforms.input_channels_per_group;\n";
+  if (config.pack_input_as4_) {
+    shader.MainFunctionBody()
+        << "    let dy_indices = dy_indices_t(batch, idyR, idyC, inputChannel / " << config.a_components_ << ");\n"
+        << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / "
+        << config.b_components_ << ");\n"
+        << "    var x_offset = " << dy.IndicesToOffset("dy_indices") << ";\n"
+        << "    var w_offset = " << w.IndicesToOffset("w_indices") << ";\n";
   }
 
-  shader.MainFunctionBody() << "    for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group_int; d2 = d2 + " << (pack_input_as4_ ? 4 : a_components_) << ") {\n"
+  shader.MainFunctionBody() << "    for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group_int; d2 = d2 + "
+                            << (config.pack_input_as4_ ? 4 : config.a_components_) << ") {\n"
                             << "      " << calculate_result() << "\n"
-                            << "      inputChannel = inputChannel + " << (pack_input_as4_ ? 4 : a_components_) << ";\n"
+                            << "      inputChannel = inputChannel + "
+                            << (config.pack_input_as4_ ? 4 : config.a_components_) << ";\n"
                             << "    }\n"
                             << "    " << calculate_remainder() << "\n"
                             << "    wC = wC + uniforms.strides.y - 1;\n"
                             << "  }\n"
                             << "  wR = wR + uniforms.strides.x - 1;\n"
                             << "}\n"
-                            << "let value = dotProd" << (has_bias_ ? " + bias[d1 / " + std::to_string(components_) + "]" : "") << ";\n"
+                            << "let value = dotProd"
+                            << (config.has_bias_ ? " + bias[d1 / " + std::to_string(config.components_) + "]" : "")
+                            << ";\n"
                             << output.SetByOffset("global_idx", "value") << "\n";
   return Status::OK();
 }
@@ -172,16 +190,25 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   std::vector<uint32_t> effective_kernel_dims = {kernel_dims[0] + ((dilations[0] <= 1) ? 0 : ((kernel_dims[0] - 1) * (dilations[0] - 1))), kernel_dims[1] + ((dilations[1] <= 1) ? 0 : ((kernel_dims[1] - 1) * (dilations[1] - 1)))};
   std::vector<uint32_t> local_pads = {effective_kernel_dims[0] - 1 - pads[0], effective_kernel_dims[1] - 1 - pads[1]};
   ConvTranspose2DProgram program(is_channels_last, has_bias, components, a_components, b_components, uint32_t(input_channels_remainder), pack_input_as4);
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, b_components}});
+  program.AddInputs({{input, ProgramTensorMetadataDependency::None, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::None, reduced_weight_shape, b_components}});
   if (has_bias) {
     const auto* bias = inputs[2];
     const auto& bias_shape = modified_input_output_shapes[2];
     TensorShape reduced_bias_shape = ReduceShapeByComponents(bias_shape, components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
+    program.AddInput({bias, ProgramTensorMetadataDependency::None, reduced_bias_shape, components});
   }
-  program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components})
-      .CacheHint(input_channels_remainder, pack_input_as4, components, b_components, a_components, is_channels_last ? 1 : 0, has_bias ? 1 : 0)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {kernel_dims}, {dilations}, {effective_kernel_dims}, {local_pads}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(output_channels_per_group)}})
+  program
+      .AddOutput({output, ProgramTensorMetadataDependency::None, reduced_output_shape, components})
+
+      .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                            {strides},
+                            {kernel_dims},
+                            {dilations},
+                            {effective_kernel_dims},
+                            {local_pads},
+                            {static_cast<uint32_t>(input_channels_per_group_int)},
+                            {static_cast<uint32_t>(input_channels_per_group)},
+                            {static_cast<uint32_t>(output_channels_per_group)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
 
   return program;

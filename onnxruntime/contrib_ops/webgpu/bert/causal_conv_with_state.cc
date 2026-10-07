@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/causal_conv_with_state.h"
 
 #include "core/providers/webgpu/shader_helper.h"
@@ -48,31 +49,33 @@ CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
               "WebGPU CausalConvWithState does not support state_window > 0 (CUDA EP only)");
 }
 
-Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status CausalConvWithStateProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                            ConfiguredShaderHelper& shader) {
   shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("weight", ShaderUsage::UseUniform);
 
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  if (has_conv_state_) {
+  if (config.has_conv_state_) {
     shader.AddInput("conv_state", ShaderUsage::UseUniform);
   }
 
   shader.AddOutput("output", ShaderUsage::UseUniform);
-  if (output_present_state_) {
+  if (config.output_present_state_) {
     shader.AddOutput("present_state", ShaderUsage::UseUniform);
   }
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/causal_conv_with_state.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(channels_last, channels_last_),
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_conv_state, has_conv_state_),
-                             WGSL_TEMPLATE_PARAMETER(output_present_state, output_present_state_),
-                             WGSL_TEMPLATE_PARAMETER(use_silu, activation_ == CausalConvActivation::Silu));
+                             WGSL_TEMPLATE_PARAMETER(channels_last, config.channels_last_),
+                             WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_conv_state, config.has_conv_state_),
+                             WGSL_TEMPLATE_PARAMETER(output_present_state, config.output_present_state_),
+                             WGSL_TEMPLATE_PARAMETER(use_silu, config.activation_ == CausalConvActivation::Silu));
 }
 
-Status CausalConvUpdateStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status CausalConvUpdateStateProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                              ConfiguredShaderHelper& shader) {
   shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
@@ -80,7 +83,7 @@ Status CausalConvUpdateStateProgram::GenerateShaderCode(ShaderHelper& shader) co
   // pair per tensor covers them: channels-first walks a contiguous row, channels-last strides by
   // `channels`.
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.update_size");
-  if (channels_last_) {
+  if (config.channels_last_) {
     shader.MainFunctionBody()
         << "  let batch_idx = global_idx / uniforms.channels;\n"
            "  let channel_idx = global_idx % uniforms.channels;\n"
@@ -201,10 +204,7 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
 
   uint32_t output_size = static_cast<uint32_t>(batch_size * channels * input_length);
 
-  program.CacheHint(has_bias, has_conv_state, !conv_state_in_present_state,
-                    kernel_size, dilation_, static_cast<int>(activation_), channels_last_);
-
-  program.AddInput({input, ProgramTensorMetadataDependency::Type})
+  program.AddInput({input, ProgramTensorMetadataDependency::None})
       .AddInput({weight, ProgramTensorMetadataDependency::None});
 
   if (has_bias) {
@@ -233,8 +233,8 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   if (conv_state_in_present_state) {
     CausalConvUpdateStateProgram update_state_program{channels_last_};
     const uint32_t update_size = static_cast<uint32_t>(batch_size * channels);
-    update_state_program.CacheHint(channels_last_);
-    update_state_program.AddInput({input, ProgramTensorMetadataDependency::Type})
+
+    update_state_program.AddInput({input, ProgramTensorMetadataDependency::None})
         .AddOutput({present_state, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize((update_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({{static_cast<uint32_t>(channels)},

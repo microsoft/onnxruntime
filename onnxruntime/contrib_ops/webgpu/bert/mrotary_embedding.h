@@ -7,6 +7,7 @@
 
 #include "contrib_ops/cpu/bert/mrotary_embedding_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -15,16 +16,19 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MRotaryEmbeddingProgram final : public Program<MRotaryEmbeddingProgram> {
- public:
-  MRotaryEmbeddingProgram(bool interleaved, bool transposed,
-                          mrotary_embedding_helper::MRopeLayout mrope_layout)
-      : Program{"MRotaryEmbedding"},
-        interleaved_{interleaved},
-        transposed_{transposed},
-        mrope_layout_{mrope_layout} {}
+#define WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG(F) \
+  F(bool, interleaved_)                             \
+  F(bool, transposed_)                              \
+  F(mrotary_embedding_helper::MRopeLayout, mrope_layout_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct MRotaryEmbeddingProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+    Config(bool interleaved, bool transposed, mrotary_embedding_helper::MRopeLayout mrope_layout)
+        : interleaved_{interleaved}, transposed_{transposed}, mrope_layout_{mrope_layout} {}
+  };
+  static constexpr std::string_view name = "MRotaryEmbedding";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"scale", ProgramUniformVariableDataType::Float32},
@@ -36,12 +40,10 @@ class MRotaryEmbeddingProgram final : public Program<MRotaryEmbeddingProgram> {
       {"rotary_embedding_dim", ProgramUniformVariableDataType::Uint32},
       {"max_sequence_length", ProgramUniformVariableDataType::Uint32},
       {"mrope_section", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool interleaved_;
-  const bool transposed_;
-  const mrotary_embedding_helper::MRopeLayout mrope_layout_;
 };
+#undef WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG
+
+using MRotaryEmbeddingProgram = ConfiguredProgram<MRotaryEmbeddingProgramShader>;
 
 class MRotaryEmbedding final : public WebGpuKernel {
  public:

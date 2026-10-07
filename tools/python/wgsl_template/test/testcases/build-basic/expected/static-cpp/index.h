@@ -15,4 +15,4 @@ struct TemplateParameter<"shader/triangle.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"shader/triangle.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"shader/triangle.wgsl.template">::type params);
+Status ApplyTemplate<"shader/triangle.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"shader/triangle.wgsl.template">::type params);

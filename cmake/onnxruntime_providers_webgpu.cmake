@@ -23,6 +23,17 @@
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
+  set(webgpu_config_checker "${REPO_ROOT}/tools/python/webgpu/check_shader_config.py")
+  add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/webgpu_shader_config_checked.stamp"
+    COMMAND "${Python_EXECUTABLE}" "${webgpu_config_checker}" --root "${REPO_ROOT}"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_CURRENT_BINARY_DIR}/webgpu_shader_config_checked.stamp"
+    DEPENDS ${onnxruntime_providers_webgpu_cc_srcs} "${webgpu_config_checker}"
+    COMMENT "Checking automatic WebGPU shader configuration schemas"
+    VERBATIM)
+  add_custom_target(onnxruntime_webgpu_shader_config_check
+    DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/webgpu_shader_config_checked.stamp")
+
   if(NOT onnxruntime_USE_EP_API_ADAPTERS)
     #
     # Build WebGPU EP as an internal (non-plugin) static library
@@ -37,6 +48,7 @@
 
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
     onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_shader_config_check)
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
       onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
   elseif(onnxruntime_WEBGPU_STATIC_PLUGIN)
@@ -49,6 +61,7 @@
     #
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
     onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_shader_config_check)
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
       onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
@@ -68,6 +81,7 @@
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
 
     onnxruntime_add_shared_library_module(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_shader_config_check)
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
         ${REPO_ROOT}/include/onnxruntime/core/session
         onnxruntime_common

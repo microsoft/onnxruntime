@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/tensor/gather.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -10,15 +11,15 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatherProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const auto& data = shader.AddInput("data", ShaderUsage::UseIndicesTypeAlias);
   const auto& indices = shader.AddInput("input_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
 
   const auto& data_indices = shader.AddIndices("data_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  bool is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
-  bool is_uint8 = Inputs()[0].var_type == ProgramVariableDataType::Uint8x4;
+  bool is_bool = shader.InputType(0) == ProgramVariableDataType::Boolx4;
+  bool is_uint8 = shader.InputType(0) == ProgramVariableDataType::Uint8x4;
   bool pack_as_bytes = is_bool || is_uint8;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size");
   if (pack_as_bytes) {
@@ -40,16 +41,20 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << "    output_indices = " << output_indices.OffsetToIndices(std::to_string(comp) + " + 4 * global_idx") << ";\n";
 
       for (int i = 0; i < indices.Rank(); i++) {
-        shader.MainFunctionBody() << "    " << indices.IndicesSet("indices_indices", i, output_indices.IndicesGet("output_indices", axis_ + i)) << ";\n";
+        shader.MainFunctionBody() << "    "
+                                  << indices.IndicesSet("indices_indices", i,
+                                                        output_indices.IndicesGet("output_indices", config.axis_ + i))
+                                  << ";\n";
       }
 
       shader.MainFunctionBody() << "    idx = " << indices.GetByIndices("indices_indices") << ";\n"
                                 << "    if (idx < 0) {\n"
-                                << "      idx = idx + input_indices_value_t(" << data_indices.IndicesGet("uniforms.data_indices_shape", axis_) << ");\n"
+                                << "      idx = idx + input_indices_value_t("
+                                << data_indices.IndicesGet("uniforms.data_indices_shape", config.axis_) << ");\n"
                                 << "    }\n";
 
       for (int i = 0, j = 0; i < data_indices.Rank(); i++) {
-        if (static_cast<uint32_t>(i) == axis_) {
+        if (static_cast<uint32_t>(i) == config.axis_) {
           shader.MainFunctionBody() << "    " << data_indices.IndicesSet("data_indices", i, "u32(idx)") << ";\n";
           j += indices.Rank();
         } else {
@@ -77,16 +82,20 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices("global_idx") << ";\n";
 
     for (int i = 0; i < indices.Rank(); i++) {
-      shader.MainFunctionBody() << "  " << indices.IndicesSet("indices_indices", i, output_indices.IndicesGet("output_indices", axis_ + i)) << ";\n";
+      shader.MainFunctionBody() << "  "
+                                << indices.IndicesSet("indices_indices", i,
+                                                      output_indices.IndicesGet("output_indices", config.axis_ + i))
+                                << ";\n";
     }
 
     shader.MainFunctionBody() << "  idx = " << indices.GetByIndices("indices_indices") << ";\n"
                               << "  if (idx < 0) {\n"
-                              << "    idx = idx + input_indices_value_t(" << data_indices.IndicesGet("uniforms.data_indices_shape", axis_) << ");\n"
+                              << "    idx = idx + input_indices_value_t("
+                              << data_indices.IndicesGet("uniforms.data_indices_shape", config.axis_) << ");\n"
                               << "  }\n";
 
     for (int i = 0, j = 0; i < data_indices.Rank(); i++) {
-      if (static_cast<uint32_t>(i) == axis_) {
+      if (static_cast<uint32_t>(i) == config.axis_) {
         shader.MainFunctionBody() << "  " << data_indices.IndicesSet("data_indices", i, "u32(idx)") << ";\n";
         j += indices.Rank();
       } else {
@@ -100,7 +109,9 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // other type it is ignored, so passing is_int64_ directly is equivalent to the plain
     // value-type access when is_int64_ is false. For int64 it copies the raw vec2<u32> storage
     // bits so the full 64-bit value is preserved instead of being truncated to i32.
-    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", data.GetByOffset("data_offset", is_int64_), is_int64_);
+    shader.MainFunctionBody() << "  "
+                              << output.SetByOffset("global_idx", data.GetByOffset("data_offset", config.is_int64_),
+                                                    config.is_int64_);
   }
 
   return Status::OK();
@@ -126,11 +137,12 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
   uint32_t axis = static_cast<uint32_t>(p.axis);
   GatherProgram program{axis, is_int64};
   program
-      .AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, (pack_as_bytes ? 4 : 1)},
-                  {p.indices_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Rank, {data_size}, (pack_as_bytes ? 4 : 1)})
+      .AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten,
+                   (pack_as_bytes ? 4 : 1)},
+                  {p.indices_tensor, ProgramTensorMetadataDependency::None}})
+      .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::None, {data_size}, (pack_as_bytes ? 4 : 1)})
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(axis))
+
       .AddIndices(p.input_tensor->Shape())
       .AddIndices(p.output_tensor->Shape())
       .AddUniformVariables({{data_size}, {output_size}});

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <algorithm>
 
 #include "contrib_ops/webgpu/bert/linear_attention.h"
@@ -40,12 +41,13 @@ LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str) {
 // - Reductions across dk (for S^T @ k and S^T @ q) use shared memory
 //
 
-Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const bool use_vec4 = (components_ == 4);
+Status LinearAttentionProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                        ConfiguredShaderHelper& shader) {
+  const bool use_vec4 = (config.components_ == 4);
 
   // Map update rule to integer for template conditionals
   int update_rule_int = 0;
-  switch (update_rule_) {
+  switch (config.update_rule_) {
     case LinearAttentionUpdateRule::Linear:
       update_rule_int = 0;
       break;
@@ -66,13 +68,13 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("query", ShaderUsage::UseUniform);
   shader.AddInput("key", ShaderUsage::UseUniform);
   shader.AddInput("value", ShaderUsage::UseUniform);
-  if (has_initial_state_ && !initial_state_in_present_state_) {
+  if (config.has_initial_state_ && !config.initial_state_in_present_state_) {
     shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
-  if (has_decay_) {
+  if (config.has_decay_) {
     shader.AddInput("decay", ShaderUsage::UseUniform);
   }
-  if (has_beta_) {
+  if (config.has_beta_) {
     shader.AddInput("beta", ShaderUsage::UseUniform);
   }
 
@@ -80,14 +82,14 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/linear_attention.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(decay_broadcast_dk, decay_broadcast_dk_),
-                             WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
-                             WGSL_TEMPLATE_PARAMETER(initial_state_in_present_state, initial_state_in_present_state_),
-                             WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
-                             WGSL_TEMPLATE_PARAMETER(tile_v, tile_v_),
-                             WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
-                             WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/linear_attention.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(decay_broadcast_dk, config.decay_broadcast_dk_),
+      WGSL_TEMPLATE_PARAMETER(has_initial_state, config.has_initial_state_),
+      WGSL_TEMPLATE_PARAMETER(initial_state_in_present_state, config.initial_state_in_present_state_),
+      WGSL_TEMPLATE_PARAMETER(subgroup_min_size, config.subgroup_min_size_),
+      WGSL_TEMPLATE_PARAMETER(tile_v, config.tile_v_), WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
+      WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4));
 }
 
 // =============================================================================
@@ -267,27 +269,25 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   LinearAttentionProgram program{update_rule_, has_initial_state, initial_state_in_present_state,
                                  has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size};
 
-  program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
-                     {key, ProgramTensorMetadataDependency::TypeAndRank},
-                     {value, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInputs({{query, ProgramTensorMetadataDependency::None},
+                     {key, ProgramTensorMetadataDependency::None},
+                     {value, ProgramTensorMetadataDependency::None, components}});
   if (has_initial_state && !initial_state_in_present_state) {
-    program.AddInput({past_state, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddInput({past_state, ProgramTensorMetadataDependency::None, components});
   }
   if (has_decay) {
-    program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({decay, ProgramTensorMetadataDependency::None});
   }
   if (has_beta) {
-    program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({beta, ProgramTensorMetadataDependency::None});
   }
 
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components},
-                      {present_state, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddOutputs({{output, ProgramTensorMetadataDependency::None, components},
+                      {present_state, ProgramTensorMetadataDependency::None, components}});
 
   program.SetDispatchGroupSize(num_workgroups)
       .SetWorkgroupSize(workgroup_size)
-      .CacheHint(std::to_string(static_cast<int>(update_rule_)),
-                 has_initial_state, initial_state_in_present_state, has_decay, has_beta,
-                 decay_broadcast_dk, tile_v, components, subgroup_min_size)
+
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(kv_num_heads_)},
                             {static_cast<uint32_t>(seq_length)},

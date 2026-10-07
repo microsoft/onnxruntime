@@ -5,24 +5,29 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class BatchNormalizationProgram final : public Program<BatchNormalizationProgram> {
- public:
-  BatchNormalizationProgram(float epsilon, int64_t spatial, DataLayout format)
-      : Program{"BatchNormalization"}, epsilon_{epsilon}, spatial_{spatial}, format_{format} {}
+#define WEBGPU_BATCH_NORMALIZATION_PROGRAM_CONFIG(F) \
+  F(float, epsilon_)                                 \
+  F(int64_t, spatial_)                               \
+  F(DataLayout, format_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct BatchNormalizationProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_BATCH_NORMALIZATION_PROGRAM_CONFIG);
+    Config(float epsilon, int64_t spatial, DataLayout format) : epsilon_{epsilon}, spatial_{spatial}, format_{format} {}
+  };
+  static constexpr std::string_view name = "BatchNormalization";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  float epsilon_;
-  int64_t spatial_;
-  DataLayout format_;
 };
+#undef WEBGPU_BATCH_NORMALIZATION_PROGRAM_CONFIG
+
+using BatchNormalizationProgram = ConfiguredProgram<BatchNormalizationProgramShader>;
 
 template <bool is_nhwc>
 class BatchNormalization final : public WebGpuKernel {

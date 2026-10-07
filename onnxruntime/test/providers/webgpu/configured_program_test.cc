@@ -3,9 +3,7 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
-#include <iostream>
 #include <string>
 #include <unordered_map>
 
@@ -14,7 +12,6 @@
 #include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
 #include "core/providers/webgpu/nn/instance_norm.h"
-#include "contrib_ops/webgpu/bert/bias_add.h"
 #include "core/providers/webgpu/program_cache_key.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
@@ -25,6 +22,15 @@ namespace {
 using namespace webgpu;
 
 struct OtherLayerNormShader : LayerNormShader {};
+
+#define WEBGPU_TEST_METADATA_CONFIG(F)
+struct MetadataShader {
+  WEBGPU_DECLARE_CONFIG(Config, WEBGPU_TEST_METADATA_CONFIG);
+  static constexpr std::string_view name = "MetadataTest";
+  static Status GenerateShaderCode(const Config&, ConfiguredShaderHelper&) { return Status::OK(); }
+};
+#undef WEBGPU_TEST_METADATA_CONFIG
+using MetadataProgram = ConfiguredProgram<MetadataShader>;
 
 std::string Key(const ProgramBase& program) {
   std::vector<uint32_t> inputs(program.Inputs().size(), 1);
@@ -53,9 +59,10 @@ TEST(ConfiguredProgramTest, TypesAndWidthsAreAutomaticAndUniformValuesAreNotKeye
   OrtMemoryInfo memory{CPU, OrtDeviceAllocator};
   Tensor a{DataTypeImpl::GetType<float>(), TensorShape{4}, values.data(), memory};
   Tensor b{DataTypeImpl::GetType<float>(), TensorShape{8}, values.data(), memory};
+  Tensor rank_two{DataTypeImpl::GetType<float>(), TensorShape{1, 4}, values.data(), memory};
   Tensor half{DataTypeImpl::GetType<MLFloat16>(), TensorShape{4}, values.data(), memory};
   auto make_key = [](Tensor& tensor, int components, uint32_t uniform) {
-    contrib::webgpu::BiasAddProgram program;
+    MetadataProgram program;
     program.AddInput({&tensor, ProgramTensorMetadataDependency::None, components})
         .AddOutput({&tensor, ProgramTensorMetadataDependency::None, components})
         .AddUniformVariables({uniform, 1u});
@@ -65,6 +72,24 @@ TEST(ConfiguredProgramTest, TypesAndWidthsAreAutomaticAndUniformValuesAreNotKeye
   EXPECT_EQ(make_key(a, 4, 1), make_key(a, 4, 99));
   EXPECT_NE(make_key(a, 4, 1), make_key(a, 2, 1));
   EXPECT_NE(make_key(a, 4, 1), make_key(half, 4, 1));
+  EXPECT_NE(make_key(a, 4, 1), make_key(rank_two, 4, 1));
+  const auto static_key = [](Tensor& tensor) {
+    MetadataProgram program;
+    program.AddInput({&tensor, ProgramTensorMetadataDependency::Shape});
+    return Key(program);
+  };
+  EXPECT_NE(static_key(a), static_key(b));
+  const auto offset_key = [&](uint32_t offset, bool uniform_offset) {
+    MetadataProgram program;
+    auto input = uniform_offset
+                     ? ProgramInput::BufferView(&a, ProgramTensorMetadataDependency::None, TensorShape{1}, offset)
+                     : ProgramInput{&a};
+    input.buffer_offset_in_elements = offset;
+    program.AddInput(std::move(input));
+    return Key(program);
+  };
+  EXPECT_NE(offset_key(0, false), offset_key(1, false));
+  EXPECT_EQ(offset_key(0, true), offset_key(1, true));
 }
 
 TEST(ConfiguredProgramTest, ExactKeysRemainDistinctWhenHashesCollide) {
@@ -124,81 +149,104 @@ TEST(ConfiguredProgramTest, OptionalOutputRolesExecuteCorrectlyInEitherOrder) {
   }
 }
 
-class LegacyBenchmarkProgram final : public Program<LegacyBenchmarkProgram> {
+class CachePairTester final : public OpTester {
  public:
-  explicit LegacyBenchmarkProgram(std::string_view name) : Program{name} {}
-  Status GenerateShaderCode(ShaderHelper&) const override { return Status::OK(); }
-};
+  CachePairTester(const char* op, const char* domain, int version, size_t input_count, bool reverse)
+      : OpTester(op, version, domain), op_{op}, domain_{domain}, input_count_{input_count}, reverse_{reverse} {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CachePairTester);
 
-// Manually selected benchmark, excluded from CI. Includes per-dispatch configuration,
-// framework metadata construction, key creation, hashing and a warm exact map lookup.
-TEST(ConfiguredProgramTest, DISABLED_WarmKeyBenchmark) {
-  std::array<float, 1024> values{};
-  OrtMemoryInfo memory{CPU, OrtDeviceAllocator};
-  Tensor x{DataTypeImpl::GetType<float>(), TensorShape{1, 1024}, values.data(), memory};
-  Tensor scale{DataTypeImpl::GetType<float>(), TensorShape{1024}, values.data(), memory};
-  Tensor y{DataTypeImpl::GetType<float>(), TensorShape{1, 1024}, values.data(), memory};
-  const auto configure = [&](ProgramBase& program, int sample) {
-    if (sample == 0) {
-      program.AddInputs({{&x, ProgramTensorMetadataDependency::None, 4},
-                         {&scale, ProgramTensorMetadataDependency::None, 4},
-                         {&x, ProgramTensorMetadataDependency::None, 4}})
-          .AddOutput({&y, ProgramTensorMetadataDependency::None, 4})
-          .AddUniformVariables({256u, 256u});
-      return;
-    }
-    if (sample == 2) {
-      program.AddInputs({{&x, ProgramTensorMetadataDependency::TypeAndRank, TensorShape{1, 1, 256}, 4},
-                         {&scale, ProgramTensorMetadataDependency::TypeAndRank},
-                         {&scale, ProgramTensorMetadataDependency::TypeAndRank}})
-          .AddOutput({&y, ProgramTensorMetadataDependency::TypeAndRank, TensorShape{1, 1, 1}, 2})
-          .SetWorkgroupSize(64);
-      return;
-    }
-    program.AddInput({&x, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
-    program.AddInput({&scale, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
-    program.AddOutput({&y, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4});
-    program.AddUniformVariables({4u, 1u, 1024u, 256u, 1e-5f});
-  };
-  constexpr size_t iterations = 100000;
-  for (int sample : {0, 1, 2}) {
-    const char* name = sample == 0 ? "BiasAdd" : sample == 1 ? "LayerNorm"
-                                                             : "ComputeChannelScaleShift";
-    const auto make_key = [&](bool configured) {
-      if (!configured) {
-        LegacyBenchmarkProgram program{name};
-        if (sample == 1) program.CacheHint(4, false, false, false);
-        if (sample == 2) program.CacheHint(4, 1);
-        configure(program, sample);
-        return Key(program);
-      }
-      if (sample == 0) {
-        contrib::webgpu::BiasAddProgram program;
-        configure(program, sample);
-        return Key(program);
-      }
-      if (sample == 1) {
-        LayerNormProgram program{false, false, false, false, false, false};
-        configure(program, sample);
-        return Key(program);
-      }
-      ComputeChannelScaleShiftProgram program{4, 1e-5f, 64};
-      configure(program, sample);
-      return Key(program);
-    };
-    std::unordered_map<std::string, size_t> cache{{make_key(false), 1}, {make_key(true), 1}};
-    for (int trial = 0; trial < 12; ++trial) {
-      for (bool configured : {trial % 2 == 0, trial % 2 != 0}) {
-        size_t checksum = 0;
-        const auto start = std::chrono::steady_clock::now();
-        for (size_t i = 0; i < iterations; ++i) checksum += cache.at(make_key(configured));
-        const auto ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count();
-        ASSERT_EQ(checksum, iterations);
-        std::cout << "KEY_BENCH," << name << ',' << trial << ',' << configured << ','
-                  << ns / iterations << ',' << make_key(configured).size() << '\n';
+  void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
+                std::vector<std::function<void(Node&)>>&) override {
+    for (size_t step = 0; step < 2; ++step) {
+      const size_t index = reverse_ ? 1 - step : step;
+      std::vector<NodeArg*> node_inputs(inputs.begin() + index * input_count_,
+                                        inputs.begin() + (index + 1) * input_count_);
+      auto& node =
+          graph.AddNode(MakeString("variant", index), op_, "", node_inputs, {outputs[index]}, nullptr, domain_);
+      if (std::string_view{op_} == "InstanceNormalization") {
+        node.AddAttribute("epsilon", index == 0 ? 1e-5f : 1.0f);
       }
     }
   }
+
+ private:
+  const char* op_;
+  const char* domain_;
+  const size_t input_count_;
+  const bool reverse_;
+};
+
+TEST(ConfiguredProgramTest, KnownCollisionsExecuteCorrectlyInEitherOrder) {
+  for (bool reverse : {false, true}) {
+    for (const char* op : {
+#ifndef DISABLE_CONTRIB_OPS
+             "BiasAdd", "BiasSplitGelu",
+#endif
+             "InstanceNormalization", "And"}) {
+      SCOPED_TRACE(MakeString(op, " reverse=", reverse));
+      ConfigOptions provider_options;
+      ASSERT_STATUS_OK(provider_options.AddConfigEntry("ep.webgpuexecutionprovider.validationMode", "full"));
+      ASSERT_STATUS_OK(provider_options.AddConfigEntry("ep.webgpuexecutionprovider.preferredLayout", "NCHW"));
+      auto provider = WebGpuExecutionProviderWithOptions(provider_options);
+      if (!provider) GTEST_SKIP() << "WebGPU EP unavailable";
+      const std::string_view name{op};
+      const bool bias = name == "BiasAdd" || name == "BiasSplitGelu";
+      const size_t inputs_per_node = name == "BiasAdd" || name == "InstanceNormalization" ? 3 : 2;
+      CachePairTester test{op, bias ? kMSDomain : kOnnxDomain, bias ? 1 : 17, inputs_per_node, reverse};
+      if (bias) {
+        const int64_t first_channels = name == "BiasAdd" ? 6 : 8;
+        const int64_t first_output = name == "BiasAdd" ? first_channels : first_channels / 2;
+        const int64_t second_output = name == "BiasAdd" ? 8 : 4;
+        test.AddInput<float>("x0", {1, 1, first_channels}, std::vector<float>(first_channels, 1));
+        test.AddInput<float>("b0", {first_channels}, std::vector<float>(first_channels, 2));
+        if (name == "BiasAdd") {
+          test.AddInput<float>("r0", {1, 1, first_channels}, std::vector<float>(first_channels, 3));
+        }
+        test.AddInput<MLFloat16>("x1", {1, 1, 8}, std::vector<MLFloat16>(8, MLFloat16{1.0f}));
+        test.AddInput<MLFloat16>("b1", {8}, std::vector<MLFloat16>(8, MLFloat16{2.0f}));
+        if (name == "BiasAdd") {
+          test.AddInput<MLFloat16>("r1", {1, 1, 8}, std::vector<MLFloat16>(8, MLFloat16{3.0f}));
+        }
+        const float expected = name == "BiasAdd" ? 6.0f : 9.0f * 0.5f * (1.0f + std::erf(3.0f / std::sqrt(2.0f)));
+        test.AddOutput<float>("y0", {1, 1, first_output}, std::vector<float>(first_output, expected));
+        test.AddOutput<MLFloat16>("y1", {1, 1, second_output},
+                                  std::vector<MLFloat16>(second_output, MLFloat16{expected}));
+      } else if (name == "InstanceNormalization") {
+        for (const char* suffix : {"0", "1"}) {
+          test.AddInput<float>(MakeString("x", suffix).c_str(), {1, 1, 4}, {1, 2, 3, 4});
+          test.AddInput<float>(MakeString("s", suffix).c_str(), {1}, {1});
+          test.AddInput<float>(MakeString("b", suffix).c_str(), {1}, {0});
+        }
+        const float inv = 1.0f / std::sqrt(1.25f + 1e-5f);
+        test.AddOutput<float>("y0", {1, 1, 4}, {-1.5f * inv, -0.5f * inv, 0.5f * inv, 1.5f * inv});
+        test.AddOutput<float>("y1", {1, 1, 4}, {-1, -1.0f / 3, 1.0f / 3, 1});
+      } else {
+        test.AddInput<bool>("a0", {2, 1}, {true, false});
+        test.AddInput<bool>("b0", {1, 4}, {true, false, true, false});
+        test.AddInput<bool>("a1", {1, 4}, {true, false, true, false});
+        test.AddInput<bool>("b1", {2, 1}, {true, false});
+        const std::array<bool, 8> expected{true, false, true, false, false, false, false, false};
+        test.AddOutput<bool>("y0", {2, 4}, expected.data(), expected.size());
+        test.AddOutput<bool>("y1", {2, 4}, expected.data(), expected.size());
+      }
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
+    }
+  }
+}
+
+TEST(ConfiguredProgramTest, VariableLengthFieldsHaveUnambiguousBoundaries) {
+  const auto encode = [](const auto& value) {
+    std::string key;
+    AppendConfigValue(key, value);
+    return key;
+  };
+  EXPECT_NE(encode(std::vector<std::string>{"ab", "c"}), encode(std::vector<std::string>{"a", "bc"}));
+  EXPECT_NE(encode(std::vector<std::vector<int>>{{1}, {2, 3}}), encode(std::vector<std::vector<int>>{{1, 2}, {3}}));
+  EXPECT_NE(encode(-1), encode(1));
+  EXPECT_NE(encode(0.0f), encode(-0.0f));
+  EXPECT_EQ(encode(std::string{"a\0b", 3}), encode(std::string_view{"a\0b", 3}));
 }
 
 }  // namespace

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -12,12 +13,34 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
- public:
-  MatMulNBitsWideTileProgram(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, uint32_t nbits, uint32_t subgroup_min_size, bool acc_f32)
-      : Program{"MatMulNBitsWideTile"}, has_zero_points_{has_zero_points}, has_bias_{has_bias}, has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits), subgroup_min_size_(subgroup_min_size), acc_f32_(acc_f32) {}
+#define WEBGPU_MAT_MUL_N_BITS_WIDE_TILE_PROGRAM_CONFIG(F) \
+  F(bool, has_zero_points_)                               \
+  F(bool, has_bias_)                                      \
+  F(bool, has_weight_idx_)                                \
+  F(bool, has_weight_idx_indirect_)                       \
+  F(uint32_t, tile_m_)                                    \
+  F(uint32_t, tile_n_)                                    \
+  F(uint32_t, nbits_)                                     \
+  F(uint32_t, subgroup_min_size_)                         \
+  F(bool, acc_f32_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct MatMulNBitsWideTileProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_N_BITS_WIDE_TILE_PROGRAM_CONFIG);
+    Config(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m,
+           uint32_t tile_n, uint32_t nbits, uint32_t subgroup_min_size, bool acc_f32)
+        : has_zero_points_{has_zero_points},
+          has_bias_{has_bias},
+          has_weight_idx_{has_weight_idx},
+          has_weight_idx_indirect_{has_weight_idx_indirect},
+          tile_m_(tile_m),
+          tile_n_(tile_n),
+          nbits_(nbits),
+          subgroup_min_size_(subgroup_min_size),
+          acc_f32_(acc_f32) {}
+  };
+  static constexpr std::string_view name = "MatMulNBitsWideTile";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"Batch", ProgramUniformVariableDataType::Uint32},
                                           {"M", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
@@ -28,24 +51,42 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
                                           {"num_N_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_M_tile", ProgramUniformVariableDataType::Uint32},
                                           {"weight_idx", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_zero_points_;
-  bool has_bias_;
-  bool has_weight_idx_;
-  bool has_weight_idx_indirect_;
-  uint32_t tile_m_;
-  uint32_t tile_n_;
-  uint32_t nbits_;
-  uint32_t subgroup_min_size_;
-  bool acc_f32_;
 };
+#undef WEBGPU_MAT_MUL_N_BITS_WIDE_TILE_PROGRAM_CONFIG
 
-class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
- public:
-  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool broadcast_a_row = false, bool acc_f32 = false)
-      : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points), has_bias_(has_bias), has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, single_scale_weights_(single_scale_weights), tile_size_k_vec_(tile_size_k_vec), broadcast_a_row_(broadcast_a_row), acc_f32_(acc_f32) {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+using MatMulNBitsWideTileProgram = ConfiguredProgram<MatMulNBitsWideTileProgramShader>;
+
+#define WEBGPU_MAT_MUL_N_BITS_PROGRAM_CONFIG(F) \
+  F(uint32_t, tile_size_)                       \
+  F(uint32_t, nbits_)                           \
+  F(bool, has_zero_points_)                     \
+  F(bool, has_bias_)                            \
+  F(bool, has_weight_idx_)                      \
+  F(bool, has_weight_idx_indirect_)             \
+  F(bool, single_scale_weights_)                \
+  F(uint32_t, tile_size_k_vec_)                 \
+  F(bool, broadcast_a_row_)                     \
+  F(bool, acc_f32_)
+
+struct MatMulNBitsProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_N_BITS_PROGRAM_CONFIG);
+    Config(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
+           bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16,
+           bool broadcast_a_row = false, bool acc_f32 = false)
+        : tile_size_(tile_size),
+          nbits_(nbits),
+          has_zero_points_(has_zero_points),
+          has_bias_(has_bias),
+          has_weight_idx_{has_weight_idx},
+          has_weight_idx_indirect_{has_weight_idx_indirect},
+          single_scale_weights_(single_scale_weights),
+          tile_size_k_vec_(tile_size_k_vec),
+          broadcast_a_row_(broadcast_a_row),
+          acc_f32_(acc_f32) {}
+  };
+  static constexpr std::string_view name = "MatMulNBits";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
@@ -59,19 +100,10 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
       {"batch_count", ProgramUniformVariableDataType::Uint32},
       {"weight_idx", ProgramUniformVariableDataType::Uint32},
       {"dispatch_M", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t tile_size_;
-  uint32_t nbits_;
-  bool has_zero_points_;
-  bool has_bias_;
-  bool has_weight_idx_;
-  bool has_weight_idx_indirect_;
-  bool single_scale_weights_;
-  uint32_t tile_size_k_vec_;
-  bool broadcast_a_row_;
-  bool acc_f32_;
 };
+#undef WEBGPU_MAT_MUL_N_BITS_PROGRAM_CONFIG
+
+using MatMulNBitsProgram = ConfiguredProgram<MatMulNBitsProgramShader>;
 
 class MatMulNBits final : public WebGpuKernel {
  public:

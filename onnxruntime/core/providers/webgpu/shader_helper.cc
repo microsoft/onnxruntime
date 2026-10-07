@@ -19,17 +19,36 @@ namespace onnxruntime {
 namespace webgpu {
 
 const ShaderVariableHelper& ConfiguredShaderHelper::AddInput(const std::string& name, ShaderUsage usage) {
-  return shader_.AddInput(name, usage | ShaderUsage::UseUniform);
+  const auto& input = shader_.program_.Inputs().at(shader_.input_vars_.size());
+  if ((input.dependency & ProgramTensorMetadataDependency::Shape) != ProgramTensorMetadataDependency::Shape) {
+    usage |= ShaderUsage::UseUniform;
+  }
+  return shader_.AddInput(name, usage);
 }
 
 const ShaderVariableHelper& ConfiguredShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
-  return shader_.AddOutput(name, usage | ShaderUsage::UseUniform);
+  const auto& output = shader_.program_.Outputs().at(shader_.output_vars_.size());
+  if ((output.dependency & ProgramTensorMetadataDependency::Shape) != ProgramTensorMetadataDependency::Shape) {
+    usage |= ShaderUsage::UseUniform;
+  }
+  return shader_.AddOutput(name, usage);
 }
 
 const ShaderIndicesHelper& ConfiguredShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
   return shader_.AddIndices(name, usage | ShaderUsage::UseUniform);
 }
 
+size_t ConfiguredShaderHelper::InputCount() const { return shader_.program_.Inputs().size(); }
+size_t ConfiguredShaderHelper::OutputCount() const { return shader_.program_.Outputs().size(); }
+uint32_t ConfiguredShaderHelper::WorkgroupSizeX() const { return shader_.program_.WorkgroupSizeX(); }
+uint32_t ConfiguredShaderHelper::WorkgroupSizeY() const { return shader_.program_.WorkgroupSizeY(); }
+uint32_t ConfiguredShaderHelper::WorkgroupSizeZ() const { return shader_.program_.WorkgroupSizeZ(); }
+int ConfiguredShaderHelper::InputElementType(size_t index) const {
+  return shader_.program_.Inputs().at(index).tensor->GetElementType();
+}
+int ConfiguredShaderHelper::OutputElementType(size_t index) const {
+  return shader_.program_.Outputs().at(index).tensor->GetElementType();
+}
 ProgramVariableDataType ConfiguredShaderHelper::InputType(size_t index) const {
   return shader_.program_.Inputs().at(index).var_type;
 }
@@ -307,32 +326,10 @@ Status ValidateVariableShape(const TensorShape& origin_shape,
 }
 
 // Validate if the dependency and variable usage match
-Status ValidateVariableDependency(ProgramTensorMetadataDependency dependency, ShaderUsage usage, bool is_input) {
-  bool dependency_rank = (dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank;
-  bool dependency_shape = (dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
-  bool dependency_type = (dependency & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type;
-
-  // if dependency is already set for shape, it is no need to set for rank.
-  ORT_RETURN_IF(dependency_rank && dependency_shape,
-                "Dependency cannot set for both \"Rank\" and \"Shape\".");
-
-  // if dependency is set for shape, it's already part of the shader cache. no need to use uniform.
-  ORT_RETURN_IF(dependency_shape && (usage & ShaderUsage::UseUniform),
-                "Dependency is set for \"Shape\", using uniform for shape is not allowed.");
-
-  // for input variable, check is more strict.
-  // this is because usually output shape is determined by the existing information, which is already part of the shader cache.
-  if (is_input) {
-    // if dependency is not set for type, should not use type alias for element and value.
-    // storage type is always used. so setting not depending on type is at user's own risk.
-    ORT_RETURN_IF(!dependency_type && (usage & (ShaderUsage::UseElementTypeAlias | ShaderUsage::UseValueTypeAlias)),
-                  "Input dependency is not set for \"Type\", but type alias for element type or value type is used.");
-
-    // if dependency is not set for rank and shape, the shader should not use shape and stride.
-    ORT_RETURN_IF(!dependency_rank && !dependency_shape && (usage & ShaderUsage::UseShapeAndStride),
-                  "Input dependency is set for neither \"Rank\" nor \"Shape\", but variable shape and stride is used.");
-  }
-
+Status ValidateVariableDependency(ProgramTensorMetadataDependency dependency, ShaderUsage usage) {
+  const bool static_shape = (dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
+  ORT_RETURN_IF(static_shape && (usage & ShaderUsage::UseUniform),
+                "Static shape specialization cannot also use shape uniforms.");
   return Status::OK();
 }
 }  // namespace
@@ -345,7 +342,7 @@ Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVar
                                             var.num_components_,
                                             input.is_buffer_view,
                                             input.buffer_offset_in_elements));
-  ORT_RETURN_IF_ERROR(ValidateVariableDependency(input.dependency, var.usage_, true));
+  ORT_RETURN_IF_ERROR(ValidateVariableDependency(input.dependency, var.usage_));
 
   return Status::OK();
 }
@@ -357,7 +354,7 @@ Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderV
                                             var.num_components_,
                                             output.is_buffer_view,
                                             output.buffer_offset_in_elements));
-  ORT_RETURN_IF_ERROR(ValidateVariableDependency(output.dependency, var.usage_, false));
+  ORT_RETURN_IF_ERROR(ValidateVariableDependency(output.dependency, var.usage_));
 
   return Status::OK();
 }
@@ -424,13 +421,12 @@ Status ShaderHelper::ValidateShapeForInputs() const {
     // check input dependencies with actual usages.
     auto usage = input_vars_[i]->usage_;
     auto dependency = program_.Inputs()[i].dependency;
-    bool use_rank = (dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank;
     bool use_shape = (dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
 
     if (usage & ShaderUsage::UseShapeAndStride) {
       if (usage & ShaderUsage::UseUniform) {
-        ORT_RETURN_IF_NOT((use_rank || input_vars_[i]->rank_ < 2) && !use_shape,
-                          "When UseUniform is set in variable usage, the corresponding program input should depend on rank but not shape.");
+        ORT_RETURN_IF_NOT(!use_shape,
+                          "When UseUniform is set in variable usage, the corresponding program input must use dynamic shape metadata.");
       } else {
         ORT_RETURN_IF_NOT(use_shape,
                           "When UseUniform is not set in variable usage, the corresponding program input should depend on shape.");

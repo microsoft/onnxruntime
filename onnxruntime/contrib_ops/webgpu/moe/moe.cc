@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -20,24 +21,26 @@ using onnxruntime::webgpu::ComputeContext;
 
 namespace {
 
-class MoEGateProgram final : public Program<MoEGateProgram> {
- public:
-  MoEGateProgram(int k, bool is_fp16, bool normalize_routing_weights)
-      : Program<MoEGateProgram>{"MoeGate"},
-        k_{k},
-        is_fp16_{is_fp16},
-        normalize_routing_weights_{normalize_routing_weights} {}
+#define WEBGPU_MO_E_GATE_PROGRAM_CONFIG(F) \
+  F(int, k_)                               \
+  F(bool, is_fp16_)                        \
+  F(bool, normalize_routing_weights_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+struct MoEGateProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_GATE_PROGRAM_CONFIG);
+    Config(int k, bool is_fp16, bool normalize_routing_weights)
+        : k_{k}, is_fp16_{is_fp16}, normalize_routing_weights_{normalize_routing_weights} {}
+  };
+  static constexpr std::string_view name = "MoeGate";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
     const auto& topk_values = shader.AddOutput("topk_values");
     const auto& hiddenstate_for_expert = shader.AddOutput("hiddenstate_for_expert");
     shader.AddOutput("tokencount_for_expert");
-    return WGSL_TEMPLATE_APPLY(shader, "moe/gate.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_router_weights, false),
-                               WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                               WGSL_TEMPLATE_PARAMETER(k, k_),
-                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+    return WGSL_TEMPLATE_APPLY(shader, "moe/gate.wgsl.template", WGSL_TEMPLATE_PARAMETER(has_router_weights, false),
+                               WGSL_TEMPLATE_PARAMETER(is_fp16, config.is_fp16_), WGSL_TEMPLATE_PARAMETER(k, config.k_),
+                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, config.normalize_routing_weights_),
                                WGSL_TEMPLATE_VARIABLE(hiddenstate_for_expert, hiddenstate_for_expert),
                                WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
                                WGSL_TEMPLATE_VARIABLE(router_weights, router_logits),
@@ -48,18 +51,20 @@ class MoEGateProgram final : public Program<MoEGateProgram> {
       {"rows", ProgramUniformVariableDataType::Uint32},
       {"cols", ProgramUniformVariableDataType::Uint32},
       {"token_offset", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int k_;
-  bool is_fp16_;
-  bool normalize_routing_weights_;
 };
+#undef WEBGPU_MO_E_GATE_PROGRAM_CONFIG
 
-class MoEHiddenStateGatherProgram final : public Program<MoEHiddenStateGatherProgram> {
- public:
-  MoEHiddenStateGatherProgram() : Program<MoEHiddenStateGatherProgram>{"MoeHiddenStateGather"} {}
+using MoEGateProgram = ConfiguredProgram<MoEGateProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_CONFIG(F)
+
+struct MoEHiddenStateGatherProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "MoeHiddenStateGather";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& hiddenstate_for_expert = shader.AddInput("hiddenstate_for_expert", ShaderUsage::UseElementTypeAlias);
     const auto& hidden_state = shader.AddInput("hidden_state", ShaderUsage::UseElementTypeAlias);
     const auto& new_hidden_state = shader.AddOutput("new_hidden_state");
@@ -77,12 +82,19 @@ class MoEHiddenStateGatherProgram final : public Program<MoEHiddenStateGatherPro
       {"num_tokens", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_CONFIG
 
-class MoEZeroTensorProgram final : public Program<MoEZeroTensorProgram> {
- public:
-  MoEZeroTensorProgram() : Program<MoEZeroTensorProgram>{"MoeZeroTensor"} {}
+using MoEHiddenStateGatherProgram = ConfiguredProgram<MoEHiddenStateGatherProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_CONFIG(F)
+
+struct MoEZeroTensorProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "MoeZeroTensor";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& tensor = shader.AddOutput("tensor", ShaderUsage::UseElementTypeAlias);
     return WGSL_TEMPLATE_APPLY(shader, "moe/zero_tensor.wgsl.template",
                                WGSL_TEMPLATE_VARIABLE(tensor, tensor));
@@ -90,12 +102,19 @@ class MoEZeroTensorProgram final : public Program<MoEZeroTensorProgram> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_CONFIG
 
-class MoEZeroU32Program final : public Program<MoEZeroU32Program> {
- public:
-  MoEZeroU32Program() : Program<MoEZeroU32Program>{"MoeZeroU32"} {}
+using MoEZeroTensorProgram = ConfiguredProgram<MoEZeroTensorProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MO_E_ZERO_U32_PROGRAM_CONFIG(F)
+
+struct MoEZeroU32ProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_ZERO_U32_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "MoeZeroU32";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& output = shader.AddOutput("output");
     return WGSL_TEMPLATE_APPLY(shader, "moe/zero_u32.wgsl.template",
                                WGSL_TEMPLATE_VARIABLE(output, output));
@@ -103,25 +122,29 @@ class MoEZeroU32Program final : public Program<MoEZeroU32Program> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_MO_E_ZERO_U32_PROGRAM_CONFIG
 
-class MoEExpertMatMulProgram final : public Program<MoEExpertMatMulProgram> {
- public:
-  explicit MoEExpertMatMulProgram(bool has_bias)
-      : Program<MoEExpertMatMulProgram>{"MoeExpertMatMul"}, has_bias_{has_bias} {}
+using MoEZeroU32Program = ConfiguredProgram<MoEZeroU32ProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_CONFIG(F) F(bool, has_bias_)
+
+struct MoEExpertMatMulProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_CONFIG);
+    Config(bool has_bias) : has_bias_{has_bias} {}
+  };
+  static constexpr std::string_view name = "MoeExpertMatMul";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
     const auto& weights = shader.AddInput("weights", ShaderUsage::UseElementTypeAlias);
     const ShaderVariableHelper* bias = &weights;
-    if (has_bias_) {
+    if (config.has_bias_) {
       bias = &shader.AddInput("bias", ShaderUsage::UseElementTypeAlias);
     }
     const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
     return WGSL_TEMPLATE_APPLY(shader, "moe/expert_matmul.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                               WGSL_TEMPLATE_VARIABLE(bias, *bias),
-                               WGSL_TEMPLATE_VARIABLE(input, input),
-                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_), WGSL_TEMPLATE_VARIABLE(bias, *bias),
+                               WGSL_TEMPLATE_VARIABLE(input, input), WGSL_TEMPLATE_VARIABLE(output, output),
                                WGSL_TEMPLATE_VARIABLE(weights, weights));
   }
 
@@ -130,32 +153,35 @@ class MoEExpertMatMulProgram final : public Program<MoEExpertMatMulProgram> {
       {"cols", ProgramUniformVariableDataType::Uint32},
       {"inner", ProgramUniformVariableDataType::Uint32},
       {"expert_idx", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_bias_;
 };
+#undef WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_CONFIG
 
-class MoEActivationProgram final : public Program<MoEActivationProgram> {
- public:
-  MoEActivationProgram(MoEActivationType activation_type, int swiglu_fusion, bool has_fc3)
-      : Program<MoEActivationProgram>{"MoeActivation"},
-        activation_type_{activation_type},
-        swiglu_fusion_{swiglu_fusion},
-        has_fc3_{has_fc3} {}
+using MoEExpertMatMulProgram = ConfiguredProgram<MoEExpertMatMulProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG(F) \
+  F(MoEActivationType, activation_type_)         \
+  F(int, swiglu_fusion_)                         \
+  F(bool, has_fc3_)
+
+struct MoEActivationProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG);
+    Config(MoEActivationType activation_type, int swiglu_fusion, bool has_fc3)
+        : activation_type_{activation_type}, swiglu_fusion_{swiglu_fusion}, has_fc3_{has_fc3} {}
+  };
+  static constexpr std::string_view name = "MoeActivation";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
     const ShaderVariableHelper* fc3_input = &input;
-    if (has_fc3_) {
+    if (config.has_fc3_) {
       fc3_input = &shader.AddInput("fc3_input", ShaderUsage::UseElementTypeAlias);
     }
     const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
     return WGSL_TEMPLATE_APPLY(shader, "moe/activation.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(activation, static_cast<int>(activation_type_)),
-                               WGSL_TEMPLATE_PARAMETER(has_fc3, has_fc3_),
-                               WGSL_TEMPLATE_PARAMETER(swiglu_fusion, swiglu_fusion_),
-                               WGSL_TEMPLATE_VARIABLE(fc3_input, *fc3_input),
-                               WGSL_TEMPLATE_VARIABLE(input, input),
+                               WGSL_TEMPLATE_PARAMETER(activation, static_cast<int>(config.activation_type_)),
+                               WGSL_TEMPLATE_PARAMETER(has_fc3, config.has_fc3_),
+                               WGSL_TEMPLATE_PARAMETER(swiglu_fusion, config.swiglu_fusion_),
+                               WGSL_TEMPLATE_VARIABLE(fc3_input, *fc3_input), WGSL_TEMPLATE_VARIABLE(input, input),
                                WGSL_TEMPLATE_VARIABLE(output, output));
   }
 
@@ -165,18 +191,20 @@ class MoEActivationProgram final : public Program<MoEActivationProgram> {
       {"alpha", ProgramUniformVariableDataType::Float32},
       {"beta", ProgramUniformVariableDataType::Float32},
       {"swiglu_limit", ProgramUniformVariableDataType::Float32});
-
- private:
-  MoEActivationType activation_type_;
-  int swiglu_fusion_;
-  bool has_fc3_;
 };
+#undef WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG
 
-class MoEFinalMixProgram final : public Program<MoEFinalMixProgram> {
- public:
-  MoEFinalMixProgram() : Program<MoEFinalMixProgram>{"MoeFinalMix"} {}
+using MoEActivationProgram = ConfiguredProgram<MoEActivationProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MO_E_FINAL_MIX_PROGRAM_CONFIG(F)
+
+struct MoEFinalMixProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_FINAL_MIX_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "MoeFinalMix";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
     const auto& router_values = shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
     const auto& expert_tokens = shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
@@ -194,21 +222,23 @@ class MoEFinalMixProgram final : public Program<MoEFinalMixProgram> {
       {"expert_idx", ProgramUniformVariableDataType::Uint32},
       {"token_offset", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_MO_E_FINAL_MIX_PROGRAM_CONFIG
+
+using MoEFinalMixProgram = ConfiguredProgram<MoEFinalMixProgramShader>;
 
 Status RunExpertMatMul(ComputeContext& context, const Tensor* input, const Tensor* weights,
                        const Tensor* bias, Tensor* output, uint32_t rows, uint32_t cols,
                        uint32_t inner, uint32_t expert_idx) {
   MoEExpertMatMulProgram matmul{bias != nullptr};
-  matmul.AddInputs({{input, ProgramTensorMetadataDependency::Type}})
-      .AddInputs({{weights, ProgramTensorMetadataDependency::Type}});
+  matmul.AddInputs({{input, ProgramTensorMetadataDependency::None}})
+      .AddInputs({{weights, ProgramTensorMetadataDependency::None}});
   if (bias) {
-    matmul.AddInputs({{bias, ProgramTensorMetadataDependency::Type}});
+    matmul.AddInputs({{bias, ProgramTensorMetadataDependency::None}});
   }
   matmul.AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(64)
       .SetDispatchGroupSize((rows * cols + 63) / 64)
-      .AddUniformVariables({rows, cols, inner, expert_idx})
-      .CacheHint(bias != nullptr);
+      .AddUniformVariables({rows, cols, inner, expert_idx});
   return context.RunProgram(matmul);
 }
 
@@ -261,7 +291,7 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
 
   const uint32_t output_vec4_size = static_cast<uint32_t>((hidden_state->Shape().Size() + 3) / 4);
   MoEZeroTensorProgram zero;
-  zero.AddOutput({output, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+  zero.AddOutput({output, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, 4})
       .SetDispatchGroupSize((output_vec4_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({output_vec4_size});
   ORT_RETURN_IF_ERROR(context.RunProgram(zero));
@@ -280,14 +310,13 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_ERROR(context.RunProgram(zero_counts));
 
     MoEGateProgram gate{k_, is_fp16, normalize_routing_weights_};
-    gate.AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}})
+    gate.AddInputs({{router_logits, ProgramTensorMetadataDependency::None}})
         .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_hidden, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_counts, ProgramTensorMetadataDependency::None, ProgramOutput::Atomic})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(num_tokens)
-        .AddUniformVariables({num_tokens, num_experts, static_cast<uint32_t>(token_offset)})
-        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", normalize_routing_weights_);
+        .AddUniformVariables({num_tokens, num_experts, static_cast<uint32_t>(token_offset)});
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
     Tensor gate_counts_cpu = context.CreateCPUTensor(dtype_uint32, TensorShape({num_experts}));
@@ -301,8 +330,8 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
       Tensor expert_hidden = context.CreateGPUTensor(dtype, TensorShape({used_by, hidden_size}));
       Tensor expert_tokens = context.CreateGPUTensor(dtype_uint32, TensorShape({used_by}));
       MoEHiddenStateGatherProgram gather;
-      gather.AddInputs({{&gate_hidden, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{hidden_state, ProgramTensorMetadataDependency::Type, 1}})
+      gather.AddInputs({{&gate_hidden, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{hidden_state, ProgramTensorMetadataDependency::None, 1}})
           .AddOutput({&expert_hidden, ProgramTensorMetadataDependency::None, 1})
           .AddOutput({&expert_tokens, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(used_by)
@@ -322,15 +351,14 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
 
       Tensor activated = context.CreateGPUTensor(dtype, TensorShape({used_by, inter_size}));
       MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_output.has_value()};
-      activation.AddInputs({{&fc1_output, ProgramTensorMetadataDependency::Type}});
+      activation.AddInputs({{&fc1_output, ProgramTensorMetadataDependency::None}});
       if (fc3_output) {
-        activation.AddInputs({{&*fc3_output, ProgramTensorMetadataDependency::Type}});
+        activation.AddInputs({{&*fc3_output, ProgramTensorMetadataDependency::None}});
       }
       activation.AddOutput({&activated, ProgramTensorMetadataDependency::None})
           .SetWorkgroupSize(128)
           .SetDispatchGroupSize((used_by * inter_size + 127) / 128)
-          .AddUniformVariables({used_by, inter_size, activation_alpha_, activation_beta_, swiglu_limit_})
-          .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_output.has_value());
+          .AddUniformVariables({used_by, inter_size, activation_alpha_, activation_beta_, swiglu_limit_});
       ORT_RETURN_IF_ERROR(context.RunProgram(activation));
 
       Tensor fc2_output = context.CreateGPUTensor(dtype, TensorShape({used_by, hidden_size}));
@@ -338,9 +366,9 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
                                           &fc2_output, used_by, hidden_size, inter_size, expert_idx));
 
       MoEFinalMixProgram mix;
-      mix.AddInputs({{&fc2_output, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&expert_tokens, ProgramTensorMetadataDependency::Type}})
+      mix.AddInputs({{&fc2_output, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{&router_values, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{&expert_tokens, ProgramTensorMetadataDependency::None}})
           .AddOutput({output, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(used_by)
           .AddUniformVariables({hidden_size, num_experts, expert_idx, static_cast<uint32_t>(token_offset)});

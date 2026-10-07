@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <memory>
 #include <optional>
 
@@ -15,19 +16,20 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                          ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  const bool a_is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
-  const bool b_is_bool = Inputs()[1].var_type == ProgramVariableDataType::Boolx4;
+  const bool a_is_bool = shader.InputType(0) == ProgramVariableDataType::Boolx4;
+  const bool b_is_bool = shader.InputType(1) == ProgramVariableDataType::Boolx4;
 
-  shader.AdditionalImplementation() << additional_impl_;
+  shader.AdditionalImplementation() << config.additional_impl_;
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
-  if (is_int64_input_ || is_int64_output_) {
+  if (config.is_int64_input_ || config.is_int64_output_) {
     // INT64 input or output (component=1): declare shared base and element_count for use in the shader.
     shader.MainFunctionBody()
         << "let base = global_idx * 4u;\n"
@@ -37,15 +39,15 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
-  if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
-    if (is_int64_input_) {
+  if (config.is_lhs_scalar_ || config.is_rhs_scalar_ || !config.is_broadcast_) {
+    if (config.is_int64_input_) {
       // INT64 inputs have component=1; read 4 individual elements into vec4 for uniform processing.
       // Guard lanes 1-3 against OOB reads when size is not divisible by 4.
       const auto a_offset = [&](const std::string& idx) {
-        return is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
+        return config.is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
       };
       const auto b_offset = [&](const std::string& idx) {
-        return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
+        return config.is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
       };
       shader.MainFunctionBody()
           << "var a0 = " << a_offset("base") << ";\n"
@@ -59,14 +61,14 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
           << "let b = vec4<input_b_value_t>(b0, b1, b2, b3);\n";
     } else {
       // get A data
-      if (is_lhs_scalar_) {
+      if (config.is_lhs_scalar_) {
         shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
       } else {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
       }
 
       // get B data
-      if (is_rhs_scalar_) {
+      if (config.is_rhs_scalar_) {
         shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
       } else {
         shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
@@ -82,12 +84,12 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     // If either last dimension of A or B is divisible by 4, or the shared dimension is divisible by 4, vectorize mode
     // can be enabled.
     // In vectorize mode, the source data of A and B will be loaded only once to calculate 4 output values.
-    if (vectorize_) {
+    if (config.vectorize_) {
       shader.MainFunctionBody() << "let outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "let offset_a = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
       // get A data
-      if (is_lhs_use_4_components_) {
+      if (config.is_lhs_use_4_components_) {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << ";\n";
       } else if (a_is_bool) {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << "[offset_a % 4];\n";
@@ -96,7 +98,7 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
       }
 
       // get B data
-      if (is_rhs_use_4_components_) {
+      if (config.is_rhs_use_4_components_) {
         shader.MainFunctionBody() << "let b = " << b.GetByOffset("offset_b / 4") << ";\n";
       } else if (b_is_bool) {
         shader.MainFunctionBody() << "let b = " << b.GetByOffset("offset_b / 4") << "[offset_b % 4];\n";
@@ -149,16 +151,18 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     }
   }
 
-  if (is_int64_output_) {
+  if (config.is_int64_output_) {
     // INT64 output (component=1): write each component of the vec4 result individually.
-    shader.MainFunctionBody()
-        << "let result = " << expression_ << ";\n"
-        << c.SetByOffset("base", "result[0]") << "\n"
-        << "if (base + 1u < element_count) { " << c.SetByOffset("base + 1u", "result[1]") << " }\n"
-        << "if (base + 2u < element_count) { " << c.SetByOffset("base + 2u", "result[2]") << " }\n"
-        << "if (base + 3u < element_count) { " << c.SetByOffset("base + 3u", "result[3]") << " }\n";
+    shader.MainFunctionBody() << "let result = " << config.expression_ << ";\n"
+                              << c.SetByOffset("base", "result[0]") << "\n"
+                              << "if (base + 1u < element_count) { " << c.SetByOffset("base + 1u", "result[1]")
+                              << " }\n"
+                              << "if (base + 2u < element_count) { " << c.SetByOffset("base + 2u", "result[2]")
+                              << " }\n"
+                              << "if (base + 3u < element_count) { " << c.SetByOffset("base + 3u", "result[3]")
+                              << " }\n";
   } else {
-    shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
+    shader.MainFunctionBody() << c.SetByOffset("global_idx", config.expression_);
   }
   return Status::OK();
 }
@@ -238,15 +242,13 @@ Status RunBinaryProgram(ComputeContext& context,
           {static_cast<uint32_t>(vec_size)},
           {static_cast<uint32_t>(size)},
       })
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {output_size}, output_component});
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {output_size}, output_component});
 
   if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
     // Mode Element-wise
-    // cache hint: "E{is_a_scalar}{is_b_scalar}"
-    program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4},
-                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4}})
-        .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
+    program.AddInputs(
+        {{lhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_int64_input ? 1 : 4},
+         {rhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_int64_input ? 1 : 4}});
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
     bool need_reshape = shared_dimension_divisible_by_4 && num_shared_dimension > 1;
@@ -263,32 +265,28 @@ Status RunBinaryProgram(ComputeContext& context,
     }
 
     if (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4 || is_lhs_bool) {
-      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
+      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4});
     } else {
-      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type});
+      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::None});
     }
     if (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4 || is_rhs_bool) {
-      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
+      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4});
     } else {
-      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type});
+      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::None});
     }
     // Mode Vectorize broadcast
-    // cache hint: "V{a_rank};{b_rank};{output_rank}"
-    program
-        .AddIndices(std::move(reshaped_output_shape))
+    program.AddIndices(std::move(reshaped_output_shape))
         .AddIndices(std::move(reshaped_lhs_shape))
-        .AddIndices(std::move(reshaped_rhs_shape))
-        .CacheHint("V");
+        .AddIndices(std::move(reshaped_rhs_shape));
   } else {
     // Mode Broadcast
-    // cache hint: "B"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, is_lhs_bool ? 4 : 1},
-                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, is_rhs_bool ? 4 : 1}})
+        .AddInputs(
+            {{lhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_lhs_bool ? 4 : 1},
+             {rhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_rhs_bool ? 4 : 1}})
         .AddIndices(output_tensor->Shape())
         .AddIndices(lhs_tensor->Shape())
-        .AddIndices(rhs_tensor->Shape())
-        .CacheHint("B");
+        .AddIndices(rhs_tensor->Shape());
   }
 
   return context.RunProgram(program);

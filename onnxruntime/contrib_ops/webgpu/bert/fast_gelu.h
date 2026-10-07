@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -13,18 +14,21 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-class FastGeluProgram final : public Program<FastGeluProgram> {
- public:
-  FastGeluProgram(int bias_components) : Program{"FastGelu"}, bias_components_{bias_components} {
-  }
+#define WEBGPU_FAST_GELU_PROGRAM_CONFIG(F) F(int, bias_components_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct FastGeluProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_FAST_GELU_PROGRAM_CONFIG);
+    Config(int bias_components) : bias_components_{bias_components} {}
+  };
+  static constexpr std::string_view name = "FastGelu";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int bias_components_;
 };
+#undef WEBGPU_FAST_GELU_PROGRAM_CONFIG
+
+using FastGeluProgram = ConfiguredProgram<FastGeluProgramShader>;
 
 class FastGelu final : public WebGpuKernel {
  public:

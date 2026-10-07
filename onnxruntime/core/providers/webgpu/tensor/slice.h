@@ -5,21 +5,29 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class SliceProgram final : public Program<SliceProgram> {
- public:
-  SliceProgram() : Program{"Slice"} {}
+#define WEBGPU_SLICE_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct SliceProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_SLICE_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "Slice";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"starts", ProgramUniformVariableDataType::Uint32},
                                           {"steps", ProgramUniformVariableDataType::Uint32},
                                           {"signs", ProgramUniformVariableDataType::Int32});
 };
+#undef WEBGPU_SLICE_PROGRAM_CONFIG
+
+using SliceProgram = ConfiguredProgram<SliceProgramShader>;
 
 class Slice final : public WebGpuKernel {
  public:

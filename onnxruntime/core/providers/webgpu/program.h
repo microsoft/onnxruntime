@@ -155,14 +155,11 @@ struct ProgramOverridableConstantDefinition {
   bool has_default_value;
 };
 
-// represents whether the program shader depends on the type, rank, or shape of an input/output tensor
+// Type, vector width and rank always participate in cache identity. Shape opts
+// into concrete dimension specialization; otherwise dimensions are uniforms.
 enum class ProgramTensorMetadataDependency : int {
   None = 0,
-  Type = 1,
-  Rank = 2,
-  Shape = 4,
-  TypeAndRank = Type | Rank,
-  TypeAndShape = Type | Shape,
+  Shape = 1,
 };
 OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency);
 
@@ -310,13 +307,6 @@ class ProgramBase {
   // chain-style methods for setting properties
   //
 
-  // set the cache hint for the program
-  template <typename... T>
-  ProgramBase& CacheHint(T&&... hints) {
-    cache_hint_ = absl::StrJoin(std::forward_as_tuple(std::forward<T>(hints)...), "|");
-    return *this;
-  }
-
   // add a program input
   ProgramBase& AddInput(ProgramInput&& input);
   // add multiple program inputs
@@ -378,8 +368,8 @@ class ProgramBase {
 
   // A structured program's static generator can only inspect its declared configuration
   // and the metadata exposed by ConfiguredShaderHelper.
-  virtual const void* StructuredKeyType() const { return nullptr; }
-  virtual void AppendSpecializationKey(std::string&) const {}
+  virtual const void* StructuredKeyType() const = 0;
+  virtual void AppendSpecializationKey(std::string&) const = 0;
 
   //
   // Properties Getters
@@ -387,7 +377,6 @@ class ProgramBase {
 
   inline const std::string& Name() const { return name_; }
   inline const ProgramMetadata& Metadata() const { return metadata_; }
-  inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
   // The input/output that owns the physical buffer for a logical buffer view. A view owner must
@@ -417,7 +406,6 @@ class ProgramBase {
   std::string name_;
   ProgramMetadata metadata_;
 
-  std::string cache_hint_;
   std::vector<ProgramInput> inputs_;
   std::vector<ProgramOutput> outputs_;
   std::vector<TensorShape> indices_;
@@ -503,10 +491,13 @@ concept has_uniform_variables_correct_type = requires {
 
 template <typename T>
 class Program : public details::ProgramWrapper {
- public:
+ private:
+  template <typename Spec>
+  friend class ConfiguredProgram;
   template <typename... Args>
   Program(Args&&... args) : details::ProgramWrapper{std::forward<Args>(args)..., GetMetadata()} {}
 
+ public:
   static ProgramMetadata GetMetadata() {
     ProgramMetadata metadata;
     if constexpr (details::has_member_constants<T>) {

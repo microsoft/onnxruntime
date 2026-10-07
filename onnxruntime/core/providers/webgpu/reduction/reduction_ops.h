@@ -7,6 +7,7 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/cpu/reduction/reduction_kernel_base.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include <string>
 #include <unordered_map>
@@ -43,36 +44,62 @@ enum class ReduceOpType {
 
 ReduceOpType StringToReduceOp(std::string name);
 
-class ReduceNaiveProgram final : public Program<ReduceNaiveProgram> {
- public:
-  ReduceNaiveProgram(std::string name, ReduceOpType reduce_op_type, bool keepdims, bool no_op_with_empty_axes, const InlinedVector<uint32_t>& axes, bool is_input_empty) : Program{name}, keepdims_(keepdims), no_op_with_empty_axes_(no_op_with_empty_axes), axes_(axes.begin(), axes.end()), is_input_empty_(is_input_empty), reduce_op_type_(reduce_op_type) {}
-  Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
+#define WEBGPU_REDUCE_NAIVE_PROGRAM_CONFIG(F) \
+  F(std::string, program_name_)               \
+  F(bool, keepdims_)                          \
+  F(bool, no_op_with_empty_axes_)             \
+  F(InlinedVector<uint32_t>, axes_)           \
+  F(bool, is_input_empty_)                    \
+  F(ReduceOpType, reduce_op_type_)
+
+struct ReduceNaiveProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_REDUCE_NAIVE_PROGRAM_CONFIG);
+    Config(std::string name, ReduceOpType reduce_op_type, bool keepdims, bool no_op_with_empty_axes,
+           const InlinedVector<uint32_t>& axes, bool is_input_empty)
+        : program_name_{name},
+          keepdims_(keepdims),
+          no_op_with_empty_axes_(no_op_with_empty_axes),
+          axes_(axes.begin(), axes.end()),
+          is_input_empty_(is_input_empty),
+          reduce_op_type_(reduce_op_type) {}
+  };
+  static std::string_view Name(const Config& config) { return config.program_name_; }
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config,
+                                   ConfiguredShaderHelper& wgpuShaderModuleAddRef);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"no_op_with_empty_axes", ProgramUniformVariableDataType::Uint32},
                                           {"reduce_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool keepdims_;
-  const bool no_op_with_empty_axes_;
-  InlinedVector<uint32_t> axes_;
-  bool is_input_empty_;
-  const ReduceOpType reduce_op_type_;
 };
+#undef WEBGPU_REDUCE_NAIVE_PROGRAM_CONFIG
 
-class ReduceSharedProgram final : public Program<ReduceSharedProgram> {
- public:
-  ReduceSharedProgram(std::string name, ReduceOpType reduce_op_type, uint32_t worgroup_size) : Program(name), reduce_op_type_(reduce_op_type), workgroup_size_(worgroup_size) {
-    if (reduce_op_type_ == ReduceOpType::ArgMax || reduce_op_type_ == ReduceOpType::ArgMin || reduce_op_type_ == ReduceOpType::ArgMax_select_last_index || reduce_op_type_ == ReduceOpType::ArgMin_select_last_index) {
-      ORT_THROW("ReduceSharedProgram: ArgMax/ArgMin is not supported in WebGPU yet.");
+using ReduceNaiveProgram = ConfiguredProgram<ReduceNaiveProgramShader>;
+
+#define WEBGPU_REDUCE_SHARED_PROGRAM_CONFIG(F) \
+  F(std::string, program_name_)                \
+  F(ReduceOpType, reduce_op_type_)             \
+  F(uint32_t, workgroup_size_)
+
+struct ReduceSharedProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_REDUCE_SHARED_PROGRAM_CONFIG);
+    Config(std::string name, ReduceOpType reduce_op_type, uint32_t worgroup_size)
+        : program_name_{name}, reduce_op_type_(reduce_op_type), workgroup_size_(worgroup_size) {
+      if (reduce_op_type_ == ReduceOpType::ArgMax || reduce_op_type_ == ReduceOpType::ArgMin ||
+          reduce_op_type_ == ReduceOpType::ArgMax_select_last_index ||
+          reduce_op_type_ == ReduceOpType::ArgMin_select_last_index) {
+        ORT_THROW("ReduceSharedProgram: ArgMax/ArgMin is not supported in WebGPU yet.");
+      }
     }
-  }
-  Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
+  };
+  static std::string_view Name(const Config& config) { return config.program_name_; }
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config,
+                                   ConfiguredShaderHelper& wgpuShaderModuleAddRef);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const ReduceOpType reduce_op_type_;
-  uint32_t workgroup_size_;
 };
+#undef WEBGPU_REDUCE_SHARED_PROGRAM_CONFIG
+
+using ReduceSharedProgram = ConfiguredProgram<ReduceSharedProgramShader>;
 
 template <bool allow_multi_axes = true>
 class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_axes> {

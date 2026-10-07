@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <vector>
 
 #include "core/providers/webgpu/tensor/gather_nd.h"
@@ -10,7 +11,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status GatherNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatherNDProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                 ConfiguredShaderHelper& shader) {
   const auto& data = shader.AddInput("data", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& indices = shader.AddInput("input_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
@@ -21,18 +23,18 @@ Status GatherNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var indices_indices: input_indices_indices_t;\n";
 
   uint32_t data_dim = 0;
-  for (uint32_t i = data_dim; i < batch_dims_; i++) {
+  for (uint32_t i = data_dim; i < config.batch_dims_; i++) {
     shader.MainFunctionBody() << "  " << data.IndicesSet("data_indices", i, output.IndicesGet("output_indices", i)) << "\n"
                               << "  " << indices.IndicesSet("indices_indices", i, output.IndicesGet("output_indices", i)) << "\n";
   }
-  data_dim += batch_dims_;
+  data_dim += config.batch_dims_;
 
   for (uint32_t i = data_dim; i < static_cast<uint32_t>(indices.Rank() - 1); i++) {
     shader.MainFunctionBody() << "  " << indices.IndicesSet("indices_indices", i, output.IndicesGet("output_indices", i)) << "\n";
   }
 
   shader.MainFunctionBody() << "  var indice_value = i32(0);\n";
-  for (uint32_t i = 0; i < indices_innerest_dim_; i++) {
+  for (uint32_t i = 0; i < config.indices_innerest_dim_; i++) {
     shader.MainFunctionBody() << "  " << indices.IndicesSet("indices_indices", indices.Rank() - 1, std::to_string(i)) << "\n"
                               << "  indice_value = " << indices.GetByIndices("indices_indices") << ";\n"
                               << "  if (indice_value < 0) {\n"
@@ -40,7 +42,7 @@ Status GatherNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  }\n"
                               << "  " << data.IndicesSet("data_indices", data_dim + i, "u32(indice_value)") << "\n";
   }
-  data_dim += indices_innerest_dim_;
+  data_dim += config.indices_innerest_dim_;
 
   for (uint32_t i = 0; i < static_cast<uint32_t>(data.Rank() - data_dim); i++) {
     shader.MainFunctionBody() << "  " << data.IndicesSet("data_indices", data_dim + i, output.IndicesGet("output_indices", indices.Rank() - 1 + i)) << "\n";
@@ -100,11 +102,11 @@ Status GatherND::ComputeInternal(ComputeContext& context) const {
 
   GatherNDProgram program{static_cast<uint32_t>(batch_dims_), static_cast<uint32_t>(indices_innerest_dim)};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank},
-                  {indices_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None},
+                  {indices_tensor, ProgramTensorMetadataDependency::None}})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(batch_dims_), std::to_string(indices_innerest_dim))
+
       .AddUniformVariables({{data_size}});
   return context.RunProgram(program);
 }

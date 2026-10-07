@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/webgpu/shader_config.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -55,14 +56,17 @@ static_assert(ValidateComponentTypeName<4>({wgpu::SubgroupMatrixComponentType::F
               "The elements' sequence of ComponentTypeName array do not match wgpu::SubgroupMatrixComponentType");
 
 // A subgroup-matrix configuration implemented by an operation, including any operation-specific metadata.
-struct SubgroupMatrixConfig {
-  wgpu::SubgroupMatrixComponentType componentType;
-  wgpu::SubgroupMatrixComponentType resultComponentType;
-  uint32_t M;
-  uint32_t N;
-  uint32_t K;
-  uint32_t subgroupSize;
-  bool needsPrepack;  // Whether input A needs layout optimization for subgroupMatrixLoad
+#define WEBGPU_SUBGROUP_MATRIX_CONFIG(F)                    \
+  F(wgpu::SubgroupMatrixComponentType, componentType)       \
+  F(wgpu::SubgroupMatrixComponentType, resultComponentType) \
+  F(uint32_t, M)                                            \
+  F(uint32_t, N)                                            \
+  F(uint32_t, K)                                            \
+  F(uint32_t, subgroupSize)                                 \
+  F(bool, needsPrepack)
+struct SubgroupMatrixConfig final {
+  WEBGPU_CONFIG_MEMBERS(WEBGPU_SUBGROUP_MATRIX_CONFIG);
+#undef WEBGPU_SUBGROUP_MATRIX_CONFIG
 
   // True if this config's subgroup-matrix shape equals (m, n, k).
   constexpr bool Is(uint32_t m, uint32_t n, uint32_t k) const {

@@ -4,26 +4,31 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime::contrib::webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class HyperConnectionPreMixProgram final : public Program<HyperConnectionPreMixProgram> {
- public:
-  explicit HyperConnectionPreMixProgram(int gate_layout)
-      : Program{"HyperConnectionPreMix"}, gate_layout_(gate_layout) {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_CONFIG(F) F(int, gate_layout_)
+
+struct HyperConnectionPreMixProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_CONFIG);
+    Config(int gate_layout) : gate_layout_(gate_layout) {}
+  };
+  static constexpr std::string_view name = "HyperConnectionPreMix";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"count", ProgramUniformVariableDataType::Uint32},
       {"branches", ProgramUniformVariableDataType::Uint32},
       {"hidden", ProgramUniformVariableDataType::Uint32},
       {"reduction_scale", ProgramUniformVariableDataType::Float32});
-
- private:
-  int gate_layout_;
 };
+#undef WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_CONFIG
+
+using HyperConnectionPreMixProgram = ConfiguredProgram<HyperConnectionPreMixProgramShader>;
 
 class HyperConnectionPreMix final : public WebGpuKernel {
  public:

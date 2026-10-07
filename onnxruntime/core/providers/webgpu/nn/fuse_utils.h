@@ -6,6 +6,7 @@
 
 #include "core/common/status.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/shader_config.h"
 
 #pragma once
 namespace onnxruntime {
@@ -34,14 +35,6 @@ enum class ActivationKind {
 };
 
 using Activation = struct Activation {
-  std::string CacheKey() const {
-    std::stringstream oss;
-    oss << "ActivationKind: " << static_cast<int>(activation_kind_) << ";";
-    if (activation_kind_ == ActivationKind::QuickGelu) {
-      oss << "QuickGeluUnitAlpha: " << (HasUnitQuickGeluAlpha() ? 1 : 0) << ";";
-    }
-    return oss.str();
-  }
   // Alpha 1 selects a shader variant without the multiply or alpha uniform.
   bool HasUnitQuickGeluAlpha() const {
     return activation_kind_ == ActivationKind::QuickGelu && activation_params_.QuickGelu.alpha_ == 1.0f;
@@ -73,6 +66,19 @@ using Activation = struct Activation {
   ActivationKind activation_kind_ = ActivationKind::None;
 };
 
+// Only these activation properties affect source; numerical parameters are uniforms.
+#define WEBGPU_ACTIVATION_CONFIG(F)   \
+  F(ActivationKind, activation_kind_) \
+  F(bool, unit_quick_gelu_alpha_)
+struct ShaderActivation final {
+  WEBGPU_CONFIG_MEMBERS(WEBGPU_ACTIVATION_CONFIG);
+  ShaderActivation() = default;
+  ShaderActivation(const Activation& activation)
+      : activation_kind_{activation.activation_kind_}, unit_quick_gelu_alpha_{activation.HasUnitQuickGeluAlpha()} {}
+  bool HasUnitQuickGeluAlpha() const { return unit_quick_gelu_alpha_; }
+};
+#undef WEBGPU_ACTIVATION_CONFIG
+
 // Fixed slots keep activation uniform definitions and values index-aligned.
 constexpr size_t kActivationUniformVariableCount = 2;
 
@@ -83,10 +89,10 @@ constexpr size_t kActivationUniformVariableCount = 2;
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation);
 
-std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type);
+std::string GetActivationSnippet(const ShaderActivation& activation, std::string value_type, std::string base_type);
 
 // Returns module-scope WGSL required by GetActivationSnippet; emit it before the snippet's use.
-std::string GetActivationDeclaration(const Activation& activation, std::string value_type, std::string base_type);
+std::string GetActivationDeclaration(const ShaderActivation& activation, std::string value_type, std::string base_type);
 
 // Appends exactly kActivationUniformVariableCount values, with empty entries for unused slots.
 void AppendActivationUniformsData(const Activation& activation, std::vector<ProgramUniformVariableValue>& variables);

@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -16,17 +17,23 @@ using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 // decay = decay_scale * Softplus(a + dt_bias), beta = Sigmoid(b).
-class LinearAttentionGateProgram final : public Program<LinearAttentionGateProgram> {
- public:
-  LinearAttentionGateProgram(bool has_b, bool has_beta) : Program{"LinearAttentionGate"}, has_b_(has_b), has_beta_(has_beta) {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_LINEAR_ATTENTION_GATE_PROGRAM_CONFIG(F) \
+  F(bool, has_b_)                                      \
+  F(bool, has_beta_)
+
+struct LinearAttentionGateProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_LINEAR_ATTENTION_GATE_PROGRAM_CONFIG);
+    Config(bool has_b, bool has_beta) : has_b_(has_b), has_beta_(has_beta) {}
+  };
+  static constexpr std::string_view name = "LinearAttentionGate";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_b_;
-  bool has_beta_;
 };
+#undef WEBGPU_LINEAR_ATTENTION_GATE_PROGRAM_CONFIG
+
+using LinearAttentionGateProgram = ConfiguredProgram<LinearAttentionGateProgramShader>;
 
 class LinearAttentionGate final : public WebGpuKernel {
  public:
@@ -35,16 +42,21 @@ class LinearAttentionGate final : public WebGpuKernel {
 };
 
 // Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
-class GatedRMSNormProgram final : public Program<GatedRMSNormProgram> {
- public:
-  GatedRMSNormProgram(GatedRMSNormActivation activation) : Program{"GatedRMSNorm"}, activation_(activation) {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_GATED_R_M_S_NORM_PROGRAM_CONFIG(F) F(GatedRMSNormActivation, activation_)
+
+struct GatedRMSNormProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_GATED_R_M_S_NORM_PROGRAM_CONFIG);
+    Config(GatedRMSNormActivation activation) : activation_(activation) {}
+  };
+  static constexpr std::string_view name = "GatedRMSNorm";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"norm_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
-
- private:
-  GatedRMSNormActivation activation_;
 };
+#undef WEBGPU_GATED_R_M_S_NORM_PROGRAM_CONFIG
+
+using GatedRMSNormProgram = ConfiguredProgram<GatedRMSNormProgramShader>;
 
 class GatedRMSNorm final : public WebGpuKernel {
  public:

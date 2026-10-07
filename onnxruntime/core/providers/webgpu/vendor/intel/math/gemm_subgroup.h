@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -22,15 +23,9 @@ bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64
 
 int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M);
 
-Status MakeMatMulSubgroupSource(ShaderHelper& shader,
-                                const InlinedVector<int64_t>& elements_per_thread,
-                                const ShaderIndicesHelper* batch_dims,
-                                bool is_vec4,
-                                bool a_vec4,
-                                bool b_is_fp16,
-                                bool transpose_a = false,
-                                bool transpose_b = false,
-                                float alpha = 1.0f,
+Status MakeMatMulSubgroupSource(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
+                                const ShaderIndicesHelper* batch_dims, bool is_vec4, bool a_vec4, bool b_is_fp16,
+                                bool transpose_a = false, bool transpose_b = false, float alpha = 1.0f,
                                 bool need_handle_matmul = true);
 
 }  // namespace intel

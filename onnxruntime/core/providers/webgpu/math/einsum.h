@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -41,19 +42,37 @@ class EinsumEquation {
                          int index = -1);
 };
 
-class EinsumProgram final : public Program<EinsumProgram> {
- public:
-  EinsumProgram(size_t input_count, const EinsumEquation& parsed_equation)
-      : Program{"Einsum"}, input_count_(input_count), parsed_equation_{parsed_equation} {}
+using EinsumInputSymbols = std::map<std::string, std::vector<int>>;
+using EinsumSymbolIndices = std::map<std::string, std::vector<size_t>>;
+#define WEBGPU_EINSUM_PROGRAM_CONFIG(F)               \
+  F(size_t, input_count_)                             \
+  F(EinsumInputSymbols, symbol_to_inputs_)            \
+  F(std::vector<EinsumSymbolIndices>, input_indices_) \
+  F(EinsumSymbolIndices, output_indices_)             \
+  F(bool, is_scalar_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct EinsumProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_EINSUM_PROGRAM_CONFIG);
+    Config(size_t input_count, EinsumEquation&& equation)
+        : input_count_{input_count},
+          output_indices_{std::move(equation.rhs_.symbol_to_indices)},
+          is_scalar_{equation.output_dims.empty()} {
+      for (auto& [symbol, info] : equation.symbol_to_info_) {
+        symbol_to_inputs_.emplace(symbol, std::move(info.input_indices));
+      }
+      input_indices_.reserve(equation.lhs_.size());
+      for (auto& term : equation.lhs_) input_indices_.push_back(std::move(term.symbol_to_indices));
+    }
+  };
+  static constexpr std::string_view name = "Einsum";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  size_t input_count_;
-  const EinsumEquation& parsed_equation_;
 };
+#undef WEBGPU_EINSUM_PROGRAM_CONFIG
+
+using EinsumProgram = ConfiguredProgram<EinsumProgramShader>;
 
 class Einsum final : public WebGpuKernel {
  public:

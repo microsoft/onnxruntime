@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/split.h"
@@ -11,22 +12,27 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class SplitProgram final : public Program<SplitProgram> {
- public:
-  explicit SplitProgram(size_t output_count) : Program{"Split"}, output_count_{output_count} {}
+#define WEBGPU_SPLIT_PROGRAM_CONFIG(F) F(size_t, output_count_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct SplitProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPLIT_PROGRAM_CONFIG);
+    Config(size_t output_count) : output_count_{output_count} {}
+  };
+  static constexpr std::string_view name = "Split";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_segment_elements", ProgramUniformVariableDataType::Uint32},
                                           {"segment_sizes", ProgramUniformVariableDataType::Uint32});
 
- private:
   // The outputs are separate bindings, so the branch over them has to be unrolled at shader
   // generation time. Their sizes are uniforms, so shapes that differ only in split sizes share
   // one shader.
-  size_t output_count_;
 };
+#undef WEBGPU_SPLIT_PROGRAM_CONFIG
+
+using SplitProgram = ConfiguredProgram<SplitProgramShader>;
 
 class Split : public WebGpuKernel, public SplitBase {
  public:

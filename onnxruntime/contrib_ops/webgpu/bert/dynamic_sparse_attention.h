@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cpu/bert/dynamic_sparse_attention_parameters.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -13,18 +14,25 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class DynamicSparseAttentionPrepareQueryProgram final : public Program<DynamicSparseAttentionPrepareQueryProgram> {
- public:
-  DynamicSparseAttentionPrepareQueryProgram(bool packed_qkv, bool use_qk_norm, bool do_rotary,
-                                            bool rotary_interleaved, bool has_position_ids)
-      : Program{"DynamicSparseAttentionPrepareQuery"},
-        packed_qkv_{packed_qkv},
-        use_qk_norm_{use_qk_norm},
-        do_rotary_{do_rotary},
-        rotary_interleaved_{rotary_interleaved},
-        has_position_ids_{has_position_ids} {}
+#define WEBGPU_DYNAMIC_SPARSE_ATTENTION_PREPARE_QUERY_PROGRAM_CONFIG(F) \
+  F(bool, packed_qkv_)                                                  \
+  F(bool, use_qk_norm_)                                                 \
+  F(bool, do_rotary_)                                                   \
+  F(bool, rotary_interleaved_)                                          \
+  F(bool, has_position_ids_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct DynamicSparseAttentionPrepareQueryProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_DYNAMIC_SPARSE_ATTENTION_PREPARE_QUERY_PROGRAM_CONFIG);
+    Config(bool packed_qkv, bool use_qk_norm, bool do_rotary, bool rotary_interleaved, bool has_position_ids)
+        : packed_qkv_{packed_qkv},
+          use_qk_norm_{use_qk_norm},
+          do_rotary_{do_rotary},
+          rotary_interleaved_{rotary_interleaved},
+          has_position_ids_{has_position_ids} {}
+  };
+  static constexpr std::string_view name = "DynamicSparseAttentionPrepareQuery";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -37,50 +45,56 @@ class DynamicSparseAttentionPrepareQueryProgram final : public Program<DynamicSp
       {"rotary_max_position", ProgramUniformVariableDataType::Uint32},
       {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32},
       {"num_workgroups", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool packed_qkv_;
-  bool use_qk_norm_;
-  bool do_rotary_;
-  bool rotary_interleaved_;
-  bool has_position_ids_;
 };
+#undef WEBGPU_DYNAMIC_SPARSE_ATTENTION_PREPARE_QUERY_PROGRAM_CONFIG
 
-class DynamicSparseAttentionInitializeCacheProgram final
-    : public Program<DynamicSparseAttentionInitializeCacheProgram> {
- public:
-  DynamicSparseAttentionInitializeCacheProgram(bool initialize_key, bool initialize_value,
-                                               bool has_past_key, bool has_past_value)
-      : Program{"DynamicSparseAttentionInitializeCache"},
-        initialize_key_{initialize_key},
-        initialize_value_{initialize_value},
-        has_past_key_{has_past_key},
-        has_past_value_{has_past_value} {}
+using DynamicSparseAttentionPrepareQueryProgram = ConfiguredProgram<DynamicSparseAttentionPrepareQueryProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_DYNAMIC_SPARSE_ATTENTION_INITIALIZE_CACHE_PROGRAM_CONFIG(F) \
+  F(bool, initialize_key_)                                                 \
+  F(bool, initialize_value_)                                               \
+  F(bool, has_past_key_)                                                   \
+  F(bool, has_past_value_)
+
+struct DynamicSparseAttentionInitializeCacheProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_DYNAMIC_SPARSE_ATTENTION_INITIALIZE_CACHE_PROGRAM_CONFIG);
+    Config(bool initialize_key, bool initialize_value, bool has_past_key, bool has_past_value)
+        : initialize_key_{initialize_key},
+          initialize_value_{initialize_value},
+          has_past_key_{has_past_key},
+          has_past_value_{has_past_value} {}
+  };
+  static constexpr std::string_view name = "DynamicSparseAttentionInitializeCache";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool initialize_key_;
-  bool initialize_value_;
-  bool has_past_key_;
-  bool has_past_value_;
 };
+#undef WEBGPU_DYNAMIC_SPARSE_ATTENTION_INITIALIZE_CACHE_PROGRAM_CONFIG
 
-class DynamicSparseAttentionAppendKvProgram final : public Program<DynamicSparseAttentionAppendKvProgram> {
- public:
-  DynamicSparseAttentionAppendKvProgram(bool packed_qkv, bool use_qk_norm, bool do_rotary,
-                                        bool rotary_interleaved, bool has_position_ids)
-      : Program{"DynamicSparseAttentionAppendKv"},
-        packed_qkv_{packed_qkv},
-        use_qk_norm_{use_qk_norm},
-        do_rotary_{do_rotary},
-        rotary_interleaved_{rotary_interleaved},
-        has_position_ids_{has_position_ids} {}
+using DynamicSparseAttentionInitializeCacheProgram =
+    ConfiguredProgram<DynamicSparseAttentionInitializeCacheProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_DYNAMIC_SPARSE_ATTENTION_APPEND_KV_PROGRAM_CONFIG(F) \
+  F(bool, packed_qkv_)                                              \
+  F(bool, use_qk_norm_)                                             \
+  F(bool, do_rotary_)                                               \
+  F(bool, rotary_interleaved_)                                      \
+  F(bool, has_position_ids_)
+
+struct DynamicSparseAttentionAppendKvProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_DYNAMIC_SPARSE_ATTENTION_APPEND_KV_PROGRAM_CONFIG);
+    Config(bool packed_qkv, bool use_qk_norm, bool do_rotary, bool rotary_interleaved, bool has_position_ids)
+        : packed_qkv_{packed_qkv},
+          use_qk_norm_{use_qk_norm},
+          do_rotary_{do_rotary},
+          rotary_interleaved_{rotary_interleaved},
+          has_position_ids_{has_position_ids} {}
+  };
+  static constexpr std::string_view name = "DynamicSparseAttentionAppendKv";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -95,28 +109,33 @@ class DynamicSparseAttentionAppendKvProgram final : public Program<DynamicSparse
       {"rotary_max_position", ProgramUniformVariableDataType::Uint32},
       {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32},
       {"num_workgroups", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool packed_qkv_;
-  bool use_qk_norm_;
-  bool do_rotary_;
-  bool rotary_interleaved_;
-  bool has_position_ids_;
 };
+#undef WEBGPU_DYNAMIC_SPARSE_ATTENTION_APPEND_KV_PROGRAM_CONFIG
 
-class DynamicSparseAttentionProgram final : public Program<DynamicSparseAttentionProgram> {
- public:
-  DynamicSparseAttentionProgram(bool has_selection, bool local_plus_selected, bool selected_from_auxiliary,
-                                bool has_auxiliary_value, bool has_head_sink, bool use_smooth_softmax)
-      : Program{"DynamicSparseAttention"},
-        has_selection_{has_selection},
-        local_plus_selected_{local_plus_selected},
-        selected_from_auxiliary_{selected_from_auxiliary},
-        has_auxiliary_value_{has_auxiliary_value},
-        has_head_sink_{has_head_sink},
-        use_smooth_softmax_{use_smooth_softmax} {}
+using DynamicSparseAttentionAppendKvProgram = ConfiguredProgram<DynamicSparseAttentionAppendKvProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_DYNAMIC_SPARSE_ATTENTION_PROGRAM_CONFIG(F) \
+  F(bool, has_selection_)                                 \
+  F(bool, local_plus_selected_)                           \
+  F(bool, selected_from_auxiliary_)                       \
+  F(bool, has_auxiliary_value_)                           \
+  F(bool, has_head_sink_)                                 \
+  F(bool, use_smooth_softmax_)
+
+struct DynamicSparseAttentionProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_DYNAMIC_SPARSE_ATTENTION_PROGRAM_CONFIG);
+    Config(bool has_selection, bool local_plus_selected, bool selected_from_auxiliary, bool has_auxiliary_value,
+           bool has_head_sink, bool use_smooth_softmax)
+        : has_selection_{has_selection},
+          local_plus_selected_{local_plus_selected},
+          selected_from_auxiliary_{selected_from_auxiliary},
+          has_auxiliary_value_{has_auxiliary_value},
+          has_head_sink_{has_head_sink},
+          use_smooth_softmax_{use_smooth_softmax} {}
+  };
+  static constexpr std::string_view name = "DynamicSparseAttention";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -129,15 +148,10 @@ class DynamicSparseAttentionProgram final : public Program<DynamicSparseAttentio
       {"local_window_size", ProgramUniformVariableDataType::Uint32},
       {"scale", ProgramUniformVariableDataType::Float32},
       {"num_workgroups", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_selection_;
-  bool local_plus_selected_;
-  bool selected_from_auxiliary_;
-  bool has_auxiliary_value_;
-  bool has_head_sink_;
-  bool use_smooth_softmax_;
 };
+#undef WEBGPU_DYNAMIC_SPARSE_ATTENTION_PROGRAM_CONFIG
+
+using DynamicSparseAttentionProgram = ConfiguredProgram<DynamicSparseAttentionProgramShader>;
 
 class DynamicSparseAttention final : public WebGpuKernel {
  public:

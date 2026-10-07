@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/providers/webgpu/configured_program.h"
 #include <string>
 #include <utility>
 #include <vector>
@@ -102,30 +103,28 @@ static_assert(static_cast<int>(ActivationKind::LeakyRelu) == 5, "im2col_matmul.w
 static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
-Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status Im2ColMatMulProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                     ConfiguredShaderHelper& shader) {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& weight = shader.AddInput("weight", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  ORT_ENFORCE(tile_m_ == 16 || tile_m_ == 32, "tile_m must be 16 or 32.");
-  ORT_ENFORCE(tile_n_ == 64, "tile_n must be 64.");
-  ORT_ENFORCE(vec_size_ == 1 || vec_size_ == 2 || vec_size_ == 4, "vec_size must be 1, 2 or 4.");
+  ORT_ENFORCE(config.tile_m_ == 16 || config.tile_m_ == 32, "tile_m must be 16 or 32.");
+  ORT_ENFORCE(config.tile_n_ == 64, "tile_n must be 64.");
+  ORT_ENFORCE(config.vec_size_ == 1 || config.vec_size_ == 2 || config.vec_size_ == 4, "vec_size must be 1, 2 or 4.");
 
-  return WGSL_TEMPLATE_APPLY(shader, "nn/im2col_matmul.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_.activation_kind_)),
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             // Alpha 1 selects the QuickGelu variant without the multiply or alpha uniform.
-                             WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, activation_.HasUnitQuickGeluAlpha()),
-                             WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
-                             WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
-                             WGSL_TEMPLATE_PARAMETER(use_subgroup, use_subgroup_),
-                             WGSL_TEMPLATE_PARAMETER(vec_size, vec_size_),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(src, src),
-                             WGSL_TEMPLATE_VARIABLE(weight, weight));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "nn/im2col_matmul.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(config.activation_.activation_kind_)),
+      WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_),
+      // Alpha 1 selects the QuickGelu variant without the multiply or alpha uniform.
+      WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, config.activation_.HasUnitQuickGeluAlpha()),
+      WGSL_TEMPLATE_PARAMETER(tile_m, config.tile_m_), WGSL_TEMPLATE_PARAMETER(tile_n, config.tile_n_),
+      WGSL_TEMPLATE_PARAMETER(use_subgroup, config.use_subgroup_), WGSL_TEMPLATE_PARAMETER(vec_size, config.vec_size_),
+      WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(src, src), WGSL_TEMPLATE_VARIABLE(weight, weight));
 }
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
@@ -188,17 +187,17 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   im2col_mm_program.SetDispatchGroupSize(M_tiles, N_tiles, batch);
 
   im2col_mm_program.AddInput({src,
-                              ProgramTensorMetadataDependency::TypeAndRank,
+                              ProgramTensorMetadataDependency::None,
                               static_cast<int>(vec_size)});
   im2col_mm_program.AddInput({ohwi_weight,
-                              ProgramTensorMetadataDependency::TypeAndRank,
+                              ProgramTensorMetadataDependency::None,
                               static_cast<int>(vec_size)});
   if (has_bias) {
     im2col_mm_program.AddInput({bias,
-                                ProgramTensorMetadataDependency::TypeAndRank});
+                                ProgramTensorMetadataDependency::None});
   }
   im2col_mm_program.AddOutput({output,
-                               ProgramTensorMetadataDependency::TypeAndRank});
+                               ProgramTensorMetadataDependency::None});
   im2col_mm_program.AddUniformVariables({{batch},
                                          {src_height},
                                          {src_width},
@@ -217,7 +216,6 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {pads},
                                          {strides}});
   AppendActivationUniformsData(activation, im2col_mm_program);
-  im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup, activation.CacheKey());
 
   return context.RunProgram(im2col_mm_program);
 }

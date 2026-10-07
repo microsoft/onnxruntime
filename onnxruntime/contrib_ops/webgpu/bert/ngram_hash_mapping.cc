@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
 
 #include "contrib_ops/webgpu/bert/engram_helper.h"
@@ -24,24 +25,25 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     NGramHashMapping);
 
-Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status NGramHashMappingProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                         ConfiguredShaderHelper& shader) {
   const auto& input_ids = shader.AddInput("input_ids", ShaderUsage::UseUniform);
   const auto& multipliers = shader.AddInput("multipliers", ShaderUsage::UseUniform);
   const auto& vocab_sizes = shader.AddInput("vocab_sizes", ShaderUsage::UseUniform);
   const ShaderVariableHelper* past_ids = nullptr;
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* head_offsets = nullptr;
-  if (has_head_offsets_) {
+  if (config.has_head_offsets_) {
     head_offsets = &shader.AddInput("head_offsets", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* eos_token_id = nullptr;
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* segment_ids = nullptr;
-  if (has_segment_ids_) {
+  if (config.has_segment_ids_) {
     segment_ids = &shader.AddInput("segment_ids", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
@@ -50,7 +52,7 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation()
       << "fn combined_value(b: i32, history_length: i32, eos_value: i32, idx: i32) -> i32 {\n"
       << "  if (idx < history_length) {\n";
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     shader.AdditionalImplementation()
         << "    return " << past_ids->GetByOffset("b * history_length + idx") << ";\n";
   } else {
@@ -65,12 +67,12 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
       << "  let history_length = i32(uniforms.max_ngram_size - 1u);\n"
       << "  let sequence_length = i32(uniforms.sequence_length);\n";
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     shader.MainFunctionBody() << "  let eos_value = " << eos_token_id->GetByOffset("0") << ";\n";
   } else {
     shader.MainFunctionBody() << "  let eos_value = uniforms.pad_id;\n";
   }
-  const bool do_reset = has_eos_token_id_ && reset_on_eos_;
+  const bool do_reset = config.has_eos_token_id_ && config.reset_on_eos_;
 
   shader.MainFunctionBody()
       << "  let num_heads = (uniforms.max_ngram_size - 1u) * uniforms.n_head_per_ngram;\n"
@@ -87,7 +89,7 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (do_reset) {
     shader.MainFunctionBody() << "    boundary = combined_value(b, history_length, eos_value, j) == eos_value;\n";
   }
-  if (has_segment_ids_) {
+  if (config.has_segment_ids_) {
     shader.MainFunctionBody()
         << "    if (!boundary && j >= history_length) {\n"
         << "      let tj = j - history_length;\n"
@@ -120,7 +122,7 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "      if (mod_value > 0i) {\n"
       << "        result = positive_mod(mix, mod_value);\n"
       << "      }\n";
-  if (has_head_offsets_) {
+  if (config.has_head_offsets_) {
     shader.MainFunctionBody()
         << "      if (mod_value > 0i) {\n"
         << "        result = result + " << head_offsets->GetByOffset("out_h") << ";\n"
@@ -133,23 +135,24 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status NGramPresentIdsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                        ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper* input_ids = nullptr;
-  if (has_input_ids_) {
+  if (config.has_input_ids_) {
     input_ids = &shader.AddInput("input_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* past_ids = nullptr;
-  if (has_past_ids_ && !past_aliases_present_) {
+  if (config.has_past_ids_ && !config.past_aliases_present_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* eos_token_id = nullptr;
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
   }
   const auto& present_ids = shader.AddOutput("present_ids", ShaderUsage::UseUniform);
-  const ShaderVariableHelper* history = past_aliases_present_ ? &present_ids : past_ids;
+  const ShaderVariableHelper* history = config.past_aliases_present_ ? &present_ids : past_ids;
 
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     shader.MainFunctionBody() << "  let missing_history_value = " << eos_token_id->GetByOffset("0") << ";\n";
   } else {
     shader.MainFunctionBody() << "  let missing_history_value = uniforms.pad_id;\n";
@@ -162,14 +165,14 @@ Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    let slot = chunk + local_idx;\n"
       << "    var token = missing_history_value;\n"
       << "    if (slot < uniforms.state_length) {\n";
-  if (has_input_ids_) {
+  if (config.has_input_ids_) {
     shader.MainFunctionBody()
         << "      if (slot + uniforms.sequence_length >= uniforms.state_length) {\n"
         << "        let source_t = slot + uniforms.sequence_length - uniforms.state_length;\n"
         << "        token = " << input_ids->GetByOffset("b * uniforms.sequence_length + source_t") << ";\n"
         << "      }\n";
   }
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     shader.MainFunctionBody()
         << "      if (slot + uniforms.sequence_length < uniforms.state_length) {\n"
         << "        token = " << history->GetByOffset("b * uniforms.state_length + slot + uniforms.sequence_length")
@@ -245,11 +248,9 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   if (total > 0) {
     NGramHashMappingProgram program{has_past_ids, head_offsets != nullptr, has_eos_token_id,
                                     segment_ids != nullptr, reset_on_eos_ != 0};
-    program.CacheHint(has_past_ids, head_offsets != nullptr, has_eos_token_id,
-                      segment_ids != nullptr, reset_on_eos_ != 0)
-        .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
-                    {multipliers, ProgramTensorMetadataDependency::None},
-                    {vocab_sizes, ProgramTensorMetadataDependency::None}});
+    program.AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
+                       {multipliers, ProgramTensorMetadataDependency::None},
+                       {vocab_sizes, ProgramTensorMetadataDependency::None}});
     if (has_past_ids) {
       program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }
@@ -279,7 +280,7 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
     // read-only and read-write storage in one dispatch; read history through present_ids instead.
     const bool past_aliases_present = has_past_ids && past_ids->DataRaw() == present_ids->DataRaw();
     NGramPresentIdsProgram present_program{has_input_ids, has_past_ids, has_eos_token_id, past_aliases_present};
-    present_program.CacheHint(has_input_ids, has_past_ids, has_eos_token_id, past_aliases_present);
+
     if (has_input_ids) {
       present_program.AddInput({input_ids, ProgramTensorMetadataDependency::None});
     }

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <utility>
 #include <cstring>
 #include <limits>
@@ -10,13 +11,14 @@
 
 namespace onnxruntime {
 namespace webgpu {
-Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | additional_usage_);
+Status UnaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                         ConfiguredShaderHelper& shader) {
+  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | config.additional_usage_);
   const auto& output = shader.AddOutput("y", ShaderUsage::UseUniform);
-  shader.AdditionalImplementation() << additional_impl_;
+  shader.AdditionalImplementation() << config.additional_impl_;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
                             << "  let a = " << input.GetByOffset("global_idx") << ";\n  "
-                            << output.SetByOffset("global_idx", expression_);
+                            << output.SetByOffset("global_idx", config.expression_);
 
   return Status::OK();
 }
@@ -31,15 +33,12 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
   UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4}})
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4}})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       });
-  if (!cache_hint.empty()) {
-    program.CacheHint(cache_hint);
-  }
   ORT_RETURN_IF_ERROR(ConfigureProgram(context, program));
   return context.RunProgram(program);
 }
@@ -245,11 +244,15 @@ class Clip final : public UnaryElementwise {
 // and correct for the index/position ranges that use int64 Clip in practice. The 4-byte-only
 // templated Clip above (sizeof(T)==sizeof(float) static_assert) cannot cover int64, so it gets a
 // dedicated one-element-per-invocation program here.
-class ClipInt64Program final : public Program<ClipInt64Program> {
- public:
-  ClipInt64Program() : Program{"ClipInt64"} {}
+#define WEBGPU_CLIP_INT64_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override {
+struct ClipInt64ProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_CLIP_INT64_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "ClipInt64";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh) {
     const auto& input = sh.AddInput("x", ShaderUsage::UseUniform);
     const auto& output = sh.AddOutput("y", ShaderUsage::UseUniform);
     sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
@@ -263,6 +266,9 @@ class ClipInt64Program final : public Program<ClipInt64Program> {
                                           {"clip_min", ProgramUniformVariableDataType::Int32},
                                           {"clip_max", ProgramUniformVariableDataType::Int32});
 };
+#undef WEBGPU_CLIP_INT64_PROGRAM_CONFIG
+
+using ClipInt64Program = ConfiguredProgram<ClipInt64ProgramShader>;
 
 class ClipInt64 final : public WebGpuKernel {
  public:
@@ -303,7 +309,7 @@ class ClipInt64 final : public WebGpuKernel {
     ClipInt64Program program{};
     // Uniform values are positional: this order must match the WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES
     // declaration on ClipInt64Program (vec_size, clip_min, clip_max).
-    program.AddInput({input_tensor, ProgramTensorMetadataDependency::Type, {size}, 1})
+    program.AddInput({input_tensor, ProgramTensorMetadataDependency::None, {size}, 1})
         .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {size}, 1})
         .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({{data_size}, {clip_min}, {clip_max}});
@@ -405,7 +411,6 @@ Gelu::Gelu(const OpKernelInfo& info)
                        info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
                        info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
                        ShaderUsage::UseValueTypeAlias} {
-  cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
 }
 
 QuickGelu::QuickGelu(const OpKernelInfo& info)

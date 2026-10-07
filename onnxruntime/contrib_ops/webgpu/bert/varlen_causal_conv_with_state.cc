@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/varlen_causal_conv_with_state.h"
 
 #include <limits>
@@ -38,50 +39,47 @@ VarlenCausalConvWithState::VarlenCausalConvWithState(const OpKernelInfo& info)
   state_update_capacity_ = static_cast<int>(capacity);
 }
 
-Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenCausalConvWithStateProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                  ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
   const auto& weight = shader.AddInput("weight", ShaderUsage::UseUniform);
   const auto& cumulative_sequence_length =
       shader.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
   const ShaderVariableHelper* bias = &input;
-  if (has_bias_) {
+  if (config.has_bias_) {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* initial_state = &input;
-  if (has_state_ && !state_in_final_state_) {
+  if (config.has_state_ && !config.state_in_final_state_) {
     initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* capture_count = &cumulative_sequence_length;
-  if (has_capture_count_) {
+  if (config.has_capture_count_) {
     capture_count = &shader.AddInput("capture_count", ShaderUsage::UseUniform);
   }
 
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   const ShaderVariableHelper* final_state = &output;
-  if (has_state_) {
+  if (config.has_state_) {
     final_state = &shader.AddOutput(
         "final_state", ShaderUsage::UseUniform | ShaderUsage::UseGetByOffsetSegments);
   }
   const ShaderVariableHelper* state_update = &output;
-  if (has_state_update_ && has_capture_count_) {
+  if (config.has_state_update_ && config.has_capture_count_) {
     state_update = &shader.AddOutput("state_update", ShaderUsage::UseUniform);
   }
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/varlen_causal_conv_with_state.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_state, has_state_),
-                             WGSL_TEMPLATE_PARAMETER(has_state_update, has_state_update_ && has_capture_count_),
-                             WGSL_TEMPLATE_PARAMETER(state_in_final_state, state_in_final_state_),
-                             WGSL_TEMPLATE_PARAMETER(use_silu, use_silu_),
-                             WGSL_TEMPLATE_VARIABLE(bias, *bias),
-                             WGSL_TEMPLATE_VARIABLE(capture_count, *capture_count),
-                             WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
-                             WGSL_TEMPLATE_VARIABLE(final_state, *final_state),
-                             WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state),
-                             WGSL_TEMPLATE_VARIABLE(input, input),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(state_update, *state_update),
-                             WGSL_TEMPLATE_VARIABLE(weight, weight));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/varlen_causal_conv_with_state.wgsl.template", WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_),
+      WGSL_TEMPLATE_PARAMETER(has_state, config.has_state_),
+      WGSL_TEMPLATE_PARAMETER(has_state_update, config.has_state_update_ && config.has_capture_count_),
+      WGSL_TEMPLATE_PARAMETER(state_in_final_state, config.state_in_final_state_),
+      WGSL_TEMPLATE_PARAMETER(use_silu, config.use_silu_), WGSL_TEMPLATE_VARIABLE(bias, *bias),
+      WGSL_TEMPLATE_VARIABLE(capture_count, *capture_count),
+      WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
+      WGSL_TEMPLATE_VARIABLE(final_state, *final_state), WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state),
+      WGSL_TEMPLATE_VARIABLE(input, input), WGSL_TEMPLATE_VARIABLE(output, output),
+      WGSL_TEMPLATE_VARIABLE(state_update, *state_update), WGSL_TEMPLATE_VARIABLE(weight, weight));
 }
 
 Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const {
@@ -188,8 +186,6 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   VarlenCausalConvWithStateProgram program{has_bias, has_state, state_in_final_state,
                                            has_state_update, has_capture_count,
                                            activation_ == CausalConvActivation::Silu};
-  program.CacheHint(has_bias, has_state, state_in_final_state, has_state_update, has_capture_count,
-                    activation_ == CausalConvActivation::Silu);
 
   const uint64_t num_invocations_64 =
       static_cast<uint64_t>(batch_size) * static_cast<uint64_t>(channels);
@@ -199,7 +195,7 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   const uint32_t dispatch_groups =
       num_invocations / WORKGROUP_SIZE + static_cast<uint32_t>(num_invocations % WORKGROUP_SIZE != 0);
 
-  program.AddInput({input, ProgramTensorMetadataDependency::Type})
+  program.AddInput({input, ProgramTensorMetadataDependency::None})
       .AddInput({weight, ProgramTensorMetadataDependency::None})
       .AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
   if (has_bias) {

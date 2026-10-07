@@ -7,6 +7,7 @@
 #include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -14,30 +15,42 @@ namespace contrib {
 namespace webgpu {
 
 // Avoid `using namespace` in headers. Pull in only what we need.
-using onnxruntime::webgpu::Program;
+using onnxruntime::webgpu::ConfiguredProgram;
+using onnxruntime::webgpu::ConfiguredShaderHelper;
 using onnxruntime::webgpu::ProgramUniformVariableDataType;
-using onnxruntime::webgpu::ShaderHelper;
 
 // Fused Q4 TurboQuant copy-to-KV-cache using Walsh-Hadamard, L2 normalization,
 // and centroid quantization.
 // Each workgroup handles one (batch, head, seq) slice for either K or V.
-class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram> {
- public:
-  TurboQuantHadamardProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH,
-                            bool past_present_share_buffer, int head_size_log2, int components,
-                            int compressed_head_size_u32,
-                            bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
-      : Program{kernel_name},
-        has_past_(has_past),
-        kv_BNSH_(kv_BNSH),
-        past_present_share_buffer_(past_present_share_buffer),
-        head_size_log2_(head_size_log2),
-        components_(components),
-        compressed_head_size_u32_(compressed_head_size_u32),
-        prepare_indirect_dispatch_(prepare_indirect_dispatch),
-        use_seqlen_k_(use_seqlen_k) {}
+#define WEBGPU_TURBO_QUANT_HADAMARD_PROGRAM_CONFIG(F) \
+  F(std::string, program_name_)                       \
+  F(bool, has_past_)                                  \
+  F(bool, kv_BNSH_)                                   \
+  F(bool, past_present_share_buffer_)                 \
+  F(int, head_size_log2_)                             \
+  F(int, components_)                                 \
+  F(int, compressed_head_size_u32_)                   \
+  F(bool, prepare_indirect_dispatch_)                 \
+  F(bool, use_seqlen_k_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct TurboQuantHadamardProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_TURBO_QUANT_HADAMARD_PROGRAM_CONFIG);
+    Config(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool past_present_share_buffer,
+           int head_size_log2, int components, int compressed_head_size_u32, bool prepare_indirect_dispatch = false,
+           bool use_seqlen_k = false)
+        : program_name_{kernel_name},
+          has_past_(has_past),
+          kv_BNSH_(kv_BNSH),
+          past_present_share_buffer_(past_present_share_buffer),
+          head_size_log2_(head_size_log2),
+          components_(components),
+          compressed_head_size_u32_(compressed_head_size_u32),
+          prepare_indirect_dispatch_(prepare_indirect_dispatch),
+          use_seqlen_k_(use_seqlen_k) {}
+  };
+  static std::string_view Name(const Config& config) { return config.program_name_; }
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"compressed_head_size_u32", ProgramUniformVariableDataType::Uint32},
@@ -51,17 +64,10 @@ class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram
                                           {"present_seq_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_past_;
-  bool kv_BNSH_;
-  bool past_present_share_buffer_;
-  int head_size_log2_;
-  int components_;
-  int compressed_head_size_u32_;
-  bool prepare_indirect_dispatch_;
-  bool use_seqlen_k_;
 };
+#undef WEBGPU_TURBO_QUANT_HADAMARD_PROGRAM_CONFIG
+
+using TurboQuantHadamardProgram = ConfiguredProgram<TurboQuantHadamardProgramShader>;
 
 // ---------------------------------------------------------------------------
 // TurboQuant present-KV allocator contract (IMPORTANT for pre-allocated outputs)
@@ -96,24 +102,33 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 // Fused Q4 TurboQuant cache: split packed QKV, apply rotary to Q/K, then
 // apply Walsh-Hadamard and centroid quantization to K/V.
 // Single dispatch handles all Q/K/V processing from packed QKV input.
-class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryProgram> {
- public:
-  TurboQuantFusedRotaryProgram(const std::string& kernel_name, int head_size_log2,
-                               int half_rotary_dim,
-                               int compressed_head_size_u32,
-                               bool past_present_share_buffer,
-                               bool prepare_indirect_dispatch, bool use_seqlen_k,
-                               uint32_t multi_rotary_cache_concat_offset)
-      : Program{kernel_name},
-        head_size_log2_(head_size_log2),
-        half_rotary_dim_(half_rotary_dim),
-        compressed_head_size_u32_(compressed_head_size_u32),
-        past_present_share_buffer_(past_present_share_buffer),
-        prepare_indirect_dispatch_(prepare_indirect_dispatch),
-        use_seqlen_k_(use_seqlen_k),
-        multi_rotary_cache_concat_offset_(multi_rotary_cache_concat_offset) {}
+#define WEBGPU_TURBO_QUANT_FUSED_ROTARY_PROGRAM_CONFIG(F) \
+  F(std::string, program_name_)                           \
+  F(int, head_size_log2_)                                 \
+  F(int, half_rotary_dim_)                                \
+  F(int, compressed_head_size_u32_)                       \
+  F(bool, past_present_share_buffer_)                     \
+  F(bool, prepare_indirect_dispatch_)                     \
+  F(bool, use_seqlen_k_)                                  \
+  F(uint32_t, multi_rotary_cache_concat_offset_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct TurboQuantFusedRotaryProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_TURBO_QUANT_FUSED_ROTARY_PROGRAM_CONFIG);
+    Config(const std::string& kernel_name, int head_size_log2, int half_rotary_dim, int compressed_head_size_u32,
+           bool past_present_share_buffer, bool prepare_indirect_dispatch, bool use_seqlen_k,
+           uint32_t multi_rotary_cache_concat_offset)
+        : program_name_{kernel_name},
+          head_size_log2_(head_size_log2),
+          half_rotary_dim_(half_rotary_dim),
+          compressed_head_size_u32_(compressed_head_size_u32),
+          past_present_share_buffer_(past_present_share_buffer),
+          prepare_indirect_dispatch_(prepare_indirect_dispatch),
+          use_seqlen_k_(use_seqlen_k),
+          multi_rotary_cache_concat_offset_(multi_rotary_cache_concat_offset) {}
+  };
+  static std::string_view Name(const Config& config) { return config.program_name_; }
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"compressed_head_size_u32", ProgramUniformVariableDataType::Uint32},
@@ -128,16 +143,10 @@ class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryP
                                           {"present_seq_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int head_size_log2_;
-  int half_rotary_dim_;
-  int compressed_head_size_u32_;
-  bool past_present_share_buffer_;
-  bool prepare_indirect_dispatch_;
-  bool use_seqlen_k_;
-  uint32_t multi_rotary_cache_concat_offset_;
 };
+#undef WEBGPU_TURBO_QUANT_FUSED_ROTARY_PROGRAM_CONFIG
+
+using TurboQuantFusedRotaryProgram = ConfiguredProgram<TurboQuantFusedRotaryProgramShader>;
 
 Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context,
                                                       const WebgpuAttentionParameters& parameters,

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_mlp.h"
 
 #include <optional>
@@ -51,91 +52,94 @@ std::string EmitGateActivationExpr(MlpActivationKind kind, std::string_view gate
   ORT_THROW("MatMulNBitsMlp: unhandled MlpActivationKind ", static_cast<uint32_t>(kind));
 }
 
-class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodeProgram> {
- public:
-  MatMulNBitsMlpDecodeProgram(uint32_t tile_size,
-                              bool has_gate_bias,
-                              bool has_up_bias,
-                              bool has_norm_input,
-                              bool has_skip_input,
-                              bool has_skip_output,
-                              bool single_scale_weights,
-                              uint32_t tile_size_k_vec,
-                              uint32_t k_unroll_tiles,
-                              MlpActivationKind activation_kind,
-                              bool acc_f32)
-      : Program{"MatMulNBitsMlpDecode"},
-        tile_size_(tile_size),
-        has_gate_bias_(has_gate_bias),
-        has_up_bias_(has_up_bias),
-        has_norm_input_(has_norm_input),
-        has_skip_input_(has_skip_input),
-        has_skip_output_(has_skip_output),
-        single_scale_weights_(single_scale_weights),
-        tile_size_k_vec_(tile_size_k_vec),
-        k_unroll_tiles_(k_unroll_tiles),
-        activation_kind_(activation_kind),
-        acc_f32_(acc_f32) {}
+#define WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_CONFIG(F) \
+  F(uint32_t, tile_size_)                                  \
+  F(bool, has_gate_bias_)                                  \
+  F(bool, has_up_bias_)                                    \
+  F(bool, has_norm_input_)                                 \
+  F(bool, has_skip_input_)                                 \
+  F(bool, has_skip_output_)                                \
+  F(bool, single_scale_weights_)                           \
+  F(uint32_t, tile_size_k_vec_)                            \
+  F(uint32_t, k_unroll_tiles_)                             \
+  F(MlpActivationKind, activation_kind_)                   \
+  F(bool, acc_f32_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+struct MatMulNBitsMlpDecodeProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_CONFIG);
+    Config(uint32_t tile_size, bool has_gate_bias, bool has_up_bias, bool has_norm_input, bool has_skip_input,
+           bool has_skip_output, bool single_scale_weights, uint32_t tile_size_k_vec, uint32_t k_unroll_tiles,
+           MlpActivationKind activation_kind, bool acc_f32)
+        : tile_size_(tile_size),
+          has_gate_bias_(has_gate_bias),
+          has_up_bias_(has_up_bias),
+          has_norm_input_(has_norm_input),
+          has_skip_input_(has_skip_input),
+          has_skip_output_(has_skip_output),
+          single_scale_weights_(single_scale_weights),
+          tile_size_k_vec_(tile_size_k_vec),
+          k_unroll_tiles_(k_unroll_tiles),
+          activation_kind_(activation_kind),
+          acc_f32_(acc_f32) {}
+  };
+  static constexpr std::string_view name = "MatMulNBitsMlpDecode";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    const auto* skip = has_skip_input_ ? &shader.AddInput("skip", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
-    const auto* norm_scale = has_norm_input_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
+    const auto* skip = config.has_skip_input_
+                           ? &shader.AddInput("skip", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias)
+                           : nullptr;
+    const auto* norm_scale =
+        config.has_norm_input_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
     const auto& gate_b = shader.AddInput("gate_b");
     const auto& gate_scales_b = shader.AddInput("gate_scales_b");
     const auto& up_b = shader.AddInput("up_b");
     const auto& up_scales_b = shader.AddInput("up_scales_b");
-    if (has_gate_bias_) {
+    if (config.has_gate_bias_) {
       shader.AddInput("gate_bias", ShaderUsage::UseUniform);
     }
-    if (has_up_bias_) {
+    if (config.has_up_bias_) {
       shader.AddInput("up_bias", ShaderUsage::UseUniform);
     }
     const auto& output = shader.AddOutput("output",
                                           ShaderUsage::UseElementTypeAlias);
-    const auto* input_skip_bias_sum = has_skip_output_
-                                          ? &shader.AddOutput("input_skip_bias_sum",
-                                                              ShaderUsage::UseValueTypeAlias |
-                                                                  ShaderUsage::UseElementTypeAlias)
-                                          : nullptr;
+    const auto* input_skip_bias_sum =
+        config.has_skip_output_ ? &shader.AddOutput("input_skip_bias_sum",
+                                                    ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias)
+                                : nullptr;
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = gate_b.NumComponents() / 4;
-    const uint32_t tile_size_k_vec = tile_size_k_vec_;
+    const uint32_t tile_size_k_vec = config.tile_size_k_vec_;
     const uint32_t elements_in_value_b = components_b * 8u;
     const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
     const uint32_t a_length_per_tile = tile_size_k / components_a;
-    const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
+    const uint32_t sub_tile_count = shader.WorkgroupSizeX() / tile_size_k_vec;
 
     // Template parameters are identical across the (has_skip_input, has_norm_input,
     // has_skip_output) combinations; only the AddInput/AddOutput wiring upstream changes.
     // The template's own #if directives select the appropriate code paths.
-    return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
-                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
-                               WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
-                               WGSL_TEMPLATE_PARAMETER(component_a, components_a),
-                               WGSL_TEMPLATE_PARAMETER(component_b, components_b),
-                               WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
-                               WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
-                               WGSL_TEMPLATE_PARAMETER(has_norm_input, has_norm_input_),
-                               WGSL_TEMPLATE_PARAMETER(has_skip_input, has_skip_input_),
-                               WGSL_TEMPLATE_PARAMETER(has_skip_output, has_skip_output_),
-                               WGSL_TEMPLATE_PARAMETER(has_up_bias, has_up_bias_),
-                               WGSL_TEMPLATE_PARAMETER(k_unroll_tiles, k_unroll_tiles_),
-                               WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
-                               WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
-                               WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                               WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
-                               WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
-                               WGSL_TEMPLATE_VARIABLE(a, a),
-                               WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
-                               WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
-                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
-                               WGSL_TEMPLATE_VARIABLE(output, output),
-                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
-                               WGSL_TEMPLATE_VARIABLE(up_b, up_b),
-                               WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
+    return WGSL_TEMPLATE_APPLY(
+        shader, "quantization/matmul_nbits_mlp.wgsl.template",
+        WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+        WGSL_TEMPLATE_PARAMETER(acc_f32, config.acc_f32_),
+        WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(config.activation_kind_)),
+        WGSL_TEMPLATE_PARAMETER(component_a, components_a), WGSL_TEMPLATE_PARAMETER(component_b, components_b),
+        WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
+        WGSL_TEMPLATE_PARAMETER(has_gate_bias, config.has_gate_bias_),
+        WGSL_TEMPLATE_PARAMETER(has_norm_input, config.has_norm_input_),
+        WGSL_TEMPLATE_PARAMETER(has_skip_input, config.has_skip_input_),
+        WGSL_TEMPLATE_PARAMETER(has_skip_output, config.has_skip_output_),
+        WGSL_TEMPLATE_PARAMETER(has_up_bias, config.has_up_bias_),
+        WGSL_TEMPLATE_PARAMETER(k_unroll_tiles, config.k_unroll_tiles_),
+        WGSL_TEMPLATE_PARAMETER(single_scale_weights, config.single_scale_weights_),
+        WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count), WGSL_TEMPLATE_PARAMETER(tile_size, config.tile_size_),
+        WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k), WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+        WGSL_TEMPLATE_VARIABLE(a, a), WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
+        WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
+        WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
+        WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale), WGSL_TEMPLATE_VARIABLE(output, output),
+        WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip), WGSL_TEMPLATE_VARIABLE(up_b, up_b),
+        WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -149,29 +153,20 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
       {"batch_count", ProgramUniformVariableDataType::Uint32},
       {"skip_size", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32});
-
- private:
-  uint32_t tile_size_;
-  bool has_gate_bias_;
-  bool has_up_bias_;
-  bool has_norm_input_;
-  bool has_skip_input_;
-  bool has_skip_output_;
-  bool single_scale_weights_;
-  uint32_t tile_size_k_vec_;
-  uint32_t k_unroll_tiles_;
-  MlpActivationKind activation_kind_;
-  bool acc_f32_;
 };
+#undef WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_CONFIG
 
-class MatMulNBitsMlpProgram final : public Program<MatMulNBitsMlpProgram> {
- public:
-  explicit MatMulNBitsMlpProgram(MlpActivationKind activation_kind)
-      : Program{"MatMulNBitsMlp"}, activation_kind_(activation_kind) {
-    CacheHint(static_cast<uint32_t>(activation_kind_));
-  }
+using MatMulNBitsMlpDecodeProgram = ConfiguredProgram<MatMulNBitsMlpDecodeProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_CONFIG(F) F(MlpActivationKind, activation_kind_)
+
+struct MatMulNBitsMlpProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_CONFIG);
+    Config(MlpActivationKind activation_kind) : activation_kind_(activation_kind) {}
+  };
+  static constexpr std::string_view name = "MatMulNBitsMlp";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto& up = shader.AddInput("up", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -180,17 +175,18 @@ class MatMulNBitsMlpProgram final : public Program<MatMulNBitsMlpProgram> {
                               << "let gate_value = " << gate.GetByOffset("global_idx") << ";\n"
                               << "let up_value = " << up.GetByOffset("global_idx") << ";\n"
                               << "let one = output_value_t(1.0);\n"
-                              << "let activated_value = " << EmitGateActivationExpr(activation_kind_, "gate_value") << ";\n"
+                              << "let activated_value = "
+                              << EmitGateActivationExpr(config.activation_kind_, "gate_value") << ";\n"
                               << output.SetByOffset("global_idx", "activated_value * up_value");
 
     return Status::OK();
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  MlpActivationKind activation_kind_;
 };
+#undef WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_CONFIG
+
+using MatMulNBitsMlpProgram = ConfiguredProgram<MatMulNBitsMlpProgramShader>;
 
 Status ApplyUnfusedMlp(const Tensor* a,
                        const Tensor* gate_b,
@@ -222,9 +218,9 @@ Status ApplyUnfusedMlp(const Tensor* a,
   const uint32_t vec_size = (data_size + 3u) / 4u;
   MatMulNBitsMlpProgram program{activation_kind};
   program
-      .AddInputs({{&gate_output, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
-                  {&up_output, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
-      .AddOutput({y, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+      .AddInputs({{&gate_output, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4},
+                  {&up_output, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4}})
+      .AddOutput({y, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({vec_size});
 
@@ -425,19 +421,19 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         acc_f32};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
-    program.AddInput({decode_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
+    program.AddInput({decode_a, ProgramTensorMetadataDependency::None, static_cast<int>(components_a)});
     if (decode_has_skip_input) {
-      program.AddInput({skip, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
+      program.AddInput({skip, ProgramTensorMetadataDependency::None, static_cast<int>(components_a)});
     }
     if (decode_has_norm_input) {
-      program.AddInput({norm_scale, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
+      program.AddInput({norm_scale, ProgramTensorMetadataDependency::None, static_cast<int>(components_a)});
     }
     program
-        .AddInputs({{gate_b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
-                    {gate_scales, ProgramTensorMetadataDependency::TypeAndRank},
-                    {up_b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
-                    {up_scales, ProgramTensorMetadataDependency::TypeAndRank}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddInputs({{gate_b, ProgramTensorMetadataDependency::None, static_cast<int>(components_b_with_u32)},
+                    {gate_scales, ProgramTensorMetadataDependency::None},
+                    {up_b, ProgramTensorMetadataDependency::None, static_cast<int>(components_b_with_u32)},
+                    {up_scales, ProgramTensorMetadataDependency::None}})
+        .AddOutput({y, ProgramTensorMetadataDependency::None})
         .AddUniformVariables({{N},
                               {K},
                               {K / components_a},
@@ -447,21 +443,10 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                               {num_N_tile},
                               {batch_count},
                               {decode_has_skip_input ? onnxruntime::narrow<uint32_t>(skip->Shape().Size()) : 0u},
-                              {epsilon_}})
-        .CacheHint(single_scale_weights,
-                   has_gate_bias,
-                   has_up_bias,
-                   decode_has_norm_input,
-                   decode_has_skip_input,
-                   decode_has_skip_output,
-                   tile_size_k_vec,
-                   k_unroll_tiles,
-                   static_cast<uint32_t>(activation_kind_),
-                   acc_f32,
-                   "decode_4bit");
+                              {epsilon_}});
     if (decode_has_skip_output) {
       program.AddOutput({input_skip_bias_sum,
-                         ProgramTensorMetadataDependency::TypeAndRank,
+                         ProgramTensorMetadataDependency::None,
                          static_cast<int>(components_a)});
     }
     if (has_gate_bias) {

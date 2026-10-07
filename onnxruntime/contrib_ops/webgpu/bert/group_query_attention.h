@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -14,17 +15,21 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
- public:
-  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved,
-                                           uint32_t multi_rotary_cache_concat_offset,
-                                           bool use_total_sequence_length_input)
-      : Program{"SplitPackedQKVWithRotaryEmbedding"},
-        interleaved_{interleaved},
-        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset},
-        use_total_sequence_length_input_{use_total_sequence_length_input} {}
+#define WEBGPU_SPLIT_PACKED_Q_K_V_WITH_ROTARY_EMBEDDING_PROGRAM_CONFIG(F) \
+  F(bool, interleaved_)                                                   \
+  F(uint32_t, multi_rotary_cache_concat_offset_)                          \
+  F(bool, use_total_sequence_length_input_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct SplitPackedQKVWithRotaryEmbeddingProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPLIT_PACKED_Q_K_V_WITH_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+    Config(bool interleaved, uint32_t multi_rotary_cache_concat_offset, bool use_total_sequence_length_input)
+        : interleaved_{interleaved},
+          multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset},
+          use_total_sequence_length_input_{use_total_sequence_length_input} {}
+  };
+  static constexpr std::string_view name = "SplitPackedQKVWithRotaryEmbedding";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -36,12 +41,10 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
       {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
       {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool interleaved_;
-  const uint32_t multi_rotary_cache_concat_offset_;
-  const bool use_total_sequence_length_input_;
 };
+#undef WEBGPU_SPLIT_PACKED_Q_K_V_WITH_ROTARY_EMBEDDING_PROGRAM_CONFIG
+
+using SplitPackedQKVWithRotaryEmbeddingProgram = ConfiguredProgram<SplitPackedQKVWithRotaryEmbeddingProgramShader>;
 
 class GroupQueryAttention final : public WebGpuKernel {
  public:

@@ -6,6 +6,7 @@
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -32,11 +33,15 @@ using namespace onnxruntime::webgpu;
 // Dispatch model: one invocation per (token_idx, kv_head_idx, dim_idx),
 // unrolled row-major into a single 1-D dispatch. Each invocation writes one
 // element into both caches (see the .wgsl.template for the address model).
-class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheProgram> {
- public:
-  ScatterKVToPagedCacheProgram() : Program{"ScatterKVToPagedCache"} {}
+#define WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct ScatterKVToPagedCacheProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "ScatterKVToPagedCache";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"token_count", ProgramUniformVariableDataType::Uint32},
@@ -48,6 +53,9 @@ class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheP
       {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_CONFIG
+
+using ScatterKVToPagedCacheProgram = ConfiguredProgram<ScatterKVToPagedCacheProgramShader>;
 
 // Rotary embedding (RoPE) for one packed 2-D tensor of the shape
 //   (token_count, n_heads * head_size)
@@ -69,11 +77,15 @@ class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheP
 // `n_heads` is `num_heads` for the query rotation and `kv_num_heads` for the
 // key rotation; the same program handles both by taking `n_heads` as a
 // uniform. Dims `>= rotary_dim` are copied through unchanged (matches CUDA).
-class PagedAttentionRotaryProgram final : public Program<PagedAttentionRotaryProgram> {
- public:
-  PagedAttentionRotaryProgram() : Program{"PagedAttentionRotary"} {}
+#define WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct PagedAttentionRotaryProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "PagedAttentionRotary";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -83,6 +95,9 @@ class PagedAttentionRotaryProgram final : public Program<PagedAttentionRotaryPro
       {"interleaved", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_CONFIG
+
+using PagedAttentionRotaryProgram = ConfiguredProgram<PagedAttentionRotaryProgramShader>;
 
 // Split a packed-QKV tensor into three separate Q, K, V tensors so the rest
 // of the WebGPU PagedAttention pipeline can consume them the same way it
@@ -100,12 +115,15 @@ class PagedAttentionRotaryProgram final : public Program<PagedAttentionRotaryPro
 //   q_out : (token_count, q_hidden_size)                       [T]
 //   k_out : (token_count, kv_hidden_size)                      [T]
 //   v_out : (token_count, kv_hidden_size)                      [T]
-class PagedAttentionSplitPackedQKVProgram final
-    : public Program<PagedAttentionSplitPackedQKVProgram> {
- public:
-  PagedAttentionSplitPackedQKVProgram() : Program{"PagedAttentionSplitPackedQKV"} {}
+#define WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct PagedAttentionSplitPackedQKVProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "PagedAttentionSplitPackedQKV";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"token_count", ProgramUniformVariableDataType::Uint32},
@@ -114,6 +132,9 @@ class PagedAttentionSplitPackedQKVProgram final
       {"packed_hidden_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG
+
+using PagedAttentionSplitPackedQKVProgram = ConfiguredProgram<PagedAttentionSplitPackedQKVProgramShader>;
 
 // Gather paged K/V into padded contiguous BNSH scratch tensors so
 // ApplyFlashAttention can consume them the same way GQA/Attention consume
@@ -133,11 +154,15 @@ class PagedAttentionSplitPackedQKVProgram final
 // Slots [s >= total_kv_len_b) are zero-filled so FlashAttention's dot-product
 // contributions are zero there. (Combined with the per-batch causal mask driven
 // by seqlen_k, the pad tokens produce no leakage into the visible logits.)
-class PagedAttentionGatherKVProgram final : public Program<PagedAttentionGatherKVProgram> {
- public:
-  PagedAttentionGatherKVProgram() : Program{"PagedAttentionGatherKV"} {}
+#define WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct PagedAttentionGatherKVProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "PagedAttentionGatherKV";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -147,6 +172,9 @@ class PagedAttentionGatherKVProgram final : public Program<PagedAttentionGatherK
       {"max_kv_len", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_CONFIG
+
+using PagedAttentionGatherKVProgram = ConfiguredProgram<PagedAttentionGatherKVProgramShader>;
 
 // Unpack packed varlen Q into padded BSNH so it can be fed to
 // ApplyFlashAttention (which expects a real batch dimension).
@@ -161,11 +189,15 @@ class PagedAttentionGatherKVProgram final : public Program<PagedAttentionGatherK
 // Pad slots (s >= seq_len_b) hold zero; their outputs from FlashAttention
 // are discarded by the repack kernel and never surface in the packed
 // PagedAttention output tensor.
-class PagedAttentionUnpackQueryProgram final : public Program<PagedAttentionUnpackQueryProgram> {
- public:
-  PagedAttentionUnpackQueryProgram() : Program{"PagedAttentionUnpackQuery"} {}
+#define WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct PagedAttentionUnpackQueryProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "PagedAttentionUnpackQuery";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_heads", ProgramUniformVariableDataType::Uint32},
@@ -173,6 +205,9 @@ class PagedAttentionUnpackQueryProgram final : public Program<PagedAttentionUnpa
       {"max_seqlen_q", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_CONFIG
+
+using PagedAttentionUnpackQueryProgram = ConfiguredProgram<PagedAttentionUnpackQueryProgramShader>;
 
 // Repack padded BSNH FlashAttention output back to the packed varlen layout
 // PagedAttention's caller expects. Inverse of PagedAttentionUnpackQuery.
@@ -183,11 +218,15 @@ class PagedAttentionUnpackQueryProgram final : public Program<PagedAttentionUnpa
 //
 // Output (write):
 //   output : (token_count, num_heads * head_size)                                    [T]
-class PagedAttentionRepackOutputProgram final : public Program<PagedAttentionRepackOutputProgram> {
- public:
-  PagedAttentionRepackOutputProgram() : Program{"PagedAttentionRepackOutput"} {}
+#define WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct PagedAttentionRepackOutputProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "PagedAttentionRepackOutput";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -196,33 +235,50 @@ class PagedAttentionRepackOutputProgram final : public Program<PagedAttentionRep
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_CONFIG
+
+using PagedAttentionRepackOutputProgram = ConfiguredProgram<PagedAttentionRepackOutputProgramShader>;
 
 // Pack the two device-resident metadata tensors into one contiguous buffer so
 // PagedAttention can perform one host readback rather than two. The layout is
 // [cumulative_sequence_length[0..batch_size], past_seqlens[0..batch_size)).
-class PagedAttentionPackMetadataProgram final : public Program<PagedAttentionPackMetadataProgram> {
- public:
-  PagedAttentionPackMetadataProgram() : Program{"PagedAttentionPackMetadata"} {}
+#define WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct PagedAttentionPackMetadataProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "PagedAttentionPackMetadata";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_CONFIG
+
+using PagedAttentionPackMetadataProgram = ConfiguredProgram<PagedAttentionPackMetadataProgramShader>;
 
 // Derive the exact per-request query and KV lengths on GPU when the caller
 // supplies host-side upper bounds through attention_metadata.
-class PagedAttentionPrepareMetadataProgram final : public Program<PagedAttentionPrepareMetadataProgram> {
- public:
-  PagedAttentionPrepareMetadataProgram() : Program{"PagedAttentionPrepareMetadata"} {}
+#define WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct PagedAttentionPrepareMetadataProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "PagedAttentionPrepareMetadata";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_CONFIG
+
+using PagedAttentionPrepareMetadataProgram = ConfiguredProgram<PagedAttentionPrepareMetadataProgramShader>;
 
 // Dispatch helpers shared with SparsePagedAttention, which reuses the
 // prologue programs above verbatim (packed-QKV split, rotary, and the

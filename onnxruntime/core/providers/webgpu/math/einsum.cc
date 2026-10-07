@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/einsum.h"
 
 #include <algorithm>
@@ -209,7 +210,7 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term, bool is_input,
   return einsum_term;
 }
 
-Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status EinsumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   // Add inputs and output.
   const ShaderVariableHelper& input0 =
       shader.AddInput("input0", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
@@ -217,7 +218,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::vector<std::reference_wrapper<const ShaderVariableHelper>> inputs;
   inputs.push_back(input0);
 
-  for (size_t i = 1; i < input_count_; ++i) {
+  for (size_t i = 1; i < config.input_count_; ++i) {
     inputs.push_back(shader.AddInput("input" + std::to_string(i),
                                      ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
   }
@@ -235,35 +236,31 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::vector<std::string> reduce_ops_loop_headers;
   std::vector<std::string> reduce_ops_loop_footers;
   std::vector<std::string> reduce_op_compute;
-  bool is_reduce_ops_without_loop =
-      parsed_equation_.symbol_to_info_.size() == parsed_equation_.rhs_.symbol_to_indices.size();
+  bool is_reduce_ops_without_loop = config.symbol_to_inputs_.size() == config.output_indices_.size();
   std::set<std::string> uniform_symbol_set;
-  for (const auto& pair : parsed_equation_.symbol_to_info_) {
+  for (const auto& pair : config.symbol_to_inputs_) {
     const std::string& symbol = pair.first;
-    const SymbolInfo& info = pair.second;
-    if (parsed_equation_.rhs_.symbol_to_indices.find(symbol) !=
-        parsed_equation_.rhs_.symbol_to_indices.end()) {
+    const auto& input_indices = pair.second;
+    if (config.output_indices_.find(symbol) != config.output_indices_.end()) {
       // Find the indices in the right-hand side (output) term for the current symbol
-      auto rhs_indices = parsed_equation_.rhs_.symbol_to_indices.find(symbol);
+      auto rhs_indices = config.output_indices_.find(symbol);
       // Skip if symbol doesn't appear in output or has no indices
       // This means this symbol is not needed for output calculation
-      if (rhs_indices == parsed_equation_.rhs_.symbol_to_indices.end() ||
-          rhs_indices->second.empty()) {
+      if (rhs_indices == config.output_indices_.end() || rhs_indices->second.empty()) {
         continue;
       }
 
       int lhs_term_index = 0;
-      for (const auto& term : parsed_equation_.lhs_) {
+      for (const auto& term : config.input_indices_) {
         // Skip if the current input tensor index is not associated with this symbol
         // This check ensures we only process input indices that actually have this symbol.
-        if (std::find(info.input_indices.begin(), info.input_indices.end(), lhs_term_index) ==
-            info.input_indices.end()) {
+        if (std::find(input_indices.begin(), input_indices.end(), lhs_term_index) == input_indices.end()) {
           lhs_term_index++;
           continue;
         }
 
-        auto it = term.symbol_to_indices.find(symbol);
-        if (it == term.symbol_to_indices.end()) {
+        auto it = term.find(symbol);
+        if (it == term.end()) {
           ORT_THROW("Invalid symbol error");
         }
 
@@ -282,7 +279,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
     } else {
       int lhs_term_index = 0;
-      for (const auto& term : parsed_equation_.lhs_) {
+      for (const auto& term : config.input_indices_) {
         // Always construct the string for multiplying the input value to the product accumulator
         // Format like: prod *= get_input0_by_indices(input0Indices);
         std::string get_indices_str = "prod *= " +
@@ -300,14 +297,13 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
         // Skip if the current input tensor index is not associated with this symbol
         // This check ensures we only process input indices that actually have this symbol.
-        if (std::find(info.input_indices.begin(), info.input_indices.end(), lhs_term_index) ==
-            info.input_indices.end()) {
+        if (std::find(input_indices.begin(), input_indices.end(), lhs_term_index) == input_indices.end()) {
           lhs_term_index++;
           continue;
         }
 
-        auto it = term.symbol_to_indices.find(symbol);
-        if (it == term.symbol_to_indices.end()) {
+        auto it = term.find(symbol);
+        if (it == term.end()) {
           ORT_THROW("Invalid symbol error");
         }
 
@@ -378,7 +374,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
 
   // Special handling for scalar output
-  bool is_scalar_output = parsed_equation_.output_dims.empty();
+  bool is_scalar_output = config.is_scalar_;
   if (is_scalar_output) {
     // For scalar output, only process the first workgroup thread. This is a special case where the
     // output is a single scalar value. The global index is set to 0, and the rest of the threads
@@ -395,7 +391,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Define input indices with appropriate types.
-  for (size_t i = 0; i < input_count_; i++) {
+  for (size_t i = 0; i < config.input_count_; i++) {
     shader.MainFunctionBody() << "var input" << i << "Indices: input" << std::to_string(i)
                               << "_indices_t;\n";
   }
@@ -446,16 +442,15 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
   }
 
   // Create program with input count and the parsed equation.
-  EinsumProgram program{input_tensors.size(), equation};
+  EinsumProgram program{input_tensors.size(), std::move(equation)};
 
   for (size_t i = 0; i < input_tensors.size(); ++i) {
-    program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::None});
   }
 
   // Add output and base uniforms.
-  program.CacheHint(equation_)
-      .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
-      .AddOutput({Y, ProgramTensorMetadataDependency::TypeAndRank})
+  program.SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
+      .AddOutput({Y, ProgramTensorMetadataDependency::None})
       .AddUniformVariables({static_cast<uint32_t>(output_size)});
 
   return context.RunProgram(program);

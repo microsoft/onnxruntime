@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -14,28 +15,47 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram> {
- public:
-  DP4AMatMulQuantizeProgram() : Program{"DP4AMatMulQuantize"} {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_CONFIG(F)
+
+struct DP4AMatMulQuantizeProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "DP4AMatMulQuantize";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_CONFIG
 
-class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
- public:
-  DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits,
-                         bool has_zero_points, bool has_bias,
-                         bool has_weight_idx, bool has_weight_idx_indirect, bool is_qualcomm,
-                         bool acc_f32) : Program{"DP4AMatMulNBits"},
-                                         block_size_(block_size),
-                                         nbits_(nbits),
-                                         has_bias_(has_bias),
-                                         has_zero_points_(has_zero_points),
-                                         has_weight_idx_(has_weight_idx),
-                                         has_weight_idx_indirect_(has_weight_idx_indirect),
-                                         is_qualcomm_(is_qualcomm),
-                                         acc_f32_(acc_f32) {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+using DP4AMatMulQuantizeProgram = ConfiguredProgram<DP4AMatMulQuantizeProgramShader>;
+
+#define WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_CONFIG(F) \
+  F(uint32_t, block_size_)                             \
+  F(uint32_t, nbits_)                                  \
+  F(bool, has_bias_)                                   \
+  F(bool, has_zero_points_)                            \
+  F(bool, has_weight_idx_)                             \
+  F(bool, has_weight_idx_indirect_)                    \
+  F(bool, is_qualcomm_)                                \
+  F(bool, acc_f32_)
+
+struct DP4AMatMulNBitsProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_CONFIG);
+    Config(uint32_t block_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
+           bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32)
+        : block_size_(block_size),
+          nbits_(nbits),
+          has_bias_(has_bias),
+          has_zero_points_(has_zero_points),
+          has_weight_idx_(has_weight_idx),
+          has_weight_idx_indirect_(has_weight_idx_indirect),
+          is_qualcomm_(is_qualcomm),
+          acc_f32_(acc_f32) {}
+  };
+  static constexpr std::string_view name = "DP4AMatMulNBits";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -47,36 +67,42 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
       {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"weight_idx", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t block_size_;
-  uint32_t nbits_;
-  bool has_bias_;
-  bool has_zero_points_;
-  bool has_weight_idx_;
-  bool has_weight_idx_indirect_;
-  bool is_qualcomm_;
-  bool acc_f32_;
 };
+#undef WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_CONFIG
 
-class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
- public:
-  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
-                               bool has_zero_points, bool has_bias,
-                               bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
-                               bool broadcast_a_row = false,
-                               bool acc_f32 = false) : Program{"DP4AMatMulNBitsSmallMProgram"},
-                                                       tile_size_k_vec_(tile_size_k_vec),
-                                                       tile_size_(tile_size),
-                                                       nbits_(nbits),
-                                                       has_bias_(has_bias),
-                                                       has_zero_points_(has_zero_points),
-                                                       has_weight_idx_(has_weight_idx),
-                                                       has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                       single_scale_weights_(single_scale_weights),
-                                                       broadcast_a_row_(broadcast_a_row),
-                                                       acc_f32_(acc_f32) {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+using DP4AMatMulNBitsProgram = ConfiguredProgram<DP4AMatMulNBitsProgramShader>;
+
+#define WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_CONFIG(F) \
+  F(uint32_t, tile_size_k_vec_)                                \
+  F(uint32_t, tile_size_)                                      \
+  F(uint32_t, nbits_)                                          \
+  F(bool, has_bias_)                                           \
+  F(bool, has_zero_points_)                                    \
+  F(bool, has_weight_idx_)                                     \
+  F(bool, has_weight_idx_indirect_)                            \
+  F(bool, single_scale_weights_)                               \
+  F(bool, broadcast_a_row_)                                    \
+  F(bool, acc_f32_)
+
+struct DP4AMatMulNBitsSmallMProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_CONFIG);
+    Config(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias,
+           bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, bool broadcast_a_row = false,
+           bool acc_f32 = false)
+        : tile_size_k_vec_(tile_size_k_vec),
+          tile_size_(tile_size),
+          nbits_(nbits),
+          has_bias_(has_bias),
+          has_zero_points_(has_zero_points),
+          has_weight_idx_(has_weight_idx),
+          has_weight_idx_indirect_(has_weight_idx_indirect),
+          single_scale_weights_(single_scale_weights),
+          broadcast_a_row_(broadcast_a_row),
+          acc_f32_(acc_f32) {}
+  };
+  static constexpr std::string_view name = "DP4AMatMulNBitsSmallMProgram";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -89,19 +115,10 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"weight_idx", ProgramUniformVariableDataType::Uint32},
       {"dispatch_M", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t tile_size_k_vec_;
-  uint32_t tile_size_;
-  uint32_t nbits_;
-  bool has_bias_;
-  bool has_zero_points_;
-  bool has_weight_idx_;
-  bool has_weight_idx_indirect_;
-  bool single_scale_weights_;
-  bool broadcast_a_row_;
-  bool acc_f32_;
 };
+#undef WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_CONFIG
+
+using DP4AMatMulNBitsSmallMProgram = ConfiguredProgram<DP4AMatMulNBitsSmallMProgramShader>;
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                   const Tensor* zero_points, const Tensor* bias,

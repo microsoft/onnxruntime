@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -228,10 +229,10 @@ Status RunLayerNormProgram(ComputeContext& context,
   LayerNormProgram program{bias != nullptr, simplified, mean != nullptr, inv_std_dev != nullptr,
                            split_norm_dim, fp32_normalization};
 
-  program.AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
+  program.AddInputs({{x, ProgramTensorMetadataDependency::None, GetOverrideShape(x->Shape(), components), components}})
       .AddInputs(
-          {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
-      .AddOutputs({{y, ProgramTensorMetadataDependency::Type, GetOverrideShape(y->Shape(), components), components}})
+          {{scale, ProgramTensorMetadataDependency::None, GetOverrideShape(scale->Shape(), components), components}})
+      .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
       })
@@ -259,7 +260,7 @@ Status RunLayerNormProgram(ComputeContext& context,
 
   if (bias != nullptr) {
     program.AddInput(
-        {bias, ProgramTensorMetadataDependency::Type, GetOverrideShape(bias->Shape(), components), components});
+        {bias, ProgramTensorMetadataDependency::None, GetOverrideShape(bias->Shape(), components), components});
   }
 
   if (mean != nullptr) {

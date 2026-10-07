@@ -8,6 +8,7 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
@@ -76,27 +77,36 @@ class MatMul final : public WebGpuKernel {
   bool b_is_constant_ = false;
 };
 
-class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
- public:
-  MatMulNaiveProgram(const Activation& activation, const size_t output_rank, int64_t output_number, bool has_bias, bool is_channels_last = false)
-      : Program{"MatMulNaive"}, activation_(activation), output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias}, is_channels_last_(is_channels_last) {
-  }
+#define WEBGPU_MAT_MUL_NAIVE_PROGRAM_CONFIG(F) \
+  F(ShaderActivation, activation_)             \
+  F(size_t, output_rank_)                      \
+  F(int64_t, output_number_)                   \
+  F(bool, has_bias_)                           \
+  F(bool, is_channels_last_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct MatMulNaiveProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_NAIVE_PROGRAM_CONFIG);
+    Config(const Activation& activation, const size_t output_rank, int64_t output_number, bool has_bias,
+           bool is_channels_last = false)
+        : activation_(activation),
+          output_rank_(output_rank),
+          output_number_(output_number),
+          has_bias_{has_bias},
+          is_channels_last_(is_channels_last) {}
+  };
+  static constexpr std::string_view name = "MatMulNaive";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"M", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
                                           WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
-
- private:
-  const Activation activation_;
-  const size_t output_rank_;
-  const int64_t output_number_;
-  const bool has_bias_;
-  const bool is_channels_last_;
 };
+#undef WEBGPU_MAT_MUL_NAIVE_PROGRAM_CONFIG
+
+using MatMulNaiveProgram = ConfiguredProgram<MatMulNaiveProgramShader>;
 
 }  // namespace webgpu
 }  // namespace onnxruntime

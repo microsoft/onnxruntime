@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/attention.h"
 
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
@@ -19,11 +20,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status TransferBSDToBNSHProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status TransferBSDToBNSHProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                          ConfiguredShaderHelper& shader) {
   shader.AddInput("qkv_input", ShaderUsage::UseUniform);
   const auto& qkv_output = shader.AddOutput("qkv_output", ShaderUsage::UseUniform | ShaderUsage::UseOffsetToIndices);
 
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
 
@@ -31,11 +33,11 @@ Status TransferBSDToBNSHProgram::GenerateShaderCode(ShaderHelper& shader) const 
                             << "let output_indices = " << qkv_output.OffsetToIndices("global_idx") << ";\n"
                             << "let input_offset_idx = output_indices[0] * uniforms.batch_offset + output_indices[1] *"
                             << " uniforms.head_offset + output_indices[2] * uniforms.sequence_offset + output_indices[3];\n";
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.MainFunctionBody() << "let bias_offset_idx = (input_offset_idx % uniforms.sequence_offset) + uniforms.bias_offset;\n";
   }
   shader.MainFunctionBody() << "qkv_output[global_idx] = qkv_input[input_offset_idx]";
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.MainFunctionBody() << " + bias[bias_offset_idx];\n";
   } else {
     shader.MainFunctionBody() << ";\n";
@@ -56,8 +58,8 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
   bool has_bias = bias != nullptr;
 
   TransferBSDToBNSHProgram program{has_bias};
-  program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+  program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::None}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None}})
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{data_size},
                             {static_cast<uint32_t>(batch_offset)},
@@ -66,13 +68,14 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
                             {static_cast<uint32_t>(bias_offset)}});
 
   if (has_bias) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({bias, ProgramTensorMetadataDependency::None});
   }
 
   return context.RunProgram(program);
 };
 
-Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status SplitPackedQKVProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& sh) {
   // Inputs: packed_qkv [B, S, D], outputs: Q, K, V [B, S, D]
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
   const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
@@ -105,8 +108,8 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
   auto input_size = packedQKV->Shape().Size();
   const uint32_t vectorized_input_size = static_cast<uint32_t>(input_size / components);
   program
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
-      .AddOutputs({{query, ProgramTensorMetadataDependency::TypeAndRank, components}, {key, ProgramTensorMetadataDependency::TypeAndRank, components}, {val, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::None, components})
+      .AddOutputs({{query, ProgramTensorMetadataDependency::None, components}, {key, ProgramTensorMetadataDependency::None, components}, {val, ProgramTensorMetadataDependency::None, components}})
       .AddUniformVariables({
           {vectorized_input_size},
           {static_cast<uint32_t>(params.hidden_size_ / components)},
@@ -126,28 +129,34 @@ void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
   }
 }
 
-Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status AttentionProbsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& shader) {
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  if (feed_past_key_) {
+  if (config.feed_past_key_) {
     shader.AddInput("past_key", ShaderUsage::UseUniform);
   }
-  if (has_attention_bias_) {
+  if (config.has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
-  if (has_seqlen_k_) {
+  if (config.has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  if (has_present_key_) {
+  if (config.has_present_key_) {
     shader.AddOutput("present_key", ShaderUsage::UseUniform);
   }
 
-  shader.AdditionalImplementation() << "var<workgroup> tileQ: array<q_value_t, " << tile_size_ * tile_size_ << ">;\n"
-                                    << "var<workgroup> tileK: array<key_value_t, " << tile_size_ * tile_size_ << ">;\n"
-                                    << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
+  shader.AdditionalImplementation() << "var<workgroup> tileQ: array<q_value_t, "
+                                    << config.tile_size_ * config.tile_size_ << ">;\n"
+                                    << "var<workgroup> tileK: array<key_value_t, "
+                                    << config.tile_size_ * config.tile_size_ << ">;\n"
+                                    << "alias f32_val_t = "
+                                    << (config.components_ == 4 ? "vec4<f32>"
+                                                                : (config.components_ == 2 ? "vec2<f32>" : "f32"))
+                                    << ";\n";
 
-  if (has_attention_bias_) {
+  if (config.has_attention_bias_) {
     shader.AdditionalImplementation() << "fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> output_value_t {\n"
                                       << "  // Handle broadcasting: if dimension size is 1, use index 0\n"
                                       << "  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);\n"
@@ -171,10 +180,10 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.N;\n";
   std::ostringstream oss;
-  InitVarStub(oss, has_seqlen_k_);
+  InitVarStub(oss, config.has_seqlen_k_);
   shader.MainFunctionBody() << oss.str();
   shader.MainFunctionBody() << "let kOffset = (batch_head_idx / uniforms.n_reps) * uniforms.kv_sequence_length * uniforms.K;\n";
-  if (has_present_key_) {
+  if (config.has_present_key_) {
     shader.MainFunctionBody() << "let presentKeyOffset = (batch_head_idx / uniforms.n_reps) * uniforms.present_sequence_length * uniforms.K;\n";
   }
 
@@ -186,21 +195,25 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
                                "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
-  if ((feed_past_key_ && has_present_key_) || (past_present_share_buffer_ && !is_first_prompt_)) {
-    shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
-                              << "      let pastKeyOffset = (batch_head_idx / uniforms.n_reps) * uniforms.past_sequence_length * uniforms.K;\n"
-                              << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
-                              << "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
-                              << "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
-                              << "    }\n";
+  if ((config.feed_past_key_ && config.has_present_key_) ||
+      (config.past_present_share_buffer_ && !config.is_first_prompt_)) {
+    shader.MainFunctionBody()
+        << "    if (n + local_id.y < past_sequence_length) {\n"
+        << "      let pastKeyOffset = (batch_head_idx / uniforms.n_reps) * uniforms.past_sequence_length * "
+           "uniforms.K;\n"
+        << "      tileK[idx] = " << (config.past_present_share_buffer_ ? "present_key" : "past_key")
+        << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
+        << "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
+        << "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
+        << "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length) {\n"
                                  "      tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
                                  "    }\n";
   }
 
-  if (has_present_key_) {
-    if (past_present_share_buffer_) {
+  if (config.has_present_key_) {
+    if (config.past_present_share_buffer_) {
       shader.MainFunctionBody() << "    if (n + local_id.y >= past_sequence_length && n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     } else {
       shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
@@ -221,10 +234,13 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let headOffset = batch_head_idx * uniforms.M * uniforms.N;\n"
                             << "  let outputIdx = headOffset + (m + local_id.y) * uniforms.N + n + local_id.x;\n"
                             << "  let head_idx = batch_head_idx % uniforms.num_heads;\n"
-                            << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
+                            << "  var sum: f32 = "
+                            << (config.components_ == 4 ? "value.x + value.y + value.z + value.w"
+                                                        : (config.components_ == 2 ? "value.x + value.y" : "value"))
+                            << ";\n";
 
   // Add causal masking for unidirectional attention
-  if (is_unidirectional_) {
+  if (config.is_unidirectional_) {
     shader.MainFunctionBody() << "  // Apply causal masking for unidirectional attention\n"
                               << "  let query_pos = m + local_id.y + past_sequence_length;\n"
                               << "  let key_pos = n + local_id.x;\n"
@@ -234,7 +250,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
-  if (has_attention_bias_) {
+  if (config.has_attention_bias_) {
     shader.MainFunctionBody() << " + loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x)";
   }
   shader.MainFunctionBody() << ";\n"
@@ -258,20 +274,20 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
                                 components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_, parameters.is_unidirectional_};
-  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
-                     {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInputs({{Q, ProgramTensorMetadataDependency::None, components},
+                     {K, ProgramTensorMetadataDependency::None, components}});
   if (feed_past_key) {
-    program.AddInput({past_key, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddInput({past_key, ProgramTensorMetadataDependency::None, components});
   }
   if (has_attention_bias) {
-    program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({attention_bias, ProgramTensorMetadataDependency::None});
   }
   if (seqlen_k != nullptr) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
-  program.AddOutputs({{probs, ProgramTensorMetadataDependency::Rank}});
+  program.AddOutputs({{probs, ProgramTensorMetadataDependency::None}});
   if (has_present_key) {
-    program.AddOutput({present_key, ProgramTensorMetadataDependency::Rank, components});
+    program.AddOutput({present_key, ProgramTensorMetadataDependency::None, components});
   }
 
   const uint32_t vectorized_head_size = (parameters.head_size_ + components - 1) / components;
@@ -287,58 +303,70 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
     attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
   }
 
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_length_tile * num_total_seq_length_tile)
+  program
+      .SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_length_tile *
+                            num_total_seq_length_tile)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_)
-      .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
-                            {static_cast<uint32_t>(vectorized_head_size)},
-                            {static_cast<uint32_t>(total_sequence_length)},
-                            {static_cast<uint32_t>(parameters.num_heads_)},
-                            {static_cast<uint32_t>(parameters.head_size_)},
-                            {static_cast<float>(alpha)},
-                            {static_cast<uint32_t>(past_sequence_length)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
-                            {static_cast<uint32_t>(parameters.n_reps)},
-                            {static_cast<uint32_t>(parameters.is_first_prompt_ ? 1 : 0)},
-                            {num_total_seq_length_tile},
-                            {num_seq_length_tile},
-                            {attn_bias_dim0},
-                            {attn_bias_dim1}})
+
+      .AddUniformVariables(
+          {{static_cast<uint32_t>(parameters.sequence_length_)},
+           {static_cast<uint32_t>(vectorized_head_size)},
+           {static_cast<uint32_t>(total_sequence_length)},
+           {static_cast<uint32_t>(parameters.num_heads_)},
+           {static_cast<uint32_t>(parameters.head_size_)},
+           {static_cast<float>(alpha)},
+           {static_cast<uint32_t>(past_sequence_length)},
+           {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+           {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
+           {static_cast<uint32_t>(parameters.n_reps)},
+           {static_cast<uint32_t>(parameters.is_first_prompt_ ? 1 : 0)},
+           {num_total_seq_length_tile},
+           {num_seq_length_tile},
+           {attn_bias_dim0},
+           {attn_bias_dim1}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);
 }
 
-Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  bool has_sliding_window = local_window_size_ != -1;
-  const std::string value_max_expr = components_ == 4
+Status InPlaceSoftmaxProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& shader) {
+  bool has_sliding_window = config.local_window_size_ != -1;
+  const std::string value_max_expr = config.components_ == 4
                                          ? "max(max(value.x, value.y), max(value.z, value.w))"
-                                         : (components_ == 2 ? "max(value.x, value.y)" : "value");
-  const std::string shifted_exp_sum_expr = components_ == 4
-                                               ? "(shifted_exp.x + shifted_exp.y + shifted_exp.z + shifted_exp.w)"
-                                               : (components_ == 2 ? "(shifted_exp.x + shifted_exp.y)" : "shifted_exp");
+                                         : (config.components_ == 2 ? "max(value.x, value.y)" : "value");
+  const std::string shifted_exp_sum_expr =
+      config.components_ == 4 ? "(shifted_exp.x + shifted_exp.y + shifted_exp.z + shifted_exp.w)"
+                              : (config.components_ == 2 ? "(shifted_exp.x + shifted_exp.y)" : "shifted_exp");
 
-  if (has_seqlen_k_) {
+  if (config.has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
-  if (has_head_sink_) {
+  if (config.has_head_sink_) {
     shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
   shader.AddOutput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AdditionalImplementation() << "var<workgroup> thread_max: array<f32, " << work_group_size_ << ">;\n"
-                                    << "var<workgroup> thread_sum: array<f32, " << work_group_size_ << ">;\n"
-                                    << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
+  shader.AdditionalImplementation() << "var<workgroup> thread_max: array<f32, " << config.work_group_size_ << ">;\n"
+                                    << "var<workgroup> thread_sum: array<f32, " << config.work_group_size_ << ">;\n"
+                                    << "alias f32_val_t = "
+                                    << (config.components_ == 4 ? "vec4<f32>"
+                                                                : (config.components_ == 2 ? "vec2<f32>" : "f32"))
+                                    << ";\n";
   shader.MainFunctionBody() << "let sequence_length = uniforms.sequence_length;\n"
                             << "let batch_idx = u32(workgroup_idx / sequence_length) / uniforms.num_heads;\n"
                             << "let head_idx = u32(workgroup_idx / sequence_length) % uniforms.num_heads;\n"
-                            << "var total_sequence_length = uniforms.total_sequence_length_comp * " << components_ << ";\n";
+                            << "var total_sequence_length = uniforms.total_sequence_length_comp * "
+                            << config.components_ << ";\n";
   std::ostringstream oss;
-  InitVarStub(oss, has_seqlen_k_);
-  shader.MainFunctionBody() << oss.str()
-                            << "let seq_causal_length = " << (has_seqlen_k_ ? "min(past_sequence_length + workgroup_idx % sequence_length + 1u, total_sequence_length)" : "uniforms.total_sequence_length_comp") << ";\n"
-                            << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
-                            << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n";
+  InitVarStub(oss, config.has_seqlen_k_);
+  shader.MainFunctionBody()
+      << oss.str() << "let seq_causal_length = "
+      << (config.has_seqlen_k_
+              ? "min(past_sequence_length + workgroup_idx % sequence_length + 1u, total_sequence_length)"
+              : "uniforms.total_sequence_length_comp")
+      << ";\n"
+      << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
+      << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n";
   if (has_sliding_window) {
     // Sliding window
     shader.MainFunctionBody()
@@ -371,27 +399,27 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "thread_sum[local_idx] = thread_sum_local;\n"
       << "workgroupBarrier();\n";
 
-  if (has_head_sink_) {
+  if (config.has_head_sink_) {
     // Handle head sink
     shader.MainFunctionBody() << "let sink_value: f32 = f32(head_sink[head_idx]);\n"
                               << "var max_value = sink_value;\n";
-  } else if (use_smooth_softmax_) {
+  } else if (config.use_smooth_softmax_) {
     shader.MainFunctionBody() << "var max_value: f32 = 0.0;\n";
   } else {
     shader.MainFunctionBody() << "var max_value = f32(-3.4028234663852886e+38f);\n";
   }
 
-  shader.MainFunctionBody() << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
+  shader.MainFunctionBody() << "for (var i = 0u; i < " << config.work_group_size_ << "; i++) {\n"
                             << "  max_value = max(thread_max[i], max_value);\n"
                             << "}\n"
                             << "var sum: f32 = 0.0;\n"
-                            << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
+                            << "for (var i = 0u; i < " << config.work_group_size_ << "; i++) {\n"
                             << "  sum += thread_sum[i] * exp(thread_max[i] - max_value);\n"
                             << "}\n";
 
-  if (has_head_sink_) {
+  if (config.has_head_sink_) {
     shader.MainFunctionBody() << "sum += exp(sink_value - max_value);\n";
-  } else if (use_smooth_softmax_) {
+  } else if (config.use_smooth_softmax_) {
     shader.MainFunctionBody() << "sum += exp(-max_value);\n";
   }
 
@@ -423,7 +451,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  }\n"
                             << "}\n";
 
-  if (has_seqlen_k_) {
+  if (config.has_seqlen_k_) {
     shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n"
                               << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
                               << "}\n";
@@ -446,13 +474,14 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
 
   InPlaceSoftmaxProgram program{work_group_size, components, use_smooth_softmax, seqlen_k != nullptr, head_sink != nullptr, local_window_size};
   if (seqlen_k != nullptr) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
   if (head_sink != nullptr) {
-    program.AddInput({head_sink, ProgramTensorMetadataDependency::Type});
+    program.AddInput({head_sink, ProgramTensorMetadataDependency::None});
   }
-  program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .CacheHint(work_group_size, use_smooth_softmax, local_window_size != -1)
+  program
+      .AddOutputs({{probs, ProgramTensorMetadataDependency::None, components}})
+
       .SetDispatchGroupSize(batch_size * num_heads * sequence_length)
       .SetWorkgroupSize(work_group_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
@@ -469,22 +498,25 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
   return context.RunProgram(program);
 }
 
-Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VxAttentionScoreProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                         ConfiguredShaderHelper& shader) {
   shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  if (feed_past_value_) {
+  if (config.feed_past_value_) {
     shader.AddInput("past_value", ShaderUsage::UseUniform);
   }
-  if (seqlen_k_) {
+  if (config.seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  if (has_present_value_) {
+  if (config.has_present_value_) {
     shader.AddOutput("present_value", ShaderUsage::UseUniform);
   }
 
-  shader.AdditionalImplementation() << "var<workgroup> tileQ: array<probs_value_t, " << tile_size_ * tile_size_ << ">;\n"
-                                    << "var<workgroup> tileK: array<v_value_t, " << tile_size_ * tile_size_ << ">;\n";
+  shader.AdditionalImplementation() << "var<workgroup> tileQ: array<probs_value_t, "
+                                    << config.tile_size_ * config.tile_size_ << ">;\n"
+                                    << "var<workgroup> tileK: array<v_value_t, "
+                                    << config.tile_size_ * config.tile_size_ << ">;\n";
   shader.MainFunctionBody() << "let batch_head_idx = u32(workgroup_idx / (uniforms.num_head_size_tile * uniforms.num_seq_length_tile));\n"
                             << "let head_idx = batch_head_idx % uniforms.num_heads;\n"
                             << "let batch_idx = batch_head_idx / uniforms.num_heads;\n"
@@ -494,10 +526,10 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.K;\n";
   std::ostringstream oss;
-  InitVarStub(oss, seqlen_k_);
+  InitVarStub(oss, config.seqlen_k_);
   shader.MainFunctionBody() << oss.str();
   shader.MainFunctionBody() << "let vOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.kv_sequence_length + n;\n";
-  if (has_present_value_) {
+  if (config.has_present_value_) {
     shader.MainFunctionBody() << "let presentValueOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.present_sequence_length + n;\n";
   }
 
@@ -509,21 +541,25 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
-  if ((feed_past_value_ && has_present_value_) || (past_present_share_buffer_ && !is_first_prompt_)) {
-    shader.MainFunctionBody() << "    if (w + local_id.y < past_sequence_length) {\n"
-                              << "      let pastValueOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.past_sequence_length + n;\n"
-                              << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_value" : "past_value") << "[pastValueOffset + (w + local_id.y) * uniforms.N];\n"
-                              << "    } else if (w + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
-                              << "      tileK[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N];\n"
-                              << "    }\n";
+  if ((config.feed_past_value_ && config.has_present_value_) ||
+      (config.past_present_share_buffer_ && !config.is_first_prompt_)) {
+    shader.MainFunctionBody()
+        << "    if (w + local_id.y < past_sequence_length) {\n"
+        << "      let pastValueOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * "
+           "uniforms.past_sequence_length + n;\n"
+        << "      tileK[idx] = " << (config.past_present_share_buffer_ ? "present_value" : "past_value")
+        << "[pastValueOffset + (w + local_id.y) * uniforms.N];\n"
+        << "    } else if (w + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
+        << "      tileK[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N];\n"
+        << "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length) {\n"
                               << "      tileK[idx] = v[vOffset + (w + local_id.y) * uniforms.N];\n"
                               << "    }\n";
   }
 
-  if (has_present_value_) {
-    if (past_present_share_buffer_) {
+  if (config.has_present_value_) {
+    if (config.past_present_share_buffer_) {
       shader.MainFunctionBody() << "    if (w + local_id.y >= past_sequence_length && w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     } else {
       shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
@@ -566,37 +602,39 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   constexpr int tile_size = 12;
   int tile_n_size = tile_size * components;
   VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, seqlen_k, parameters.past_present_share_buffer_};
-  program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
-                     {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInputs({{probs, ProgramTensorMetadataDependency::None},
+                     {V, ProgramTensorMetadataDependency::None, components}});
   if (feed_past_value) {
-    program.AddInput({past_value, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddInput({past_value, ProgramTensorMetadataDependency::None, components});
   }
   if (seqlen_k != nullptr) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddOutputs({{output, ProgramTensorMetadataDependency::None, components}});
   if (has_present_value) {
-    program.AddOutput({present_value, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddOutput({present_value, ProgramTensorMetadataDependency::None, components});
   }
 
   const uint32_t num_head_size_tile = (parameters.v_head_size_ + tile_n_size - 1) / tile_n_size;
   const uint32_t num_seq_length_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_head_size_tile * num_seq_length_tile)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_value, has_present_value, seqlen_k != nullptr, parameters.is_first_prompt_)
+  program
+      .SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_head_size_tile * num_seq_length_tile)
+
       .SetWorkgroupSize(tile_size, tile_size)
-      .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
-                            {static_cast<uint32_t>(total_sequence_length)},
-                            {static_cast<uint32_t>(parameters.v_head_size_ / components)},
-                            {static_cast<uint32_t>(parameters.num_heads_)},
-                            {static_cast<uint32_t>(parameters.head_size_)},
-                            {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps / components)},
-                            {static_cast<uint32_t>(past_sequence_length)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
-                            {static_cast<uint32_t>(parameters.n_reps)},
-                            {static_cast<uint32_t>(parameters.is_first_prompt_)},
-                            {num_head_size_tile},
-                            {num_seq_length_tile}})
+      .AddUniformVariables(
+          {{static_cast<uint32_t>(parameters.sequence_length_)},
+           {static_cast<uint32_t>(total_sequence_length)},
+           {static_cast<uint32_t>(parameters.v_head_size_ / components)},
+           {static_cast<uint32_t>(parameters.num_heads_)},
+           {static_cast<uint32_t>(parameters.head_size_)},
+           {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps / components)},
+           {static_cast<uint32_t>(past_sequence_length)},
+           {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+           {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
+           {static_cast<uint32_t>(parameters.n_reps)},
+           {static_cast<uint32_t>(parameters.is_first_prompt_)},
+           {num_head_size_tile},
+           {num_seq_length_tile}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);

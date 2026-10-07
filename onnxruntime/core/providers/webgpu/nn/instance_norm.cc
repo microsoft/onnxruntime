@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/nn/instance_norm.h"
 #include "core/providers/cpu/nn/instance_norm_helper.h"
 #include "core/providers/webgpu/tensor/transpose.h"
@@ -73,16 +74,17 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   TensorShape reduced_output_shape(reduced_output_shape_vector);
   *output = context.CreateGPUTensor(input->DataType(), output_shape);
   ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon, workgroup_size);
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
-                     {scale, ProgramTensorMetadataDependency::TypeAndRank},
-                     {bias, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, 2}})
+  program.AddInputs({{input, ProgramTensorMetadataDependency::None, reduced_input_shape, components},
+                     {scale, ProgramTensorMetadataDependency::None},
+                     {bias, ProgramTensorMetadataDependency::None}})
+      .AddOutputs({{output, ProgramTensorMetadataDependency::None, reduced_output_shape, 2}})
       .SetDispatchGroupSize(static_cast<uint32_t>(units_of_work))
       .SetWorkgroupSize(workgroup_size);
   return context.RunProgram(program);
 }
 
-Status InstanceNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status InstanceNormProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                     ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
@@ -98,7 +100,8 @@ Status InstanceNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
+Status InstanceNormProgramNHWCShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                         ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
@@ -109,7 +112,7 @@ Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var scale : input_value_t;\n"
                             << "var shift : input_value_t;\n"
                             << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
-  if (components_ > 1) {
+  if (config.components_ > 1) {
     shader.MainFunctionBody() << "for (var i : u32 = 0; i < uniforms.components; i = i + 1) {\n"
                               << "  let scale_sift = " << channel_scale_shift.GetByOffset("uniforms.components * scale_offset + i") << ";\n"
                               << "  scale[i] = input_element_t(scale_sift.x);\n"
@@ -155,9 +158,8 @@ Status InstanceNorm<true>::ComputeInternal(ComputeContext& context) const {
   input_transpose = context.CreateGPUTensor(input->DataType(), input_transpose_shape);
   TransposeProgram transpose_program{permute, false};
   transpose_program
-      .CacheHint(absl::StrJoin(permute, "-"))
-      .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, 1})
-      .AddOutput({&input_transpose, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddInput({input, ProgramTensorMetadataDependency::None, input_shape, 1})
+      .AddOutput({&input_transpose, ProgramTensorMetadataDependency::None})
       .AddUniformVariable({input_transpose_size})
       .SetDispatchGroupSize((input_transpose_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
@@ -171,12 +173,14 @@ Status InstanceNorm<true>::ComputeInternal(ComputeContext& context) const {
   InstanceNormProgramNHWC program(components);
   TensorShapeVector channel_scale_shift_shape_vector = {batch_size, channels, 1};
   TensorShape reduced_channel_scale_shift_shape(channel_scale_shift_shape_vector);
-  program.CacheHint(components)
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, components},
-                  {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
+  program
+      .AddInputs(
+          {{input, ProgramTensorMetadataDependency::None, components},
+           {&channel_scale_shift, ProgramTensorMetadataDependency::None, reduced_channel_scale_shift_shape, 2}})
+      .AddOutput({output, ProgramTensorMetadataDependency::None, components})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({static_cast<uint32_t>(output_size), static_cast<uint32_t>(components), static_cast<uint32_t>(channels / components), static_cast<uint32_t>(spatial_size)});
+      .AddUniformVariables({static_cast<uint32_t>(output_size), static_cast<uint32_t>(components),
+                            static_cast<uint32_t>(channels / components), static_cast<uint32_t>(spatial_size)});
   return context.RunProgram(program);
 }
 
@@ -204,9 +208,9 @@ Status InstanceNorm<false>::ComputeInternal(ComputeContext& context) const {
   TensorShape reduced_channel_scale_shift_shape(channel_scale_shift_shape_vector);
   InstanceNormProgram program;
   program
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, modified_input_shape, components},
-                  {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, modified_output_shape, components})
+      .AddInputs({{input, ProgramTensorMetadataDependency::None, modified_input_shape, components},
+                  {&channel_scale_shift, ProgramTensorMetadataDependency::None, reduced_channel_scale_shift_shape, 2}})
+      .AddOutput({output, ProgramTensorMetadataDependency::None, modified_output_shape, components})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(output_size)});
   return context.RunProgram(program);

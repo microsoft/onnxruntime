@@ -5,22 +5,27 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class TileProgram final : public Program<TileProgram> {
- public:
-  TileProgram(bool is_int64) : Program{"Tile"}, is_int64_{is_int64} {}
+#define WEBGPU_TILE_PROGRAM_CONFIG(F) F(bool, is_int64_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct TileProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_TILE_PROGRAM_CONFIG);
+    Config(bool is_int64) : is_int64_{is_int64} {}
+  };
+  static constexpr std::string_view name = "Tile";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"repeats", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool is_int64_;
 };
+#undef WEBGPU_TILE_PROGRAM_CONFIG
+
+using TileProgram = ConfiguredProgram<TileProgramShader>;
 
 class Tile final : public WebGpuKernel {
  public:

@@ -46,9 +46,6 @@ class LayerNorm final : public WebGpuKernel {
 
   Status ComputeInternal(ComputeContext& context) const override;
 
- protected:
-  std::string cache_hint;
-
  private:
   int64_t axis_;
   float epsilon_;

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/lp_norm.h"
@@ -9,7 +10,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status LpNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status LpNormProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("y", ShaderUsage::UseUniform);
 
@@ -42,7 +43,7 @@ Status LpNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "for (var j: u32 = 0u; j < elements_per_thread; j++) {\n"
       << "  let val = f32(x[base + (start + j) * uniforms.stride_factor]);\n";
 
-  if (p_ == 1) {
+  if (config.p_ == 1) {
     shader.MainFunctionBody()
         << "  local_sum += abs(val);\n";
   } else {
@@ -66,7 +67,7 @@ Status LpNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "}\n";
 
   // Phase 3: Compute norm value
-  if (p_ == 1) {
+  if (config.p_ == 1) {
     shader.MainFunctionBody()
         << "let norm_val = norm_shared[0];\n";
   } else {
@@ -111,8 +112,7 @@ Status LpNorm::ComputeInternal(ComputeContext& context) const {
   TensorShape override_shape{x_shape.Size()};
 
   LpNormProgram program{p_};
-  program.CacheHint(p_)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, override_shape, 1}})
+  program.AddInputs({{x, ProgramTensorMetadataDependency::None, override_shape, 1}})
       .AddOutputs({{y, ProgramTensorMetadataDependency::None, override_shape, 1}})
       .AddUniformVariables({{n}})
       .AddUniformVariables({{m}})

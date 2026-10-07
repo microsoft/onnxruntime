@@ -6,7 +6,7 @@
 // Source: @effects/lighting.wgsl.template
 
 template <>
-Status ApplyTemplate<"@effects/lighting.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"@effects/lighting.wgsl.template">::type ) {
+Status ApplyTemplate<"@effects/lighting.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"@effects/lighting.wgsl.template">::type ) {
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
 ss << __str_2;

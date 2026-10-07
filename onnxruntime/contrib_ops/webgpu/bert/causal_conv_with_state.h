@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -25,18 +26,26 @@ enum class CausalConvActivation {
 CausalConvActivation ParseCausalConvActivation(const std::string& activation_str);
 
 // Program for CausalConvWithState
-class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgram> {
- public:
-  CausalConvWithStateProgram(CausalConvActivation activation, bool has_bias, bool has_conv_state,
-                             bool output_present_state, bool channels_last)
-      : Program{"CausalConvWithState"},
-        activation_(activation),
-        has_bias_(has_bias),
-        has_conv_state_(has_conv_state),
-        output_present_state_(output_present_state),
-        channels_last_(channels_last) {}
+#define WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG(F) \
+  F(CausalConvActivation, activation_)                  \
+  F(bool, has_bias_)                                    \
+  F(bool, has_conv_state_)                              \
+  F(bool, output_present_state_)                        \
+  F(bool, channels_last_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct CausalConvWithStateProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG);
+    Config(CausalConvActivation activation, bool has_bias, bool has_conv_state, bool output_present_state,
+           bool channels_last)
+        : activation_(activation),
+          has_bias_(has_bias),
+          has_conv_state_(has_conv_state),
+          output_present_state_(output_present_state),
+          channels_last_(channels_last) {}
+  };
+  static constexpr std::string_view name = "CausalConvWithState";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -46,31 +55,30 @@ class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgr
       {"dilation", ProgramUniformVariableDataType::Uint32},
       {"state_length", ProgramUniformVariableDataType::Uint32},
       {"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  CausalConvActivation activation_;
-  bool has_bias_;
-  bool has_conv_state_;
-  bool output_present_state_;
-  bool channels_last_;
 };
+#undef WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG
 
-class CausalConvUpdateStateProgram final : public Program<CausalConvUpdateStateProgram> {
- public:
-  explicit CausalConvUpdateStateProgram(bool channels_last)
-      : Program{"CausalConvUpdateState"}, channels_last_(channels_last) {}
+using CausalConvWithStateProgram = ConfiguredProgram<CausalConvWithStateProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_CONFIG(F) F(bool, channels_last_)
+
+struct CausalConvUpdateStateProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_CONFIG);
+    Config(bool channels_last) : channels_last_(channels_last) {}
+  };
+  static constexpr std::string_view name = "CausalConvUpdateState";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"channels", ProgramUniformVariableDataType::Uint32},
       {"input_length", ProgramUniformVariableDataType::Uint32},
       {"state_length", ProgramUniformVariableDataType::Uint32},
       {"update_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool channels_last_;
 };
+#undef WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_CONFIG
+
+using CausalConvUpdateStateProgram = ConfiguredProgram<CausalConvUpdateStateProgramShader>;
 
 // Kernel for CausalConvWithState
 class CausalConvWithState final : public WebGpuKernel {

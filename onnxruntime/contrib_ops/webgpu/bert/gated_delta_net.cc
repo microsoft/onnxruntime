@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/gated_delta_net.h"
 
 #include <algorithm>
@@ -61,84 +62,81 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   state_update_capacity_ = static_cast<int>(state_update_capacity);
 }
 
-Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                      ConfiguredShaderHelper& shader) {
   const auto& query = shader.AddInput("query", ShaderUsage::UseElementTypeAlias);
   const auto& key = shader.AddInput("key", ShaderUsage::UseElementTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseElementTypeAlias);
   const ShaderVariableHelper* cu_seqlens = &query;
-  if (has_cu_seqlens_) cu_seqlens = &shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
+  if (config.has_cu_seqlens_) cu_seqlens = &shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
   const ShaderVariableHelper* decay = &query;
-  if ((update_rule_ == GatedDeltaNetUpdateRule::Gated || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
-      !use_packed_params_) {
+  if ((config.update_rule_ == GatedDeltaNetUpdateRule::Gated ||
+       config.update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
+      !config.use_packed_params_) {
     decay = &shader.AddInput("decay", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* beta = &query;
-  if ((update_rule_ == GatedDeltaNetUpdateRule::Delta || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
-      !use_packed_params_) {
+  if ((config.update_rule_ == GatedDeltaNetUpdateRule::Delta ||
+       config.update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
+      !config.use_packed_params_) {
     beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* initial_state = &query;
-  if (has_initial_state_ && !initial_state_in_final_state_) {
+  if (config.has_initial_state_ && !config.initial_state_in_final_state_) {
     initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* a_log = &query;
   const ShaderVariableHelper* dt_bias = &query;
-  if (qwen_gate_ && !use_packed_params_) {
+  if (config.qwen_gate_ && !config.use_packed_params_) {
     a_log = &shader.AddInput("a_log", ShaderUsage::UseUniform);
     dt_bias = &shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* parameters = &query;
-  if (use_packed_params_) parameters = &shader.AddInput("parameters", ShaderUsage::UseUniform);
+  if (config.use_packed_params_) parameters = &shader.AddInput("parameters", ShaderUsage::UseUniform);
   const auto& output =
       shader.AddOutput("output", ShaderUsage::UseElementTypeAlias | ShaderUsage::UseValueTypeAlias);
   const ShaderVariableHelper* final_state = &output;
-  if (output_final_state_) final_state = &shader.AddOutput("final_state", ShaderUsage::UseUniform);
+  if (config.output_final_state_) final_state = &shader.AddOutput("final_state", ShaderUsage::UseUniform);
   const ShaderVariableHelper* capture_count = &query;
-  if (capture_state_updates_) capture_count = &shader.AddInput("capture_count", ShaderUsage::UseUniform);
+  if (config.capture_state_updates_) capture_count = &shader.AddInput("capture_count", ShaderUsage::UseUniform);
   const ShaderVariableHelper* state_update = &output;
-  if (capture_state_updates_) state_update = &shader.AddOutput("state_update", ShaderUsage::UseUniform);
+  if (config.capture_state_updates_) state_update = &shader.AddOutput("state_update", ShaderUsage::UseUniform);
 
   int update_rule = 0;
-  if (update_rule_ == GatedDeltaNetUpdateRule::Gated) update_rule = 1;
-  if (update_rule_ == GatedDeltaNetUpdateRule::Delta) update_rule = 2;
-  if (update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) update_rule = 3;
-  return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(capture_state_updates, capture_state_updates_),
-                             WGSL_TEMPLATE_PARAMETER(has_cu_seqlens, has_cu_seqlens_),
-                             WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
-                             WGSL_TEMPLATE_PARAMETER(initial_state_in_final_state, initial_state_in_final_state_),
-                             WGSL_TEMPLATE_PARAMETER(output_final_state, output_final_state_),
-                             WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_),
-                             WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
-                             WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
-                             WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
-                             WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_),
-                             WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
-                             WGSL_TEMPLATE_PARAMETER(vectorized_value_io, vectorized_value_io_),
-                             WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
-                             WGSL_TEMPLATE_VARIABLE(beta, *beta),
-                             WGSL_TEMPLATE_VARIABLE(capture_count, *capture_count),
-                             WGSL_TEMPLATE_VARIABLE(cu_seqlens, *cu_seqlens),
-                             WGSL_TEMPLATE_VARIABLE(decay, *decay),
-                             WGSL_TEMPLATE_VARIABLE(dt_bias, *dt_bias),
-                             WGSL_TEMPLATE_VARIABLE(final_state, *final_state),
-                             WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state),
-                             WGSL_TEMPLATE_VARIABLE(key, key),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(parameters, *parameters),
-                             WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(state_update, *state_update),
-                             WGSL_TEMPLATE_VARIABLE(value, value));
+  if (config.update_rule_ == GatedDeltaNetUpdateRule::Gated) update_rule = 1;
+  if (config.update_rule_ == GatedDeltaNetUpdateRule::Delta) update_rule = 2;
+  if (config.update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) update_rule = 3;
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/gated_delta_net.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(capture_state_updates, config.capture_state_updates_),
+      WGSL_TEMPLATE_PARAMETER(has_cu_seqlens, config.has_cu_seqlens_),
+      WGSL_TEMPLATE_PARAMETER(has_initial_state, config.has_initial_state_),
+      WGSL_TEMPLATE_PARAMETER(initial_state_in_final_state, config.initial_state_in_final_state_),
+      WGSL_TEMPLATE_PARAMETER(output_final_state, config.output_final_state_),
+      WGSL_TEMPLATE_PARAMETER(qk_l2_norm, config.qk_l2_norm_), WGSL_TEMPLATE_PARAMETER(qwen_gate, config.qwen_gate_),
+      WGSL_TEMPLATE_PARAMETER(sigmoid_beta, config.sigmoid_beta_), WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
+      WGSL_TEMPLATE_PARAMETER(use_packed_params, config.use_packed_params_),
+      WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
+      WGSL_TEMPLATE_PARAMETER(vectorized_value_io, config.vectorized_value_io_), WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
+      WGSL_TEMPLATE_VARIABLE(beta, *beta), WGSL_TEMPLATE_VARIABLE(capture_count, *capture_count),
+      WGSL_TEMPLATE_VARIABLE(cu_seqlens, *cu_seqlens), WGSL_TEMPLATE_VARIABLE(decay, *decay),
+      WGSL_TEMPLATE_VARIABLE(dt_bias, *dt_bias), WGSL_TEMPLATE_VARIABLE(final_state, *final_state),
+      WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state), WGSL_TEMPLATE_VARIABLE(key, key),
+      WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(parameters, *parameters),
+      WGSL_TEMPLATE_VARIABLE(query, query), WGSL_TEMPLATE_VARIABLE(state_update, *state_update),
+      WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
-Status GatedDeltaNetClearProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetClearProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                           ConfiguredShaderHelper& shader) {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.element_count")
                             << "  " << output.SetByOffset("global_idx", "output_element_t(0.0)") << "\n";
   return Status::OK();
 }
 
-Status GatedDeltaNetPrefillPrepareProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetPrefillPrepareProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                    ConfiguredShaderHelper& shader) {
   const auto& key = shader.AddInput("key", ShaderUsage::UseElementTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseElementTypeAlias);
   const auto& chunk_contribution = shader.AddOutput("chunk_contribution", ShaderUsage::UseUniform);
@@ -150,31 +148,32 @@ Status GatedDeltaNetPrefillPrepareProgram::GenerateShaderCode(ShaderHelper& shad
                              WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
-Status GatedDeltaNetPrefillScanProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetPrefillScanProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                 ConfiguredShaderHelper& shader) {
   const auto& chunk_contribution = shader.AddInput("chunk_contribution", ShaderUsage::UseUniform);
   const ShaderVariableHelper* initial_state = &chunk_contribution;
-  if (has_initial_state_) initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
+  if (config.has_initial_state_) initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
   const ShaderVariableHelper* carry_state = &chunk_contribution;
-  if (has_carry_state_) carry_state = &shader.AddInput("carry_state", ShaderUsage::UseUniform);
+  if (config.has_carry_state_) carry_state = &shader.AddInput("carry_state", ShaderUsage::UseUniform);
   const auto& chunk_state = shader.AddOutput("chunk_state", ShaderUsage::UseUniform);
   const auto& next_carry_state = shader.AddOutput("next_carry_state", ShaderUsage::UseUniform);
   const ShaderVariableHelper* final_state = &chunk_state;
-  if (output_final_state_) final_state = &shader.AddOutput("final_state", ShaderUsage::UseUniform);
+  if (config.output_final_state_) final_state = &shader.AddOutput("final_state", ShaderUsage::UseUniform);
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net_prefill_scan.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(has_carry_state, has_carry_state_),
-                             WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
-                             WGSL_TEMPLATE_PARAMETER(output_final_state, output_final_state_),
-                             WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
-                             WGSL_TEMPLATE_VARIABLE(carry_state, *carry_state),
-                             WGSL_TEMPLATE_VARIABLE(chunk_contribution, chunk_contribution),
-                             WGSL_TEMPLATE_VARIABLE(chunk_state, chunk_state),
-                             WGSL_TEMPLATE_VARIABLE(final_state, *final_state),
-                             WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state),
-                             WGSL_TEMPLATE_VARIABLE(next_carry_state, next_carry_state));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/gated_delta_net_prefill_scan.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(has_carry_state, config.has_carry_state_),
+      WGSL_TEMPLATE_PARAMETER(has_initial_state, config.has_initial_state_),
+      WGSL_TEMPLATE_PARAMETER(output_final_state, config.output_final_state_),
+      WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
+      WGSL_TEMPLATE_VARIABLE(carry_state, *carry_state), WGSL_TEMPLATE_VARIABLE(chunk_contribution, chunk_contribution),
+      WGSL_TEMPLATE_VARIABLE(chunk_state, chunk_state), WGSL_TEMPLATE_VARIABLE(final_state, *final_state),
+      WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state),
+      WGSL_TEMPLATE_VARIABLE(next_carry_state, next_carry_state));
 }
 
-Status GatedDeltaNetPrefillOutputProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetPrefillOutputProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                   ConfiguredShaderHelper& shader) {
   const auto& query = shader.AddInput("query", ShaderUsage::UseElementTypeAlias);
   const auto& key = shader.AddInput("key", ShaderUsage::UseElementTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseElementTypeAlias);
@@ -190,31 +189,29 @@ Status GatedDeltaNetPrefillOutputProgram::GenerateShaderCode(ShaderHelper& shade
                              WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
-Status GatedDeltaNetParamsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetParamsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                            ConfiguredShaderHelper& shader) {
   const auto& parameters = shader.AddOutput("parameters", ShaderUsage::UseUniform);
   const ShaderVariableHelper* decay = &parameters;
-  if (has_decay_) decay = &shader.AddInput("decay", ShaderUsage::UseUniform);
+  if (config.has_decay_) decay = &shader.AddInput("decay", ShaderUsage::UseUniform);
   const ShaderVariableHelper* beta = &parameters;
-  if (has_beta_) beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
+  if (config.has_beta_) beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
   const ShaderVariableHelper* a_log = &parameters;
   const ShaderVariableHelper* dt_bias = &parameters;
-  if (qwen_gate_) {
+  if (config.qwen_gate_) {
     a_log = &shader.AddInput("a_log", ShaderUsage::UseUniform);
     dt_bias = &shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   }
-  return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net_params.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(has_beta, has_beta_),
-                             WGSL_TEMPLATE_PARAMETER(has_decay, has_decay_),
-                             WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
-                             WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
-                             WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
-                             WGSL_TEMPLATE_VARIABLE(beta, *beta),
-                             WGSL_TEMPLATE_VARIABLE(decay, *decay),
-                             WGSL_TEMPLATE_VARIABLE(dt_bias, *dt_bias),
-                             WGSL_TEMPLATE_VARIABLE(parameters, parameters));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/gated_delta_net_params.wgsl.template", WGSL_TEMPLATE_PARAMETER(has_beta, config.has_beta_),
+      WGSL_TEMPLATE_PARAMETER(has_decay, config.has_decay_), WGSL_TEMPLATE_PARAMETER(qwen_gate, config.qwen_gate_),
+      WGSL_TEMPLATE_PARAMETER(sigmoid_beta, config.sigmoid_beta_), WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
+      WGSL_TEMPLATE_VARIABLE(beta, *beta), WGSL_TEMPLATE_VARIABLE(decay, *decay),
+      WGSL_TEMPLATE_VARIABLE(dt_bias, *dt_bias), WGSL_TEMPLATE_VARIABLE(parameters, parameters));
 }
 
-Status GatedDeltaNetCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetCopyProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                          ConfiguredShaderHelper& shader) {
   const auto& src = shader.AddInput("src");
   const auto& dst = shader.AddOutput("dst");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.element_count")
@@ -222,7 +219,8 @@ Status GatedDeltaNetCopyProgram::GenerateShaderCode(ShaderHelper& shader) const 
   return Status::OK();
 }
 
-Status GatedDeltaNetUnpackQkvProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatedDeltaNetUnpackQkvProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                               ConfiguredShaderHelper& shader) {
   const auto& packed_qkv = shader.AddInput("packed_qkv");
   const auto& unpacked_qkv = shader.AddOutput("unpacked_qkv");
   shader.MainFunctionBody()
@@ -426,7 +424,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                                      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0);
   if (state_update != nullptr && state_update->Shape().Size() > 0 && !capture_state_updates) {
     GatedDeltaNetClearProgram clear_program;
-    clear_program.AddOutput({state_update, ProgramTensorMetadataDependency::Type})
+    clear_program.AddOutput({state_update, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(state_update->Shape().Size()) + WORKGROUP_SIZE - 1) /
                               WORKGROUP_SIZE)
         .SetWorkgroupSize(WORKGROUP_SIZE)
@@ -499,8 +497,8 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     if (input_is_packed_qkv) {
       GatedDeltaNetUnpackQkvProgram unpack_program;
       unpack_program
-          .AddInput({query, ProgramTensorMetadataDependency::Type})
-          .AddOutput({&*packed_qkv, ProgramTensorMetadataDependency::Type})
+          .AddInput({query, ProgramTensorMetadataDependency::None})
+          .AddOutput({&*packed_qkv, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(qkv_element_count) + WORKGROUP_SIZE - 1) /
                                 WORKGROUP_SIZE)
           .SetWorkgroupSize(WORKGROUP_SIZE)
@@ -513,9 +511,9 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       const auto copy_to_packed_qkv = [&](const Tensor* source) -> Status {
         GatedDeltaNetCopyProgram copy_program;
         copy_program
-            .AddInput({source, ProgramTensorMetadataDependency::Type})
+            .AddInput({source, ProgramTensorMetadataDependency::None})
             .AddOutput(ProgramOutput::BufferView(&*packed_qkv,
-                                                 ProgramTensorMetadataDependency::Type,
+                                                 ProgramTensorMetadataDependency::None,
                                                  source->Shape(),
                                                  packed_offset))
             .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(source->Shape().Size()) + WORKGROUP_SIZE - 1) /
@@ -551,9 +549,8 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
         .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(
             (static_cast<uint64_t>(total_tokens) * static_cast<uint64_t>(hv) + 63u) / 64u))
         .SetWorkgroupSize(64)
-        .CacheHint(needs_decay, needs_beta, qwen_gate_, sigmoid_beta_)
-        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
-                              {onnxruntime::narrow<uint32_t>(hv)}});
+
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)}, {onnxruntime::narrow<uint32_t>(hv)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(params_program));
   }
 
@@ -568,22 +565,22 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query_view_shape.Size());
       const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key_view_shape.Size());
       program.AddInputs({ProgramInput::BufferView(&*packed_qkv,
-                                                  ProgramTensorMetadataDependency::Type,
+                                                  ProgramTensorMetadataDependency::None,
                                                   query_view_shape,
                                                   query_offset),
                          ProgramInput::BufferView(&*packed_qkv,
-                                                  ProgramTensorMetadataDependency::Type,
+                                                  ProgramTensorMetadataDependency::None,
                                                   key_view_shape,
                                                   key_offset),
                          ProgramInput::BufferView(&*packed_qkv,
-                                                  ProgramTensorMetadataDependency::Type,
+                                                  ProgramTensorMetadataDependency::None,
                                                   value_view_shape,
                                                   value_offset)});
       return;
     }
-    program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
-                       {key, ProgramTensorMetadataDependency::Type},
-                       {value, ProgramTensorMetadataDependency::Type}});
+    program.AddInputs({{query, ProgramTensorMetadataDependency::None},
+                       {key, ProgramTensorMetadataDependency::None},
+                       {value, ProgramTensorMetadataDependency::None}});
   };
   const uint32_t sequence_length = onnxruntime::narrow<uint32_t>(total_tokens / batch);
   const auto add_key_value_inputs = [&](auto& program) {
@@ -591,17 +588,17 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query_view_shape.Size());
       const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key_view_shape.Size());
       program.AddInputs({ProgramInput::BufferView(&*packed_qkv,
-                                                  ProgramTensorMetadataDependency::Type,
+                                                  ProgramTensorMetadataDependency::None,
                                                   key_view_shape,
                                                   key_offset),
                          ProgramInput::BufferView(&*packed_qkv,
-                                                  ProgramTensorMetadataDependency::Type,
+                                                  ProgramTensorMetadataDependency::None,
                                                   value_view_shape,
                                                   value_offset)});
       return;
     }
-    program.AddInputs({{key, ProgramTensorMetadataDependency::Type},
-                       {value, ProgramTensorMetadataDependency::Type}});
+    program.AddInputs({{key, ProgramTensorMetadataDependency::None},
+                       {value, ProgramTensorMetadataDependency::None}});
   };
 
   // Linear state transitions are additive and can be split safely. All other
@@ -676,11 +673,10 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
 
       GatedDeltaNetPrefillPrepareProgram prepare_program;
       add_key_value_inputs(prepare_program);
-      prepare_program
-          .AddOutput({&chunk_contribution, ProgramTensorMetadataDependency::None})
+      prepare_program.AddOutput({&chunk_contribution, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(dispatch_group_count))
           .SetWorkgroupSize(workgroup_size)
-          .CacheHint(use_packed_qkv, workgroup_size, kValueChannelsPerWorkgroup)
+
           .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                                 {onnxruntime::narrow<uint32_t>(batch)},
                                 {onnxruntime::narrow<uint32_t>(hq)},
@@ -713,11 +709,9 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       if (final_state != nullptr) {
         scan_program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
       }
-      scan_program
-          .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(static_cast<uint64_t>(batch) * hv * value_tiles))
+      scan_program.SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(static_cast<uint64_t>(batch) * hv * value_tiles))
           .SetWorkgroupSize(workgroup_size)
-          .CacheHint(is_first_pass && initial_state != nullptr, !is_first_pass, final_state != nullptr,
-                     workgroup_size, kValueChannelsPerWorkgroup)
+
           .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch)},
                                 {onnxruntime::narrow<uint32_t>(hv)},
                                 {onnxruntime::narrow<uint32_t>(dk)},
@@ -728,12 +722,11 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
 
       GatedDeltaNetPrefillOutputProgram output_program;
       add_qkv_inputs(output_program);
-      output_program
-          .AddInput({&chunk_state, ProgramTensorMetadataDependency::None})
-          .AddOutput({output, ProgramTensorMetadataDependency::Type})
+      output_program.AddInput({&chunk_state, ProgramTensorMetadataDependency::None})
+          .AddOutput({output, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(dispatch_group_count))
           .SetWorkgroupSize(workgroup_size)
-          .CacheHint(use_packed_qkv, workgroup_size, kValueChannelsPerWorkgroup)
+
           .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                                 {onnxruntime::narrow<uint32_t>(batch)},
                                 {onnxruntime::narrow<uint32_t>(hq)},
@@ -757,9 +750,9 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   if (use_packed_qkv) {
     add_qkv_inputs(program);
   } else {
-    program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
-                       {key, ProgramTensorMetadataDependency::Type},
-                       {value, ProgramTensorMetadataDependency::Type, value_io_components}});
+    program.AddInputs({{query, ProgramTensorMetadataDependency::None},
+                       {key, ProgramTensorMetadataDependency::None},
+                       {value, ProgramTensorMetadataDependency::None, value_io_components}});
   }
   if (cu_seqlens != nullptr) program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
   if (decay != nullptr && !use_packed_params) program.AddInput({decay, ProgramTensorMetadataDependency::None});
@@ -769,17 +762,14 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                                                            {dt_bias, ProgramTensorMetadataDependency::None}});
   if (use_packed_params) program.AddInput({&*packed_params, ProgramTensorMetadataDependency::None});
   if (capture_state_updates) program.AddInput({capture_count, ProgramTensorMetadataDependency::None});
-  program.AddOutput({output, ProgramTensorMetadataDependency::Type, value_io_components});
+  program.AddOutput({output, ProgramTensorMetadataDependency::None, value_io_components});
   if (final_state != nullptr) {
     program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
   }
   if (capture_state_updates) program.AddOutput({state_update, ProgramTensorMetadataDependency::None});
-  program
-      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv) * value_tiles)
+  program.SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv) * value_tiles)
       .SetWorkgroupSize(workgroup_size)
-      .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_qkv, use_packed_params,
-                 capture_state_updates, vectorized_value_io, workgroup_size, kValueChannelsPerWorkgroup)
+
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},

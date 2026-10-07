@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/hyper_connection_post_mix.h"
 
 #include <string>
@@ -35,19 +36,20 @@ std::string GateOffset(int layout, std::string_view row,
 
 }  // namespace
 
-Status HyperConnectionPostMixProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status HyperConnectionPostMixProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                               ConfiguredShaderHelper& shader) {
   const auto& streams = shader.AddInput("streams", ShaderUsage::UseUniform);
   const auto& branch_output = shader.AddInput("branch_output", ShaderUsage::UseUniform);
   const auto& post_mix = shader.AddInput("post_mix", ShaderUsage::UseUniform);
   const ShaderVariableHelper* stream_mix = nullptr;
-  if (has_stream_mix_) stream_mix = &shader.AddInput("stream_mix", ShaderUsage::UseUniform);
+  if (config.has_stream_mix_) stream_mix = &shader.AddInput("stream_mix", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.count")
       << "  let h = global_idx % uniforms.hidden;\n"
          "  let c = (global_idx / uniforms.hidden) % uniforms.branches;\n"
          "  let row = global_idx / (uniforms.hidden * uniforms.branches);\n";
-  if (has_stream_mix_) {
+  if (config.has_stream_mix_) {
     shader.MainFunctionBody()
         << "  var value = 0.0;\n"
            "  for (var source = 0u; source < uniforms.branches; source++) {\n"
@@ -59,11 +61,10 @@ Status HyperConnectionPostMixProgram::GenerateShaderCode(ShaderHelper& shader) c
   } else {
     shader.MainFunctionBody() << "  var value = f32(" << streams.GetByOffset("global_idx") << ");\n";
   }
-  shader.MainFunctionBody()
-      << "  let gate_offset = " << GateOffset(gate_layout_, "row", "c", "h") << ";\n"
-      << "  value += f32(" << post_mix.GetByOffset("gate_offset") << ") * f32("
-      << branch_output.GetByOffset("row * uniforms.hidden + h") << ");\n"
-      << "  " << y.SetByOffset("global_idx", "y_element_t(value)") << "\n";
+  shader.MainFunctionBody() << "  let gate_offset = " << GateOffset(config.gate_layout_, "row", "c", "h") << ";\n"
+                            << "  value += f32(" << post_mix.GetByOffset("gate_offset") << ") * f32("
+                            << branch_output.GetByOffset("row * uniforms.hidden + h") << ");\n"
+                            << "  " << y.SetByOffset("global_idx", "y_element_t(value)") << "\n";
   return Status::OK();
 }
 
@@ -88,11 +89,10 @@ Status HyperConnectionPostMix::ComputeInternal(onnxruntime::webgpu::ComputeConte
   const uint32_t count = onnxruntime::narrow<uint32_t>(streams->Shape().Size());
   if (count == 0) return Status::OK();
   HyperConnectionPostMixProgram program{static_cast<int>(layout), stream_mix != nullptr};
-  program.CacheHint(static_cast<int>(layout), stream_mix != nullptr)
-      .AddInputs({{streams, ProgramTensorMetadataDependency::Type},
-                  {branch_output, ProgramTensorMetadataDependency::Type},
-                  {post_mix, ProgramTensorMetadataDependency::Type}});
-  if (stream_mix != nullptr) program.AddInput({stream_mix, ProgramTensorMetadataDependency::Type});
+  program.AddInputs({{streams, ProgramTensorMetadataDependency::None},
+                     {branch_output, ProgramTensorMetadataDependency::None},
+                     {post_mix, ProgramTensorMetadataDependency::None}});
+  if (stream_mix != nullptr) program.AddInput({stream_mix, ProgramTensorMetadataDependency::None});
   program.AddOutput({y, ProgramTensorMetadataDependency::None})
       .AddUniformVariables({{count},
                             {onnxruntime::narrow<uint32_t>(params.branches)},
