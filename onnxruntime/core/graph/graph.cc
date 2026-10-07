@@ -2080,19 +2080,47 @@ struct VisitorPriorityQueue {
 };
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+static uint64_t OrtFormatControlEdgeKey(NodeIndex src_node_index, NodeIndex dst_node_index) {
+  return (static_cast<uint64_t>(static_cast<uint32_t>(src_node_index)) << 32) |
+         static_cast<uint32_t>(dst_node_index);
+}
+
 void Graph::RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
+  if (!ort_format_control_edge_index_.insert(
+                                         OrtFormatControlEdgeKey(src_node_index, dst_node_index))
+           .second) {
+    return;
+  }
+
   const std::pair<NodeIndex, NodeIndex> edge{src_node_index, dst_node_index};
-  if (std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), edge) ==
-      ort_format_control_edges_.end()) {
-    ort_format_control_edges_.push_back(edge);
+  ort_format_control_edges_.push_back(edge);
+  ++ort_format_control_edge_incident_counts_[src_node_index];
+  if (src_node_index != dst_node_index) {
+    ++ort_format_control_edge_incident_counts_[dst_node_index];
   }
 }
 
 void Graph::UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
+  if (ort_format_control_edge_index_.erase(
+          OrtFormatControlEdgeKey(src_node_index, dst_node_index)) == 0) {
+    return;
+  }
+
   const std::pair<NodeIndex, NodeIndex> edge{src_node_index, dst_node_index};
   const auto it = std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), edge);
   if (it != ort_format_control_edges_.end()) {
     ort_format_control_edges_.erase(it);
+  }
+  const auto decrement_incident_count = [this](NodeIndex node_index) {
+    auto count_it = ort_format_control_edge_incident_counts_.find(node_index);
+    ORT_ENFORCE(count_it != ort_format_control_edge_incident_counts_.end());
+    if (--count_it->second == 0) {
+      ort_format_control_edge_incident_counts_.erase(count_it);
+    }
+  };
+  decrement_incident_count(src_node_index);
+  if (src_node_index != dst_node_index) {
+    decrement_incident_count(dst_node_index);
   }
 }
 #endif
@@ -5168,13 +5196,14 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
 
-  ort_format_control_edges_.erase(
-      std::remove_if(
-          ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
-          [p_index](const auto& edge) {
-            return edge.first == p_index || edge.second == p_index;
-          }),
-      ort_format_control_edges_.end());
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const auto remaining_control_edges = ort_format_control_edges_;
+  for (const auto& [src, dst] : remaining_control_edges) {
+    if (src == p_index || dst == p_index) {
+      UnregisterOrtFormatControlEdge(src, dst);
+    }
+  }
+#endif
 
   return ReleaseNode(p_index);
 }
@@ -7308,7 +7337,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
   struct NodeArgProducer {
-    const NodeArg* node_arg;
+    std::string_view node_arg_name;
     Node* node;
     int output_idx;
   };
@@ -7318,16 +7347,16 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
       if (outputs[output_idx]->Exists()) {
         producer_lookup.push_back(
-            {outputs[output_idx], &node, static_cast<int>(output_idx)});
+            {outputs[output_idx]->Name(), &node, static_cast<int>(output_idx)});
       }
     }
   }
   std::sort(producer_lookup.begin(), producer_lookup.end(),
             [](const NodeArgProducer& lhs, const NodeArgProducer& rhs) {
-              return std::less<const NodeArg*>{}(lhs.node_arg, rhs.node_arg);
+              return lhs.node_arg_name < rhs.node_arg_name;
             });
   for (size_t i = 1; i < producer_lookup.size(); ++i) {
-    ORT_RETURN_IF_NOT(producer_lookup[i - 1].node_arg != producer_lookup[i].node_arg,
+    ORT_RETURN_IF_NOT(producer_lookup[i - 1].node_arg_name != producer_lookup[i].node_arg_name,
                       "slot has multiple producers");
   }
 
@@ -7341,11 +7370,12 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
                               : implicit_inputs[input_idx - explicit_inputs.size()];
       if (input->Exists()) {
         const auto producer = std::lower_bound(
-            producer_lookup.begin(), producer_lookup.end(), input,
-            [](const NodeArgProducer& candidate, const NodeArg* value) {
-              return std::less<const NodeArg*>{}(candidate.node_arg, value);
+            producer_lookup.begin(), producer_lookup.end(), std::string_view{input->Name()},
+            [](const NodeArgProducer& candidate, std::string_view value) {
+              return candidate.node_arg_name < value;
             });
-        if (producer != producer_lookup.end() && producer->node_arg == input) {
+        if (producer != producer_lookup.end() &&
+            producer->node_arg_name == input->Name()) {
           producer->node->relationships_.output_edges.emplace(
               node, producer->output_idx, static_cast<int>(input_idx));
           node.relationships_.input_edges.emplace(

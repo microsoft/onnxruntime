@@ -1247,12 +1247,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   bool HasOrtFormatControlEdge(NodeIndex node_index) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    for (const auto& edge : ort_format_control_edges_) {
-      if (edge.first == node_index || edge.second == node_index) {
-        return true;
-      }
-    }
-    return false;
+    return ort_format_control_edge_incident_counts_.find(node_index) !=
+           ort_format_control_edge_incident_counts_.end();
 #else
     ORT_UNUSED_PARAMETER(node_index);
     return false;
@@ -2142,6 +2138,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::vector<std::pair<NodeIndex, NodeIndex>> ort_format_control_edges_;
+  std::unordered_set<uint64_t> ort_format_control_edge_index_;
+  std::unordered_map<NodeIndex, size_t> ort_format_control_edge_incident_counts_;
 #endif
 
   // The topological order of node index used to do node and op match verification temporarily.

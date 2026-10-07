@@ -514,6 +514,38 @@ TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
   }
 }
 
+TEST(OrtModelTest, LoadsManyControlEdgesWithIndexedRegistration) {
+  constexpr uint32_t kControlEdgeCount = 2048;
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<int32_t> empty_arg_counts;
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes;
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges;
+    nodes.reserve(kControlEdgeCount + 1);
+    node_edges.reserve(kControlEdgeCount);
+    for (uint32_t index = 0; index <= kControlEdgeCount; ++index) {
+      nodes.push_back(fbs::CreateNodeDirect(
+          builder, "", "", "", 1, index, "Identity",
+          fbs::NodeType::Primitive, nullptr, &empty_args, &empty_args,
+          nullptr, &empty_arg_counts, &empty_args));
+      if (index != 0) {
+        std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, INT_MAX, INT_MAX)};
+        node_edges.push_back(fbs::CreateNodeEdgeDirect(builder, index, &input_edges));
+      }
+    }
+    return fbs::CreateGraphDirect(
+        builder, nullptr, nullptr, &nodes, kControlEdgeCount + 1, &node_edges);
+  });
+
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(LoadOrtModel(buffer, model));
+  const auto& graph = model->MainGraph();
+  ASSERT_EQ(graph.GetNode(0)->GetOutputEdgesCount(), kControlEdgeCount);
+  for (uint32_t index = 1; index <= kControlEdgeCount; ++index) {
+    EXPECT_EQ(graph.GetNode(index)->GetInputEdgesCount(), 1);
+  }
+}
+
 TEST(OrtModelTest, RejectsControlEdgeCycle) {
   std::unique_ptr<Model> model;
   const auto status = LoadOrtModel(
