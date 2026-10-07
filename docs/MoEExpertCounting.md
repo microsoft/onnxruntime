@@ -124,7 +124,7 @@ kernel skips collector construction, collection calls, and statistics-only size 
 There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
 remain. Enabling these diagnostics adds overhead.
 
-## Static FP16 CUDA expert placement
+## Static FP16/BF16 CUDA expert placement
 
 Set the session-wide CPU offload count with:
 
@@ -132,17 +132,18 @@ Set the session-wide CPU offload count with:
 session.moe_cpu_offload_experts=<non-negative integer>
 ```
 
-This first offload implementation applies to built-in CUDA `MoE` nodes with FP16 activations and constant expert
-weights. Before session initialization returns, `KernelPilot` chooses the experts that remain resident in CUDA memory.
-All-zero counters distribute slots round-robin across eligible nodes; initialized counters rank experts by descending
-value with deterministic ties. The offload count is global and must not exceed the number of experts in eligible CUDA
-nodes. The default is `0`, which disables CPU offloading.
+This first offload implementation applies to built-in CUDA `MoE` nodes with FP16 or BF16 activations and constant
+expert weights. Before session initialization returns, `KernelPilot` chooses the experts that remain resident in CUDA
+memory. All-zero counters distribute slots round-robin across eligible nodes; initialized counters rank experts by
+descending value with deterministic ties. The offload count is global and must not exceed the number of experts in
+eligible CUDA nodes. The default is `0`, which disables CPU offloading.
 
-Every expert retains a CPU weight representation. Only selected experts are copied to CUDA. During inference, CUDA experts
-run through the existing CUTLASS MoE path and other experts run through the MLAS FP16 CPU path; their weighted outputs
-are combined on CUDA. Routing still records every selected expert, so counter updates continue unchanged.
-Each kernel retains only one host representation of its FC1/FC2 weights: original weights for all-CUDA nodes, or
-GEMM-layout weights for nodes with CPU experts. The temporary original copy is released after transposition.
+Every expert retains a CPU weight representation. Only selected experts are copied to CUDA. During inference, CUDA
+experts run through the existing CUTLASS MoE path. CPU-resident FP16 experts use MLAS FP16 GEMMs; BF16 expert weights
+are converted once during initialization and CPU-resident BF16 experts use MLAS FP32 GEMMs. Their weighted outputs are
+combined on CUDA. Routing still records every selected expert, so counter updates continue unchanged. Each kernel
+retains only one host representation of its FC1/FC2 weights: original weights for all-CUDA nodes, or GEMM-layout weights
+for nodes with CPU experts. The temporary original copy is released after transposition.
 
 Offload requires prepacking to remain enabled and the input hidden dimension to be statically known. Connected
 FC1/FC2 biases must be constant, just like the expert weights.
@@ -150,8 +151,8 @@ Expert-weight collection and validation follow actual outer-scope captures into 
 and initializers are separate values and do not cause ancestor values to be validated or moved to CPU.
 
 Placement is static in this stage: counters continue to evolve, but no weight transfer, expert swap, or end-of-run
-redistribution occurs. Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, BF16, FP32, the CUDA
-plugin EP, CUDA graphs, and minimal builds are not supported by this option.
+redistribution occurs. Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, FP32, the CUDA plugin
+EP, CUDA graphs, and minimal builds are not supported by this option.
 
 ## Initial counter file
 
