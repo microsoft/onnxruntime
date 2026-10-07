@@ -2011,6 +2011,49 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PagedAttentionTypeAndShapeInference(ctx);
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SparseAttentionSelectionMerge, 1,
+    OpSchema()
+        .SetDoc("Stable union of a mapped base selection and [range_start, range_end). "
+                "Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve "
+                "first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid "
+                "device metadata, or 2 for capacity overflow; failures return count 0 and all -1. "
+                "The caller supplies a common index namespace and guarantees causal visibility.")
+        .Attr("policy_mode", "Only append_range is supported in version 1.", AttributeProto::STRING)
+        .Attr("max_output_entries", "Fixed output width, in [1, 2^30].", AttributeProto::INT)
+        .Input(0, "base_indices", "Cached selections, shape (R, C).", "T")
+        .Input(1, "base_counts", "Valid base-prefix lengths, shape (R).", "T")
+        .Input(2, "base_row_indices", "Output-query to cached-row mapping, shape (N).", "T")
+        .Input(3, "range_starts", "Inclusive nonnegative starts, shape (N).", "T")
+        .Input(4, "range_ends", "Exclusive ends not less than starts, shape (N).", "T")
+        .Input(5, "additional_indices", "Reserved; must be absent for append_range.", "T", OpSchema::Optional)
+        .Input(6, "additional_counts", "Reserved; must be absent for append_range.", "T", OpSchema::Optional)
+        .Output(0, "selected_indices", "Merged indices, shape (N, max_output_entries).", "T")
+        .Output(1, "selected_counts", "Merged prefix lengths, shape (N).", "T")
+        .Output(2, "status", "Per-query device validation status, shape (N).", "T")
+        .TypeConstraint("T", {"tensor(int32)"}, "Integer selection tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const auto* policy = ctx.getAttribute("policy_mode");
+          const auto* capacity = ctx.getAttribute("max_output_entries");
+          if (!policy || policy->s() != "append_range" || !capacity || capacity->i() <= 0 ||
+              capacity->i() > (int64_t{1} << 30)) {
+            fail_shape_inference("Invalid SparseAttentionSelectionMerge policy or capacity");
+          }
+          for (size_t output = 0; output < 3; ++output) propagateElemTypeFromInputToOutput(ctx, 0, output);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() != 2) {
+            fail_shape_inference("base_indices must have rank 2");
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& rows = getInputShape(ctx, 2);
+            if (rows.dim_size() != 1) fail_shape_inference("base_row_indices must have rank 1");
+            auto* shape = getOutputShape(ctx, 0);
+            *shape->add_dim() = rows.dim(0);
+            shape->add_dim()->set_dim_value(capacity->i());
+            propagateShapeFromInputToOutput(ctx, 2, 1);
+            propagateShapeFromInputToOutput(ctx, 2, 2);
+          }
+        }));
+
 constexpr const char* SparsePagedAttention_ver1_doc = R"DOC(
 Selected-index attention over the PagedAttention main K/V cache.
 
