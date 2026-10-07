@@ -665,6 +665,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     // Prefill (sequence_length > 1) uses the tiled kernel; single-token decode
     // (sequence_length == 1 with total_sequence_length > 1) uses the dedicated GEMV
     // decode kernel. Both are reached when total_sequence_length > 1.
+    const bool read_only_cache = kv_sequence_length == 0 && attention_past_key != nullptr &&
+                                 attention_past_value != nullptr && attention_present_key == nullptr &&
+                                 attention_present_value == nullptr;
     if constexpr (std::is_same_v<T, float>) {
       const bool use_flash = !disable_gqa_flash_ &&
                              is_unidirectional_ &&
@@ -673,7 +676,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                              !use_smooth_softmax_ &&
                              head_sink_data == nullptr &&
                              output_qk == nullptr &&
-                             attention_present_key != nullptr && attention_present_value != nullptr;
+                             ((attention_present_key != nullptr && attention_present_value != nullptr) || read_only_cache);
       if (use_flash) {
         return ApplyAttentionFlash(q_rotary, k_data, v_data,
                                    attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
