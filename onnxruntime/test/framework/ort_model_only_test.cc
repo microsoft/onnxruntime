@@ -258,7 +258,7 @@ TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
 
 TEST(OrtModelTest, RejectsInvalidSerializedEdges) {
   for (const bool input_edge : {false, true}) {
-    for (const auto [src_arg_index, dst_arg_index, error] : {
+    for (const auto& [src_arg_index, dst_arg_index, error] : {
              std::tuple{1, 0, "out-of-range src_arg_index"},
              std::tuple{0, 1, "out-of-range dst_arg_index"},
              std::tuple{INT_MAX, INT_MAX, "control edges are not supported"}}) {
