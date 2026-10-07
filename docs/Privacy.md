@@ -13,6 +13,10 @@ Telemetry is turned **ON** by default in the official builds ([see here](../READ
 ### Private Builds
 The build driver enables telemetry by default for supported native platforms. Targets without a supported provider and builds that disable C++ exceptions automatically exclude telemetry. For information on how to disable telemetry in other builds, see [Disabling Telemetry](#disabling-telemetry) below.
 
+Existing native Windows build scripts that pass `--use_telemetry` retain the
+historical TraceLogging backend, with a deprecation warning. New scripts can use
+`--use_windows_telemetry` explicitly. Application telemetry control APIs are unchanged.
+
 For direct CMake builds, `onnxruntime_USE_TELEMETRY=ON` with the default `AUTO`
 backend selects 1DS on supported native platforms, including Windows. Windows
 TraceLogging requires explicit `onnxruntime_TELEMETRY_BACKEND=WINDOWS` or

@@ -12,7 +12,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import textwrap
 import unittest
@@ -90,6 +89,8 @@ elseif(TARGET MSTelemetry::curl_dependency)
 endif()
 add_executable(consumer main.c)
 target_link_libraries(consumer PRIVATE onnxruntime::onnxruntime_common)
+enable_testing()
+add_test(NAME consumer COMMAND consumer)
 """
 
 
@@ -136,7 +137,6 @@ class TelemetryPackageTest(unittest.TestCase):
                 str(root),
                 "-B",
                 str(build),
-                *(["-G", "Visual Studio 18 2026", "-A", "x64"] if sys.platform == "win32" else []),
             )
             self._run("cmake", "--build", str(build), "--config", "Debug")
             self._run("ctest", "--test-dir", str(build), "-C", "Debug", "--output-on-failure")
@@ -283,7 +283,6 @@ class TelemetryPackageTest(unittest.TestCase):
                 f"-DDEP_URL_cpp_client_telemetry={url}",
                 f"-DDEP_SHA1_cpp_client_telemetry={sha1}",
                 f"-Dexpected_sdk_version={url.rsplit('/v', 1)[-1].removesuffix('.zip')}",
-                *(["-G", "Visual Studio 18 2026", "-A", "x64"] if sys.platform == "win32" else []),
             )
 
     def test_vcpkg_telemetry_feature_installs_transport_not_sdk(self):
@@ -354,8 +353,6 @@ class TelemetryPackageTest(unittest.TestCase):
                 ninja = shutil.which("ninja")
                 self.assertIsNotNone(ninja, "Ninja must be on PATH for the Android cross-link")
                 configure.append(f"-DCMAKE_MAKE_PROGRAM={ninja}")
-            elif sys.platform == "win32":
-                configure += ["-G", "Visual Studio 18 2026", "-A", "x64"]
 
             install = root / "install"
             self._run(
@@ -383,9 +380,7 @@ class TelemetryPackageTest(unittest.TestCase):
             )
             self._run("cmake", "--build", str(root / "consumer-build"), "--config", "Release")
             if not android:
-                executable = root / "consumer-build"
-                executable /= "Release/consumer.exe" if sys.platform == "win32" else "consumer"
-                self._run(str(executable))
+                self._run("ctest", "--test-dir", str(root / "consumer-build"), "-C", "Release", "--output-on-failure")
 
     def test_bundled_linux_static_install_and_consume(self):
         for preexisting_curl in (False, True):
