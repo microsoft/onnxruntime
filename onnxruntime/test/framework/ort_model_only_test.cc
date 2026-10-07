@@ -335,33 +335,44 @@ TEST(OrtModelTest, RejectsDanglingNodeEdge) {
 }
 
 TEST(OrtModelTest, ReconstructsMissingDataEdge) {
-  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
-        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
-        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
-        fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
-    std::vector<int32_t> input_arg_counts{1};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
-    auto make_node = [&](const char* name, uint32_t index, const char* input, const char* output) {
-      std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString(input)};
-      std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString(output)};
-      return fbs::CreateNodeDirect(builder, name, "", "", 1, index, "Identity",
-                                   fbs::NodeType::Primitive, nullptr,
-                                   &inputs, &outputs, nullptr,
-                                   &input_arg_counts, &empty_args);
-    };
-    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
-        make_node("n0", 0, "x", "y"), make_node("n1", 1, "y", "z")};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("x")};
-    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("z")};
-    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 2, nullptr,
-                                  &graph_inputs, &graph_outputs);
-  });
+  for (const bool implicit_input : {false, true}) {
+    SCOPED_TRACE(implicit_input);
+    const auto buffer = BuildOrtModelBuffer([implicit_input](flatbuffers::FlatBufferBuilder& builder) {
+      std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+          fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+          fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
+          fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
+      std::vector<int32_t> input_arg_counts{1};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+      std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{builder.CreateSharedString("x")};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("y")};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{
+          builder.CreateSharedString(implicit_input ? "x" : "y")};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("z")};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+      if (implicit_input) {
+        implicit_inputs.push_back(builder.CreateSharedString("y"));
+      }
+      std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+          fbs::CreateNodeDirect(builder, "n0", "", "", 1, 0, "Identity",
+                                fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
+                                nullptr, &input_arg_counts, &empty_args),
+          fbs::CreateNodeDirect(builder, "n1", "", "", 1, 1, "Identity",
+                                fbs::NodeType::Primitive, nullptr, &destination_inputs, &destination_outputs,
+                                nullptr, &input_arg_counts, &implicit_inputs)};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("x")};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("z")};
+      return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 2, nullptr,
+                                    &graph_inputs, &graph_outputs);
+    });
 
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(LoadOrtModel(buffer, model));
-  EXPECT_EQ(model->MainGraph().GetNode(0)->GetOutputEdgesCount(), 1);
-  EXPECT_EQ(model->MainGraph().GetNode(1)->GetInputEdgesCount(), 1);
+    std::unique_ptr<Model> model;
+    ASSERT_STATUS_OK(LoadOrtModel(buffer, model));
+    const auto* destination = model->MainGraph().GetNode(1);
+    ASSERT_NE(destination, nullptr);
+    ASSERT_EQ(destination->GetInputEdgesCount(), 1);
+    EXPECT_EQ(destination->InputEdgesBegin()->GetDstArgIndex(), implicit_input ? 1 : 0);
+  }
 }
 
 TEST(OrtModelTest, RejectsAdversarialLargeNodeIndex) {

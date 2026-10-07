@@ -7293,15 +7293,22 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
   for (auto& node : Nodes()) {
-    for (size_t input_idx = 0; input_idx < node.InputDefs().size(); ++input_idx) {
-      const auto* input = node.InputDefs()[input_idx];
+    const auto& explicit_inputs = node.InputDefs();
+    const auto& implicit_inputs = node.ImplicitInputDefs();
+    const size_t input_count = explicit_inputs.size() + implicit_inputs.size();
+    for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+      const auto* input = input_idx < explicit_inputs.size()
+                              ? explicit_inputs[input_idx]
+                              : implicit_inputs[input_idx - explicit_inputs.size()];
       if (input->Exists()) {
-        for (const auto& producer : Nodes()) {
+        for (auto& producer : Nodes()) {
           const auto& outputs = producer.OutputDefs();
           for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
             if (outputs[output_idx] == input) {
-              AddEdge(producer.Index(), node.Index(),
-                      static_cast<int>(output_idx), static_cast<int>(input_idx));
+              producer.relationships_.output_edges.emplace(
+                  node, static_cast<int>(output_idx), static_cast<int>(input_idx));
+              node.relationships_.input_edges.emplace(
+                  producer, static_cast<int>(output_idx), static_cast<int>(input_idx));
             }
           }
         }
@@ -7309,7 +7316,25 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     }
   }
 
-  ORT_RETURN_IF_ERROR(PerformTopologicalSortAndCheckIsAcyclic());
+  nodes_in_topological_order_.clear();
+  std::vector<size_t> in_degree(nodes_.size());
+  for (const auto& node : Nodes()) {
+    in_degree[node.Index()] = node.GetInputEdgesCount();
+    if (in_degree[node.Index()] == 0) {
+      nodes_in_topological_order_.push_back(node.Index());
+    }
+  }
+  for (size_t i = 0; i < nodes_in_topological_order_.size(); ++i) {
+    const auto* node = GetNode(nodes_in_topological_order_[i]);
+    for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
+      auto& degree = in_degree[edge->GetNode().Index()];
+      if (--degree == 0) {
+        nodes_in_topological_order_.push_back(edge->GetNode().Index());
+      }
+    }
+  }
+  ORT_RETURN_IF_NOT(nodes_in_topological_order_.size() == static_cast<size_t>(num_of_nodes_),
+                    "This is an invalid model. Error: the graph is not acyclic.");
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // populate NodeArg lookups after loading Nodes and NodeArgs

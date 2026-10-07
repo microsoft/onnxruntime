@@ -366,12 +366,17 @@ struct CustomGraph {
     }
 
     const auto has_control_edge = [](const Node& graph_node) {
-      return std::any_of(
-                 graph_node.InputEdgesBegin(), graph_node.InputEdgesEnd(),
-                 [](const auto& edge) { return edge.IsControlEdge(); }) ||
-             std::any_of(
-                 graph_node.OutputEdgesBegin(), graph_node.OutputEdgesEnd(),
-                 [](const auto& edge) { return edge.IsControlEdge(); });
+      for (auto edge = graph_node.InputEdgesBegin(); edge != graph_node.InputEdgesEnd(); ++edge) {
+        if (edge->IsControlEdge()) {
+          return true;
+        }
+      }
+      for (auto edge = graph_node.OutputEdgesBegin(); edge != graph_node.OutputEdgesEnd(); ++edge) {
+        if (edge->IsControlEdge()) {
+          return true;
+        }
+      }
+      return false;
     };
     if (has_control_edge(*q.node_ptr) ||
         std::any_of(dq_ptrs.begin(), dq_ptrs.end(), [&has_control_edge](const GraphNode* dq) {
