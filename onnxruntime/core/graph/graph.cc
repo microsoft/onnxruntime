@@ -908,7 +908,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
         if (fbs_edge == nullptr) {
-          return InvalidOrtFormatEdge("edge is missing");
+          return InvalidOrtFormatEdge("missing edge");
         }
         const auto edge_node_index = fbs_edge->node_index();
         const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
@@ -948,7 +948,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
                                      ? dst_node.InputDefs()[dst_arg_index]
                                      : dst_node.ImplicitInputDefs()[dst_arg_index - explicit_dst_arg_count];
         if (!src_arg->Exists() || !dst_arg->Exists()) {
-          return InvalidOrtFormatEdge("references a missing optional NodeArg");
+          return InvalidOrtFormatEdge("missing optional NodeArg");
         }
         if (src_arg != dst_arg) {
           return InvalidOrtFormatEdge("connects mismatched NodeArgs");
@@ -959,7 +959,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
               existing_edge.GetDstArgIndex() == dst_arg_index &&
               (existing_edge.GetNode().Index() != src_node.Index() ||
                existing_edge.GetSrcArgIndex() != src_arg_index)) {
-            return InvalidOrtFormatEdge("destination argument slot has multiple producers");
+            return InvalidOrtFormatEdge("slot has multiple producers");
           }
         }
 
