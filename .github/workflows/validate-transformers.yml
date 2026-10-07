@@ -1,0 +1,266 @@
+name: Transformers Model Requirements
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+    paths:
+      - 'onnxruntime/python/tools/transformers/models/llama/requirements.txt'
+      - 'onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/**'
+      - 'onnxruntime/python/tools/transformers/models/whisper/requirements.txt'
+      - '.github/workflows/transformers_model_requirements.yml'
+  pull_request:
+    branches:
+      - main
+      - rel-*
+    paths:
+      - 'onnxruntime/python/tools/transformers/models/llama/requirements.txt'
+      - 'onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/**'
+      - 'onnxruntime/python/tools/transformers/models/whisper/requirements.txt'
+      - '.github/workflows/transformers_model_requirements.yml'
+  workflow_dispatch:
+    inputs:
+      run_slow_tests:
+        description: 'Build ONNX Runtime and run the model slow tests'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  llama-requirements:
+    name: Validate Llama requirements
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')) && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-llama-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    timeout-minutes: 210
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: onnxruntime/python/tools/transformers/models/llama/requirements.txt
+
+      - name: Install Llama requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r onnxruntime/python/tools/transformers/models/llama/requirements.txt
+          python -m pip check
+
+      - name: Build CUDA container image
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        id: build_cuda_image
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ONNX Runtime
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        run: |
+          docker run --rm --gpus all \
+            --volume "$GITHUB_WORKSPACE:/onnxruntime_src" \
+            --workdir /onnxruntime_src \
+            "${{ steps.build_cuda_image.outputs.full-image-name }}" \
+            bash -lc '
+              export PATH=/opt/python/cp312-cp312/bin:$PATH
+              python tools/ci_build/build.py \
+                --build_dir build/Linux \
+                --config Release \
+                --update \
+                --build \
+                --build_wheel \
+                --parallel \
+                --skip_tests \
+                --use_cuda \
+                --nvcc_threads 4 \
+                --flash_nvcc_threads 4 \
+                --cuda_version=13.0 \
+                --cuda_home=/usr/local/cuda-13.0 \
+                --cudnn_home=/usr/local/cuda-13.0 \
+                --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+            '
+
+      - name: Run Llama tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        run: |
+          docker run --rm --gpus all \
+            --volume "$GITHUB_WORKSPACE:/onnxruntime_src" \
+            --workdir /onnxruntime_src \
+            "${{ steps.build_cuda_image.outputs.full-image-name }}" \
+            bash -lc '
+              export PATH=/opt/python/cp312-cp312/bin:$PATH
+              python -m pip install --upgrade pip
+              python -m pip install -r onnxruntime/python/tools/transformers/models/llama/requirements.txt
+              python -m pip install --force-reinstall --no-deps build/Linux/Release/dist/*.whl
+              python -m pip install pytest
+              python -m pytest --slow \
+                onnxruntime/test/python/transformers/test_parity_rotary_embedding.py \
+                onnxruntime/test/python/transformers/test_rotary_mha_fusion.py
+            '
+
+  stable-diffusion-requirements:
+    name: Validate Stable Diffusion requirements
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')) && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-stable-diffusion-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    timeout-minutes: 210
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/requirements.txt
+
+      - name: Install Stable Diffusion requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            -r onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/requirements.txt
+          python -m pip check
+
+      - name: Build CUDA container image
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        id: build_cuda_image
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ONNX Runtime
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        run: |
+          docker run --rm --gpus all \
+            --volume "$GITHUB_WORKSPACE:/onnxruntime_src" \
+            --workdir /onnxruntime_src \
+            "${{ steps.build_cuda_image.outputs.full-image-name }}" \
+            bash -lc '
+              export PATH=/opt/python/cp312-cp312/bin:$PATH
+              python tools/ci_build/build.py \
+                --build_dir build/Linux \
+                --config Release \
+                --update \
+                --build \
+                --build_wheel \
+                --parallel \
+                --skip_tests \
+                --use_cuda \
+                --nvcc_threads 4 \
+                --flash_nvcc_threads 4 \
+                --cuda_version=13.0 \
+                --cuda_home=/usr/local/cuda-13.0 \
+                --cudnn_home=/usr/local/cuda-13.0 \
+                --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+            '
+
+      - name: Run Stable Diffusion slow tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        run: |
+          docker run --rm --gpus all \
+            --volume "$GITHUB_WORKSPACE:/onnxruntime_src" \
+            --workdir /onnxruntime_src \
+            "${{ steps.build_cuda_image.outputs.full-image-name }}" \
+            bash -lc '
+              export PATH=/opt/python/cp312-cp312/bin:$PATH
+              python -m pip install --upgrade pip
+              python -m pip install \
+                -r onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/requirements.txt
+              python -m pip install --force-reinstall --no-deps build/Linux/Release/dist/*.whl
+              python -m pip install pytest
+              python -m pytest --slow \
+                onnxruntime/test/python/transformers/test_optimizer_stable_diffusion.py
+            '
+
+  whisper-requirements:
+    name: Validate Whisper requirements
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')) && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-whisper-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    timeout-minutes: 210
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: onnxruntime/python/tools/transformers/models/whisper/requirements.txt
+
+      - name: Install Whisper requirements
+        run: |
+          python -m pip install --upgrade pip 'setuptools<81' wheel
+          python -m pip install --no-build-isolation \
+            -r onnxruntime/python/tools/transformers/models/whisper/requirements.txt
+          python -m pip check
+
+      - name: Build CUDA container image
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        id: build_cuda_image
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ONNX Runtime
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        run: |
+          docker run --rm --gpus all \
+            --volume "$GITHUB_WORKSPACE:/onnxruntime_src" \
+            --workdir /onnxruntime_src \
+            "${{ steps.build_cuda_image.outputs.full-image-name }}" \
+            bash -lc '
+              export PATH=/opt/python/cp312-cp312/bin:$PATH
+              python tools/ci_build/build.py \
+                --build_dir build/Linux \
+                --config Release \
+                --update \
+                --build \
+                --build_wheel \
+                --parallel \
+                --skip_tests \
+                --use_cuda \
+                --nvcc_threads 4 \
+                --flash_nvcc_threads 4 \
+                --cuda_version=13.0 \
+                --cuda_home=/usr/local/cuda-13.0 \
+                --cudnn_home=/usr/local/cuda-13.0 \
+                --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+            '
+
+      - name: Run Whisper slow tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/10/7-validate-models')
+        run: |
+          docker run --rm --gpus all \
+            --volume "$GITHUB_WORKSPACE:/onnxruntime_src" \
+            --workdir /onnxruntime_src \
+            "${{ steps.build_cuda_image.outputs.full-image-name }}" \
+            bash -lc '
+              export PATH=/opt/python/cp312-cp312/bin:$PATH
+              python -m pip install --upgrade pip "setuptools<81" wheel
+              python -m pip install --no-build-isolation \
+                -r onnxruntime/python/tools/transformers/models/whisper/requirements.txt
+              python -m pip install --force-reinstall --no-deps build/Linux/Release/dist/*.whl
+              python -m pip install pytest
+              python -m pytest --slow \
+                onnxruntime/test/python/transformers/test_generation.py::TestBeamSearchWhisper \
+                onnxruntime/test/python/transformers/test_whisper_timestamp_processor.py
