@@ -286,7 +286,7 @@ Implemented for the built-in CUDA FP16 and BF16 `MoE` paths:
 - Test CPU-only, CUDA-only, and mixed expert execution, numerical agreement, counter updates, invalid configuration,
   and unchanged disabled-path behavior.
 
-Current limitations are deliberate: constant FC1/FC2 weights are required; FC3, sparse mixer, QMoE, BF16, FP32,
+Current limitations are deliberate: constant FC1/FC2 weights are required; FC3, sparse mixer, QMoE, FP32,
 minimal builds, CUDA graph capture, and the CUDA plugin EP are not supported by this first slice.
 Prepacking must remain enabled, the input hidden dimension must be statically known, and connected FC1/FC2 biases
 must also be constant.

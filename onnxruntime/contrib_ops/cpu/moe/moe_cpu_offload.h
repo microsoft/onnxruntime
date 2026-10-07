@@ -41,10 +41,16 @@ inline void RunMoeCpuOffloadHalfGemm(
     size_t M, size_t N, size_t K,
     const MLAS_HALF_GEMM_DATA_PARAMS& parameters,
     concurrency::ThreadPool* thread_pool) {
-#ifdef SHARED_PROVIDER
+#if defined(SHARED_PROVIDER) && !defined(ORT_MINIMAL_BUILD)
   g_host->MlasHalfGemmBatch__Run(M, N, K, 1, &parameters, thread_pool);
-#else
+#elif !defined(SHARED_PROVIDER)
   MlasHalfGemmBatch(M, N, K, 1, &parameters, thread_pool);
+#else
+  ORT_UNUSED_PARAMETER(M);
+  ORT_UNUSED_PARAMETER(N);
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(parameters);
+  ORT_UNUSED_PARAMETER(thread_pool);
 #endif
 }
 
@@ -52,10 +58,16 @@ inline void RunMoeCpuOffloadFloatGemm(
     size_t M, size_t N, size_t K,
     const MLAS_SGEMM_DATA_PARAMS& parameters,
     concurrency::ThreadPool* thread_pool) {
-#ifdef SHARED_PROVIDER
+#if defined(SHARED_PROVIDER) && !defined(ORT_MINIMAL_BUILD)
   g_host->MlasGemmBatch__Run(M, N, K, 1, &parameters, thread_pool);
-#else
+#elif !defined(SHARED_PROVIDER)
   MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, &parameters, 1, thread_pool, nullptr);
+#else
+  ORT_UNUSED_PARAMETER(M);
+  ORT_UNUSED_PARAMETER(N);
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(parameters);
+  ORT_UNUSED_PARAMETER(thread_pool);
 #endif
 }
 

@@ -4645,9 +4645,13 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsLegacyInterleavedSwiGLU) {
   }
 }
 
-TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsNonSquareLegacyWeightLayout) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+template <typename T>
+void RunMoECudaStaticCpuOffloadSupportsNonSquareLegacyWeightLayout() {
+  constexpr int min_cuda_arch = std::is_same_v<T, BFloat16> ? 800 : 700;
+  if (!HasCudaEnvironment(min_cuda_arch)) {
+    GTEST_SKIP() << "CUDA device with compute capability "
+                 << (min_cuda_arch / 100) << "." << ((min_cuda_arch % 100) / 10)
+                 << " or newer is required.";
   }
   auto execution_provider = DefaultCudaExecutionProvider();
   ASSERT_NE(execution_provider, nullptr);
@@ -4694,24 +4698,25 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsNonSquareLegacyWeightLayout) {
       tester.AddAttribute<int64_t>("k", 2);
       tester.AddAttribute<std::string>("activation_type", "relu");
       tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-      tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
-      tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
-                                 std::vector<MLFloat16>(num_rows * num_experts, MLFloat16(0.0f)));
+      tester.AddInput<T>("input", {num_rows, hidden_size}, ToMoeCpuOffloadType<T>(input));
+      tester.AddInput<T>("router_probs", {num_rows, num_experts},
+                         ToMoeCpuOffloadType<T>(
+                             std::vector<float>(num_rows * num_experts, 0.0f)));
       // Legacy dimensions differ from the physical column-major K x N layout consumed by CUTLASS.
-      tester.AddInput<MLFloat16>("fc1_experts_weights",
-                                 legacy_shape ? std::vector<int64_t>{num_experts, hidden_size, inter_size}
-                                              : std::vector<int64_t>{num_experts, inter_size, hidden_size},
-                                 ToFloat16(fc1_weights), true);
-      tester.AddOptionalInputEdge<MLFloat16>();
-      tester.AddInput<MLFloat16>("fc2_experts_weights",
-                                 legacy_shape ? std::vector<int64_t>{num_experts, inter_size, hidden_size}
-                                              : std::vector<int64_t>{num_experts, hidden_size, inter_size},
-                                 ToFloat16(fc2_weights), true);
-      tester.AddOptionalInputEdge<MLFloat16>();
-      tester.AddOptionalInputEdge<MLFloat16>();
-      tester.AddOptionalInputEdge<MLFloat16>();
-      tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
-      tester.SetOutputTolerance(0.01f);
+      tester.AddInput<T>("fc1_experts_weights",
+                         legacy_shape ? std::vector<int64_t>{num_experts, hidden_size, inter_size}
+                                      : std::vector<int64_t>{num_experts, inter_size, hidden_size},
+                         ToMoeCpuOffloadType<T>(fc1_weights), true);
+      tester.AddOptionalInputEdge<T>();
+      tester.AddInput<T>("fc2_experts_weights",
+                         legacy_shape ? std::vector<int64_t>{num_experts, inter_size, hidden_size}
+                                      : std::vector<int64_t>{num_experts, hidden_size, inter_size},
+                         ToMoeCpuOffloadType<T>(fc2_weights), true);
+      tester.AddOptionalInputEdge<T>();
+      tester.AddOptionalInputEdge<T>();
+      tester.AddOptionalInputEdge<T>();
+      tester.AddOutput<T>("output", {num_rows, hidden_size}, ToMoeCpuOffloadType<T>(expected));
+      tester.SetOutputTolerance(std::is_same_v<T, BFloat16> ? 0.02f : 0.01f);
 
       SessionOptions options;
       ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
@@ -4722,6 +4727,14 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsNonSquareLegacyWeightLayout) {
       tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
     }
   }
+}
+
+TEST(MoETest, MoECudaFp16StaticCpuOffloadSupportsNonSquareLegacyWeightLayout) {
+  RunMoECudaStaticCpuOffloadSupportsNonSquareLegacyWeightLayout<MLFloat16>();
+}
+
+TEST(MoETest, MoECudaBf16StaticCpuOffloadSupportsNonSquareLegacyWeightLayout) {
+  RunMoECudaStaticCpuOffloadSupportsNonSquareLegacyWeightLayout<BFloat16>();
 }
 
 TEST(MoETest, MoECudaFp16ConstantFc3RunsWithoutCpuOffload) {

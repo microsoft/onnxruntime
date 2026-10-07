@@ -43,9 +43,11 @@ class ExternalDataInfo;
 class PhiloxGenerator;
 using ProviderType = const std::string&;
 class RandomGenerator;
+#if !defined(ORT_MINIMAL_BUILD)
 namespace concurrency {
 class ThreadPool;
 }
+#endif
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
 class KernelPilot;
@@ -1458,6 +1460,7 @@ struct ProviderHost {
   // Kernel pilot support — appended at end to preserve vtable ABI compatibility.
   virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
 
+#if !defined(ORT_MINIMAL_BUILD)
   virtual void MlasHalfGemmBatch__Run(
       size_t M, size_t N, size_t K, size_t batch_size,
       const void* data, concurrency::ThreadPool* thread_pool) = 0;
@@ -1467,6 +1470,7 @@ struct ProviderHost {
   virtual void MlasGemmBatch__Run(
       size_t M, size_t N, size_t K, size_t batch_size,
       const void* data, concurrency::ThreadPool* thread_pool) = 0;
+#endif
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
