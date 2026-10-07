@@ -102,7 +102,7 @@ class IExternalDataLoader {
   // Tensor should be allocated with the correct memory info and size. A loader that
   // creates tensors for the target device replaces it with one backed by memory
   // owned through allocator.
-#if defined(ENABLE_D3D12_FILE_LOADING) || defined(__wasm__)
+#if defined(ENABLE_D3D12_FILE_LOADING)
   virtual common::Status LoadTensor([[maybe_unused]] const Env& env,
                                     [[maybe_unused]] const std::filesystem::path& data_file_path,
                                     [[maybe_unused]] std::string_view tensor_name,

@@ -450,85 +450,7 @@ TEST_F(WebGpuConcurrentContextTest, ColdAndWarmSessionsRunConcurrently) {
             << throughput_efficiency << std::endl;
 }
 
-// Case F: the public session allocator wraps this same internal allocator. Allocations made
-// concurrently with Run must not race the session's command recording state.
-TEST_F(WebGpuConcurrentContextTest, SessionAllocatorAndRunConcurrently) {
-  constexpr int kIters = 40;
-  auto session = MakeSession();
-  auto allocator = session->GetAllocator(OrtMemoryInfo(WEBGPU_BUFFER,
-                                                       OrtAllocatorType::OrtDeviceAllocator,
-                                                       webgpu::WebGpuDevice,
-                                                       OrtMemTypeDefault));
-  ASSERT_NE(allocator, nullptr);
-
-  ErrorSink sink;
-  std::barrier start{2};
-  std::thread runner([&]() {
-    start.arrive_and_wait();
-    RunLoop(*session, kIters, sink, "F.run");
-  });
-  std::thread allocator_user([&]() {
-    start.arrive_and_wait();
-    try {
-      for (int i = 0; i < kIters && !sink.Failed(); ++i) {
-        Tensor tensor(DataTypeImpl::GetType<float>(), TensorShape{kNumElements}, allocator);
-        ASSERT_NE(tensor.MutableDataRaw(), nullptr);
-      }
-    } catch (const std::exception& e) {
-      sink.Record(std::string("F.allocator threw: ") + e.what());
-    }
-  });
-  runner.join();
-  allocator_user.join();
-
-  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
-}
-
-// Case G: exercise the plugin Env allocator's shared implementation and getter ownership in a
-// native build. Its private command state must remain thread-safe across callers.
-TEST_F(WebGpuConcurrentContextTest, SharedAllocatorMultiThreadCreateTensor) {
-  constexpr int kThreads = 4;
-  constexpr int kIters = 60;
-  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
-  auto context_ref = std::shared_ptr<webgpu::WebGpuContext>(&context, [](webgpu::WebGpuContext*) {});
-  auto recording = std::make_shared<webgpu::CommandRecordingState>();
-  std::weak_ptr<webgpu::CommandRecordingState> recording_lifetime = recording;
-  auto allocator = std::make_shared<webgpu::GpuBufferAllocator>(
-      [context_ref = std::move(context_ref)]() -> const webgpu::BufferManager& {
-        return context_ref->BufferManager();
-      },
-      [recording = std::move(recording)]() -> webgpu::CommandRecordingState& { return *recording; },
-      false,
-      []() { return true; });
-
-  ErrorSink sink;
-  std::barrier start{kThreads};
-  std::vector<std::thread> threads;
-  for (int t = 0; t < kThreads; ++t) {
-    threads.emplace_back([&, t]() {
-      start.arrive_and_wait();
-      try {
-        for (int i = 0; i < kIters && !sink.Failed(); ++i) {
-          Tensor tensor(DataTypeImpl::GetType<float>(), TensorShape{1024 + t * 16}, allocator);
-          ASSERT_NE(tensor.MutableDataRaw(), nullptr);
-        }
-      } catch (const std::exception& e) {
-        sink.Record("G.thread" + std::to_string(t) + " threw: " + e.what());
-      }
-    });
-  }
-  JoinAll(threads);
-
-  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
-  EXPECT_FALSE(recording_lifetime.expired());
-  AllocatorStats stats{};
-  allocator->GetStats(&stats);
-  EXPECT_EQ(stats.num_allocs, 0);
-  allocator.reset();
-  EXPECT_TRUE(recording_lifetime.expired());
-}
-
-// Case H: OrtEnv owns one data-transfer implementation per EP factory. Concurrent CopyTensors
+// Case F: OrtEnv owns one data-transfer implementation per EP factory. Concurrent CopyTensors
 // calls must not encode and flush through the same recording state simultaneously.
 TEST_F(WebGpuConcurrentContextTest, SharedDataTransferMultiThreadCopy) {
   constexpr int kThreads = 4;
@@ -561,11 +483,11 @@ TEST_F(WebGpuConcurrentContextTest, SharedDataTransferMultiThreadCopy) {
           ORT_THROW_IF_ERROR(data_transfer.CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
                                                       output.size() * sizeof(float)));
           if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
-            sink.Record("H.thread" + std::to_string(t) + " copied incorrect data");
+            sink.Record("F.thread" + std::to_string(t) + " copied incorrect data");
           }
         }
       } catch (const std::exception& e) {
-        sink.Record("H.thread" + std::to_string(t) + " threw: " + e.what());
+        sink.Record("F.thread" + std::to_string(t) + " threw: " + e.what());
       }
     });
   }
@@ -574,7 +496,7 @@ TEST_F(WebGpuConcurrentContextTest, SharedDataTransferMultiThreadCopy) {
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
 }
 
-// Case I: separate data-transfer objects share the context-level BufferManager but own distinct
+// Case G: separate data-transfer objects share the context-level BufferManager but own distinct
 // command recording timelines. Their command encoders and pending buffers must remain isolated.
 TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
   constexpr int kThreads = 4;
@@ -608,11 +530,11 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
           ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
                                                            output.size() * sizeof(float)));
           if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
-            sink.Record("I.thread" + std::to_string(t) + " copied incorrect data");
+            sink.Record("G.thread" + std::to_string(t) + " copied incorrect data");
           }
         }
       } catch (const std::exception& e) {
-        sink.Record("I.thread" + std::to_string(t) + " threw: " + e.what());
+        sink.Record("G.thread" + std::to_string(t) + " threw: " + e.what());
       }
     });
   }

@@ -116,13 +116,13 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
-// Serializes callers that share a command recording timeline, including Run, public
-// allocator use, data transfer, and graph capture operations.
+// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
+// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
+// releases from concurrent allocator callers separately from command recording.
 struct CommandRecordingState {
   CommandRecordingState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
 
-  std::recursive_mutex mutex;
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;

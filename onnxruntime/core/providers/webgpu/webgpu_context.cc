@@ -632,7 +632,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   CommandRecordingState& recording = ComputeContextBase::BufferManagerAccessor::GetRecording(context);
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
 
   // validate inputs and outputs are on WebGPU buffers
   if (ValidationMode() >= ValidationMode::Basic) {
@@ -1391,7 +1390,6 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
 
 Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
                             CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   // Graph runs and prepacking can release allocator/uniform buffers into the shared manager.
   // Retire this recording in both managers, keeping graph cache policy local to the active one.
   const auto refresh_pending_buffers = [&]() {
@@ -1539,7 +1537,6 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
                                  const webgpu::BufferManager& buffer_manager,
                                  CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
   ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
@@ -1556,7 +1553,6 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
                            const webgpu::BufferManager& buffer_manager,
                            CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   recording.graph_capture_state = GraphCaptureState::Replaying;
   // Replay all captured commands from the provided vector
@@ -1587,7 +1583,6 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
 }
 
 void WebGpuContext::CaptureEnd(CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
 
   recording.graph_capture_state = GraphCaptureState::Default;
