@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -51,10 +52,14 @@ def find_7z_executable():
 SEVEN_ZIP_EXE = find_7z_executable()
 
 
-def add_file_to_archive(archive_path: Path, file_to_add: Path, description: str):
-    """Appends a single file to a zip archive (JAR file) using 7z."""
+def add_file_to_archive(archive_path: Path, file_to_add: Path, description: str, archive_name: str | None = None):
+    """Appends a single file to a zip archive (JAR file)."""
     print(f"  -> {description}...")
     try:
+        if archive_name:
+            with zipfile.ZipFile(archive_path, "a") as archive:
+                archive.write(file_to_add, archive_name)
+            return
         if not SEVEN_ZIP_EXE:
             raise FileNotFoundError
         # Run 7z from the file's parent directory to ensure a clean archive path.
@@ -151,6 +156,7 @@ def process_platform_archive(
     custom_lib_file: str,
     archive_custom_lib: bool,
     test_lib_file: str,
+    test_lib_archive_path: str = "",
 ):
     """Processes a single platform directory, adding only the 'ai' subdirectory to the main JAR."""
     print(f"Processing platform: {platform_path}...")
@@ -172,7 +178,12 @@ def process_platform_archive(
     #     onnxruntime_BUILD_UNIT_TESTS is ON, so its absence is a warning rather than a fatal error.
     test_lib_full_path = platform_path / test_lib_file
     if test_lib_file and test_lib_full_path.is_file():
-        add_file_to_archive(test_archive_file, test_lib_full_path, f"Archiving '{test_lib_file}' to test JAR")
+        add_file_to_archive(
+            test_archive_file,
+            test_lib_full_path,
+            f"Archiving '{test_lib_file}' to test JAR",
+            test_lib_archive_path or None,
+        )
         print(f"  -> Removing '{test_lib_file}' from source directory...")
         test_lib_full_path.unlink()
     elif test_lib_file:
@@ -252,6 +263,8 @@ def run_packaging(package_type: str, build_dir: str):
                     "lib": "libcustom_op_library.so",
                     "archive_lib": False,
                     "test_lib": "libonnxruntime4j_jni_test.so",
+                    # Keep this separate from the x64 helper, which has the same basename.
+                    "test_lib_archive_path": "linux-aarch64/libonnxruntime4j_jni_test.so",
                 },
                 {
                     "path": "onnxruntime-java-osx-arm64",
@@ -300,6 +313,7 @@ def run_packaging(package_type: str, build_dir: str):
             custom_lib_file=platform["lib"],
             archive_custom_lib=platform["archive_lib"],
             test_lib_file=platform.get("test_lib", ""),
+            test_lib_archive_path=platform.get("test_lib_archive_path", ""),
         )
 
     print("\nScript completed successfully.")

@@ -16,7 +16,8 @@ public class EpContextDataCallbackTest {
   @BeforeAll
   public static void loadTestLibrary() throws IOException {
     OnnxRuntime.init();
-    String libName = "/" + System.mapLibraryName("onnxruntime4j_jni_test");
+    String libraryPath = "aarch64".equals(System.getProperty("os.arch")) ? "/linux-aarch64/" : "/";
+    String libName = libraryPath + System.mapLibraryName("onnxruntime4j_jni_test");
     Assumptions.assumeTrue(
         EpContextDataCallbackTest.class.getResource(libName) != null,
         "The native test library '"
