@@ -1105,6 +1105,19 @@ the raw kernel, so profiling them only adds synchronization and repeated work. W
 
 ### 9b.3 Fast E2M1 → half/bf16 decode
 
+For native K-packed NVFP4 verification, `ORT_NVFP4_FC1_EXPERT_REUSE=1` enables
+experimental two-row FC1 weight and scale reuse. Set it before the first GEMV
+invocation; it is read once per launcher specialization. The dispatch is limited
+to fused SwiGLU with 1280 output columns, reduction size 2560, at least 40 expanded
+rows, and available sorted expert routing maps. Within that path, only expert
+groups with at least four rows reuse a decoded tile; other groups compute rows
+individually. Stored FP4 codes/scales and activation-dtype rounding are unchanged.
+
+The default is `0`: local A100 tests improved repeated-expert groups but regressed
+sparse expert distributions. Enable it only after measuring the target model's
+expert overlap and end-to-end latency on the target GPU. It does not enable native
+FP4 tensor-core computation or dequantize the checkpoint into a dense weight bank.
+
 Profiling the NVFP4 decode GEMV on H200 (SM90) at the Qwen shapes showed the FC1/FC2 kernels are
 **ALU-pipeline bound** (ncu: ALU ≈ 79%, DRAM ≈ 7%), i.e. the per-element FP4 dequantization — not
 memory or tiling — dominates. The original `Fp4I2FConverter::decode` used a `float` lookup table,

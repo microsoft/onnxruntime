@@ -543,6 +543,108 @@ __global__ void QsaScoreTileTopKKernel(const T* present_key_state, const float* 
   }
 }
 
+template <typename T>
+__global__ void QsaPairedScoreTileTopKKernel(const T* present_key_state, const float* query_rotated,
+                                             const int32_t* cumulative_sequence_lengths,
+                                             const int32_t* past_sequence_lengths, const int64_t* position_ids,
+                                             const int32_t* present_state_lengths, const int32_t* overflow_flags,
+                                             uint64_t* tile_keys, int tile_count,
+                                             PackedSparseAttentionIndexerParams params) {
+  __shared__ uint64_t keys[2][kHierarchicalTileBlocks];
+  __shared__ int block_counts[2];
+  const int first_token = static_cast<int>(blockIdx.y) * 2;
+  const int warp = static_cast<int>(threadIdx.x) / kWarpSize;
+  const int lane = static_cast<int>(threadIdx.x) % kWarpSize;
+  if (threadIdx.x < 2) {
+    const int metadata_token = first_token + static_cast<int>(threadIdx.x);
+    int count = 0;
+    if (metadata_token < params.total_tokens && overflow_flags[0] == 0) {
+      const int64_t position = params.has_position_ids ? position_ids[metadata_token]
+                                                       : static_cast<int64_t>(past_sequence_lengths[0]) + metadata_token;
+      const int64_t causal = SaiCausalThreshold(position, kQwenCompressRatio);
+      const int64_t visible = min(causal, static_cast<int64_t>(present_state_lengths[psai::kKeyStateLength]));
+      count = static_cast<int>(max(static_cast<int64_t>(0), visible));
+    }
+    block_counts[threadIdx.x] = count;
+  }
+  __syncthreads();
+  float4 query_values[2][kQwenNumHeads];
+#pragma unroll
+  for (int query_index = 0; query_index < 2; ++query_index) {
+#pragma unroll
+    for (int head = 0; head < kQwenNumHeads; ++head) {
+      const int token = first_token + query_index;
+      query_values[query_index][head] = token < params.total_tokens
+                                            ? LoadQsaVector4(query_rotated + (static_cast<int64_t>(token) * kQwenNumHeads + head) * kQwenHeadSize + lane * 4)
+                                            : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+  }
+  const int key_stride = tile_count * kHierarchicalTileBlocks;
+  for (int query_index = 0; query_index < 2; ++query_index) {
+    if (first_token + query_index < params.total_tokens) {
+      const int active = (block_counts[query_index] + kHierarchicalTileBlocks - 1) / kHierarchicalTileBlocks;
+      const int64_t row_base = static_cast<int64_t>(first_token + query_index) * key_stride;
+      for (int index = active * kHierarchicalTileBlocks + blockIdx.x * blockDim.x + threadIdx.x;
+           index < key_stride; index += gridDim.x * blockDim.x) {
+        tile_keys[row_base + index] = topk::kPaddingSortKey;
+      }
+    }
+  }
+  const int visible = max(block_counts[0], block_counts[1]);
+  const int active_tiles = (visible + kHierarchicalTileBlocks - 1) / kHierarchicalTileBlocks;
+  for (int tile = static_cast<int>(blockIdx.x); tile < active_tiles; tile += static_cast<int>(gridDim.x)) {
+    const int block = tile * kHierarchicalTileBlocks + warp;
+    const float4 key_value = block < visible
+                                 ? LoadQsaVector4(present_key_state + static_cast<int64_t>(block) * kQwenHeadSize + lane * 4)
+                                 : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+#pragma unroll
+    for (int query_index = 0; query_index < 2; ++query_index) {
+      float total = 0.0f;
+#pragma unroll
+      for (int head = 0; head < kQwenNumHeads; ++head) {
+        const float4 query_value = query_values[query_index][head];
+        float score = query_value.x * key_value.x + query_value.y * key_value.y +
+                      query_value.z * key_value.z + query_value.w * key_value.w;
+        score = topk::WarpReduceSum(score);
+        total += fmaxf(score, 0.0f);
+      }
+      uint64_t key = topk::kPaddingSortKey;
+      if (block < block_counts[query_index]) {
+        const float scaled = total * params.scale;
+        key = topk::PackStableSortKey(scaled == 0.0f ? 0.0f : scaled, block);
+      }
+      if (lane == 0) {
+        keys[query_index][warp] = key;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < 2) {
+      const int query_index = static_cast<int>(threadIdx.x);
+      for (int index = 1; index < kHierarchicalTileBlocks; ++index) {
+        const uint64_t key = keys[query_index][index];
+        int insertion = index;
+        while (insertion > 0 && key > keys[query_index][insertion - 1]) {
+          keys[query_index][insertion] = keys[query_index][insertion - 1];
+          --insertion;
+        }
+        keys[query_index][insertion] = key;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < 2 * kHierarchicalTileBlocks) {
+      const int query_index = static_cast<int>(threadIdx.x) / kHierarchicalTileBlocks;
+      const int slot = static_cast<int>(threadIdx.x) % kHierarchicalTileBlocks;
+      if (first_token + query_index < params.total_tokens &&
+          tile * kHierarchicalTileBlocks < block_counts[query_index]) {
+        const int64_t output_base = static_cast<int64_t>(first_token + query_index) * key_stride +
+                                    tile * kHierarchicalTileBlocks;
+        tile_keys[output_base + slot] = keys[query_index][slot];
+      }
+    }
+    __syncthreads();
+  }
+}
+
 __device__ __forceinline__ uint64_t QsaMergeRank(const uint64_t* left, int left_count,
                                                  const uint64_t* right, int right_count, int rank) {
   int low = max(0, rank - right_count);
@@ -561,6 +663,47 @@ __device__ __forceinline__ uint64_t QsaMergeRank(const uint64_t* left, int left_
     }
   }
   return topk::kPaddingSortKey;
+}
+
+__global__ void QsaCompactTileTopKKernel(const uint64_t* input_keys, uint64_t* output_keys,
+                                         int input_stride, int output_stride) {
+  constexpr int kChunkSize = 2048;
+  static_assert(kChunkSize % kHierarchicalTileBlocks == 0);
+  __shared__ uint64_t shared_keys[2][kChunkSize];
+  const int chunk_start = static_cast<int>(blockIdx.x) * kChunkSize;
+  const int64_t input_base = static_cast<int64_t>(blockIdx.y) * input_stride + chunk_start;
+  const int64_t output_base = static_cast<int64_t>(blockIdx.y) * output_stride +
+                              static_cast<int>(blockIdx.x) * kBoundedTopKMax;
+  if (input_keys[input_base] == topk::kPaddingSortKey) {
+    for (int rank = threadIdx.x; rank < kBoundedTopKMax; rank += blockDim.x) {
+      output_keys[output_base + rank] = topk::kPaddingSortKey;
+    }
+    return;
+  }
+  for (int index = threadIdx.x; index < kChunkSize; index += blockDim.x) {
+    shared_keys[0][index] = chunk_start + index < input_stride
+                                ? input_keys[input_base + index]
+                                : topk::kPaddingSortKey;
+  }
+  __syncthreads();
+  int input_bank = 0;
+  for (int width = kHierarchicalTileBlocks; width < kChunkSize; width *= 2) {
+    const int count = min(width, kBoundedTopKMax);
+    const int output_count = min(count * 2, kBoundedTopKMax);
+    const int pairs = kChunkSize / (width * 2);
+    for (int index = threadIdx.x; index < pairs * output_count; index += blockDim.x) {
+      const int pair_start = (index / output_count) * width * 2;
+      const int rank = index % output_count;
+      shared_keys[1 - input_bank][pair_start + rank] =
+          QsaMergeRank(shared_keys[input_bank] + pair_start, count,
+                       shared_keys[input_bank] + pair_start + width, count, rank);
+    }
+    __syncthreads();
+    input_bank = 1 - input_bank;
+  }
+  for (int rank = threadIdx.x; rank < kBoundedTopKMax; rank += blockDim.x) {
+    output_keys[output_base + rank] = shared_keys[input_bank][rank];
+  }
 }
 
 __global__ void QsaMergeTileTopKKernel(const uint64_t* input_keys, uint64_t* output_keys,
@@ -1297,22 +1440,41 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const size_t key_count = static_cast<size_t>(params.total_tokens) * key_stride;
     uint64_t* merge_input = reinterpret_cast<uint64_t*>(selection_workspace);
     uint64_t* merge_output = merge_input + key_count;
-    const dim3 score_grid(static_cast<unsigned>(std::min(tile_count, 128)),
-                          static_cast<unsigned>(params.total_tokens));
-    QsaScoreTileTopKKernel<T><<<score_grid, kHierarchicalScoreThreads, 0, stream>>>(
-        present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
-        present_state_lengths, overflow_flags, merge_input, tile_count, params);
-    for (int list_width = kHierarchicalTileBlocks; list_width < key_stride; list_width *= 2) {
-      const int pairs_per_row = (key_stride + 2 * list_width - 1) / (2 * list_width);
+    if (params.batch_size == 1 && params.total_tokens >= 4) {
+      const dim3 score_grid(static_cast<unsigned>(std::min(tile_count, 128)),
+                            static_cast<unsigned>((params.total_tokens + 1) / 2));
+      QsaPairedScoreTileTopKKernel<T><<<score_grid, kHierarchicalMergeThreads, 0, stream>>>(
+          present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
+          present_state_lengths, overflow_flags, merge_input, tile_count, params);
+    } else {
+      const dim3 score_grid(static_cast<unsigned>(std::min(tile_count, 128)),
+                            static_cast<unsigned>(params.total_tokens));
+      QsaScoreTileTopKKernel<T><<<score_grid, kHierarchicalScoreThreads, 0, stream>>>(
+          present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
+          present_state_lengths, overflow_flags, merge_input, tile_count, params);
+    }
+    int compact_stride = key_stride;
+    int first_list_width = kHierarchicalTileBlocks;
+    if (params.total_tokens >= 4) {
+      const int chunks = (key_stride + 2047) / 2048;
+      compact_stride = chunks * kBoundedTopKMax;
+      QsaCompactTileTopKKernel<<<dim3(static_cast<unsigned>(chunks), static_cast<unsigned>(params.total_tokens)),
+                                 kHierarchicalMergeThreads, 0, stream>>>(
+          merge_input, merge_output, key_stride, compact_stride);
+      std::swap(merge_input, merge_output);
+      first_list_width = kBoundedTopKMax;
+    }
+    for (int list_width = first_list_width; list_width < compact_stride; list_width *= 2) {
+      const int pairs_per_row = (compact_stride + 2 * list_width - 1) / (2 * list_width);
       const int64_t merge_work = static_cast<int64_t>(params.total_tokens) * pairs_per_row;
       QsaMergeTileTopKKernel<<<static_cast<int>(std::min<int64_t>(merge_work, kSaiMaxGridDimX)),
                                kHierarchicalMergeThreads, 0, stream>>>(
-          merge_input, merge_output, key_stride, list_width, params.total_tokens);
+          merge_input, merge_output, compact_stride, list_width, params.total_tokens);
       std::swap(merge_input, merge_output);
     }
     QsaEmitHierarchicalTopKKernel<<<token_blocks, kThreads, 0, stream>>>(
         merge_input, cumulative_sequence_lengths, past_sequence_lengths, position_ids, present_state_lengths,
-        overflow_flags, key_stride, selected_indices, selected_counts, params);
+        overflow_flags, compact_stride, selected_indices, selected_counts, params);
   } else if (use_ragged_prefill) {
     QsaRaggedPrefillScoreKernel<T><<<token_blocks, kHierarchicalScoreThreads, 0, stream>>>(
         present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
