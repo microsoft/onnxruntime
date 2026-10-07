@@ -417,10 +417,6 @@ void OneDsTelemetry::Initialize() {
   config[CFG_BOOL_ENABLE_TRACE] = false;
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;
-#if defined(_WIN32)
-  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
-  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
-#endif
 #if defined(__APPLE__)
   // System SQLite is shared with other libraries; let it manage its own lifetime.
   config["skipSqliteInitAndShutdown"] = "true";

@@ -103,13 +103,8 @@
       "dependencies": []
     },
     "telemetry": {
-      "description": "Build with static 1DS telemetry support (curl/mbedTLS on Linux)",
+      "description": "Supply curl/mbedTLS transport for the source-built 1DS SDK on Linux",
       "dependencies": [
-        {
-          "name": "cpp-client-telemetry",
-          "platform": "!android & !emscripten & !uwp",
-          "version>=": "3.10.240.1"
-        },
         {
           "name": "curl",
           "default-features": false,

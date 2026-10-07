@@ -34,4 +34,8 @@ Telemetry can be disabled in any of these ways:
 - **Disable all 1DS telemetry at runtime.** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. On all builds with 1DS telemetry, this prevents the uploader, events, and persistent device identifier from being created for the process lifetime. The legacy Windows TraceLogging backend does not use this environment variable.
 - **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
 
-Telemetry-enabled static Linux builds depend on static curl and mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built packages resolve them through vcpkg. Shared ORT libraries use a public-symbol allowlist, so embedded telemetry dependencies such as curl are not exported.
+All 1DS builds use the pinned GitHub SDK source, including builds that use vcpkg for
+other dependencies. Telemetry-enabled static Linux builds depend on static curl and
+mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built
+packages resolve these transport dependencies through vcpkg. Shared ORT libraries use
+a public-symbol allowlist, so embedded telemetry dependencies such as curl are not exported.

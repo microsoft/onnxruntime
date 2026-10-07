@@ -6,11 +6,6 @@ if(NOT onnxruntime_USE_1DS_TELEMETRY OR onnxruntime_BUILD_SHARED_LIB)
   return()
 endif()
 
-if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
-  string(APPEND PROJECT_CONFIG_CONTENT "find_dependency(MSTelemetry CONFIG)\n")
-  return()
-endif()
-
 if(APPLE)
   string(APPEND PROJECT_CONFIG_CONTENT
     "if(NOT TARGET MSTelemetry::sqlite_dependency)\n\

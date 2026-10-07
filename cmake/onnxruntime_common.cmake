@@ -287,13 +287,7 @@ endif()
 
 # Link the default 1DS telemetry backend.
 if(onnxruntime_USE_1DS_TELEMETRY)
-  if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
-    # The vcpkg package target propagates its include
-    # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
-    # manual include paths or system libraries are required here.
-    target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
-  elseif(TARGET mat)
+  if(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.
@@ -366,7 +360,7 @@ if(onnxruntime_USE_1DS_TELEMETRY)
       endforeach()
     endif()
   else()
-    message(FATAL_ERROR "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
+    message(FATAL_ERROR "Telemetry enabled but the pinned 1DS SDK target ('mat') was not found")
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Every supported Linux telemetry path uses static curl/mbedTLS. Select a readable CA bundle

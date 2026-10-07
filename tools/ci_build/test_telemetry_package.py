@@ -8,6 +8,7 @@ The fixture isolates ORT's package configuration from unrelated dependencies. An
 uses the NDK when ANDROID_NDK_HOME is set; host builds exercise the Linux export graph.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -41,7 +42,6 @@ if(TEST_PLATFORM STREQUAL "Linux")
 endif()
 set(onnxruntime_USE_1DS_TELEMETRY ON)
 set(onnxruntime_BUILD_SHARED_LIB OFF)
-set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE OFF)
 set(PROJECT_CONFIG_CONTENT "include(CMakeFindDependencyMacro)\\n")
 # Select the package dependency graph without changing the host compiler/toolchain.
 function(append_telemetry_config)
@@ -94,6 +94,97 @@ target_link_libraries(consumer PRIVATE onnxruntime::onnxruntime_common)
 
 
 class TelemetryPackageTest(unittest.TestCase):
+    def test_source_sdk_selection_with_and_without_vcpkg(self):
+        external = (_ROOT / "cmake" / "external" / "onnxruntime_external_deps.cmake").read_text(encoding="utf-8")
+        telemetry = external[external.index("# 1DS SDK (cpp_client_telemetry)") :]
+        telemetry = telemetry[: telemetry.index("FILE(TO_NATIVE_PATH")]
+        dependency = next(
+            line
+            for line in (_ROOT / "cmake" / "deps.txt").read_text(encoding="utf-8").splitlines()
+            if line.startswith("cpp_client_telemetry;")
+        )
+        _, url, sha1 = dependency.split(";")
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-source-") as temporary:
+            root = Path(temporary)
+            (root / "telemetry.cmake").write_text(telemetry, encoding="utf-8")
+            (root / "mat.c").write_text("int mat_value(void) { return 42; }\n", encoding="utf-8")
+            (root / "CMakeLists.txt").write_text(
+                textwrap.dedent(
+                    """
+                    cmake_minimum_required(VERSION 3.28)
+                    project(telemetry_source C)
+                    add_library(mat STATIC mat.c)
+                    function(onnxruntime_fetchcontent_declare name)
+                      cmake_parse_arguments(SDK "" "URL;URL_HASH" "" ${ARGN})
+                      if(NOT name STREQUAL "cpp_client_telemetry" OR
+                         NOT SDK_URL STREQUAL DEP_URL_cpp_client_telemetry OR
+                         NOT SDK_URL_HASH STREQUAL "SHA1=${DEP_SHA1_cpp_client_telemetry}")
+                        message(FATAL_ERROR "The SDK must use the verified GitHub source pin")
+                      endif()
+                    endfunction()
+                    macro(onnxruntime_fetchcontent_makeavailable name)
+                      if(BUILD_SHARED_LIBS)
+                        message(FATAL_ERROR "The source SDK must be embedded as a static library")
+                      endif()
+                      if(NOT BUILD_VERSION STREQUAL expected_sdk_version)
+                        message(FATAL_ERROR "SDK version metadata must match the source pin")
+                      endif()
+                      set_property(GLOBAL PROPERTY sdk_source_selected TRUE)
+                    endmacro()
+                    function(check_source platform use_vcpkg expected_curl)
+                      set(onnxruntime_USE_1DS_TELEMETRY ON)
+                      set(onnxruntime_BUILD_SHARED_LIB ON)
+                      set(BUILD_SHARED_LIBS ON)
+                      set(BUILD_VERSION caller-version)
+                      set(onnxruntime_USE_VCPKG "${use_vcpkg}")
+                      set(CMAKE_SYSTEM_NAME "${platform}")
+                      set(WIN32 FALSE)
+                      set(APPLE FALSE)
+                      set(ANDROID FALSE)
+                      set_property(GLOBAL PROPERTY sdk_source_selected FALSE)
+                      if(platform STREQUAL "Windows")
+                        set(WIN32 TRUE)
+                      elseif(platform STREQUAL "Darwin")
+                        set(APPLE TRUE)
+                      endif()
+                      include("${CMAKE_CURRENT_SOURCE_DIR}/telemetry.cmake")
+                      get_property(sdk_source_selected GLOBAL PROPERTY sdk_source_selected)
+                      if(NOT sdk_source_selected OR NOT BUILD_SHARED_LIBS OR
+                         NOT BUILD_VERSION STREQUAL "caller-version")
+                        message(FATAL_ERROR "SDK source selection or shared-library restoration failed")
+                      endif()
+                      if(NOT MATSDK_CURL_PROVIDER STREQUAL expected_curl)
+                        message(FATAL_ERROR "Unexpected curl provider for ${platform}/${use_vcpkg}")
+                      endif()
+                    endfunction()
+                    check_source(Windows OFF SYSTEM)
+                    check_source(Windows ON SYSTEM)
+                    check_source(Linux OFF FETCH)
+                    check_source(Linux ON SYSTEM)
+                    check_source(Darwin OFF SYSTEM)
+                    check_source(Darwin ON SYSTEM)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            self._run(
+                "cmake",
+                "-S",
+                str(root),
+                "-B",
+                str(root / "build"),
+                f"-DDEP_URL_cpp_client_telemetry={url}",
+                f"-DDEP_SHA1_cpp_client_telemetry={sha1}",
+                f"-Dexpected_sdk_version={url.rsplit('/v', 1)[-1].removesuffix('.zip')}",
+                *(["-G", "Visual Studio 18 2026", "-A", "x64"] if sys.platform == "win32" else []),
+            )
+
+    def test_vcpkg_telemetry_feature_installs_transport_not_sdk(self):
+        manifest = json.loads((_ROOT / "cmake" / "vcpkg.json").read_text(encoding="utf-8"))
+        dependencies = manifest["features"]["telemetry"]["dependencies"]
+        self.assertEqual({dependency["name"] for dependency in dependencies}, {"curl", "mbedtls"})
+        self.assertTrue(all(dependency["platform"] == "linux" for dependency in dependencies))
+
     def test_production_include_without_module_search_path(self):
         includes = [
             line.strip()
@@ -108,9 +199,9 @@ class TelemetryPackageTest(unittest.TestCase):
             script.write_text(
                 'set(CMAKE_MODULE_PATH "")\n'
                 "set(onnxruntime_USE_1DS_TELEMETRY ON)\n"
-                "set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)\n"
+                "set(WIN32 FALSE)\nset(APPLE FALSE)\nset(CMAKE_SYSTEM_NAME Android)\n"
                 + includes[0]
-                + '\nif(NOT PROJECT_CONFIG_CONTENT STREQUAL "find_dependency(MSTelemetry CONFIG)\\n")\n'
+                + '\nif(NOT PROJECT_CONFIG_CONTENT STREQUAL "find_dependency(Threads)\\n")\n'
                 '  message(FATAL_ERROR "The installed SDK dependency was not added")\nendif()\n',
                 encoding="utf-8",
             )
