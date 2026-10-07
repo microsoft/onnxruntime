@@ -464,6 +464,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* router_weights = context.Input<Tensor>(14);
   const Tensor* fc1_global_scale = context.Input<Tensor>(15);
   const Tensor* fc2_global_scale = context.Input<Tensor>(16);
+  const Tensor* fc1_act_scale = context.Input<Tensor>(17);
+  const Tensor* fc2_act_scale = context.Input<Tensor>(18);
+  const Tensor* fc1_act_block_scale = context.Input<Tensor>(19);
+  const Tensor* fc2_act_block_scale = context.Input<Tensor>(20);
 
   MoEParameters moe_params;
 
@@ -515,6 +519,9 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                       "Block-scaled FP8 QMoE does not support zero points.");
     ORT_RETURN_IF_NOT(fc1_global_scale == nullptr && fc2_global_scale == nullptr,
                       "Block-scaled FP8 QMoE uses fc1_scales/fc2_scales directly; global scales must be omitted.");
+    ORT_RETURN_IF_NOT(fc1_act_scale == nullptr && fc2_act_scale == nullptr &&
+                          fc1_act_block_scale == nullptr && fc2_act_block_scale == nullptr,
+                      "Block-scaled FP8 QMoE does not support activation scales.");
     ORT_RETURN_IF_NOT(fc1_experts_weights->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN &&
                           fc2_experts_weights->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN &&
                           (fc3_experts_weights_optional == nullptr ||

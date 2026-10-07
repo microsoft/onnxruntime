@@ -663,6 +663,51 @@ TEST(MoETest, QMoETest_WebGPU_BlockFp8_RejectOrphanFc3Scales) {
                 OpTester::ExpectResult::kExpectFailure, "fc3_scales requires fc3_experts_weights");
 }
 
+TEST(MoETest, QMoETest_WebGPU_BlockFp8_RejectActivationScales) {
+  constexpr const char* scale_names[] = {
+      "fc1_act_scale", "fc2_act_scale", "fc1_act_block_scale", "fc2_act_block_scale"};
+  for (int scale_index = 0; scale_index < 4; ++scale_index) {
+    SCOPED_TRACE(scale_names[scale_index]);
+    GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
+    OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 1);
+    tester.AddAttribute<std::string>("activation_type", "identity");
+    tester.AddAttribute<int64_t>("expert_weight_bits", 8);
+    tester.AddAttribute<int64_t>("block_size", 128);
+    tester.AddAttribute<std::string>("quant_type", "fp8");
+    tester.AddInput<MLFloat16>("input", {1, 2}, ToFloat16({1.0f, 2.0f}));
+    tester.AddInput<MLFloat16>("router_probs", {1, 1}, ToFloat16({1.0f}));
+    tester.AddInput<Float8E4M3FN>("fc1_experts_weights", {1, 2, 2},
+                                  std::vector<Float8E4M3FN>(4, Float8E4M3FN(0.5f)));
+    tester.AddInput<float>("fc1_scales", {1, 1, 1}, {1.0f});
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddInput<Float8E4M3FN>("fc2_experts_weights", {1, 2, 2},
+                                  std::vector<Float8E4M3FN>(4, Float8E4M3FN(0.5f)));
+    tester.AddInput<float>("fc2_scales", {1, 1, 1}, {1.0f});
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<Float8E4M3FN>();
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOptionalInputEdge<float>();
+    for (int prior = 0; prior < scale_index; ++prior) {
+      tester.AddOptionalInputEdge<float>();
+    }
+    tester.AddInput<float>(scale_names[scale_index],
+                           scale_index < 2 ? std::vector<int64_t>{1} : std::vector<int64_t>{1, 1, 1},
+                           {1.0f});
+    tester.AddOutput<MLFloat16>("output", {1, 2}, ToFloat16({0.0f, 0.0f}));
+
+    RunWebGpuOnly(tester, std::move(webgpu_ep),
+                  OpTester::ExpectResult::kExpectFailure, "does not support activation scales");
+  }
+}
+
 void RunWebGpuBlockFp8NumericalReferenceAndBiases(bool fp32) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
 
