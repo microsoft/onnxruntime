@@ -1,0 +1,139 @@
+stages:
+- stage: WebGPU_Shader_Validation
+  displayName: WebGPU shader validation
+  dependsOn: []
+  variables:
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+  jobs:
+  - job: Build
+    displayName: Build WebGPU tests
+    timeoutInMinutes: 60
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win-CPU-2022
+      os: windows
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: '$(Build.ArtifactStagingDirectory)\webgpu-build'
+        artifactName: webgpu-nightly-build
+    steps:
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: x64
+
+    - script: |
+        python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
+      displayName: Install Python build dependencies
+
+    - task: PythonScript@0
+      displayName: Build
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: >-
+          --config RelWithDebInfo
+          --build_dir "$(Build.BinariesDirectory)"
+          --skip_submodule_sync
+          --use_binskim_compliant_compile_flags
+          --cmake_generator "Visual Studio 17 2022"
+          --build_shared_lib
+          --use_webgpu
+          --wgsl_template static
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
+          --update
+          --build --parallel
+        workingDirectory: '$(Build.SourcesDirectory)'
+
+    - task: CopyFiles@2
+      displayName: Stage test binaries and data
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        Contents: |
+          **
+          !_deps\**
+          !**\*.obj
+          !**\*.pch
+          !**\*.lib
+        TargetFolder: '$(Build.ArtifactStagingDirectory)\webgpu-build'
+
+  - job: TestAndValidate
+    displayName: Test and validate shader keys
+    dependsOn: Build
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win2022-GPU-A10
+      os: windows
+    variables:
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+      WebGpuShaderDumpAvailable: 'false'
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: '$(Build.ArtifactStagingDirectory)\shader-dump'
+        artifactName: shader-dump-log
+        condition: and(failed(), eq(variables['WebGpuShaderDumpAvailable'], 'true'))
+    steps:
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: x64
+
+    - script: |
+        python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
+      displayName: Install Python test dependencies
+
+    - task: DownloadPipelineArtifact@2
+      displayName: Download build artifacts
+      inputs:
+        buildType: current
+        artifactName: webgpu-nightly-build
+        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+
+    - script: nvidia-smi
+      displayName: Verify GPU access
+
+    - task: PythonScript@0
+      displayName: Relocate CTest paths
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
+        arguments: >-
+          "$(Build.BinariesDirectory)\RelWithDebInfo\CTestTestfile.cmake"
+          "$(Build.BinariesDirectory)\RelWithDebInfo"
+        workingDirectory: '$(Build.SourcesDirectory)'
+
+    - task: PythonScript@0
+      displayName: Run tests
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: >-
+          --config RelWithDebInfo
+          --build_dir "$(Build.BinariesDirectory)"
+          --test
+          --test_parallel 0
+        workingDirectory: '$(Build.SourcesDirectory)'
+      env:
+        ORT_WEBGPU_EP_SHADER_DUMP_FILE: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\shader_dump.log'
+
+    - script: |
+        node "$(Build.SourcesDirectory)\.github\actions\webgpu-validate-shader-key\validate-shader-key.js" < "$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\shader_dump.log"
+      displayName: Validate shader keys
+
+    - powershell: |
+        $dumpPath = "$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\shader_dump.log"
+        if (Test-Path -LiteralPath $dumpPath -PathType Leaf) {
+          $stagingPath = "$(Build.ArtifactStagingDirectory)\shader-dump"
+          New-Item -ItemType Directory -Path $stagingPath -Force | Out-Null
+          Copy-Item -LiteralPath $dumpPath -Destination $stagingPath -ErrorAction Stop
+          Write-Host "##vso[task.setvariable variable=WebGpuShaderDumpAvailable]true"
+        } else {
+          Write-Host "##vso[task.logissue type=warning]No shader dump was produced; skipping shader dump artifact."
+        }
+      displayName: Stage shader dump on failure
+      condition: failed()
