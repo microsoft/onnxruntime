@@ -366,13 +366,35 @@ struct BoundAttributeExpansionStateHash {
   }
 };
 
+struct BoundAttributeActiveState {
+  const ONNX_NAMESPACE::AttributeProto* proto;
+  const Graph* graph;
+  const AttributeBindingContext* context;
+  bool use_onnx_schema_registry;
+
+  bool operator==(const BoundAttributeActiveState& other) const {
+    return proto == other.proto && graph == other.graph && context == other.context &&
+           use_onnx_schema_registry == other.use_onnx_schema_registry;
+  }
+};
+
+struct BoundAttributeActiveStateHash {
+  size_t operator()(const BoundAttributeActiveState& state) const {
+    size_t result = std::hash<const void*>{}(state.proto);
+    result ^= std::hash<const void*>{}(state.graph) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    result ^= std::hash<const void*>{}(state.context) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    result ^= std::hash<bool>{}(state.use_onnx_schema_registry) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    return result;
+  }
+};
+
 struct ValidatedFunctionStates {
   std::unordered_set<FunctionValidationState, FunctionValidationStateHash> states;
   std::unordered_set<std::shared_ptr<const AttributeBindingContext>,
                      AttributeBindingContextPtrHash,
                      AttributeBindingContextPtrEqual>
       contexts;
-  std::unordered_set<BoundAttributeExpansionState, BoundAttributeExpansionStateHash>
+  std::unordered_set<BoundAttributeActiveState, BoundAttributeActiveStateHash>
       active_attribute_expansions;
   std::unordered_set<BoundAttributeExpansionState, BoundAttributeExpansionStateHash>
       completed_attribute_expansions;
@@ -510,21 +532,24 @@ Status ValidateBoundAttributeCallDepth(
       validated_states.completed_attribute_expansions.end()) {
     return Status::OK();
   }
-  if (validated_states.active_attribute_expansions.size() >=
+  const BoundAttributeActiveState active_state{
+      attribute.proto, attribute.graph, attribute.context.get(),
+      use_onnx_schema_registry};
+  if (!validated_states.active_attribute_expansions.insert(active_state).second) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Recursive model-local function graph attribute expansion is not supported.");
+  }
+  auto remove_active_expansion = gsl::finally([&validated_states, active_state]() {
+    validated_states.active_attribute_expansions.erase(active_state);
+  });
+  if (expansion_state.attribute_expansion_depth >=
       kMaxModelLocalFunctionCallDepth) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, NOT_IMPLEMENTED,
         "Model local function graph attribute expansion depth exceeds the maximum supported depth of ",
         kMaxModelLocalFunctionCallDepth, ".");
   }
-  if (!validated_states.active_attribute_expansions.insert(expansion_state).second) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        "Recursive model-local function graph attribute expansion is not supported.");
-  }
-  auto remove_active_expansion = gsl::finally([&validated_states, expansion_state]() {
-    validated_states.active_attribute_expansions.erase(expansion_state);
-  });
 
   const auto& attribute_bindings =
       attribute.context == nullptr ? bindings : attribute.context->bindings;
