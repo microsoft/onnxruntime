@@ -13,19 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  include-layering-ratchet:
-    name: Include layering ratchet
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Test the include-layering checker
-        run: python3 -m unittest discover -s tools/ci_build/tests -p test_check_layering.py -v
-      - name: Check the include-layering baseline
-        run: python3 tools/ci_build/check_layering.py --list
-
   optional-lint:
     name: Optional Lint
     runs-on: ubuntu-latest
@@ -135,3 +122,16 @@ jobs:
           level: info
           flags: --linelength=120 --exclude=java/src/main/native/*.c --exclude=onnxruntime/core/mlas/inc/* --exclude=onnxruntime/core/mlas/lib/* --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/* --exclude=build/Debug/* --exclude=cmake/* --exclude=csharp/test/* --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/* --exclude=orttraining/orttraining/test/* --exclude=onnxruntime/test/* --exclude=winml/*
           filter: "-runtime/references"
+
+  include-layering-ratchet:
+    name: Include layering ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Test the include-layering checker
+        run: python3 -m unittest discover -s tools/ci_build/tests -p test_check_layering.py -v
+      - name: Check the include-layering baseline
+        run: python3 tools/ci_build/check_layering.py --list
