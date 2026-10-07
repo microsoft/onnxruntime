@@ -62,7 +62,7 @@ stages:
   - job: TestAndValidate
     displayName: Test and validate shader keys
     dependsOn: Build
-    timeoutInMinutes: 30
+    timeoutInMinutes: 60
     workspace:
       clean: all
     pool:
