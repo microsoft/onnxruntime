@@ -894,6 +894,10 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
   return Status::OK();
 }
 
+static Status InvalidOrtFormatEdge(const char* reason) {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, reason);
+}
+
 Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edges,
                                     Graph& graph) {
   ORT_RETURN_IF(fbs_node_edges.node_index() != index_,
@@ -903,52 +907,59 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
                                   bool input_edges) -> Status {
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
-        ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing.");
+        if (fbs_edge == nullptr) {
+          return InvalidOrtFormatEdge("edge is missing");
+        }
         const auto edge_node_index = fbs_edge->node_index();
         const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
-        ORT_RETURN_IF(static_cast<size_t>(edge_node_index) >= node_slot_count,
-                      "Node::LoadEdgesFromOrtFormat, out-of-range node index.");
+        if (static_cast<size_t>(edge_node_index) >= node_slot_count) {
+          return InvalidOrtFormatEdge("out-of-range node index");
+        }
         auto* edge_node = graph.GetNode(edge_node_index);
-        ORT_RETURN_IF(edge_node == nullptr,
-                      "Node::LoadEdgesFromOrtFormat, edge references missing node.");
+        if (edge_node == nullptr) {
+          return InvalidOrtFormatEdge("references missing node");
+        }
 
         Node& src_node = input_edges ? *edge_node : *this;
         Node& dst_node = input_edges ? *this : *edge_node;
         const int32_t src_arg_index = fbs_edge->src_arg_index();
         const int32_t dst_arg_index = fbs_edge->dst_arg_index();
         const bool is_control_edge = src_arg_index == INT_MAX && dst_arg_index == INT_MAX;
-        ORT_RETURN_IF((src_arg_index == INT_MAX) != (dst_arg_index == INT_MAX),
-                      "Node::LoadEdgesFromOrtFormat, invalid control-edge slot pair.");
+        if ((src_arg_index == INT_MAX) != (dst_arg_index == INT_MAX)) {
+          return InvalidOrtFormatEdge("invalid control-edge slot pair");
+        }
         if (is_control_edge) {
           AddControlEdgeBetweenNodes(src_node, dst_node);
           continue;
         }
 
-        ORT_RETURN_IF(src_arg_index < 0 ||
-                          static_cast<size_t>(src_arg_index) >= src_node.OutputDefs().size(),
-                      "Node::LoadEdgesFromOrtFormat, out-of-range src_arg_index.");
+        if (src_arg_index < 0 ||
+            static_cast<size_t>(src_arg_index) >= src_node.OutputDefs().size()) {
+          return InvalidOrtFormatEdge("out-of-range src_arg_index");
+        }
         const size_t dst_arg_count = dst_node.InputDefs().size() + dst_node.ImplicitInputDefs().size();
-        ORT_RETURN_IF(dst_arg_index < 0 || static_cast<size_t>(dst_arg_index) >= dst_arg_count,
-                      "Node::LoadEdgesFromOrtFormat, out-of-range dst_arg_index.");
+        if (dst_arg_index < 0 || static_cast<size_t>(dst_arg_index) >= dst_arg_count) {
+          return InvalidOrtFormatEdge("out-of-range dst_arg_index");
+        }
 
         const NodeArg* src_arg = src_node.OutputDefs()[src_arg_index];
         const auto explicit_dst_arg_count = dst_node.InputDefs().size();
         const NodeArg* dst_arg = static_cast<size_t>(dst_arg_index) < explicit_dst_arg_count
                                      ? dst_node.InputDefs()[dst_arg_index]
                                      : dst_node.ImplicitInputDefs()[dst_arg_index - explicit_dst_arg_count];
-        ORT_RETURN_IF(!src_arg->Exists() || !dst_arg->Exists(),
-                      "Node::LoadEdgesFromOrtFormat, edge references a missing optional NodeArg.");
-        ORT_RETURN_IF(src_arg != dst_arg,
-                      "Node::LoadEdgesFromOrtFormat, edge connects mismatched NodeArgs.");
+        if (!src_arg->Exists() || !dst_arg->Exists()) {
+          return InvalidOrtFormatEdge("references a missing optional NodeArg");
+        }
+        if (src_arg != dst_arg) {
+          return InvalidOrtFormatEdge("connects mismatched NodeArgs");
+        }
 
         for (const auto& existing_edge : dst_node.relationships_.input_edges) {
           if (!existing_edge.IsControlEdge() &&
               existing_edge.GetDstArgIndex() == dst_arg_index &&
               (existing_edge.GetNode().Index() != src_node.Index() ||
                existing_edge.GetSrcArgIndex() != src_arg_index)) {
-            return ORT_MAKE_STATUS(
-                ONNXRUNTIME, INVALID_ARGUMENT,
-                "Node::LoadEdgesFromOrtFormat, destination argument slot has multiple producers.");
+            return InvalidOrtFormatEdge("destination argument slot has multiple producers");
           }
         }
 

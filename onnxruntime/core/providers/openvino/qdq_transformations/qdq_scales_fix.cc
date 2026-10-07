@@ -365,9 +365,17 @@ struct CustomGraph {
       return;
     }
 
-    if (original_graph.HasOrtFormatControlEdge(q.node_ptr->Index()) ||
-        std::any_of(dq_ptrs.begin(), dq_ptrs.end(), [this](const GraphNode* dq) {
-          return original_graph.HasOrtFormatControlEdge(dq->node_ptr->Index());
+    const auto has_control_edge = [](const Node& graph_node) {
+      return std::any_of(
+                 graph_node.InputEdgesBegin(), graph_node.InputEdgesEnd(),
+                 [](const Node::EdgeEnd& edge) { return edge.IsControlEdge(); }) ||
+             std::any_of(
+                 graph_node.OutputEdgesBegin(), graph_node.OutputEdgesEnd(),
+                 [](const Node::EdgeEnd& edge) { return edge.IsControlEdge(); });
+    };
+    if (has_control_edge(*q.node_ptr) ||
+        std::any_of(dq_ptrs.begin(), dq_ptrs.end(), [&has_control_edge](const GraphNode* dq) {
+          return has_control_edge(*dq->node_ptr);
         })) {
       return;
     }
