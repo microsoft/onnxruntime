@@ -46,6 +46,51 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 
+class MatMulZeroKProgram final : public Program<MatMulZeroKProgram> {
+ public:
+  MatMulZeroKProgram(const Activation& activation, bool has_bias,
+                     bool is_channels_last, bool bias_is_scalar)
+      : Program{"MatMulZeroK"},
+        activation_(activation),
+        has_bias_(has_bias),
+        is_channels_last_(is_channels_last),
+        bias_is_scalar_(bias_is_scalar) {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& output = shader.AddOutput(
+        "output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    shader.AdditionalImplementation()
+        << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
+    if (has_bias_) {
+      shader.AddInput("bias", ShaderUsage::UseValueTypeAlias);
+    }
+    shader.MainFunctionBody()
+        << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+        << "var value = output_value_t(0);\n";
+    if (has_bias_) {
+      const char* index = bias_is_scalar_ ? "0" : is_channels_last_ ? "global_idx % uniforms.N"
+                                                                    : "(global_idx / uniforms.N) % uniforms.M";
+      shader.MainFunctionBody() << "value = output_value_t(bias[" << index << "]);\n";
+    }
+    shader.MainFunctionBody()
+        << GetActivationSnippet(activation_, "output_value_t", "output_element_t")
+        << output.SetByOffset("global_idx", "value");
+    return Status::OK();
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"output_size", ProgramUniformVariableDataType::Uint32},
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+
+ private:
+  const Activation activation_;
+  const bool has_bias_;
+  const bool is_channels_last_;
+  const bool bias_is_scalar_;
+};
+
 class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
  public:
   MatMulGemvProgram() : Program{"MatMulGemv"} {}
@@ -198,6 +243,32 @@ Status ComputeMatMul(ComputeContext* context,
 
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
+
+  if (helper.OutputShape().Size() == 0) {
+    return Status::OK();
+  }
+  if (helper.K() == 0) {
+    // Empty inputs have null GPU buffers and must not be bound to a MatMul shader.
+    const Tensor* bias = has_bias ? inputs[2] : nullptr;
+    const bool bias_is_scalar = bias && bias->Shape().Size() == 1;
+    if (bias) {
+      const int64_t expected_bias_size = is_channels_last ? helper.N() : helper.M();
+      ORT_RETURN_IF_NOT(bias_is_scalar || bias->Shape().Size() == expected_bias_size,
+                        "Zero-K MatMul bias must be scalar or match the output channel dimension.");
+    }
+    const uint32_t output_size = narrow<uint32_t>(helper.OutputShape().Size());
+    MatMulZeroKProgram program{activation, bias != nullptr, is_channels_last, bias_is_scalar};
+    program.CacheHint(activation.CacheKey(), bias != nullptr, is_channels_last, bias_is_scalar)
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank, 1})
+        .AddUniformVariables(
+            {{output_size}, {narrow<uint32_t>(helper.M())}, {narrow<uint32_t>(helper.N())}})
+        .SetDispatchGroupSize(CeilDiv(output_size, static_cast<uint32_t>(WORKGROUP_SIZE)));
+    AppendActivationUniformsData(activation, program);
+    if (bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, 1});
+    }
+    return context->RunProgram(program);
+  }
 
   MatMulOptImpl* subgroup_impl = cache.GetOrCreate(*context);
   if (subgroup_impl != nullptr) {

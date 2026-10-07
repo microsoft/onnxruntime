@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -110,6 +112,64 @@ template <int version = 13>
 void RunBothTypes(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
   RunTestTyped<float, version>(a_dims, b_dims);
   RunTestTyped<MLFloat16, version>(a_dims, b_dims);
+}
+
+template <typename T>
+void RunZeroKTest(std::initializer_list<int64_t> a_dims,
+                  std::initializer_list<int64_t> b_dims, bool graph_capture = false) {
+  ConfigOptions config;
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      webgpu::options::kEnableGraphCapture,
+      graph_capture ? webgpu::options::kEnableGraphCapture_ON : webgpu::options::kEnableGraphCapture_OFF));
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      webgpu::options::kValidationMode, webgpu::options::kValidationMode_full));
+  auto ep = WebGpuExecutionProviderWithOptions(config);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+  MatMulComputeHelper helper;
+  ASSERT_STATUS_OK(helper.Compute(TensorShape(a_dims), TensorShape(b_dims)));
+  ASSERT_EQ(helper.K(), 0);
+  const auto& output_shape = helper.OutputShape();
+  TensorShapeVector output_dims;
+  output_dims.assign(output_shape.GetDims().begin(), output_shape.GetDims().end());
+  OpTester test("MatMul", 13);
+  test.AddInput<T>("A", a_dims, std::vector<T>{});
+  test.AddInput<T>("B", b_dims, std::vector<T>{});
+  test.AddOutput<T>("Y", output_dims,
+                    std::vector<T>(output_shape.Size(), T{0.0f}));
+  test.SetNumRunCalls(graph_capture ? 4 : 1);
+  test.ConfigEp(std::move(ep)).RunWithConfig();
+}
+
+TEST(MatMulZeroKTest, Float32MatrixAndBatch) {
+  RunZeroKTest<float>({2, 0}, {0, 3});
+  RunZeroKTest<float>({1, 35, 0}, {0, 1024});
+  RunZeroKTest<float>({2, 1, 3, 0}, {1, 4, 0, 5});
+}
+
+TEST(MatMulZeroKTest, Float16MatrixAndBatch) {
+  RunZeroKTest<MLFloat16>({2, 0}, {0, 3});
+  RunZeroKTest<MLFloat16>({1, 35, 0}, {0, 1024});
+  RunZeroKTest<MLFloat16>({2, 1, 3, 0}, {1, 4, 0, 5});
+}
+
+TEST(MatMulZeroKTest, VectorAndScalarOutputs) {
+  RunZeroKTest<float>({0}, {0, 5});
+  RunZeroKTest<float>({3, 0}, {0});
+  RunZeroKTest<float>({0}, {0});
+  RunZeroKTest<MLFloat16>({0}, {0, 5});
+  RunZeroKTest<MLFloat16>({0}, {0});
+}
+
+TEST(MatMulZeroKTest, EmptyOutput) {
+  RunZeroKTest<float>({0, 0}, {0, 3});
+  RunZeroKTest<MLFloat16>({0, 0}, {0, 3});
+}
+
+TEST(MatMulZeroKTest, GraphCaptureReplay) {
+  RunZeroKTest<float>({1, 35, 0}, {0, 1024}, true);
+  RunZeroKTest<MLFloat16>({1, 35, 0}, {0, 1024}, true);
 }
 
 TEST(MatMulNaiveProgramTest, Broadcast4DExecution) {
