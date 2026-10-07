@@ -13,6 +13,18 @@ var<workgroup> output_matrix: array<f32, chunk_size * chunk_size>;
 var<workgroup> chunk_keys: array<f32, chunk_size * 128>;
 var<workgroup> chunk_queries: array<f32, chunk_size * 128>;
 
+fn gdn_chunk_relative_decay(row: u32, column: u32, first: u32, value_head: u32) -> f32 {
+  if (bitcast<u32>(prefix_decay[column]) != 0xff800000u) {
+    return exp(prefix_decay[row] - prefix_decay[column]);
+  }
+  // Recompute the interval after a saturated prefix to avoid -inf - -inf.
+  var decay_sum = 0.0;
+  for (var token = column + 1u; token <= row; token++) {
+    decay_sum += parameters.getByOffset(((first + token) * uniforms.num_heads_v + value_head) * 2u);
+  }
+  return exp(decay_sum);
+}
+
 $MAIN {
   let chunk_slot = workgroup_idx / uniforms.num_heads_v;
   let value_head = workgroup_idx % uniforms.num_heads_v;
@@ -94,7 +106,7 @@ $MAIN {
         retrieval += chunk_keys[row_base_dim + dimension] * column_key;
         projected += chunk_queries[row_base_dim + dimension] * column_key;
       }
-      let relative_decay = exp(prefix_decay[row] - prefix_decay[column]);
+      let relative_decay = gdn_chunk_relative_decay(row, column, first, value_head);
       retrieval *= beta_values[row] * relative_decay;
       projected *= relative_decay;
     }
@@ -130,7 +142,7 @@ $MAIN {
     if (local_idx < uniforms.head_size_qk) {
       prepared.setByOffset(base + row * uniforms.head_size_qk + local_idx, key_value);
       prepared.setByOffset(base + query_base + row * uniforms.head_size_qk + local_idx, exp(prefix_decay[row]) * chunk_queries[row_elem]);
-      prepared.setByOffset(base + carry_base + row * uniforms.head_size_qk + local_idx, exp(prefix_decay[length - 1u] - prefix_decay[row]) * chunk_keys[row_elem]);
+      prepared.setByOffset(base + carry_base + row * uniforms.head_size_qk + local_idx, gdn_chunk_relative_decay(length - 1u, row, first, value_head) * chunk_keys[row_elem]);
     }
     if (local_idx < uniforms.head_size_v) {
       prepared.setByOffset(base + value_base + row * uniforms.head_size_v + local_idx, value_value);

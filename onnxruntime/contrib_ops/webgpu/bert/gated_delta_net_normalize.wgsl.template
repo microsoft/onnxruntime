@@ -6,6 +6,9 @@
 var<workgroup> norms: array<vec2<f32>, workgroup_size_x>;
 
 $MAIN {
+  if (workgroup_idx >= uniforms.total_tokens * uniforms.num_heads_q) {
+    return;
+  }
   let offset = workgroup_idx * uniforms.head_size_qk + local_idx;
   var query_value = 0.0;
   var key_value = 0.0;

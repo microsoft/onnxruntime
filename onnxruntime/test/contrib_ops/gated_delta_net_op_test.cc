@@ -886,6 +886,35 @@ TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPartialChunk) {
   }
 }
 
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillSaturatedGates) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry geometry{32, 1, 1, 2, 16, 7};
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  for (bool isolated_resets : {false, true}) {
+    SCOPED_TRACE(isolated_resets);
+    Inputs inputs = MakeInputs(geometry, 235);
+    if (isolated_resets) {
+      inputs.a_log[0] = 1.0f;
+      for (int token : {0, 7, 16, 22}) {
+        inputs.decay[static_cast<size_t>(token) * geometry.hv] = std::numeric_limits<float>::max();
+      }
+    } else {
+      inputs.a_log[0] = 90.0f;
+      for (int token = 0; token < geometry.total_tokens; ++token) {
+        inputs.decay[static_cast<size_t>(token) * geometry.hv] = 1.0f;
+      }
+    }
+    RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
+                        /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
 TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillRaggedAndEmptySequence) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
