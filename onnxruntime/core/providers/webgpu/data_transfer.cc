@@ -17,6 +17,8 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             bool dst_is_gpu,
                                             size_t bytes) const {
   auto& command_state = recording_;
+  // Public allocator calls can share this recorder; serialize copy encoding,
+  // not just submission, against allocation and release.
   std::lock_guard<std::recursive_mutex> lock{command_state.mutex};
   if (bytes > 0) {
     if (dst_is_gpu) {
