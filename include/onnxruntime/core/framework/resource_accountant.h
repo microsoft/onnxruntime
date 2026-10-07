@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <iosfwd>
 #include <optional>
@@ -66,9 +67,8 @@ struct WorkspaceEstimateComparisonSummary {
 struct WorkspaceEstimatorConfig {
   std::optional<std::string> cuda_fpa_intb_gemm;
   std::optional<std::string> cuda_fpa_intb_profile_m;
-  // Raw session-option value for ep.cuda.gqa_workspace_max_total_sequence_length; parsed to a
-  // positive KV-length envelope by the CUDA EP before it reaches the GQA workspace estimator.
-  std::optional<std::string> cuda_gqa_workspace_max_total_sequence_length;
+  // Validated nonnegative int64 envelope; zero means unspecified.
+  int64_t cuda_gqa_workspace_max_total_sequence_length = 0;
 };
 
 using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;

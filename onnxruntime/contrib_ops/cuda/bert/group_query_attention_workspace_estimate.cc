@@ -200,14 +200,10 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   // WorkspaceInputShape exposes the total_sequence_length scalar's shape, not
   // its value. For a non-windowed cache that value can exceed past dim 2 and
   // directly scales backend workspace, so a sound bound needs the KV-length
-  // envelope config.max_total_sequence_length (session option
-  // ep.cuda.gqa_workspace_max_total_sequence_length). Without it there is no
-  // sound non-windowed bound, so decline -- this preserves the prior behavior
-  // whenever the envelope is unset. Windowed execution is bounded by the cache
-  // shape. The other non-windowed concern -- a full past-tensor copy when only
-  // one past/present pair aliases -- is charged separately as preservation
-  // scratch via bounds.account_partial_alias_preservation below; windowed
-  // execution requires both pairs to alias, so it never incurs that copy.
+  // envelope config.max_total_sequence_length. Without it, decline as before.
+  // A full past-tensor copy when only one past/present pair aliases is charged
+  // separately via bounds.account_partial_alias_preservation below. Windowed
+  // execution is bounded by the cache shape and requires both pairs to alias.
   const bool windowed = config.sliding_window_cache;
   if (!windowed && config.max_total_sequence_length <= 0) return std::nullopt;
 
@@ -410,7 +406,12 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   return bounds;
 }
 
-std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
+}  // namespace
+
+std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
+    const Node& node,
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
   if (node.OpType() != "GroupQueryAttention") return std::nullopt;
   GQAWorkspaceEstimateConfig config;
   bool found_heads = false;
@@ -479,10 +480,10 @@ std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
       ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0;
   config.disable_flash_decode =
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FLASH_DECODE", false);
+  config.head_sink_may_be_prepacked = head_sink_is_constant_initializer;
+  config.max_total_sequence_length = max_total_sequence_length;
   return config;
 }
-
-}  // namespace
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
@@ -504,10 +505,9 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer,
     int64_t max_total_sequence_length) {
-  auto config = ConfigFromNode(node);
+  const auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
+      node, head_sink_is_constant_initializer, max_total_sequence_length);
   if (!config.has_value()) return std::nullopt;
-  config->head_sink_may_be_prepacked = head_sink_is_constant_initializer;
-  config->max_total_sequence_length = max_total_sequence_length;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);
 }

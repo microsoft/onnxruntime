@@ -1342,6 +1342,84 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
 #endif
 
 #ifdef USE_CUDA
+TEST(MatMulNBits, PrepackedOptionalInputsCuda) {
+#if !USE_FPA_INTB_GEMM
+  GTEST_SKIP() << "Requires fpA_intB kernels";
+#else
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Requires SM80+";
+  }
+
+  enum class OptionalInputs { Omitted,
+                              Empty,
+                              Bias,
+                              PackedZeroPoints,
+                              FloatZeroPoints };
+  for (auto inputs : {OptionalInputs::Omitted, OptionalInputs::Empty, OptionalInputs::Bias,
+                      OptionalInputs::PackedZeroPoints, OptionalInputs::FloatZeroPoints}) {
+#if USE_COMPACT_FPA_INTB_GEMM
+    if (inputs != OptionalInputs::Omitted && inputs != OptionalInputs::Empty) {
+      continue;  // Compact kernels do not support bias or zero points.
+    }
+#endif
+    const bool has_bias = inputs == OptionalInputs::Bias || inputs == OptionalInputs::PackedZeroPoints ||
+                          inputs == OptionalInputs::FloatZeroPoints;
+    const bool has_zero_points = inputs == OptionalInputs::PackedZeroPoints || inputs == OptionalInputs::FloatZeroPoints;
+    for (int64_t m : {1, 32}) {
+      SCOPED_TRACE(testing::Message() << "inputs=" << static_cast<int>(inputs) << ", M=" << m);
+      auto cuda_ep = DefaultCudaExecutionProvider();
+      if (!cuda_ep) {
+        GTEST_SKIP() << "CUDA execution provider is unavailable";
+      }
+
+      constexpr int64_t n = 128, k = 128, block_size = 32;
+      constexpr int64_t k_blocks = k / block_size;
+      OpTester test("MatMulNBits", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", k);
+      test.AddAttribute<int64_t>("N", n);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddAttribute<int64_t>("bits", 4);
+      // Prepacked weights require fpA_intB, so incorrect presence flags cannot silently select a fallback.
+      test.AddAttribute<int64_t>("weight_prepacked", 1);
+      test.AddInput<MLFloat16>("A", {m, k}, std::vector<MLFloat16>(m * k, MLFloat16(1.0f)));
+      // Uniform nibbles are unchanged by the SM80 layout permutations. Code 9 represents signed weight 1.
+      test.AddInput<uint8_t>("B", {n, k_blocks, block_size / 2},
+                             std::vector<uint8_t>(n * k / 2, 0x99), true);
+      test.AddInput<MLFloat16>("scales", {n, k_blocks},
+                               std::vector<MLFloat16>(n * k_blocks, MLFloat16(0.5f)), true);
+      if (inputs != OptionalInputs::Omitted) {
+        if (inputs == OptionalInputs::PackedZeroPoints) {
+          test.AddInput<uint8_t>("zero_points", {n, k_blocks / 2},
+                                 std::vector<uint8_t>(n * k_blocks / 2, 0xaa), true);
+        } else if (inputs == OptionalInputs::FloatZeroPoints) {
+          test.AddInput<MLFloat16>("zero_points", {n, k_blocks},
+                                   std::vector<MLFloat16>(n * k_blocks, MLFloat16(10.0f)), true);
+        } else {
+          test.AddOptionalInputEdge<uint8_t>();
+        }
+        test.AddOptionalInputEdge<int32_t>();
+        if (has_bias) {
+          test.AddInput<MLFloat16>("bias", {n}, std::vector<MLFloat16>(n, MLFloat16(2.0f)));
+        } else {
+          test.AddOptionalInputEdge<MLFloat16>();
+        }
+      }
+
+      const float expected = k * (9.0f - (has_zero_points ? 10.0f : 8.0f)) * 0.5f + (has_bias ? 2.0f : 0.0f);
+      test.AddOutput<MLFloat16>("Y", {m, n}, std::vector<MLFloat16>(m * n, MLFloat16(expected)));
+      test.SetOutputAbsErr("Y", 0.0f);
+      test.SetOutputRelErr("Y", 0.0f);
+      SessionOptions session_options;
+      session_options.use_per_session_threads = false;
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(session_options);
+      test.ConfigEp(std::move(cuda_ep));
+      test.RunWithConfig();
+    }
+  }
+#endif
+}
+
 TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
   constexpr float abs_error = 0.1f;
   constexpr bool zp_is_4bit = true;

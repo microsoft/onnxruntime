@@ -15,6 +15,8 @@
 #include <vector>
 
 #include "core/framework/op_kernel.h"
+#include "core/framework/config_options.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -117,9 +119,8 @@ GQAWorkspaceBounds Bounds() {
   return bounds;
 }
 
-std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateFromNode(
-    gsl::span<const WorkspaceInputShape> input_shapes,
-    const AttentionKernelOptions& options) {
+template <typename Callback>
+auto WithGroupQueryAttentionNode(Callback callback) {
   ONNX_NAMESPACE::TypeProto query_type;
   query_type.mutable_tensor_type()->set_elem_type(
       ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -148,8 +149,16 @@ std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateFromNode(
   const std::vector<NodeArg*> inputs{&query, &key, &value, &past_key};
   const std::vector<NodeArg*> outputs;
   Node node{"gqa", "GroupQueryAttention", "", inputs, outputs, &attributes, kMSDomain};
-  return EstimateGroupQueryAttentionWorkspaceForTest(
-      &node, input_shapes, Device(), options);
+  return callback(node);
+}
+
+std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateFromNode(
+    gsl::span<const WorkspaceInputShape> input_shapes,
+    const AttentionKernelOptions& options) {
+  return WithGroupQueryAttentionNode([&](const Node& node) {
+    return EstimateGroupQueryAttentionWorkspaceForTest(
+        &node, input_shapes, Device(), options);
+  });
 }
 
 void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
@@ -258,6 +267,54 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterParsesAttributesAndTyp
   const auto estimate = EstimateFromNode(SeparateShapes(), options);
   ASSERT_TRUE(estimate.has_value());
   EXPECT_GT(estimate->total_workspace_bytes, 0u);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopePreservesWindowedEstimateAndEnablesNonWindowed) {
+  WithGroupQueryAttentionNode([](const Node& node) {
+    AttentionKernelOptions options;
+    options.InitializeOnce(kMath, true);
+    const auto baseline = EstimateGroupQueryAttentionWorkspaceForTest(
+        &node, SeparateShapes(), Device(), options);
+    ASSERT_TRUE(baseline.has_value());
+
+    struct Case {
+      const char* value;
+      int64_t expected;
+    };
+    for (const auto& test_case : {Case{nullptr, 0}, Case{"0", 0}, Case{"4096", 4096}}) {
+      SCOPED_TRACE(test_case.value != nullptr ? test_case.value : "<unset>");
+      ConfigOptions config_options;
+      ASSERT_STATUS_OK(config_options.AddConfigEntry(
+          kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+      if (test_case.value != nullptr) {
+        ASSERT_STATUS_OK(config_options.AddConfigEntry(
+            kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, test_case.value));
+      }
+      std::optional<ResourceAccountantMap> accountants;
+      ASSERT_STATUS_OK(CreateAccountants(config_options, PathString(), accountants));
+      ASSERT_TRUE(accountants.has_value());
+      const auto& estimator_config =
+          accountants->at(kCudaExecutionProvider)->GetWorkspaceEstimatorConfig();
+      const auto gqa_config = GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
+          &node, false, estimator_config.cuda_gqa_workspace_max_total_sequence_length);
+      ASSERT_TRUE(gqa_config.has_value());
+      EXPECT_EQ(gqa_config->max_total_sequence_length, test_case.expected);
+      const auto estimate = EstimateGroupQueryAttentionWorkspaceForTest(
+          &node, SeparateShapes(), Device(), options, false,
+          estimator_config.cuda_gqa_workspace_max_total_sequence_length);
+      ASSERT_TRUE(estimate.has_value());
+      EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
+      EXPECT_EQ(estimate->persistent_prepack_bytes, baseline->persistent_prepack_bytes);
+      EXPECT_EQ(estimate->initialization_scratch_bytes, baseline->initialization_scratch_bytes);
+
+      auto non_windowed_config = *gqa_config;
+      non_windowed_config.sliding_window_cache = false;
+      EXPECT_EQ(EstimateGroupQueryAttentionWorkspace(
+                    non_windowed_config, SeparateShapes(), Device(), options)
+                    .has_value(),
+                test_case.expected > 0);
+    }
+  });
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Estimate) {

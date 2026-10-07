@@ -38,6 +38,13 @@ bool IsModelPackagePathSessionOption(std::string_view key) {
 }
 
 namespace {
+bool IsUnsupportedModelPackageSessionOption(std::string_view key) {
+  return key == kDebugLayoutTransformation ||
+         key == kOrtSessionOptionsCollectNodeMemoryStatsToFile ||
+         key == kOrtSessionOptionsConfigEnableProfiling ||
+         key == kOrtSessionOptionsConfigOptimizedModelFilePath;
+}
+
 // Deleter for the type-erased model_package handle held by ModelPackageContext.
 void CloseModelPackageHandle(void* handle) {
   if (handle != nullptr) {
@@ -475,16 +482,33 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
           std::unordered_map<std::string, std::string> out;
           out.reserve(it->size());
           for (auto kv = it->begin(); kv != it->end(); ++kv) {
+            std::string entry_key = kv.key();
+            if (entry_key.find('\0') != std::string::npos) {
+              ORT_THROW("ORT variant configuration: '", key,
+                        "' entry keys must not contain embedded NUL characters for variant '",
+                        ort_variant.variant_name, "' in component '", component_name, "'");
+            }
             if (!kv.value().is_string()) {
               ORT_THROW("ORT variant configuration: '", key, "' entries must be strings for variant '",
                         ort_variant.variant_name, "' in component '", component_name, "'");
             }
-            out.emplace(kv.key(), kv.value().get<std::string>());
+            out.emplace(std::move(entry_key), kv.value().get<std::string>());
           }
           dest = std::move(out);
         };
         fill_string_map("session_options", ort_file.session_options);
         fill_string_map("provider_options", ort_file.provider_options);
+
+        if (ort_file.session_options.has_value()) {
+          const auto unsupported_option = std::find_if(
+              ort_file.session_options->begin(), ort_file.session_options->end(),
+              [](const auto& entry) { return IsUnsupportedModelPackageSessionOption(entry.first); });
+          if (unsupported_option != ort_file.session_options->end()) {
+            ORT_THROW("ORT variant configuration: '", unsupported_option->first,
+                      "' cannot be set in model package session options for variant '",
+                      ort_variant.variant_name, "' in component '", component_name, "'");
+          }
+        }
 
         // Resolve path-valued session options (e.g. the external initializers folder) against the
         // package so variants can reference shared assets by sha256: URI or relative path.
