@@ -186,17 +186,14 @@ TEST(OrtModelOnlyTests, RejectsMoeExpertCountingInMinimalBuild) {
 }
 
 TEST(OrtModelOnlyTests, HandlesMoeCpuOffloadOptionInMinimalBuild) {
-  for (const char* value : {"0", "00", "-0"}) {
-    SCOPED_TRACE(value);
-    SessionOptions options;
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
-        kOrtSessionOptionsConfigMoeCpuOffloadExperts, value));
-    InferenceSessionWrapper session{options, GetEnvironment()};
-    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
-    ASSERT_STATUS_OK(session.Initialize());
-  }
+  SessionOptions disabled_options;
+  ASSERT_STATUS_OK(disabled_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0"));
+  InferenceSessionWrapper disabled_session{disabled_options, GetEnvironment()};
+  ASSERT_STATUS_OK(disabled_session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+  ASSERT_STATUS_OK(disabled_session.Initialize());
 
-  for (const char* value : {"1", "-1", "invalid", ""}) {
+  for (const char* value : {"1", "00", "-0", "-1", "invalid", ""}) {
     SCOPED_TRACE(value);
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(

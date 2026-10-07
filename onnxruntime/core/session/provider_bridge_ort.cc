@@ -1659,6 +1659,7 @@ struct ProviderHostImpl : ProviderHost {
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }
+#if !defined(ORT_MINIMAL_BUILD)
   void MlasHalfGemmBatch__Run(
       size_t M, size_t N, size_t K, size_t batch_size,
       const void* data, concurrency::ThreadPool* thread_pool) override {
@@ -1668,7 +1669,6 @@ struct ProviderHostImpl : ProviderHost {
   concurrency::ThreadPool* OpKernelContext__GetOperatorThreadPool(const OpKernelContext* p) override {
     return p->GetOperatorThreadPool();
   }
-#if !defined(ORT_MINIMAL_BUILD)
   void MlasGemmBatch__Run(
       size_t M, size_t N, size_t K, size_t batch_size,
       const void* data, concurrency::ThreadPool* thread_pool) override {

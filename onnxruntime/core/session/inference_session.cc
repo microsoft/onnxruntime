@@ -2753,16 +2753,10 @@ common::Status InferenceSession::Initialize() {
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;
-      bool moe_cpu_offload_is_disabled = false;
-      if (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) {
-        const size_t first_digit = !value.empty() && value[0] == '-' ? 1 : 0;
-        moe_cpu_offload_is_disabled =
-            first_digit < value.size() && value.find_first_not_of('0', first_digit) == std::string::npos;
-      }
       if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
-            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
+            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics ||
+            option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) &&
            value != "0") ||
-          (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts && !moe_cpu_offload_is_disabled) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
           option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
