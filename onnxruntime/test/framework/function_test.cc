@@ -1486,9 +1486,9 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
       local_import->set_domain("local");
       local_import->set_version(1);
     };
-    auto add_graph_ref = [](ONNX_NAMESPACE::NodeProto& node) {
+    auto add_graph_ref = [](ONNX_NAMESPACE::NodeProto& node, const char* attribute_name) {
       *node.add_attribute() = MakeGraphRefAttribute(
-          "then_branch", "body", ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+          attribute_name, "body", ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
     };
 
     auto* celu = model_proto.add_functions();
@@ -1516,7 +1516,7 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
       visitor_node->set_op_type("If");
       visitor_node->add_input("cond");
       visitor_node->add_output("y");
-      add_graph_ref(*visitor_node);
+      add_graph_ref(*visitor_node, "then_branch");
       auto* else_branch = visitor_node->add_attribute();
       else_branch->set_name("else_branch");
       else_branch->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
@@ -1562,7 +1562,7 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
       call->add_input(opset == first_opset ? "x" : "intermediate");
       call->add_input("cond");
       call->add_output(opset == first_opset ? "intermediate" : "y");
-      add_graph_ref(*call);
+      add_graph_ref(*call, "body");
     }
 
     Model model(std::move(model_proto), nullptr, DefaultLoggingManager().DefaultLogger());
