@@ -1067,6 +1067,32 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTopK) {
   RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
 }
 
+TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPackedVerification) {
+  QsaPackedProblem problem;
+  problem.batch_size = 3;
+  problem.cumulative_sequence_lengths = {0, 0, 7, 8};
+  problem.past_sequence_lengths = {0, 4101, 16388};
+  problem.head_size = 128;
+  problem.num_heads = 4;
+  problem.rotary_width = 64;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem.state_capacity = 65536;
+  problem = MakeQsaPackedProblem(std::move(problem));
+  std::fill(problem.query.begin(), problem.query.end(), 1.0f);
+  std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+  for (int batch = 0; batch < problem.batch_size; ++batch) {
+    for (int block = 0; block < problem.state_capacity; ++block) {
+      const float value = static_cast<float>(block + 1) / problem.state_capacity;
+      const size_t offset = (static_cast<size_t>(batch) * problem.state_capacity + block) * problem.head_size;
+      std::fill_n(problem.past_key_state.begin() + offset, problem.head_size, value);
+    }
+  }
+  RunQsaPackedTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda);
+}
+
 TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {
   QsaPackedProblem problem;
   problem.batch_size = 1;

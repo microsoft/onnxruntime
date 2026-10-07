@@ -353,7 +353,7 @@ __global__ void MoeGemvFp4RawNPackedKernel(
 #endif
 }
 
-template <typename T, bool FusedSwiGlu, bool EnableBias>
+template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes = 8>
 __global__ void MoeGemvFp4RawKPackedKernel(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
     const T* bias, T* out,
@@ -362,9 +362,10 @@ __global__ void MoeGemvFp4RawKPackedKernel(
     cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int num_rows) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
-  constexpr int kKLanes = 8;
+  constexpr int kKLanes = KLanes;
   constexpr int kBlockSize = 16;
-  constexpr int kColsPerBlock = 16;
+  constexpr int kColsPerBlock = 128 / kKLanes;
+  static_assert(kKLanes == 4 || kKLanes == 8);
   constexpr unsigned kFullMask = 0xffffffffu;
   using PackedT = std::conditional_t<std::is_same_v<T, half>, half2, __nv_bfloat162>;
 
@@ -442,18 +443,29 @@ void LaunchMoeGemvFp4RawNPacked(
   const int64_t scale_expert_stride = n * (k / 16);
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>((n + kColsPerBlock - 1) / kColsPerBlock));
   if (weights_row_major) {
-    if (bias != nullptr) {
-      MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, true><<<grid, kThreads, 0, stream>>>(
-          act, weight, block_scales, global_scales, bias, out,
-          expert_first_token_offset, permuted_row_to_expert, num_experts,
-          weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
-          permuted_row_to_source_row, static_cast<int>(num_rows));
+    const auto launch_k_packed = [&](auto k_lanes) {
+      constexpr int kKLanes = decltype(k_lanes)::value;
+      constexpr int kNativeColsPerBlock = kThreads / kKLanes;
+      const dim3 native_grid(static_cast<unsigned>(expanded_num_rows),
+                             static_cast<unsigned>((n + kNativeColsPerBlock - 1) / kNativeColsPerBlock));
+      if (bias != nullptr) {
+        MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, true, kKLanes><<<native_grid, kThreads, 0, stream>>>(
+            act, weight, block_scales, global_scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts,
+            weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+            permuted_row_to_source_row, static_cast<int>(num_rows));
+      } else {
+        MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, false, kKLanes><<<native_grid, kThreads, 0, stream>>>(
+            act, weight, block_scales, global_scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts,
+            weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+            permuted_row_to_source_row, static_cast<int>(num_rows));
+      }
+    };
+    if (k <= 1024) {
+      launch_k_packed(std::integral_constant<int, 4>{});
     } else {
-      MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, false><<<grid, kThreads, 0, stream>>>(
-          act, weight, block_scales, global_scales, bias, out,
-          expert_first_token_offset, permuted_row_to_expert, num_experts,
-          weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
-          permuted_row_to_source_row, static_cast<int>(num_rows));
+      launch_k_packed(std::integral_constant<int, 8>{});
     }
     return;
   }
