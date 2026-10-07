@@ -23,6 +23,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #ifdef USE_CUDA
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "test/common/cuda_op_test_utils.h"
 #endif
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
@@ -41,6 +42,35 @@
 
 namespace onnxruntime {
 namespace test {
+
+#ifdef USE_CUDA
+// Restrict native H512 GQA to supported GPUs and compatible, unquantized grouped-head caches.
+TEST(GroupQueryAttentionTest, NativeH512FallbackEligibility) {
+  contrib::GroupQueryAttentionParameters parameters{};
+  parameters.num_heads = 8;
+  parameters.kv_num_heads = 1;
+  parameters.head_size = 512;
+  parameters.past_kv_format = contrib::AttentionQkvFormat::Q_K_V_BNSH;
+  for (int device_major : {5, 6, 7, 8, 9, 10, 12}) {
+    EXPECT_EQ(contrib::cuda::PreferNativeGqa(parameters, device_major, false, false), device_major >= 8);
+  }
+  EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, true, false));
+  EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, true));
+  parameters.use_smooth_softmax = true;
+  EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, false));
+  parameters.use_smooth_softmax = false;
+  parameters.past_kv_format = contrib::AttentionQkvFormat::Q_K_V_BSNH;
+  EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, false));
+  parameters.past_kv_format = contrib::AttentionQkvFormat::Q_K_V_BNSH;
+  parameters.kv_num_heads = parameters.num_heads;
+  EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, false));
+  parameters.kv_num_heads = 1;
+  for (int head_size : {64, 128, 256}) {
+    parameters.head_size = head_size;
+    EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, false));
+  }
+}
+#endif
 
 // Selects which EP backs a GQA test helper. Modeled as a single enum (rather
 // than two bools) so adding a new EP later does not silently fall through to

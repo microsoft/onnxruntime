@@ -642,9 +642,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     constexpr bool is_fp8_quantized_supported = false;
 #endif
 
+    // H512 maps each query head to its KV head directly, without the smaller kernels' group-size specializations.
     bool is_non_quantized_supported = !is_inputs_quantized &&
-                                      IsSupportedGQAXqaHeadSize(parameters.head_size) &&
-                                      IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/false);
+                                      IsSupportedGQAXqaGeometry(parameters.head_size, group_size, /*is_quantized=*/false);
 
     data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
 
@@ -880,6 +880,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention) {
     // Fall back to memory efficient attention.
     int sm = (device_prop.major * 10) + device_prop.minor;
+    const bool prefer_native_gqa = PreferNativeGqa(parameters, device_prop.major, is_inputs_quantized,
+                                                   head_sink != nullptr);
     // With attention_bias, MEA is skipped: the cutlass wrapper computes the bias row stride from
     // kv_sequence_length, which GQA sets to the KV-cache capacity (seqlen_present_kv_cache), not
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
@@ -888,6 +890,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         !disable_memory_efficient_attention_ &&
         !is_inputs_quantized &&
         !has_attention_bias &&
+        !prefer_native_gqa &&
         has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
