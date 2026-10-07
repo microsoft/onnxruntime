@@ -15,7 +15,7 @@
 #include "nlohmann/json.hpp"
 
 #include "core/session/model_package/model_package_context.h"
-#include "core/session/onnxruntime_experimental_cxx_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/abi_devices.h"
 #include "test/autoep/test_autoep_utils.h"
@@ -28,83 +28,8 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
-// Typed function pointers for every OrtModelPackageApi_* experimental entry,
-// resolved once via the experimental name-based lookup.
-struct ModelPackageFns {
-  OrtExperimental_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_Fn
-      CreateModelPackageOptionsFromSessionOptions{nullptr};
-  OrtExperimental_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_Fn
-      ReleaseModelPackageOptions{nullptr};
-  OrtExperimental_OrtModelPackageApi_CreateModelPackageContext_SinceV28_Fn
-      CreateModelPackageContext{nullptr};
-  OrtExperimental_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_Fn
-      ReleaseModelPackageContext{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_Fn
-      ModelPackage_GetSchemaVersion{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_Fn
-      ModelPackage_GetComponentCount{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28_Fn
-      ModelPackage_GetComponentNames{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28_Fn
-      ModelPackage_GetVariantCount{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28_Fn
-      ModelPackage_GetVariantNames{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_Fn
-      ModelPackage_GetVariantEpName{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28_Fn
-      ModelPackage_ResolveStringRef{nullptr};
-  OrtExperimental_OrtModelPackageApi_SelectComponent_SinceV28_Fn
-      SelectComponent{nullptr};
-  OrtExperimental_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_Fn
-      ReleaseModelPackageComponentContext{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28_Fn
-      ModelPackageComponent_GetSelectedVariantName{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28_Fn
-      ModelPackageComponent_GetSelectedVariantFolderPath{nullptr};
-  OrtExperimental_OrtModelPackageApi_CreateSession_SinceV28_Fn
-      CreateSession{nullptr};
-};
-
-inline const ModelPackageFns& GetModelPackageFns() {
-  static const ModelPackageFns fns = []() {
-    const OrtApi* api = &Ort::GetApi();
-    namespace Exp = Ort::Experimental;
-    ModelPackageFns f;
-    f.CreateModelPackageOptionsFromSessionOptions =
-        Exp::Get_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_FnOrThrow(api);
-    f.ReleaseModelPackageOptions =
-        Exp::Get_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_FnOrThrow(api);
-    f.CreateModelPackageContext =
-        Exp::Get_OrtModelPackageApi_CreateModelPackageContext_SinceV28_FnOrThrow(api);
-    f.ReleaseModelPackageContext =
-        Exp::Get_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_FnOrThrow(api);
-    f.ModelPackage_GetSchemaVersion =
-        Exp::Get_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_FnOrThrow(api);
-    f.ModelPackage_GetComponentCount =
-        Exp::Get_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_FnOrThrow(api);
-    f.ModelPackage_GetComponentNames =
-        Exp::Get_OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28_FnOrThrow(api);
-    f.ModelPackage_GetVariantCount =
-        Exp::Get_OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28_FnOrThrow(api);
-    f.ModelPackage_GetVariantNames =
-        Exp::Get_OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28_FnOrThrow(api);
-    f.ModelPackage_GetVariantEpName =
-        Exp::Get_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_FnOrThrow(api);
-    f.ModelPackage_ResolveStringRef =
-        Exp::Get_OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28_FnOrThrow(api);
-    f.SelectComponent =
-        Exp::Get_OrtModelPackageApi_SelectComponent_SinceV28_FnOrThrow(api);
-    f.ReleaseModelPackageComponentContext =
-        Exp::Get_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_FnOrThrow(api);
-    f.ModelPackageComponent_GetSelectedVariantName =
-        Exp::Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28_FnOrThrow(api);
-    f.ModelPackageComponent_GetSelectedVariantFolderPath =
-        Exp::Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28_FnOrThrow(api);
-    f.CreateSession =
-        Exp::Get_OrtModelPackageApi_CreateSession_SinceV28_FnOrThrow(api);
-    return f;
-  }();
-  return fns;
+inline const OrtModelPackageApi& GetModelPackageFns() {
+  return Ort::GetModelPackageApi();
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -204,7 +129,7 @@ std::filesystem::path BuildTwoVariantPackage(const std::filesystem::path& packag
   return BuildPackage(package_root, "model_1", variants);
 }
 
-// Runs the full experimental OrtModelPackageApi flow for a single-component package and returns the
+// Runs the full OrtModelPackageApi flow for a single-component package and returns the
 // created session: CreateModelPackageOptionsFromSessionOptions -> CreateModelPackageContext ->
 // SelectComponent -> CreateSession. `session_options` drives both variant/EP selection and session
 // creation (advanced path), mirroring how a caller loads a package. Throws on any error.
@@ -249,7 +174,7 @@ TEST(ModelPackageApiTest, PackageContextQueries) {
                          "testdata/mul_16.onnx");
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   auto context_deleter = [&pkg_api](OrtModelPackageContext* p) {
     if (p) pkg_api.ReleaseModelPackageContext(p);
@@ -312,7 +237,7 @@ TEST(ModelPackageApiTest, ResolveStringRef) {
   }
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.ModelPackage_ResolveStringRef, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.ModelPackage_ResolveStringRef, nullptr) << "Model package API is not available";
 
   auto context_deleter = [&pkg_api](OrtModelPackageContext* p) {
     if (p) pkg_api.ReleaseModelPackageContext(p);
@@ -382,7 +307,7 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) {
     if (p) pkg_api.ReleaseModelPackageOptions(p);
@@ -680,7 +605,7 @@ TEST(ModelPackageApiTest, GetVariantEpName_ReturnsSingleEp) {
   BuildPackage(package_root, "model_1", variants);
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   auto context_deleter = [&pkg_api](OrtModelPackageContext* p) {
     if (p) pkg_api.ReleaseModelPackageContext(p);
@@ -733,7 +658,7 @@ TEST(ModelPackageTest, VariantSelector_TieBreakIsDeterministic) {
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
     const auto& pkg_api = GetModelPackageFns();
-    ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+    ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
     auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api.ReleaseModelPackageOptions(p); };
     auto context_deleter = [&pkg_api](OrtModelPackageContext* p) { if (p) pkg_api.ReleaseModelPackageContext(p); };
@@ -798,7 +723,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api.ReleaseModelPackageOptions(p); };
   auto context_deleter = [&pkg_api](OrtModelPackageContext* p) { if (p) pkg_api.ReleaseModelPackageContext(p); };
@@ -875,7 +800,7 @@ TEST(ModelPackageTest, VariantSessionOption_ResolvesExternalInitializersFolder) 
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api.ReleaseModelPackageOptions(p); };
   auto context_deleter = [&pkg_api](OrtModelPackageContext* p) { if (p) pkg_api.ReleaseModelPackageContext(p); };
@@ -919,7 +844,7 @@ TEST(ModelPackageTest, VariantSessionOption_ResolvesExternalInitializersFolder) 
 TEST(ModelPackageTest, VariantSessionOption_RejectsOutputFileOptions) {
   const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_output_file_options";
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   for (const auto* option_key : {kDebugLayoutTransformation,
                                  kOrtSessionOptionsCollectNodeMemoryStatsToFile,
@@ -957,7 +882,7 @@ TEST(ModelPackageTest, VariantSessionOption_RejectsEmbeddedNulInKey) {
   BuildPackage(package_root, "model_1", variants);
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   OrtModelPackageContext* raw_context = nullptr;
   OrtStatus* status = pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_context);
@@ -997,7 +922,7 @@ TEST(ModelPackageApiTest, FolderPath_ReturnsCorrectPath_WhenExecutorInfoAbsent) 
   so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   const auto& pkg_api = GetModelPackageFns();
-  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package API is not available";
 
   OrtModelPackageOptions* raw_mp_opts = nullptr;
   ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, so, &raw_mp_opts));

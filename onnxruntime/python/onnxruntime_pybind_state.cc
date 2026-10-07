@@ -3586,6 +3586,174 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           R"pbdoc(Clear the external EPContext data write callback.)pbdoc")
 #endif  // !defined(ORT_MINIMAL_BUILD)
       ;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  struct PyModelPackageSession : PyInferenceSession {
+    explicit PyModelPackageSession(std::unique_ptr<InferenceSession> sess)
+        : PyInferenceSession(std::move(sess)) {}
+  };
+
+  struct PyModelPackageContext {
+    OrtModelPackageContext* ctx_{nullptr};
+
+    explicit PyModelPackageContext(const std::string& package_path) {
+      auto path = ToPathString(package_path);
+      Ort::ThrowOnError(Ort::GetModelPackageApi().CreateModelPackageContext(path.c_str(), &ctx_));
+    }
+
+    ~PyModelPackageContext() {
+      Ort::GetModelPackageApi().ReleaseModelPackageContext(ctx_);
+    }
+
+    PyModelPackageContext(const PyModelPackageContext&) = delete;
+    PyModelPackageContext& operator=(const PyModelPackageContext&) = delete;
+  };
+
+  struct PyModelPackageComponentContext {
+    OrtModelPackageComponentContext* ctx_{nullptr};
+
+    ~PyModelPackageComponentContext() {
+      Ort::GetModelPackageApi().ReleaseModelPackageComponentContext(ctx_);
+    }
+
+    PyModelPackageComponentContext() = default;
+    PyModelPackageComponentContext(const PyModelPackageComponentContext&) = delete;
+    PyModelPackageComponentContext& operator=(const PyModelPackageComponentContext&) = delete;
+  };
+
+  struct PyModelPackageOptions {
+    OrtModelPackageOptions* options_{nullptr};
+
+    ~PyModelPackageOptions() {
+      Ort::GetModelPackageApi().ReleaseModelPackageOptions(options_);
+    }
+
+    PyModelPackageOptions() = default;
+    PyModelPackageOptions(const PyModelPackageOptions&) = delete;
+    PyModelPackageOptions& operator=(const PyModelPackageOptions&) = delete;
+  };
+
+  py::class_<PyModelPackageContext>(m, "ModelPackageContext",
+                                    R"pbdoc(Open a model package for inspection and component selection.)pbdoc")
+      .def(py::init<const std::string&>(), py::arg("package_path"))
+      .def(
+          "get_component_names",
+          [](const PyModelPackageContext& self) {
+            const char* const* names = nullptr;
+            size_t count = 0;
+            Ort::ThrowOnError(
+                Ort::GetModelPackageApi().ModelPackage_GetComponentNames(self.ctx_, &names, &count));
+            std::vector<std::string> result;
+            result.reserve(count);
+            for (size_t i = 0; i < count; ++i) {
+              result.emplace_back(names[i]);
+            }
+            return result;
+          })
+      .def(
+          "get_variant_names",
+          [](const PyModelPackageContext& self, const std::string& component_name) {
+            const char* const* names = nullptr;
+            size_t count = 0;
+            Ort::ThrowOnError(Ort::GetModelPackageApi().ModelPackage_GetVariantNames(
+                self.ctx_, component_name.c_str(), &names, &count));
+            std::vector<std::string> result;
+            result.reserve(count);
+            for (size_t i = 0; i < count; ++i) {
+              result.emplace_back(names[i]);
+            }
+            return result;
+          },
+          py::arg("component_name"))
+      .def(
+          "get_variant_ep_name",
+          [](const PyModelPackageContext& self, const std::string& component_name,
+             const std::string& variant_name) -> std::optional<std::string> {
+            const char* ep = nullptr;
+            Ort::ThrowOnError(Ort::GetModelPackageApi().ModelPackage_GetVariantEpName(
+                self.ctx_, component_name.c_str(), variant_name.c_str(), &ep));
+            return ep != nullptr ? std::make_optional<std::string>(ep) : std::nullopt;
+          },
+          py::arg("component_name"), py::arg("variant_name"))
+      .def(
+          "get_schema_version",
+          [](const PyModelPackageContext& self) {
+            int64_t version = 0;
+            Ort::ThrowOnError(
+                Ort::GetModelPackageApi().ModelPackage_GetSchemaVersion(self.ctx_, &version));
+            return version;
+          })
+      .def(
+          "resolve_string_ref",
+          [](const PyModelPackageContext& self, const std::optional<std::string>& base_dir,
+             const std::string& input, bool must_exist) {
+            const char* path = nullptr;
+            Ort::ThrowOnError(Ort::GetModelPackageApi().ModelPackage_ResolveStringRef(
+                self.ctx_, base_dir ? base_dir->c_str() : nullptr, input.c_str(),
+                must_exist ? 1 : 0, &path));
+            return std::string{path};
+          },
+          py::arg("base_dir"), py::arg("input"), py::arg("must_exist") = true)
+      .def(
+          "select_component",
+          [](const PyModelPackageContext& self, const std::string& component_name,
+             const PyModelPackageOptions& options) {
+            auto result = std::make_unique<PyModelPackageComponentContext>();
+            Ort::ThrowOnError(Ort::GetModelPackageApi().SelectComponent(
+                self.ctx_, component_name.c_str(), options.options_, &result->ctx_));
+            return result;
+          },
+          py::arg("component_name"), py::arg("options"));
+
+  py::class_<PyModelPackageOptions>(m, "ModelPackageOptions",
+                                    R"pbdoc(Options used for model package variant selection.)pbdoc")
+      .def(py::init([](const PySessionOptions& session_options) {
+             auto result = std::make_unique<PyModelPackageOptions>();
+             Ort::ThrowOnError(Ort::GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(
+                 GetOrtEnv(), &session_options, &result->options_));
+             return result;
+           }),
+           py::arg("session_options"));
+
+  py::class_<PyModelPackageComponentContext>(
+      m, "ModelPackageComponentContext",
+      R"pbdoc(A selected component and variant within a model package.)pbdoc")
+      .def(
+          "get_selected_variant_name",
+          [](const PyModelPackageComponentContext& self) {
+            const char* name = nullptr;
+            Ort::ThrowOnError(Ort::GetModelPackageApi().ModelPackageComponent_GetSelectedVariantName(
+                self.ctx_, &name));
+            return std::string{name};
+          })
+      .def(
+          "get_selected_variant_folder_path",
+          [](const PyModelPackageComponentContext& self) {
+            const ORTCHAR_T* path = nullptr;
+            Ort::ThrowOnError(Ort::GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFolderPath(
+                self.ctx_, &path));
+            return PathToUTF8String(PathString(path));
+          })
+      .def(
+          "create_session",
+          [](PyModelPackageComponentContext& self,
+             py::object session_options_obj) -> std::unique_ptr<PyInferenceSession> {
+            OrtSession* ort_session = nullptr;
+            if (session_options_obj.is_none()) {
+              Ort::ThrowOnError(
+                  Ort::GetModelPackageApi().CreateSession(GetOrtEnv(), self.ctx_, nullptr, &ort_session));
+            } else {
+              auto& session_options = session_options_obj.cast<PySessionOptions&>();
+              Ort::ThrowOnError(Ort::GetModelPackageApi().CreateSession(
+                  GetOrtEnv(), self.ctx_, &session_options, &ort_session));
+            }
+
+            auto session = std::unique_ptr<InferenceSession>(
+                reinterpret_cast<InferenceSession*>(ort_session));
+            return std::make_unique<PyModelPackageSession>(std::move(session));
+          },
+          py::arg("session_options") = py::none());
+#endif
 }
 
 bool InitArray() {
