@@ -16,6 +16,10 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
+#if defined(__wasm__)
+#include <emscripten.h>
+#endif
+
 namespace onnxruntime {
 
 std::ostream& operator<<(std::ostream& os, const LogicalProcessors& aff) {
@@ -34,12 +38,28 @@ std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors> af
 
 Env::Env() = default;
 
+bool Env::HasFileSystem() {
+#if defined(__wasm__)
+  // Do not call getcwd: Emscripten's FILESYSTEM=0 syscall stubs can abort in assertion-enabled builds.
+  // clang-format off
+  return EM_ASM_INT({
+    return typeof FS !== 'undefined' && typeof FS.cwd === 'function' ? 1 : 0;
+  }) != 0;
+  // clang-format on
+#else
+  return true;
+#endif
+}
+
 common::Status Env::CaptureModelPath(const std::filesystem::path& path, ModelPath& model_path,
-                                     [[maybe_unused]] bool allow_model_symlink) const {
+                                     bool allow_model_symlink) const {
   ORT_RETURN_IF(path.native().find(ORTCHAR_T{}) != PathString::npos, "Model path contains a null character.");
   ModelPath result{path};
-  // WASM loaders use mounted data; even probing the filesystem can abort a FILESYSTEM=0 build.
-#if !defined(__wasm__)
+  if (!HasFileSystem()) {
+    model_path = std::move(result);
+    return common::Status::OK();
+  }
+
   auto directories = std::make_shared<ModelPath::ExternalDataDirectories>();
   PathString canonical;
   const auto parent = path.parent_path().empty() ? std::filesystem::path{"."} : path.parent_path();
@@ -56,7 +76,6 @@ common::Status Env::CaptureModelPath(const std::filesystem::path& path, ModelPat
     }
   }
   result.directories_ = std::move(directories);
-#endif
   model_path = std::move(result);
   return common::Status::OK();
 }

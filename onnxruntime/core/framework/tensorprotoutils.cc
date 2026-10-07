@@ -455,15 +455,10 @@ static Status ResolveExternalDataPathFromDir(const std::filesystem::path& model_
   // requires a drive letter).
   ORT_RETURN_IF(!external_data_path.root_path().empty(), "Absolute path not allowed for external data location");
 
-#if defined(__wasm__)
-  // Step 4 (WASM only): If we can't access the current working directory, assume the WASM environment
-  // does not have a virtual filesystem and defer validation to an ExternalDataLoader for the WASM EP.
-  std::error_code error_code;
-  std::filesystem::current_path(error_code);
-  if (error_code) {
+  // Step 4: Filesystem-free WASM loads mounted data. Check availability without invoking syscall stubs.
+  if (!Env::HasFileSystem()) {
     return Status::OK();
   }
-#endif
 
   // Step 5: Resolve both the model directory and the combined path to canonical forms.
   // WeaklyCanonicalPath resolves symlinks for existing path segments while lexically normalizing

@@ -1057,6 +1057,14 @@ TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModelAndData_Hugging
   // model.onnx is a symlink; data.bin is also a symlink.
   // Both resolve to the same blobs/ directory — should pass.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "data.bin"));
+
+  ModelPath model_path;
+  ASSERT_STATUS_OK(Env::Default().CaptureModelPath(snapshots_dir / "model.onnx", model_path));
+  ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+  EXPECT_EQ(model_path.GetExternalDataDirectories()->apparent, std::filesystem::canonical(snapshots_dir));
+  EXPECT_EQ(model_path.GetExternalDataDirectories()->model_target, std::filesystem::canonical(blobs_dir));
+  std::filesystem::remove(snapshots_dir / "model.onnx");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "data.bin"));
 }
 
 // Test that symlinked model + empty external data path is rejected (not silently accepted).

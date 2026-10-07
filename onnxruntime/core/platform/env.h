@@ -378,6 +378,9 @@ class Env {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This environment does not support canonical file opens.");
   }
 
+  // WASM FILESYSTEM=0 builds must check this before issuing filesystem syscalls.
+  static bool HasFileSystem();
+
   // Capture explicit caller-supplied external-data directories without retaining a model file.
   common::Status CaptureModelPath(const std::filesystem::path& path, ModelPath& model_path,
                                   bool allow_model_symlink = true) const;

@@ -75,6 +75,9 @@ TEST(PlatformEnvTest, GetErrnoInfo) {
 
 #if defined(__wasm__)
 TEST(PlatformEnvTest, ModelPathCaptureDoesNotRequireAFileSystem) {
+  if (Env::HasFileSystem()) {
+    GTEST_SKIP() << "Requires a FILESYSTEM=0 build.";
+  }
   for (const auto* path : {"", "models/model.onnx"}) {
     ModelPath model_path;
     ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, model_path));
@@ -83,6 +86,22 @@ TEST(PlatformEnvTest, ModelPathCaptureDoesNotRequireAFileSystem) {
   }
 }
 #endif
+
+TEST(PlatformEnvTest, ModelPathCapturePreservesAvailableFileSystemDirectories) {
+  if (!Env::HasFileSystem()) {
+    GTEST_SKIP() << "Requires a filesystem-enabled build.";
+  }
+  for (const auto* path : {ORT_TSTR(""), ORT_TSTR("model.onnx")}) {
+    ModelPath model_path;
+    ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, model_path, false));
+    EXPECT_EQ(model_path.Path(), std::filesystem::path(path));
+    ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+    PathString expected;
+    ASSERT_STATUS_OK(Env::Default().GetWeaklyCanonicalPath(ORT_TSTR("."), expected));
+    EXPECT_EQ(model_path.GetExternalDataDirectories()->apparent, std::filesystem::path(expected));
+    EXPECT_TRUE(model_path.GetExternalDataDirectories()->model_target.empty());
+  }
+}
 
 namespace {
 
