@@ -183,6 +183,109 @@ Deliverables:
 
 Exit gate: packed QMoE improves decode latency or throughput over the agreed INT4 baseline while preserving the accepted model quality.
 
+### llama.cpp Reference: Integer-Activation MoE Decode
+
+Source review on October 7, 2026, uses llama.cpp commit
+[`c479922ac520`](https://github.com/ggml-org/llama.cpp/tree/c479922ac520a08969b4c1dc154d7bbb3c386d85).
+These are implementation observations and candidate optimization directions,
+not a measured performance comparison with ORT or a claim that every llama.cpp
+MoE configuration uses the same kernel.
+
+#### Activation Quantization and Reuse
+
+The CUDA quantized matrix-vector entry point allocates a temporary Q8_1 buffer
+from the device memory pool, launches activation quantization, then passes that
+buffer to the indexed dot-product kernel. See
+[`mmvq.cu`](https://github.com/ggml-org/llama.cpp/blob/c479922ac520a08969b4c1dc154d7bbb3c386d85/ggml/src/ggml-cuda/mmvq.cu#L1531).
+Q8_1 stores 32 signed INT8 values with scale and sum metadata; the CUDA
+quantizer computes a block maximum and uses `d = amax / 127`. See
+[`quantize.cu`](https://github.com/ggml-org/llama.cpp/blob/c479922ac520a08969b4c1dc154d7bbb3c386d85/ggml/src/ggml-cuda/quantize.cu#L85).
+
+Quantization is outside the output-column dot-product loop, allowing the same
+quantized input row to be reused across output columns and applicable routed
+experts. For FC1, experts can share a token's input; FC2 consumes expert-specific
+intermediate rows and must preserve their identity. This is reuse within the
+operation, not evidence of persistent cross-layer quantized-activation caching.
+The separate quantizer launch, temporary writes and reads are part of the cost
+and must be included in an ORT comparison.
+
+#### Packed Integer Dot Products and MoE Dispatch
+
+IQ2 CUDA dot products decode codebook entries and signs into packed integer
+operands, call DP4A, and combine activation and weight scales after local
+integer accumulation. See the IQ2_XXS and IQ2_XS implementations in
+[`vecdotq.cuh`](https://github.com/ggml-org/llama.cpp/blob/c479922ac520a08969b4c1dc154d7bbb3c386d85/ggml/src/ggml-cuda/vecdotq.cuh#L1048).
+This avoids an intermediate FP16 weight conversion in the dot-product path;
+it is not native INT2-by-INT8 Tensor Core arithmetic.
+
+`ggml_cuda_mul_mat_id` selects indexed MMVQ for eligible small batches and
+may select the separate MMQ path for larger workloads, depending on format,
+device and shape. See
+[`ggml-cuda.cu`](https://github.com/ggml-org/llama.cpp/blob/c479922ac520a08969b4c1dc154d7bbb3c386d85/ggml/src/ggml-cuda/ggml-cuda.cu#L1992).
+The indexed MMVQ kernel reads expert IDs and the corresponding activation
+channel directly. Its eligible fusion path computes up/gate using the same
+Q8_1 input, performs warp reductions and applies GLU; see
+[`mmvq.cu`](https://github.com/ggml-org/llama.cpp/blob/c479922ac520a08969b4c1dc154d7bbb3c386d85/ggml/src/ggml-cuda/mmvq.cu#L906).
+ORT already has routing and fused SwiGLU decode paths, so fusion alone is not
+a demonstrated differentiator. The efficient indexed paths do not imply that
+fallback paths avoid synchronization or that every path is CUDA-graph eligible.
+
+#### Quantization Format Boundary
+
+llama.cpp IQ2 formats are vector-codebook encodings with sign and scale
+metadata, not ORT's uniform symmetric INT2 values `[-2, -1, 0, 1]`.
+Q2_K additionally has scale/min semantics. With 256 weights per block, the
+source structures give the following storage, including metadata:
+
+| Format | Bytes per 256 Weights | Effective Bits per Weight |
+| --- | ---: | ---: |
+| IQ2_XXS | 66 | 2.0625 |
+| IQ2_XS | 74 | 2.3125 |
+| IQ2_S | 82 | 2.5625 |
+| Q2_K | 84 | 2.625 |
+
+See the
+[`format definitions`](https://github.com/ggml-org/llama.cpp/blob/c479922ac520a08969b4c1dc154d7bbb3c386d85/ggml/src/ggml-common.h#L379).
+An IQ2 kernel cannot directly consume existing ORT INT2 weights. Comparing
+models with these different formats also changes quantization error, metadata
+traffic and potentially expert routing; the label "2-bit" is not an isolated
+arithmetic or model-quality comparison.
+
+#### ORT Experiment and Next Checks
+
+A local, default-off INT8-activation GEMV prototype based on ORT
+`main@98468bff47` quantizes each thread's 16-element activation tile inside
+the output kernel. This repeats quantization across output tiles, unlike the
+prequantized-input organization above. Its direct integer unpack variant
+removes INT2-to-FP16-to-integer conversion but still rearranges intermediate
+integer values into DP4A operands.
+
+Standalone FP16 tests in `jiafa-dev` on A100, with eight expert rows, showed
+that direct integer unpack reduced prototype latency by approximately 20%-27%
+but remained approximately 1.45-1.55 times the existing INT2/FP16 GEMV baseline
+on three nonzero synthetic shapes. Output relative L2 differences from the
+baseline were 2.20%-2.54%, not task-accuracy deltas. These tests exclude fused
+SwiGLU/FC2, full ORT integration and end-to-end model decode; they do not
+measure llama.cpp. Details and limitations are recorded in
+[Olive recipe PR #648](https://github.com/microsoft/olive-recipes/pull/648).
+
+Candidate follow-up experiments, without changing the portable weight format:
+
+1. Quantize each actual input row once into a reusable blockwise INT8 buffer,
+  preserving FC1 shared-input and FC2 expert-specific row mappings.
+2. Generate packed integer dot-product operands directly from INT2 codes,
+  avoiding floating-point conversion and unnecessary intermediate arrays.
+3. Preserve routing, bias, fused SwiGLU and FC2 finalize semantics, and compare
+  equal dispatch/accumulation conditions before measuring default dispatch.
+4. Measure quantizer plus GEMV total latency, temporary memory, register
+  pressure and end-to-end decode, with an independent quantized reference,
+  FP16/BF16 coverage and model-quality checks.
+
+No same-model, same-hardware llama.cpp/ORT benchmark has established a speed
+advantage or attributed one to these mechanisms. A100 evidence does not
+establish H200 or Spark performance. Retain the current default path until
+correctness, quality and inclusive latency gates support an alternative.
+
 ### Workstream 4: CUDA Prefill
 
 Status: Native packed implementation merged through PR 4a, PR 4a2 and PR 4b. Product-level quality, performance, memory and supported-platform qualification remain open.
