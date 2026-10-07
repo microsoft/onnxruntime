@@ -211,9 +211,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
     // Reporting "BNHS" without implementing that fusion would steer applications into a layout
     // this EP cannot execute any faster, and the transposes would run for real.
     factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout, "BNSH");
-    // Report weightless support for both external initializers only and all initializers
-    // (OrtWeightlessSupport_EXTERNAL_ONLY | OrtWeightlessSupport_ALL).
-    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupport, "3");
+    // Report weightless support for both external initializers only and all initializers. "weightless_support"
+    // keeps the value reported before "weightless_supported_modes" was introduced, for apps written for earlier
+    // versions.
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes,
+                                     "all_or_external_only");
     factory->ort_api.AddKeyValuePair(ep_options.get(), "run_really_fast", "true");
 
     // OrtEpDevice copies ep_metadata and ep_options.
@@ -372,20 +375,27 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                          "Example EP test read EPContext during compile option must be '0' or '1'.");
   }
 
-  // Test-only EP option to make GetWeightlessSupport() disagree with the EP metadata.
-  // EP options are stored in the session config with an "ep.<ep_name>." prefix.
-  const std::string weightless_support_override_key = "ep." + factory->ep_name_ + ".weightless_support_override";
-  std::string weightless_support_override;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, weightless_support_override_key.c_str(), "",
-                                                 weightless_support_override));
+  std::string test_weightless_support;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestWeightlessSupport, "",
+                                                 test_weightless_support));
+
+  // Record the deprecated weightless option, which ORT sets to match "ep.enable_weightless_mode" before calling
+  // CreateEp(). EPs built for earlier versions only know the deprecated option.
+  std::string enable_weightless;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightless, "<not set>",
+                                                 enable_weightless));
+  RecordEnableWeightlessOption(enable_weightless == "<not set>" ? -1
+                               : enable_weightless == "0"       ? 0
+                               : enable_weightless == "1"       ? 1
+                                                                : 2);
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
-  if (!weightless_support_override.empty()) {
-    config.weightless_support = static_cast<uint32_t>(std::stoul(weightless_support_override));
+  if (!test_weightless_support.empty()) {
+    config.weightless_support = static_cast<OrtWeightlessSupport>(std::stoi(test_weightless_support));
   }
   config.advertise_ep_context_data_support = advertise_ep_context_data_support == "1";
   config.use_default_cpu_allocator = use_default_cpu_allocator == "1";

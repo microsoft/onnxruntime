@@ -1274,14 +1274,11 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_CompileApi) {
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
-  const char* supported_modes_str =
-      plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport);
-  ASSERT_NE(supported_modes_str, nullptr);
-  const uint32_t supported_modes = static_cast<uint32_t>(std::stoul(supported_modes_str));
+  // "all_or_external_only" supports both OrtWeightlessSupport_EXTERNAL_ONLY and OrtWeightlessSupport_ALL.
+  ASSERT_STREQ(plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes),
+               "all_or_external_only");
 
   for (OrtWeightlessSupport mode : {OrtWeightlessSupport_EXTERNAL_ONLY, OrtWeightlessSupport_ALL}) {
-    ASSERT_NE(supported_modes & mode, 0u) << mode;
-
     const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
     const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_mode_ctx.onnx");
     std::filesystem::remove(output_model_file);
@@ -1357,10 +1354,11 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_CompileApi_ErrorOnInvalidValue) {
   // OrtWeightlessSupport_NONE is valid and disables weightless mode.
   compile_options.SetWeightlessMode(OrtWeightlessSupport_NONE);
 
-  // Combined modes are valid for EPs to report but not for apps to request.
-  for (uint32_t invalid_value : {3u, 4u}) {
+  // Combined values are valid for EPs to report but not for apps to request.
+  for (OrtWeightlessSupport invalid_value :
+       {OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, static_cast<OrtWeightlessSupport>(4)}) {
     try {
-      compile_options.SetWeightlessMode(static_cast<OrtWeightlessSupport>(invalid_value));
+      compile_options.SetWeightlessMode(invalid_value);
       FAIL() << "Expected an error for weightless mode " << invalid_value;
     } catch (const Ort::Exception& e) {
       ASSERT_EQ(e.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
@@ -1398,7 +1396,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_SessionOption) {
     ASSERT_TRUE(status.IsOK()) << valid_value << ": " << status.GetErrorMessage();
   }
 
-  // "3" combines multiple modes, which is valid for EPs to report but not for apps to request.
+  // "3" (OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) is valid for EPs to report but not for apps to request.
   for (const char* invalid_value : {"3", "4", "-1", "abc"}) {
     auto status = compile(invalid_value);
     ASSERT_FALSE(status.IsOK()) << invalid_value;
@@ -1409,14 +1407,15 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_SessionOption) {
   std::filesystem::remove(output_model_file);
 }
 
-// Test that ORT detects when GetWeightlessSupport() does not match the "weightless_support" EP metadata.
-// The example EP reports "3" (OrtWeightlessSupport_EXTERNAL_ONLY | OrtWeightlessSupport_ALL) in its metadata, and a
-// test-only EP option makes GetWeightlessSupport() return OrtWeightlessSupport_EXTERNAL_ONLY instead.
+// Test that ORT detects when GetWeightlessSupport() does not match the weightless EP metadata.
+// The example EP reports "weightless_supported_modes" = "all_or_external_only" in its metadata, and a test-only
+// option makes GetWeightlessSupport() return OrtWeightlessSupport_EXTERNAL_ONLY instead.
 TEST(OrtEpLibrary, PluginEp_WeightlessMode_EpMetadataMismatch) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-  ASSERT_STREQ(plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "3");
+  ASSERT_STREQ(plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes),
+               "all_or_external_only");
 
   const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_metadata_mismatch_ctx.onnx");
@@ -1424,9 +1423,10 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_EpMetadataMismatch) {
   auto compile = [&](OrtWeightlessSupport mode) {
     std::filesystem::remove(output_model_file);
 
-    std::unordered_map<std::string, std::string> ep_options = {
-        {"weightless_support_override", std::to_string(OrtWeightlessSupport_EXTERNAL_ONLY)}};
+    std::unordered_map<std::string, std::string> ep_options;
     Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestWeightlessSupport,
+                                   std::to_string(OrtWeightlessSupport_EXTERNAL_ONLY).c_str());
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
@@ -1444,13 +1444,83 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_EpMetadataMismatch) {
     ASSERT_FALSE(status.IsOK());
     ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not support it on this device"));
     ASSERT_THAT(status.GetErrorMessage(),
-                testing::HasSubstr("do not match the 'weightless_support' EP metadata: '3' for"));
+                testing::HasSubstr("GetWeightlessSupport() returns 'external_only', which does not match the EP "
+                                   "metadata: EP metadata 'weightless_supported_modes' = 'all_or_external_only' for"));
   }
 
   // The requested mode is supported by both, so the mismatch is only a warning.
   {
     auto status = compile(OrtWeightlessSupport_EXTERNAL_ONLY);
     ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  }
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
+}
+
+// Test that ORT sets the deprecated "ep.enable_weightless" option to match "ep.enable_weightless_mode" before
+// creating the EP, so that EPs built for earlier versions, which only know the deprecated option, behave correctly.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_SetsDeprecatedOptionBeforeCreateEp) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  ASSERT_NE(hooks->reset_enable_weightless_option, nullptr);
+  ASSERT_NE(hooks->get_enable_weightless_option, nullptr);
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_deprecated_option_ctx.onnx");
+
+  struct TestCase {
+    const char* weightless_mode;     // "ep.enable_weightless_mode", or nullptr if not set.
+    const char* deprecated_option;   // "ep.enable_weightless", or nullptr if not set.
+    int expected_deprecated_option;  // As seen by the EP: -1 if not set, otherwise the value.
+  };
+  const TestCase test_cases[] = {
+      {"1", nullptr, 1},       // OrtWeightlessSupport_EXTERNAL_ONLY enables the deprecated option.
+      {"2", "0", 1},           // OrtWeightlessSupport_ALL overrides a disabled deprecated option.
+      {"0", "1", 0},           // OrtWeightlessSupport_NONE overrides an enabled deprecated option.
+      {nullptr, "1", 1},       // Without "ep.enable_weightless_mode", the deprecated option is unchanged.
+      {nullptr, nullptr, -1},  // Neither option is set.
+  };
+
+  for (size_t i = 0; i < std::size(test_cases); ++i) {
+    const TestCase& test_case = test_cases[i];
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (test_case.weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, test_case.weightless_mode);
+    }
+    if (test_case.deprecated_option != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, test_case.deprecated_option);
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    hooks->reset_enable_weightless_option();
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_EQ(hooks->get_enable_weightless_option(), test_case.expected_deprecated_option) << "test case " << i;
+  }
+
+  // The EP gets a copy: the app's session options, used directly when creating a session, are not modified.
+  {
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    hooks->reset_enable_weightless_option();
+    Ort::Session session(*ort_env, input_model_file, session_options);
+    ASSERT_EQ(hooks->get_enable_weightless_option(), 1);
+    ASSERT_FALSE(session_options.HasConfigEntry(kOrtSessionOptionEpEnableWeightless));
   }
 
   // Clean up.
@@ -1490,9 +1560,9 @@ TEST(OrtEpLibrary, PluginEp_WeightlessSourceModelBuffer_Validation) {
   }
 }
 
-// Test that weightless mode returns an error when the EP does not implement GetWeightlessSupport.
-// The virtual GPU EP is compiled with ORT_API_VERSION >= 29 but does not set GetWeightlessSupport,
-// so the validation in Compile() should return EP_FAIL.
+// Test that weightless mode returns an error when the EP does not support it.
+// The virtual GPU EP is compiled with ORT_API_VERSION >= 29 but reports no weightless EP metadata and does not set
+// GetWeightlessSupport.
 TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep));
@@ -1500,23 +1570,40 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
 
   const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/add_mul_add.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_error_test.onnx");
-  std::filesystem::remove(output_model_file);
 
-  std::unordered_map<std::string, std::string> ep_options;
-  Ort::SessionOptions session_options;
+  auto compile = [&](bool use_deprecated_option) {
+    std::filesystem::remove(output_model_file);
 
-  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (use_deprecated_option) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  // Request weightless mode.
-  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
-  compile_options.SetInputModelPath(input_model_file);
-  compile_options.SetOutputModelPath(output_model_file);
-  compile_options.SetWeightlessMode(OrtWeightlessSupport_EXTERNAL_ONLY);
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    if (!use_deprecated_option) {
+      compile_options.SetWeightlessMode(OrtWeightlessSupport_EXTERNAL_ONLY);
+    }
+    return Ort::CompileModel(*ort_env, compile_options);
+  };
 
-  // CompileModel should fail because the virtual GPU EP does not implement GetWeightlessSupport.
-  auto status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_FALSE(status.IsOK());
-  ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not implement GetWeightlessSupport"));
+  // A selected mode is checked against the EP metadata before the EP is created.
+  {
+    auto status = compile(/*use_deprecated_option*/ false);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Weightless mode 'external_only' requested"));
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("(no weightless EP metadata)"));
+  }
+
+  // The deprecated option keeps its previous behavior: the check happens in Compile().
+  {
+    auto status = compile(/*use_deprecated_option*/ true);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not implement GetWeightlessSupport"));
+  }
 
   // Clean up.
   std::filesystem::remove(output_model_file);

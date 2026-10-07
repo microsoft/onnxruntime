@@ -44,6 +44,8 @@ struct Utils {
     using GetPreallocatedOutputQueryResultFn = int (*)();
     using GetPreallocatedOutputBadIndexRejectedFn = int (*)();
     using SetCreateDataTransferFailureFn = void (*)(int enabled);
+    using ResetEnableWeightlessOptionFn = void (*)();
+    using GetEnableWeightlessOptionFn = int (*)();
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
@@ -51,6 +53,8 @@ struct Utils {
     GetPreallocatedOutputQueryResultFn get_preallocated_output_query_result{};
     GetPreallocatedOutputBadIndexRejectedFn get_preallocated_output_bad_index_rejected{};
     SetCreateDataTransferFailureFn set_create_data_transfer_failure{};
+    ResetEnableWeightlessOptionFn reset_enable_weightless_option{};
+    GetEnableWeightlessOptionFn get_enable_weightless_option{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

@@ -2723,21 +2723,28 @@ struct OrtEp {
 
   /** \brief Query the execution provider's weightless mode support.
    *
-   * When weightless mode is enabled (via the "ep.enable_weightless_mode" session option), ORT calls this function
-   * to determine the weightless modes supported by the EP. The EP returns the bitwise OR of all the
-   * OrtWeightlessSupport values it supports (e.g., OrtWeightlessSupport_EXTERNAL_ONLY | OrtWeightlessSupport_ALL),
-   * or OrtWeightlessSupport_NONE if it does not support weightless mode at all. ORT returns an error if the mode
-   * requested by the application is not among the supported modes.
+   * When weightless mode is enabled (via the "ep.enable_weightless_mode" or the deprecated "ep.enable_weightless"
+   * session option), ORT calls this function to determine the weightless modes supported by the EP. The EP returns
+   * the OrtWeightlessSupport value that describes all the modes it supports: a single mode, a value that covers
+   * several modes such as OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, or OrtWeightlessSupport_NONE if it does not
+   * support weightless mode at all. ORT returns an error if the mode requested by the application is not among the
+   * supported modes.
    *
-   * The EP can read the mode requested by the application from the "ep.enable_weightless_mode"
-   * (kOrtSessionOptionEpEnableWeightlessMode) session config entry.
+   * \note ORT versions before 1.31 only check that the returned value is not OrtWeightlessSupport_NONE, so an EP can
+   *       return OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY to them as well.
+   *
+   * The EP reads the mode requested by the application from the "ep.enable_weightless_mode"
+   * (kOrtSessionOptionEpEnableWeightlessMode) session config entry. An EP that supports several modes (e.g., reports
+   * OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) must honor that entry. When it is not set but the deprecated
+   * "ep.enable_weightless" entry is "1", the EP keeps the behavior it had before version 1.31.
    *
    * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
    * support weightless mode for all initializers on newer hardware but only for external initializers on
-   * older hardware that requires weight transformation. The response must match the "weightless_support" EP
-   * metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport) reported for the device, since applications use
-   * that entry to choose a mode. ORT logs a warning if they differ, and includes the difference in the error it
-   * returns when the requested mode is not supported.
+   * older hardware that requires weight transformation. The response must match the "weightless_supported_modes" EP
+   * metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) reported for the device, or the
+   * "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport) if the former is not reported, since
+   * applications use these entries to choose a mode. ORT logs a warning if they differ, and includes the difference
+   * in the error it returns when the requested mode is not supported.
    *
    * A weightless EP obtains the initializer data in one of two ways:
    * - ORT-provided: the EP sets drop_constant_initializers to false in OrtNodeFusionOptions so that ORT provides
@@ -2754,21 +2761,16 @@ struct OrtEp {
    *       only supported way to access initializer data at Compute() time.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[out] supported_modes Output parameter set to the bitwise OR of the OrtWeightlessSupport values
-   *                             supported by the EP, or OrtWeightlessSupport_NONE (0) if weightless mode is not
-   *                             supported.
+   * \param[out] support Output parameter set to the weightless modes supported by the EP.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not
    *       support weightless mode (equivalent to OrtWeightlessSupport_NONE).
    *
-   * \note In version 1.29 the output parameter type was OrtWeightlessSupport*. Since version 1.30 it is uint32_t*
-   *       so that it can hold a combination of OrtWeightlessSupport values.
-   *
    * \since Version 1.29.
    */
-  ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* supported_modes);
+  ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
 
   /** \brief Query support for application-managed external EPContext data.
    *
