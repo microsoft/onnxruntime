@@ -350,7 +350,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
                 (c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
     for (int32_t block_id : c.block_table) {
-      ASSERT_GE(block_id, 0);
+      ASSERT_GE(block_id, -1);
       ASSERT_LT(block_id, num_blocks);
     }
   }
@@ -888,6 +888,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
           for (int slot = first_visible_slot; slot <= last_visible_slot; ++slot) {
             const int block_id =
                 block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+            if (block_id < 0) {
+              scores[slot] = -std::numeric_limits<float>::infinity();
+              continue;
+            }
             float dot = 0.0f;
             for (int dim = 0; dim < head_size; ++dim) {
               const int query_index = (token * num_heads + q_head) * head_size + dim;
@@ -912,6 +916,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
             for (int slot = first_visible_slot; slot <= last_visible_slot; ++slot) {
               const int block_id =
                   block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+              if (block_id < 0) {
+                continue;
+              }
               const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
                                                  block_size, kv_num_heads, head_size);
               const float value_element = native_bf16_cache ? value_cache_bf16[cache_index].ToFloat()
@@ -2288,17 +2295,19 @@ TEST(PagedAttention, Cuda_CudnnPagedCudaGraphReplay) {
   IoBindingCase c = MakeCudnnPagedDecodeCase();
   c.enable_cuda_graph = true;
   c.irregular_layout = true;
+  c.past_seqlen = 511;
+  c.block_table = {-1, 3};
   // Five Runs: Runs 1-2 are warm-ups (populate the thread_local plan cache), Run 3 begins capture,
   // Runs 4-5 replay. All Runs share the same PagedGraphParams key (batch / heads / head_size /
   // blocks / block_size / max_num_blocks_per_seq / scale / dtype / handle), so every call to
   // try_build_paged_graph -- warm-up, capturing, replaying -- hits the cached plan. past_seqlen
   // varies across Runs but is not part of the cache key.
   c.replay_past_seqlens = {
-      {256},
-      {260},
-      {300},
-      {340},
-      {380},
+      {511},
+      {511},
+      {511},
+      {511},
+      {511},
   };
 
   testing::internal::CaptureStdout();

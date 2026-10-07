@@ -63,29 +63,44 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
 
 __global__ void PrepareCudnnBlockTableKernel(
     const int32_t* block_table, int32_t* cudnn_block_table,
-    const int32_t* cumulative_seqlens_kv, int32_t* sequence_validity,
-    int element_count, int max_num_blocks_per_seq, int block_size) {
-  const int index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index >= element_count) {
-    return;
-  }
-
-  const int batch = index / max_num_blocks_per_seq;
-  const int block = index % max_num_blocks_per_seq;
-  const int block_id = block_table[index];
-  cudnn_block_table[index] = block_id < 0 ? 0 : block_id;
-  const int sequence_length =
-      cumulative_seqlens_kv[batch + 1] - cumulative_seqlens_kv[batch];
-  const int live_blocks = (sequence_length + block_size - 1) / block_size;
-  if (block < live_blocks && block_id < 0) {
-    sequence_validity[batch] = 0;
+    const int32_t* cumulative_seqlens_kv, int32_t* cudnn_seqlens_kv,
+    int32_t* sequence_validity, int batch_size,
+    int max_num_blocks_per_seq, int block_size) {
+  for (int batch = blockIdx.x; batch < batch_size; batch += gridDim.x) {
+    const int row_offset = batch * max_num_blocks_per_seq;
+    if (threadIdx.x == 0) {
+      const int sequence_length =
+          cumulative_seqlens_kv[batch + 1] - cumulative_seqlens_kv[batch];
+      const int live_blocks = (sequence_length + block_size - 1) / block_size;
+      const int last_block_tokens = sequence_length % block_size;
+      int mapped_blocks = 0;
+      int mapped_length = 0;
+      for (int block = 0; block < live_blocks; ++block) {
+        const int block_id = block_table[row_offset + block];
+        if (block_id >= 0) {
+          cudnn_block_table[row_offset + mapped_blocks++] = block_id;
+          mapped_length +=
+              block + 1 == live_blocks && last_block_tokens != 0
+                  ? last_block_tokens
+                  : block_size;
+        }
+      }
+      for (int block = mapped_blocks; block < max_num_blocks_per_seq; ++block) {
+        cudnn_block_table[row_offset + block] = 0;
+      }
+      cudnn_seqlens_kv[batch] = mapped_length;
+      if (mapped_length == 0) {
+        sequence_validity[batch] = 0;
+      }
+    }
   }
 }
 
 Status LaunchPrepareCudnnBlockTable(
     const int32_t* block_table, int32_t* cudnn_block_table,
-    const int32_t* cumulative_seqlens_kv, int32_t* sequence_validity,
-    size_t element_count, int max_num_blocks_per_seq, int block_size,
+    const int32_t* cumulative_seqlens_kv, int32_t* cudnn_seqlens_kv,
+    int32_t* sequence_validity, size_t element_count, int batch_size,
+    int max_num_blocks_per_seq, int block_size,
     cudaStream_t stream) {
   ORT_RETURN_IF_NOT(
       element_count <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
@@ -93,12 +108,12 @@ Status LaunchPrepareCudnnBlockTable(
   if (element_count == 0) {
     return Status::OK();
   }
-  constexpr int kThreadsPerBlock = 256;
-  const int count = static_cast<int>(element_count);
-  const int blocks = (count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  PrepareCudnnBlockTableKernel<<<blocks, kThreadsPerBlock, 0, stream>>>(
-      block_table, cudnn_block_table, cumulative_seqlens_kv, sequence_validity,
-      count, max_num_blocks_per_seq, block_size);
+  constexpr int kMaxBlocks = 65535;
+  const int blocks = std::min(batch_size, kMaxBlocks);
+  PrepareCudnnBlockTableKernel<<<blocks, 1, 0, stream>>>(
+      block_table, cudnn_block_table, cumulative_seqlens_kv,
+      cudnn_seqlens_kv, sequence_validity, batch_size,
+      max_num_blocks_per_seq, block_size);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -609,32 +624,6 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
       cumulative_seqlens_kv, cumulative_seqlens_kv,
       SaturatingAddInt32{}, cumulative_element_count, stream));
   return Status::OK();
-}
-
-// Fills seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i])
-// for the cuDNN paged SDPA graph's per-batch KV padding-mask input. Deriving the query count from
-// cumulative_seqlens_q rather than hard-coding +1 avoids baking the "decode-only" invariant into
-// the kernel: on every currently reachable call the difference is 1 (the cuDNN paged tier is
-// gated to max_query_len_bound == 1), and any future extension to multi-token steps stays
-// numerically correct here without a second edit.
-__global__ void GetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
-                             const int32_t* cumulative_seqlens_q,
-                             const int batch_size) {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < batch_size) {
-    const int q_len = cumulative_seqlens_q[i + 1] - cumulative_seqlens_q[i];
-    seqlens_kv[i] = past_seqlens[i] + q_len;
-  }
-}
-
-Status LaunchGetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
-                          const int32_t* cumulative_seqlens_q,
-                          const int batch_size, cudaStream_t stream) {
-  constexpr int kThreads = 128;
-  const int blocks = (batch_size + kThreads - 1) / kThreads;
-  GetSeqlensKV<<<blocks, kThreads, 0, stream>>>(seqlens_kv, past_seqlens, cumulative_seqlens_q,
-                                                batch_size);
-  return CUDA_CALL(cudaGetLastError());
 }
 
 // Resolves the flat cache slot that a query token's K/V is written to, in the cache viewed as
@@ -2130,12 +2119,6 @@ Status CudnnPagedAttention(
   // the packed decode Q layout (one token per sequence) survives the prologue verbatim.
   ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data,
                                                        max_threads_per_block, &query)));
-
-  // Per-batch KV lengths for the padding-mask input. Derived from cumulative_seqlens_q so this
-  // stays correct if the cuDNN paged tier is ever relaxed beyond decode-only.
-  ORT_RETURN_IF_ERROR(LaunchGetSeqlensKV(
-      data.cudnn_seqlens_kv, data.past_seqlens, data.cumulative_seqlens_q,
-      parameters.batch_size, stream));
 
   cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
   bool cache_hit = false;

@@ -930,8 +930,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
 
-  // cuDNN paged SDPA needs a small [batch_size] int32 buffer holding per-sequence KV lengths,
-  // filled on device by LaunchGetSeqlensKVDecode right before dispatch.
+  // cuDNN paged SDPA needs compacted page tables and their mapped per-sequence KV lengths.
   IAllocatorUniquePtr<void> cudnn_seqlens_kv_buffer;
   IAllocatorUniquePtr<int> cudnn_block_table_buffer;
   if (use_cudnn_paged) {
@@ -941,8 +940,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchPrepareCudnnBlockTable(
         sanitized_block_table.get(), cudnn_block_table_buffer.get(),
-        cumulative_seqlens_kv_ptr, sequence_validity.get(),
-        block_table_element_count, parameters.max_num_blocks_per_seq,
+        cumulative_seqlens_kv_ptr,
+        reinterpret_cast<int*>(cudnn_seqlens_kv_buffer.get()),
+        sequence_validity.get(), block_table_element_count,
+        parameters.batch_size, parameters.max_num_blocks_per_seq,
         parameters.block_size, cuda_stream));
   }
 
