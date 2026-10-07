@@ -239,9 +239,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   if (head_bound < 8 || batch_bound <= 0 || sequence_bound <= 0) return std::nullopt;
 
   // Past tensors are required for both cache kinds: they carry the kv-head and
-  // per-head cache geometry validated below, and for a windowed cache dim 2 is
-  // also the KV-length bound. (A non-windowed KV length comes from the envelope
-  // above, not this shape.)
+  // per-head cache geometry and allocated capacity validated below.
   if (!Present(shapes, kPastKey)) return std::nullopt;
   const auto* past_key = Shape(shapes, kPastKey);
   const auto* past_value = Shape(shapes, kPastValue);
@@ -255,13 +253,11 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
     return std::nullopt;
   }
   if ((*past_key)[2] != (*past_value)[2]) return std::nullopt;
-  // Windowed: the cache shape bounds the KV length (and must equal the window).
-  // Non-windowed: the runtime sizes backend scratch from the absolute total
-  // sequence length (GetGQAEffectiveWorkspaceKvLength), a scalar not recoverable
-  // from shapes, so use the declared envelope. The past length never exceeds the
-  // total present length, so this also bounds the past-preservation copy.
+  // A non-windowed static cache can exceed the active total KV length. MEA
+  // expands the present capacity, and partial aliasing preserves the full past
+  // allocation, so bound both the allocated cache and the declared KV length.
   const int64_t capacity_bound =
-      windowed ? (*past_key)[2] : config.max_total_sequence_length;
+      windowed ? (*past_key)[2] : std::max((*past_key)[2], config.max_total_sequence_length);
   int64_t cache_head_bound = std::min((*past_key)[3], (*past_value)[3]);
   if (config.kv_cache_bit_width == 4) {
     if (cache_head_bound > std::numeric_limits<int64_t>::max() / 2) return std::nullopt;
@@ -270,7 +266,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   head_bound = std::min(head_bound, cache_head_bound);
   if (batch_bound <= 0 || capacity_bound <= 0 || head_bound < 8 ||
       (windowed && capacity_bound != config.local_window_size) ||
-      (!windowed && (capacity_bound < sequence_bound ||
+      (!windowed && (config.max_total_sequence_length < sequence_bound ||
                      capacity_bound > std::numeric_limits<int32_t>::max())) ||
       !ValidateAuxiliaryShapes(config, shapes, batch_bound, sequence_bound,
                                head_bound, capacity_bound)) {

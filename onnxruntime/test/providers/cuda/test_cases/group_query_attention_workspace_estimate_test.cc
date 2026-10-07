@@ -248,6 +248,58 @@ bool HasCudaDevice() {
   return cudaGetDeviceCount(&device_count) == cudaSuccess && device_count > 0;
 }
 
+void CheckNonWindowedStaticCacheCapacityBound(int kernel_selection, GQABackend backend) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kernel_selection, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.enable_xqa = false;
+  config.max_total_sequence_length = 512;
+  constexpr int64_t kPastCapacity = 1024;
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(/*sequence=*/1, /*head=*/64, kPastCapacity),
+      Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+  const bool use_mea = backend == GQABackend::MemoryEfficient;
+  ASSERT_TRUE(HasGQAReachableBackend(
+      estimate->sized_backends,
+      use_mea ? GQAReachableBackend::MemoryEfficient : GQAReachableBackend::Unfused));
+
+  GQAWorkspaceProblem problem;
+  problem.qkv_element_size = 2;
+  problem.cache_element_size = 2;
+  problem.batch_size = 2;
+  problem.sequence_length = 1;
+  problem.num_heads = 8;
+  problem.kv_num_heads = 2;
+  problem.head_size = 64;
+  problem.present_kv_cache_capacity = kPastCapacity;
+  problem.requires_separate_past_buffer = true;
+  problem.past_kv_cache_capacity = kPastCapacity;
+  GQAConcreteRoute route;
+  route.backend = backend;
+  route.preparation.preprocess_mode =
+      use_mea ? GQAPreprocessMode::MemoryEfficient : GQAPreprocessMode::Unfused;
+  route.unfused.total_sequence_length = config.max_total_sequence_length;
+  const auto runtime = GetGQACompleteWorkspaceRecipe(problem, route);
+  ASSERT_TRUE(runtime.status.IsOK());
+  constexpr size_t kPastBytes = 2 * 2 * kPastCapacity * 64 * 2;
+  EXPECT_EQ(runtime.recipe.preparation.separate_past_bytes, kPastBytes);
+  if (use_mea) {
+    constexpr size_t kExpandedCacheBytes = 2 * 8 * kPastCapacity * 64 * 2;
+    EXPECT_EQ(runtime.recipe.memory_efficient.expanded_key_bytes, kExpandedCacheBytes);
+    EXPECT_EQ(runtime.recipe.memory_efficient.expanded_value_bytes, kExpandedCacheBytes);
+  }
+  EXPECT_GE(estimate->total_workspace_bytes, runtime.recipe.total_workspace_bytes);
+
+  const auto smaller_cache = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(/*sequence=*/1, /*head=*/64, /*capacity=*/512),
+      Device(), options);
+  ASSERT_TRUE(smaller_cache.has_value());
+  EXPECT_GT(estimate->total_workspace_bytes, smaller_cache->total_workspace_bytes);
+}
+
 TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
@@ -524,6 +576,44 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedEnvelopeBoundsWorkspac
       Device(), options);
   ASSERT_TRUE(larger_estimate.has_value());
   EXPECT_GE(larger_estimate->total_workspace_bytes, estimate->total_workspace_bytes);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedStaticCacheCapacityBoundsPreservation) {
+  CheckNonWindowedStaticCacheCapacityBound(kMath, GQABackend::Unfused);
+}
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedStaticCacheCapacityBoundsMeaExpansion) {
+  CheckNonWindowedStaticCacheCapacityBound(
+      static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION), GQABackend::MemoryEfficient);
+}
+#endif
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedEnvelopeCannotBeSmallerThanQueryBound) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.max_total_sequence_length = 3;
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/1024),
+                   Device(), options)
+                   .has_value());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedStaticCacheCapacityMustFitInt32) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.max_total_sequence_length = 512;
+  const int64_t capacity = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, SeparateShapes(/*sequence=*/1, /*head=*/64, capacity),
+                   Device(), options)
+                   .has_value());
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPastCopy) {
