@@ -4,11 +4,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -139,7 +141,9 @@ void RunZeroKTest(std::initializer_list<int64_t> a_dims,
   test.AddOutput<T>("Y", output_dims,
                     std::vector<T>(output_shape.Size(), T{0.0f}));
   test.SetNumRunCalls(graph_capture ? 4 : 1);
-  test.ConfigEp(std::move(ep)).RunWithConfig();
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
 }
 
 TEST(MatMulZeroKTest, Float32MatrixAndBatch) {
@@ -170,6 +174,63 @@ TEST(MatMulZeroKTest, EmptyOutput) {
 TEST(MatMulZeroKTest, GraphCaptureReplay) {
   RunZeroKTest<float>({1, 35, 0}, {0, 1024}, true);
   RunZeroKTest<MLFloat16>({1, 35, 0}, {0, 1024}, true);
+}
+
+template <typename T>
+void RunZeroKConvTest(bool channels_last, bool initializer) {
+  ConfigOptions config;
+  ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kValidationMode,
+                                         webgpu::options::kValidationMode_full));
+  ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                         webgpu::options::kEnableGraphCapture_ON));
+  auto ep = WebGpuExecutionProviderWithOptions(config);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+  OpTester test("Conv", 11, channels_last ? kMSInternalNHWCDomain : kOnnxDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  if (channels_last) {
+    test.AddAttribute("activation", std::string{"Clip"});
+    test.AddAttribute("activation_params", std::vector<float>{-0.5f, 2.0f});
+  }
+  const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{2, 2, 3, 0}
+                                                         : std::vector<int64_t>{2, 0, 2, 3};
+  const std::vector<int64_t> output_shape = channels_last ? std::vector<int64_t>{2, 2, 3, 3}
+                                                          : std::vector<int64_t>{2, 3, 2, 3};
+  test.AddInput<T>("X", input_shape, std::vector<T>{});
+  test.AddInput<T>("W", {3, 0, 1, 1}, std::vector<T>{}, initializer);
+  test.AddInput<T>("B", {3}, std::vector<T>{T{-2.0f}, T{-0.25f}, T{3.5f}});
+  std::vector<T> expected;
+  for (int64_t index = 0; index < 36; ++index) {
+    const int64_t channel = channels_last ? index % 3 : (index / 6) % 3;
+    const float value = channel == 0 ? -2.0f : channel == 1 ? -0.25f
+                                                            : 3.5f;
+    expected.push_back(T{channels_last ? std::clamp(value, -0.5f, 2.0f) : value});
+  }
+  test.AddOutput<T>("Y", output_shape, expected);
+  test.SetNumRunCalls(4);
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+}
+
+TEST(MatMulZeroKTest, ChannelsFirstConvBias) {
+  for (bool initializer : {false, true}) {
+    RunZeroKConvTest<float>(false, initializer);
+    RunZeroKConvTest<MLFloat16>(false, initializer);
+  }
+}
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(MatMulZeroKTest, ChannelsLastConvBiasAndActivation) {
+  for (bool initializer : {false, true}) {
+    RunZeroKConvTest<float>(true, initializer);
+    RunZeroKConvTest<MLFloat16>(true, initializer);
+  }
+#endif
 }
 
 TEST(MatMulNaiveProgramTest, Broadcast4DExecution) {
