@@ -430,8 +430,15 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   # FP4 QMoE sources are compiled separately at native SM120 below. Keep the broad LLM target
   # on virtual SM120 PTX under MSVC to avoid CCCL tcgen05 host-compile failures.
   if(_cuda_plugin_llm_srcs)
+    set(_plugin_llm_extra_compile_options)
     if(MSVC)
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 REPLACE_SM120_REAL_WITH_VIRTUAL)
+      if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+        # Virtual compute_120 PTX alone needs a driver as new as the toolkit to JIT; add native non-"a" SASS
+        # (no tcgen05 path) so the ordinary LLM kernels (fpA_intB GEMV/GEMM) run without JIT.
+        list(APPEND _plugin_llm_extra_compile_options
+             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-gencode=arch=compute_120,code=sm_120>")
+      endif()
     else()
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75)
     endif()
@@ -441,7 +448,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         PARENT onnxruntime_providers_cuda_plugin
         CUDA_ARCHITECTURES "${_plugin_llm_cuda_architectures}"
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
-        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options} ${_plugin_llm_extra_compile_options}
         SOURCES ${_cuda_plugin_llm_srcs})
     endif()
   endif()
