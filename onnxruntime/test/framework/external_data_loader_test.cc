@@ -314,7 +314,7 @@ class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
   enum class FailurePoint {
     None,
     Begin,
-    Finalize,
+    CommitCandidates,
   };
 
   explicit BatchLifecycleExternalDataLoader(FailurePoint failure_point = FailurePoint::None)
@@ -332,20 +332,20 @@ class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
                : common::Status::OK();
   }
 
-  common::Status FinalizeLoad(const std::function<bool()>&) const override {
-    ++finalize_count;
-    return failure_point_ == FailurePoint::Finalize
-               ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "finalize failure")
+  common::Status CommitLoadCandidates(const std::function<bool()>&) const override {
+    ++commit_candidates_count;
+    return failure_point_ == FailurePoint::CommitCandidates
+               ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "commit failure")
                : common::Status::OK();
   }
 
-  void AbortLoad() const noexcept override {
-    ++abort_count;
+  void EndLoad() const noexcept override {
+    ++end_count;
   }
 
   mutable int begin_count = 0;
-  mutable int finalize_count = 0;
-  mutable int abort_count = 0;
+  mutable int commit_candidates_count = 0;
+  mutable int end_count = 0;
 
  private:
   FailurePoint failure_point_;
@@ -362,11 +362,11 @@ TEST(ExternalDataLoaderManagerTest, DefaultBatchLifecycleIsBackwardCompatible) {
   ExternalDataLoaderManager manager;
   ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::make_unique<LegacyExternalDataLoader>()));
   EXPECT_STATUS_OK(manager.BeginLoad());
-  EXPECT_STATUS_OK(manager.FinalizeLoad([]() { return false; }));
-  manager.AbortLoad();
+  EXPECT_STATUS_OK(manager.CommitLoadCandidates([]() { return false; }));
+  manager.EndLoad();
 }
 
-TEST(ExternalDataLoaderManagerTest, BeginFailureAbortsEveryLoader) {
+TEST(ExternalDataLoaderManagerTest, BeginFailureEndsEveryLoader) {
   ExternalDataLoaderManager manager;
   auto first = std::make_unique<BatchLifecycleExternalDataLoader>();
   auto* first_ptr = first.get();
@@ -380,27 +380,27 @@ TEST(ExternalDataLoaderManagerTest, BeginFailureAbortsEveryLoader) {
   EXPECT_FALSE(manager.BeginLoad().IsOK());
   EXPECT_EQ(first_ptr->begin_count, 1);
   EXPECT_EQ(failing_ptr->begin_count, 1);
-  EXPECT_EQ(first_ptr->abort_count, 1);
-  EXPECT_EQ(failing_ptr->abort_count, 1);
+  EXPECT_EQ(first_ptr->end_count, 1);
+  EXPECT_EQ(failing_ptr->end_count, 1);
 }
 
-TEST(ExternalDataLoaderManagerTest, FinalizeFailureAbortsEveryLoader) {
+TEST(ExternalDataLoaderManagerTest, CommitCandidatesFailureEndsEveryLoader) {
   ExternalDataLoaderManager manager;
   auto failing = std::make_unique<BatchLifecycleExternalDataLoader>(
-      BatchLifecycleExternalDataLoader::FailurePoint::Finalize);
+      BatchLifecycleExternalDataLoader::FailurePoint::CommitCandidates);
   auto* failing_ptr = failing.get();
-  auto unfinalized = std::make_unique<BatchLifecycleExternalDataLoader>();
-  auto* unfinalized_ptr = unfinalized.get();
+  auto uncommitted = std::make_unique<BatchLifecycleExternalDataLoader>();
+  auto* uncommitted_ptr = uncommitted.get();
 
   ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(failing)));
-  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(unfinalized)));
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(uncommitted)));
 
   ASSERT_STATUS_OK(manager.BeginLoad());
-  EXPECT_FALSE(manager.FinalizeLoad([]() { return false; }).IsOK());
-  EXPECT_EQ(failing_ptr->finalize_count, 1);
-  EXPECT_EQ(unfinalized_ptr->finalize_count, 0);
-  EXPECT_EQ(failing_ptr->abort_count, 1);
-  EXPECT_EQ(unfinalized_ptr->abort_count, 1);
+  EXPECT_FALSE(manager.CommitLoadCandidates([]() { return false; }).IsOK());
+  EXPECT_EQ(failing_ptr->commit_candidates_count, 1);
+  EXPECT_EQ(uncommitted_ptr->commit_candidates_count, 0);
+  EXPECT_EQ(failing_ptr->end_count, 1);
+  EXPECT_EQ(uncommitted_ptr->end_count, 1);
 }
 #endif
 

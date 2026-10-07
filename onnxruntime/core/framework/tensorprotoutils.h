@@ -334,9 +334,10 @@ common::Status LoadPrepackedWeightsFromExternalData(const Env& env, const std::f
                                                     PrepackedWeightsForGraph& prepacked_info);
 
 #if defined(ENABLE_D3D12_FILE_LOADING)
-common::Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
-                                                      const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                      const IExternalDataLoader& ext_data_loader);
+common::Status RegisterExternalDataLoadCandidateFromTensorProto(
+    const Env& env, const std::filesystem::path& model_path,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    const IExternalDataLoader& ext_data_loader);
 #endif
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer

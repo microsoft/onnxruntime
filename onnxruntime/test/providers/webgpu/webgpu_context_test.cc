@@ -1334,7 +1334,7 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     auto loader = required_ep->GetExternalDataLoader();
     ASSERT_NE(loader, nullptr);
     EXPECT_STATUS_OK(loader->BeginLoad());
-    loader->AbortLoad();
+    loader->EndLoad();
   });
 }
 
@@ -1472,9 +1472,9 @@ TEST(WebGpuContextTest, D3D12AcceleratedAllocatorUsesProviderRecording) {
   ASSERT_FALSE(allocators.empty());
   const auto& allocator = allocators.front();
   ASSERT_STATUS_OK(loader->BeginLoad());
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "weights", 0, sizeof(expected)));
-  ASSERT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
+  ASSERT_STATUS_OK(loader->CommitLoadCandidates([]() { return false; }));
 
   auto& webgpu_ep = *static_cast<WebGpuExecutionProvider*>(ep.get());
   auto& recording = webgpu_ep.Recording();
@@ -1597,25 +1597,25 @@ TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalTensorsAcrossFilesAndRanges
   }
 
   ASSERT_STATUS_OK(loader->BeginLoad());
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "weights", kDataOffset, sizeof(expected)));
-  const auto duplicate_status = loader->PrepareTensor(
+  const auto duplicate_status = loader->RegisterLoadCandidate(
       Env::Default(), data_path, "weights",
       kDataOffset, sizeof(expected));
   EXPECT_FALSE(duplicate_status.IsOK());
   EXPECT_NE(duplicate_status.ErrorMessage().find(
                 "Duplicate D3D12 accelerated initializer"),
             std::string::npos);
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "separated", kSeparatedDataOffset,
       sizeof(separated_expected)));
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), other_data_path, "other_weights", kDataOffset,
       sizeof(other_expected)));
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "empty",
       kSeparatedDataOffset + sizeof(separated_expected), 0));
-  ASSERT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
+  ASSERT_STATUS_OK(loader->CommitLoadCandidates([]() { return false; }));
 
   Tensor weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({15}),
                  nullptr, allocator};
@@ -1843,11 +1843,11 @@ TEST(WebGpuContextTest, PreferredD3D12AcceleratedPreservesCancellation) {
   }
 
   ASSERT_STATUS_OK(loader->BeginLoad());
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "weights", 0, sizeof(data)));
-  const auto status = loader->FinalizeLoad([]() { return true; });
+  const auto status = loader->CommitLoadCandidates([]() { return true; });
   EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
-  loader->AbortLoad();
+  loader->EndLoad();
 }
 
 TEST(WebGpuContextTest, D3D12AcceleratedZeroRequestFinalBatchPreservesCancellation) {
@@ -1864,9 +1864,9 @@ TEST(WebGpuContextTest, D3D12AcceleratedZeroRequestFinalBatchPreservesCancellati
   }
 
   ASSERT_STATUS_OK(loader->BeginLoad());
-  const auto status = loader->FinalizeLoad([]() { return true; });
+  const auto status = loader->CommitLoadCandidates([]() { return true; });
   EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
-  loader->AbortLoad();
+  loader->EndLoad();
 }
 
 TEST(WebGpuContextTest, D3D12AcceleratedChecksCancellationDuringImport) {
@@ -1897,15 +1897,15 @@ TEST(WebGpuContextTest, D3D12AcceleratedChecksCancellationDuringImport) {
   }
 
   ASSERT_STATUS_OK(loader->BeginLoad());
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "weights", 0, sizeof(data)));
 
   size_t cancellation_checks = 0;
-  const auto status = loader->FinalizeLoad([&cancellation_checks]() {
+  const auto status = loader->CommitLoadCandidates([&cancellation_checks]() {
     return cancellation_checks++ != 0;
   });
   EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
-  loader->AbortLoad();
+  loader->EndLoad();
 }
 
 TEST(WebGpuContextTest, PreferredD3D12AcceleratedFallsBackAfterOperationalFailure) {
@@ -1939,10 +1939,10 @@ TEST(WebGpuContextTest, PreferredD3D12AcceleratedFallsBackAfterOperationalFailur
   }
 
   ASSERT_STATUS_OK(loader->BeginLoad());
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "weights", 0, sizeof(data)));
   ASSERT_TRUE(std::filesystem::remove(data_path));
-  EXPECT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
+  EXPECT_STATUS_OK(loader->CommitLoadCandidates([]() { return false; }));
   EXPECT_FALSE(loader->CanLoad(allocator->Info()));
 }
 
@@ -1974,12 +1974,12 @@ TEST(WebGpuContextTest, PreferredD3D12AcceleratedPreservesConcurrentCancellation
   }
 
   ASSERT_STATUS_OK(loader->BeginLoad());
-  ASSERT_STATUS_OK(loader->PrepareTensor(
+  ASSERT_STATUS_OK(loader->RegisterLoadCandidate(
       Env::Default(), data_path, "weights", 0, sizeof(data)));
   ASSERT_TRUE(std::filesystem::remove(data_path));
-  const auto status = loader->FinalizeLoad([]() { return true; });
+  const auto status = loader->CommitLoadCandidates([]() { return true; });
   EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
-  loader->AbortLoad();
+  loader->EndLoad();
 }
 
 TEST(WebGpuContextTest, WeightLoadAccelerationModeResolution) {

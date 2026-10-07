@@ -30,8 +30,8 @@ class ExternalDataLoaderManager {
   const IExternalDataLoader* GetTensorCreator(
       const OrtDevice& target_device, int32_t tensor_data_type) const;
   common::Status BeginLoad() const;
-  common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const;
-  void AbortLoad() const noexcept;
+  common::Status CommitLoadCandidates(const std::function<bool()>& is_canceled) const;
+  void EndLoad() const noexcept;
 #endif
 
  private:

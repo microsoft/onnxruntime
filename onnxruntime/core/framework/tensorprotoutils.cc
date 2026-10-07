@@ -2003,9 +2003,10 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
 }
 
 #if defined(ENABLE_D3D12_FILE_LOADING)
-Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
-                                              const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                              const IExternalDataLoader& ext_data_loader) {
+Status RegisterExternalDataLoadCandidateFromTensorProto(
+    const Env& env, const std::filesystem::path& model_path,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    const IExternalDataLoader& ext_data_loader) {
   ORT_ENFORCE(HasExternalData(tensor_proto));
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
@@ -2030,7 +2031,7 @@ Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesys
                     external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
-  return ext_data_loader.PrepareTensor(
+  return ext_data_loader.RegisterLoadCandidate(
       env, external_data_file_path, tensor_proto.name(), file_offset,
       raw_data_safe_len);
 }

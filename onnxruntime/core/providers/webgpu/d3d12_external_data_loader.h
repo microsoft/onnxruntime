@@ -53,13 +53,13 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
   bool SupportsDataType(int32_t tensor_data_type) const override;
   bool CreatesTensorForDevice(const OrtDevice& target_device) const override;
   common::Status BeginLoad() const override;
-  common::Status PrepareTensor(const Env& env,
-                               const std::filesystem::path& data_file_path,
-                               std::string_view tensor_name,
-                               FileOffsetType data_offset,
-                               SafeInt<size_t> data_length) const override;
-  common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const override;
-  void AbortLoad() const noexcept override;
+  common::Status RegisterLoadCandidate(const Env& env,
+                                       const std::filesystem::path& data_file_path,
+                                       std::string_view tensor_name,
+                                       FileOffsetType data_offset,
+                                       SafeInt<size_t> data_length) const override;
+  common::Status CommitLoadCandidates(const std::function<bool()>& is_canceled) const override;
+  void EndLoad() const noexcept override;
   common::Status LoadTensor(const Env& env,
                             const std::filesystem::path& data_file_path,
                             std::string_view tensor_name,
@@ -79,7 +79,7 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
   mutable common::Status device_support_resolution_status_;
   // Effective decision from mode and device support; cleared on fallback.
   mutable bool resolved_acceleration_enabled_ = false;
-  mutable std::atomic<bool> abort_requested_{false};
+  mutable std::atomic<bool> load_end_requested_{false};
   mutable std::unique_ptr<windows::d3d12::D3D12FileBufferLoader> file_to_buffer_loader_;
   mutable std::unique_ptr<D3D12AcceleratedLoadBatch> accelerated_load_batch_;
 };

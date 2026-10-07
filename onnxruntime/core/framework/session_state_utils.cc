@@ -409,10 +409,10 @@ common::Status SaveInitializedTensors(
 
 #if defined(ENABLE_D3D12_FILE_LOADING)
   ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
-  bool external_data_load_finalized = false;
-  auto abort_external_data_load = gsl::finally([&]() {
-    if (!external_data_load_finalized) {
-      external_data_loader_mgr.AbortLoad();
+  bool external_data_load_ended = false;
+  auto end_external_data_load = gsl::finally([&]() {
+    if (!external_data_load_ended) {
+      external_data_loader_mgr.EndLoad();
     }
   });
 
@@ -432,11 +432,12 @@ common::Status SaveInitializedTensors(
         exec_plan.GetLocation(entry.first), entry.second->data_type());
     if (tensor_creator != nullptr) {
       ORT_RETURN_IF_ERROR(
-          utils::PrepareExtDataForTensorFromTensorProto(env, graph_loc, *entry.second, *tensor_creator));
+          utils::RegisterExternalDataLoadCandidateFromTensorProto(
+              env, graph_loc, *entry.second, *tensor_creator));
     }
   }
 
-  ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.CommitLoadCandidates(
       [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
 #endif
 
@@ -528,11 +529,11 @@ common::Status SaveInitializedTensors(
   }
 
 #if defined(ENABLE_D3D12_FILE_LOADING)
-  // AbortLoad is also the idempotent end-of-batch cleanup hook. All claimed
+  // EndLoad is the idempotent end-of-batch cleanup hook. All claimed
   // allocations have transferred ownership, so this only releases metadata
   // and any unclaimed resources left by a successful batch.
-  external_data_loader_mgr.AbortLoad();
-  external_data_load_finalized = true;
+  external_data_loader_mgr.EndLoad();
+  external_data_load_ended = true;
 #endif
   LOGS(logger, INFO) << "Done saving initialized tensors";
   return common::Status::OK();

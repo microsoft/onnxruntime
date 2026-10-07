@@ -53,7 +53,7 @@ Status ExternalDataLoaderManager::BeginLoad() const {
   for (const auto& external_data_loader : external_data_loaders_) {
     auto status = external_data_loader->BeginLoad();
     if (!status.IsOK()) {
-      AbortLoad();
+      EndLoad();
       return status;
     }
   }
@@ -61,11 +61,11 @@ Status ExternalDataLoaderManager::BeginLoad() const {
   return Status::OK();
 }
 
-Status ExternalDataLoaderManager::FinalizeLoad(const std::function<bool()>& is_canceled) const {
+Status ExternalDataLoaderManager::CommitLoadCandidates(const std::function<bool()>& is_canceled) const {
   for (const auto& external_data_loader : external_data_loaders_) {
-    auto status = external_data_loader->FinalizeLoad(is_canceled);
+    auto status = external_data_loader->CommitLoadCandidates(is_canceled);
     if (!status.IsOK()) {
-      AbortLoad();
+      EndLoad();
       return status;
     }
   }
@@ -73,9 +73,9 @@ Status ExternalDataLoaderManager::FinalizeLoad(const std::function<bool()>& is_c
   return Status::OK();
 }
 
-void ExternalDataLoaderManager::AbortLoad() const noexcept {
+void ExternalDataLoaderManager::EndLoad() const noexcept {
   for (const auto& external_data_loader : external_data_loaders_) {
-    external_data_loader->AbortLoad();
+    external_data_loader->EndLoad();
   }
 }
 #endif

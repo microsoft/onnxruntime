@@ -95,7 +95,7 @@ struct D3D12AcceleratedLoadBatch {
   std::map<std::filesystem::path, FileInfo> files;
   size_t total_bytes = 0;
   size_t load_range_count = 0;
-  bool finalized = false;
+  bool load_candidates_committed = false;
 };
 
 namespace {
@@ -107,7 +107,7 @@ struct D3D12AcceleratedLoadMetrics {
 
 struct CancellationState {
   const std::function<bool()>* external = nullptr;
-  const std::atomic<bool>* abort_requested = nullptr;
+  const std::atomic<bool>* load_end_requested = nullptr;
 };
 
 bool InvokeCancellationNoThrow(
@@ -125,8 +125,8 @@ bool InvokeCancellationNoThrow(
 
 bool IsCancellationRequested(void* opaque) noexcept {
   const auto& state = *static_cast<const CancellationState*>(opaque);
-  if (state.abort_requested != nullptr &&
-      state.abort_requested->load(std::memory_order_relaxed)) {
+  if (state.load_end_requested != nullptr &&
+      state.load_end_requested->load(std::memory_order_relaxed)) {
     return true;
   }
   if (state.external == nullptr || !*state.external) {
@@ -139,9 +139,9 @@ common::Status LoadBatchToD3D12(
     D3D12AcceleratedLoadBatch& batch,
     D3D12FileBufferLoader& loader,
     const std::function<bool()>& is_canceled,
-    const std::atomic<bool>& abort_requested,
+    const std::atomic<bool>& load_end_requested,
     D3D12AcceleratedLoadMetrics& metrics) {
-  if (abort_requested.load(std::memory_order_relaxed) ||
+  if (load_end_requested.load(std::memory_order_relaxed) ||
       InvokeCancellationNoThrow(is_canceled)) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
@@ -173,7 +173,7 @@ common::Status LoadBatchToD3D12(
 
   auto loaded = std::make_shared<D3D12FileBufferLoader::BufferCollection>();
   const CancellationState cancellation_state{
-      &is_canceled, &abort_requested};
+      &is_canceled, &load_end_requested};
   const D3D12FileBufferLoader::CancellationToken cancellation{
       IsCancellationRequested,
       const_cast<CancellationState*>(&cancellation_state)};
@@ -203,7 +203,7 @@ TensorKey MakeKey(const std::filesystem::path& path,
   return {path, std::string{name}, offset, length};
 }
 
-common::Status PrepareTensorForBatch(
+common::Status RegisterLoadCandidateForBatch(
     D3D12AcceleratedLoadBatch& batch,
     const Env& env,
     const std::filesystem::path& data_file_path,
@@ -539,7 +539,7 @@ D3D12AcceleratedExternalDataLoader::
 
 D3D12AcceleratedExternalDataLoader::
     ~D3D12AcceleratedExternalDataLoader() {
-  AbortLoad();
+  EndLoad();
 }
 
 bool D3D12AcceleratedExternalDataLoader::CanLoad(
@@ -568,13 +568,13 @@ bool D3D12AcceleratedExternalDataLoader::
 
 common::Status
 D3D12AcceleratedExternalDataLoader::BeginLoad() const {
-  AbortLoad();
+  EndLoad();
   ResolveSupport();
   ORT_RETURN_IF_ERROR(device_support_resolution_status_);
   if (!resolved_acceleration_enabled_) {
     return common::Status::OK();
   }
-  abort_requested_.store(
+  load_end_requested_.store(
       false, std::memory_order_relaxed);
   accelerated_load_batch_ =
       std::make_unique<D3D12AcceleratedLoadBatch>();
@@ -582,7 +582,7 @@ D3D12AcceleratedExternalDataLoader::BeginLoad() const {
 }
 
 common::Status
-D3D12AcceleratedExternalDataLoader::PrepareTensor(
+D3D12AcceleratedExternalDataLoader::RegisterLoadCandidate(
     const Env& env,
     const std::filesystem::path& data_file_path,
     std::string_view tensor_name,
@@ -590,22 +590,22 @@ D3D12AcceleratedExternalDataLoader::PrepareTensor(
     SafeInt<size_t> data_length) const {
   ORT_RETURN_IF_NOT(
       accelerated_load_batch_ != nullptr &&
-          !accelerated_load_batch_->finalized,
+          !accelerated_load_batch_->load_candidates_committed,
       "D3D12 accelerated initializer batch has not been started.");
-  return PrepareTensorForBatch(
+  return RegisterLoadCandidateForBatch(
       *accelerated_load_batch_, env, data_file_path,
       tensor_name, data_offset, data_length);
 }
 
 common::Status
-D3D12AcceleratedExternalDataLoader::FinalizeLoad(
+D3D12AcceleratedExternalDataLoader::CommitLoadCandidates(
     const std::function<bool()>& is_canceled) const {
   if (!resolved_acceleration_enabled_) {
     return common::Status::OK();
   }
   ORT_RETURN_IF_NOT(
       accelerated_load_batch_ != nullptr &&
-          !accelerated_load_batch_->finalized,
+          !accelerated_load_batch_->load_candidates_committed,
       "D3D12 accelerated initializer batch has not been started.");
   auto& batch = *accelerated_load_batch_;
   const auto fail_or_fallback =
@@ -628,7 +628,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
            "using the ordinary WebGPU initializer path: "
         << status.ErrorMessage();
     resolved_acceleration_enabled_ = false;
-    AbortLoad();
+    EndLoad();
     return common::Status::OK();
   };
 
@@ -638,7 +638,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
           ONNXRUNTIME, MODEL_LOAD_CANCELED,
           "D3D12 accelerated initializer loading was canceled."));
     }
-    batch.finalized = true;
+    batch.load_candidates_committed = true;
     return common::Status::OK();
   }
 
@@ -649,7 +649,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
   }
   const auto load_status = LoadBatchToD3D12(
       batch, *file_to_buffer_loader_, is_canceled,
-      abort_requested_, load_metrics);
+      load_end_requested_, load_metrics);
   if (!load_status.IsOK()) {
     return fail_or_fallback(load_status);
   }
@@ -745,7 +745,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
     return fail_or_fallback(import_status);
   }
   const auto import_end = Clock::now();
-  batch.finalized = true;
+  batch.load_candidates_committed = true;
 
   LOGS_DEFAULT(VERBOSE)
       << "WebGPU D3D12 accelerated external initializer load: "
@@ -759,9 +759,9 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
   return common::Status::OK();
 }
 
-void D3D12AcceleratedExternalDataLoader::AbortLoad()
+void D3D12AcceleratedExternalDataLoader::EndLoad()
     const noexcept {
-  abort_requested_.store(
+  load_end_requested_.store(
       true, std::memory_order_relaxed);
 
   ORT_TRY {
@@ -803,8 +803,8 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
     Tensor& tensor) const {
   ORT_RETURN_IF_NOT(
       accelerated_load_batch_ != nullptr &&
-          accelerated_load_batch_->finalized,
-      "D3D12 accelerated initializer batch has not been finalized.");
+          accelerated_load_batch_->load_candidates_committed,
+      "D3D12 accelerated initializer batch has not been committed.");
   ORT_RETURN_IF(
       data_offset < 0,
       "D3D12 accelerated initializer has a negative file offset.");
