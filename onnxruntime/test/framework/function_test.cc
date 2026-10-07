@@ -1548,7 +1548,9 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
     body_node->set_op_type("Round");
     body_node->add_input("x");
     body_node->add_output("y");
-    add_opsets(*wrapper, 11);
+    // The shared default graph is defined by wrapper, so its ONNX lookup must remain at opset 10
+    // when the graph is forwarded through either visitor.
+    add_opsets(*wrapper, 10);
 
     const int first_opset = registered_schema_first ? 11 : 10;
     for (const int opset : {first_opset, 21 - first_opset}) {
