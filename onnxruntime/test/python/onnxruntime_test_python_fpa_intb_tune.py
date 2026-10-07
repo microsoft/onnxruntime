@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from pathlib import Path
 from typing import ClassVar
@@ -88,6 +89,23 @@ class TestFpAIntBTune(unittest.TestCase):
             path.unlink()
             with self.assertRaisesRegex(RuntimeError, "No tactic cache"):
                 tune._summarize_cache(str(path), self.signature)
+
+    def test_signature_uses_native_ort_version(self):
+        class FakeDriver:
+            def __getattr__(self, _):
+                return lambda *args: 0
+
+        fake_build_info = types.SimpleNamespace(cuda_version="13.0")
+        with (
+            patch.dict(sys.modules, {"onnxruntime.capi.build_and_package_info": fake_build_info}),
+            patch.object(tune.ctypes, "CDLL", return_value=FakeDriver(), create=True),
+            patch.object(tune.ctypes, "WinDLL", return_value=FakeDriver(), create=True),
+            patch.object(tune.ort, "get_version_string", return_value="1.28.0"),
+            patch.object(tune.ort, "__version__", "1.28.0.dev20260101"),
+        ):
+            signature = tune._current_signature(0)
+
+        self.assertEqual(signature["ort_version"], "1.28.0")
 
     def test_bf16_dummy_feed_uses_typed_ortvalue(self):
         model = helper.make_model(

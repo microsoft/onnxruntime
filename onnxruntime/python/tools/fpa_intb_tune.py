@@ -127,7 +127,8 @@ def _current_signature(device_id: int) -> dict[str, str]:
         "device_name": name.value.decode("utf-8"),
         "sm": str(major.value * 10 + minor.value),
         "cuda_runtime": str(int(toolkit[0]) * 1000 + int(toolkit[1]) * 10),
-        "ort_version": ort.__version__,
+        # Match the C++ cache header, which writes the base ORT_VERSION without wheel dev/local suffixes.
+        "ort_version": ort.get_version_string(),
     }
 
 
