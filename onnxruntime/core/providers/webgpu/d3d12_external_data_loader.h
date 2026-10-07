@@ -5,17 +5,22 @@
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 
+#include <atomic>
 #include <functional>
 #include <memory>
-#include <vector>
+#include <mutex>
 
 #include "core/framework/allocator.h"
 #include "core/framework/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 
-struct ID3D12Device;
-
 namespace onnxruntime {
+namespace windows {
+namespace d3d12 {
+class D3D12FileBufferLoader;
+}  // namespace d3d12
+}  // namespace windows
+
 namespace webgpu {
 
 class WebGpuContext;
@@ -29,6 +34,7 @@ common::Status ResolveWeightLoadAccelerationMode(
     bool& enabled);
 
 class D3D12AcceleratedInitializerState;
+struct D3D12AcceleratedBatch;
 
 AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
     WebGpuContext& context,
@@ -63,8 +69,18 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
                             Tensor& tensor) const override;
 
  private:
-  struct Impl;
-  std::unique_ptr<Impl> impl_;
+  void ResolveSupport() const;
+  common::Status EnsureFileLoader() const;
+
+  WebGpuContext& context_;
+  std::shared_ptr<D3D12AcceleratedInitializerState> state_;
+  WeightLoadAccelerationMode mode_;
+  mutable std::once_flag support_once_;
+  mutable common::Status resolved_status_;
+  mutable bool enabled_ = false;
+  mutable std::atomic<bool> abort_requested_{false};
+  mutable std::unique_ptr<windows::d3d12::D3D12FileBufferLoader> file_loader_;
+  mutable std::unique_ptr<D3D12AcceleratedBatch> batch_;
 };
 
 }  // namespace webgpu

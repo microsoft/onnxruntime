@@ -82,6 +82,8 @@ struct PreparedTensor {
   bool claimed = false;
 };
 
+}  // namespace
+
 struct D3D12AcceleratedBatch {
   struct FileInfo {
     std::filesystem::path canonical_path;
@@ -95,6 +97,8 @@ struct D3D12AcceleratedBatch {
   size_t load_range_count = 0;
   bool finalized = false;
 };
+
+namespace {
 
 struct D3D12AcceleratedLoadMetrics {
   double load_ms = 0.0;
@@ -489,60 +493,36 @@ AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
   return allocator;
 }
 
-struct D3D12AcceleratedExternalDataLoader::Impl {
-  Impl(
-      WebGpuContext& context_in,
-      std::shared_ptr<D3D12AcceleratedInitializerState>
-          state_in,
-      WeightLoadAccelerationMode mode_in)
-      : context{context_in},
-        state{std::move(state_in)},
-        mode{mode_in} {
-  }
-
-  void ResolveSupport() const {
-    std::call_once(support_once, [this]() {
-      common::Status support_status =
-          common::Status::OK();
-      if (IsWeightLoadAccelerationEnabled(mode)) {
-        support_status =
-            CheckD3D12AcceleratedExternalWeightsSupport(
-                context);
-      }
-      resolved_status =
-          ResolveWeightLoadAccelerationMode(
-              mode, support_status, enabled);
-      if (resolved_status.IsOK() && !enabled &&
-          mode == WeightLoadAccelerationMode::Preferred) {
-        LOGS_DEFAULT(WARNING)
-            << "D3D12 accelerated external weights are unavailable; "
-               "using the ordinary WebGPU initializer loading path. "
-               "Reason: "
-            << support_status.ErrorMessage();
-      }
-    });
-  }
-
-  common::Status EnsureFileLoader() const {
-    if (file_loader) {
-      return common::Status::OK();
+void D3D12AcceleratedExternalDataLoader::ResolveSupport() const {
+  std::call_once(support_once_, [this]() {
+    common::Status support_status =
+        common::Status::OK();
+    if (IsWeightLoadAccelerationEnabled(mode_)) {
+      support_status =
+          CheckD3D12AcceleratedExternalWeightsSupport(
+              context_);
     }
-    return D3D12FileBufferLoader::Create(
-        context.WeightLoadingD3D12Device(), file_loader);
-  }
+    resolved_status_ =
+        ResolveWeightLoadAccelerationMode(
+            mode_, support_status, enabled_);
+    if (resolved_status_.IsOK() && !enabled_ &&
+        mode_ == WeightLoadAccelerationMode::Preferred) {
+      LOGS_DEFAULT(WARNING)
+          << "D3D12 accelerated external weights are unavailable; "
+             "using the ordinary WebGPU initializer loading path. "
+             "Reason: "
+          << support_status.ErrorMessage();
+    }
+  });
+}
 
-  WebGpuContext& context;
-  std::shared_ptr<D3D12AcceleratedInitializerState>
-      state;
-  WeightLoadAccelerationMode mode;
-  mutable std::once_flag support_once;
-  mutable common::Status resolved_status;
-  mutable bool enabled = false;
-  mutable std::atomic<bool> abort_requested{false};
-  mutable std::unique_ptr<D3D12FileBufferLoader>
-      file_loader;
-  mutable std::unique_ptr<D3D12AcceleratedBatch> batch;
-};
+common::Status D3D12AcceleratedExternalDataLoader::EnsureFileLoader() const {
+  if (file_loader_) {
+    return common::Status::OK();
+  }
+  return D3D12FileBufferLoader::Create(
+      context_.WeightLoadingD3D12Device(), file_loader_);
+}
 
 D3D12AcceleratedExternalDataLoader::
     D3D12AcceleratedExternalDataLoader(
@@ -551,10 +531,9 @@ D3D12AcceleratedExternalDataLoader::
             D3D12AcceleratedInitializerState>
             state,
         WeightLoadAccelerationMode mode)
-    : impl_{std::make_unique<Impl>(
-          context, std::move(state), mode)} {
+    : context_{context}, state_{std::move(state)}, mode_{mode} {
   ORT_ENFORCE(
-      impl_->state != nullptr,
+      state_ != nullptr,
       "D3D12 accelerated allocator state is required.");
 }
 
@@ -565,10 +544,10 @@ D3D12AcceleratedExternalDataLoader::
 
 bool D3D12AcceleratedExternalDataLoader::CanLoad(
     const OrtMemoryInfo& target_memory_info) const {
-  impl_->ResolveSupport();
+  ResolveSupport();
   return target_memory_info.device == WebGpuDevice &&
          target_memory_info.name == WEBGPU_BUFFER &&
-         impl_->enabled;
+         enabled_;
 }
 
 bool D3D12AcceleratedExternalDataLoader::
@@ -581,23 +560,23 @@ bool D3D12AcceleratedExternalDataLoader::
 bool D3D12AcceleratedExternalDataLoader::
     CreatesTensorForDevice(
         const OrtDevice& target_device) const {
-  impl_->ResolveSupport();
+  ResolveSupport();
   return target_device == WebGpuDevice &&
-         (impl_->enabled ||
-          IsWeightLoadAccelerationRequired(impl_->mode));
+         (enabled_ ||
+          IsWeightLoadAccelerationRequired(mode_));
 }
 
 common::Status
 D3D12AcceleratedExternalDataLoader::BeginLoad() const {
   AbortLoad();
-  impl_->ResolveSupport();
-  ORT_RETURN_IF_ERROR(impl_->resolved_status);
-  if (!impl_->enabled) {
+  ResolveSupport();
+  ORT_RETURN_IF_ERROR(resolved_status_);
+  if (!enabled_) {
     return common::Status::OK();
   }
-  impl_->abort_requested.store(
+  abort_requested_.store(
       false, std::memory_order_relaxed);
-  impl_->batch =
+  batch_ =
       std::make_unique<D3D12AcceleratedBatch>();
   return common::Status::OK();
 }
@@ -610,25 +589,25 @@ D3D12AcceleratedExternalDataLoader::PrepareTensor(
     FileOffsetType data_offset,
     SafeInt<size_t> data_length) const {
   ORT_RETURN_IF_NOT(
-      impl_->batch != nullptr &&
-          !impl_->batch->finalized,
+      batch_ != nullptr &&
+          !batch_->finalized,
       "D3D12 accelerated initializer batch has not been started.");
   return PrepareTensorForBatch(
-      *impl_->batch, env, data_file_path,
+      *batch_, env, data_file_path,
       tensor_name, data_offset, data_length);
 }
 
 common::Status
 D3D12AcceleratedExternalDataLoader::FinalizeLoad(
     const std::function<bool()>& is_canceled) const {
-  if (!impl_->enabled) {
+  if (!enabled_) {
     return common::Status::OK();
   }
   ORT_RETURN_IF_NOT(
-      impl_->batch != nullptr &&
-          !impl_->batch->finalized,
+      batch_ != nullptr &&
+          !batch_->finalized,
       "D3D12 accelerated initializer batch has not been started.");
-  auto& batch = *impl_->batch;
+  auto& batch = *batch_;
   const auto fail_or_fallback =
       [this, &is_canceled](
           const common::Status& status)
@@ -641,14 +620,14 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
           "D3D12 accelerated initializer loading was canceled.");
     }
     if (IsWeightLoadAccelerationRequired(
-            impl_->mode)) {
+            mode_)) {
       return status;
     }
     LOGS_DEFAULT(WARNING)
         << "D3D12 accelerated initializer loading failed; "
            "using the ordinary WebGPU initializer path: "
         << status.ErrorMessage();
-    impl_->enabled = false;
+    enabled_ = false;
     AbortLoad();
     return common::Status::OK();
   };
@@ -664,13 +643,13 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
   }
 
   D3D12AcceleratedLoadMetrics load_metrics;
-  const auto loader_status = impl_->EnsureFileLoader();
+  const auto loader_status = EnsureFileLoader();
   if (!loader_status.IsOK()) {
     return fail_or_fallback(loader_status);
   }
   const auto load_status = LoadBatchToD3D12(
-      batch, *impl_->file_loader, is_canceled,
-      impl_->abort_requested, load_metrics);
+      batch, *file_loader_, is_canceled,
+      abort_requested_, load_metrics);
   if (!load_status.IsOK()) {
     return fail_or_fallback(load_status);
   }
@@ -685,7 +664,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
   const auto import_status =
       [&]() -> common::Status {
     ORT_RETURN_IF_NOT(
-        impl_->context.D3D12SharedResourceFeaturesAvailable(),
+        context_.D3D12SharedResourceFeaturesAvailable(),
         "D3D12 accelerated external weights require Dawn "
         "SharedBufferMemoryD3D12Resource and SharedFenceDXGISharedHandle features.");
     for (auto& tensor : batch.tensors) {
@@ -708,7 +687,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
       memory_descriptor.nextInChain =
           &resource_descriptor;
       tensor.memory =
-          impl_->context.Device()
+          context_.Device()
               .ImportSharedBufferMemory(
                   &memory_descriptor);
       ORT_RETURN_IF_NOT(
@@ -782,18 +761,13 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
 
 void D3D12AcceleratedExternalDataLoader::AbortLoad()
     const noexcept {
-  if (impl_) {
-    impl_->abort_requested.store(
-        true, std::memory_order_relaxed);
-  }
-  if (!impl_) {
-    return;
-  }
+  abort_requested_.store(
+      true, std::memory_order_relaxed);
 
   ORT_TRY {
-    if (impl_->batch) {
+    if (batch_) {
       for (auto& tensor :
-           impl_->batch->tensors) {
+           batch_->tensors) {
         if (!tensor.claimed &&
             tensor.access_started) {
           ImportedAllocation allocation;
@@ -810,7 +784,7 @@ void D3D12AcceleratedExternalDataLoader::AbortLoad()
           tensor.access_started = false;
         }
       }
-      impl_->batch.reset();
+      batch_.reset();
     }
   }
   ORT_CATCH(...) {
@@ -828,8 +802,8 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
     const std::shared_ptr<IAllocator>& allocator,
     Tensor& tensor) const {
   ORT_RETURN_IF_NOT(
-      impl_->batch != nullptr &&
-          impl_->batch->finalized,
+      batch_ != nullptr &&
+          batch_->finalized,
       "D3D12 accelerated initializer batch has not been finalized.");
   ORT_RETURN_IF(
       data_offset < 0,
@@ -839,16 +813,16 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
       "D3D12 accelerated initializer requires its device allocator.");
   ORT_RETURN_IF_NOT(
       allocator.get() ==
-          impl_->state->allocator,
+          state_->allocator,
       "D3D12 accelerated initializer was passed a different allocator.");
 
   const size_t length =
       static_cast<size_t>(data_length);
   const auto file_iterator =
-      impl_->batch->files.find(
+      batch_->files.find(
           data_file_path.lexically_normal());
   ORT_RETURN_IF(
-      file_iterator == impl_->batch->files.end(),
+      file_iterator == batch_->files.end(),
       "No prepared D3D12 data file matches \"",
       data_file_path.string(), "\".");
   const TensorKey key = MakeKey(
@@ -857,16 +831,16 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
       static_cast<uint64_t>(data_offset),
       length);
   const auto iterator =
-      impl_->batch->tensors_by_key.find(key);
+      batch_->tensors_by_key.find(key);
   ORT_RETURN_IF(
       iterator ==
-          impl_->batch->tensors_by_key.end(),
+          batch_->tensors_by_key.end(),
       "No prepared D3D12 accelerated initializer matches \"",
       tensor_name,
       "\" and the requested file range.");
 
   auto& prepared =
-      impl_->batch->tensors[iterator->second];
+      batch_->tensors[iterator->second];
   ORT_RETURN_IF(
       prepared.claimed,
       "D3D12 accelerated initializer \"",
@@ -907,14 +881,14 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
 
   {
     std::lock_guard<std::mutex> lock{
-        impl_->state->mutex};
+        state_->mutex};
     ORT_RETURN_IF(
-        impl_->state->imported_allocations
+        state_->imported_allocations
                 .find(buffer) !=
-            impl_->state->imported_allocations
+            state_->imported_allocations
                 .end(),
         "D3D12 accelerated imported buffer was registered twice.");
-    impl_->state->imported_allocations.emplace(
+    state_->imported_allocations.emplace(
         buffer, std::move(imported));
   }
 
