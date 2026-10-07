@@ -7292,6 +7292,30 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
+  struct NodeArgProducer {
+    const NodeArg* node_arg;
+    Node* node;
+    int output_idx;
+  };
+  std::vector<NodeArgProducer> producer_lookup;
+  for (auto& node : Nodes()) {
+    const auto& outputs = node.OutputDefs();
+    for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
+      if (outputs[output_idx]->Exists()) {
+        producer_lookup.push_back(
+            {outputs[output_idx], &node, static_cast<int>(output_idx)});
+      }
+    }
+  }
+  std::sort(producer_lookup.begin(), producer_lookup.end(),
+            [](const NodeArgProducer& lhs, const NodeArgProducer& rhs) {
+              return std::less<const NodeArg*>{}(lhs.node_arg, rhs.node_arg);
+            });
+  for (size_t i = 1; i < producer_lookup.size(); ++i) {
+    ORT_RETURN_IF_NOT(producer_lookup[i - 1].node_arg != producer_lookup[i].node_arg,
+                      "slot has multiple producers");
+  }
+
   for (auto& node : Nodes()) {
     const auto& explicit_inputs = node.InputDefs();
     const auto& implicit_inputs = node.ImplicitInputDefs();
@@ -7301,24 +7325,16 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
                               ? explicit_inputs[input_idx]
                               : implicit_inputs[input_idx - explicit_inputs.size()];
       if (input->Exists()) {
-        Node* matched_producer = nullptr;
-        int matched_output_idx = 0;
-        for (auto& producer : Nodes()) {
-          const auto& outputs = producer.OutputDefs();
-          for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
-            if (outputs[output_idx] == input) {
-              ORT_RETURN_IF_NOT(matched_producer == nullptr,
-                                "slot has multiple producers");
-              matched_producer = &producer;
-              matched_output_idx = static_cast<int>(output_idx);
-            }
-          }
-        }
-        if (matched_producer != nullptr) {
-          matched_producer->relationships_.output_edges.emplace(
-              node, matched_output_idx, static_cast<int>(input_idx));
+        const auto producer = std::lower_bound(
+            producer_lookup.begin(), producer_lookup.end(), input,
+            [](const NodeArgProducer& candidate, const NodeArg* value) {
+              return std::less<const NodeArg*>{}(candidate.node_arg, value);
+            });
+        if (producer != producer_lookup.end() && producer->node_arg == input) {
+          producer->node->relationships_.output_edges.emplace(
+              node, producer->output_idx, static_cast<int>(input_idx));
           node.relationships_.input_edges.emplace(
-              *matched_producer, matched_output_idx, static_cast<int>(input_idx));
+              *producer->node, producer->output_idx, static_cast<int>(input_idx));
         }
       }
     }
