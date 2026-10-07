@@ -591,6 +591,13 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
   Tensor tVgV = gmem_thr_copy_QKV.partition_S(gV);  // (VCPY, VCPY_N, VCPY_K)
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
+  const auto clear_unmapped_v = [block_table, &params, &tVsV](int block) {
+    if (block_table != nullptr &&
+        block_table[block * kBlockN / params.page_block_size] < 0) {
+      clear(tVsV);
+      __syncthreads();
+    }
+  };
 
   typename Kernel_traits::TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_thread_slice(tidx);
@@ -851,6 +858,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
     FLASH_NAMESPACE::cp_async_wait<0>();
     __syncthreads();
+    clear_unmapped_v(n_block);
     // if (tidx == 0 && blockIdx.y == 0 && blockIdx.z == 0) { print(tVsV); }
     // __syncthreads();
 
@@ -930,6 +938,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
     FLASH_NAMESPACE::cp_async_wait<0>();
     __syncthreads();
+    clear_unmapped_v(n_block);
     if (n_block > n_block_min) {
       // Advance gK
       if (block_table == nullptr) {

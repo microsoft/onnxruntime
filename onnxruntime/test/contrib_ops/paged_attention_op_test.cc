@@ -84,6 +84,7 @@ struct IoBindingCase {
   bool enable_cuda_graph = false;
   bool irregular_layout = false;
   bool discriminating_attention = false;
+  bool poison_first_value_cache_page = false;
   std::vector<int32_t> past_seqlens;
   std::vector<std::vector<int32_t>> replay_past_seqlens;
   std::vector<int32_t> cumulative_seqlens_q;
@@ -584,6 +585,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                                         static_cast<float>((b * 3 + kv_head * 7 + dim) % 17 - 8));
         }
       }
+    }
+    if (c.poison_first_value_cache_page) {
+      std::fill_n(value_cache_data.begin(), block_size * kv_hidden_size,
+                  MLFloat16(std::numeric_limits<float>::quiet_NaN()));
     }
     for (int block_id = 0; block_id < num_blocks; ++block_id) {
       // Two cache-scale steps survive both 0.01 and 0.02 INT8 scales and keep these fixtures in range.
@@ -1876,6 +1881,46 @@ TEST(PagedAttention, Cuda_FlashSplitKvLongContext) {
   const size_t split_pos = debug_output.find(split_prefix);
   ASSERT_NE(split_pos, std::string::npos) << debug_output;
   EXPECT_GT(std::stoi(debug_output.substr(split_pos + split_prefix.size())), 1) << debug_output;
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
+TEST(PagedAttention, Cuda_FlashUnmappedPageIgnoresPoisonedValueCache) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.num_blocks = 2;
+  c.max_num_blocks_per_seq = 2;
+  c.past_seqlens = {257};
+  c.block_table = {-1, 1};
+  c.attention_metadata = {1, 512, 258};
+  c.poison_first_value_cache_page = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_output_finite = true;
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
 #endif

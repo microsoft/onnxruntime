@@ -460,9 +460,9 @@ __global__ void SanitizePastSequenceLengths(int32_t* sanitized_past_seqlens,
       if (b == 0) {
         cumulative_seqlens_kv[0] = 0;
       }
-      sequence_validity[b] = 1;
       return;
     }
+    sequence_validity[b] = 1;
     const int64_t bounded_past_length =
         input_past_length;
     sanitized_past_seqlens[b] = static_cast<int32_t>(bounded_past_length);
