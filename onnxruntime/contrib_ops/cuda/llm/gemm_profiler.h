@@ -97,14 +97,17 @@ class GemmIdCore {
   int k;
   nvinfer::DataType dtype;
   int sm;
+  // Distinguishes tactic candidate sets (for example with an optional GEMV variant) for the same shape.
+  int tag;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_) {
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, int tag_ = 0)
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), tag(tag_) {
   }
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
-        sm(0) {
+        sm(0),
+        tag(0) {
   }
 
   bool operator==(GemmIdCore const& id) const {
@@ -115,12 +118,13 @@ class GemmIdCore {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
     out << " sm=" << id.sm;
+    out << " tag=" << id.tag;
     return out;
   }
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm;
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && tag == id.tag;
   }
 };
 
@@ -131,7 +135,8 @@ struct GemmIdCoreHash {
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
     auto h4 = std::hash<int>{}(id.sm);
-    return h1 ^ h2 ^ h3 ^ h4;
+    auto h5 = std::hash<int>{}(id.tag);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5;
   }
 };
 

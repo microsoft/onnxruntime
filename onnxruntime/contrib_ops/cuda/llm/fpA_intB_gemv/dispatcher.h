@@ -366,6 +366,123 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
 #endif
 }
 
+// Physical half2 index, in the converter's output order, of the activation half2 pair `q` (logical K
+// elements 2q and 2q + 1). The layout mapper keeps element pairs adjacent (group size is even).
+template <typename Details>
+__host__ __device__ constexpr int PairedPhysicalPair(int q) {
+  constexpr int g = Details::LayoutDetails::kElementGroupSizeA;
+  constexpr int w = Details::LayoutDetails::kElementGroupSizeW;
+  constexpr int off = Details::LayoutDetails::kGroupOffsetA;
+  static_assert(g % 2 == 0, "K pairs must stay adjacent under the layout mapper");
+  int const i = 2 * q;
+  return (i % g + (i % off) / g * w + i / off * g) / 2;
+}
+
+// fp16 variant of `kernel` that multiplies converter-order weight pairs (K, K+1) by the activation pairs
+// directly. It needs no scalar repack of the weights and no broadcast of the activations, which removes
+// about a third of the per-tile instructions. Each accumulator half2 holds two partial K sums that are added
+// in float at the end. Scale-only (no zero point, bias or activation scale) kernels only.
+template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize>
+__global__ void kernel_paired(half* act, uint8_t* weight, half* scales, half* out, int n, int k) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
+  using AccessTypeA = typename Details::AccessTypeA;
+  using AccessTypeW = typename Details::AccessTypeW;
+
+  static constexpr int StepK = Details::kStepK;
+  static constexpr int NumPairs = StepK / 2;
+  static constexpr int CtaK = StepK * Threads;
+  static_assert(CtaN % 2 == 0);
+  static_assert((CtaK / Details::kInterleave) % GroupSize == 0);
+  static_assert(GroupSize % StepK == 0);
+
+  int const origin_k = k, interleaved_k = k * Details::kInterleave;
+
+  int const tile_id_m = blockIdx.x, tile_id_n = blockIdx.y, tid = threadIdx.x;
+  int const offset_m = tile_id_m * CtaM, interleaved_offset_n = tile_id_n * CtaN;
+  int const real_offset_n = interleaved_offset_n * Details::kInterleave + ((tid * StepK / Details::LayoutDetails::kTileSize) % Details::kInterleave);
+  int const real_offset_k = (tid * StepK / (Details::kInterleave * Details::LayoutDetails::kTileSize)) * Details::LayoutDetails::kTileSize + ((tid * StepK) % Details::LayoutDetails::kTileSize);
+
+  GMemIterator<true, AccessTypeA, CtaM, Details::kAccessNumA, half> act_iterator(
+      act, offset_m * origin_k + real_offset_k, CtaK / Details::kInterleave, origin_k);
+  GMemIterator<true, AccessTypeW, CtaN, Details::kAccessNumW, uint8_t> weight_iterator(
+      weight,
+      (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW, CtaK / Details::kElemsPerByteW,
+      interleaved_k / Details::kElemsPerByteW);
+  GMemIterator<true, half, CtaN, 1, half> scales_iterator(
+      scales, real_offset_k / GroupSize * n + real_offset_n, CtaK / Details::kInterleave / GroupSize * n,
+      Details::kInterleave);
+
+  out += offset_m * n + tile_id_n * CtaN * Details::kInterleave;
+
+  half2 acc[CtaM][CtaN];
+#pragma unroll
+  for (int m = 0; m < CtaM; ++m) {
+#pragma unroll
+    for (int j = 0; j < CtaN; ++j) {
+      acc[m][j] = __half2half2(__float2half(0.f));
+    }
+  }
+
+  for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
+    half vec_scale[CtaN];
+    half2 w2[CtaN][NumPairs];
+#pragma unroll
+    for (int i = 0; i < CtaN; ++i) {
+      scales_iterator.load(vec_scale + i, iter, i);
+    }
+#pragma unroll
+    for (int i = 0; i < CtaN; ++i) {
+      uint8_t quantized[StepK / Details::kElemsPerByteW];
+      half tile_w[StepK];
+      weight_iterator.load(quantized, iter, i);
+      ConverterWrapper<Details>::Converter::template convert<StepK>(quantized, tile_w);
+      half2 const scale2 = __half2half2(vec_scale[i]);
+#pragma unroll
+      for (int p = 0; p < NumPairs; ++p) {
+        w2[i][p] = __hmul2(reinterpret_cast<half2*>(tile_w)[p], scale2);
+      }
+    }
+#pragma unroll
+    for (int m = 0; m < CtaM; ++m) {
+      half tile_a[StepK];
+      act_iterator.load(tile_a, iter, m);
+#pragma unroll
+      for (int j = 0; j < CtaN; ++j) {
+#pragma unroll
+        for (int q = 0; q < NumPairs; ++q) {
+          acc[m][j] = __hfma2(w2[j][PairedPhysicalPair<Details>(q)], reinterpret_cast<half2*>(tile_a)[q], acc[m][j]);
+        }
+      }
+    }
+  }
+
+  half tile_acc[CtaM * CtaN];
+#pragma unroll
+  for (int m = 0; m < CtaM; ++m) {
+#pragma unroll
+    for (int j = 0; j < CtaN; ++j) {
+      tile_acc[m * CtaN + j] = __float2half(__low2float(acc[m][j]) + __high2float(acc[m][j]));
+    }
+  }
+  epilogue<Details, CtaM, CtaN, Threads, false, false>(out, n, tile_acc, nullptr, 1.f);
+#endif
+}
+
+template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize>
+void exec_kernel_paired(Params& params, cudaStream_t s) {
+  if (params.m % CtaM || params.n % (CtaN * Details::kInterleave)) {
+    ORT_THROW("launch failed");
+  }
+  dim3 grid(params.m / CtaM, params.n / (CtaN * Details::kInterleave));
+  dim3 block(Threads);
+  kernel_paired<Details, CtaM, CtaN, Threads, GroupSize><<<grid, block, 0, s>>>(
+      reinterpret_cast<half*>(params.act),
+      reinterpret_cast<uint8_t*>(params.weight),
+      reinterpret_cast<half*>(params.scales),
+      reinterpret_cast<half*>(params.out),
+      params.n, params.k);
+}
+
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
           bool EnableBias, bool ApplyAlphaInAdvance>
 void exec_kernel(Params& params, cudaStream_t s) {
@@ -400,6 +517,25 @@ void dispatcher(Params& params, cudaStream_t s) {
   // RTX 4090 it makes the M = 4..8 GEMVs 2-12% faster with DRAM-resident weights. The 2-bit layout
   // already uses the narrow tile.
   static constexpr int CtaNLargeM = Details::kStepK >= 64 ? CtaN : (CtaN / 2 < 2 ? 2 : CtaN / 2);
+
+  // Paired-K kernel (fp16, int4, scale-only, SM80-interleaved layout). It is only requested through the
+  // profiler's optional tactic, and covers the M = 5..8 range that one profiled M bucket serves.
+  if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 && !EnableZero && !EnableBias &&
+                !EnableActScale && !ApplyAlphaInAdvance && CtaNLargeM == 4 &&
+                std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
+    if (params.paired_k && params.m >= 5 && params.m <= 8) {
+      if (params.m == 8) {
+        exec_kernel_paired<Details, 8, CtaNLargeM, 128, GroupSize>(params, s);
+      } else if (params.m == 7) {
+        exec_kernel_paired<Details, 7, CtaNLargeM, 128, GroupSize>(params, s);
+      } else if (params.m == 6) {
+        exec_kernel_paired<Details, 6, CtaNLargeM, 128, GroupSize>(params, s);
+      } else {
+        exec_kernel_paired<Details, 5, CtaNLargeM, 128, GroupSize>(params, s);
+      }
+      return;
+    }
+  }
 
 #define DISPATCHER_FOR_M(target_m, CtaM, TileN, Threads)                                            \
   do {                                                                                              \

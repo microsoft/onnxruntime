@@ -50,6 +50,7 @@ using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutla
 // Environment variable to enable/disable the fpA_intB path: unset/0/off to disable, other value to enable.
 // This only affects nodes whose weights are NOT prepacked (see the constructor).
 constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
+constexpr const char* kFpAIntBGemvPairedKOption = "ORT_FPA_INTB_GEMV_PAIRED_K";
 
 // Env fallback for kOrtSessionOptionsCudaMatMulNBitsMChunkSize (max rows of A per fpA_intB launch).
 constexpr const char* kMChunkSizeEnvVar = "ORT_MATMULNBITS_M_CHUNK_SIZE";
@@ -266,6 +267,21 @@ class MatMulNBits final : public CudaKernel {
 
         InitGemmProfiler(FpAIntBPackingSmForKernel());
 
+        // Opt-in: let the tactic profiler also try the paired-K fp16 int4 GEMV for M = 5..8 ("1"), or use
+        // only it ("force", for testing). Only the SM80-interleaved layout has this kernel.
+        if constexpr (std::is_same<T, MLFloat16>::value) {
+          const int packing_sm = FpAIntBPackingSmForKernel();
+          const std::string paired_option = ResolveFpAIntBConfigOrEnv(
+              info, kOrtSessionOptionsCudaFpAIntBGemvPairedK, kFpAIntBGemvPairedKOption);
+          const bool paired_eligible = has_fpA_intB_gemv_ && nbits_ == 4 && block_size_ == 32 &&
+                                       !has_zero_points_ && !has_bias_ && !(packing_sm >= 90 && packing_sm < 100);
+          if (paired_eligible && ParseFpAIntBEnabled(paired_option)) {
+            paired_gemv_mode_ =
+                onnxruntime::utils::GetLowercaseString(onnxruntime::utils::TrimString(paired_option)) == "force" ? 2 : 1;
+          }
+          gemmProfiler_->setPairedGemvMode(paired_gemv_mode_);
+        }
+
         // Initial profile M buckets from session config (ep.cuda.fpa_intb_profile_m) with
         // ORT_FPA_INTB_PROFILE_M env fallback; empty -> profiler uses its default bucket set.
         std::vector<int> profile_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
@@ -388,6 +404,8 @@ class MatMulNBits final : public CudaKernel {
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
+  // 0 = off, 1 = paired-K GEMV is an extra profiler tactic, 2 = it is the only GEMV/GEMM tactic for M = 8.
+  int paired_gemv_mode_{0};
   bool has_fpA_intB_gemm_{false};
   int64_t weight_prepacked_{kMatMulNBitsWeightNotPrepacked};
   // Max rows of A per fpA_intB launch; 0 disables M chunking.

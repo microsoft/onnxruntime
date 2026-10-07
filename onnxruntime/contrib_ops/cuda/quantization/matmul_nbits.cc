@@ -627,10 +627,12 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
+  // The tag keeps profiled results with and without the optional paired-K tactic apart.
+  const int tactic_set_tag = paired_gemv_mode_;
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm, tactic_set_tag);
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm, tactic_set_tag);
   }
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
@@ -1021,6 +1023,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
               fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
               bias_data, chunk_out_data,
               alpha, rows, n, k, static_cast<int>(block_size_), cuda_kernel_type, apply_alpha_in_advance);
+          params.paired_k = bestTactic->cudaKernelVariant == 1;
 
           // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),
           // not the raw device SM. The GEMV interleave layout is arch-dependent: arch in [90,100)
