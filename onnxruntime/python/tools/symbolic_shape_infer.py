@@ -80,6 +80,23 @@ def is_literal(dim):
     return type(dim) in [int, np.int64, np.int32, sympy.Integer] or (hasattr(dim, "is_number") and dim.is_number)
 
 
+def _broadcast_dims_without_merge(shape1, shape2):
+    # Broadcast two shapes without suggesting symbol merges: a dim that is
+    # not known from the inputs (e.g. two different symbols) is None.
+    rank = max(len(shape1), len(shape2))
+    shape1 = [1] * (rank - len(shape1)) + list(shape1)
+    shape2 = [1] * (rank - len(shape2)) + list(shape2)
+    new_shape = []
+    for dim1, dim2 in zip(shape1, shape2, strict=True):
+        if dim1 == 1 or dim1 == dim2:
+            new_shape.append(dim2)
+        elif dim2 == 1:
+            new_shape.append(dim1)
+        else:
+            new_shape.append(None)
+    return new_shape
+
+
 def handle_negative_axis(axis, rank):
     assert axis < rank and axis >= -rank
     return axis if axis >= 0 else rank + axis
@@ -1094,7 +1111,7 @@ class SymbolicShapeInference:
             if ellipsis_index != -1:
                 # The ellipsis stands for the dims not named by letters, and those dims broadcast across operands.
                 num_ellipsis_dims = len(shape) - len(term) + 3
-                ellipsis_shape = self._broadcast_shapes(
+                ellipsis_shape = _broadcast_dims_without_merge(
                     ellipsis_shape, shape[ellipsis_index : ellipsis_index + num_ellipsis_dims]
                 )
                 letters = term[:ellipsis_index] + term[ellipsis_index + 3 :]
