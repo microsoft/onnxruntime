@@ -88,7 +88,10 @@ stages:
       - name: runCodesignValidationInjection
         value: false
       - name: docker_base_image
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+      - template: common-variables.yml
+      - name: linux_trt_version
+        value: ${{ variables.linux_trt_version_cuda13 }}
       timeoutInMinutes: 60
       steps:
       - template: jobs/checkout-and-git-redirect.yml
