@@ -12,10 +12,15 @@
 namespace onnxruntime {
 namespace webgpu {
 
+enum class BinaryImplementation { None,
+                                  Min,
+                                  Max,
+                                  Pow };
+
 #define WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG(F) \
   F(std::string, program_name_)                     \
-  F(std::string_view, expression_)                  \
-  F(std::string_view, additional_impl_)             \
+  F(ShaderLiteral, expression_)                     \
+  F(BinaryImplementation, implementation_)          \
   F(bool, is_broadcast_)                            \
   F(bool, is_lhs_scalar_)                           \
   F(bool, is_rhs_scalar_)                           \
@@ -28,13 +33,13 @@ namespace webgpu {
 struct BinaryElementwiseProgramShader {
   struct Config final {
     WEBGPU_CONFIG_MEMBERS(WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG);
-    Config(const std::string& kernel_name, const std::string& expression, const std::string& additional_impl,
+    Config(const std::string& kernel_name, ShaderLiteral expression, BinaryImplementation implementation,
            const bool is_broadcast, const bool is_lhs_scalar, const bool is_rhs_scalar,
            const bool is_lhs_use_4_components, const bool is_rhs_use_4_components, const bool vectorize,
            const bool is_int64_input = false, const bool is_int64_output = false)
         : program_name_{kernel_name},
           expression_{expression},
-          additional_impl_{additional_impl},
+          implementation_{implementation},
           is_broadcast_{is_broadcast},
           is_lhs_scalar_{is_lhs_scalar},
           is_rhs_scalar_{is_rhs_scalar},
@@ -56,23 +61,21 @@ using BinaryElementwiseProgram = ConfiguredProgram<BinaryElementwiseProgramShade
 
 class BinaryElementwise : public WebGpuKernel {
  public:
-  using GetAdditionalImplementationFunction = std::string (*)(int lhs_element_type, int rhs_element_type);
-
   BinaryElementwise(const OpKernelInfo& info,
                     const std::string& kernel_name,
-                    const std::string& expression,
-                    const GetAdditionalImplementationFunction get_additional_impl = nullptr) : WebGpuKernel{info},
-                                                                                               kernel_name_{kernel_name},
-                                                                                               expression_{expression},
-                                                                                               get_additional_impl_{get_additional_impl} {}
+                    ShaderLiteral expression,
+                    BinaryImplementation implementation = BinaryImplementation::None) : WebGpuKernel{info},
+                                                                                        kernel_name_{kernel_name},
+                                                                                        expression_{expression},
+                                                                                        implementation_{implementation} {}
 
  protected:
   Status ComputeInternal(ComputeContext& context) const final;
 
  private:
   std::string kernel_name_;
-  std::string expression_;
-  const GetAdditionalImplementationFunction get_additional_impl_;
+  ShaderLiteral expression_;
+  const BinaryImplementation implementation_;
 };
 
 // Registers the binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
@@ -86,23 +89,21 @@ void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enab
 // two-input binary element-wise program, reusing its broadcasting and vectorization paths.
 class VariadicElementwise : public WebGpuKernel {
  public:
-  using GetAdditionalImplementationFunction = std::string (*)(int lhs_element_type, int rhs_element_type);
-
   VariadicElementwise(const OpKernelInfo& info,
                       const std::string& kernel_name,
-                      const std::string& expression,
-                      const GetAdditionalImplementationFunction get_additional_impl = nullptr) : WebGpuKernel{info},
-                                                                                                 kernel_name_{kernel_name},
-                                                                                                 expression_{expression},
-                                                                                                 get_additional_impl_{get_additional_impl} {}
+                      ShaderLiteral expression,
+                      BinaryImplementation implementation = BinaryImplementation::None) : WebGpuKernel{info},
+                                                                                          kernel_name_{kernel_name},
+                                                                                          expression_{expression},
+                                                                                          implementation_{implementation} {}
 
  protected:
   Status ComputeInternal(ComputeContext& context) const final;
 
  private:
   std::string kernel_name_;
-  std::string expression_;
-  const GetAdditionalImplementationFunction get_additional_impl_;
+  ShaderLiteral expression_;
+  const BinaryImplementation implementation_;
 };
 
 }  // namespace webgpu

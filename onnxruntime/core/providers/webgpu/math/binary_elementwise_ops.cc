@@ -16,6 +16,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
+static std::string GetMinMaxImpl(int element_type, bool is_max);
+static std::string GetPowImpl(int element_type);
+
 Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
                                                           ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -25,7 +28,17 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
   const bool a_is_bool = shader.InputType(0) == ProgramVariableDataType::Boolx4;
   const bool b_is_bool = shader.InputType(1) == ProgramVariableDataType::Boolx4;
 
-  shader.AdditionalImplementation() << config.additional_impl_;
+  switch (config.implementation_) {
+    case BinaryImplementation::Min:
+    case BinaryImplementation::Max:
+      shader.AdditionalImplementation() << GetMinMaxImpl(shader.InputElementType(0), config.implementation_ == BinaryImplementation::Max);
+      break;
+    case BinaryImplementation::Pow:
+      shader.AdditionalImplementation() << GetPowImpl(shader.InputElementType(0));
+      break;
+    case BinaryImplementation::None:
+      break;
+  }
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
@@ -153,7 +166,7 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
 
   if (config.is_int64_output_) {
     // INT64 output (component=1): write each component of the vec4 result individually.
-    shader.MainFunctionBody() << "let result = " << config.expression_ << ";\n"
+    shader.MainFunctionBody() << "let result = " << config.expression_.Text() << ";\n"
                               << c.SetByOffset("base", "result[0]") << "\n"
                               << "if (base + 1u < element_count) { " << c.SetByOffset("base + 1u", "result[1]")
                               << " }\n"
@@ -162,7 +175,7 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
                               << "if (base + 3u < element_count) { " << c.SetByOffset("base + 3u", "result[3]")
                               << " }\n";
   } else {
-    shader.MainFunctionBody() << c.SetByOffset("global_idx", config.expression_);
+    shader.MainFunctionBody() << c.SetByOffset("global_idx", config.expression_.Text());
   }
   return Status::OK();
 }
@@ -173,8 +186,8 @@ namespace {
 // shape of `lhs` and `rhs`, and must contain at least one element.
 Status RunBinaryProgram(ComputeContext& context,
                         const std::string& kernel_name,
-                        const std::string& expression,
-                        const std::string& additional_impl,
+                        ShaderLiteral expression,
+                        BinaryImplementation implementation,
                         const Tensor* lhs_tensor,
                         const Tensor* rhs_tensor,
                         Tensor* output_tensor) {
@@ -227,7 +240,7 @@ Status RunBinaryProgram(ComputeContext& context,
 
   BinaryElementwiseProgram program{kernel_name,
                                    expression,
-                                   additional_impl,
+                                   implementation,
                                    is_broadcast,
                                    is_lhs_scalar,
                                    is_rhs_scalar,
@@ -306,12 +319,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  std::string additional_impl;
-  if (get_additional_impl_) {
-    additional_impl = get_additional_impl_(lhs_tensor->GetElementType(), rhs_tensor->GetElementType());
-  }
-
-  return RunBinaryProgram(context, kernel_name_, expression_, additional_impl, lhs_tensor, rhs_tensor, output_tensor);
+  return RunBinaryProgram(context, kernel_name_, expression_, implementation_, lhs_tensor, rhs_tensor, output_tensor);
 }
 
 Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
@@ -344,10 +352,6 @@ Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
   // duration of this call. Reserve up front so the vector never reallocates and invalidates the
   // pointers handed to the next iteration.
   const auto element_type = input_0->DataType();
-  std::string additional_impl;
-  if (get_additional_impl_) {
-    additional_impl = get_additional_impl_(input_0->GetElementType(), input_0->GetElementType());
-  }
   InlinedVector<Tensor> intermediate_tensors;
   // input_count >= 2 here (the single-input case returned above), so the last fold targets the
   // kernel output and there are input_count - 2 intermediates. Guard the subtraction anyway so a
@@ -369,7 +373,7 @@ Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
       intermediate_tensors.push_back(context.CreateGPUTensor(element_type, intermediate_shape));
       dst_tensor = &intermediate_tensors.back();
     }
-    ORT_RETURN_IF_ERROR(RunBinaryProgram(context, kernel_name_, expression_, additional_impl,
+    ORT_RETURN_IF_ERROR(RunBinaryProgram(context, kernel_name_, expression_, implementation_,
                                          lhs_tensor, rhs_tensor, dst_tensor));
     lhs_tensor = dst_tensor;
   }
@@ -422,17 +426,10 @@ static std::string GetMinMaxImpl(int element_type, bool is_max) {
   return SS_GET(s);
 }
 
-static std::string GetMaxImpl(int lhs_element_type, int /* rhs_element_type */) {
-  return GetMinMaxImpl(lhs_element_type, /*is_max=*/true);
-}
-static std::string GetMinImpl(int lhs_element_type, int /* rhs_element_type */) {
-  return GetMinMaxImpl(lhs_element_type, /*is_max=*/false);
-}
+WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", BinaryImplementation::Max)
+WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", BinaryImplementation::Min)
 
-WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMaxImpl)
-WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMinImpl)
-
-std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
+static std::string GetPowImpl(int lhs_element_type) {
   SS(s, 1024);
   std::string round_str;
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
@@ -465,7 +462,7 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   return SS_GET(s);
 }
 
-WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", GetPowImpl)
+WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", BinaryImplementation::Pow)
 WEBGPU_BINARY_IMPL(PRelu, "select(b * a, a, a >= vec4<input_a_element_t>(0))")
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")

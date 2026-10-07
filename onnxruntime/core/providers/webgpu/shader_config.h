@@ -14,9 +14,29 @@
 #include <vector>
 
 #include "core/common/inlined_containers_fwd.h"
+#include "core/common/common.h"
 #include <gsl/gsl>
 
 namespace onnxruntime::webgpu {
+
+// A value reference to constant shader code. Immediate construction excludes
+// runtime strings and automatic storage; copies retain the same immutable code.
+class ShaderLiteral final {
+ public:
+  constexpr ShaderLiteral() = default;
+  template <typename T, size_t N>
+    requires std::is_same_v<T, const char>
+  consteval ShaderLiteral(T (&text)[N]) : text_{N == 1 ? std::string_view{} : std::string_view{text, N - 1}} {
+    ORT_ENFORCE(text[N - 1] == '\0', "Shader literals must be null terminated");
+  }
+
+  std::string_view Text() const { return text_; }
+
+ private:
+  template <typename T>
+  friend void AppendConfigValue(std::string&, const T&);
+  std::string_view text_;
+};
 
 namespace detail {
 template <typename T>
@@ -45,7 +65,11 @@ inline constexpr bool is_config_pair<std::pair<A, B>> = true;
 // participate in equality; collection lengths delimit variable-sized fields.
 template <typename T>
 void AppendConfigValue(std::string& key, const T& value) {
-  if constexpr (std::is_same_v<T, float>) {
+  if constexpr (std::is_same_v<T, ShaderLiteral>) {
+    // Like the generator token, this identifies immutable code, not tensor data.
+    AppendConfigValue(key, reinterpret_cast<uintptr_t>(value.text_.data()));
+    AppendConfigValue(key, value.text_.size());
+  } else if constexpr (std::is_same_v<T, float>) {
     AppendConfigValue(key, std::bit_cast<uint32_t>(value));
   } else if constexpr (std::is_same_v<T, double>) {
     AppendConfigValue(key, std::bit_cast<uint64_t>(value));

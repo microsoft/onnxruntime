@@ -15,10 +15,10 @@ Status UnaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const 
                                                          ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | config.additional_usage_);
   const auto& output = shader.AddOutput("y", ShaderUsage::UseUniform);
-  shader.AdditionalImplementation() << config.additional_impl_;
+  shader.AdditionalImplementation() << config.additional_impl_.Text();
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
                             << "  let a = " << input.GetByOffset("global_idx") << ";\n  "
-                            << output.SetByOffset("global_idx", config.expression_);
+                            << output.SetByOffset("global_idx", config.expression_.Text());
 
   return Status::OK();
 }
@@ -195,7 +195,7 @@ class Clip final : public UnaryElementwise {
   Clip(const OpKernelInfo& info)
       : UnaryElementwise{info,
                          "Clip",
-                         std::is_same_v<T, MLFloat16> ? ClipF16Impl : ClipImpl,
+                         std::is_same_v<T, MLFloat16> ? ShaderLiteral{ClipF16Impl} : ShaderLiteral{ClipImpl},
                          "", ShaderUsage::UseElementTypeAlias} {}
 
   Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
@@ -408,8 +408,8 @@ WEBGPU_ELEMENTWISE_KERNEL(Elu, 6, WebGpuSupportedFloatTypes())
 Gelu::Gelu(const OpKernelInfo& info)
     : UnaryElementwise{info,
                        "Gelu",
-                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
-                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
+                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? ShaderLiteral{FastGeluExpr} : ShaderLiteral{GeluExpr},
+                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? ShaderLiteral{TanhImpl} : ShaderLiteral{ErfImpl},
                        ShaderUsage::UseValueTypeAlias} {
 }
 

@@ -247,6 +247,15 @@ TEST(ConfiguredProgramTest, VariableLengthFieldsHaveUnambiguousBoundaries) {
   EXPECT_NE(encode(-1), encode(1));
   EXPECT_NE(encode(0.0f), encode(-0.0f));
   EXPECT_EQ(encode(std::string{"a\0b", 3}), encode(std::string_view{"a\0b", 3}));
+  static_assert(!std::is_constructible_v<ShaderLiteral, std::string_view>);
+  static_assert(!std::is_constructible_v<ShaderLiteral, char (&)[4]>);
+  static constexpr char code[] = "return x;";
+  EXPECT_EQ(encode(ShaderLiteral{code}), encode(ShaderLiteral{code}));
+  EXPECT_NE(encode(ShaderLiteral{code}), encode(ShaderLiteral{"return y;"}));
+  EXPECT_EQ(ShaderLiteral{code}.Text(), "return x;");
+  constexpr ShaderLiteral long_code{
+      "fn example() { let x = 123456789; let y = 123456789; let z = 123456789; return x + y + z; }"};
+  EXPECT_LT(encode(long_code).size(), 32u);
 }
 
 }  // namespace

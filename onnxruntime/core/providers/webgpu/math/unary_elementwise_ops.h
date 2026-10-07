@@ -17,14 +17,14 @@ void RegisterClipInt64Kernels(KernelRegistry& kernel_registry, bool enable_int64
 
 #define WEBGPU_UNARY_ELEMENTWISE_PROGRAM_CONFIG(F) \
   F(std::string, program_name_)                    \
-  F(std::string_view, expression_)                 \
-  F(std::string_view, additional_impl_)            \
+  F(ShaderLiteral, expression_)                    \
+  F(ShaderLiteral, additional_impl_)               \
   F(uint32_t, additional_usage_)
 
 struct UnaryElementwiseProgramShader {
   struct Config final {
     WEBGPU_CONFIG_MEMBERS(WEBGPU_UNARY_ELEMENTWISE_PROGRAM_CONFIG);
-    Config(const std::string& kernel_name, std::string_view expression, std::string_view additional_impl,
+    Config(const std::string& kernel_name, ShaderLiteral expression, ShaderLiteral additional_impl,
            ShaderUsage usage)
         : program_name_{kernel_name},
           expression_{expression},
@@ -43,13 +43,10 @@ struct UnaryElementwiseProgramShader {
 
 using UnaryElementwiseProgram = ConfiguredProgram<UnaryElementwiseProgramShader>;
 
-// TODO: after upgrading to C++20, use consteval to make a compile-time constructor so that it will be safe to switch
-//       the std::string to std::string_view. This will avoid the cost of copying the string.
-
 class UnaryElementwise : public WebGpuKernel {
  public:
-  UnaryElementwise(const OpKernelInfo& info, const std::string& kernel_name, const std::string& expression,
-                   const std::string& additional_impl = "", ShaderUsage usage = ShaderUsage::None)
+  UnaryElementwise(const OpKernelInfo& info, const std::string& kernel_name, ShaderLiteral expression,
+                   ShaderLiteral additional_impl = "", ShaderUsage usage = ShaderUsage::None)
       : WebGpuKernel{info},
         kernel_name_{kernel_name},
         expression_{expression},
@@ -65,8 +62,8 @@ class UnaryElementwise : public WebGpuKernel {
 
  private:
   std::string kernel_name_;
-  std::string expression_;
-  std::string additional_impl_;
+  ShaderLiteral expression_;
+  ShaderLiteral additional_impl_;
   ShaderUsage additional_usage_;
 };
 
@@ -79,8 +76,8 @@ class LinearUnit : public UnaryElementwise {
  public:
   LinearUnit(const OpKernelInfo& info,
              const std::string& kernel_name,
-             const std::string& expression,
-             const std::string& additional_impl,
+             ShaderLiteral expression,
+             ShaderLiteral additional_impl,
              float default_alpha)
       : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderUsage::UseElementTypeAlias} {
     info.GetAttrOrDefault("alpha", &alpha_, default_alpha);

@@ -54,6 +54,13 @@ program execution and source generation. Their contents, rather than their
 addresses, participate in identity. Einsum borrows its invocation's const indexing
 recipe this way, avoiding additional recipe allocations on cache hits.
 
+Use `ShaderLiteral` for static WGSL fragments. Its immediate constructor accepts
+only constant character arrays with static lifetime, so the framework can encode
+their process-local code identity without copying or hashing the text on each hit.
+Runtime strings still use content encoding. Binary Min/Max/Pow select their
+implementation with a declared enum and keyed element types; their implementation
+text is generated only on cache misses.
+
 ## Runtime data and shape specialization
 
 The framework always captures input/output shader types (including vector width),
