@@ -322,6 +322,9 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
     if (!provider) {
       GTEST_SKIP() << "CUDA execution provider is unavailable.";
     }
+    if (GetCudaArchitecture() < 700) {
+      GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+    }
     if (provider->GetOrtEp() != nullptr) {
       GTEST_SKIP() << "MoE expert counting is not supported by the CUDA plugin execution provider.";
     }
