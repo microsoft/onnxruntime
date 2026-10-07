@@ -95,6 +95,39 @@ Status LaunchCheckLiveBlockTable(
   return CUDA_CALL(cudaGetLastError());
 }
 
+template <typename T>
+__global__ void MaskInvalidSequenceOutputs(
+    T* output, const int32_t* sequence_validity,
+    const int32_t* cumulative_seqlens_q, int v_hidden_size) {
+  const int batch = blockIdx.y;
+  if (sequence_validity[batch] != 0) {
+    return;
+  }
+
+  const int query_start = cumulative_seqlens_q[batch];
+  const int query_length = cumulative_seqlens_q[batch + 1] - query_start;
+  const int offset = blockIdx.x * blockDim.x + threadIdx.x;
+  if (offset < query_length * v_hidden_size) {
+    output[query_start * v_hidden_size + offset] = static_cast<T>(0.0f);
+  }
+}
+
+template <typename T>
+Status LaunchMaskInvalidSequenceOutputs(
+    T* output, const int32_t* sequence_validity,
+    const int32_t* cumulative_seqlens_q, int batch_size,
+    int max_query_len, int v_hidden_size, cudaStream_t stream) {
+  constexpr int kThreadsPerBlock = 256;
+  const int elements_per_sequence = max_query_len * v_hidden_size;
+  if (batch_size > 0 && elements_per_sequence > 0) {
+    const dim3 grid((elements_per_sequence + kThreadsPerBlock - 1) / kThreadsPerBlock,
+                    batch_size);
+    MaskInvalidSequenceOutputs<<<grid, kThreadsPerBlock, 0, stream>>>(
+        output, sequence_validity, cumulative_seqlens_q, v_hidden_size);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
 ////////// Quantized paged KV cache helpers
 //
 // Symmetric, zero-point-free quantization with the same numerics GroupQueryAttention uses
@@ -2273,39 +2306,35 @@ Status QkvToContext(
     PagedAttentionData<T, TCACHE>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
+  Status attention_status;
 
   // LATENT (MLA) has its own backend: no other kernel can serve v_head_size != head_size over a
   // single aliased cache. Validation guarantees an explicit scale here, so the default above is
   // never the one used.
   if (parameters.is_latent_kv) {
-    return LatentAttention(device_prop, stream, parameters, data, scale);
-  }
-
-  if (data.use_xqa_decode) {
-    return PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale);
-  }
-
-  if (data.use_cudnn_paged) {
-    return CudnnPagedAttention(device_prop, ort_stream, parameters, data, scale);
-  }
-
-  if (data.use_paged_decode) {
-    return PagedDecodeAttention(device_prop, stream, parameters, data, scale);
-  }
-
+    attention_status = LatentAttention(device_prop, stream, parameters, data, scale);
+  } else if (data.use_xqa_decode) {
+    attention_status = PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale);
+  } else if (data.use_cudnn_paged) {
+    attention_status = CudnnPagedAttention(device_prop, ort_stream, parameters, data, scale);
+  } else if (data.use_paged_decode) {
+    attention_status = PagedDecodeAttention(device_prop, stream, parameters, data, scale);
 #if USE_FLASH_ATTENTION
-  if (data.use_flash_attention) {
-    return FlashAttention(device_prop, stream, parameters, data, scale);
-  }
+  } else if (data.use_flash_attention) {
+    attention_status = FlashAttention(device_prop, stream, parameters, data, scale);
 #endif
-
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  if (data.use_memory_efficient_attention) {
-    return EfficientAttention(device_prop, stream, parameters, data, scale);
-  }
+  } else if (data.use_memory_efficient_attention) {
+    attention_status = EfficientAttention(device_prop, stream, parameters, data, scale);
 #endif
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
+  }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
+  ORT_RETURN_IF_ERROR(attention_status);
+  return LaunchMaskInvalidSequenceOutputs(
+      data.output, data.sequence_validity, data.cumulative_seqlens_q,
+      parameters.batch_size, data.max_query_len, parameters.v_hidden_size, stream);
 }
 
 #define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)       \

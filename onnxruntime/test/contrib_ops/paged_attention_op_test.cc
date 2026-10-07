@@ -586,10 +586,6 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
         }
       }
     }
-    if (c.poison_first_value_cache_page) {
-      std::fill_n(value_cache_data.begin(), block_size * kv_hidden_size,
-                  MLFloat16(std::numeric_limits<float>::quiet_NaN()));
-    }
     for (int block_id = 0; block_id < num_blocks; ++block_id) {
       // Two cache-scale steps survive both 0.01 and 0.02 INT8 scales and keep these fixtures in range.
       const float block_component =
@@ -637,6 +633,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
         std::fill_n(value_cache_data.begin() + slot_offset, kv_num_heads * head_size, value);
       }
     }
+  }
+  if (c.poison_first_value_cache_page) {
+    std::fill_n(value_cache_data.begin(), block_size * kv_hidden_size,
+                MLFloat16(std::numeric_limits<float>::quiet_NaN()));
   }
   std::vector<BFloat16> query_data_bf16;
   std::vector<BFloat16> key_data_bf16;
