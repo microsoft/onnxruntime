@@ -415,22 +415,19 @@ ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpName,
                     _Outptr_result_maybenull_ const char** out_ep) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr) {
+  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr || out_ep == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "ctx, component_name, and variant_name must be non-null");
+                                 "ctx, component_name, variant_name, and out_ep must be non-null");
   }
 
   const onnxruntime::VariantEpCompatibilityInfo* info = nullptr;
   auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibility(
       component_name, variant_name, info);
   if (!status.IsOK()) {
-    if (out_ep != nullptr) *out_ep = nullptr;
     return onnxruntime::ToOrtStatus(status);
   }
 
-  if (out_ep != nullptr) {
-    *out_ep = (info != nullptr && info->ep.has_value()) ? info->ep->c_str() : nullptr;
-  }
+  *out_ep = (info != nullptr && info->ep.has_value()) ? info->ep->c_str() : nullptr;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
@@ -453,7 +450,6 @@ ORT_API_STATUS_IMPL(ModelPackage_ResolveStringRef,
   if (ctx == nullptr || input == nullptr || out_path == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, input, and out_path must be non-null");
   }
-  *out_path = nullptr;
 
   const char* resolved = nullptr;
   auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->ResolveStringRef(

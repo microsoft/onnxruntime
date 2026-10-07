@@ -270,9 +270,12 @@ TEST(ModelPackageApiTest, ResolveStringRef) {
 
   // An undeclared sha256 asset is rejected even when must_exist is false.
   const std::string missing_digest(64, 'b');
+  const char* const sentinel = "unchanged";
+  resolved = sentinel;
   OrtStatus* status = pkg_api.ModelPackage_ResolveStringRef(
       ctx.get(), nullptr, ("sha256:" + missing_digest).c_str(), /*must_exist=*/0, &resolved);
   EXPECT_NE(status, nullptr);
+  EXPECT_EQ(resolved, sentinel);
   if (status != nullptr) Ort::GetApi().ReleaseStatus(status);
 
   std::error_code ec;
@@ -627,9 +630,18 @@ TEST(ModelPackageApiTest, GetVariantEpName_ReturnsSingleEp) {
   ASSERT_NE(ep2, nullptr);
   EXPECT_STREQ(ep2, "other_ep");
 
-  // Optional out-parameter: callers can pass NULL.
-  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetVariantEpName(
-      ctx.get(), "model_1", "variant_1", nullptr));
+  OrtStatus* status = pkg_api.ModelPackage_GetVariantEpName(
+      ctx.get(), "model_1", "variant_1", nullptr);
+  ASSERT_NE(status, nullptr);
+  EXPECT_EQ(Ort::GetApi().GetErrorCode(status), ORT_INVALID_ARGUMENT);
+  Ort::GetApi().ReleaseStatus(status);
+
+  const char* missing_ep = "unchanged";
+  status = pkg_api.ModelPackage_GetVariantEpName(
+      ctx.get(), "model_1", "missing_variant", &missing_ep);
+  ASSERT_NE(status, nullptr);
+  EXPECT_STREQ(missing_ep, "unchanged");
+  Ort::GetApi().ReleaseStatus(status);
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
