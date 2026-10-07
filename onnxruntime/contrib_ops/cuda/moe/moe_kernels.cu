@@ -23,6 +23,13 @@ __global__ void AddMoeFp16OutputKernel(half* output, const half* contribution, s
   }
 }
 
+__global__ void AddMoeBf16OutputKernel(__nv_bfloat16* output, const __nv_bfloat16* contribution, size_t count) {
+  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < count) {
+    output[index] = __float2bfloat16(__bfloat162float(output[index]) + __bfloat162float(contribution[index]));
+  }
+}
+
 }  // namespace
 
 void LaunchRemapMoeExpertIndices(const int* expert_indices, int* remapped_expert_indices,
@@ -37,6 +44,14 @@ void LaunchAddMoeFp16Output(half* output, const half* contribution,
                             size_t count, cudaStream_t stream) {
   constexpr int threads = 256;
   AddMoeFp16OutputKernel<<<static_cast<unsigned int>((count + threads - 1) / threads), threads, 0, stream>>>(
+      output, contribution, count);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchAddMoeBf16Output(__nv_bfloat16* output, const __nv_bfloat16* contribution,
+                            size_t count, cudaStream_t stream) {
+  constexpr int threads = 256;
+  AddMoeBf16OutputKernel<<<static_cast<unsigned int>((count + threads - 1) / threads), threads, 0, stream>>>(
       output, contribution, count);
   CUDA_CALL_THROW(cudaGetLastError());
 }

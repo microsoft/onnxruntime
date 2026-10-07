@@ -37,10 +37,14 @@ class MoE final : public CudaKernel, public MoEBase
 #endif
 
  private:
+  static constexpr bool kCpuOffloadSupported =
+      std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
+
   struct PackedTensor {
     TensorShape shape;
-    std::vector<MLFloat16> cpu_data;
-    std::vector<MLFloat16> cpu_gemm_data;
+    std::vector<T> cpu_data;
+    std::vector<T> cpu_gemm_data;
+    std::vector<float> cpu_gemm_float_data;
     IAllocatorUniquePtr<void> cuda_data;
     size_t bytes{0};
     size_t expert_bytes{0};

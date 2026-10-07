@@ -28,7 +28,7 @@ Training, router changes, expert-weight quantization, and multiple CUDA devices 
 - [#32738](https://github.com/microsoft/onnxruntime/pull/32738) added the session-global expert state, CPU and CUDA
   expert-selection collection, and exponentially decayed counters. It does not implement placement, CPU offload,
   swaps, or redistribution.
-- [#33039](https://github.com/microsoft/onnxruntime/pull/33039) added static FP16 CUDA `MoE` placement, hybrid
+- [#33039](https://github.com/microsoft/onnxruntime/pull/33039) added static FP16/BF16 CUDA `MoE` placement, hybrid
   CPU/CUDA execution, and compact CUDA expert storage.
 - The adaptive-swap implementation exchanges hot CPU experts with cold CUDA experts asynchronously while preserving
   each node's CUDA slot count. Global slot redistribution across nodes remains future work.
@@ -72,7 +72,7 @@ The optional `session.moe_expert_counter_state_file` path is configured separate
 The CPU offload count has the following meaning:
 
 - A non-negative integer is the total number of experts to offload to CPU.
-- Negative values, non-integer values, and counts larger than the total number of eligible CUDA FP16 `MoE` experts
+- Negative values, non-integer values, and counts larger than the total number of eligible CUDA FP16/BF16 `MoE` experts
   are invalid.
 - Zero disables expert offloading.
 
@@ -267,21 +267,22 @@ The session-global expert state and counters are already implemented. The remain
 steps so that hybrid inference is validated before placement starts changing at runtime. Each pull request includes
 the tests and documentation for its own scope.
 
-### Step 1: static FP16 placement and hybrid inference
+### Step 1: static FP16/BF16 placement and hybrid inference
 
-Implemented initially for the built-in CUDA FP16 `MoE` path:
+Implemented for the built-in CUDA FP16 and BF16 `MoE` paths:
 
 - Parse and validate `session.moe_cpu_offload_experts`; `0` disables offloading.
 - Use loaded counters to select CUDA experts globally; distribute an all-zero budget round-robin across eligible nodes.
 - Keep one representation of all constant expert weights on CPU and materialize only selected expert slices in compact
   CUDA storage. All-CUDA nodes retain the original host weights; nodes with CPU experts retain the GEMM-layout weights.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
-- Dispatch CUDA-resident routes through CUTLASS and CPU-resident routes through MLAS FP16 GEMMs.
+- Dispatch CUDA-resident routes through CUTLASS. CPU-resident FP16 routes use MLAS FP16 GEMMs; BF16 weights are
+  converted once during initialization and CPU-resident BF16 routes use MLAS FP32 GEMMs.
 - Complete the host input copy before CUDA expert kernels can overwrite an aliased input/output buffer, then overlap
   CPU and CUDA expert GEMMs.
 - Combine CPU and CUDA expert results on CUDA without changing the exported `MoE` model contract.
 - Continue collecting complete routing selections and updating counters.
-- Preserve dynamic FP16 weights and the existing CUDA implementation when offloading is disabled.
+- Preserve dynamic FP16/BF16 weights and the existing CUDA implementation when offloading is disabled.
 - Test CPU-only, CUDA-only, and mixed expert execution, numerical agreement, counter updates, invalid configuration,
   and unchanged disabled-path behavior.
 
