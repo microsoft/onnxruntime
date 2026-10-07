@@ -15,6 +15,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/resource_accountant.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -99,6 +100,79 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   }
 
   ASSERT_EQ(recompute_gelu_node->MutableInputDefs()[0]->Name(), original_gelu_node->MutableInputDefs()[0]->Name());
+}
+
+TEST(MemoryOptimizerTests, GeluRecomputeCopiesWorkspaceReservation) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "recompute_gelu.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+
+  Node* original_gelu_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gelu") {
+      original_gelu_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(original_gelu_node, nullptr);
+
+  original_gelu_node->SetExecutionProviderType(kCudaExecutionProvider);
+  const NodeIndex original_gelu_node_index = original_gelu_node->Index();
+  constexpr size_t kReservationBytes = 64;
+
+  NodeWorkspaceReservationMap reservations;
+  reservations.insert_or_assign(
+      original_gelu_node_index,
+      WorkspaceEstimateSelection{kReservationBytes, WorkspaceEstimateSource::kEstimator});
+
+  graph.SetNodeCloneCallback(
+      [&graph, &reservations](const Graph& modified_graph,
+                              NodeIndex source_node_index,
+                              NodeIndex cloned_node_index) {
+        EXPECT_EQ(&modified_graph, &graph);
+        const auto source_it = reservations.find(source_node_index);
+        if (source_it == reservations.end()) {
+          ADD_FAILURE() << "Clone callback did not receive a reserved source node.";
+          return;
+        }
+
+        reservations.insert_or_assign(cloned_node_index, source_it->second);
+      });
+
+  const std::string alleviation_config("Gelu+:1:-1");
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_clone_reservation_test")};
+  PathString config_path{
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("gelurecompute.json"))};
+  const std::string config_path_str = ToUTF8String(config_path);
+  std::ofstream outfile(config_path_str);
+  outfile << "[\"" << alleviation_config << "\"]" << std::endl;
+  outfile.close();
+
+  const std::string probe_config("1:0");
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MemoryOptimizer>(config_path_str, probe_config),
+      TransformerLevel::Level3));
+  ASSERT_STATUS_OK(
+      graph_transformation_mgr.ApplyTransformers(
+          graph, TransformerLevel::Level3, *logger));
+  graph.SetNodeCloneCallback({});
+
+  const Node* recompute_gelu_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gelu" &&
+        node.Name().find("_recompute") != std::string::npos) {
+      recompute_gelu_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(recompute_gelu_node, nullptr);
+
+  ASSERT_EQ(reservations.size(), 2U);
+  EXPECT_EQ(reservations.at(original_gelu_node_index).bytes, kReservationBytes);
+  EXPECT_EQ(reservations.at(recompute_gelu_node->Index()).bytes, kReservationBytes);
 }
 
 TEST(MemoryOptimizerTests, TileRecompute) {

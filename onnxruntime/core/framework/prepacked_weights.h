@@ -20,6 +20,10 @@ struct PrePackedWeights final {
   InlinedVector<IAllocatorUniquePtr<void>> buffers_;  // cache pre-packed buffers associated with the kernel
   InlinedVector<size_t> buffer_sizes_;                // cache sizes of pre-packed buffers (in bytes)
 
+  // Set when PrePack successfully produced kernel-owned packed weights that
+  // intentionally cannot be stored in a shared pre-packed weights container.
+  bool has_kernel_owned_packed_weights_{false};
+
   // Produces a hash of the buffers stored in the given instance of this class
   HashValue GetHash() const;
 

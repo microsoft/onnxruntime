@@ -58,7 +58,10 @@ function(onnxruntime_disable_gtest_character_conversion_as_error target_name)
 endfunction()
 
 function(AddTest)
-  cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
+  cmake_parse_arguments(_UT "DYN" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
+  if (NOT _UT_TEST_NAME)
+    set(_UT_TEST_NAME ${_UT_TARGET})
+  endif()
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
   filter_test_srcs(_UT_SOURCES)
@@ -272,7 +275,7 @@ function(AddTest)
         if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
           list(APPEND TEST_NPM_FLAGS "--wasm-threads")
         endif()
-        add_test(NAME ${_UT_TARGET}
+        add_test(NAME ${_UT_TEST_NAME}
           COMMAND ${NPM_CLI} test -- ${TEST_NPM_FLAGS} --entry=${_UT_TARGET} ${TEST_ARGS}
           WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
         )
@@ -290,20 +293,20 @@ function(AddTest)
           set(NODE_EXECUTABLE node)
         endif()
 
-        add_test(NAME ${_UT_TARGET}
+        add_test(NAME ${_UT_TEST_NAME}
           COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
           WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
         )
       endif()
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
+      set_tests_properties(${_UT_TEST_NAME} PROPERTIES TIMEOUT 10800)
     else()
-      add_test(NAME ${_UT_TARGET}
+      add_test(NAME ${_UT_TEST_NAME}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
+      set_tests_properties(${_UT_TEST_NAME} PROPERTIES TIMEOUT 10800)
     endif()
   endif()
 endfunction(AddTest)
@@ -466,9 +469,15 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
-if(LINUX)
+if(LINUX AND NOT onnxruntime_DISABLE_DEVICE_DISCOVERY)
   list(APPEND onnxruntime_test_framework_src_patterns
-    "${TEST_SRC_DIR}/platform/linux/*.cc" )
+    "${TEST_SRC_DIR}/platform/linux/npu_device_discovery_test.cc"
+    "${TEST_SRC_DIR}/platform/linux/pci_device_discovery_test.cc")
+endif()
+
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  list(APPEND onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/platform/posix/device_id_test.cc")
 endif()
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
@@ -508,18 +517,11 @@ endif()
 
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
-if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+if (onnxruntime_USE_CUDA AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   file(GLOB onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
-
-  if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-    file(GLOB onnxruntime_test_providers_cuda_plugin_src CONFIGURE_DEPENDS
-      "${TEST_SRC_DIR}/providers/cuda/plugin/*.cc"
-    )
-    list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
-  endif()
 
   if (onnxruntime_USE_CUDA_NHWC_OPS AND CUDNN_MAJOR_VERSION GREATER 8)
     file(GLOB onnxruntime_test_providers_cuda_nhwc_src CONFIGURE_DEPENDS
@@ -527,6 +529,21 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
     )
     list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_nhwc_src})
   endif()
+endif()
+
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB onnxruntime_test_providers_cuda_plugin_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cuda/plugin/*.cc"
+  )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
+endif()
+
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB onnxruntime_test_providers_webgpu_plugin_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/webgpu/plugin/*.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/plugin/*.h"
+  )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_plugin_src})
 endif()
 
 if (onnxruntime_USE_CANN)
@@ -648,8 +665,16 @@ set(onnxruntime_test_common_libs
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-if(onnxruntime_USE_CUDA)
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+endif()
+
+if(onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_plugin)
+endif()
+
+if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
 endif()
 
 if(onnxruntime_USE_CANN)
@@ -710,7 +735,7 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
 endif()
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
@@ -720,7 +745,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS}
     onnxruntime_optimizer
-    onnxruntime_providers
+    ${onnxruntime_providers_target}
     onnxruntime_util
     onnxruntime_lora
     onnxruntime_framework
@@ -783,7 +808,11 @@ if(onnxruntime_USE_JSEP)
 endif()
 
 if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  file(GLOB_RECURSE onnxruntime_test_providers_webgpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/webgpu/*.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/*.h")
+
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
@@ -866,6 +895,11 @@ endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
         ${ONNXRUNTIME_ROOT})
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  target_compile_definitions(onnxruntime_test_utils PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+endif()
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
@@ -906,12 +940,22 @@ endif()
 
 onnxruntime_add_static_library(onnxruntime_unittest_utils ${onnxruntime_unittest_utils_src})
 
+set(onnxruntime_unittest_utils_libs ${ONNXRUNTIME_TEST_LIBS})
+get_target_property(onnxruntime_providers_type ${onnxruntime_providers_target} TYPE)
+if (onnxruntime_providers_type STREQUAL "OBJECT_LIBRARY")
+  # Linking an object library into a static library copies its objects into that archive. Every
+  # target that links onnxruntime_unittest_utils also links the providers target directly, so only
+  # its usage requirements are needed here.
+  list(REMOVE_ITEM onnxruntime_unittest_utils_libs ${onnxruntime_providers_target})
+  list(APPEND onnxruntime_unittest_utils_libs $<COMPILE_ONLY:${onnxruntime_providers_target}>)
+endif()
+
 target_link_libraries(onnxruntime_unittest_utils PUBLIC
                       onnx
                       GTest::gtest
                       GTest::gmock
                       onnxruntime_test_utils
-                      ${ONNXRUNTIME_TEST_LIBS}
+                      ${onnxruntime_unittest_utils_libs}
                       ${onnxruntime_EXTERNAL_LIBRARIES}
                       )
 
@@ -970,7 +1014,8 @@ set(all_tests
     ${onnxruntime_test_lora_src}
 )
 
-if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+set(onnxruntime_test_providers_runtime_dependencies)
+if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
   endif()
@@ -980,14 +1025,48 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     ${onnxruntime_test_cuda_kernels_src_patterns}
   )
 
+  if (onnxruntime_DISABLE_CONTRIB_OPS OR onnxruntime_CUDA_MINIMAL)
+    list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc")
+  endif()
+
+  # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
+  # BUILD_CUDA_EP_AS_PLUGIN unit-test object library, where provider_bridge_provider.cc
+  # is not linked. In the non-plugin onnxruntime_providers_cuda_ut module the symbol is
+  # already defined by provider_bridge_provider.cc (via onnxruntime_providers_cuda_obj),
+  # so exclude the shim here to avoid a duplicate-definition link error.
+  list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc")
+
   # onnxruntime_providers_cuda_ut is only for unittests.
-  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
-  config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
-  target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-  onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
-  add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils)
-  target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
-  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_test_utils)
+  set(onnxruntime_cuda_ut_compile_targets onnxruntime_providers_cuda_ut)
+  if (WIN32)
+    # Inspect the compiled tests before linking the host, without depending on the module's link.
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_ut_objects ${onnxruntime_test_providers_cuda_ut_src})
+    set(onnxruntime_cuda_ut_sources $<TARGET_OBJECTS:onnxruntime_providers_cuda_ut_objects>)
+    list(APPEND onnxruntime_cuda_ut_compile_targets onnxruntime_providers_cuda_ut_objects)
+  else()
+    set(onnxruntime_cuda_ut_sources ${onnxruntime_test_providers_cuda_ut_src})
+  endif()
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_cuda_ut_sources} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  foreach(cuda_ut_target IN LISTS onnxruntime_cuda_ut_compile_targets)
+    config_cuda_provider_shared_module(${cuda_ut_target})
+    target_compile_options(${cuda_ut_target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
+    onnxruntime_add_include_to_target(${cuda_ut_target} GTest::gtest GTest::gmock onnxruntime_test_utils)
+    add_dependencies(${cuda_ut_target} onnxruntime_test_utils)
+    target_include_directories(${cuda_ut_target} PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
+    target_compile_definitions(${cuda_ut_target} PRIVATE ORT_API_MANUAL_INIT)
+    target_link_libraries(${cuda_ut_target} PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS}
+                                                  ${PROTOBUF_LIB})
+    if(WIN32)
+      target_link_libraries(${cuda_ut_target} PRIVATE onnx_proto)
+    endif()
+    if (MSVC)
+      # Cutlass code has an issue with warning C4100: 'magic': unreferenced formal parameter.
+      target_compile_options(${cuda_ut_target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
+                    "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
+    endif()
+  endforeach()
   # Link architecture-specific OBJECT libraries (same as onnxruntime_providers_cuda).
   if(TARGET onnxruntime_providers_cuda_sm90_tma)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_sm90_tma)
@@ -998,20 +1077,106 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   if(TARGET onnxruntime_providers_cuda_flash_attention)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_flash_attention)
   endif()
+  if(TARGET onnxruntime_providers_cuda_xqa)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_xqa)
+  endif()
   if(TARGET onnxruntime_providers_cuda_llm)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm)
   endif()
-  if (MSVC)
-    # Cutlass code has an issue with the following:
-    # warning C4100: 'magic': unreferenced formal parameter
-    target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
+  if(TARGET onnxruntime_providers_cuda_llm_fp4)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm_fp4)
   endif()
-
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
+  list(APPEND onnxruntime_test_providers_runtime_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
-set(all_dependencies ${onnxruntime_test_providers_dependencies} )
+if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND
+    NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  set(onnxruntime_test_providers_cuda_plugin_internal_test_src
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/group_query_attention_workspace_header_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/packed_attention_workspace_header_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/reduction_functions_test.cc"
+  )
+  # matmul_nbits_workspace_test.cc / matmul_nbits_e2e_workspace_test.cc are intentionally excluded
+  # from the plugin-internal test list: they construct the concrete in-tree CUDAExecutionProvider
+  # and MatMulNBits<T> kernel types and downcast a plugin-world OpKernel to MatMulNBits<MLFloat16>,
+  # which is undefined behavior against a real PluginEpOpKernel (whose DeclareWorkspaceRequirements()
+  # is the default no-op under BUILD_CUDA_EP_AS_PLUGIN). Re-enable them here once workspace
+  # estimation/declaration is bridged through OrtKernelImpl for plugin kernels.
+
+  if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp4_to_fp8_kernel_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp8_compaction_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
+    )
+  endif()
+
+  list(APPEND all_tests ${onnxruntime_test_providers_cuda_plugin_internal_test_src})
+
+  if (TARGET onnxruntime_providers_cuda_plugin)
+    if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
+        APPEND PROPERTY INCLUDE_DIRECTORIES
+        $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        BUILD_CUDA_EP_AS_PLUGIN ORT_API_MANUAL_INIT ORT_USE_EP_API_ADAPTERS=1)
+    endif()
+    set(onnxruntime_providers_cuda_plugin_ut_impl_src
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_allocator.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_call.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_utils.cu"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_loader.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cufft_loader.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/fpgeneric.cu"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cu"
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc"
+    )
+
+    if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp16_uint2.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
+      )
+    endif()
+
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_providers_cuda_plugin_ut_impl_src})
+    set_target_properties(onnxruntime_providers_cuda_plugin_ut_impl PROPERTIES
+      CUDA_STANDARD 20
+      CUDA_STANDARD_REQUIRED ON
+    )
+    target_include_directories(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      BUILD_CUDA_EP_AS_PLUGIN
+      ONNX_ML=1
+      ONNX_NAMESPACE=onnx
+      ONNX_USE_LITE_PROTO=1
+      ORT_API_MANUAL_INIT
+      ORT_USE_EP_API_ADAPTERS=1)
+    target_compile_options(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      ${_cuda_plugin_shared_compile_options}
+      "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+      # The internal INT2 test TU exposes third-party header diagnostics under CUDA 12 with -Werror.
+      target_compile_options(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=970>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2189>")
+    endif()
+    add_dependencies(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+    set(onnxruntime_providers_cuda_plugin_ut_impl_objects $<TARGET_OBJECTS:onnxruntime_providers_cuda_plugin_ut_impl>)
+  endif()
+endif()
+
+set(all_dependencies ${onnxruntime_test_providers_dependencies} ${onnxruntime_test_providers_runtime_dependencies})
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
@@ -1073,6 +1238,15 @@ endif()
 
 partition_provider_test_srcs(all_tests onnxruntime_provider_test_srcs onnxruntime_test_all_srcs)
 
+if (onnxruntime_USE_OPENVINO)
+  # ov_protobuf_utils.cpp lives under core/providers (not test/), so partition_provider_test_srcs
+  # would route it to onnxruntime_test_all. Append it here after the partition so it is compiled into
+  # onnxruntime_provider_test alongside openvino_ov_protobuf_utils_test.cc, because the OpenVINO EP
+  # is a dynamically-loaded module and is not statically linked into the test binary.
+  list(APPEND onnxruntime_provider_test_srcs
+       ${ONNXRUNTIME_ROOT}/core/providers/openvino/ov_protobuf_utils.cpp)
+endif()
+
 # Workarounds for onnxruntime test targets.
 function(onnxruntime_apply_test_target_workarounds target)
   if (MSVC)
@@ -1090,13 +1264,44 @@ endfunction()
 
 # Set environment variables for plugin EP tests when run via CTest.
 function(onnxruntime_set_plugin_ep_test_environment target)
-  if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+  if(onnxruntime_WEBGPU_STATIC_PLUGIN)
+    # The WebGPU plugin EP is linked into the test binary and registered by ORT core, so there is no
+    # library to register by path here. onnxruntime_set_webgpu_plugin_ep_test_definitions() below gives
+    # test_main.cc an equivalent compiled-in default config.
+  elseif(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
     set(ORT_PLUGIN_EP_JSON_CONFIG "{\"ep_library_registration_name\": \"WebGPU_PluginEP\", \"ep_library_path\": \"$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>\", \"selected_ep_name\": \"WebGpuExecutionProvider\"}")
     set_tests_properties(${target} PROPERTIES
       ENVIRONMENT "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON=${ORT_PLUGIN_EP_JSON_CONFIG}"
     )
   # TODO: add for other plugin EPs if needed
   # elseif()
+  endif()
+endfunction()
+
+# Route the WebGPU EP through the dynamic plugin EP infrastructure in plugin builds
+# (--use_webgpu shared_lib or --use_webgpu static_plugin).
+# Without initializing the infra in test_main.cc, WebGpuExecutionProviderWithOptions() (default_providers.cc,
+# adapters branch) returns null and every WebGPU test skips itself, leaving the plugin path with no test coverage.
+# This must be applied to every test target that links test_main.cc and runs WebGPU tests.
+function(onnxruntime_set_webgpu_plugin_ep_test_definitions target)
+  if(NOT (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS))
+    return()
+  endif()
+
+  target_compile_definitions(${target} PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
+
+  if (onnxruntime_WEBGPU_STATIC_PLUGIN)
+    # The plugin EP is linked into the test binary and registered by ORT core during environment creation,
+    # so there is no library path to dlopen and no separate build-order dependency needed.
+    target_compile_definitions(${target} PRIVATE ORT_UNIT_TEST_HAS_WEBGPU_STATIC_PLUGIN_EP=1)
+  else()
+    target_compile_definitions(${target} PRIVATE
+      ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>")
+    # The plugin EP DLL is dlopen'd at test-run time (not linked), so add an explicit build-order
+    # dependency to ensure it (and its co-located dawn/dxcompiler DLLs) exist before the tests run.
+    add_dependencies(${target} onnxruntime_providers_webgpu)
   endif()
 endfunction()
 
@@ -1136,8 +1341,68 @@ target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core
 
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
+  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  foreach(fixture IN ITEMS valid missing_export)
+    onnxruntime_add_shared_library(onnxruntime_provider_bridge_${fixture}_fixture
+      "${TEST_SRC_DIR}/shared_lib/provider_bridge_test_library.cc")
+    set_target_properties(onnxruntime_provider_bridge_${fixture}_fixture PROPERTIES FOLDER "ONNXRuntimeTest")
+    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set_target_properties(onnxruntime_provider_bridge_${fixture}_fixture PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+    endif()
+  endforeach()
+  target_compile_definitions(onnxruntime_provider_bridge_valid_fixture PRIVATE ORT_TEST_PROVIDER_SET_HOST)
+
+  foreach(mode IN ITEMS normal no_exceptions)
+    set(bridge_test_target onnxruntime_provider_bridge_${mode}_test)
+    set(bridge_test_sources "${TEST_SRC_DIR}/shared_lib/provider_bridge_test.cc" ${onnxruntime_unittest_main_src})
+    if(mode STREQUAL "no_exceptions")
+      list(APPEND bridge_test_sources
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
+    endif()
+    AddTest(TARGET ${bridge_test_target}
+      SOURCES ${bridge_test_sources}
+      LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+      DEPENDS onnxruntime_provider_bridge_valid_fixture onnxruntime_provider_bridge_missing_export_fixture)
+    set_target_properties(${bridge_test_target} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${bridge_test_target}/$<CONFIG>")
+    target_compile_definitions(${bridge_test_target} PRIVATE
+      ORT_PROVIDER_BRIDGE_VALID_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_valid_fixture>"
+      ORT_PROVIDER_BRIDGE_MISSING_EXPORT_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_missing_export_fixture>")
+    add_custom_command(TARGET ${bridge_test_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:onnxruntime_provider_bridge_valid_fixture>
+        $<TARGET_FILE:onnxruntime_provider_bridge_missing_export_fixture>
+        $<TARGET_FILE_DIR:${bridge_test_target}>)
+    if(onnxruntime_providers_webgpu_dll_deps)
+      add_custom_command(TARGET ${bridge_test_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${onnxruntime_providers_webgpu_dll_deps}" "$<TARGET_FILE_DIR:${bridge_test_target}>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+    endif()
+    if(mode STREQUAL "no_exceptions")
+      target_compile_definitions(${bridge_test_target} PRIVATE ORT_NO_EXCEPTIONS)
+      target_include_directories(${bridge_test_target} PRIVATE
+        $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
+    endif()
+  endforeach()
+endif()
+
 if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-  target_compile_definitions(onnxruntime_test_all PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  # ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE is required so that test_main.cc initializes
+  # the dynamic plugin EP infrastructure. onnxruntime_test_utils (which compiles default_providers.cc)
+  # already routes DefaultCudaExecutionProvider() through the plugin infrastructure in plugin builds;
+  # without initializing it here, that routing returns a null EP and tests crash.
+  target_compile_definitions(onnxruntime_test_all PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+    ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+endif()
+
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+  onnxruntime_set_webgpu_plugin_ep_test_definitions(onnxruntime_test_all)
 endif()
 
 if (MSVC)
@@ -1275,6 +1540,10 @@ endif()
 # Execution provider-related tests.
 # These also have some support for dynamically specified plugin EPs.
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+set(onnxruntime_provider_test_target onnxruntime_provider_test)
+if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+  set(onnxruntime_provider_test_target onnxruntime_provider_test_executable)
+endif()
 block()
   set(supporting_test_srcs
     ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
@@ -1292,6 +1561,7 @@ block()
 
   list(APPEND onnxruntime_provider_test_srcs
     ${supporting_test_srcs}
+    ${onnxruntime_providers_cuda_plugin_ut_impl_objects}
     ${onnxruntime_unittest_main_src}
   )
 
@@ -1303,19 +1573,72 @@ block()
   )
 
   set(onnxruntime_provider_test_deps ${onnxruntime_test_providers_dependencies})
+  if (onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
+    list(APPEND onnxruntime_provider_test_deps ${onnxruntime_test_providers_runtime_dependencies})
+  endif()
 
   AddTest(
-    TARGET onnxruntime_provider_test
+    TARGET ${onnxruntime_provider_test_target}
+    TEST_NAME onnxruntime_provider_test
     SOURCES ${onnxruntime_provider_test_srcs}
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
-  onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
+  if (NOT onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
+    # Keep the public build target responsible for both runtime artifacts without
+    # making the executable depend on the module that imports its symbols.
+    set_target_properties(${onnxruntime_provider_test_target} PROPERTIES OUTPUT_NAME onnxruntime_provider_test)
+    add_custom_target(onnxruntime_provider_test ALL)
+    add_dependencies(onnxruntime_provider_test
+      ${onnxruntime_provider_test_target} ${onnxruntime_test_providers_runtime_dependencies})
+    set_target_properties(onnxruntime_provider_test PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
+
+  onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
+  # The CUDA EP internal unit tests (onnxruntime_providers_cuda_ut) are built as a shared-library
+  # module that is dlopen'd at runtime by this binary (see CUDA_EP_Unittest.All -> TestAll()). Some
+  # of those tests (e.g. the MatMulNBits two-level workspace end-to-end test) run a full
+  # InferenceSession, whose symbols are statically linked into this executable. Mirror
+  # onnxruntime_test_all and export them so the dlopen'd module can resolve them at load time;
+  # without this the module fails to load with an undefined-symbol error.
+  set_target_properties(${onnxruntime_provider_test_target} PROPERTIES ENABLE_EXPORTS 1)
+
+  # Export only host symbols referenced by the module, including definitions in static libraries.
+  # Exporting every provider-test symbol exceeds the Windows import-library limit.
+  if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+    include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_test_exports.cmake")
+    get_target_property(provider_test_link_libraries ${onnxruntime_provider_test_target} LINK_LIBRARIES)
+    get_target_property(cuda_ut_link_libraries onnxruntime_providers_cuda_ut LINK_LIBRARIES)
+    onnxruntime_export_test_symbols(${onnxruntime_provider_test_target}
+      OBJECT_TARGET onnxruntime_providers_cuda_ut_objects
+      HOST_LIBS ${provider_test_link_libraries}
+      MODULE_LIBS onnxruntime_providers_cuda_obj ${cuda_ut_link_libraries})
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE ${onnxruntime_provider_test_target})
+  endif()
+
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-    target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+    target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE
+      ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+      ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  endif()
+
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+    target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE
+      ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
+  endif()
+
+  if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    target_link_libraries(${onnxruntime_provider_test_target} PRIVATE
+      CUDA::cudart
+      CUDA::cublas
+      CUDA::cublasLt
+      CUDA::curand
+      CUDA::cuda_driver
+      CUDNN::cudnn
+      cudnn_frontend)
   endif()
 
   # Expose QNN SDK headers to unit tests via an interface target
@@ -1324,19 +1647,20 @@ block()
     target_include_directories(qnn_sdk_headers_include INTERFACE
       ${onnxruntime_QNN_HOME}/include
       ${onnxruntime_QNN_HOME}/include/QNN)
-    target_link_libraries(onnxruntime_provider_test PRIVATE qnn_sdk_headers_include)
+    target_link_libraries(${onnxruntime_provider_test_target} PRIVATE qnn_sdk_headers_include)
   endif()
 
   # enable dynamic plugin EP usage
-  target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
-  onnxruntime_apply_emscripten_test_link_settings(onnxruntime_provider_test)
+  target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  onnxruntime_set_webgpu_plugin_ep_test_definitions(${onnxruntime_provider_test_target})
+  onnxruntime_apply_emscripten_test_link_settings(${onnxruntime_provider_test_target})
 
   if (IOS)
     add_custom_command(
-      TARGET onnxruntime_provider_test POST_BUILD
+      TARGET ${onnxruntime_provider_test_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_directory
       ${TEST_DATA_SRC}
-      $<TARGET_FILE_DIR:onnxruntime_provider_test>/testdata)
+      $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>/testdata)
   endif()
 endblock()
 endif()
@@ -1393,7 +1717,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/activation.cc
       ${BENCHMARK_DIR}/quantize.cc
       ${BENCHMARK_DIR}/reduceminmax.cc
-      ${BENCHMARK_DIR}/layer_normalization.cc)
+      ${BENCHMARK_DIR}/layer_normalization.cc
+      $<$<OR:$<BOOL:${onnxruntime_USE_WEBGPU}>,$<BOOL:${onnxruntime_USE_CUDA}>>:${BENCHMARK_DIR}/paged_attention.cc>)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     target_compile_definitions(onnxruntime_benchmark PRIVATE ${mlas_private_compile_definitions})
@@ -1523,6 +1848,193 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-operator)
   endif()
 
+  # ---------------------------------------------------------------------------
+  # Materialized ONNX node-test corpus.
+  #
+  # ONNX PR #7959 deletes the on-disk node-test corpus (onnx/backend/test/data/node) from the ONNX
+  # source archive, leaving only the in-memory Python generators. To detach ORT from that on-disk
+  # artifact, we regenerate the corpus from ONNX's own generators into the build tree and point the
+  # C++ onnx_test_runner consumers (this ctest + QNN CI) at the materialized copy.
+  #
+  # Gated on onnxruntime_MATERIALIZE_ONNX_NODE_TESTS (opt-in; default OFF -- enabled explicitly on
+  # the provisioned CI legs via --cmake_extra_defines). When ON, the gate
+  # FAILS LOUDLY at configure time if Python/onnx/numpy are missing or mismatched -- it never
+  # silently skips, because a silent skip would recreate the exact "green CI with zero node tests"
+  # coverage gap this feature exists to close.
+  # ---------------------------------------------------------------------------
+  if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # onnx version pin: derive from the archive URL in cmake/deps.txt (single source of truth).
+    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_ver "${DEP_URL_onnx}")
+    if(CMAKE_MATCH_1)
+      set(_onnx_pinned_version ${CMAKE_MATCH_1})
+    else()
+      message(FATAL_ERROR "Could not parse the pinned onnx version from DEP_URL_onnx='${DEP_URL_onnx}' "
+        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this regex.")
+    endif()
+
+    # Python interpreter is not guaranteed for static test-only builds (the top-level
+    # find_package(Python) in cmake/CMakeLists.txt is gated on BUILD_SHARED_LIB OR ENABLE_PYTHON).
+    #
+    # Guard on Python_VERSION, NOT Python_EXECUTABLE: Python_EXECUTABLE is a CACHE variable that
+    # persists across reconfigures, whereas Python_VERSION is a normal variable re-derived only when
+    # find_package actually runs. On any second `cmake` pass in an existing build dir, a cached
+    # Python_EXECUTABLE would skip find_package and leave Python_VERSION EMPTY -- and the
+    # numpy-pin-by-version selection below (`Python_VERSION VERSION_LESS 3.11`) treats empty as 0,
+    # silently picking the < 3.11 pin regardless of the real interpreter. Keying the guard on
+    # Python_VERSION forces find_package to repopulate the version before that selection every pass.
+    if(NOT Python_VERSION)
+      find_package(Python 3.10 COMPONENTS Interpreter REQUIRED)
+    endif()
+
+    # Configure-time fail-loud gate: onnx present and at the pinned version?
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -c "import onnx,sys; sys.stdout.write(onnx.__version__)"
+      RESULT_VARIABLE _onnx_rc OUTPUT_VARIABLE _onnx_ver ERROR_VARIABLE _onnx_err)
+    if(NOT _onnx_rc EQUAL 0)
+      message(FATAL_ERROR
+        "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import onnx' failed for ${Python_EXECUTABLE}.\n"
+        "  Fix: pip install onnx==${_onnx_pinned_version} numpy\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF (node-test coverage will be dropped).\n"
+        "  Details: ${_onnx_err}")
+    endif()
+    # onnx version gate: HARD FAIL on a genuine mismatch, but RC / pre-release AWARE.
+    # ONNX's opset-bump workflow ships wheels like 1.23.0rc1 or 1.23.0.dev20240101 whose
+    # COMPILED opset registry already matches the formal 1.23.0 tag, so we compare on the
+    # RELEASE BASE (major.minor.micro) rather than the raw string. This mirrors
+    # materialize_onnx_node_tests.py::_release_base EXACTLY (regex ^(\d+)\.(\d+)\.(\d+), with a
+    # raw-string fallback when there is no leading X.Y.Z) so the cmake and Python layers agree:
+    # an rcN/.devN wheel of the pinned tag passes, while a real major/minor/micro mismatch
+    # (e.g. 1.21.x, or 1.23.0 when pinned at 1.22.0) still FATALs. Both sides are normalized;
+    # _onnx_pinned_version is already a clean X.Y.Z (parsed from the deps.txt vX.Y.Z tag), so
+    # normalizing it is a no-op kept only for symmetry with the Python two-sided compare.
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_ver_base "${_onnx_ver}")
+    if(_onnx_ver_base STREQUAL "")
+      set(_onnx_ver_base "${_onnx_ver}")
+    endif()
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pin_base "${_onnx_pinned_version}")
+    if(_onnx_pin_base STREQUAL "")
+      set(_onnx_pin_base "${_onnx_pinned_version}")
+    endif()
+    if(NOT _onnx_ver_base STREQUAL _onnx_pin_base)
+      message(FATAL_ERROR
+        "onnx ${_onnx_ver} (release base ${_onnx_ver_base}) != pinned ${_onnx_pinned_version} "
+        "(cmake/deps.txt). A mismatched wheel bakes the wrong opset/IR into the materialized "
+        "corpus (silent drift).\n"
+        "  Fix: pip install onnx==${_onnx_pinned_version}")
+    endif()
+
+    # numpy version: assert the build's numpy equals the CI-pinned numpy (the SAME pin the QNN
+    # legs install and that the ONNX corpus reproduction is validated under). Kept in sync with
+    # tools/ci_build/github/linux/docker/scripts/requirements.txt (python-conditional):
+    #   numpy==2.2.6 ; python_version <  "3.11"
+    #   numpy==2.4.2 ; python_version >= "3.11"
+    # The version ASSERT (installed == pin) and the equivalence ctest's <=4-ULP output band are
+    # SEPARATE guards: the assert catches env drift (wrong/unexpected numpy) at CONFIGURE time with
+    # a clear, early message; the ULP band separately absorbs the residual float drift between the
+    # pinned numpy and the numpy the archived ONNX release used to recompute reference outputs.
+    # Passing the pin (not the tautological installed value) is what makes the materializer's
+    # --expected-numpy-version assert meaningful. Both import failure AND mismatch FAIL LOUD.
+    if(Python_VERSION VERSION_LESS 3.11)
+      set(_numpy_pinned_version 2.2.6)
+    else()
+      set(_numpy_pinned_version 2.4.2)
+    endif()
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -c "import numpy,sys; sys.stdout.write(numpy.__version__)"
+      RESULT_VARIABLE _np_rc OUTPUT_VARIABLE _np_ver ERROR_VARIABLE _np_err)
+    if(NOT _np_rc EQUAL 0)
+      message(FATAL_ERROR
+        "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import numpy' failed for ${Python_EXECUTABLE}.\n"
+        "  Fix: pip install numpy==${_numpy_pinned_version}\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.\n"
+        "  Details: ${_np_err}")
+    endif()
+    if(NOT _np_ver STREQUAL _numpy_pinned_version)
+      message(FATAL_ERROR
+        "numpy ${_np_ver} != pinned ${_numpy_pinned_version} (requirements.txt, for Python "
+        "${Python_VERSION}). The materialized corpus must be reproduced under the pinned numpy so "
+        "the equivalence oracle stays within its <=4-ULP band.\n"
+        "  Fix: pip install numpy==${_numpy_pinned_version}\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.")
+    endif()
+
+    set(_materialize_script ${REPO_ROOT}/tools/python/materialize_onnx_node_tests.py)
+    set(_materialized_node_root ${CMAKE_BINARY_DIR}/onnx_node_tests)
+    set(_materialized_node_dir  ${_materialized_node_root}/node)
+    # Single shared floor VALUE for the "silently-empty/undersized materialization" guard. Wired to
+    # three consumption sites; all use the same 1500 literal, but they DO NOT all count the same
+    # population -- the floor is one stable value, not a claim that the counts are identical:
+    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_node_test_equivalence_test.py
+    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_backend_test_series.py -- the PRE-exclude
+    #     population (counted in the base runner's _add_model_test, BEFORE backend_test.exclude()
+    #     drops filtered cases), i.e. the full materialized case count.
+    #   * onnx_test_runner -m (the C++ consumption-point tripwire, wired below) -- checked against
+    #     tests.size() in main.cc, which is the POST-skip COLLECTED count: LoadTests (TestCase.cc)
+    #     already `continue`s past broken/disabled/no-test-data/training-domain cases before they
+    #     reach that tally, so the C++ population is the Python one MINUS the CPU skip set.
+    # These two populations are INTENTIONALLY different; 1500 is a single conservative floor that
+    # clears both today by a wide margin: ~1799 collected minus a handful of CPU skips (~5:
+    # convinteger + 4 dft_*) is ~1794, still >> 1500 (~17% headroom on the smaller C++ count). 1500
+    # is a STABLE floor, not a moving target -- it does not track the corpus size. If the CPU
+    # broken/skip set ever grew past that margin, the C++ `-m` floor would red-fail LOUDLY (the safe
+    # direction) -- never a silent pass. Passed to the build-time materialize step (build fails
+    # loud), the node ctest (-m, consumption-point), AND the equivalence ctest.
+    set(ORT_ONNX_NODE_MIN_CASES 1500)
+
+    add_custom_command(
+      OUTPUT  ${_materialized_node_root}/.stamp
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${_materialized_node_root}
+      COMMAND ${Python_EXECUTABLE} ${_materialize_script}
+                --out ${_materialized_node_root}
+                --expected-onnx-version ${_onnx_pinned_version}
+                --expected-numpy-version ${_numpy_pinned_version}
+                --min-cases ${ORT_ONNX_NODE_MIN_CASES}
+                --stamp ${_materialized_node_root}/.stamp
+      DEPENDS ${_materialize_script} ${REPO_ROOT}/cmake/deps.txt
+      COMMENT "Materializing ONNX node-test corpus -> ${_materialized_node_dir}"
+      VERBATIM)
+    add_custom_target(onnx_node_tests_materialized ALL
+      DEPENDS ${_materialized_node_root}/.stamp)
+
+    if (NOT onnxruntime_REDUCED_OPS_BUILD)
+      # First-class ctest over the materialized node corpus (the durable replacement for the
+      # on-disk corpus; previously node tests were only run via the Python series + QNN CI).
+      # -m enforces the case-count floor at CONSUMPTION (the runner's tally), so a silently
+      # empty/partial/truncated materialized tree fails loud instead of exiting green with
+      # near-zero coverage (onnx_test_runner skips non-existent dirs). Single-sourced with the
+      # build-time --min-cases via ORT_ONNX_NODE_MIN_CASES.
+      add_test(NAME onnx_test_node_materialized
+        COMMAND onnx_test_runner -m ${ORT_ONNX_NODE_MIN_CASES} ${_materialized_node_dir})
+      # No ctest DEPENDS on onnx_node_tests_materialized: it is an add_custom_target(... ALL),
+      # not a registered test, so a test-level DEPENDS on it is a silent no-op. The real ordering
+      # guarantee is (a) the ALL target materializes the corpus during the normal build, before
+      # any ctest runs, and (b) the -m case-count tripwire above fails LOUD if the corpus is
+      # missing/partial at consumption time.
+
+      # Equivalence oracle: while pinned BELOW #7959 the on-disk corpus still ships in the archive,
+      # so we byte-compare the materialized copy against it. Gated on if(EXISTS ...) at CONFIGURE
+      # time, so the test simply stops being registered (clean auto-retirement, no perpetual skip,
+      # no red CI) once the pin advances past #7959 and the oracle disappears.
+      set(_onnx_disk_node ${onnx_SOURCE_DIR}/onnx/backend/test/data/node)
+      if(EXISTS ${_onnx_disk_node})
+        add_test(NAME onnx_node_tests_equivalence
+          COMMAND ${Python_EXECUTABLE} ${REPO_ROOT}/tools/python/compare_node_test_corpora.py
+                  --oracle       ${_onnx_disk_node}
+                  --materialized ${_materialized_node_dir}
+                  --expected-onnx-version  ${_onnx_pinned_version}
+                  --expected-numpy-version ${_numpy_pinned_version}
+                  --min-cases ${ORT_ONNX_NODE_MIN_CASES})
+        # No test-level DEPENDS on onnx_node_tests_materialized here either: it is a custom
+        # target (ALL), not a test, so ctest DEPENDS on it is a silent no-op. The ALL target
+        # materializes the corpus during the build (before ctest); the comparator's own
+        # --min-cases floor fails loud on a missing/partial corpus.
+      else()
+        message(STATUS "ONNX on-disk node corpus absent (post-#7959 pin) -- equivalence oracle "
+          "retired; skipping onnx_node_tests_equivalence.")
+      endif()
+    endif()
+  endif()
+
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND android_shared_libs log android)
   endif()
@@ -1589,7 +2101,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
       endif()
       if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
+        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
       endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
       if (onnxruntime_USE_CUDA OR onnxruntime_USE_NV OR onnxruntime_USE_TENSORRT)
@@ -1643,6 +2155,43 @@ endif()
     set_target_properties(ep_weight_sharing_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
+  if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(onnxruntime_cpuinfo_test_library cpuinfo)
+    get_target_property(onnxruntime_cpuinfo_aliased_target cpuinfo ALIASED_TARGET)
+    if(onnxruntime_cpuinfo_aliased_target)
+      set(onnxruntime_cpuinfo_test_library ${onnxruntime_cpuinfo_aliased_target})
+    endif()
+    get_target_property(onnxruntime_cpuinfo_library_type ${onnxruntime_cpuinfo_test_library} TYPE)
+    if(onnxruntime_cpuinfo_library_type STREQUAL "STATIC_LIBRARY")
+      onnxruntime_add_executable(
+        onnxruntime_cpuinfo_refcount_test
+        ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_refcount_test.cc)
+      target_compile_definitions(
+        onnxruntime_cpuinfo_refcount_test
+        PRIVATE ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
+      if(onnxruntime_USE_XNNPACK)
+        target_compile_definitions(
+          onnxruntime_cpuinfo_refcount_test
+          PRIVATE ORT_CPUINFO_TEST_USE_XNNPACK)
+        if(onnxruntime_USE_VCPKG)
+          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_HDR})
+        else()
+          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_INCLUDE_DIR})
+        endif()
+        target_link_libraries(
+          onnxruntime_cpuinfo_refcount_test
+          PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
+      endif()
+      target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo Threads::Threads)
+      add_test(
+        NAME onnxruntime_cpuinfo_refcount_test
+        COMMAND onnxruntime_cpuinfo_refcount_test)
+      set_target_properties(
+        onnxruntime_cpuinfo_refcount_test
+        PROPERTIES FOLDER "ONNXRuntimeTest")
+    endif()
+  endif()
+
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
     if(WIN32)
@@ -1650,6 +2199,38 @@ endif()
       add_dependencies(onnxruntime_shared_lib_dlopen_test ${all_dependencies} onnxruntime)
       add_test(NAME onnxruntime_shared_lib_dlopen_test COMMAND onnxruntime_shared_lib_dlopen_test WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_dlopen_test>)
       set_target_properties(onnxruntime_shared_lib_dlopen_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+      if(onnxruntime_cpuinfo_library_type STREQUAL "STATIC_LIBRARY")
+        onnxruntime_add_shared_library(
+          onnxruntime_cpuinfo_dlopen_test_library
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test_library.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test_library.def)
+        target_include_directories(
+          onnxruntime_cpuinfo_dlopen_test_library
+          PRIVATE ${ONNXRUNTIME_ROOT})
+        target_link_libraries(
+          onnxruntime_cpuinfo_dlopen_test_library
+          PRIVATE onnxruntime_common cpuinfo)
+
+        onnxruntime_add_executable(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test.cc)
+        add_dependencies(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          onnxruntime_cpuinfo_dlopen_test_library)
+        target_compile_definitions(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          PRIVATE
+          ORT_CPUINFO_DLOPEN_TEST_LIBRARY=L"$<TARGET_FILE_NAME:onnxruntime_cpuinfo_dlopen_test_library>")
+        add_test(
+          NAME onnxruntime_shared_lib_cpuinfo_dlopen_test
+          COMMAND onnxruntime_shared_lib_cpuinfo_dlopen_test
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_cpuinfo_dlopen_test_library>)
+        set_target_properties(
+          onnxruntime_cpuinfo_dlopen_test_library
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          PROPERTIES FOLDER "ONNXRuntimeTest")
+      endif()
 
       if (MSVC)
         # set VS debugger working directory to the test program's directory
@@ -1740,7 +2321,7 @@ endif()
     endif()
 
     if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-      list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
+      list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
     endif()
 
     AddTest(DYN
@@ -1868,6 +2449,17 @@ endif()
     endif()
     target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
     set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+    if (onnxruntime_RUN_MLAS_TESTS)
+      # The full suite is too slow for per-PR ARM64 CI, so focus on architecture-specific activation and FP16 paths.
+      set(onnxruntime_mlas_test_args "--gtest_filter=*FP16*:*Fp16*:Exp.*:Softmax*:Activation*")
+      if (onnxruntime_GENERATE_TEST_REPORTS)
+        list(APPEND onnxruntime_mlas_test_args
+          "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:onnxruntime_mlas_test>.$<CONFIG>.results.xml>")
+      endif()
+      add_test(NAME onnxruntime_mlas_test
+        COMMAND onnxruntime_mlas_test ${onnxruntime_mlas_test_args}
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_mlas_test>)
+    endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
         set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
@@ -1911,7 +2503,7 @@ endif()
       ${onnxruntime_libs}
       # CUDA is dynamically loaded at runtime
       onnxruntime_optimizer
-      onnxruntime_providers
+      ${onnxruntime_providers_target}
       onnxruntime_util
       onnxruntime_lora
       onnxruntime_framework
@@ -2057,7 +2649,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
     if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
+      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
@@ -2312,7 +2904,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   endif()
 
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    list(APPEND onnxruntime_autoep_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers
+    list(APPEND onnxruntime_autoep_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target}
                 onnxruntime_optimizer onnxruntime_mlas onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers
                 iconv re2 onnx)
   endif()
@@ -2331,7 +2923,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
+    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  ${onnxruntime_providers_target} onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
      endif()
 
   if(NOT WIN32)
@@ -2371,12 +2963,18 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
-  AddTest(TARGET onnxruntime_webgpu_external_dawn_test
-          SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-          LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
-          DEPENDS ${all_dependencies}
-  )
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::dawn_native)
+  if (onnxruntime_BUILD_SHARED_LIB)
+    AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
+            SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+            LIBS dawn::dawn_native
+            DEPENDS ${all_dependencies})
+  else()
+    AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+            SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+            LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+            DEPENDS ${all_dependencies})
+  endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
 endif()
 
@@ -2397,7 +2995,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   set(onnxruntime_ep_graph_test_LIBS ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils ${onnxruntime_EXTERNAL_LIBRARIES})
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
     list(APPEND onnxruntime_ep_graph_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework
-                                               onnxruntime_common onnxruntime_graph onnxruntime_providers onnxruntime_mlas
+                                               onnxruntime_common onnxruntime_graph ${onnxruntime_providers_target} onnxruntime_mlas
                                                onnxruntime_optimizer onnxruntime_flatbuffers iconv re2
                                                ${PROTOBUF_LIB} onnx onnx_proto)
   endif()

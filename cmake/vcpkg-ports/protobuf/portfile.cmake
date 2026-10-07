@@ -3,11 +3,14 @@ vcpkg_minimum_required(VERSION 2022-10-12) # for ${VERSION}
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO protocolbuffers/protobuf
-    REF v3.21.12
-    SHA512 152f8441c325e808b942153c15e82fdb533d5273b50c25c28916ec568ada880f79242bb61ee332ac5fb0d20f21239ed6f8de02ef6256cc574b1fc354d002c6b0
+    REF v33.6
+    SHA512 16f8689ec7aba47d29f27c2360c33c78d6e11ae9f29e815f792e6b943713395e680f0ab6d48f9395e8bec1df44c4afdc212ad4e4fc3629b820e7b3ac82e132e9
     HEAD_REF master
     PATCHES
-	protobuf_cmake.patch
+        protobuf_cmake.patch
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf/protobuf_msvc_unreachable_code.patch"
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf/protobuf_msvc_map_unreachable_code.patch"
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf/protobuf_compiler_incomplete_type.patch"
 )
 
 string(COMPARE EQUAL "${TARGET_TRIPLET}" "${HOST_TRIPLET}" protobuf_BUILD_PROTOC_BINARIES)
@@ -31,17 +34,6 @@ if (VCPKG_DOWNLOAD_MODE)
     vcpkg_find_acquire_program(PKGCONFIG)
 endif()
 
-# Delete language backends we aren't targeting to reduce false positives in automated dependency
-# detectors like Dependabot.
-file(REMOVE_RECURSE
-    "${SOURCE_PATH}/csharp"
-    "${SOURCE_PATH}/java"
-    "${SOURCE_PATH}/objectivec"
-    "${SOURCE_PATH}/php"
-    "${SOURCE_PATH}/python"
-    "${SOURCE_PATH}/ruby"
-)
-
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
@@ -55,6 +47,7 @@ vcpkg_cmake_configure(
 )
 
 vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(PACKAGE_NAME utf8_range CONFIG_PATH lib/cmake/utf8_range)
 
 # It appears that at this point the build hasn't actually finished. There is probably
 # a process spawned by the build, therefore we need to wait a bit.
@@ -88,9 +81,27 @@ protobuf_try_remove_recurse_wait("${CURRENT_PACKAGES_DIR}/debug/share")
 
 if(protobuf_BUILD_PROTOC_BINARIES)
     if(VCPKG_TARGET_IS_WINDOWS)
-        vcpkg_copy_tools(TOOL_NAMES protoc AUTO_CLEAN)
+        vcpkg_copy_tools(
+            TOOL_NAMES protoc protoc-gen-upb protoc-gen-upbdefs protoc-gen-upb_minitable
+            AUTO_CLEAN
+        )
     else()
-        vcpkg_copy_tools(TOOL_NAMES protoc protoc-${VERSION}.0 AUTO_CLEAN)
+        string(REPLACE "." ";" VERSION_LIST ${VERSION})
+        list(GET VERSION_LIST 1 VERSION_MINOR)
+        list(GET VERSION_LIST 2 VERSION_PATCH)
+        set(PROTOBUF_VERSION_SUFFIX "${VERSION_MINOR}.${VERSION_PATCH}.0")
+        vcpkg_copy_tools(
+            TOOL_NAMES
+                protoc
+                protoc-${PROTOBUF_VERSION_SUFFIX}
+                protoc-gen-upb
+                protoc-gen-upb-${PROTOBUF_VERSION_SUFFIX}
+                protoc-gen-upbdefs
+                protoc-gen-upbdefs-${PROTOBUF_VERSION_SUFFIX}
+                protoc-gen-upb_minitable
+                protoc-gen-upb_minitable-${PROTOBUF_VERSION_SUFFIX}
+            AUTO_CLEAN
+        )
     endif()
 else()
     file(COPY "${CURRENT_HOST_INSTALLED_DIR}/tools/${PORT}" DESTINATION "${CURRENT_PACKAGES_DIR}/tools")

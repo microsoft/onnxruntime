@@ -1349,6 +1349,55 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 
+// Regression test for a model whose hidden_size attribute is inconsistent with the actual W
+// weight tensor shape. ONNX shape inference/checker does not validate the relationship between
+// hidden_size and the W/R weight shapes, so such a model previously reached the LSTM kernel and
+// caused an out-of-bounds access. The kernel must now reject it up front via ValidateCommonRnnInputs,
+// matching the behavior of the RNN and GRU kernels.
+TEST(LSTMTest, MismatchedWeightShapeIsRejected) {
+  OpTester test("LSTM");
+
+  constexpr int64_t seq_length = 1;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t input_size = 2;
+  constexpr int64_t hidden_size = 2;     // attribute value; sizes the outputs and R
+  constexpr int64_t bogus_w_hidden = 3;  // W is sized for a different (larger) hidden size
+
+  test.AddAttribute<std::vector<std::string>>("activations", {"sigmoid", "tanh", "tanh"});
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data(seq_length * batch_size * input_size, 0.1f);
+  test.AddInput<float>("X", X_dims, X_data);
+
+  // W has 4 * bogus_w_hidden rows instead of 4 * hidden_size, which is inconsistent with the
+  // hidden_size attribute.
+  std::vector<int64_t> W_dims = {1, 4 * bogus_w_hidden, input_size};
+  std::vector<float> W_data(1 * 4 * bogus_w_hidden * input_size, 0.1f);
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {1, 4 * hidden_size, hidden_size};
+  std::vector<float> R_data(1 * 4 * hidden_size * hidden_size, 0.1f);
+  test.AddInput<float>("R", R_dims, R_data);
+
+  // Optional inputs left empty.
+  test.AddOptionalInputEdge<float>();  // B
+  test.AddOptionalInputEdge<int>();    // sequence_lens
+  test.AddOptionalInputEdge<float>();  // initial_h
+  test.AddOptionalInputEdge<float>();  // initial_c
+  test.AddOptionalInputEdge<float>();  // P
+
+  std::vector<int64_t> Y_dims = {seq_length, 1, batch_size, hidden_size};
+  std::vector<float> Y_data(seq_length * 1 * batch_size * hidden_size, 0.f);
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  // Expect a clean validation error rather than a crash. Skip DML (deprecated) and QNN (now maintained
+  // out-of-tree in the onnxruntime-qnn repo), which do not perform this validation.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input W must have shape",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
+}
+
 #ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {

@@ -231,6 +231,10 @@ class InferenceSession {
 
   virtual ~InferenceSession();
 
+#ifdef _WIN32
+  static void LogAllSessions();
+#endif
+
   /**
    * Register an execution provider. If you've one to register, call this before invoking Initialize().
    * The order of invocation indicates the preference order as well. In other words call this method
@@ -543,7 +547,8 @@ class InferenceSession {
   const DataTransferManager& GetDataTransferManager() const;
 
   /*
-   * Get the GetExternalDataLoaderManager associated with this session
+   * Get the ExternalDataLoaderManager associated with this session.
+   * Registered loaders are available only during graph initialization, not during inference.
    */
   const ExternalDataLoaderManager& GetExternalDataLoaderManager() const;
 
@@ -879,9 +884,17 @@ class InferenceSession {
   // graph partitioning is complete so node counts per EP are accurate.
   void PopulateEpDeviceInfo(const onnxruntime::Graph& graph);
 
-#ifdef _WIN32
-  static void LogAllSessions();
-#endif
+  // Logs the SessionCreation and initial EpDeviceUsage telemetry for the initialized session. Shared by the
+  // normal initialization path and the compile-only path (which otherwise skips session-state finalization).
+  void LogSessionCreationTelemetry(const onnxruntime::Graph& graph,
+                                   const std::string& model_weight_type,
+                                   const std::string& model_graph_hash,
+                                   const std::string& model_weight_hash);
+
+  // Records the profiling event and telemetry marking the end of session initialization (profiler event,
+  // OnSessionInitializationEnd for each EP, and SessionCreationEnd). Shared by the normal initialization path
+  // and the compile-only early-return path. Returns status updated with any error from OnSessionInitializationEnd.
+  common::Status RecordSessionCreationEndTelemetry(const TimePoint& tp, common::Status status);
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(
@@ -988,7 +1001,7 @@ class InferenceSession {
   uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
-    Telemetry() : time_sent_last_() {}
+    Telemetry();
     uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report
     long long total_run_duration_since_last_ = 0;                     // the total duration (us) of Run() calls since the last report
     std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]

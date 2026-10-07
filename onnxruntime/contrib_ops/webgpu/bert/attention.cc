@@ -118,8 +118,9 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
 
 void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
   if (has_seqlen_k) {
-    ss << "total_sequence_length = u32(seqlen_k[batch_idx]) + 1;\n";
-    ss << "var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);\n";
+    ss << "let raw_total_sequence_length = u32(max(seqlen_k[batch_idx], 0)) + 1u;\n";
+    ss << "total_sequence_length = min(raw_total_sequence_length, min(uniforms.present_sequence_length, total_sequence_length));\n";
+    ss << "let past_sequence_length = select(total_sequence_length - uniforms.kv_sequence_length, 0u, total_sequence_length <= uniforms.kv_sequence_length);\n";
   } else {
     ss << "let past_sequence_length = uniforms.past_sequence_length;\n";
   }
@@ -311,6 +312,12 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 
 Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   bool has_sliding_window = local_window_size_ != -1;
+  const std::string value_max_expr = components_ == 4
+                                         ? "max(max(value.x, value.y), max(value.z, value.w))"
+                                         : (components_ == 2 ? "max(value.x, value.y)" : "value");
+  const std::string shifted_exp_sum_expr = components_ == 4
+                                               ? "(shifted_exp.x + shifted_exp.y + shifted_exp.z + shifted_exp.w)"
+                                               : (components_ == 2 ? "(shifted_exp.x + shifted_exp.y)" : "shifted_exp");
 
   if (has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
@@ -329,7 +336,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::ostringstream oss;
   InitVarStub(oss, has_seqlen_k_);
   shader.MainFunctionBody() << oss.str()
-                            << "let seq_causal_length = " << (has_seqlen_k_ ? "past_sequence_length + workgroup_idx % sequence_length + 1" : "uniforms.total_sequence_length_comp") << ";\n"
+                            << "let seq_causal_length = " << (has_seqlen_k_ ? "min(past_sequence_length + workgroup_idx % sequence_length + 1u, total_sequence_length)" : "uniforms.total_sequence_length_comp") << ";\n"
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
                             << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n";
   if (has_sliding_window) {
@@ -347,14 +354,21 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let effective_seq_length = seq_causal_length;\n";
   }
   shader.MainFunctionBody()
-      << "var thread_max_vector = f32_val_t(-3.4028234663852886e+38f);\n"
+      << "var thread_max_local: f32 = -3.4028234663852886e+38f;\n"
+      << "var thread_sum_local: f32 = 0.0;\n"
       << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
       << "  let actual_pos = local_offset + i + start_offset;\n"
       << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
-      << "      thread_max_vector = max(f32_val_t(x[offset + i + start_offset]), thread_max_vector);\n"
+      << "    let value = f32_val_t(x[offset + i + start_offset]);\n"
+      << "    let value_max = " << value_max_expr << ";\n"
+      << "    let new_max = max(thread_max_local, value_max);\n"
+      << "    let shifted_exp = exp(value - f32_val_t(new_max));\n"
+      << "    thread_sum_local = thread_sum_local * exp(thread_max_local - new_max) + " << shifted_exp_sum_expr << ";\n"
+      << "    thread_max_local = new_max;\n"
       << "  }\n"
       << "}\n"
-      << "thread_max[local_idx] = " << (components_ == 4 ? "max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))" : (components_ == 2 ? "max(thread_max_vector.x, thread_max_vector.y)" : "thread_max_vector")) << ";\n"
+      << "thread_max[local_idx] = thread_max_local;\n"
+      << "thread_sum[local_idx] = thread_sum_local;\n"
       << "workgroupBarrier();\n";
 
   if (has_head_sink_) {
@@ -370,18 +384,9 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
                             << "  max_value = max(thread_max[i], max_value);\n"
                             << "}\n"
-                            << "var sum_vector = f32_val_t(0);\n"
-                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
-                            << "  let actual_pos = local_offset + i + start_offset;\n"
-                            << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
-                            << "     sum_vector += exp(f32_val_t(x[offset + i + start_offset]) - max_value);\n"
-                            << "  }\n"
-                            << "}\n"
-                            << "thread_sum[local_idx] = " << (components_ == 4 ? "sum_vector.x + sum_vector.y + sum_vector.z + sum_vector.w" : (components_ == 2 ? "sum_vector.x + sum_vector.y" : "sum_vector")) << ";\n"
-                            << "workgroupBarrier();\n"
-                            << "var sum: f32 = 0;\n"
+                            << "var sum: f32 = 0.0;\n"
                             << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
-                            << "  sum += thread_sum[i]\n;"
+                            << "  sum += thread_sum[i] * exp(thread_max[i] - max_value);\n"
                             << "}\n";
 
   if (has_head_sink_) {
@@ -403,7 +408,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    let pos = offset + i + start_offset;\n"
                             << "    if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
                             << "       var f32input = f32_val_t(x[pos]);\n"
-                            << "       x[pos] = x_value_t(exp(f32input - max_value) / sum);\n"
+                            << "       x[pos] = x_value_t(exp(f32input - f32_val_t(max_value)) / f32_val_t(sum));\n"
                             << "    }\n"
                             << "  }\n"
                             << "}\n";
@@ -428,7 +433,9 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
-                             const Tensor* seqlen_k, bool is_first_prompt, bool use_smooth_softmax, const Tensor* head_sink, int local_window_size) {
+                             int32_t kv_sequence_length, int32_t present_sequence_length, const Tensor* seqlen_k,
+                             bool is_first_prompt, bool use_smooth_softmax, const Tensor* head_sink,
+                             int local_window_size) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
   const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
@@ -451,6 +458,8 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(num_heads)},
                             {static_cast<uint32_t>(past_sequence_length)},
+                            {static_cast<uint32_t>(kv_sequence_length)},
+                            {static_cast<uint32_t>(present_sequence_length)},
                             {static_cast<uint32_t>(sequence_length)},
                             {static_cast<uint32_t>(total_sequence_length_comp)},
                             {static_cast<uint32_t>(elementsPerThread)},
@@ -618,7 +627,12 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   }
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
-                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.use_smooth_softmax_, head_sink, local_window_size));
+                                            parameters.batch_size_, parameters.num_heads_,
+                                            parameters.past_sequence_length_, parameters.sequence_length_,
+                                            total_sequence_length, parameters.kv_sequence_length_,
+                                            parameters.seqlen_present_kv_cache_, seqlen_k,
+                                            parameters.is_first_prompt_, parameters.use_smooth_softmax_,
+                                            head_sink, local_window_size));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
@@ -638,11 +652,14 @@ ONNX_OPERATOR_KERNEL_EX(
 Attention::Attention(const OpKernelInfo& info)
     : WebGpuKernel(info),
       onnxruntime::contrib::AttentionBase(info, false) {
+  const Tensor* weights = nullptr;
+  weights_are_constant_ = info.TryGetConstantInput(1, &weights);
 }
 
 Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                   const Tensor* input, const Tensor* weights, const Tensor* bias,
-                  Tensor* q, Tensor* k, Tensor* v) {
+                  Tensor* q, Tensor* k, Tensor* v,
+                  MatMulOptImplCache& matmul_compute_cache, bool weights_are_constant) {
   // Use MatMul to compute packed QKV output: input * weights + bias
   // Then use SplitPackedQKV to split into Q, K, V in BSD format
   // Returns Q, K, V in BSD format
@@ -656,7 +673,9 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   std::vector<const Tensor*> matmul_inputs = {input, weights, bias};
 
   // Call MatMul: packed_qkv = input * weights + bias
-  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(&context, Activation(), matmul_inputs, &packed_qkv));
+  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(
+      &context, Activation(), matmul_inputs, &packed_qkv, /*is_channels_last=*/true,
+      matmul_compute_cache, weights_are_constant));
 
   // Output Q, K, V in BSD format
   return SplitPackedQKV(context, parameters, &packed_qkv, q, k, v, parameters.hidden_size_);
@@ -722,7 +741,9 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   Tensor V_bsd = context.CreateGPUTensor(input->DataType(), TensorShape(v_bsd_shape));
 
   // Compute Q, K, V from input, weights, and bias (returns BSD format)
-  ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias, &Q_bsd, &K_bsd, &V_bsd));
+  ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias,
+                                 &Q_bsd, &K_bsd, &V_bsd,
+                                 matmul_compute_cache_, weights_are_constant_));
   parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention

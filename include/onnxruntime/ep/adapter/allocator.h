@@ -25,35 +25,47 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
  public:
   explicit IAllocatorWrappingOrtAllocator(Ort::Allocator ort_allocator)
       : IAllocator(*(EnsureOrtAllocatorHasValue(ort_allocator).GetInfo())),
-        ort_allocator_(std::move(ort_allocator)) {
+        owned_ort_allocator_(std::move(ort_allocator)),
+        ort_allocator_(owned_ort_allocator_) {
+  }
+
+  // Wraps an OrtAllocator without taking ownership. The caller must keep it alive for the
+  // lifetime of this IAllocator. This is used for allocators passed to PrePackWeight, which are
+  // provided and owned by the ORT framework/caller for the duration of the PrePack call (this
+  // wrapper must not release them).
+  explicit IAllocatorWrappingOrtAllocator(OrtAllocator* ort_allocator)
+      : IAllocator(*EnsureOrtAllocatorHasValue(ort_allocator)->Info(ort_allocator)),
+        owned_ort_allocator_(nullptr),
+        ort_allocator_(ort_allocator) {
   }
 
   void* Alloc(size_t size) override {
-    return ort_allocator_.Alloc(size);
+    return ort_allocator_->Alloc(ort_allocator_, size);
   }
 
   void Free(void* p) override {
-    ort_allocator_.Free(p);
+    ort_allocator_->Free(ort_allocator_, p);
   }
 
   void* Reserve(size_t size) override {
-    return ort_allocator_.Reserve(size);
+    if (ort_allocator_->version >= 18 && ort_allocator_->Reserve != nullptr) {
+      return ort_allocator_->Reserve(ort_allocator_, size);
+    }
+    return ort_allocator_->Alloc(ort_allocator_, size);
   }
 
   bool IsStreamAware() const override {
     static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
-    const OrtAllocator* raw = ort_allocator_;
-    return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
+    return ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream != nullptr;
   }
 
   void* AllocOnStream(size_t size, Stream* stream) override {
     static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
-    OrtAllocator* raw = ort_allocator_;
-    if (raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr) {
-      return raw->AllocOnStream(raw, size, reinterpret_cast<OrtSyncStream*>(stream));
+    if (ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream != nullptr) {
+      return ort_allocator_->AllocOnStream(ort_allocator_, size, reinterpret_cast<OrtSyncStream*>(stream));
     }
 
-    return raw->Alloc(raw, size);
+    return ort_allocator_->Alloc(ort_allocator_, size);
   }
 
   void GetStats(AllocatorStats* stats) override {
@@ -62,10 +74,11 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
 
     // GetStats was added in OrtAllocator version 23. For older allocators the function pointer
     // may be uninitialized, so we must not call through it.
-    const OrtAllocator* raw = ort_allocator_;
-    if (raw->version < 23 || !raw->GetStats) return;
+    if (ort_allocator_->version < 23 || !ort_allocator_->GetStats) return;
 
-    Ort::KeyValuePairs kvps = ort_allocator_.GetStats();
+    OrtKeyValuePairs* stats_kvps = nullptr;
+    Ort::ThrowOnError(ort_allocator_->GetStats(ort_allocator_, &stats_kvps));
+    Ort::KeyValuePairs kvps{stats_kvps};
     std::vector<const char*> keys, values;
     kvps.GetKeyValuePairs(keys, values);
     const size_t n = keys.size() < values.size() ? keys.size() : values.size();
@@ -82,7 +95,13 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     return ort_allocator;
   }
 
-  Ort::Allocator ort_allocator_;
+  static OrtAllocator* EnsureOrtAllocatorHasValue(OrtAllocator* ort_allocator) {
+    ORT_ENFORCE(ort_allocator != nullptr, "OrtAllocator must be non-null.");
+    return ort_allocator;
+  }
+
+  Ort::Allocator owned_ort_allocator_;
+  OrtAllocator* ort_allocator_{};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IAllocatorWrappingOrtAllocator);
 };

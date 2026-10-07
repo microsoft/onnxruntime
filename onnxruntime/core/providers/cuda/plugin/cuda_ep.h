@@ -73,6 +73,11 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
       OrtEp* this_ptr, const OrtMemoryDevice* memory_device,
       OrtSyncStreamImpl** stream) noexcept;
 
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(
+      OrtEp* this_ptr,
+      const OrtMemoryInfo* memory_info,
+      OrtAllocator** allocator) noexcept;
+
   static OrtStatus* ORT_API_CALL SyncImpl(OrtEp* this_ptr) noexcept;
 
   static OrtStatus* ORT_API_CALL IsConcurrentRunSupportedImpl(
