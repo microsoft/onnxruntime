@@ -1211,6 +1211,7 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     if(TARGET sqlite3_bundled)
       # 1DS uses sqlite only for its narrow offline-event store. Keep the previous vcpkg
       # size reductions and extension-loading hardening on the bundled replacement.
+      # Memory accounting must remain enabled for the SDK's SQLite soft heap limit.
       target_compile_definitions(sqlite3_bundled PRIVATE
         SQLITE_OMIT_LOAD_EXTENSION
         SQLITE_OMIT_DEPRECATED
@@ -1221,7 +1222,6 @@ if(onnxruntime_USE_1DS_TELEMETRY)
         SQLITE_OMIT_COMPLETE
         SQLITE_OMIT_TCL_VARIABLE
         SQLITE_DQS=0
-        SQLITE_DEFAULT_MEMSTATUS=0
         SQLITE_DEFAULT_FOREIGN_KEYS=0
       )
     endif()

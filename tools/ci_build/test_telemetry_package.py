@@ -94,6 +94,53 @@ target_link_libraries(consumer PRIVATE onnxruntime::onnxruntime_common)
 
 
 class TelemetryPackageTest(unittest.TestCase):
+    def test_windows_network_detector_policy(self):
+        source = (_ROOT / "onnxruntime" / "core" / "platform" / "telemetry_1ds.cc").read_text(encoding="utf-8")
+        initialization = source[source.index("void OneDsTelemetry::Initialize()") :]
+        configuration = initialization[: initialization.index("// Create log manager via LogManagerProvider")]
+        start = configuration.index("#if defined(_WIN32)")
+        policy = configuration[start : configuration.index("#endif", start) + len("#endif")]
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-network-policy-") as temporary:
+            root = Path(temporary)
+            (root / "policy.inc").write_text(policy, encoding="utf-8")
+            (root / "main.cc").write_text(
+                textwrap.dedent(
+                    """
+                    int main() {
+                      constexpr int CFG_BOOL_ENABLE_NET_DETECT = 0;
+                      bool config[] = {true};
+                    #include "policy.inc"
+                    #if defined(_WIN32)
+                      constexpr bool expected_net_detect = false;
+                    #else
+                      constexpr bool expected_net_detect = true;
+                    #endif
+                      return config[CFG_BOOL_ENABLE_NET_DETECT] != expected_net_detect;
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (root / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.28)\n"
+                "project(telemetry_network_policy CXX)\n"
+                "enable_testing()\n"
+                "add_executable(network_policy main.cc)\n"
+                "add_test(NAME network_policy COMMAND network_policy)\n",
+                encoding="utf-8",
+            )
+            build = root / "build"
+            self._run(
+                "cmake",
+                "-S",
+                str(root),
+                "-B",
+                str(build),
+                *(["-G", "Visual Studio 18 2026", "-A", "x64"] if sys.platform == "win32" else []),
+            )
+            self._run("cmake", "--build", str(build), "--config", "Debug")
+            self._run("ctest", "--test-dir", str(build), "-C", "Debug", "--output-on-failure")
+
     def test_direct_cmake_backend_selection(self):
         cmake = (_ROOT / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")
         start = cmake.index("option(onnxruntime_USE_TELEMETRY ")
@@ -169,6 +216,7 @@ class TelemetryPackageTest(unittest.TestCase):
                     cmake_minimum_required(VERSION 3.28)
                     project(telemetry_source C)
                     add_library(mat STATIC mat.c)
+                    add_library(sqlite3_bundled STATIC mat.c)
                     function(onnxruntime_fetchcontent_declare name)
                       cmake_parse_arguments(SDK "" "URL;URL_HASH" "" ${ARGN})
                       if(NOT name STREQUAL "cpp_client_telemetry" OR
@@ -210,6 +258,10 @@ class TelemetryPackageTest(unittest.TestCase):
                       endif()
                       if(NOT MATSDK_CURL_PROVIDER STREQUAL expected_curl)
                         message(FATAL_ERROR "Unexpected curl provider for ${platform}/${use_vcpkg}")
+                      endif()
+                      get_target_property(sqlite_definitions sqlite3_bundled COMPILE_DEFINITIONS)
+                      if("SQLITE_DEFAULT_MEMSTATUS=0" IN_LIST sqlite_definitions)
+                        message(FATAL_ERROR "Disabling SQLite memory accounting defeats the SDK's soft heap limit")
                       endif()
                     endfunction()
                     check_source(Windows OFF SYSTEM)
