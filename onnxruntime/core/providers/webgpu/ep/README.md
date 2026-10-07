@@ -87,7 +87,9 @@ not guarantee that GPU execution has completed.
 Status-returning host barrier. It uses ordinary `Flush` to encode deferred work
 and submit the owning recording, then waits for the same queue's
 `OnSubmittedWorkDone` future through the context's existing Instance/WaitAny
-machinery. It also waits when the recording is empty, covering work already
+machinery. Caller-provided instances must enable Dawn's `TimedWaitAny` feature
+in `InstanceDescriptor.requiredFeatures`, as ORT does for its own instance.
+The helper also waits when the recording is empty, covering work already
 submitted to that queue. Work submitted after the completion future is
 registered, or unsubmitted work on other recordings, is not covered.
 
