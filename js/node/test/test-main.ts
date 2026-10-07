@@ -18,6 +18,7 @@ require('./unittests/lib/ep-context-data-read');
 require('./unittests/lib/inference-session');
 require('./unittests/lib/model-metadata');
 require('./unittests/lib/tensor');
+require('./unittests/install-utils');
 
 // API tests
 require('./api/simple-api-tests');
