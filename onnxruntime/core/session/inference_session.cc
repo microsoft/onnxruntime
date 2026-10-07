@@ -2754,8 +2754,7 @@ common::Status InferenceSession::Initialize() {
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;
       if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
-            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics ||
-            option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) &&
+            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
            value != "0") ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
