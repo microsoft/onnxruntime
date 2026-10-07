@@ -279,6 +279,13 @@ Q4Int8GemmM1C4BlkLen32Avx2(
         __m256 acc[NCols4] = {_mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()};
         size_t k_blks_remaining = BlockCountK;
         for (; k_blks_remaining > 1; k_blks_remaining -= PerAccuBlk2) {
+            // Each iteration consumes 128 weight bytes and 8 float scales. Prefetch
+            // 2 iterations ahead for weights and 16 for scales (128 floats = 512 bytes).
+            // The guard keeps the farther scale address in range; NTA hints at streaming reuse.
+            if (k_blks_remaining > 32) {
+                _mm_prefetch(reinterpret_cast<const char*>(QuantBDataPtr + 256), _MM_HINT_NTA);
+                _mm_prefetch(reinterpret_cast<const char*>(QuantBScalePtr + 128), _MM_HINT_NTA);
+            }
             const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
             const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + BlkLen32));
             //const __m256 scale_a0_8_ps = _mm256_set1_ps(Q8BlkScale(QuantAPtr));

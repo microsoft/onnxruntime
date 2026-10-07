@@ -16,6 +16,7 @@
  */
 #pragma once
 
+#include <array>
 #include <cassert>
 #include <cutlass/numeric_types.h>
 #include <memory>
@@ -61,6 +62,10 @@ constexpr int kDefaultProfileMaxM = 2048;
 // L2-resident while decode streams it from DRAM.
 float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
                                      bool is_cuda_kernel, float time);
+
+std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes);
 
 std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,

@@ -32,7 +32,7 @@ using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
 namespace onnxruntime::llm::kernels::weight_only {
 
-std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,
     size_t group_size, size_t runner_workspace_bytes) {
   if (max_m == 0 || packed_n == 0 || k == 0 ||
@@ -44,7 +44,7 @@ std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
     const SafeInt<size_t> original_n =
         SafeInt<size_t>(packed_n) * (FP16_BITS / quant_bits);
     constexpr size_t kElementBytes = sizeof(uint16_t);
-    const size_t workspaces[] = {
+    return std::array<size_t, 7>{
         static_cast<size_t>(SafeInt<size_t>(max_m) * k * kElementBytes),
         static_cast<size_t>(SafeInt<size_t>(k) * packed_n * kElementBytes),
         static_cast<size_t>(SafeInt<size_t>(k) * original_n * kElementBytes / group_size),
@@ -52,9 +52,22 @@ std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
         static_cast<size_t>(original_n * kElementBytes),
         static_cast<size_t>(SafeInt<size_t>(max_m) * original_n * kElementBytes),
         runner_workspace_bytes};
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
 
+std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes) {
+  const auto workspaces = ComputeWeightOnlyGemmProfilerBufferSizes(
+      max_m, packed_n, k, quant_bits, group_size, runner_workspace_bytes);
+  if (!workspaces) {
+    return std::nullopt;
+  }
+  try {
     SafeInt<size_t> total = 0;
-    for (const size_t workspace : workspaces) {
+    for (const size_t workspace : *workspaces) {
       SafeInt<size_t> aligned_workspace = workspace;
       const size_t remainder = workspace % kCudaMemAlign;
       if (remainder != 0) {
@@ -72,15 +85,18 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     int m, int n, int k,
     WeightOnlyGroupwiseQuantGemmPluginProfiler::Config const& tactic, char* workspace, cudaStream_t const& stream) {
   int const originalN = n * (FP16_BITS / mQuantBits);
+  const auto buffer_sizes = ComputeWeightOnlyGemmProfilerBufferSizes(m, n, k, mQuantBits, mGroupSize, 0);
+  ORT_ENFORCE(buffer_sizes.has_value(), "Failed to compute fpA_intB tactic-profiler buffer sizes.");
+  const auto& sizes = *buffer_sizes;
   half* actPtr = reinterpret_cast<half*>(workspace);
-  void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), m * k * sizeof(half));
-  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), n * k * sizeof(half)));
+  void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), sizes[0]);
+  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), sizes[1]));
   half* zerosPtr = reinterpret_cast<half*>(
-      nextWorkspacePtr(reinterpret_cast<int8_t*>(inputScalesPtr), k * originalN * sizeof(half) / mGroupSize));
+      nextWorkspacePtr(reinterpret_cast<int8_t*>(inputScalesPtr), sizes[2]));
   half* biasesPtr = reinterpret_cast<half*>(
-      nextWorkspacePtr(reinterpret_cast<int8_t*>(zerosPtr), k * originalN * sizeof(half) / mGroupSize));
-  half* outputPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(biasesPtr), n * sizeof(half)));
-  char* workspacePtr = reinterpret_cast<char*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(outputPtr), m * originalN * sizeof(half)));
+      nextWorkspacePtr(reinterpret_cast<int8_t*>(zerosPtr), sizes[3]));
+  half* outputPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(biasesPtr), sizes[4]));
+  char* workspacePtr = reinterpret_cast<char*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(outputPtr), sizes[5]));
 
   if (!mHasZeros) {
     zerosPtr = nullptr;

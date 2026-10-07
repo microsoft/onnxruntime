@@ -402,7 +402,7 @@ class KernelTestFixture : public ::testing::Test {
     d_bias_->from_cpu(h_bias_.data());
   }
 
-  bool BenchmarkAndVerifyKernel() {
+  bool BenchmarkAndVerifyKernel(bool use_zero_points = !USE_COMPACT_FPA_INTB_GEMM) {
     std::cout << "m=" << m_ << ", n=" << n_ << ", k=" << k_ << ", block_size=" << block_size_ << std::endl;
 
     void* p_act_scale = nullptr;
@@ -410,9 +410,7 @@ class KernelTestFixture : public ::testing::Test {
     void* p_bias = nullptr;
 
     if (block_size_ != 0) {
-#if !USE_COMPACT_FPA_INTB_GEMM
-      p_zeros = d_zeros_->data();
-#endif
+      p_zeros = use_zero_points ? d_zeros_->data() : nullptr;
       if constexpr (has_bias) {
         p_bias = d_bias_->data();
       }
@@ -695,6 +693,30 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
       );
       EXPECT_TRUE(BenchmarkAndVerifyKernel());
     }
+  }
+}
+
+// Exercise group-32 symmetric INT4 M=1 dispatch in both compact and full builds.
+TEST_F(Fp16Int4GroupwiseTest, Int4Group32SymmetricM1Decode) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT4 decode requires SM " << kMinSupportedSm << " or later";
+  }
+  for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{{128, 256}, {256, 768}, {2880, 4096}}) {
+    SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
+    InitBuffers(1, columns, depth, 32);
+    EXPECT_TRUE(BenchmarkAndVerifyKernel(false));
+  }
+}
+
+// Verify BF16 uses the same symmetric INT4 decode specialization on SM80 and newer.
+TEST_F(Bf16Int4GroupwiseTest, Int4Group32SymmetricM1Decode) {
+  if (onnxruntime::llm::common::getSMVersion() < 80) {
+    GTEST_SKIP() << "BF16 INT4 decode requires SM 80 or later";
+  }
+  for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{{128, 256}, {256, 768}, {2880, 4096}}) {
+    SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
+    InitBuffers(1, columns, depth, 32);
+    EXPECT_TRUE(BenchmarkAndVerifyKernel(false));
   }
 }
 

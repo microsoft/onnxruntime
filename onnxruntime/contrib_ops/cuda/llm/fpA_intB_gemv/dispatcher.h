@@ -400,6 +400,12 @@ void dispatcher(Params& params, cudaStream_t s) {
   // RTX 4090 it makes the M = 4..8 GEMVs 2-12% faster with DRAM-resident weights. The 2-bit layout
   // already uses the narrow tile.
   static constexpr int CtaNLargeM = Details::kStepK >= 64 ? CtaN : (CtaN / 2 < 2 ? 2 : CtaN / 2);
+  // For single-row INT4 decode with group size 32 and no explicit zero points, use a narrower
+  // N tile to launch more blocks and more threads per block to parallelize the K reduction.
+  // Other configurations retain the default tile and 128-thread launch.
+  static constexpr bool NarrowInt4Decode = !EnableZero && Details::kElemsPerByteW == 2 && GroupSize == 32;
+  static constexpr int CtaNDecode = NarrowInt4Decode ? 2 : CtaN;
+  static constexpr int DecodeThreads = NarrowInt4Decode ? 256 : 128;
 
 #define DISPATCHER_FOR_M(target_m, CtaM, TileN, Threads)                                            \
   do {                                                                                              \
@@ -410,7 +416,7 @@ void dispatcher(Params& params, cudaStream_t s) {
     }                                                                                               \
   } while (0);
 
-  DISPATCHER_FOR_M(1, 1, CtaN, 128);
+  DISPATCHER_FOR_M(1, 1, CtaNDecode, DecodeThreads);
   DISPATCHER_FOR_M(2, 2, CtaN, 128);
   DISPATCHER_FOR_M(3, 3, CtaN, 128);
   DISPATCHER_FOR_M(4, 4, CtaNLargeM, 128);
