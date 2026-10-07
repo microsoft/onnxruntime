@@ -13,6 +13,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#include "core/common/span_utils.h"
 #include "core/framework/endian_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
@@ -273,6 +274,41 @@ TEST(OptimizerInitializerTest, DataField) {
   TestInitializerDataField<BFloat16>();
   TestInitializerDataField<float>();
   TestInitializerDataField<double>();
+}
+
+TEST(OptimizerInitializerTest, ScaleByAxisEmptyTensor) {
+  {
+    Initializer target(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "target", AsSpan<int64_t>({2, 0}));
+    Initializer scalers(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "scalers", AsSpan<int64_t>({2}));
+    EXPECT_NO_THROW(target.scale_by_axis(scalers, 1));
+    EXPECT_EQ(target.size(), 0u);
+  }
+
+  {
+    Initializer target(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "target", AsSpan<int64_t>({2, 0}));
+    Initializer scalers(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "scalers", AsSpan<int64_t>({0}));
+    EXPECT_NO_THROW(target.scale_by_axis(scalers, 1, true));
+    EXPECT_EQ(target.size(), 0u);
+  }
+
+  {
+    Initializer target(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "target", AsSpan<int64_t>({0}));
+    Initializer scalar(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "scalar", AsSpan<int64_t>({}));
+    EXPECT_NO_THROW(target.scale_by_axis(scalar, 0));
+    EXPECT_EQ(target.size(), 0u);
+  }
+
+  {
+    Initializer target(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "target", AsSpan<int64_t>({2, 0}));
+    Initializer invalid_scalers(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "invalid_scalers", AsSpan<int64_t>({3}));
+    EXPECT_THROW(target.scale_by_axis(invalid_scalers, 1), OnnxRuntimeException);
+  }
+
+  {
+    Initializer target(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "target", AsSpan<int64_t>({2, 0}));
+    Initializer scalers(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, "scalers", AsSpan<int64_t>({2}));
+    EXPECT_THROW(target.scale_by_axis(scalers, 1), OnnxRuntimeException);
+  }
 }
 
 // An in-memory external-data initializer with no registered OrtValue must load without a model_path.

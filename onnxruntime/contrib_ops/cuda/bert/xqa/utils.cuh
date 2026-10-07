@@ -47,7 +47,9 @@ inline constexpr float log2e = 1.4426950408889634f;  // std::log2(M_E)
 */
 // this reason, don't set safeInitRowMax with a huge absolute value.
 // #define SAFE_INIT_ROW_MAX (-1e+5F)  // moved to defines.h
-inline constexpr int32_t kBAD_PAGE_INDEX = -1;
+// Marked __constant__ (like kE4M3_MAX below) because the paged-KV kernels odr-use it from device
+// code (Vec::filled takes a const reference), which a plain host constexpr variable cannot satisfy.
+__constant__ constexpr int32_t kBAD_PAGE_INDEX = -1;
 __constant__ constexpr float kE4M3_MAX = 448.F;
 
 #ifdef __CUDA_ARCH__
@@ -668,11 +670,48 @@ __device__ __host__ inline void assertClose([[maybe_unused]] half a, [[maybe_unu
   assertClose(__half2float(a), __half2float(b), threshold);
 }
 
+// Converts four packed signed int8 values into four half values without using I2F.
+//
+// A half whose bit pattern is 0x64XX is exactly 1024 + XX: the exponent field of 0x6400
+// selects 2^10, where the mantissa ULP is 1, so the low 8 mantissa bits hold the byte
+// verbatim. Splicing a byte in with prmt and subtracting a magic constant therefore
+// performs the conversion using only full-rate integer/half2 ALU instructions. The
+// generic path instead costs one quarter-rate I2F per element plus a sign-extension
+// sequence and a repack, which is the bulk of the int8-vs-fp8 gap in this kernel.
+//
+// Source bytes are biased first (XOR 0x80 maps two's-complement s to unsigned s + 128),
+// so the spliced value is 1152 + s and the constant to subtract is half(1152) == 0x6480.
+// 1152 + s lies in [1024, 1279] and the result s lies in [-128, 127]; both are exactly
+// representable in half, so this is bit-identical to the I2F path.
+//
+// selector0 / selector1 are prmt byte selectors choosing which source byte feeds the low
+// and high half of each output word, which lets callers fold a byte permutation in.
+template <uint32_t selector0, uint32_t selector1>
+__device__ inline Vec<uint32_t, 2> cvtS8x4ToF16x4(uint32_t i8data) {
+  static constexpr uint32_t kSignFlip = 0x80808080U;  // two's complement -> biased unsigned
+  static constexpr uint32_t kExpBytes = 0x64646464U;  // half exponent byte for 1024.0
+  static constexpr uint32_t kMagic = 0x64806480U;     // half2(1152.0, 1152.0)
+  uint32_t const biased = i8data ^ kSignFlip;
+  Vec<uint32_t, 2> ret;
+  asm("prmt.b32 %0, %1, %2, %3;\n" : "=r"(ret.data[0]) : "r"(biased), "n"(kExpBytes), "n"(selector0));
+  asm("prmt.b32 %0, %1, %2, %3;\n" : "=r"(ret.data[1]) : "r"(biased), "n"(kExpBytes), "n"(selector1));
+  // kMagic must be a register operand: f16x2 immediates are not encodable.
+  asm("sub.f16x2 %0, %1, %2;\n" : "=r"(ret.data[0]) : "r"(ret.data[0]), "r"(kMagic));
+  asm("sub.f16x2 %0, %1, %2;\n" : "=r"(ret.data[1]) : "r"(ret.data[1]), "r"(kMagic));
+  return ret;
+}
+
 template <typename InputElem, typename CacheElem>
 __device__ inline Vec<uint32_t, 2> convertKCacheWordToF16(uint32_t i8data) {
   static_assert(mha::is_same_v<InputElem, half> || mha::is_same_v<InputElem, __nv_bfloat16>, "not implemented");
   static_assert(sizeof(CacheElem) == 1);
   Vec<uint32_t, 2> ret;
+#if (defined __CUDA_ARCH__)
+  if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, int8_t>) {
+    // dst[i] = src[i], so byte i of the input feeds output half i.
+    return cvtS8x4ToF16x4<0x5150, 0x5352>(i8data);
+  }
+#endif
 #if (defined __CUDA_ARCH__) && (__CUDA_ARCH__ >= 890)
   if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, __nv_fp8_e4m3>) {
     uint16_t (&src)[2] = reinterpret_cast<uint16_t (&)[2]>(i8data);
@@ -700,6 +739,13 @@ __device__ inline Vec<uint32_t, 2> convertVCacheWordToF16(uint32_t i8data) {
   static_assert(mha::is_same_v<InputElem, half> || mha::is_same_v<InputElem, __nv_bfloat16>, "not implemented");
   static_assert(sizeof(CacheElem) == 1);
   Vec<uint32_t, 2> ret;
+#if (defined __CUDA_ARCH__)
+  if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, int8_t>) {
+    // dst[i][j] = src[j][i], i.e. the 2x2 byte transpose {b0,b1,b2,b3} -> {b0,b2,b1,b3}.
+    // Folded into the prmt selectors, so it costs nothing extra here.
+    return cvtS8x4ToF16x4<0x5250, 0x5351>(i8data);
+  }
+#endif
 #if (defined __CUDA_ARCH__) && (__CUDA_ARCH__ >= 890)
   if constexpr (mha::is_same_v<InputElem, half> && mha::is_same_v<CacheElem, __nv_fp8_e4m3>) {
     uint32_t (&dst)[2] = reinterpret_cast<uint32_t (&)[2]>(ret);

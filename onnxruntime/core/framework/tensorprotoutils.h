@@ -281,6 +281,11 @@ Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor&
 /// declared shape when the actual data is absent or much smaller.
 /// The caller must ensure that the TensorProto does not use external data; if it does, this function will
 /// return an error status.
+/// max_embedded_initializer_size_in_bytes limits the total in-memory initializer size. For STRING tensors,
+/// the limit includes both the std::string object storage implied by the shape and all string payload bytes.
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                           size_t max_embedded_initializer_size_in_bytes);
+
 common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
@@ -321,6 +326,11 @@ common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::fil
                                                   const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                   const IExternalDataLoader& ext_data_loader,
                                                   Tensor& tensor);
+
+// Load any saved pre-packed blobs referenced by an external TensorProto without loading its tensor data.
+common::Status LoadPrepackedWeightsFromExternalData(const Env& env, const std::filesystem::path& model_path,
+                                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                    PrepackedWeightsForGraph& prepacked_info);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the

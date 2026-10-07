@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
-#include <string>
 #include <filesystem>
+#include <string>
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
@@ -21,6 +22,15 @@ namespace QDQ {
 
 constexpr const char* QOpName = "QuantizeLinear";
 constexpr const char* DQOpName = "DequantizeLinear";
+
+constexpr int64_t kMatMulNBitsMinBlockSize = 16;
+constexpr int64_t kMatMulNBitsMaxBlockSize = 256;
+
+constexpr bool IsValidMatMulNBitsBlockSize(int64_t block_size) {
+  return block_size >= kMatMulNBitsMinBlockSize &&
+         block_size <= kMatMulNBitsMaxBlockSize &&
+         (block_size & (block_size - 1)) == 0;
+}
 
 enum InputIndex : int {
   INPUT_ID = 0,

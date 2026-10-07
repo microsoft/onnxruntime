@@ -23,6 +23,8 @@ class KernelDef;
 class KernelRegistryManager;
 class IExecutionProvider;
 class Node;
+#if !defined(ORT_MINIMAL_BUILD)
+#endif
 class Tensor;
 struct KernelCreateInfo;
 #ifdef ENABLE_TRAINING

@@ -88,7 +88,7 @@ if (onnxruntime_BUILD_BENCHMARKS)
     URL ${DEP_URL_google_benchmark}
     URL_HASH SHA1=${DEP_SHA1_google_benchmark}
     EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES benchmark
+    FIND_PACKAGE_ARGS 1.9.5 NAMES benchmark
   )
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
@@ -186,9 +186,10 @@ endif()
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
-  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_s390x.patch)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_msvc_unreachable_code.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_msvc_map_unreachable_code.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_compiler_incomplete_type.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -362,42 +363,52 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/324
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        # https://github.com/microsoft/onnxruntime/issues/10038
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+  if(onnxruntime_USE_VCPKG AND NOT APPLE)
+    find_package(cpuinfo CONFIG REQUIRED)
   else()
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+    if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
+      message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/324
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          # https://github.com/microsoft/onnxruntime/issues/10038
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    else()
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    endif()
+    onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
   endif()
-  set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
-  onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
   if(TARGET cpuinfo::cpuinfo AND NOT TARGET cpuinfo)
     message(STATUS "Aliasing cpuinfo::cpuinfo to cpuinfo")
     add_library(cpuinfo ALIAS cpuinfo::cpuinfo)
@@ -545,6 +556,48 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
+
+# An installed ONNX package ships pre-generated protobuf headers/sources that ONNX Runtime compiles into its own
+# objects, so both must resolve to a single protobuf runtime with a single message representation. If they do not,
+# the mismatch is not caught by the linker: it shows up as heap corruption while copying onnx::AttributeProto (see
+# https://github.com/microsoft/onnxruntime/issues/28664). Validate the two ways this can happen.
+if(onnx_FOUND OR ONNX_FOUND)
+  if(NOT Protobuf_FOUND)
+    message(FATAL_ERROR
+            "ONNX was resolved to an installed package but protobuf is being built from source by ONNX Runtime. "
+            "The installed ONNX links a different protobuf runtime than the one ONNX Runtime would use. "
+            "Install a protobuf CMake config package and make it discoverable via CMAKE_PREFIX_PATH, or force ONNX "
+            "to be built from source with -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER.")
+  endif()
+
+  if(TARGET ONNX::onnx_proto)
+    get_target_property(onnx_package_definitions ONNX::onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  else()
+    get_target_property(onnx_package_definitions onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  endif()
+  if(onnx_package_definitions)
+    if("ONNX_USE_LITE_PROTO=1" IN_LIST onnx_package_definitions)
+      set(onnx_package_protobuf_flavor "lite")
+    else()
+      set(onnx_package_protobuf_flavor "full")
+    endif()
+    if(onnxruntime_USE_FULL_PROTOBUF)
+      set(onnxruntime_protobuf_flavor "full")
+    else()
+      set(onnxruntime_protobuf_flavor "lite")
+    endif()
+    if(NOT onnx_package_protobuf_flavor STREQUAL onnxruntime_protobuf_flavor)
+      message(FATAL_ERROR
+              "The installed ONNX package links the ${onnx_package_protobuf_flavor} protobuf runtime but ONNX "
+              "Runtime is configured for the ${onnxruntime_protobuf_flavor} one "
+              "(onnxruntime_USE_FULL_PROTOBUF=${onnxruntime_USE_FULL_PROTOBUF}). Rebuild ONNX with a matching "
+              "ONNX_USE_LITE_PROTO, or reconfigure ONNX Runtime to use the ${onnx_package_protobuf_flavor} runtime.")
+    endif()
+  endif()
+  message(STATUS "Using ONNX from find_package(or vcpkg). ONNX version: ${ONNX_VERSION}, "
+                 "protobuf version: ${Protobuf_VERSION}")
+endif()
+
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
 else()
@@ -636,6 +689,78 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
+  if (onnxruntime_DAWN_PREBUILT_DIR)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR
+        onnxruntime_BUILD_DAWN_SHARED_LIBRARY OR
+        onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP OR DAWN_USE_AGILITY_SDK)
+      message(FATAL_ERROR "The Dawn API package supports native external Dawn without shared Dawn, PIX, or Agility SDK")
+    endif()
+    if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      message(FATAL_ERROR "onnxruntime_DAWN_PREBUILT_DIR and onnxruntime_CUSTOM_DAWN_SRC_PATH are mutually exclusive")
+    endif()
+
+    set(ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR "${onnxruntime_DAWN_PREBUILT_DIR}/include")
+    set(ONNXRUNTIME_DAWN_PROC_SRC
+      "${onnxruntime_DAWN_PREBUILT_DIR}/src/dawn_proc.cpp"
+      "${onnxruntime_DAWN_PREBUILT_DIR}/src/dawn_thread_dispatch_proc.cpp")
+    foreach(_dawn_required_file IN ITEMS
+        "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/webgpu/webgpu_cpp.h"
+        "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/dawn/dawn_proc.h"
+        "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/dawn/dawn_version.h"
+        "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/dawn/dawn_thread_dispatch_proc.h"
+        ${ONNXRUNTIME_DAWN_PROC_SRC})
+      if (NOT EXISTS "${_dawn_required_file}")
+        message(FATAL_ERROR "Dawn API package file not found: ${_dawn_required_file}")
+      endif()
+    endforeach()
+
+    foreach(_dawn_header_target IN ITEMS dawn::dawncpp_headers dawn::dawn_headers)
+      if (NOT TARGET ${_dawn_header_target})
+        add_library(${_dawn_header_target} INTERFACE IMPORTED)
+        set_target_properties(${_dawn_header_target} PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}")
+      endif()
+    endforeach()
+    if (NOT TARGET dawn::dawn_proc)
+      add_library(onnxruntime_dawn_proc STATIC ${ONNXRUNTIME_DAWN_PROC_SRC})
+      target_include_directories(onnxruntime_dawn_proc PUBLIC "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}")
+      if (MSVC)
+        target_compile_options(onnxruntime_dawn_proc PRIVATE /W0)
+      else()
+        target_compile_options(onnxruntime_dawn_proc PRIVATE -w)
+      endif()
+      add_library(dawn::dawn_proc ALIAS onnxruntime_dawn_proc)
+    endif()
+    message(STATUS "Using Dawn API package: ${onnxruntime_DAWN_PREBUILT_DIR}")
+  else()
+  if (DAWN_USE_AGILITY_SDK)
+    if (NOT WIN32)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is only supported on Windows.")
+    endif()
+    if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_CUSTOM_DAWN_SRC_PATH.")
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is not supported for WindowsStore/UWP.")
+    endif()
+    if (onnxruntime_target_platform STREQUAL "ARM" OR
+        onnxruntime_target_platform STREQUAL "ARM64EC")
+      message(FATAL_ERROR
+              "DAWN_USE_AGILITY_SDK does not support Windows ARM32 or ARM64EC. "
+              "Use an x86, x64, or ARM64 target.")
+    endif()
+    if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK requires the Dawn D3D12 backend.")
+    endif()
+    if (onnxruntime_USE_EP_API_ADAPTERS)
+      # Plugin EP packages cannot guarantee that the Agility SDK runtime DLLs are deployed
+      # next to the host executable.
+      message(FATAL_ERROR
+              "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_USE_EP_API_ADAPTERS=ON (plugin EP build). "
+              "It is intended for local development builds only.")
+    endif()
+  endif()
+
   # TODO: the following code is used to disable building Dawn using vcpkg temporarily
   # until we figure out how to resolve the packaging pipeline failures
   #
@@ -653,6 +778,12 @@ if (onnxruntime_USE_WEBGPU)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(DAWN_SUPPORTS_CXX_MODULES OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      if (NOT onnxruntime_USE_EXTERNAL_DAWN AND NOT onnxruntime_DISABLE_RTTI)
+        # ORT derives from dawn::platform::Platform to configure Dawn's worker pool.
+        # Match ORT's RTTI setting so Dawn emits the base class typeinfo required by the subclass.
+        set(DAWN_ENABLE_RTTI ON CACHE BOOL "" FORCE)
+      endif()
+
       if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
         set(DAWN_BUILD_MONOLITHIC_LIBRARY SHARED CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
@@ -780,8 +911,7 @@ if (onnxruntime_USE_WEBGPU)
           # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
           #   Dawn only overrides the DXC output directory for Debug and Release configs. This causes
           #   build failures when using multi-config generators (like Visual Studio) with RelWithDebInfo
-          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>,
-          #   and the copy_dxil_dll target copies dxil.dll to a different location.
+          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>.
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
@@ -825,7 +955,37 @@ if (onnxruntime_USE_WEBGPU)
       )
     endif()
 
+    if (DAWN_USE_AGILITY_SDK)
+      # Set Dawn's expected Chromium CIPD layout before configuring Dawn. The SDK
+      # package is populated below, before any Dawn target is compiled.
+      if (FETCHCONTENT_BASE_DIR)
+        set(ONNXRUNTIME_DAWN_SRC_DIR "${FETCHCONTENT_BASE_DIR}/dawn-src")
+      else()
+        set(ONNXRUNTIME_DAWN_SRC_DIR "${CMAKE_BINARY_DIR}/_deps/dawn-src")
+      endif()
+      set(DAWN_AGILITY_SDK_DIR "${ONNXRUNTIME_DAWN_SRC_DIR}/third_party/agility-sdk"
+          CACHE PATH "Directory containing the D3D12 Agility SDK" FORCE)
+      message(STATUS "Dawn Agility SDK directory: ${DAWN_AGILITY_SDK_DIR}")
+    endif()
+
     onnxruntime_fetchcontent_makeavailable(dawn)
+
+    if (DAWN_USE_AGILITY_SDK)
+      onnxruntime_fetchcontent_declare(
+        dawn_agility_sdk
+        URL ${DEP_URL_dawn_agility_sdk}
+        URL_HASH SHA1=${DEP_SHA1_dawn_agility_sdk}
+        SOURCE_DIR "${DAWN_AGILITY_SDK_DIR}/src"
+        EXCLUDE_FROM_ALL
+      )
+      onnxruntime_fetchcontent_makeavailable(dawn_agility_sdk)
+      if (NOT EXISTS "${DAWN_AGILITY_SDK_DIR}/src/build/native/include/d3d12.h")
+        message(FATAL_ERROR
+                "The Agility SDK package does not contain build/native/include/d3d12.h: "
+                "${DAWN_AGILITY_SDK_DIR}/src")
+      endif()
+    endif()
+  endif()
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -929,103 +1089,81 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
   endif()
-  if(onnxruntime_USE_VCPKG AND NOT ANDROID)
-    # Consume the 1DS SDK from the vcpkg port "cpp-client-telemetry", which exposes the
-    # MSTelemetry::mat target with its include directories and transitive dependencies
-    # (curl/nlohmann-json/sqlite3/zlib) already wired up via vcpkg. None of the FetchContent
-    # workarounds below are needed on this path.
+  set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE OFF)
+  if(onnxruntime_USE_VCPKG AND NOT ANDROID AND NOT TARGET MSTelemetry::mat)
+    # The telemetry manifest feature installs this package. Keep it required so a broken vcpkg
+    # integration cannot silently switch dependency models within a vcpkg build.
     find_package(MSTelemetry CONFIG REQUIRED)
+  endif()
+  if(onnxruntime_USE_VCPKG AND TARGET MSTelemetry::mat AND NOT ANDROID)
+    message(STATUS "Telemetry: using the vcpkg MSTelemetry::mat package")
+    set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
   else()
+    set(_ort_requested_apple_architectures "${CMAKE_OSX_ARCHITECTURES}")
+
     # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
     # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
     # HttpClient_Android and its Java bridge.
-    # The 1DS SDK reads these generic option() names from its own CMakeLists. Nothing else in ORT's
-    # build reads them, so set them and leave them (no save/restore). Turn off the SDK's tests and the
-    # optional modules whose source may be absent from the release archive; ORT uses the C++ API directly.
-    set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
-    set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
-    set(BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
-    set(BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
-    set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
-    set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+    # Use cpp_client_telemetry's canonical build options. The SDK keeps its
+    # build policy and dependency selection local to 1DS.
+    set(MATSDK_BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
+    set(MATSDK_BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
+    set(MATSDK_BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
+    set(MATSDK_BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+    set(MATSDK_BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+    set(MATSDK_BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
+    set(MATSDK_BUILD_CDS OFF CACHE BOOL "Disable 1DS CDS module" FORCE)
+    set(MATSDK_BUILD_LIVEEVENTINSPECTOR OFF CACHE BOOL "Disable 1DS live event inspector" FORCE)
+    set(MATSDK_BUILD_SIGNALS OFF CACHE BOOL "Disable 1DS signals module" FORCE)
+    set(MATSDK_BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
+    set(MATSDK_BUILD_AZMON OFF CACHE BOOL "Disable 1DS Azure Monitor module" FORCE)
+    set(MATSDK_BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
+    set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+    set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
+    set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    set(MATSDK_DISABLE_LOGGING ON CACHE BOOL "Compile internal 1DS logging out" FORCE)
+    if(APPLE)
+      set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
+    endif()
+    set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      set(MATSDK_CURL_PROVIDER FETCH CACHE STRING "Build the SDK's pinned curl with mbedTLS" FORCE)
+    else()
+      set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use the platform HTTP transport" FORCE)
+    endif()
+    if(APPLE)
+      set(MATSDK_SQLITE_PROVIDER SYSTEM CACHE STRING "Use Apple's system SQLite" FORCE)
+      set(MATSDK_ZLIB_PROVIDER SYSTEM CACHE STRING "Use Apple's system libz" FORCE)
+    else()
+      set(MATSDK_SQLITE_PROVIDER MINIMAL CACHE STRING "Build the SDK's minimal private SQLite" FORCE)
+      set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Build the SDK's private zlib" FORCE)
+    endif()
     # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
     # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
     set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build 1DS SDK as static library" FORCE)
 
-    # The 1DS SDK CMakeLists.txt expects specific variables on Apple platforms.
-    # For iOS: We set BUILD_IOS=YES so the 1DS SDK skips its CURL dependency
-    # (iOS uses NSURLSession instead). We disable FORCE_RESET_OSX_DEPLOYMENT_TARGET
-    # and provide IOS_DEPLOYMENT_TARGET to prevent the SDK from clearing cmake's
-    # deployment target or adding empty -miphoneos-version-min flags.
-    # The SDK's internal xcodebuild call may fail (license issues), but cmake's
-    # toolchain already provides the correct sysroot via CMAKE_OSX_SYSROOT.
-    if(APPLE)
-      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        set(BUILD_IOS YES CACHE BOOL "Tell 1DS SDK this is an iOS build" FORCE)
-        set(FORCE_RESET_OSX_DEPLOYMENT_TARGET NO CACHE BOOL "Don't let 1DS SDK clear deployment target" FORCE)
-        if(NOT DEFINED IOS_DEPLOYMENT_TARGET)
-          set(IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}" CACHE STRING "iOS deployment target for 1DS SDK" FORCE)
-        endif()
-        if(NOT DEFINED IOS_ARCH)
-          set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
-          if(NOT IOS_ARCH)
-            set(IOS_ARCH "arm64" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
-          endif()
-        endif()
-        if(NOT DEFINED IOS_PLAT)
-          string(TOLOWER "${CMAKE_OSX_SYSROOT}" IOS_SYSROOT_LOWER)
-          if(IOS_SYSROOT_LOWER MATCHES "iphonesimulator")
-            set(IOS_PLAT "iphonesimulator" CACHE STRING "iOS platform for 1DS SDK" FORCE)
-          else()
-            set(IOS_PLAT "iphoneos" CACHE STRING "iOS platform for 1DS SDK" FORCE)
-          endif()
-        endif()
-      else()
-        if(NOT DEFINED MAC_ARCH)
-          set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
-          if(NOT MAC_ARCH)
-            set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
-          endif()
-        endif()
-      endif()
-    endif()
+    # Android uses the Java transport; all other source builds use the SDK's
+    # canonical Apple/system or fetched mbedTLS transport selection.
+    set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
-    # The FetchContent fallback relies on ORT's patch for correct Apple/static behavior
-    # (source-root include fix, Apple mobile legacy dependency handling, and portable
-    # Apple static packaging). Require the patch tool instead of silently producing a
-    # broken or non-relocatable package when it is unavailable.
-    if(NOT Patch_FOUND)
-      message(FATAL_ERROR
-        "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool. "
-        "Install 'patch' or, for non-Android builds, use --use_vcpkg so MSTelemetry::mat is provided by the "
-        "vcpkg port.")
-    endif()
-    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
-      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
-    # Tell the SDK (via its patched lib/CMakeLists.txt) to build sqlite3 and zlib from its vendored
-    # sources instead of linking imported/system libs. Needed on iOS (the vendored zlib headers rename
-    # symbols to act_z_*, so system zlib cannot satisfy them) and for static non-Apple packages
-    # (imported targets like SQLite::SQLite3 / ZLIB::ZLIB cannot be installed into ORT's export set, so
-    # find_package(onnxruntime) against a static install would otherwise fail on a missing dependency).
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR (NOT APPLE AND NOT onnxruntime_BUILD_SHARED_LIB))
-      set(MATSDK_BUNDLE_VENDORED_DEPS ON)
-    endif()
-    if(ANDROID)
-      # The outer vcpkg toolchain would otherwise make the SDK auto-enable its vcpkg mode, which
-      # selects HttpClient_Curl instead of the Java-backed Android transport.
-      set(MATSDK_USE_VCPKG_DEPS OFF CACHE BOOL "Use the 1DS Android Java transport" FORCE)
-    endif()
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
-      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT onnxruntime_BUILD_SHARED_LIB)
+      # curl's imported mbedTLS helper is not exported with ORT's static package.
+      get_target_property(_ort_curl_link_libraries libcurl_static INTERFACE_LINK_LIBRARIES)
+      list(FILTER _ort_curl_link_libraries EXCLUDE REGEX "CURL::mbedtls")
+      set_target_properties(libcurl_static PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${_ort_curl_link_libraries}")
+      target_link_libraries(libcurl_static PRIVATE mbedtls)
+    endif()
     if(ANDROID)
-      unset(MATSDK_USE_VCPKG_DEPS CACHE)
+      target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
     endif()
 
     if(ANDROID)
@@ -1059,20 +1197,35 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
 
     if(TARGET mat)
-      # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find
-      # its bundled nlohmann/, sqlite/, and zlib/ headers. When built via FetchContent, CMAKE_SOURCE_DIR
-      # points to ORT's root instead. Fix by adding the actual source dir as an include path.
-      target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
-      # The SDK's bundled sqlite3_bundled/zlib_bundled targets (built for Android, iOS, and non-Apple
-      # static packages via MATSDK_BUNDLE_VENDORED_DEPS) expose their vendored header dirs as PUBLIC
-      # includes with build-tree paths, which mat picks up to compile. install(EXPORT) rejects a
-      # build/source-tree include path on an exported target, so scope them to the build only.
-      foreach(_ort_bundled_dep sqlite3_bundled zlib_bundled)
-        if(TARGET ${_ort_bundled_dep})
-          get_target_property(_ort_bundled_inc ${_ort_bundled_dep} INTERFACE_INCLUDE_DIRECTORIES)
-          if(_ort_bundled_inc)
-            set_target_properties(${_ort_bundled_dep} PROPERTIES
-              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_bundled_inc}>")
+      if(TARGET sqlite3_bundled)
+        # 1DS uses sqlite only for its narrow offline-event store. Keep the previous vcpkg
+        # size reductions and extension-loading hardening on the bundled replacement.
+        target_compile_definitions(sqlite3_bundled PRIVATE
+          SQLITE_OMIT_LOAD_EXTENSION
+          SQLITE_OMIT_DEPRECATED
+          SQLITE_OMIT_UTF16
+          SQLITE_OMIT_PROGRESS_CALLBACK
+          SQLITE_OMIT_SHARED_CACHE
+          SQLITE_OMIT_GET_TABLE
+          SQLITE_OMIT_COMPLETE
+          SQLITE_OMIT_TCL_VARIABLE
+          SQLITE_DQS=0
+          SQLITE_DEFAULT_MEMSTATUS=0
+          SQLITE_DEFAULT_FOREIGN_KEYS=0
+        )
+      endif()
+      foreach(_ort_apple_dep mat sqlite3_bundled zlib_bundled)
+        if(TARGET ${_ort_apple_dep})
+          if(APPLE AND _ort_requested_apple_architectures)
+            set_target_properties(${_ort_apple_dep} PROPERTIES
+              OSX_ARCHITECTURES "${_ort_requested_apple_architectures}"
+              XCODE_ATTRIBUTE_ARCHS "${_ort_requested_apple_architectures}")
+          endif()
+          get_target_property(_ort_apple_inc
+            ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
+          if(_ort_apple_inc)
+            set_target_properties(${_ort_apple_dep} PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_apple_inc}>")
           endif()
         endif()
       endforeach()
@@ -1085,15 +1238,22 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
         $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
         $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
       )
-      # The 1DS SDK's iOS path calls xcodebuild to find the sysroot, which can fail (license not
-      # accepted, missing tools) and leave CMAKE_OSX_SYSROOT empty in its scope. Force the correct
-      # sysroot on mat and the bundled C archives it links via compile options.
-      if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND CMAKE_OSX_SYSROOT)
+      # Vendored 1DS dependencies emit unavoidable narrowing warnings under Apple's warning policy.
+      # Keep the warning enabled for ORT sources while suppressing it only for third-party targets.
+      if(APPLE)
         foreach(_ort_mat_tgt mat sqlite3_bundled zlib_bundled)
           if(TARGET ${_ort_mat_tgt})
-            target_compile_options(${_ort_mat_tgt} PRIVATE "-isysroot" "${CMAKE_OSX_SYSROOT}")
+            target_compile_options(${_ort_mat_tgt} PRIVATE -Wno-shorten-64-to-32)
           endif()
         endforeach()
+        if(TARGET sqlite3_bundled)
+          target_compile_options(sqlite3_bundled PRIVATE -Wno-ambiguous-macro)
+        endif()
+      endif()
+      if(TARGET sqlite3_bundled
+         AND CMAKE_C_COMPILER_ID STREQUAL "GNU"
+         AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+        target_compile_options(sqlite3_bundled PRIVATE -Wno-error=stringop-overread)
       endif()
     endif()
 

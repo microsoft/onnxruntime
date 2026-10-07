@@ -19,6 +19,9 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+
+#include <algorithm>
+
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention_v2.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/flash_attention/fmha_flash_attention.h"
 
@@ -199,6 +202,17 @@ FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(int num_heads,
 
 bool FusedMHARunnerFP16v2::IsSupported(int sm, int head_size, int sequence_length,
                                        bool enable_flash_attention) {
+#if !USE_TRT_FUSED_ATTENTION
+  ORT_UNUSED_PARAMETER(sm);
+  ORT_UNUSED_PARAMETER(head_size);
+  ORT_UNUSED_PARAMETER(sequence_length);
+  ORT_UNUSED_PARAMETER(enable_flash_attention);
+  return false;
+#else
+  if (head_size <= 0 || head_size > kFusedMhaMaxHeadSize) {
+    return false;
+  }
+
   bool use_flash = enable_flash_attention && sequence_length >= kMinSequenceLengthFlashAttention;
   if (use_flash && has_flash_attention_kernel(sm, head_size)) {
     return true;
@@ -219,6 +233,21 @@ bool FusedMHARunnerFP16v2::IsSupported(int sm, int head_size, int sequence_lengt
   // Normal (not flash) fused kernel supports sequence length up to 384.
   constexpr int max_sequence_length = 384;
   return sequence_length <= max_sequence_length;
+#endif
+}
+
+bool FusedMHARunnerFP16v2::IsAnySupportedHeadSize(int sm,
+                                                  int max_head_size,
+                                                  int sequence_length,
+                                                  bool enable_flash_attention) {
+  const int search_limit = std::min(max_head_size, kFusedMhaMaxHeadSize);
+  for (int head_size = 1; head_size <= search_limit; ++head_size) {
+    if (IsSupported(sm, head_size, sequence_length, enable_flash_attention)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 void FusedMHARunnerFP16v2::Run(int batch_size,

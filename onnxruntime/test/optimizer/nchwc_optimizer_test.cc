@@ -4,6 +4,7 @@
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/nchwc_transformer.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
@@ -12,6 +13,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include <array>
 #include <cmath>
 
 #include "gtest/gtest.h"
@@ -236,6 +238,61 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 
 #ifndef DISABLE_CONTRIB_OPS
 
+TEST(NchwcOptimizerTests, BinaryInputsWithUnexpectedRankAreNotTransformed) {
+  if (MlasNchwcGetBlockSize() <= 1) {
+    return;
+  }
+
+  const auto run_case = [](bool mutate_first_operand) {
+    SCOPED_TRACE(mutate_first_operand ? "unexpected rank on first operand" : "unexpected rank on later operand");
+    std::unordered_map<std::string, int> domain_to_version{
+        {kOnnxDomain, 14}, {kMSDomain, 1}, {kMSNchwcDomain, 1}};
+    Model model("nchwc_rank_mismatch", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    NchwcTestHelper helper(model.MainGraph());
+
+    auto* first_input = helper.MakeInput<float>({1, 3, 3, 3});
+    auto* first_conv = helper.MakeIntermediate();
+    helper.AddConvNode(first_input, first_conv, {3, 3, 1, 1});
+
+    auto* later_input = helper.MakeInput<float>({1, 3, 3, 3});
+    auto* later_conv = helper.MakeIntermediate();
+    helper.AddConvNode(later_input, later_conv, {3, 3, 1, 1});
+
+    Node& add_node = helper.AddNode("Add", {first_conv, later_conv}, {helper.MakeOutput()});
+    const NodeIndex add_node_index = add_node.Index();
+    const std::array<std::string, 2> original_add_inputs{
+        add_node.InputDefs()[0]->Name(), add_node.InputDefs()[1]->Name()};
+
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+    ONNX_NAMESPACE::TensorShapeProto unexpected_rank_shape;
+    for (const int64_t dim : {1, 3, 3}) {
+      unexpected_rank_shape.add_dim()->set_dim_value(dim);
+    }
+    (mutate_first_operand ? first_conv : later_conv)->SetShape(unexpected_rank_shape);
+
+    for (auto& node : model.MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+
+    NchwcTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(model.MainGraph(), modified, DefaultLoggingManager().DefaultLogger()));
+    ASSERT_TRUE(modified);
+
+    const Node* untransformed_add = model.MainGraph().GetNode(add_node_index);
+    ASSERT_NE(untransformed_add, nullptr);
+    EXPECT_EQ(untransformed_add->OpType(), "Add");
+    ASSERT_EQ(untransformed_add->InputDefs().size(), 2u);
+    EXPECT_EQ(untransformed_add->InputDefs()[0]->Name(), original_add_inputs[0]);
+    EXPECT_EQ(untransformed_add->InputDefs()[1]->Name(), original_add_inputs[1]);
+  };
+
+  run_case(true);
+  run_case(false);
+}
+
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
@@ -311,6 +368,103 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
   std::vector<std::string> activation_op_types{"", "Relu", "LeakyRelu", "Clip"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
+  }
+}
+
+// ONNX decomposes HardSwish(x) into Mul(x, HardSigmoid(x)). Verify that the
+// NchwcTransformer reconstructs and fuses this diamond into the preceding NCHWc
+// convolution as a HardSwish activation, removing the HardSigmoid and Mul.
+TEST(NchwcOptimizerTests, ConvNchwcHardSwishFusion) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({16, 64, 28, 28});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* hardsigmoid_output_arg = helper.MakeIntermediate();
+    auto* hardswish_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {128, 64, 3, 3});
+
+    // HardSigmoid with the HardSwish gate params (alpha=1/6, beta=1/2).
+    auto& hardsigmoid_node = helper.AddNode("HardSigmoid", {conv_output_arg}, {hardsigmoid_output_arg});
+    hardsigmoid_node.AddAttribute("alpha", 1.0f / 6.0f);
+    hardsigmoid_node.AddAttribute("beta", 0.5f);
+
+    // Mul(conv_output, HardSigmoid(conv_output)) == HardSwish(conv_output).
+    helper.AddNode("Mul", {conv_output_arg, hardsigmoid_output_arg}, {hardswish_output_arg});
+
+    // Trailing conv so the Mul output is a normal intermediate (as in real
+    // MobileNetV3 blocks) rather than a graph output.
+    helper.AddConvNode(hardswish_output_arg, output_arg, {64, 128, 1, 1});
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    // The HardSigmoid and Mul must be fused away into the conv activation.
+    EXPECT_EQ(op_to_count["HardSigmoid"], 0);
+    EXPECT_EQ(op_to_count["Mul"], 0);
+  };
+
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
+// A HardSigmoid that does NOT use the HardSwish gate params, or is not part of a
+// Mul(x, HardSigmoid(x)) diamond, must be fused as a plain HardSigmoid activation
+// (not misidentified as HardSwish).
+TEST(NchwcOptimizerTests, ConvNchwcHardSigmoidNotHardSwish) {
+  // Sub-case 1: plain HardSigmoid with default params, no Mul diamond.
+  // TryFuseNchwcHardSwish rejects it at the output-edge-count check (1 consumer,
+  // not the required HardSigmoid + Mul pair), so the standard HardSigmoid
+  // activation-fusion path fires instead.
+  {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({16, 64, 28, 28});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {128, 64, 3, 3});
+      helper.AddNode("HardSigmoid", {conv_output_arg}, {output_arg});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["HardSigmoid"], 0);  // fused as HardSigmoid activation
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  }
+
+  // Sub-case 2: Mul(x, HardSigmoid(x)) diamond but with mismatched alpha (0.2,
+  // not 1/6). TryFuseNchwcHardSwish must reject it at the alpha/beta guard so
+  // the HardSigmoid is NOT rewritten as a HardSwish activation.
+  {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({16, 64, 28, 28});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* hardsigmoid_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {128, 64, 3, 3});
+
+      // alpha=0.2 (ONNX default) is NOT the HardSwish gate value (1/6).
+      auto& hardsigmoid_node = helper.AddNode("HardSigmoid", {conv_output_arg}, {hardsigmoid_output_arg});
+      hardsigmoid_node.AddAttribute("alpha", 0.2f);
+      hardsigmoid_node.AddAttribute("beta", 0.5f);
+
+      helper.AddNode("Mul", {conv_output_arg, hardsigmoid_output_arg}, {output_arg});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      // The conv has two original consumers (HardSigmoid + Mul), so the standard
+      // single-consumer activation-fusion path is also blocked. Neither HardSwish
+      // nor HardSigmoid fusion should fire; both nodes must remain.
+      EXPECT_EQ(op_to_count["HardSigmoid"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   }
 }
 

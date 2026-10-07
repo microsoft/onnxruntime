@@ -1,0 +1,102 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_head_sink
+#param m_tile
+#param seq_tile_size
+#param tile_size
+#param use_seqlen_k
+
+#use .getByOffset .setByOffset
+
+// This shader reduces partial V outputs from the fused QKV shader.
+// Each tile produced a locally-normalized V contribution. To get the
+// correct global result, we rescale each tile's contribution using
+// per-tile metadata (max, sum) with online softmax:
+//
+//   global_max = max(local_max_i for all tiles)
+//   global_sum = sum(local_sum_i * exp(local_max_i - global_max))
+//   output[h] = sum(partial_i[h] * exp(local_max_i - global_max)) / global_sum
+
+var<workgroup> tile_input: array<array<output_value_t, tile_size>, tile_size>;
+
+$MAIN {
+  let num_q_tiles = (uniforms.new_sequence_length + m_tile - 1) / m_tile;
+  // Workgroup layout: [batch_heads, num_q_tiles, num_head_size_tile]
+  let head_size_offset = (workgroup_idx % uniforms.num_head_size_tile) * tile_size;
+  let q_tile_idx = (workgroup_idx / uniforms.num_head_size_tile) % num_q_tiles;
+  let q_base = q_tile_idx * m_tile;
+  let batch_head_idx = u32(workgroup_idx / (uniforms.num_head_size_tile * num_q_tiles));
+  if (batch_head_idx >= uniforms.batch_heads) {
+    return;
+  }
+  let local_row = u32(local_idx / tile_size);
+  let local_col = local_idx % tile_size;
+  // Per-batch total_sequence_length: short batches contributed neutral metadata
+  // (-inf, 0) for tiles beyond their per-batch total, so reading only this batch's
+  // tiles ensures softmax rescaling is not skewed by garbage tiles.
+  #if use_seqlen_k
+  let batch_idx_for_seqlen = batch_head_idx / uniforms.num_heads;
+  let total_sequence_length = u32(seqlens_k[batch_idx_for_seqlen]) + 1u;
+  let num_total_seq_length_tile = (total_sequence_length + seq_tile_size - 1) / seq_tile_size;
+  #else
+  let num_total_seq_length_tile = uniforms.num_total_seq_length_tile;
+  #endif
+
+  for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+    let q_idx = q_base + m;
+    let in_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec;
+    let meta_base = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile;
+
+    // Compute global max across all tiles
+    var g_max = f32(-3.4028234663852886e+38f);
+#if has_head_sink
+    let head_idx_for_sink = batch_head_idx % uniforms.num_heads;
+    let sink_value = f32(head_sink[head_idx_for_sink]);
+    g_max = max(g_max, sink_value);
+#endif
+    for (var i = 0u; i < num_total_seq_length_tile; i++) {
+      g_max = max(g_max, metadata.getByOffset(meta_base + i).x);
+    }
+
+    // Compute global sum with rescaling
+    var g_sum = f32(0);
+    for (var i = 0u; i < num_total_seq_length_tile; i++) {
+      let m_value = metadata.getByOffset(meta_base + i);
+      g_sum += m_value.y * exp(m_value.x - g_max);
+    }
+#if has_head_sink
+    g_sum += exp(sink_value - g_max);
+#endif
+
+    // Accumulate rescaled partial outputs
+    var value = output_value_t(0);
+    if (head_size_offset + local_col < uniforms.head_size_vec) {
+      for (var r = 0u; r < num_total_seq_length_tile; r += tile_size) {
+        if (r + local_row < num_total_seq_length_tile) {
+          let tile_meta = metadata.getByOffset(meta_base + r + local_row);
+          let rescale_f32 = tile_meta.y * exp(tile_meta.x - g_max) / g_sum;
+          value += input.getByOffset(in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col) * output_value_t(output_element_t(rescale_f32));
+        }
+      }
+    }
+
+    tile_input[local_row][local_col] = value;
+    workgroupBarrier();
+
+    if (local_idx < tile_size && head_size_offset + local_idx < uniforms.head_size_vec) {
+      value = output_value_t(0);
+      for (var i = 0u; i < tile_size; i++) {
+        value += tile_input[i][local_idx];
+      }
+      let head_idx = batch_head_idx % uniforms.num_heads;
+      let batch_idx = batch_head_idx / uniforms.num_heads;
+      let output_id = batch_idx * uniforms.new_sequence_length * uniforms.num_heads * uniforms.head_size_vec +
+                      q_idx * uniforms.num_heads * uniforms.head_size_vec +
+                      head_idx * uniforms.head_size_vec +
+                      head_size_offset + local_idx;
+      output.setByOffset(output_id, value);
+    }
+    workgroupBarrier();
+  }
+}

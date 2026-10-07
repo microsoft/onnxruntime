@@ -157,7 +157,8 @@ class SessionScope {
  public:
   friend class KernelScope;
   SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler)
-      : session_state_(session_state), run_profiler_(run_profiler)
+      : session_state_(session_state),
+        run_profiler_(run_profiler)
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
         ,
         frame_(frame)
@@ -642,6 +643,11 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
         node_stats_recorder->ReportNodeStats(name, node_stats);
       }
 #endif
+#endif
+#if !defined(ORT_MINIMAL_BUILD)
+      if (status.IsOK()) {
+        status = kernel_ctx.RecordKernelUsage();
+      }
 #endif
     }
     ORT_CATCH(const OnnxRuntimeException& ort_ex) {

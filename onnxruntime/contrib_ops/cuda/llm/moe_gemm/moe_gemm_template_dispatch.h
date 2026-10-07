@@ -127,7 +127,7 @@ struct genericMoeGemmKernelLauncher {
                   "Specialized for half, float");
 #endif
 
-    static_assert(cutlass::platform::is_same<T, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value
+    static_assert(cutlass::platform::is_same<T, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value || (std::is_same_v<WeightType, cutlass::uint2b_t> && (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<GemmOutputType, T> && std::is_same_v<arch, cutlass::arch::Sm80> && QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY)
 #if defined(ENABLE_FP4)
                   || cutlass::platform::is_same<WeightType, __nv_fp4_e2m1>::value
 #endif
@@ -608,11 +608,11 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getConfigs() const {
 
 // Whether wfp4a16 should use the SM80 fused-dequant grouped GEMM (vs the SM90 TMA WS path).
 // The ``use_sm80_fp4`` flag is the decision captured by the QMoE op constructor and pushed into
-// the runner via setUseSm80Fp4(); we only add the hard architectural guard that the SM80 path is
-// for Ampere through pre-Blackwell. No environment is read here, so inference-time config selection
+// the runner via setUseSm80Fp4(); we only add the hard architectural guard that the SM80 path
+// needs Ampere tensor cores. No environment is read here, so inference-time config selection
 // is independent of the live environment.
 inline bool moeUseSm80Fp4(int sm, bool use_sm80_fp4) {
-  return use_sm80_fp4 && sm >= 80 && sm < 120;
+  return use_sm80_fp4 && sm >= 80;
 }
 
 template <typename T, typename WeightType, typename OutputType, typename ScaleBiasType>
@@ -644,7 +644,7 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getAmpereConfigs(int sm
     return {};
   }
   // wfp4a16 is Ampere-valid (for the SM80 fused-dequant path) but only offer SM80 configs when the
-  // SM80 FP4 path is enabled (default-on for sm < 120); otherwise the default SM90 TMA WS path is used.
+  // SM80 FP4 path is enabled; otherwise the SM90 TMA WS path is used.
   if constexpr (use_wfp4a16) {
     if (!moeUseSm80Fp4(sm, use_sm80_fp4)) {
       return {};
@@ -664,39 +664,39 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
   static constexpr auto simt_only_flag = std::is_same<T, float>::value ? CutlassGemmConfig::SIMT_ONLY : CutlassGemmConfig::NONE;
   const int max_split_k = 1;
   const int grouped_gemm_flag = CutlassGemmConfig::GROUPED_GEMM;
-  const int config_sm = use_wfp4a16 && sm >= 120 ? 90 : sm;
-  const int enable_blackwell = config_sm >= 100 ? CutlassGemmConfig::BLACKWELL : CutlassGemmConfig::NONE;
-  const int enable_hopper = config_sm == 90 ? CutlassGemmConfig::HOPPER : CutlassGemmConfig::NONE;
+  const int enable_blackwell = sm >= 100 ? CutlassGemmConfig::BLACKWELL : CutlassGemmConfig::NONE;
+  const int enable_hopper = sm == 90 ? CutlassGemmConfig::HOPPER : CutlassGemmConfig::NONE;
   static constexpr auto fp8_only_flag = use_fp8 ? CutlassGemmConfig::FP8_ONLY : CutlassGemmConfig::NONE;
   static constexpr auto fp4_only_flag = (use_fp4 || use_wfp4afp8) ? CutlassGemmConfig::FP4_ONLY : CutlassGemmConfig::NONE;
   auto config_type_param = static_cast<CutlassGemmConfig::CandidateConfigTypeParam>(weight_only_flag | simt_only_flag | grouped_gemm_flag | enable_blackwell | enable_hopper | fp8_only_flag | fp4_only_flag);
   ORT_ENFORCE(!(enable_blackwell && enable_hopper), "Blackwell and hopper flags are mutually exclusive");
 
   // When the SM80 FP4 path is enabled, wfp4a16 uses the Ampere fused-dequant grouped GEMM only;
-  // do not offer any TMA WS configs.
+  // do not offer any TMA WS configs. The WFP4A16 TMA WS kernel uses sm_90a WGMMA, so it can run
+  // only on SM90, and only when it is compiled (MSVC builds omit it). Return no configs instead of
+  // throwing because the runner constructor queries configs before setUseSm80Fp4() is applied.
   if constexpr (use_wfp4a16) {
-    if (moeUseSm80Fp4(sm, use_sm80_fp4)) {
+    if (moeUseSm80Fp4(sm, use_sm80_fp4) || sm != 90 || !isTmaWarpSpecializedGroupedGemmCompiledForSm(sm)) {
+      ORT_LLM_LOG_DEBUG("wfp4a16 TMA WS grouped MoE GEMM is not used for this SM or build");
       return {};
     }
   }
 
-  if (!isTmaWarpSpecializedGroupedGemmCompiledForSm(config_sm)) {
-    if constexpr (use_w4afp8 || use_wfp4a16 || use_wfp4afp8 || use_wfp8a16 ||
-                  use_fp4) {
-      ORT_THROW(
-          "TMA WS grouped MoE GEMM for SM%d is not compiled, and this QMoE configuration has no SM80 fallback",
-          config_sm);
+  if (!isTmaWarpSpecializedGroupedGemmCompiledForSm(sm)) {
+    if constexpr (use_w4afp8 || use_wfp4afp8 || use_wfp8a16 || use_fp4) {
+      ORT_THROW("TMA WS grouped MoE GEMM for SM", sm,
+                " is not compiled, and this QMoE configuration has no SM80 fallback");
     }
     ORT_LLM_LOG_DEBUG(
         "TMA WS grouped MoE GEMM is not compiled for this SM, not selecting any TMA WS implementations");
     return {};
   }
 
-  if (config_sm >= 100 && config_sm < 120 && !kernels::cutlass_kernels::isValidBlackwellMOESpecialisation<T, WeightType>()) {
+  if (sm >= 100 && sm < 120 && !kernels::cutlass_kernels::isValidBlackwellMOESpecialisation<T, WeightType>()) {
     ORT_LLM_LOG_DEBUG("Blackwell is not supported for this configuration, not selecting any TMA WS implementations");
     return {};
   }
-  if ((config_sm == 120 || config_sm == 121) && !kernels::cutlass_kernels::isValidSM120MOESpecialisation<T, WeightType>()) {
+  if ((sm == 120 || sm == 121) && !kernels::cutlass_kernels::isValidSM120MOESpecialisation<T, WeightType>()) {
     ORT_LLM_LOG_DEBUG(
         "Blackwell SM120 is not supported for this configuration, not selecting any TMA WS implementations");
     return {};
@@ -706,7 +706,7 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
     return {};
   }
 
-  std::vector<cutlass_extensions::CutlassGemmConfig> tma_ws_configs = kernels::cutlass_kernels::get_candidate_configs(config_sm, max_split_k, config_type_param);
+  std::vector<cutlass_extensions::CutlassGemmConfig> tma_ws_configs = kernels::cutlass_kernels::get_candidate_configs(sm, max_split_k, config_type_param);
   return tma_ws_configs;
 }
 
@@ -720,8 +720,7 @@ bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::isTmaWarpSpecializ
 template <typename T, typename WeightType, typename OutputType, typename ScaleBiasType>
 bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::supportsTmaWarpSpecialized() const {
   ORT_LLM_LOG_ENTRY();
-  const int config_sm = use_wfp4a16 && sm_ >= 120 ? 90 : sm_;
-  if (!isTmaWarpSpecializedGroupedGemmCompiledForSm(config_sm)) {
+  if (!isTmaWarpSpecializedGroupedGemmCompiledForSm(sm_)) {
     return false;
   }
 
@@ -729,7 +728,7 @@ bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::supportsTmaWarpSpe
     if (moeUseSm80Fp4(sm_, use_sm80_fp4_)) {
       return false;  // SM80 fused-dequant grouped GEMM path; not TMA warp specialized.
     }
-    return sm_ >= 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>();
+    return sm_ == 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>();
   } else {
     return (sm_ == 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>()) ||
            (sm_ >= 100 && sm_ < 120 && kernels::cutlass_kernels::isValidBlackwellMOESpecialisation<T, WeightType>()) ||

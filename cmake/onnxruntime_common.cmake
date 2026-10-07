@@ -24,6 +24,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
     "${ONNXRUNTIME_ROOT}/core/quantization/*.h"
@@ -62,6 +64,7 @@ else()
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_context.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_no_throw.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sampling.h"
         )
@@ -91,16 +94,23 @@ else()
 endif()
 
 # platform-specific device discovery files
-if (WIN32)
+if (onnxruntime_DISABLE_DEVICE_DISCOVERY)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
+elseif (WIN32)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
 elseif (LINUX)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/drm_device_discovery.h"
          "${ONNXRUNTIME_ROOT}/core/platform/linux/pci_device_discovery.h")
 elseif (APPLE)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/emscripten/device_discovery.cc")
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
@@ -170,7 +180,13 @@ endif()
 
 if (onnxruntime_USE_TELEMETRY)
   if(WIN32)
-    set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+    set(ONNXRUNTIME_TELEMETRY_CONFIG_HEADER
+        "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+    if(EXISTS "${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
+      set_target_properties(
+        onnxruntime_common
+        PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
+    endif()
   else()
     target_compile_definitions(onnxruntime_common PRIVATE USE_POSIX_TELEMETRY)
     # Optional tenant-token override written into a generated header in the build tree (kept off the
@@ -261,16 +277,41 @@ endif()
 
 # Link telemetry library (1DS SDK) for non-Windows platforms
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
-  if(TARGET MSTelemetry::mat)
-    # vcpkg port (cpp-client-telemetry): the imported target propagates its include
+  if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
+    # The vcpkg package target propagates its include
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
   elseif(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
+      # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
+      # not namespace static symbols; static ORT consumers must not co-link another curl/mbedTLS copy.
+      string(CONCAT _onnxruntime_telemetry_build_exclude_libs
+        "LINKER:--exclude-libs="
+        "$<TARGET_FILE_NAME:libcurl_static>:"
+        "$<TARGET_FILE_NAME:mbedtls>:"
+        "$<TARGET_FILE_NAME:mbedx509>:"
+        "$<TARGET_FILE_NAME:mbedcrypto>:"
+        "$<TARGET_FILE_NAME:everest>:"
+        "$<TARGET_FILE_NAME:p256m>")
+      string(CONCAT _onnxruntime_telemetry_install_exclude_libs
+        "LINKER:--exclude-libs="
+        "$<TARGET_FILE_NAME:onnxruntime::libcurl_static>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedtls>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedx509>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedcrypto>:"
+        "$<TARGET_FILE_NAME:onnxruntime::everest>:"
+        "$<TARGET_FILE_NAME:onnxruntime::p256m>")
+      target_link_options(onnxruntime_common INTERFACE
+        "$<BUILD_INTERFACE:${_onnxruntime_telemetry_build_exclude_libs}>"
+        "$<INSTALL_INTERFACE:${_onnxruntime_telemetry_install_exclude_libs}>")
+    endif()
     # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
     # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in
     # NullObjects.hpp / LogManagerProvider.hpp). Re-add the SDK include dirs as SYSTEM to exempt them.
@@ -283,34 +324,31 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
     # Platform-specific system libraries required only for the Apple static-package path.
     if(APPLE AND NOT onnxruntime_BUILD_SHARED_LIB)
-      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        # iOS links the bundled sqlite3/zlib archives (shipped below); only the frameworks the SDK's
-        # Apple PAL needs are added here.
-        target_link_libraries(onnxruntime_common PRIVATE
-          "-framework CoreFoundation"
-          "-framework Security"
-        )
-      else()
-        target_link_libraries(onnxruntime_common PRIVATE
-          "-framework CoreFoundation"
-          "-framework Security"
-          z
-          sqlite3
-        )
-      endif()
+      target_link_libraries(onnxruntime_common PRIVATE
+        "-framework CoreFoundation"
+        "-framework Security"
+        "-lz"
+        "-lsqlite3"
+      )
     endif()
 
     if (NOT onnxruntime_BUILD_SHARED_LIB)
-      # Static package: ship mat and the bundled static archives it links so the exported package is
-      # self-contained. The bundled deps are optional -- which exist depends on platform (the vendored
-      # sqlite3/zlib built for Android, iOS, and non-Apple static via MATSDK_BUNDLE_VENDORED_DEPS) and
-      # may fold into libmat.a in a future SDK version -- so install each only if its target exists.
+      # Static package: ship mat and the static archives it links so the exported package is
+      # self-contained. These targets are optional because their availability depends on platform.
       install(TARGETS mat EXPORT ${PROJECT_NAME}Targets
               ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
               LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
               RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
               FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-      foreach(_mat_bundled_dep sqlite3_bundled zlib_bundled)
+      foreach(_mat_bundled_dep
+          sqlite3_bundled
+          zlib_bundled
+          libcurl_static
+          mbedtls
+          mbedx509
+          mbedcrypto
+          everest
+          p256m)
         if(TARGET ${_mat_bundled_dep})
           install(TARGETS ${_mat_bundled_dep} EXPORT ${PROJECT_NAME}Targets
                   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
@@ -319,6 +357,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
   else()
     message(FATAL_ERROR "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
+  endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Every supported Linux telemetry path uses static curl/mbedTLS. Select a readable CA bundle
+    # at runtime instead of embedding a build-machine path in the curl configuration.
+    target_compile_definitions(onnxruntime_common PRIVATE ORT_TELEMETRY_USES_STATIC_CURL)
   endif()
 endif()
 

@@ -47,3 +47,13 @@ void OrtSingletonData::CleanupHook(void* arg) {
 OrtSingletonData::OrtObjects* OrtSingletonData::GetOrtObjects() {
   return ort_objects.load(std::memory_order_acquire);
 }
+
+void OrtSingletonData::RetainOrtObjects() {
+  std::lock_guard<std::mutex> lock(ort_singleton_mutex);
+  ref_count++;
+}
+
+void OrtSingletonData::ReleaseOrtObjects() {
+  std::lock_guard<std::mutex> lock(ort_singleton_mutex);
+  ref_count--;
+}

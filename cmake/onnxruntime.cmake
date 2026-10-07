@@ -37,6 +37,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_type_conversion.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -119,6 +120,17 @@ if(onnxruntime_BUILD_SHARED_LIB)
 
     if (_weak_frameworks)
       string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
+    endif()
+
+    if(onnxruntime_USE_TELEMETRY)
+      set(APPLE_SYSTEM_LIBRARIES "\\\"z\\\", \\\"sqlite3\\\"")
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
+      else()
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
+      endif()
     endif()
 
     set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
@@ -245,7 +257,7 @@ if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
 endif()
 
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()
 
@@ -257,7 +269,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
-  onnxruntime_providers
+  ${onnxruntime_providers_target}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph
@@ -297,10 +309,15 @@ else()
   )
 endif()
 
-# In a static build the onnxruntime target is an INTERFACE library, which rejects
-# the PRIVATE keyword.
+# Delay-load flags only apply to the actual onnxruntime.dll. In a static build the onnxruntime target is an
+# INTERFACE library, which rejects the PRIVATE keyword ("may only set INTERFACE properties on INTERFACE targets"),
+# and delay-loading is meaningless for a static lib anyway. Consumers that need delay-load in a static build (e.g.
+# the WebGPU plugin EP DLL) apply onnxruntime_DELAYLOAD_FLAGS to their own target.
 if(WIN32 AND onnxruntime_BUILD_SHARED_LIB)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+  if(onnxruntime_DELAYLOAD_FLAGS)
+    target_link_libraries(onnxruntime PRIVATE delayimp.lib)
+  endif()
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT WIN32)

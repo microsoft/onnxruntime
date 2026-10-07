@@ -19,9 +19,12 @@
 # --------------------------------------------------------------------------
 
 import os
+import subprocess
+import sys
 import unittest
 
 import numpy
+import pytest
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
@@ -174,6 +177,8 @@ def create_nvfp4_moe_onnx_graph(
     fc2_global_scale,  # [E] float32
     block_size=NVFP4_BLOCK_SIZE,
     use_swiglu=False,
+    fc1_bias=None,
+    fc2_bias=None,
 ):
     """Build ONNX model with QMoE operator in NVFP4 mode."""
     inputs = [
@@ -181,10 +186,10 @@ def create_nvfp4_moe_onnx_graph(
         "router_probs",  # 1
         "fc1_weights",  # 2: uint8 packed FP4
         "fc1_scales",  # 3: Float8E4M3FN NVFP4 block scales
-        "",  # 4: fc1_bias
+        "fc1_bias" if fc1_bias is not None else "",  # 4
         "fc2_weights",  # 5: uint8 packed FP4
         "fc2_scales",  # 6: Float8E4M3FN NVFP4 block scales
-        "",  # 7: fc2_bias
+        "fc2_bias" if fc2_bias is not None else "",  # 7
         "",  # 8:  fc3_weights
         "",  # 9:  fc3_scales
         "",  # 10: fc3_bias
@@ -236,6 +241,11 @@ def create_nvfp4_moe_onnx_graph(
     for name, tensor in [("fc1_global_scale", fc1_global_scale), ("fc2_global_scale", fc2_global_scale)]:
         vals = tensor.cpu().float().flatten().tolist()
         initializers.append(helper.make_tensor(name, TensorProto.FLOAT, list(tensor.shape), vals, raw=False))
+
+    for name, tensor in (("fc1_bias", fc1_bias), ("fc2_bias", fc2_bias)):
+        if tensor is not None:
+            raw = tensor.contiguous().view(torch.uint8).cpu().numpy().tobytes()
+            initializers.append(helper.make_tensor(name, onnx_dtype, list(tensor.shape), raw, raw=True))
 
     graph_inputs = [
         helper.make_tensor_value_info("input", onnx_dtype, [num_tokens, hidden_size]),
@@ -308,6 +318,13 @@ class TestQMoENVFP4(unittest.TestCase):
         use_swiglu=False,
         block_size=NVFP4_BLOCK_SIZE,
         gemv_mode=None,
+        disable_prepacking=False,
+        input_scale=1.0,
+        atol_override=None,
+        router_logits_override=None,
+        row_tile_size=0,
+        use_bias=False,
+        rtol_override=0.0,
     ):
         self._skip_if_no_fp4()
 
@@ -349,6 +366,9 @@ class TestQMoENVFP4(unittest.TestCase):
         fc1_deq_all = torch.stack(fc1_deq, dim=0)  # [E, N, K]
         fc2_deq_all = torch.stack(fc2_deq, dim=0)  # [E, N, K]
 
+        fc1_bias = torch.randn(num_experts, fc1_n, device=device, dtype=torch_dtype) * 0.5 if use_bias else None
+        fc2_bias = torch.randn(num_experts, fc2_n, device=device, dtype=torch_dtype) * 0.5 if use_bias else None
+
         onnx_model = create_nvfp4_moe_onnx_graph(
             num_tokens=num_tokens,
             hidden_size=hidden_size,
@@ -364,10 +384,15 @@ class TestQMoENVFP4(unittest.TestCase):
             fc2_global_scale=fc2_global_scale,
             block_size=block_size,
             use_swiglu=use_swiglu,
+            fc1_bias=fc1_bias,
+            fc2_bias=fc2_bias,
         )
 
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        opts.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
+        if disable_prepacking:
+            opts.add_session_config_entry("session.disable_prepacking", "1")
         # gemv_mode toggles the fused FP4 GEMV decode path (read once in the QMoE op ctor during
         # session creation): "1" forces it on, "0" forces the dequant fallback, None leaves the
         # default. Restore the previous value right after the session is built.
@@ -389,8 +414,12 @@ class TestQMoENVFP4(unittest.TestCase):
                 else:
                     os.environ["ORT_ENABLE_FP4_GEMV"] = prev_gemv_env
 
-        input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype)
-        router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
+        input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype) * input_scale
+        if router_logits_override is None:
+            router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
+        else:
+            router_logits = torch.tensor(router_logits_override, device=device, dtype=torch_dtype)
+            self.assertEqual(tuple(router_logits.shape), (num_tokens, num_experts))
         output_tensor = torch.zeros(num_tokens, hidden_size, device=device, dtype=torch_dtype)
 
         iobinding = session.io_binding()
@@ -409,6 +438,7 @@ class TestQMoENVFP4(unittest.TestCase):
         iobinding.synchronize_outputs()
 
         ort_output = output_tensor.clone()
+        self.assertTrue(torch.isfinite(ort_output).all().item(), "NVFP4 MoE output contains NaN or infinity")
 
         ref_output = self._compute_reference(
             input_tensor,
@@ -419,6 +449,8 @@ class TestQMoENVFP4(unittest.TestCase):
             top_k,
             use_swiglu,
             torch_dtype,
+            fc1_bias,
+            fc2_bias,
         )
 
         max_diff = (ort_output.float() - ref_output.float()).abs().max().item()
@@ -432,6 +464,8 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
         atol = 0.15 if torch_dtype == torch.bfloat16 else 0.12
+        if atol_override is not None:
+            atol = atol_override
         # The native block-scaled FP4xFP4 CUTLASS prefill kernel (Blackwell / SM120+, taken
         # only when the per-run token count reaches the prefill threshold) additionally
         # quantizes the *activations* to 4-bit NVFP4 (block-16 with E4M3 block scales). The
@@ -442,10 +476,12 @@ class TestQMoENVFP4(unittest.TestCase):
         # error far above this (order 1.0+), so gross regressions are still caught.
         if _routes_native_fp4_prefill(num_tokens):
             atol = 0.25 if torch_dtype == torch.float16 else 0.28
+        tolerance = atol + rtol_override * ref_output.float().abs().max().item()
         self.assertLess(
             max_diff,
-            atol,
-            f"NVFP4 MoE parity check failed: max_diff={max_diff:.6f} > atol={atol}",
+            tolerance,
+            f"NVFP4 MoE parity check failed: max_diff={max_diff:.6f} > tolerance={tolerance:.6f} "
+            f"(atol={atol}, normwise rtol={rtol_override})",
         )
 
         return ort_output
@@ -514,7 +550,18 @@ class TestQMoENVFP4(unittest.TestCase):
         self._assert_invalid_nvfp4_model(hidden_size=64, inter_size=72)
 
     @staticmethod
-    def _compute_reference(input_tensor, router_logits, fc1_deq, fc2_deq, num_experts, top_k, use_swiglu, torch_dtype):
+    def _compute_reference(
+        input_tensor,
+        router_logits,
+        fc1_deq,
+        fc2_deq,
+        num_experts,
+        top_k,
+        use_swiglu,
+        torch_dtype,
+        fc1_bias=None,
+        fc2_bias=None,
+    ):
         """Reference MoE forward pass using dequantized weights."""
         num_tokens = input_tensor.shape[0]
         hidden_size = input_tensor.shape[1]
@@ -538,8 +585,12 @@ class TestQMoENVFP4(unittest.TestCase):
             w2 = fc2_deq[e].float()
 
             h = tokens @ w1.T
+            if fc1_bias is not None:
+                h = h + fc1_bias[e].float()
             h = swiglu_ref(h) if use_swiglu else F.silu(h)
             h = h @ w2.T
+            if fc2_bias is not None:
+                h = h + fc2_bias[e].float()
             h = h * routing_weights[top_x, idx, None]
 
             output.index_add_(0, top_x, h)
@@ -554,7 +605,7 @@ class TestQMoENVFP4(unittest.TestCase):
         self._run_nvfp4_moe_test(
             hidden_size=64,
             inter_size=64,
-            num_experts=4,
+            num_experts=16,
             top_k=2,
             num_tokens=32,
             onnx_dtype=TensorProto.FLOAT16,
@@ -631,11 +682,52 @@ class TestQMoENVFP4(unittest.TestCase):
 
     # ================================================================
     # Fused FP4 GEMV decode fast path (block size 16). The GEMV support window requires
-    # n, k >= 512 and expanded rows (num_tokens * top_k) <= 8, plus SwiGLU fusion, so these
+    # n, k >= 512 and expanded rows (num_tokens * top_k) <= 64, plus SwiGLU fusion, so these
     # decode-shaped SwiGLU cases route through the NVFP4 GEMV kernel (gemv_mode="1"). The
     # gemv_mode="0" companion forces the dequant fallback on the identical shape; both must
     # match the exact dequantized reference.
+    #
+    # "MTP" below is multi-token prediction (speculative decode): verifying N speculative
+    # tokens runs N+1 tokens at once, so a top_k=8 model expands to (N+1)*8 rows.
     # ================================================================
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 16, 3),
+            (TensorProto.FLOAT16, 16, 10),
+            (TensorProto.BFLOAT16, 16, 10),
+            (TensorProto.FLOAT16, 512, 2),
+            (TensorProto.BFLOAT16, 512, 2),
+            (TensorProto.FLOAT16, 512, 10),
+            (TensorProto.BFLOAT16, 512, 10),
+        ]
+    )
+    def test_nvfp4_gemv_unfused_expert_maps(self, onnx_dtype, num_experts, top_k):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=num_experts,
+            top_k=top_k,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    @parameterized.expand([(1,), (6,)])
+    @unittest.skipUnless(os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") == "1", "Opt-in large NVFP4 QMoE test")
+    def test_nvfp4_gemv_qwen38_official_shape(self, num_tokens):
+        self._run_nvfp4_moe_test(
+            hidden_size=2560,
+            inter_size=640,
+            num_experts=512,
+            top_k=10,
+            num_tokens=num_tokens,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+            input_scale=0.05,
+        )
 
     def test_nvfp4_fp16_gemv_decode_swiglu(self):
         self._run_nvfp4_moe_test(
@@ -644,6 +736,18 @@ class TestQMoENVFP4(unittest.TestCase):
             num_experts=4,
             top_k=2,
             num_tokens=2,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_qwen_flash_decode_shape(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=2560,
+            inter_size=640,
+            num_experts=16,
+            top_k=10,
+            num_tokens=1,
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="1",
@@ -661,6 +765,103 @@ class TestQMoENVFP4(unittest.TestCase):
             gemv_mode="1",
         )
 
+    @parameterized.expand([("fp16", TensorProto.FLOAT16), ("bf16", TensorProto.BFLOAT16)])
+    def test_nvfp4_gemv_decode_swiglu_bias(self, _name, onnx_dtype):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=4,
+            top_k=2,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            use_bias=True,
+        )
+
+    @parameterized.expand(
+        [
+            (test_name, raw_layout)
+            for test_name in (
+                "test_nvfp4_fp16_gemv_decode_swiglu",
+                "test_nvfp4_fp16_gemv_qwen_flash_decode_shape",
+                "test_nvfp4_gemv_decode_swiglu_bias_0_fp16",
+                "test_nvfp4_gemv_decode_swiglu_bias_1_bf16",
+                "test_nvfp4_gemv_512_experts",
+            )
+            for raw_layout in (None, "0", "1")
+        ]
+    )
+    def test_nvfp4_gemv_route_debug(self, test_name, raw_layout):
+        # Run in a fresh process because QMoE reads the debug and GEMV env switches when the
+        # session constructs the kernel. Each case must use GEMV, including Qwen's top_k=10
+        # prologue and both bias-enabled raw-kernel instantiations.
+        self._skip_if_no_fp4()
+        env = dict(os.environ)
+        env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
+        env["ORT_ENABLE_FP4_GEMV"] = "1"
+        if raw_layout is None:
+            env.pop("ORT_NVFP4_GEMV_RAW_LAYOUT", None)
+        else:
+            env["ORT_NVFP4_GEMV_RAW_LAYOUT"] = raw_layout
+        env["ORT_FP4_GEMV_AUTOTUNE"] = "1" if raw_layout == "1" else "0"
+        env["ORT_FP4_GEMV_AUTOTUNE_LOG"] = "1"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "-v",
+                f"{os.path.splitext(os.path.basename(__file__))[0]}.TestQMoENVFP4.{test_name}",
+            ],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 0, output)
+        self.assertIn("Operator=QMoE", output)
+        expected_layout = "raw" if raw_layout == "1" else "prepacked"
+        self.assertIn(f"Route=fp4_gemv_{expected_layout}", output)
+        self.assertNotIn("FP4 GEMV autotune", output)
+
+    def test_nvfp4_gemv_512_experts(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=512,
+            top_k=10,
+            num_tokens=1,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_scales_weights_before_multiply(self):
+        # Overflow guard for accumulate_column_tile(): it must apply the group scale to the
+        # decoded weight *before* multiplying by the activation. FP4 codes reach 6.0 and the
+        # group scales are well below 1, so multiplying first can overflow FP16 (max 65504)
+        # even when the scaled product is representable. SwiGLU clamps can hide nonfinite
+        # intermediates, so output parity is required in addition to the helper's finiteness check.
+        # At input_scale=1e4, FP16 scale/weight rounding can move nearly cancelled FC1 gates
+        # across zero; FP32 accumulation does not remove this difference from the FP32 reference.
+        # Use a normwise 32-epsilon budget with a small absolute guard: SwiGLU bounds the
+        # outputs, so their magnitude is not proportional to input_scale.
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=4,
+            top_k=2,
+            num_tokens=1,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+            input_scale=10000.0,
+            rtol_override=32 * torch.finfo(torch.float16).eps,
+        )
+
     def test_nvfp4_fp16_gemv_disabled_swiglu(self):
         self._run_nvfp4_moe_test(
             hidden_size=512,
@@ -671,6 +872,184 @@ class TestQMoENVFP4(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="0",
+        )
+
+    def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=64,
+            inter_size=64,
+            num_experts=4,
+            top_k=2,
+            num_tokens=4,
+            onnx_dtype=TensorProto.FLOAT16,
+            gemv_mode="1",
+            disable_prepacking=True,
+        )
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 2),
+            (TensorProto.BFLOAT16, 2),
+            (TensorProto.FLOAT16, 3),
+        ]
+    )
+    def test_nvfp4_gemv_mtp_swiglu(self, onnx_dtype, num_tokens):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_mtp_fallback_swiglu(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=3,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="0",
+        )
+
+    def test_nvfp4_fp16_gemv_expanded_rows_at_window_limit(self):
+        # 8 tokens x top_k 8 = 64 expanded rows, exactly kMaxProfiledExpandedRowsFp4, so this
+        # is the largest shape is_moe_gemv_fp4_supported still accepts onto the GEMV path.
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=8,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_expanded_rows_above_window_limit(self):
+        # 9 tokens x top_k 8 = 72 > kMaxProfiledExpandedRowsFp4, so the GEMV path is rejected
+        # even with gemv_mode="1". Both sessions must dequantize the retained raw initializer;
+        # compare them to the Torch reference and directly to each other.
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=9,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+        )
+        enabled_fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        raw_fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="0")
+        max_diff = (enabled_fallback.float() - raw_fallback.float()).abs().max().item()
+        self.assertLess(
+            max_diff,
+            0.12,
+            f"NVFP4 enabled fallback diverged from raw-layout fallback: max_diff={max_diff:.6f}",
+        )
+
+    def test_nvfp4_fp16_gemv_long_k_tiling(self):
+        # Two gaps in one case.
+        # (a) Tiling: every other GEMV test uses k = 512 < kDefaultCtaK (StepK 8 * 128 threads),
+        #     which only exercises the "idle threads" clause of Fp4MoeGemvDefaultConfig. k = 1024
+        #     reaches the second clause, where the choice is driven by blocks-per-SM instead; 64
+        #     expanded rows keep the grid large enough to actually take the 64-thread branch.
+        # (b) Accumulation order: the GEMV keeps even-k and odd-k partial sums apart until the
+        #     epilogue, so it does not sum a column in the same order as the dequant fallback.
+        #     Comparing the two ORT outputs directly at twice the K of the other parity test
+        #     bounds that reordering drift where it has the most terms to cancel against.
+        shape = dict(
+            hidden_size=1024,
+            inter_size=1024,
+            num_experts=8,
+            top_k=8,
+            num_tokens=8,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+        )
+        gemv_out = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        fallback_out = self._run_nvfp4_moe_test(**shape, gemv_mode="0")
+        max_diff = (gemv_out.float() - fallback_out.float()).abs().max().item()
+        print(f"NVFP4 GEMV-vs-fallback parity (k=1024): FP16 SwiGLU max_diff={max_diff:.6f}")
+        self.assertLess(
+            max_diff,
+            0.12,
+            f"NVFP4 fused GEMV diverged from dequant fallback at k=1024: max_diff={max_diff:.6f}",
+        )
+
+    def test_nvfp4_gemv_default_tiling_optout(self):
+        # ORT_FP4_GEMV_DEFAULT_TILING=0 restores the fixed kDefault tiling. The kernel latches
+        # it in a function-local static on first use, so it can only be exercised in a fresh
+        # process; re-run one GEMV test there with the opt-out set.
+        self._skip_if_no_fp4()
+        env = dict(os.environ)
+        env["ORT_FP4_GEMV_DEFAULT_TILING"] = "0"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "-v",
+                f"{os.path.splitext(os.path.basename(__file__))[0]}.TestQMoENVFP4.test_nvfp4_fp16_gemv_long_k_tiling",
+            ],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"ORT_FP4_GEMV_DEFAULT_TILING=0 run failed:\n{proc.stdout}\n{proc.stderr}",
+        )
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16,),
+            (TensorProto.BFLOAT16,),
+        ]
+    )
+    def test_nvfp4_gemv_skip_expand_parity(self, onnx_dtype):
+        router_logits = [
+            [0.1, 3.0, -2.0, 1.0, -3.0, 2.0, -4.0, 4.0],
+            [3.0, -4.0, 4.0, -3.0, -2.0, -1.0, 1.0, 2.0],
+            [-4.0, 1.0, 3.0, -3.0, 2.0, 4.0, -2.0, -1.0],
+        ]
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=4,
+            num_tokens=3,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            router_logits_override=router_logits,
+        )
+        env_name = "ORT_DISABLE_FP4_GEMV_SKIP_EXPAND"
+        previous_value = os.environ.get(env_name)
+        try:
+            os.environ[env_name] = "1"
+            expanded_output = self._run_nvfp4_moe_test(**shape)
+            os.environ[env_name] = "0"
+            skip_expand_output = self._run_nvfp4_moe_test(**shape)
+        finally:
+            if previous_value is None:
+                os.environ.pop(env_name, None)
+            else:
+                os.environ[env_name] = previous_value
+
+        # Each helper call has already checked its output against the dequantized PyTorch
+        # reference. Exact equality here isolates the activation-row addressing difference.
+        self.assertTrue(
+            torch.equal(expanded_output, skip_expand_output),
+            "FP4 GEMV skip-expand output differs from the expanded-activation path",
         )
 
     def test_nvfp4_fp16_gemv_vs_fallback_parity(self):
@@ -698,6 +1077,80 @@ class TestQMoENVFP4(unittest.TestCase):
             0.12,
             f"NVFP4 fused GEMV diverged from dequant fallback: max_diff={max_diff:.6f}",
         )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("use_swiglu", [False, True])
+@pytest.mark.parametrize("row_tile_size", [0, 2])
+@pytest.mark.parametrize("disable_prepacking", [False, True])
+def test_nvfp4_compact_routing_and_bias(onnx_dtype, use_swiglu, row_tile_size, disable_prepacking):
+    selected_experts = [(30, 7), (1, 23), (1, 23), (30, 7), (0, 24), (30, 7), (28, 2)]
+    logits = numpy.full((len(selected_experts), 32), -20.0, dtype=numpy.float32)
+    for row, selected in enumerate(selected_experts):
+        logits[row, selected[0]] = 8.0
+        logits[row, selected[1]] = 7.0
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=64,
+        inter_size=64,
+        num_experts=32,
+        top_k=2,
+        num_tokens=len(selected_experts),
+        onnx_dtype=onnx_dtype,
+        use_swiglu=use_swiglu,
+        gemv_mode="0",
+        row_tile_size=row_tile_size,
+        disable_prepacking=disable_prepacking,
+        use_bias=True,
+        router_logits_override=logits,
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+def test_nvfp4_compact_decode_scratch(capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    logits = numpy.arange(512, dtype=numpy.float32).reshape(1, 512) / 128 - 2
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=64,
+        inter_size=64,
+        num_experts=512,
+        top_k=10,
+        num_tokens=1,
+        onnx_dtype=TensorProto.FLOAT16,
+        use_swiglu=True,
+        gemv_mode="0",
+        disable_prepacking=True,
+        router_logits_override=logits,
+    )
+    assert "QMoE NVFP4 ExpertCapacity=10 DequantWeightBytes=245760" in capfd.readouterr().out
+
+
+@pytest.mark.skipif(
+    os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") != "1" or not torch.cuda.is_available() or not has_fp4_qmoe,
+    reason="Opt-in official 512-expert NVFP4 memory test",
+)
+@pytest.mark.parametrize("num_tokens", [1, 17])
+def test_nvfp4_compact_qwen38_official_shape(num_tokens, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    logits = numpy.stack(
+        [numpy.roll(numpy.arange(512, dtype=numpy.float32), row * 13) / 128 - 2 for row in range(num_tokens)]
+    )
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=2560,
+        inter_size=640,
+        num_experts=512,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=TensorProto.FLOAT16,
+        use_swiglu=True,
+        gemv_mode="0",
+        input_scale=0.05,
+        disable_prepacking=True,
+        router_logits_override=logits,
+    )
+    capacity = num_tokens * 10
+    weight_bytes = capacity * (2 * 640 * 2560 + 2560 * 640) * 2
+    assert f"QMoE NVFP4 ExpertCapacity={capacity} DequantWeightBytes={weight_bytes}" in capfd.readouterr().out
 
 
 if __name__ == "__main__":

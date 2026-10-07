@@ -18,8 +18,9 @@ Related documentation:
 3. [Prefill Bottleneck - Weight Dequantization](#3-prefill-bottleneck---weight-dequantization)
 4. [Optimization - Vectorized Dequantization Kernel](#4-optimization---vectorized-dequantization-kernel)
 5. [Decode GEMV - Memory-Level Parallelism](#5-decode-gemv---memory-level-parallelism)
-6. [Benchmark Commands](#6-benchmark-commands)
-7. [Lessons](#7-lessons)
+6. [Decode GEMV - Tensor Cores](#6-decode-gemv---tensor-cores)
+7. [Benchmark Commands](#7-benchmark-commands)
+8. [Lessons](#8-lessons)
 
 ---
 
@@ -234,6 +235,11 @@ Below `N = 4096` the wider tiles leave too few warps to fill the GPU, and for
 `M > 1` the extra live registers (accumulators plus pre-issued loads) cost more
 than the added parallelism returns. Both measured slower, hence the guards.
 
+> Superseded for `M > 1` by section 6.4, which re-tunes `ColsPerWarp` / `Unroll`
+> for the speculative-decode tiles. Because `Unroll` changes the K chunk each
+> lane accumulates first, the `M > 1` dispatch there is not bit-identical to
+> `<RowsPerWarp, 1, 1>` (last-ulp only; the accumulation is still FP32).
+
 ### 5.4 Results (H200, `M = 1`, CUDA graph, us, includes 0.68 us node overhead)
 
 | Shape (N x K) | cuBLAS FP16 | GEMV before | GEMV after | vs before | vs cuBLAS |
@@ -253,7 +259,132 @@ preferred on speed alone.
 
 ---
 
-## 6. Benchmark Commands
+## 6. Decode GEMV - Tensor Cores
+
+Section 5 tuned memory-level parallelism at `M = 1`. At `M = 4` - the width of a
+speculative-decode / MTP verify forward - the kernel is limited by something
+else. With `RowsPerWarp = 4` a lane executes roughly 240 instructions per 32
+weight bytes, only 128 of which are the FMAs that do useful work, and effective
+bandwidth falls from about 2.35 TB/s at `M = 1` to about 1.25 TB/s at `M = 4`.
+More ILP cannot fix that; the dot products have to leave the FMA pipe.
+
+### 6.1 Design
+
+`MatMulBlockScaledFp8MmaGemvKernel` uses `mma.m16n8k16` with FP32 accumulation.
+The operand assignment is the key decision:
+
+| mma operand | fed from | why it fits |
+|---|---|---|
+| `A[16, 16]` row-major | weight `[16 output cols][16 k]` | `B` is `[N, K]` row-major |
+| `B[16, 8]` col-major | activation `[16 k][8 rows]` | `A` is `[M, K]` row-major |
+| `D[16, 8]` | `y[16 output cols][8 rows]` | |
+
+So the mma "M" extent is the output column count and the mma "N" extent is `M`.
+At `M = 4` half the mma N lanes are idle, which is irrelevant: the kernel is
+bound by weight traffic and instruction issue, and both improve about 10x per
+weight byte.
+
+The naive fragment load is badly coalesced - a lane needs bytes
+`{2t, 2t+1, 2t+8, 2t+9}` of a row, which spreads a warp across 16 rows x 16
+bytes and over-fetches every 32-byte sector 2x. The fix is to **permute the K
+axis**. K is a reduction axis, so any permutation applied to *both* operands
+leaves the result unchanged. Inside a 64-element K window the permutation used is
+
+```
+mma k-slot (of step j)  ->  actual k
+  2t,   2t+1                 16t + 4j,     16t + 4j + 1
+  2t+8, 2t+9                 16t + 4j + 2, 16t + 4j + 3
+```
+
+so lane `(g = lane >> 2, t = lane & 3)` loads one contiguous `uint4` of weight
+bytes `[16t, 16t + 16)` and the matching 32 activation bytes, four lanes cover 64
+contiguous bytes of one weight row, and that single `uint4` feeds all four mma
+steps.
+
+16 columns per warp gives about 8x fewer warps than the FMA kernel, which alone
+costs more in lost memory-level parallelism than the instruction saving is worth.
+`KSplit` warps per block therefore take a strided share of the K windows and are
+reduced through shared memory at the end. `KSplit = 8` for `N >= 8192` (the
+column count already fills the grid) and 16 otherwise.
+
+Preconditions: SM80+, `K % 64 == 0`, `K >= 256`, `block_size % 64 == 0`, `M <= 8`.
+Otherwise the FMA kernel runs unchanged. `ORT_FP8_GEMV_MMA=0` forces the FMA
+kernel for A/B testing in a single binary.
+
+### 6.2 Accuracy
+
+Not bit-identical to the FMA kernel (different summation order), but not less
+accurate either. E4M3 to FP16 is lossless, E4M3 to BF16 is lossless, FP16 x FP16
+products are exact in FP32, and the mma accumulates in FP32 exactly as the FMA
+path does. Scored against an FP64 CPU reference on the shapes below, the maximum
+error is *identical* for the two kernels (2-4e-4, i.e. pure FP16 output
+rounding).
+
+### 6.3 Results (H200, us, standalone, `fp8_gemv_m4_bench.cu`)
+
+| Shape (N x K) | M | cuBLAS FP16 | FMA kernel | mma kernel | vs FMA | vs cuBLAS |
+|---|---|---|---|---|---|---|
+| 8192 x 2048 | 1 | 11.0 | 6.3 | **5.1** | 1.23x | 2.16x |
+| 4096 x 2048 | 1 | 8.4 | 4.8 | **4.0** | 1.20x | 2.09x |
+| 2048 x 4096 | 1 | 9.0 | 5.1 | **4.2** | 1.21x | 2.13x |
+| 512 x 2048 | 1 | 6.7 | 3.3 | **3.1** | 1.06x | 2.12x |
+| 8192 x 2048 | 4 | 11.0 | 9.8 | **5.2** | 1.87x | 2.10x |
+| 4096 x 2048 | 4 | 8.5 | 6.9 | **4.1** | 1.69x | 2.09x |
+| 2048 x 4096 | 4 | 8.5 | 8.0 | **4.4** | 1.82x | 1.92x |
+| 512 x 2048 | 4 | 6.8 | 4.7 | **3.3** | 1.43x | 2.08x |
+| 8192 x 2048 | 8 | 10.9 | 17.5 | **5.7** | 3.09x | 1.93x |
+| 2048 x 4096 | 8 | 8.5 | 13.0 | **4.5** | 2.90x | 1.90x |
+
+The mma kernel is faster at every measured `M`, so it is preferred whenever its
+preconditions hold rather than only for `M > 1`. Note also that the FMA kernel
+crosses over and loses to cuBLAS at `M = 8`, while the mma kernel stays about 1.9x
+ahead.
+
+End to end on a 40-layer Qwen3.6-35B-A3B NVFP4 MTP decode (130 FP8 matmul nodes
+per step, `M = 4`), CUDA graphs on:
+
+| | FMA kernel | mma kernel |
+|---|---|---|
+| FP8 GEMV kernel time | 1.052 ms/step | **0.713 ms/step** |
+| total kernel time | 7.368 ms/step | **7.021 ms/step** |
+| wall | 9.80 ms/step | **9.54 ms/step** |
+
+No other kernel family moved. This optimization is kept.
+
+### 6.4 FMA fallback re-tune for `M > 1`
+
+The FMA kernel still runs when the tensor-core preconditions do not hold (pre-SM80,
+`K < 256`, `K % 64 != 0` or `block_size % 64 != 0`), so the `M > 1` tiles were
+re-tuned there as well. Widening `A` to FP32 is now hoisted out of the column loop
+(one widening per row instead of one per row/column pair), which makes `ColsPerWarp`
+profitable at `M > 1` for a second reason beyond memory-level parallelism:
+
+| Condition | Config |
+|---|---|
+| `2 <= M <= 2, N >= 8192` | `<2, 4, 1>` |
+| `2 <= M <= 2, N >= 2048` | `<2, 2, 1>` |
+| `2 <= M <= 2` otherwise | `<2, 1, 2>` |
+| `3 <= M <= 4, N >= 4096` | `<4, 4, 1>` |
+| `3 <= M <= 4, N >= 2048` | `<4, 2, 2>` |
+| `3 <= M <= 4` otherwise | `<4, 1, 2>` |
+| `M > 4` | `<8, 1, 1>` |
+
+Measured on H200 (us, `M = 4`, versus the previous `<R, 1, 1>` and cuBLAS FP16):
+
+| Shape (N x K) | cuBLAS | `<4, 1, 1>` | tuned |
+|---|---|---|---|
+| 8192 x 2048 | 10.9 | 13.7 | **9.7** (`<4, 4, 1>`) |
+| 4096 x 2048 | 8.3 | 8.1 | **6.9** (`<4, 4, 1>`) |
+| 2048 x 4096 | 8.3 | 9.0 | **7.9** (`<4, 2, 2>`) |
+| 512 x 2048 | 7.3 | 5.0 | **4.6** (`<4, 1, 2>`) |
+
+The hoisting itself is bit-identical (the per-lane `fmaf` sequence is unchanged),
+but a different `Unroll` changes which K chunk a lane accumulates first, so the
+re-tuned dispatch is a last-ulp change relative to `<RowsPerWarp, 1, 1>`.
+
+---
+
+## 7. Benchmark Commands
 
 The commands below use `ORT_REPO` and `ORT_BUILD` so they can be copied without
 editing developer-specific paths. Set them once:
@@ -307,7 +438,7 @@ CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
 
 ---
 
-## 7. Lessons
+## 8. Lessons
 
 - The prefill path is memory bound on weight dequantization, not on the GEMM;
   latency there scales with `N*K` and is independent of `M`.
@@ -339,3 +470,91 @@ CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
 - The FP8 weight-only GEMV is 1.5-2.0x faster than cuBLAS FP16 at `M = 1`, so
   quantizing a projection is a decode latency win, not just a footprint win. The
   ordering reverses by `M = 4`.
+
+
+## 9. Opt-in DeepGEMM W8A8 on SM90
+
+Measured on NVIDIA H200, CUDA 13.0.48, driver 580.105.08, with the existing
+DeepGEMM dependency introduced by PR #32122. Both configurations use the same
+Release CUDA provider binary; only `ORT_FP8_MATMUL_DEEPGEMM` changes. Inputs use
+`block_size=128`, a scalar activation scale, bias, and seed 123.
+
+The profiler's `--cuda-graph` mode captures 16 warmed operator calls on a user
+stream and measures each graph replay with CUDA events. The following numbers
+are medians of 50 replays after 10 warmup calls, divided by 16. They include
+activation quantization, scale preparation, output clearing, GEMM, conversion,
+and bias. Model/session creation, host dispatch, and reference computation are
+outside the timed interval. These are warm-cache, fixed-shape operator results,
+not end-to-end model latency; the 80 MiB `16384 x 5120` weight also exceeds H200 L2.
+
+| Activation | M | N | K | Flag off (us) | Flag on (us) | Speedup |
+|---|---:|---:|---:|---:|---:|---:|
+| fp16 | 64 | 4096 | 4096 | 27.79 | 17.33 | 1.60x |
+| fp16 | 128 | 4096 | 4096 | 33.65 | 19.81 | 1.70x |
+| fp16 | 64 | 11008 | 4096 | 68.08 | 31.74 | 2.15x |
+| fp16 | 128 | 11008 | 4096 | 71.92 | 42.58 | 1.69x |
+| fp16 | 128 | 16384 | 5120 | 122.85 | 63.85 | 1.92x |
+| bf16 | 64 | 4096 | 4096 | 27.78 | 17.23 | 1.61x |
+| bf16 | 128 | 4096 | 4096 | 33.37 | 19.77 | 1.69x |
+| bf16 | 64 | 11008 | 4096 | 68.73 | 31.73 | 2.17x |
+| bf16 | 128 | 11008 | 4096 | 71.96 | 42.72 | 1.68x |
+| bf16 | 128 | 16384 | 5120 | 122.65 | 63.76 | 1.92x |
+
+Decode cases M=4 and M=32 keep the existing GEMV and were within 1% between
+flag settings. M=512 and M=2048 keep dequantization plus cuBLAS. Small weights
+also keep that fallback: N=512 or 2048 with K=2048 showed helper overhead
+outweighing savings when forced through the native kernel. The enabled range
+is therefore limited to M<=128, N>=2048, at least 8 MiB of FP8 weights, and the
+alignment and activation-scale requirements documented in
+[the operator guide](matmul_block_scaled_fp8.md#61-opt-in-sm90-deepgemm-w8a8-path).
+Larger M was deliberately excluded after measurements showed regressions for
+some shapes, including M=512 and M=2048 with N=K=4096.
+
+Reproduce an individual row from outside the source package directory:
+
+```bash
+cd /tmp
+for enabled in 0 1; do
+  PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 ORT_FP8_MATMUL_DEEPGEMM=$enabled \
+    python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
+    --op fp8 --m 128 --n 4096 --k 4096 --activation-dtype bf16 \
+    --w8a8 --bias --cuda-graph --seed 123 --warmup 10 --repeat 50
+done
+```
+
+### Kernel profiling
+
+Nsight Systems 2026.1.3 with `--trace=cuda,nvtx --cuda-graph-trace=node` confirmed
+69 native `sm90_fp8_gemm_1d1d_impl` launches for the M=128, N=K=4096 probe
+(5 warmups plus four graph replays of 16 calls). It also showed the activation
+quantization/scale-fill kernel, weight-scale packing, output clearing, and
+conversion/bias. The separate activation-scale fill launch was fused into
+quantization during tuning.
+
+For BF16, average instrumented kernel durations were approximately 10.51 us
+for DeepGEMM, 2.67 us for activation preparation, 2.34 us for scale packing,
+and 3.29 us for conversion/bias. The flag-off trace instead showed weight
+dequantization (14.47 us), cuBLAS GEMM (12.96 us), activation QDQ (3.25 us),
+and bias (2.65 us). These instrumented durations explain where work is saved;
+the uninstrumented complete-operator table is the performance comparison.
+
+### Validation
+
+- All 44 flag-off/on benchmark records passed the profiler's FP32-reference
+  accuracy check for FP16 and BF16.
+- Six focused integration tests passed on H200. They use an FP64 accumulation
+  reference, dtype-aware rounding tolerances, independent row/K-block scales,
+  changing activation and weight scales, zero scale, clipping, bias, partial M
+  tiles, K=128, bounded output scratch, fallbacks, a nondefault stream, and ORT
+  CUDA graph replay. A subprocess asserts the native dispatch log so a build
+  without DeepGEMM cannot silently pass by using the fallback.
+- Compute Sanitizer memcheck passed the tile/pipeline-boundary and output-scratch
+  tests with zero errors.
+- The CUDA provider and Python binding built successfully. The operator source
+  also compiled with `USE_DEEP_GEMM` removed. Changed C++/CUDA files passed
+  clang-format; changed Python files passed ruff.
+
+Native FP8 applies scales to FP32 partial sums and has different intermediate
+rounding from dequantizing operands to FP16/BF16. These tests establish operator
+correctness within the stated tolerances; model-quality validation remains
+necessary before deployment.

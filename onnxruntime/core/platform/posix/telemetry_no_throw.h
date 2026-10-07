@@ -19,6 +19,17 @@ void ReportTelemetryFailureNoThrow(Warning& warning, const char* message) noexce
   }
 }
 
+template <typename Operation>
+bool TryTelemetryOperationNoThrow(Operation&& operation) noexcept {
+  ORT_TRY {
+    std::forward<Operation>(operation)();
+    return true;
+  }
+  ORT_CATCH(...) {
+    return false;
+  }
+}
+
 template <typename Operation, typename Warning>
 void RunTelemetryOperationNoThrow(Operation&& operation, Warning&& warning) noexcept {
   ORT_TRY {

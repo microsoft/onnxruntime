@@ -1547,6 +1547,81 @@ TEST(QLinearConvTest, Conv2D_U8U8_InvalidWeightZeroPointSize) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "filter zero point shape invalid", {}, nullptr, &execution_providers);
 }
 
+// Negative test: bias tensor must have one int32 value per output channel (M).
+TEST(QLinearConvTest, Conv2D_U8U8_InvalidBiasSize) {
+  OpTester test("QLinearConv", 10);
+
+  // 4 output channels (M=4), input: 1x2x3x3, weight: 4x2x1x1
+  std::vector<uint8_t> X_data(1 * 2 * 3 * 3, 128);
+  std::vector<uint8_t> W_data(4 * 2 * 1 * 1, 128);
+
+  test.AddInput<uint8_t>("x", {1, 2, 3, 3}, X_data);
+  test.AddInput<float>("x_scale", {}, {0.1f}, true);
+  test.AddInput<uint8_t>("x_zero_point", {}, {128}, true);
+
+  test.AddInput<uint8_t>("w", {4, 2, 1, 1}, W_data, true);
+  test.AddInput<float>("w_scale", {4}, {0.1f, 0.1f, 0.1f, 0.1f}, true);
+  test.AddInput<uint8_t>("w_zero_point", {}, {128}, true);
+
+  test.AddInput<float>("y_scale", {}, {0.5f}, true);
+  test.AddInput<uint8_t>("y_zero_point", {}, {128}, true);
+
+  // Invalid: bias has 1 value but M=4.
+  test.AddInput<int32_t>("b", {1}, {7}, true);
+
+  test.AddOutput<uint8_t>("y", {1, 4, 3, 3}, std::vector<uint8_t>(4 * 3 * 3, 128));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "bias shape invalid", {}, nullptr, &execution_providers);
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_InvalidConstantBiasSize) {
+  OpTester test("QLinearConv", 10);
+
+  test.AddInput<uint8_t>("x", {1, 4, 3, 3}, std::vector<uint8_t>(4 * 3 * 3, 1));
+  test.AddInput<float>("x_scale", {}, {1.0f}, true);
+  test.AddInput<uint8_t>("x_zero_point", {}, {0}, true);
+
+  test.AddInput<int8_t>("w", {4, 4, 3, 3}, std::vector<int8_t>(4 * 4 * 3 * 3, 0), true);
+  test.AddInput<float>("w_scale", {4}, {1.0f, 1.0f, 1.0f, 1.0f}, true);
+  test.AddInput<int8_t>("w_zero_point", {}, {0}, true);
+
+  test.AddInput<float>("y_scale", {}, {1.0f}, true);
+  test.AddInput<uint8_t>("y_zero_point", {}, {0}, true);
+  test.AddInput<int32_t>("b", {1}, {1}, true);
+  test.AddOutput<uint8_t>("y", {1, 4, 1, 1}, {0, 0, 0, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "bias shape invalid", {}, nullptr, &execution_providers);
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_RuntimeBiasPreservedWhenSymmetricWeights) {
+  OpTester test("QLinearConv", 10);
+
+  test.AddInput<uint8_t>("x", {1, 4, 3, 3}, std::vector<uint8_t>(4 * 3 * 3, 1));
+  test.AddInput<float>("x_scale", {}, {1.0f}, true);
+  test.AddInput<uint8_t>("x_zero_point", {}, {0}, true);
+
+  test.AddInput<int8_t>("w", {4, 4, 3, 3}, std::vector<int8_t>(4 * 4 * 3 * 3, 0), true);
+  test.AddInput<float>("w_scale", {4}, {1.0f, 1.0f, 1.0f, 1.0f}, true);
+  test.AddInput<int8_t>("w_zero_point", {}, {0}, true);
+
+  test.AddInput<float>("y_scale", {}, {1.0f}, true);
+  test.AddInput<uint8_t>("y_zero_point", {}, {0}, true);
+
+  // Runtime bias skips ConvSym, which bakes constant bias into column sums, but can still use
+  // the symmetric-GEMM path where bias is applied during requantization.
+  test.AddInput<int32_t>("b", {4}, {1, 2, 3, 4});
+
+  test.AddOutput<uint8_t>("y", {1, 4, 1, 1}, {1, 2, 3, 4});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Tests per-channel weight zero points with different values (the fix for the reported bug).
 TEST(QLinearConvTest, Conv2D_U8U8_PerChannelZeroPoints) {
   // TODO: Unskip when fixed #41968513
