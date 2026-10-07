@@ -31,7 +31,7 @@ static const char* const kOrtModelMetadata_EpCompatibilityInfoPrefix = "ep_compa
 // Applications can read it via SessionGetModelMetadata()/ModelMetadataLookupCustomMetadataMap(), and EPs via
 // Graph_GetModelMetadata(), e.g., to find out whether the source model is needed to create a session.
 //
-// \since Version 1.30.
+// \since Version 1.31.
 static const char* const kOrtModelMetadata_WeightlessMode = "weightless_mode";
 
 // Key for the execution provider library path (for dynamically loaded EPs)
@@ -57,24 +57,46 @@ static const char* const kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout = "g
 static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "is_virtual";
 
 // Key for the execution provider's weightless mode support on a specific device.
-// Set by the EP during GetSupportedDevices() via CreateEpDevice() metadata.
-// The app can read it via EpDevice_EpMetadata() to check the device-specific weightless modes and pick the one
-// that best fits its use case (or none at all) before calling ModelCompilationOptions_SetWeightlessMode()
-// or setting the "ep.enable_weightless_mode" session option (kOrtSessionOptionEpEnableWeightlessMode).
+// The app can read it to check device-specific weightless capability
+// before calling ModelCompilationOptions_SetWeightlessEnabled() or specifying kOrtSessionOptionEpEnableWeightlessMode.
 //
-// The value is the base-10 string representation of the bitwise OR of all the OrtWeightlessSupport values
-// supported by the EP on this device. For example:
-//  - "0": EP does not support weightless mode on this device (OrtWeightlessSupport_NONE). This is the assumed
-//         default value if this metadata key is not present.
-//  - "1": EP supports weightless mode for external initializers only (OrtWeightlessSupport_EXTERNAL_ONLY), e.g.,
-//         older hardware/driver that must transform internal constants.
-//  - "2": EP supports weightless mode for all initializers (OrtWeightlessSupport_ALL).
-//  - "3": EP supports both OrtWeightlessSupport_EXTERNAL_ONLY and OrtWeightlessSupport_ALL.
+// Possible values:
+//  - "none": EP does not support weightless mode on this device. This is the assumed default value
+//            if this metadata key is not present.
+//  - "external_only": EP supports weightless mode for external initializers only (e.g., older
+//                     hardware/driver that must transform internal constants).
+//  - "all": EP supports weightless mode for all initializers (internal and external).
 //
-// The value must match the modes returned by OrtEp::GetWeightlessSupport(). ORT logs a warning if it does not.
-//
-// \note In version 1.29 the documented values were "none", "external_only" and "all". EPs built for 1.29 may
-//       still report them, and they are equivalent to "0", "1" and "2".
+// Since version 1.31, "weightless_supported_modes" (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) describes
+// all the modes an EP supports. EPs should keep reporting this key, with the value they reported before, so that
+// applications written for earlier versions keep working. Applications should prefer the newer key when present.
 //
 // \since Version 1.29.
 static const char* const kOrtEpDevice_EpMetadataKey_WeightlessSupport = "weightless_support";
+
+// Key for all the weightless modes the execution provider supports on a specific device.
+// The app can read it to check the device-specific weightless modes and pick the one
+// that best fits its use case (or none at all) before calling ModelCompilationOptions_SetWeightlessMode()
+// or setting the "ep.enable_weightless_mode" session option (kOrtSessionOptionEpEnableWeightlessMode).
+// If this key is not present, the app falls back to "weightless_support"
+// (kOrtEpDevice_EpMetadataKey_WeightlessSupport).
+//
+// Possible values:
+//  - "none": EP does not support weightless mode on this device (OrtWeightlessSupport_NONE).
+//  - "external_only": EP supports weightless mode for external initializers only (OrtWeightlessSupport_EXTERNAL_ONLY).
+//  - "all": EP supports weightless mode for all initializers (OrtWeightlessSupport_ALL).
+//  - "all_or_external_only": EP supports both "external_only" and "all" (OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY).
+//
+// Future versions may add values. Applications should expect values they don't recognize and ignore them, i.e.,
+// not select a weightless mode based on such a value.
+//
+// For example, an EP that reported "weightless_support" = "all" before version 1.31 and now also supports
+// "external_only" keeps reporting "weightless_support" = "all" and adds
+// "weightless_supported_modes" = "all_or_external_only".
+//
+// Before creating the EP, ORT checks that the mode selected with "ep.enable_weightless_mode" is supported according to
+// this entry, or to "weightless_support" if this entry is not present. ORT also checks that the value matches the
+// one returned by OrtEp::GetWeightlessSupport() and logs a warning if it does not.
+//
+// \since Version 1.31.
+static const char* const kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes = "weightless_supported_modes";
