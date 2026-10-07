@@ -61,6 +61,47 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
   return CUDA_CALL(cudaGetLastError());
 }
 
+__global__ void PrepareCudnnBlockTableKernel(
+    const int32_t* block_table, int32_t* cudnn_block_table,
+    const int32_t* cumulative_seqlens_kv, int32_t* sequence_validity,
+    int element_count, int max_num_blocks_per_seq, int block_size) {
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= element_count) {
+    return;
+  }
+
+  const int batch = index / max_num_blocks_per_seq;
+  const int block = index % max_num_blocks_per_seq;
+  const int block_id = block_table[index];
+  cudnn_block_table[index] = block_id < 0 ? 0 : block_id;
+  const int sequence_length =
+      cumulative_seqlens_kv[batch + 1] - cumulative_seqlens_kv[batch];
+  const int live_blocks = (sequence_length + block_size - 1) / block_size;
+  if (block < live_blocks && block_id < 0) {
+    sequence_validity[batch] = 0;
+  }
+}
+
+Status LaunchPrepareCudnnBlockTable(
+    const int32_t* block_table, int32_t* cudnn_block_table,
+    const int32_t* cumulative_seqlens_kv, int32_t* sequence_validity,
+    size_t element_count, int max_num_blocks_per_seq, int block_size,
+    cudaStream_t stream) {
+  ORT_RETURN_IF_NOT(
+      element_count <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+      "block_table element count exceeds the CUDA kernel indexing limit.");
+  if (element_count == 0) {
+    return Status::OK();
+  }
+  constexpr int kThreadsPerBlock = 256;
+  const int count = static_cast<int>(element_count);
+  const int blocks = (count + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  PrepareCudnnBlockTableKernel<<<blocks, kThreadsPerBlock, 0, stream>>>(
+      block_table, cudnn_block_table, cumulative_seqlens_kv, sequence_validity,
+      count, max_num_blocks_per_seq, block_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 __global__ void CheckLiveBlockTableKernel(
     const int32_t* block_table, const int32_t* cumulative_seqlens_kv,
     int batch_size, int max_num_blocks_per_seq, int block_size,

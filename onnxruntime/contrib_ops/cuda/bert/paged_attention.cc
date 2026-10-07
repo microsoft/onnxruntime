@@ -572,10 +572,40 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
       (std::is_same_v<TCACHE, uint8_t> || (kIsQuantizedCache && per_channel_k && !enable_per_channel_xqa_));
-  // cuDNN consumes every page-table entry and has no unmapped-page mask. Runtime page validity is
-  // available only on device, so selecting cuDNN would require a per-Run host synchronization.
-  // Keep the capture-safe kernels until cuDNN can consume a device-side validity mask.
-  constexpr bool use_cudnn_paged = false;
+  const bool cudnn_paged_enabled =
+      enable_cudnn_paged_ || (auto_enable_cudnn_paged_ && device_prop.major >= 9);
+  bool use_cudnn_paged =
+      cudnn_paged_enabled &&
+      has_metadata_bounds &&
+      max_query_len_bound == 1 &&
+      parameters.token_count == parameters.batch_size &&
+      !use_latent_attention &&
+      !kIsQuantizedCache &&
+      parameters.is_causal &&
+      parameters.softcap == 0.0f &&
+      parameters.local_window_size <= 0 &&
+      !parameters.use_smooth_softmax &&
+      !fp16_xqa_eligible &&
+      onnxruntime::cudnn_sdpa::is_stable() &&
+      onnxruntime::cudnn_sdpa::is_supported_paged(
+          device_prop,
+          parameters.num_heads, parameters.kv_num_heads,
+          parameters.head_size, parameters.head_size,
+          /*sequence_length_q=*/1,
+          parameters.block_size);
+  if (use_cudnn_paged) {
+    use_cudnn_paged = onnxruntime::cudnn_sdpa::try_build_paged_graph(
+        parameters.batch_size,
+        parameters.num_heads, parameters.kv_num_heads,
+        parameters.head_size, parameters.head_size,
+        parameters.num_blocks,
+        parameters.block_size,
+        parameters.max_num_blocks_per_seq,
+        cudnn_scale,
+        std::is_same<T, BFloat16>::value,
+        GetCudnnHandle(context),
+        ort_stream.get());
+  }
 
   // cuDNN paged SDPA is causal-only. FlashAttention, paged decode, and CUTLASS all consume the
   // causality flag directly.
@@ -903,9 +933,17 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN paged SDPA needs a small [batch_size] int32 buffer holding per-sequence KV lengths,
   // filled on device by LaunchGetSeqlensKVDecode right before dispatch.
   IAllocatorUniquePtr<void> cudnn_seqlens_kv_buffer;
+  IAllocatorUniquePtr<int> cudnn_block_table_buffer;
   if (use_cudnn_paged) {
     cudnn_seqlens_kv_buffer = GetScratchBuffer<void>(
         sizeof(int) * static_cast<size_t>(parameters.batch_size), GetComputeStream(context));
+    cudnn_block_table_buffer =
+        GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(LaunchPrepareCudnnBlockTable(
+        sanitized_block_table.get(), cudnn_block_table_buffer.get(),
+        cumulative_seqlens_kv_ptr, sequence_validity.get(),
+        block_table_element_count, parameters.max_num_blocks_per_seq,
+        parameters.block_size, cuda_stream));
   }
 
   // Print debug info
@@ -950,7 +988,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.past_seqlens = sanitized_past_seqlens;
   data.sequence_validity = sequence_validity.get();
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
-  data.block_table = sanitized_block_table.get();
+  data.block_table = use_cudnn_paged ? cudnn_block_table_buffer.get()
+                                     : sanitized_block_table.get();
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());
   data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());

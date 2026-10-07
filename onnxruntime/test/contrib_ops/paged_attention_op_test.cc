@@ -1990,7 +1990,7 @@ TEST(PagedAttention, CudaGraphWithoutAttentionMetadata) {
 
   IoBindingCase c;
   c.enable_cuda_graph = true;
-  c.replay_past_seqlens = {{4}, {5}};
+  c.replay_past_seqlens = {{4}, {5}, {6}, {7}};
   RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
                    kCudaExecutionProvider, true, false, c);
 }

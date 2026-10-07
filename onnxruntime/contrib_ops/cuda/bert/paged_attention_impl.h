@@ -62,6 +62,11 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
 Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
                                 size_t element_count, int num_blocks,
                                 int32_t* has_unmapped_page, cudaStream_t stream);
+Status LaunchPrepareCudnnBlockTable(const int32_t* block_table, int32_t* cudnn_block_table,
+                                    const int32_t* cumulative_seqlens_kv,
+                                    int32_t* sequence_validity, size_t element_count,
+                                    int max_num_blocks_per_seq, int block_size,
+                                    cudaStream_t stream);
 Status LaunchCheckLiveBlockTable(const int32_t* block_table,
                                  const int32_t* cumulative_seqlens_kv,
                                  int batch_size, int max_num_blocks_per_seq,
