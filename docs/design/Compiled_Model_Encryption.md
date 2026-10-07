@@ -569,11 +569,6 @@ Plugin EPs implement the `OrtEp` struct and access ORT functionality through `Or
 
 ### Adoption by EPs
 
-- **QNN:** snapshots the session callbacks when creating the provider and advertises READ and WRITE support.
-  External context imports use the read callback's allocator-owned buffer; external exports pass the serialized
-  context to the write callback. Callback failures do not fall back to files. Embedded contexts bypass both callbacks.
-  Callback registration is incompatible with shared EP contexts and VTCM backup-buffer sharing, and read callbacks
-  disable path-based file-mapped-weight loading.
 - **New EPs:** extract the `OrtEpContextConfig` in `CreateEp()` and store it (e.g. as a
   `Ort::EpContextConfig` member). During `Compile()`, read/write EPContext binaries
   through the config (directly via the getters, or via the reference helper, which handles the
@@ -625,6 +620,12 @@ The stable transport and strict support negotiation are exercised end-to-end by 
 adopt the transport separately because each provider owns its external-context format, sharing behavior, and
 filesystem optimizations. A provider must route only non-embedded EPContext data through the callbacks, reject
 incompatible modes before filesystem I/O, and add hardware-backed tests before advertising support.
+
+- **QNN:** snapshots the session callbacks when creating the provider and advertises READ and WRITE support.
+  External context imports use the read callback's allocator-owned buffer; external exports pass the serialized
+  context to the write callback. Callback failures do not fall back to files. Embedded contexts bypass both callbacks.
+  Callback registration is incompatible with shared EP contexts and VTCM backup-buffer sharing, and read callbacks
+  disable path-based file-mapped-weight loading.
 
 The in-tree CUDA and WebGPU plugin EPs do not currently emit EPContext models. TensorRT has an EPContext
 implementation but still requires provider-owned callback integration, support advertisement, and hardware-backed
