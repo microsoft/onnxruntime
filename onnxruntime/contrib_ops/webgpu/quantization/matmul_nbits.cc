@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_lora_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
@@ -29,6 +30,79 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulNBits);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MatMulNBitsLora, kMSDomain, 1, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    MatMulNBitsLora);
+
+namespace {
+
+class MatMulNBitsLoraAddProgram final : public Program<MatMulNBitsLoraAddProgram> {
+ public:
+  MatMulNBitsLoraAddProgram() : Program{"MatMulNBitsLoraAdd"} {}
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsLoraAddProgram);
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& delta = shader.AddInput("delta", ShaderUsage::UseValueTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    shader.MainFunctionBody()
+        << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+        << output.SetByOffset("global_idx",
+                              output.GetByOffset("global_idx") + " + " + delta.GetByOffset("global_idx"));
+    return Status::OK();
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+};
+
+}  // namespace
+
+Status MatMulNBitsLora::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const Tensor* input = context.Input(0);
+  const Tensor* lora_a = context.Input(6);
+  const Tensor* lora_b = context.Input(7);
+  ORT_RETURN_IF_ERROR(CheckMatMulNBitsLoraInputs(input, lora_a, lora_b, K_, N_));
+  ORT_RETURN_IF_ERROR(MatMulNBits::ComputeInternal(context));
+  const int64_t rank = lora_a->Shape()[1];
+  if (rank == 0 || input->Shape().Size() == 0) {
+    return Status::OK();
+  }
+  Tensor promoted_input;
+  const Tensor* matmul_input = input;
+  if (input->Shape().NumDimensions() == 1) {
+    promoted_input = CreateTensorView(*input, TensorShape({1, K_}));
+    matmul_input = &promoted_input;
+  }
+  TensorShapeVector low_shape = matmul_input->Shape().AsShapeVector();
+  low_shape.back() = rank;
+  TensorShapeVector output_shape = input->Shape().AsShapeVector();
+  output_shape.back() = N_;
+  TensorShapeVector delta_shape = matmul_input->Shape().AsShapeVector();
+  delta_shape.back() = N_;
+  Tensor low_rank = context.CreateGPUTensor(input->DataType(), low_shape);
+  Tensor delta = context.CreateGPUTensor(input->DataType(), delta_shape);
+  const Activation activation{};
+  std::vector<const Tensor*> first{matmul_input, lora_a};
+  ORT_RETURN_IF_ERROR(ComputeMatMul(&context, activation, first, &low_rank,
+                                    true, lora_a_cache_, false));
+  std::vector<const Tensor*> second{&low_rank, lora_b};
+  ORT_RETURN_IF_ERROR(ComputeMatMul(&context, activation, second, &delta,
+                                    true, lora_b_cache_, false));
+  Tensor* output = context.Output(0, output_shape);
+  const uint32_t size = narrow<uint32_t>(output->Shape().Size());
+  MatMulNBitsLoraAddProgram program;
+  program.AddInput({&delta, ProgramTensorMetadataDependency::TypeAndRank, 1})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, 1})
+      .AddUniformVariables({{size}})
+      .SetDispatchGroupSize(CeilDiv(size, static_cast<uint32_t>(WORKGROUP_SIZE)));
+  return context.RunProgram(program);
+}
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);

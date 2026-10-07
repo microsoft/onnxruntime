@@ -667,6 +667,12 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qd
 // This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
 static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
 
+// Enable MatMulNBits plus optional LoRA fusion at the extended optimization level.
+// "0": disabled (default). "1": enabled. CPU supports FP32; WebGPU supports FP32/FP16.
+// LoRA graph inputs must have empty-rank overridable defaults [K, 0] and [0, N].
+static const char* const kOrtSessionOptionsEnableMatMulNBitsLoraFusion =
+    "optimization.enable_matmul_nbits_lora_fusion";
+
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
 // Meant to be used with SetEpDynamicOptions
 // Specify the type of workload for this session.

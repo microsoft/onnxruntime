@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
+#include "core/providers/webgpu/math/matmul.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -73,7 +74,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool acc_f32_;
 };
 
-class MatMulNBits final : public WebGpuKernel {
+class MatMulNBits : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -93,6 +94,22 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t block_size_;
   int64_t accuracy_level_;
   int64_t bits_;
+};
+
+class MatMulNBitsLora final : public MatMulNBits {
+ public:
+  explicit MatMulNBitsLora(const OpKernelInfo& info)
+      : MatMulNBits(info), K_(info.GetAttr<int64_t>("K")), N_(info.GetAttr<int64_t>("N")) {}
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsLora);
+
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
+
+ private:
+  const int64_t K_;
+  const int64_t N_;
+  mutable MatMulOptImplCache lora_a_cache_;
+  mutable MatMulOptImplCache lora_b_cache_;
 };
 
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
@@ -17,5 +18,19 @@ class MatMulNBitsFusion : public SelectorActionTransformer {
 
   SelectorActionRegistry CreateSelectorActionRegistry() const;
 };
+
+#if !defined(ORT_MINIMAL_BUILD)
+class MatMulNBitsLoraFusion final : public GraphTransformer {
+ public:
+  explicit MatMulNBitsLoraFusion(const InlinedHashSet<std::string_view>& compatible_eps)
+      : GraphTransformer("MatMulNBitsLoraFusion", compatible_eps) {}
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsLoraFusion);
+
+ private:
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                   const logging::Logger& logger) const override;
+};
+#endif
 
 }  // namespace onnxruntime

@@ -3938,6 +3938,52 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsLora)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Y = MatMulNBits(A, ...) + (A * lora_A) * lora_B. "
+          "Rank-zero LoRA inputs execute only the base quantized projection. "
+          "The LoRA inputs remain overridable; their rank is checked at runtime.")
+      .Attr("K", "Input feature dimension.", AttributeProto::INT)
+      .Attr("N", "Output feature dimension.", AttributeProto::INT)
+      .Attr("bits", "Quantized weight bit-width.", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("block_size", "Quantization block size.", AttributeProto::INT)
+      .Attr("accuracy_level", "Same semantics as MatMulNBits.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("weight_prepacked", "Same semantics as MatMulNBits.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(0, "A", "Input activation.", "T1")
+      .Input(1, "B", "Packed quantized base weights.", "T2")
+      .Input(2, "scales", "Base weight quantization scales.", "T1")
+      .Input(3, "zero_points", "Base weight zero points.", "T3", OpSchema::Optional)
+      .Input(4, "g_idx", "Deprecated group indices.", "T4", OpSchema::Optional)
+      .Input(5, "bias", "Optional base projection bias [N].", "T1", OpSchema::Optional)
+      .Input(6, "lora_A", "LoRA weights [K, rank].", "T1")
+      .Input(7, "lora_B", "LoRA weights [rank, N].", "T1")
+      .Output(0, "Y", "Base projection plus the low-rank update.", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"},
+                      "Matching FP32 or FP16 activations, scales, and LoRA weights.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Packed quantized weights.")
+      .TypeConstraint("T3", {"tensor(uint8)", "tensor(float)"}, "Quantized zero points.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Group indices.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        const int64_t K = getAttribute(ctx, "K", -1);
+        const int64_t N = getAttribute(ctx, "N", -1);
+        MatmulWithQuantWeightShapeInference(ctx, K, N, true);
+        if (ctx.hasInput(5) && hasInputShape(ctx, 5)) {
+          const auto& bias = getInputShape(ctx, 5);
+          if (bias.dim_size() != 1 ||
+              (bias.dim(0).has_dim_value() && bias.dim(0).dim_value() != N)) {
+            fail_shape_inference("MatMulNBitsLora bias must have shape [N].");
+          }
+        }
+        for (size_t input : {size_t{6}, size_t{7}}) {
+          if (hasInputShape(ctx, input) && getInputShape(ctx, input).dim_size() != 2) {
+            fail_shape_inference("MatMulNBitsLora weights must be matrices.");
+          }
+        }
+      });
+
   static const char* MatMulNBitsMlp_ver1_doc = R"DOC(
 MatMulNBitsMlp fuses two MatMulNBits projections that share the same input and computes
 

@@ -146,4 +146,128 @@ MatMulNBitsFusion::MatMulNBitsFusion(const InlinedHashSet<std::string_view>& com
                                 compatible_eps} {
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+namespace {
+
+bool IsSingleUseIntermediate(const Graph& graph, const Node& node) {
+  return node.GetOutputEdgesCount() == 1 && !graph.NodeProducesGraphOutput(node);
+}
+
+bool IsEmptyLoraDefault(const Graph& graph, const NodeArg* input,
+                        int64_t first, int64_t second, int32_t data_type) {
+  if (!graph_utils::IsGraphInput(graph, input)) {
+    return false;
+  }
+  const auto* tensor = graph.GetInitializer(input->Name(), true);
+  return tensor && tensor->data_type() == data_type &&
+         tensor->dims_size() == 2 && tensor->dims(0) == first &&
+         tensor->dims(1) == second && tensor->external_data_size() == 0 &&
+         tensor->raw_data().empty() && tensor->float_data_size() == 0 &&
+         tensor->int32_data_size() == 0;
+}
+
+bool FuseLoraUpdate(Graph& graph, Node& root, Node* base, Node* lora_a,
+                    NodeArg* lora_b_weight, Node* lora_b_node = nullptr) {
+  if (!base || !lora_a || !lora_b_weight ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*base, "MatMulNBits", {1}, kMSDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*lora_a, "MatMul", {1, 9, 13}) ||
+      !IsSingleUseIntermediate(graph, *base) || !IsSingleUseIntermediate(graph, *lora_a) ||
+      base->InputDefs().size() > 6 || lora_a->InputDefs().size() != 2 ||
+      base->InputDefs()[0] != lora_a->InputDefs()[0] ||
+      base->GetExecutionProviderType() != root.GetExecutionProviderType() ||
+      lora_a->GetExecutionProviderType() != root.GetExecutionProviderType() ||
+      (lora_b_node && (!IsSingleUseIntermediate(graph, *lora_b_node) ||
+                       lora_b_node->GetExecutionProviderType() != root.GetExecutionProviderType()))) {
+    return false;
+  }
+  const auto* type = base->InputDefs()[0]->TypeAsProto();
+  const auto* k = graph_utils::GetNodeAttribute(*base, "K");
+  const auto* n = graph_utils::GetNodeAttribute(*base, "N");
+  const auto* prepacked = graph_utils::GetNodeAttribute(*base, "weight_prepacked");
+  if (!type || !type->has_tensor_type() ||
+      !k || !n || k->i() <= 0 || n->i() <= 0 || (prepacked && prepacked->i() != 0)) {
+    return false;
+  }
+  const int32_t data_type = type->tensor_type().elem_type();
+  if ((data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+       (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+        root.GetExecutionProviderType() != kWebGpuExecutionProvider)) ||
+      !IsEmptyLoraDefault(graph, lora_a->InputDefs()[1], k->i(), 0, data_type) ||
+      !IsEmptyLoraDefault(graph, lora_b_weight, 0, n->i(), data_type)) {
+    return false;
+  }
+  auto inputs = base->MutableInputDefs();
+  while (inputs.size() < 6) {
+    inputs.push_back(&graph.GetOrCreateNodeArg("", nullptr));
+  }
+  inputs.push_back(lora_a->MutableInputDefs()[1]);
+  inputs.push_back(lora_b_weight);
+  const auto attributes = base->GetAttributes();
+  Node& fused = graph.AddNode(
+      graph.GenerateNodeName("MatMulNBitsLora"), "MatMulNBitsLora",
+      "quantized projection with a runtime-selectable low-rank update",
+      inputs, root.MutableOutputDefs(), &attributes, kMSDomain);
+  fused.SetExecutionProviderType(root.GetExecutionProviderType());
+  if (lora_b_node) {
+    graph_utils::FinalizeNodeFusion(graph, {*base, *lora_a, *lora_b_node, root}, fused);
+  } else {
+    graph_utils::FinalizeNodeFusion(graph, {*base, *lora_a, root}, fused);
+  }
+  return true;
+}
+
+}  // namespace
+
+Status MatMulNBitsLoraFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                        const logging::Logger& logger) const {
+  GraphViewer viewer(graph);
+  for (auto index : viewer.GetNodesInTopologicalOrder()) {
+    Node* root = graph.GetNode(index);
+    if (!root) {
+      continue;
+    }
+    ORT_RETURN_IF_ERROR(Recurse(*root, modified, graph_level, logger));
+    if (!graph_utils::IsSupportedProvider(*root, GetCompatibleExecutionProviders())) {
+      continue;
+    }
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*root, "Gemm", {7, 9, 11, 13}) &&
+        root->InputDefs().size() == 3 && root->InputDefs()[2]->Exists()) {
+      const auto* alpha = graph_utils::GetNodeAttribute(*root, "alpha");
+      const auto* beta = graph_utils::GetNodeAttribute(*root, "beta");
+      const auto* trans_a = graph_utils::GetNodeAttribute(*root, "transA");
+      const auto* trans_b = graph_utils::GetNodeAttribute(*root, "transB");
+      if ((!alpha || alpha->f() == 1.0f) && (!beta || beta->f() == 1.0f) &&
+          (!trans_a || trans_a->i() == 0) && (!trans_b || trans_b->i() == 0)) {
+        if (FuseLoraUpdate(graph, *root,
+                           graph.GetMutableProducerNode(root->InputDefs()[2]->Name()),
+                           graph.GetMutableProducerNode(root->InputDefs()[0]->Name()),
+                           root->MutableInputDefs()[1])) {
+          modified = true;
+        }
+      }
+      continue;
+    }
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*root, "Add", {7, 13, 14}) ||
+        root->InputDefs().size() != 2) {
+      continue;
+    }
+    for (size_t base_index = 0; base_index < 2; ++base_index) {
+      Node* base = graph.GetMutableProducerNode(root->InputDefs()[base_index]->Name());
+      Node* lora_b = graph.GetMutableProducerNode(root->InputDefs()[1 - base_index]->Name());
+      if (!lora_b ||
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*lora_b, "MatMul", {1, 9, 13}) ||
+          lora_b->InputDefs().size() != 2) {
+        continue;
+      }
+      Node* lora_a = graph.GetMutableProducerNode(lora_b->InputDefs()[0]->Name());
+      if (FuseLoraUpdate(graph, *root, base, lora_a, lora_b->MutableInputDefs()[1], lora_b)) {
+        modified = true;
+        break;
+      }
+    }
+  }
+  return Status::OK();
+}
+#endif
+
 }  // namespace onnxruntime
