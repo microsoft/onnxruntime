@@ -42,7 +42,7 @@ class WebGpuContext;
 class WebGpuProfiler;
 class GpuBufferAllocator;
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
-class D3D12AcceleratedInitializerState;
+class D3D12ImportedBufferRegistry;
 #endif
 
 // Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
@@ -160,7 +160,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   webgpu::WeightLoadAccelerationMode weight_load_acceleration_mode_{
       webgpu::WeightLoadAccelerationMode::Off};
-  std::shared_ptr<webgpu::D3D12AcceleratedInitializerState> accelerated_initializer_state_;
+  std::shared_ptr<webgpu::D3D12ImportedBufferRegistry> accelerated_initializer_state_;
   AllocatorPtr accelerated_initializer_allocator_;
 #endif
   std::unordered_map<int, int> graph_id_to_run_count_;

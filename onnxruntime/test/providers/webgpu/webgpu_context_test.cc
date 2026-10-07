@@ -1441,37 +1441,74 @@ TEST(WebGpuContextTest, D3D12FileLoaderUsesMultipleHeapsAndCommittedResources) {
 }
 
 TEST(WebGpuContextTest, D3D12AcceleratedAllocatorUsesProviderRecording) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_allocator_recording_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const std::array<uint32_t, 4> expected{11, 22, 33, 44};
+  {
+    std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    stream.write(reinterpret_cast<const char*>(expected.data()),
+                 static_cast<std::streamsize>(sizeof(expected)));
+    ASSERT_TRUE(stream.good());
+  }
+
   auto ep = WebGpuProviderFactoryCreator::Create(
                 WeightLoadAccelerationOptions(
-                    kWeightLoadAcceleration_Preferred))
+                    kWeightLoadAcceleration_Required))
                 ->CreateProvider();
   ASSERT_NE(ep, nullptr);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  const auto support_status =
+      webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
   auto allocators = ep->CreatePreferredAllocators();
   ASSERT_FALSE(allocators.empty());
-  auto& allocator = allocators.front();
-  void* buffer = allocator->Alloc(16);
-  ASSERT_NE(buffer, nullptr);
+  const auto& allocator = allocators.front();
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "weights", 0, sizeof(expected)));
+  ASSERT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
 
   auto& webgpu_ep = *static_cast<WebGpuExecutionProvider*>(ep.get());
   auto& recording = webgpu_ep.Recording();
-  recording.has_unsubmitted_work = true;
-  allocator->Free(buffer);
-  constexpr auto usage =
-      wgpu::BufferUsage::Storage |
-      wgpu::BufferUsage::CopySrc |
-      wgpu::BufferUsage::CopyDst |
-      wgpu::BufferUsage::Indirect;
-  auto& buffer_manager = webgpu_ep.InitializerBufferManager();
-  EXPECT_TRUE(buffer_manager.ExtractCachedBuffers(usage).empty());
+  wgpu::BufferDescriptor destination_description{};
+  destination_description.size = sizeof(expected);
+  destination_description.usage =
+      wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto destination = context.Device().CreateBuffer(&destination_description);
+  ASSERT_TRUE(destination);
+  {
+    Tensor weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({4}),
+                   nullptr, allocator};
+    ASSERT_STATUS_OK(loader->LoadTensor(
+        Env::Default(), data_path, "weights", 0, sizeof(expected),
+        allocator, weights));
+    wgpu::Buffer source{
+        reinterpret_cast<WGPUBuffer>(weights.MutableDataRaw())};
+    context.GetCommandEncoder(recording).CopyBufferToBuffer(
+        source, 0, destination, 0, sizeof(expected));
+  }
+  EXPECT_TRUE(recording.has_unsubmitted_work.load());
+  ASSERT_EQ(recording.pending_release_callbacks.size(), 1u);
 
-  recording.has_unsubmitted_work = false;
-  buffer_manager.RefreshPendingBuffers(
-      recording, webgpu::GraphCaptureState::Default);
-  auto cached_buffers =
-      buffer_manager.ExtractCachedBuffers(usage);
-  EXPECT_EQ(cached_buffers.size(), 1u);
-  buffer_manager.AbsorbCachedBuffers(
-      usage, std::move(cached_buffers));
+  auto& buffer_manager = webgpu_ep.InitializerBufferManager();
+  webgpu::CommandRecordingState unrelated_recording;
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, unrelated_recording));
+  EXPECT_TRUE(recording.has_unsubmitted_work.load());
+  EXPECT_EQ(recording.pending_release_callbacks.size(), 1u);
+
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, recording));
+  EXPECT_FALSE(recording.has_unsubmitted_work.load());
+  EXPECT_TRUE(recording.pending_release_callbacks.empty());
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<4>(context, destination.Get()),
+            expected);
 }
 
 TEST(WebGpuContextTest, DuplicateProviderDoesNotRegisterD3D12AcceleratedLoader) {

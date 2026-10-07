@@ -33,19 +33,19 @@ common::Status ResolveWeightLoadAccelerationMode(
     const common::Status& support_status,
     bool& enabled);
 
-class D3D12AcceleratedInitializerState;
-struct D3D12AcceleratedBatch;
+class D3D12ImportedBufferRegistry;
+struct D3D12AcceleratedLoadBatch;
 
 AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
     WebGpuContext& context,
     std::function<CommandRecordingState&()> recording_getter,
-    std::shared_ptr<D3D12AcceleratedInitializerState>& out_state);
+    std::shared_ptr<D3D12ImportedBufferRegistry>& out_buffer_registry);
 
 class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
  public:
   D3D12AcceleratedExternalDataLoader(
       WebGpuContext& context,
-      std::shared_ptr<D3D12AcceleratedInitializerState> state,
+      std::shared_ptr<D3D12ImportedBufferRegistry> buffer_registry,
       WeightLoadAccelerationMode mode);
   ~D3D12AcceleratedExternalDataLoader() override;
 
@@ -73,14 +73,15 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
   common::Status EnsureFileLoader() const;
 
   WebGpuContext& context_;
-  std::shared_ptr<D3D12AcceleratedInitializerState> state_;
-  WeightLoadAccelerationMode mode_;
-  mutable std::once_flag support_once_;
-  mutable common::Status resolved_status_;
-  mutable bool enabled_ = false;
+  std::shared_ptr<D3D12ImportedBufferRegistry> buffer_registry_;
+  WeightLoadAccelerationMode acceleration_mode_;
+  mutable std::once_flag device_support_resolution_once_;
+  mutable common::Status device_support_resolution_status_;
+  // Effective decision from mode and device support; cleared on fallback.
+  mutable bool resolved_acceleration_enabled_ = false;
   mutable std::atomic<bool> abort_requested_{false};
-  mutable std::unique_ptr<windows::d3d12::D3D12FileBufferLoader> file_loader_;
-  mutable std::unique_ptr<D3D12AcceleratedBatch> batch_;
+  mutable std::unique_ptr<windows::d3d12::D3D12FileBufferLoader> file_to_buffer_loader_;
+  mutable std::unique_ptr<D3D12AcceleratedLoadBatch> accelerated_load_batch_;
 };
 
 }  // namespace webgpu
