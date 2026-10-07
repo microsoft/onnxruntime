@@ -94,6 +94,10 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
           GetProcAddress(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
   hooks.set_create_data_transfer_failure = reinterpret_cast<ExampleEpHooks::SetCreateDataTransferFailureFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
+  hooks.reset_enable_weightless_option = reinterpret_cast<ExampleEpHooks::ResetEnableWeightlessOptionFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
+  hooks.get_enable_weightless_option = reinterpret_cast<ExampleEpHooks::GetEnableWeightlessOptionFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -112,6 +116,10 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
           dlsym(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
   hooks.set_create_data_transfer_failure = reinterpret_cast<Utils::ExampleEpHooks::SetCreateDataTransferFailureFn>(
       dlsym(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
+  hooks.reset_enable_weightless_option = reinterpret_cast<Utils::ExampleEpHooks::ResetEnableWeightlessOptionFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
+  hooks.get_enable_weightless_option = reinterpret_cast<Utils::ExampleEpHooks::GetEnableWeightlessOptionFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(
