@@ -36,11 +36,11 @@ stages:
           javaHomeOption: 'JDKVersion'
           jdkVersionOption: '1.17'
           mavenVersionOption: 'Default'
-      - download: cuda13
+      - download: build
         artifact: 'onnxruntime-java-gpu'
         displayName: 'Download Final Jar'
       - script: |
-          move $(Pipeline.Workspace)\cuda13\onnxruntime-java-gpu\*.jar $(Pipeline.Workspace)\build\onnxruntime-java\
+          move $(Pipeline.Workspace)\build\onnxruntime-java-gpu\*.jar $(Pipeline.Workspace)\build\onnxruntime-java\
 
       - task: PowerShell@2
         displayName: 'Run Java Tests with PowerShell'
@@ -120,14 +120,14 @@ stages:
           echo "Maven is now on the PATH."
           mvn --version
 
-      - download: cuda13
+      - download: build
         artifact: 'onnxruntime-java-gpu'
         displayName: 'Download Final Jar'
 
       # Rename the downloaded folder
       - script: |
           mkdir -p $(Pipeline.Workspace)/build/onnxruntime-java
-          mv $(Pipeline.Workspace)/cuda13/onnxruntime-java-gpu/* $(Pipeline.Workspace)/build/onnxruntime-java
+          mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu/* $(Pipeline.Workspace)/build/onnxruntime-java
 
       - task: Maven@4
         displayName: 'Download Dependencies'
