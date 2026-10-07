@@ -368,8 +368,6 @@ Status MoE<T>::ReclaimCompletedSwap() {
     return Status::OK();
   }
   CUDA_RETURN_IF_ERROR(result);
-  swap_pinned_buffer_.reset();
-  swap_cuda_staging_.reset();
   swap_cuda_expert_ = -1;
   swap_cpu_expert_ = -1;
   swap_phase_ = SwapPhase::Idle;
@@ -462,9 +460,13 @@ Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
                 "MoE swap tried to stage an invalid CPU expert: ", cpu_expert_id);
   ORT_RETURN_IF_NOT(swap_staging_bytes_ > 0, "MoE swap has no expert data to transfer.");
 
-  swap_pinned_buffer_ = AllocateBufferOnCPUPinned<void>(swap_staging_bytes_);
-  swap_cuda_staging_ =
-      IAllocator::MakeUniquePtr<void>(cuda_allocator_, swap_staging_bytes_, true);
+  if (!swap_pinned_buffer_) {
+    swap_pinned_buffer_ = AllocateBufferOnCPUPinned<void>(swap_staging_bytes_);
+  }
+  if (!swap_cuda_staging_) {
+    swap_cuda_staging_ =
+        IAllocator::MakeUniquePtr<void>(cuda_allocator_, swap_staging_bytes_, true);
+  }
   ORT_RETURN_IF_NOT(swap_pinned_buffer_ && swap_cuda_staging_,
                     "Failed to allocate MoE expert swap staging buffers.");
   swap_cuda_expert_ = cuda_expert_id;
@@ -504,8 +506,6 @@ Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
   if (!status.IsOK()) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(swap_d2h_stream_)));
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(swap_h2d_stream_)));
-    swap_pinned_buffer_.reset();
-    swap_cuda_staging_.reset();
     swap_phase_ = SwapPhase::Idle;
   }
   return status;
