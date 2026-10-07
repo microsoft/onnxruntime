@@ -202,4 +202,20 @@ TEST(TelemetryStringsTest, PropagatesMapTruncationToRedaction) {
   FormatTelemetryMap(std::map<std::string, std::string>{{"a", "b"}}, ",", ":", &truncated);
   EXPECT_FALSE(truncated);
 }
+
+TEST(TelemetryStringsTest, PropagatesUtf8FieldTruncationWithUnusedAggregateBudget) {
+  const std::string prefix = "alice/" + std::string(kMaxTelemetryStringLength - 9, 'x');
+  const std::map<std::string, std::string> options{{"a", prefix + "\xf0\x9f\x98\x80/model"}};
+  bool truncated = false;
+  const auto formatted = FormatTelemetryMap(options, ",", ":", &truncated);
+  EXPECT_LT(formatted.size(), kMaxTelemetryStringLength);
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(ScrubStringForTelemetry(formatted, truncated), "[path]");
+
+  const std::map<std::string, std::string> keys{{prefix + "\xf0\x9f\x98\x80/model", ""}};
+  const auto formatted_keys = FormatTelemetryMap(keys, "", "", &truncated);
+  EXPECT_LT(formatted_keys.size(), kMaxTelemetryStringLength);
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(ScrubStringForTelemetry(formatted_keys, truncated), "[path]");
+}
 }  // namespace onnxruntime::test

@@ -180,8 +180,9 @@ inline std::wstring_view TelemetryWideStringView(const wchar_t* value) {
   return TelemetryWideStringView(std::wstring_view(value, length));
 }
 
-inline std::string TelemetryStringValue(std::string_view value) {
-  return BoundedTelemetryString(value);
+inline std::string_view TelemetryStringValue(std::string_view value) {
+  // Preserve the suffix so the aggregate append can report truncation to path redaction.
+  return value;
 }
 
 template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, int> = 0>
