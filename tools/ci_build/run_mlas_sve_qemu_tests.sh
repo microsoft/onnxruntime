@@ -40,21 +40,37 @@ if [[ ! -x "${TEST_BIN}" ]]; then
   exit 1
 fi
 
-# qemu-user provides qemu-aarch64. The CI image is AlmaLinux-based (dnf);
-# fall back to apt-get for Debian/Ubuntu environments.
+# qemu-aarch64 provides the user-mode emulation. Any QEMU >= 6.1 works (the
+# sve-default-vector-length CPU property used below dates to 2021).
 if ! command -v qemu-aarch64 >/dev/null 2>&1; then
-  echo "Installing qemu-user..."
+  echo "Installing qemu-aarch64..."
   if command -v dnf >/dev/null 2>&1; then
-    dnf install -y qemu-user
+    # AlmaLinux/RHEL/Fedora. Note: qemu-user is not in the base RHEL-clone
+    # repos, so also try EPEL before giving up on distro packages.
+    dnf install -y qemu-user || \
+      (dnf install -y epel-release && dnf install -y qemu-user) || true
   elif command -v apt-get >/dev/null 2>&1; then
-    apt-get update && apt-get install -y qemu-user
-  else
-    echo "ERROR: no supported package manager (dnf/apt-get) to install qemu-user" >&2
-    exit 1
+    # Debian/Ubuntu (also handy for local testing).
+    apt-get update && apt-get install -y qemu-user || true
+  fi
+  if ! command -v qemu-aarch64 >/dev/null 2>&1; then
+    # Last resort: statically-linked qemu-aarch64 extracted from Debian's
+    # qemu-user-static package (arm64 build). The version is resolved
+    # dynamically from the Packages index so this doesn't rot.
+    echo "Distro packages unavailable; falling back to static qemu-aarch64 from Debian..."
+    QEMU_TMP="$(mktemp -d)"
+    QEMU_DEB_FILENAME="$(curl -fsSL http://ftp.debian.org/debian/dists/stable/main/binary-arm64/Packages.gz \
+      | gzip -dc | awk '/^Package: qemu-user-static$/{found=1} found && /^Filename: /{print $2; exit}')"
+    if [[ -n "${QEMU_DEB_FILENAME}" ]]; then
+      curl -fsSL -o "${QEMU_TMP}/qemu.deb" "http://ftp.debian.org/debian/${QEMU_DEB_FILENAME}" && \
+        ( cd "${QEMU_TMP}" && ar x qemu.deb data.tar.xz && tar -xf data.tar.xz ./usr/bin/qemu-aarch64-static ) && \
+        install -m 755 "${QEMU_TMP}/usr/bin/qemu-aarch64-static" /usr/local/bin/qemu-aarch64 || true
+    fi
+    rm -rf "${QEMU_TMP}"
   fi
 fi
 if ! command -v qemu-aarch64 >/dev/null 2>&1; then
-  echo "ERROR: qemu-aarch64 still not found after install attempt" >&2
+  echo "ERROR: qemu-aarch64 still not found after install attempts" >&2
   exit 1
 fi
 
