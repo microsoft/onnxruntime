@@ -81,6 +81,43 @@ These callbacks preserve WebGPU's existing submission-only behavior rather than 
 general host-completion barrier. In particular, returning GPU-backed outputs from Run does
 not guarantee that GPU execution has completed.
 
+### Internal checked completion
+
+`WebGpuContext::FlushAndWaitChecked(buffer_manager, recording)` is an opt-in,
+Status-returning host barrier. It uses ordinary `Flush` to encode deferred work
+and submit the owning recording, then waits for the same queue's
+`OnSubmittedWorkDone` future through the context's existing Instance/WaitAny
+machinery. It also waits when the recording is empty, covering work already
+submitted to that queue. Work submitted after the completion future is
+registered, or unsubmitted work on other recordings, is not covered.
+
+Validation, out-of-memory and internal error scopes cover flushing and queue
+submission independently of the configured validation mode. All three scopes
+are resolved even on failure; caller-owned outer scopes are not consumed.
+Scopes cannot retroactively capture errors from earlier resource creation or
+encoding, and cannot enable validation on a device created with Dawn's
+`skip_validation` toggle. ORT-created devices retain their first uncaptured
+error for checked completion; ordinary Flush/Run behavior is unchanged.
+For externally supplied devices, earlier errors captured by the caller's
+scopes or callbacks remain the caller's responsibility.
+
+The helper polls `Device::GetLostFuture` after waiting, rather than treating
+a successful queue callback as proof of device health. This also detects loss
+of an external device without replacing its callbacks. A failed wait or
+work-done callback, scoped error, device loss, or retained uncaptured error
+returns failure Status. One-shot callback results are heap-owned so a failed
+WaitAny cannot leave a dangling stack pointer. Callers must keep the context,
+recording and resources alive and serialize operations on the recording;
+this is not a new stream or cross-provider API.
+
+Focused context tests cover empty, pending and submitted work, deferred
+dispatch, validation at Flush, scope cleanup after a failed wait,
+validation/OOM injection and external device loss. Dawn's existing InjectError
+API accepts validation and OOM only. Deterministic internal-error and
+non-success work-done callback injection is not available here; those branches
+are checked but lack injected end-to-end coverage. Device loss injection is
+native-Dawn-only.
+
 The implementation requires an ORT build with stream support. CPU I/O, graph-internal CPU/GPU
 copies, mixed feed copies, CPU outputs bound to GPU, concurrent independent Sessions, serialized
 same-Session Runs, same-Session and dedicated-Session allocator concurrency, and shared Env allocation/transfers
