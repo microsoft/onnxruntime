@@ -130,6 +130,10 @@ std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t d
                               nullptr, &destination_arg_counts, &empty_args)};
     std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, src_arg_index, dst_arg_index)};
     std::vector<fbs::EdgeEnd> output_edges{fbs::EdgeEnd(1, src_arg_index, dst_arg_index)};
+    if (src_arg_index == INT_MAX && dst_arg_index == INT_MAX && !control_only) {
+      input_edges.emplace_back(0, 0, 0);
+      output_edges.emplace_back(1, 0, 0);
+    }
     std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges;
     node_edges.push_back(input_edge ? fbs::CreateNodeEdgeDirect(builder, 1, &input_edges)
                                     : fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges));
@@ -330,7 +334,7 @@ TEST(OrtModelTest, RejectsDanglingNodeEdge) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("references missing node"));
 }
 
-TEST(OrtModelTest, RejectsMissingDataEdge) {
+TEST(OrtModelTest, ReconstructsMissingDataEdge) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
         fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
@@ -354,9 +358,10 @@ TEST(OrtModelTest, RejectsMissingDataEdge) {
                                   &graph_inputs, &graph_outputs);
   });
 
-  const auto status = LoadOrtBuffer(buffer);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("missing data edge"));
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(LoadOrtModel(buffer, model));
+  EXPECT_EQ(model->MainGraph().GetNode(0)->GetOutputEdgesCount(), 1);
+  EXPECT_EQ(model->MainGraph().GetNode(1)->GetInputEdgesCount(), 1);
 }
 
 TEST(OrtModelTest, RejectsAdversarialLargeNodeIndex) {
@@ -488,11 +493,7 @@ TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
         const auto* destination = graph.GetNode(1);
         ASSERT_NE(source, nullptr);
         ASSERT_NE(destination, nullptr);
-#if !defined(ORT_MINIMAL_BUILD)
         const size_t expected_edge_count = control_only ? 1 : 2;
-#else
-        constexpr size_t expected_edge_count = 1;
-#endif
         EXPECT_EQ(source->GetOutputEdgesCount(), expected_edge_count);
         EXPECT_EQ(destination->GetInputEdgesCount(), expected_edge_count);
         EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"source"});
@@ -501,7 +502,6 @@ TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelTest, RejectsControlEdgeCycle) {
   std::unique_ptr<Model> model;
   const auto status = LoadOrtModel(
@@ -509,7 +509,6 @@ TEST(OrtModelTest, RejectsControlEdgeCycle) {
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.ErrorMessage(), "This is an invalid model. Error: the graph is not acyclic.");
 }
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelTest, AddControlEdgeMarksResolvedGraphDirty) {

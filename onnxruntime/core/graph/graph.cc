@@ -5115,6 +5115,38 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     return false;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  Node* replacement = nullptr;
+  for (const auto* output : node->OutputDefs()) {
+    for (auto& candidate : Nodes()) {
+      if (candidate.Index() != p_index &&
+          std::find(candidate.OutputDefs().begin(), candidate.OutputDefs().end(), output) !=
+              candidate.OutputDefs().end()) {
+        replacement = &candidate;
+        break;
+      }
+    }
+    if (replacement != nullptr) {
+      break;
+    }
+  }
+
+  const auto control_edges = ort_format_control_edges_;
+  for (const auto& [src, dst] : control_edges) {
+    if (src != p_index && dst != p_index) {
+      continue;
+    }
+    ORT_ENFORCE(replacement != nullptr,
+                "Can't remove node ", node->Name(), " as it has control edges.");
+    RemoveEdge(src, dst, INT_MAX, INT_MAX);
+    const NodeIndex replacement_src = src == p_index ? replacement->Index() : src;
+    const NodeIndex replacement_dst = dst == p_index ? replacement->Index() : dst;
+    if (replacement_src != replacement_dst) {
+      AddControlEdge(replacement_src, replacement_dst);
+    }
+  }
+#endif
+
   // Node must be disconnected from any downstream nodes before removal
   ORT_ENFORCE(node->GetOutputEdgesCount() == 0, "Can't remove node ", node->Name(), " as it still has output edges.");
 
@@ -7260,28 +7292,24 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
-  for (const auto& node : Nodes()) {
-    size_t expected_data_edges = 0;
-    for (const auto* input_def : node.InputDefs()) {
-      for (const auto& candidate : Nodes()) {
-        const auto& output_defs = candidate.OutputDefs();
-        if (input_def->Exists() &&
-            std::find(output_defs.begin(), output_defs.end(), input_def) != output_defs.end()) {
-          ++expected_data_edges;
-          break;
+  for (auto& node : Nodes()) {
+    for (size_t input_idx = 0; input_idx < node.InputDefs().size(); ++input_idx) {
+      const auto* input = node.InputDefs()[input_idx];
+      if (input->Exists()) {
+        for (const auto& producer : Nodes()) {
+          const auto& outputs = producer.OutputDefs();
+          for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
+            if (outputs[output_idx] == input) {
+              AddEdge(producer.Index(), node.Index(),
+                      static_cast<int>(output_idx), static_cast<int>(input_idx));
+            }
+          }
         }
       }
     }
-
-    size_t data_edges = 0;
-    for (auto edge_it = node.InputEdgesBegin(); edge_it != node.InputEdgesEnd(); ++edge_it) {
-      if (edge_it->GetDstArgIndex() != INT_MAX) {
-        ++data_edges;
-      }
-    }
-
-    ORT_RETURN_IF_NOT(data_edges == expected_data_edges, "Node::LoadFromOrtFormat, missing data edge.");
   }
+
+  ORT_RETURN_IF_ERROR(PerformTopologicalSortAndCheckIsAcyclic());
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // populate NodeArg lookups after loading Nodes and NodeArgs
