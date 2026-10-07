@@ -1428,6 +1428,13 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
           "$<TARGET_FILE_DIR:${probe_target}>/fixtures"
         VERBATIM)
     endforeach()
+    if(onnxruntime_providers_webgpu_dll_deps)
+      add_custom_command(TARGET ${probe_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${onnxruntime_providers_webgpu_dll_deps}" "$<TARGET_FILE_DIR:${probe_target}>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+    endif()
     if(mode STREQUAL "no_exceptions")
       target_compile_definitions(${probe_target} PRIVATE ORT_NO_EXCEPTIONS ONNX_NO_EXCEPTIONS)
       if(MSVC)
