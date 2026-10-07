@@ -221,8 +221,7 @@ Status ComputeMatMul(ComputeContext* context,
     return context->RunProgram(program);
   }
 
-  if (!requires_fp32_accumulation &&
-      intel::CanApplyMatMulIntel(*context, helper.M(), helper.N(), helper.K())) {
+  if (intel::CanApplyMatMulIntel(*context, helper.M(), helper.N(), helper.K())) {
     return intel::ApplyMatMulIntel(*context, activation, inputs, output_tensor, is_channels_last);
   }
 
