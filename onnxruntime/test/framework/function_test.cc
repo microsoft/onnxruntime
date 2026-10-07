@@ -1462,6 +1462,109 @@ TEST(FunctionTest, FunctionInferenceRegistryTakesPrecedenceInsideBoundGraph) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
+TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
+  for (const bool registered_schema_first : {false, true}) {
+    SCOPED_TRACE(registered_schema_first);
+    auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+    model_proto.mutable_opset_import(0)->set_version(11);
+    model_proto.mutable_graph()->mutable_node(0)->set_op_type("wrapper");
+
+    auto add_opsets = [](ONNX_NAMESPACE::FunctionProto& function, int onnx_opset) {
+      auto* onnx_import = function.add_opset_import();
+      onnx_import->set_domain(kOnnxDomain);
+      onnx_import->set_version(onnx_opset);
+      auto* local_import = function.add_opset_import();
+      local_import->set_domain("local");
+      local_import->set_version(1);
+    };
+    auto add_graph_ref = [](ONNX_NAMESPACE::NodeProto& node) {
+      *node.add_attribute() = MakeGraphRefAttribute(
+          "body", "body", ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    };
+
+    auto* round = model_proto.add_functions();
+    round->set_domain(kOnnxDomain);
+    round->set_name("Round");
+    round->add_input("x");
+    round->add_output("y");
+    add_opsets(*round, 10);
+    auto* round_node = round->add_node();
+    round_node->set_domain("local");
+    round_node->set_op_type("function_0");
+    round_node->add_input("x");
+    round_node->add_output("y");
+
+    auto* sink = model_proto.add_functions();
+    sink->set_domain("local");
+    sink->set_name("sink");
+    sink->add_input("x");
+    sink->add_output("y");
+    sink->add_attribute("body");
+    add_opsets(*sink, 11);
+    auto* sink_node = sink->add_node();
+    sink_node->set_op_type("Identity");
+    sink_node->add_input("x");
+    sink_node->add_output("y");
+
+    for (const int opset : {10, 11}) {
+      auto* visitor = model_proto.add_functions();
+      visitor->set_domain("local");
+      visitor->set_name("visit_" + std::to_string(opset));
+      visitor->add_input("x");
+      visitor->add_output("y");
+      visitor->add_attribute("body");
+      add_opsets(*visitor, opset);
+      auto* visitor_node = visitor->add_node();
+      visitor_node->set_domain("local");
+      visitor_node->set_op_type("sink");
+      visitor_node->add_input("x");
+      visitor_node->add_output("y");
+      add_graph_ref(*visitor_node);
+    }
+
+    auto* wrapper = model_proto.add_functions();
+    wrapper->set_domain("local");
+    wrapper->set_name("wrapper");
+    wrapper->add_input("x");
+    wrapper->add_output("y");
+    wrapper->add_attribute("body");
+    auto* default_body = wrapper->add_attribute_proto();
+    default_body->set_name("body");
+    default_body->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* body_graph = default_body->mutable_g();
+    body_graph->set_name("shared_body");
+    auto* body_input = body_graph->add_input();
+    body_input->set_name("x");
+    body_input->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* body_output = body_graph->add_output();
+    body_output->set_name("y");
+    body_output->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* body_node = body_graph->add_node();
+    body_node->set_op_type("Round");
+    body_node->add_input("x");
+    body_node->add_output("y");
+    add_opsets(*wrapper, 11);
+
+    const int first_opset = registered_schema_first ? 11 : 10;
+    for (const int opset : {first_opset, 21 - first_opset}) {
+      auto* call = wrapper->add_node();
+      call->set_domain("local");
+      call->set_op_type("visit_" + std::to_string(opset));
+      call->add_input(opset == first_opset ? "x" : "intermediate");
+      call->add_output(opset == first_opset ? "intermediate" : "y");
+      add_graph_ref(*call);
+    }
+
+    Model model(std::move(model_proto), nullptr, DefaultLoggingManager().DefaultLogger());
+    const auto status = model.MainGraph().Resolve();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+  }
+}
+
 TEST(FunctionTest, UnusedCallSiteGraphContributesToFunctionDepth) {
   auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
   auto* root_call = model_proto.mutable_graph()->mutable_node(0);
@@ -2763,6 +2866,7 @@ TEST(FunctionTest, MaximumDefaultGraphReferenceDepthAllowsScalarLeafAttribute) {
       leaf.set_name(name);
       leaf.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
       *leaf.mutable_g() = MakeNonRecursiveDefaultGraph();
+      leaf.mutable_g()->mutable_node(0)->clear_attribute();
       auto* scalar = leaf.mutable_g()->mutable_node(0)->add_attribute();
       scalar->set_name("alpha");
       scalar->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);

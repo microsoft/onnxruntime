@@ -445,9 +445,6 @@ std::shared_ptr<const AttributeBindingContext> InternRelevantAttributeBindingCon
     ValidatedFunctionStates& validated_states) {
   InlinedHashSet<std::string_view> referenced_attribute_names;
   CollectReferencedAttributeNames(attribute, referenced_attribute_names);
-  if (referenced_attribute_names.empty()) {
-    return nullptr;
-  }
 
   InlinedHashSet<std::string_view> expanded_attribute_names;
   bool added_dependencies = true;
