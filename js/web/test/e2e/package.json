@@ -26,10 +26,7 @@
   "overrides": {
     "globby": {
       "ignore": "7.0.10"
-    },
-    "source-map-js": "1.2.1",
-    "terser": "5.49.0",
-    "typed-query-selector": "2.12.2"
+    }
   },
   "scripts": {
     "build:w:esmjs": "webpack --mode=production --config webpack.config.esm-js.js",
