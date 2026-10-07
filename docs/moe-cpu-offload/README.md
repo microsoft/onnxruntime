@@ -28,6 +28,10 @@ Training, router changes, expert-weight quantization, and multiple CUDA devices 
 - [#32738](https://github.com/microsoft/onnxruntime/pull/32738) added the session-global expert state, CPU and CUDA
   expert-selection collection, and exponentially decayed counters. It does not implement placement, CPU offload,
   swaps, or redistribution.
+- [#33039](https://github.com/microsoft/onnxruntime/pull/33039) added static FP16 CUDA `MoE` placement, hybrid
+  CPU/CUDA execution, and compact CUDA expert storage.
+- The adaptive-swap implementation exchanges hot CPU experts with cold CUDA experts asynchronously while preserving
+  each node's CUDA slot count. Global slot redistribution across nodes remains future work.
 
 ## Exploratory routing analysis
 
@@ -61,7 +65,7 @@ The four numerical policy parameters are exposed as session configuration entrie
 | `session.moe_cpu_offload_experts` | Offload count | Global number of experts to execute from CPU (`>= 0`); default `0`. |
 | `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and `>= 0`; default `0.9`. |
 | `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`; default `0.1`. |
-| `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`. |
+| `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`; default `0`. |
 
 The optional `session.moe_expert_counter_state_file` path is configured separately from these four numerical parameters.
 
@@ -288,20 +292,28 @@ must also be constant.
 
 ### Step 2: adaptive expert swaps
 
+Implemented in the adaptive-swap change:
+
 - Use the session-global counters and optional initial counter state to rank experts.
 - Apply the strict `cpu_max > (1 + epsilon) * cuda_min` rule and let the pilot schedule exchanges after inference.
-- Move the CUDA expert to CPU before moving its replacement to CUDA.
-- Manage CUDA slots, two staging slots, two pinned buffers, dedicated device-to-host and host-to-device streams,
-  completion events, immutable per-invocation mappings, and atomic publication of completed swaps.
-- Permit at most two in-flight exchanges per CUDA device and queue the rest.
-- Pipeline the host-to-device transfer of one exchange with the device-to-host transfer of the other when the hardware
-  exposes bidirectional copy engines.
-- Never wait for an incomplete exchange when a `MoE` starts; use the pre-exchange placement for that invocation.
-- Redistribute the global CUDA expert budget after inference without draining pending exchanges, while maximizing the
-  number of completely CUDA-resident nodes.
-- Test the epsilon boundary, transfer ordering, two-exchange concurrency, queued exchanges, nonblocking use of the old
-  mapping, asynchronous publication, global budget preservation, counter-based placement, and explicit transfer
-  failures.
+- Move the CUDA expert to pinned CPU staging before moving its replacement to the extra CUDA slot.
+- Use dedicated device-to-host and host-to-device streams, events, and separate staging allocations for each active
+  exchange.
+- Permit at most two in-flight exchanges per CUDA device; additional eligible nodes are reconsidered at the next
+  inference boundary.
+- Pipeline the host-to-device transfer of one exchange with the device-to-host transfer of another when the hardware
+  supports bidirectional copies.
+- Never wait for an incomplete exchange when a `MoE` starts. The old placement remains published until transfer
+  completion; publication copies the staged expert into the persistent slot on that invocation's compute stream.
+- Preserve each node's CUDA slot count and therefore the session-global CUDA expert budget.
+- Test the strict epsilon boundary, deterministic tie-breaking, two-exchange concurrency, queued work, delayed
+  publication, and numerical parity before and after a swap.
+
+Still planned:
+
+- Redistribute CUDA slot ownership across nodes without draining pending exchanges, while maximizing the number of
+  completely CUDA-resident nodes.
+- Add end-to-end throughput and memory measurements for representative Qwen models.
 
 After these two implementation steps, the remaining work is end-to-end measurement. Run reproducible CPU-only,
 CUDA-only, and hybrid evaluations with identical models, prompts, and generation settings; sweep offload targets and

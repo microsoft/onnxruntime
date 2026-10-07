@@ -2765,7 +2765,8 @@ common::Status InferenceSession::Initialize() {
           (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts && !moe_cpu_offload_is_disabled) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
-          option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
+          option == kOrtSessionOptionsConfigMoeExpertCounterBeta ||
+          option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
       }
@@ -2793,6 +2794,18 @@ common::Status InferenceSession::Initialize() {
         kOrtSessionOptionsConfigMoeCpuOffloadExperts,
         " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
     const bool enable_moe_cpu_offload = moe_cpu_offload_expert_count > 0;
+    const auto moe_swap_epsilon =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertSwapEpsilon);
+    if (moe_swap_epsilon) {
+      double swap_epsilon = -1.0;
+      ORT_RETURN_IF_NOT(enable_moe_cpu_offload,
+                        kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
+                        " requires MoE CPU offload to be enabled.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_swap_epsilon, swap_epsilon) &&
+                            std::isfinite(swap_epsilon) && swap_epsilon >= 0.0,
+                        kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
+                        " must be finite and non-negative. Received: \"", *moe_swap_epsilon, "\".");
+    }
     const auto moe_counter_state_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);
     if (moe_counter_state_file) {
@@ -3725,7 +3738,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   bool moe_run_active = false;
   auto end_moe_run = gsl::finally([&]() {
     if (moe_run_active) {
-      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndRun());
+      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndRun(false));
     }
   });
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -3894,7 +3907,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
       if (moe_run_active) {
-        const Status moe_run_status = moe_expert_state->EndRun();
+        const Status moe_run_status = moe_expert_state->EndRun(retval.IsOK());
         moe_run_active = false;
         if (retval.IsOK() && !moe_run_status.IsOK()) {
           retval = moe_run_status;

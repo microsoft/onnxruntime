@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -74,6 +75,45 @@ class KernelPilotMoeExpertStateTest : public testing::Test {
     return counters;
   }
 };
+
+class FakeMoeExpertCache final : public IKernelPilotMoeExpertCache {
+ public:
+  explicit FakeMoeExpertCache(int device_id = 0) : device_id_(device_id) {}
+
+  int DeviceId() const noexcept override { return device_id_; }
+  bool HasPendingSwap() const noexcept override { return pending_; }
+  Status ReclaimCompletedSwap() override {
+    if (completed_) {
+      pending_ = false;
+      completed_ = false;
+    }
+    return Status::OK();
+  }
+  Status StartSwap(int cuda_expert_id, int cpu_expert_id) override {
+    ORT_RETURN_IF(pending_, "Test cache already has a pending swap.");
+    pending_ = true;
+    swaps_.emplace_back(cuda_expert_id, cpu_expert_id);
+    return Status::OK();
+  }
+
+  void Complete() noexcept { completed_ = true; }
+  const InlinedVector<std::pair<int, int>>& Swaps() const noexcept { return swaps_; }
+
+ private:
+  int device_id_;
+  bool pending_{false};
+  bool completed_{false};
+  InlinedVector<std::pair<int, int>> swaps_;
+};
+
+void MakeEligibleForCudaFp16MoePlacement(const OpKernel* kernel) {
+  auto& node = const_cast<Node&>(kernel->Node());
+  const_cast<std::string&>(node.OpType()) = "MoE";
+  const_cast<std::string&>(node.Domain()) = kMSDomain;
+  node.SetExecutionProviderType(kCudaExecutionProvider);
+  auto* input_type = const_cast<ONNX_NAMESPACE::TypeProto*>(node.InputDefs()[0]->TypeAsProto());
+  input_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+}
 
 TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   KernelPilotMoeExpertState state;
@@ -324,6 +364,76 @@ TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.6875, 0.25, 0.3125}));
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapUsesStrictEpsilonAndDeterministicTies) {
+  for (double epsilon : {1.0, 0.99}) {
+    SCOPED_TRACE(epsilon);
+    KernelPilotMoeExpertState state;
+    ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 0.5));
+    ASSERT_STATUS_OK(state.SetSwapEpsilon(epsilon));
+    ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(2));
+    MakeEligibleForCudaFp16MoePlacement(kernels_[0]);
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 4));
+    ASSERT_STATUS_OK(state.FinalizeInitialization());
+    FakeMoeExpertCache cache;
+    auto* pilot = state.GetKernelPilot(kernels_[0]);
+    ASSERT_NE(pilot, nullptr);
+    ASSERT_STATUS_OK(pilot->AttachMoeExpertCache(&cache));
+
+    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+    const int cuda_selected[] = {0, 1};
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], cuda_selected));
+    ASSERT_STATUS_OK(state.EndRun());
+    EXPECT_TRUE(cache.Swaps().empty());
+
+    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+    const int cpu_selected[] = {2, 3};
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], cpu_selected));
+    ASSERT_STATUS_OK(state.EndRun());
+    if (epsilon == 1.0) {
+      EXPECT_TRUE(cache.Swaps().empty());
+    } else {
+      EXPECT_EQ(cache.Swaps(), (InlinedVector<std::pair<int, int>>{{0, 2}}));
+    }
+  }
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapLimitsEachDeviceToTwoAndQueuesTheRest) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterParameters(0, 1));
+  ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(3));
+  for (size_t i = 0; i < 3; ++i) {
+    MakeEligibleForCudaFp16MoePlacement(kernels_[i]);
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", i, "MoE", 2));
+  }
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  std::array<FakeMoeExpertCache, 3> caches;
+  for (size_t i = 0; i < caches.size(); ++i) {
+    ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[i])->AttachMoeExpertCache(&caches[i]));
+  }
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const int selected[] = {1};
+  for (const auto* kernel : kernels_) {
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
+  }
+  ASSERT_STATUS_OK(state.EndRun());
+  EXPECT_EQ(caches[0].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
+  EXPECT_EQ(caches[1].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
+  EXPECT_TRUE(caches[2].Swaps().empty());
+
+  ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->PublishMoeExpertSwap(0, 1));
+  caches[0].Complete();
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(state.EndRun());
+  EXPECT_EQ(caches[0].Swaps().size(), 1U);
+  EXPECT_EQ(caches[1].Swaps().size(), 1U);
+  EXPECT_EQ(caches[2].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
+
+  gsl::span<const int> published;
+  ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->GetMoeCudaExperts(published));
+  EXPECT_EQ(InlinedVector<int>(published.begin(), published.end()), (InlinedVector<int>{1}));
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {
   for (const auto& [alpha, beta] : {
            std::pair{-0.1, 1.0},
@@ -350,6 +460,19 @@ TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
   EXPECT_FALSE(state.SetCounterParameters(0.5, 0.25).IsOK());
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, ValidatesSwapEpsilon) {
+  for (double epsilon : {-0.1, std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+    KernelPilotMoeExpertState state;
+    EXPECT_FALSE(state.SetSwapEpsilon(epsilon).IsOK());
+  }
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetSwapEpsilon(0));
+  ASSERT_STATUS_OK(state.SetSwapEpsilon(1.5));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
+  EXPECT_FALSE(state.SetSwapEpsilon(0.5).IsOK());
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {

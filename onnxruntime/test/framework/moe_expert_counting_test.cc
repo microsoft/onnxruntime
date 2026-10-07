@@ -22,6 +22,10 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
 
+#if defined(USE_CUDA)
+#include <cuda_runtime_api.h>
+#endif
+
 namespace onnxruntime::test {
 #if !defined(DISABLE_CONTRIB_OPS) && !defined(ORT_MINIMAL_BUILD)
 namespace {
@@ -999,6 +1003,74 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
   }
 }
 
+TEST(MoeExpertCountingTest, AdaptiveCpuOffloadPublishesCompletedSwapsAtNextInvocation) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "4"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  ModelProto numerical_model;
+  ASSERT_TRUE(numerical_model.ParseFromString(MakeCountingModel(false, true)));
+  for (auto& tensor : *numerical_model.mutable_graph()->mutable_initializer()) {
+    std::vector<MLFloat16> weights(static_cast<size_t>(kExperts * kWidth * kWidth), MLFloat16(0.0f));
+    for (int64_t expert = 0; expert < kExperts; ++expert) {
+      for (int64_t column = 0; column < kWidth; ++column) {
+        weights[static_cast<size_t>(expert * kWidth * kWidth + column * kWidth + column)] =
+            MLFloat16(tensor.name() == "w1" ? 1.0f : static_cast<float>(expert + 1));
+      }
+    }
+    tensor.set_raw_data(weights.data(), weights.size() * sizeof(MLFloat16));
+  }
+  for (auto& node : *numerical_model.mutable_graph()->mutable_node()) {
+    auto* attribute = node.add_attribute();
+    attribute->set_name("normalize_routing_weights");
+    attribute->set_type(AttributeProto_AttributeType_INT);
+    attribute->set_i(1);
+  }
+  const auto model = numerical_model.SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto* state = session.GetSessionState().GetMoeExpertState();
+  ASSERT_NE(state, nullptr);
+  const auto* first_kernel = session.GetSessionState().GetKernel(0);
+  const auto* second_kernel = session.GetSessionState().GetKernel(1);
+  ASSERT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 1}));
+  ASSERT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 1}));
+
+  const auto run_and_validate = [&]() {
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(ExecuteCountingModel(session, outputs));
+    ASSERT_EQ(outputs.size(), 1U);
+    const auto values = outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+    const std::array<float, 3> expected{1.0f, 1.0f, 9.0f};
+    for (size_t row = 0; row < expected.size(); ++row) {
+      for (size_t column = 0; column < static_cast<size_t>(kWidth); ++column) {
+        EXPECT_NEAR(values[row * static_cast<size_t>(kWidth) + column].ToFloat(), expected[row], 0.01f);
+      }
+    }
+  };
+
+  run_and_validate();
+  EXPECT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 1}));
+  EXPECT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 1}));
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  EXPECT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 1}));
+  EXPECT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 1}));
+
+  run_and_validate();
+  EXPECT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 2}));
+  EXPECT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 2}));
+}
+
 TEST(MoeExpertCountingTest, StaticCpuOffloadPreservesAliasedInputDuringHostCopy) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
@@ -1152,6 +1224,7 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0.1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "-1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "invalid"}}) {
     SessionOptions options;

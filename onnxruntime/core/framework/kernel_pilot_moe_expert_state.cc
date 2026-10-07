@@ -32,13 +32,17 @@ Status KernelPilotMoeExpertState::BeginRun(std::string request_id, const logging
   return Status::OK();
 }
 
-Status KernelPilotMoeExpertState::EndRun() {
+Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
   std::lock_guard<std::mutex> lock(run_mutex_);
   ORT_RETURN_IF_NOT(run_active_, "MoE expert tracking is not active.");
+  Status status = Status::OK();
+  if (run_succeeded && cpu_offload_enabled_) {
+    status = ScheduleSwaps();
+  }
   logging_request_id_.clear();
   logging_logger_ = nullptr;
   run_active_ = false;
-  return Status::OK();
+  return status;
 }
 
 Status KernelPilotMoeExpertState::SetCounterParameters(double alpha, double beta) {
@@ -58,6 +62,15 @@ Status KernelPilotMoeExpertState::SetCpuOffloadExpertCount(size_t cpu_offload_ex
   ORT_RETURN_IF(initialized_, "MoE CPU offload expert count cannot change after initialization.");
   cpu_offload_expert_count_ = cpu_offload_expert_count;
   cpu_offload_enabled_ = cpu_offload_expert_count > 0;
+  return Status::OK();
+}
+
+Status KernelPilotMoeExpertState::SetSwapEpsilon(double epsilon) {
+  ORT_RETURN_IF_NOT(std::isfinite(epsilon) && epsilon >= 0.0,
+                    "MoE expert swap epsilon must be finite and non-negative.");
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
+                "MoE expert swap epsilon cannot change after node registration.");
+  swap_epsilon_ = epsilon;
   return Status::OK();
 }
 
@@ -230,6 +243,69 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
 KernelPilot* KernelPilotMoeExpertState::GetKernelPilot(const OpKernel* kernel) {
   const auto node = kernels_.find(kernel);
   return node != kernels_.end() ? &node->second.pilot : nullptr;
+}
+
+Status KernelPilotMoeExpertState::ScheduleSwaps() {
+  constexpr size_t kMaxInFlightSwapsPerDevice = 2;
+  InlinedHashMap<int, size_t> pending_by_device;
+  InlinedVector<KernelState*> ordered_states;
+  ordered_states.reserve(kernels_.size());
+  for (auto& [kernel, state] : kernels_) {
+    ORT_UNUSED_PARAMETER(kernel);
+    auto* cache = state.pilot.GetMoeExpertCache();
+    if (cache != nullptr) {
+      ORT_RETURN_IF_ERROR(cache->ReclaimCompletedSwap());
+      if (cache->HasPendingSwap()) {
+        ++pending_by_device[cache->DeviceId()];
+      }
+      ordered_states.push_back(&state);
+    }
+  }
+  std::sort(ordered_states.begin(), ordered_states.end(),
+            [](const KernelState* lhs, const KernelState* rhs) { return lhs->key < rhs->key; });
+
+  for (auto* state : ordered_states) {
+    auto* cache = state->pilot.GetMoeExpertCache();
+    const int device_id = cache->DeviceId();
+    if (cache->HasPendingSwap() ||
+        pending_by_device[device_id] >= kMaxInFlightSwapsPerDevice ||
+        state->cuda_experts.empty() ||
+        state->cuda_experts.size() == state->experts.count) {
+      continue;
+    }
+
+    int coldest_cuda_expert = state->cuda_experts.front();
+    double cuda_min = counters_[state->experts.begin + static_cast<size_t>(coldest_cuda_expert)];
+    for (int expert : state->cuda_experts) {
+      const double counter = counters_[state->experts.begin + static_cast<size_t>(expert)];
+      if (counter < cuda_min || (counter == cuda_min && expert < coldest_cuda_expert)) {
+        coldest_cuda_expert = expert;
+        cuda_min = counter;
+      }
+    }
+
+    int hottest_cpu_expert = -1;
+    double cpu_max = 0.0;
+    for (size_t expert = 0; expert < state->experts.count; ++expert) {
+      const int expert_id = static_cast<int>(expert);
+      if (std::find(state->cuda_experts.begin(), state->cuda_experts.end(), expert_id) !=
+          state->cuda_experts.end()) {
+        continue;
+      }
+      const double counter = counters_[state->experts.begin + expert];
+      if (hottest_cpu_expert < 0 || counter > cpu_max ||
+          (counter == cpu_max && expert_id < hottest_cpu_expert)) {
+        hottest_cpu_expert = expert_id;
+        cpu_max = counter;
+      }
+    }
+    ORT_ENFORCE(hottest_cpu_expert >= 0);
+    if (cpu_max > (1.0 + swap_epsilon_) * cuda_min) {
+      ORT_RETURN_IF_ERROR(cache->StartSwap(coldest_cuda_expert, hottest_cpu_expert));
+      ++pending_by_device[device_id];
+    }
+  }
+  return Status::OK();
 }
 
 Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {

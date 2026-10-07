@@ -17,6 +17,7 @@
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 
+#include <algorithm>
 #include <cstring>
 #include <mutex>
 
@@ -29,6 +30,28 @@ namespace contrib {
 namespace cuda {
 
 namespace {
+class CudaDeviceGuard {
+ public:
+  Status SetDevice(int device_id) {
+    CUDA_RETURN_IF_ERROR(cudaGetDevice(&previous_device_));
+    if (previous_device_ != device_id) {
+      CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+      restore_ = true;
+    }
+    return Status::OK();
+  }
+
+  ~CudaDeviceGuard() {
+    if (restore_) {
+      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaSetDevice(previous_device_)));
+    }
+  }
+
+ private:
+  int previous_device_{0};
+  bool restore_{false};
+};
+
 void LogSwigluFusionRemapOnce() {
   static std::once_flag log_warning;
   std::call_once(log_warning, []() {
@@ -60,7 +83,20 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
                 " must be a non-negative integer. Received: \"", cpu_offload_experts, "\".");
     cpu_offload_enabled_ = cpu_offload_expert_count > 0;
     if (cpu_offload_enabled_) {
-      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&input_copy_stream_, cudaStreamNonBlocking));
+      device_id_ = GetDeviceId();
+      const Status resource_status = [&]() -> Status {
+        CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&input_copy_stream_, cudaStreamNonBlocking));
+        CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&swap_d2h_stream_, cudaStreamNonBlocking));
+        CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&swap_h2d_stream_, cudaStreamNonBlocking));
+        CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&last_expert_use_event_, cudaEventDisableTiming));
+        CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&swap_cpu_ready_event_, cudaEventDisableTiming));
+        CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&swap_transfer_complete_event_, cudaEventDisableTiming));
+        return CUDA_CALL(cudaEventCreateWithFlags(&swap_publication_complete_event_, cudaEventDisableTiming));
+      }();
+      if (!resource_status.IsOK()) {
+        ReleaseSwapResources();
+        ORT_THROW_IF_ERROR(resource_status);
+      }
     }
 #endif
     cuda_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeDefault);
@@ -70,11 +106,52 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
 template <typename T>
 MoE<T>::~MoE() {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  ReleaseSwapResources();
+#endif
+}
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+template <typename T>
+void MoE<T>::ReleaseSwapResources() noexcept {
+  CudaDeviceGuard device_guard;
+  if (cpu_offload_enabled_) {
+    ORT_IGNORE_RETURN_VALUE(device_guard.SetDevice(device_id_));
+  }
+  if (swap_d2h_stream_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(swap_d2h_stream_)));
+  }
+  if (swap_h2d_stream_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(swap_h2d_stream_)));
+  }
+  if (swap_publication_complete_event_ != nullptr && swap_phase_ == SwapPhase::PublicationInFlight) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventSynchronize(swap_publication_complete_event_)));
+  }
+  swap_pinned_buffer_.reset();
+  swap_cuda_staging_.reset();
+  for (cudaEvent_t event : {last_expert_use_event_, swap_cpu_ready_event_,
+                            swap_transfer_complete_event_, swap_publication_complete_event_}) {
+    if (event != nullptr) {
+      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventDestroy(event)));
+    }
+  }
+  if (swap_h2d_stream_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(swap_h2d_stream_)));
+  }
+  if (swap_d2h_stream_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(swap_d2h_stream_)));
+  }
   if (input_copy_stream_ != nullptr) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(input_copy_stream_)));
   }
-#endif
+  swap_publication_complete_event_ = nullptr;
+  swap_transfer_complete_event_ = nullptr;
+  swap_cpu_ready_event_ = nullptr;
+  last_expert_use_event_ = nullptr;
+  swap_h2d_stream_ = nullptr;
+  swap_d2h_stream_ = nullptr;
+  input_copy_stream_ = nullptr;
 }
+#endif
 
 template <typename T>
 Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
@@ -121,7 +198,8 @@ Status MoE<T>::InitializeKernelPilot(KernelPilot* pilot) {
   ORT_RETURN_IF_NOT(pilot, "FP16 MoE CPU offload requires a KernelPilot.");
   gsl::span<const int> cuda_experts;
   ORT_RETURN_IF_ERROR(pilot->GetMoeCudaExperts(cuda_experts));
-  return InitializeCudaExpertWeights(cuda_experts);
+  ORT_RETURN_IF_ERROR(InitializeCudaExpertWeights(cuda_experts));
+  return pilot->AttachMoeExpertCache(this);
 }
 
 template <typename T>
@@ -201,6 +279,9 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
                           packed.bytes % num_experts == 0,
                       "FP16 MoE input ", input_idx, " has an invalid expert-major layout.");
     const size_t expert_bytes = packed.bytes / num_experts;
+    packed.expert_bytes = expert_bytes;
+    packed.swap_offset = swap_staging_bytes_;
+    swap_staging_bytes_ = SafeInt<size_t>(swap_staging_bytes_) + expert_bytes;
     const size_t cuda_bytes = SafeInt<size_t>(cuda_experts_.size()) * expert_bytes;
     if (cuda_bytes == 0) {
       continue;
@@ -233,6 +314,8 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
         legacy_shape ? "legacy" : "standard", " expert weight shape.");
     // Legacy shapes do not change CUTLASS's physical column-major K x N bytes; MLAS needs row-major K x N.
     packed.cpu_gemm_data.resize(packed.cpu_data.size());
+    packed.gemm_input_size = input_size;
+    packed.gemm_output_size = output_size;
     for (size_t expert = 0; expert < num_experts; ++expert) {
       const MLFloat16* source = packed.cpu_data.data() + expert * expert_element_count;
       MLFloat16* destination = packed.cpu_gemm_data.data() + expert * expert_element_count;
@@ -252,6 +335,173 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
     CUDA_RETURN_IF_ERROR(cudaMemcpy(device_expert_map_.get(), expert_map_.data(),
                                     expert_map_.size() * sizeof(int), cudaMemcpyHostToDevice));
   }
+  return Status::OK();
+}
+
+template <typename T>
+bool MoE<T>::HasPendingSwap() const noexcept {
+  return swap_phase_ != SwapPhase::Idle;
+}
+
+template <typename T>
+Status MoE<T>::ReclaimCompletedSwap() {
+  if (swap_phase_ != SwapPhase::PublicationInFlight) {
+    return Status::OK();
+  }
+  CudaDeviceGuard device_guard;
+  ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+  const cudaError_t result = cudaEventQuery(swap_publication_complete_event_);
+  if (result == cudaErrorNotReady) {
+    return Status::OK();
+  }
+  CUDA_RETURN_IF_ERROR(result);
+  swap_pinned_buffer_.reset();
+  swap_cuda_staging_.reset();
+  swap_cuda_expert_ = -1;
+  swap_cpu_expert_ = -1;
+  swap_phase_ = SwapPhase::Idle;
+  return Status::OK();
+}
+
+template <typename T>
+void CUDART_CB MoE<T>::PrepareIncomingExpertCallback(void* context) {
+  static_cast<MoE<T>*>(context)->PrepareIncomingExpert();
+}
+
+template <typename T>
+void MoE<T>::PrepareIncomingExpert() noexcept {
+  auto* staging = static_cast<char*>(swap_pinned_buffer_.get());
+  for (int input_idx : {2, 3, 4, 5}) {
+    auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+    if (!packed.present) {
+      continue;
+    }
+    if (!packed.cpu_gemm_data.empty()) {
+      const size_t expert_elements = packed.expert_bytes / sizeof(MLFloat16);
+      const auto* outgoing = reinterpret_cast<const MLFloat16*>(staging + packed.swap_offset);
+      auto* outgoing_cpu = packed.cpu_gemm_data.data() +
+                           static_cast<size_t>(swap_cuda_expert_) * expert_elements;
+      for (size_t output = 0; output < packed.gemm_output_size; ++output) {
+        for (size_t input = 0; input < packed.gemm_input_size; ++input) {
+          outgoing_cpu[input * packed.gemm_output_size + output] =
+              outgoing[output * packed.gemm_input_size + input];
+        }
+      }
+      const auto* incoming_cpu = packed.cpu_gemm_data.data() +
+                                 static_cast<size_t>(swap_cpu_expert_) * expert_elements;
+      auto* incoming = reinterpret_cast<MLFloat16*>(staging + packed.swap_offset);
+      for (size_t output = 0; output < packed.gemm_output_size; ++output) {
+        for (size_t input = 0; input < packed.gemm_input_size; ++input) {
+          incoming[output * packed.gemm_input_size + input] =
+              incoming_cpu[input * packed.gemm_output_size + output];
+        }
+      }
+    } else {
+      auto* cpu_bytes = reinterpret_cast<char*>(packed.cpu_data.data());
+      std::memcpy(cpu_bytes + static_cast<size_t>(swap_cuda_expert_) * packed.expert_bytes,
+                  staging + packed.swap_offset, packed.expert_bytes);
+      std::memcpy(staging + packed.swap_offset,
+                  cpu_bytes + static_cast<size_t>(swap_cpu_expert_) * packed.expert_bytes,
+                  packed.expert_bytes);
+    }
+  }
+}
+
+template <typename T>
+Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
+  ORT_RETURN_IF(swap_phase_ != SwapPhase::Idle, "An MoE expert swap is already pending.");
+  CudaDeviceGuard device_guard;
+  ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+  const auto cuda_expert =
+      std::find(cuda_experts_.begin(), cuda_experts_.end(), cuda_expert_id);
+  ORT_RETURN_IF(cuda_expert == cuda_experts_.end(),
+                "MoE swap tried to evict a non-resident CUDA expert: ", cuda_expert_id);
+  ORT_RETURN_IF(cpu_expert_id < 0 ||
+                    static_cast<size_t>(cpu_expert_id) >= expert_map_.size() ||
+                    expert_map_[static_cast<size_t>(cpu_expert_id)] >= 0,
+                "MoE swap tried to stage an invalid CPU expert: ", cpu_expert_id);
+  ORT_RETURN_IF_NOT(swap_staging_bytes_ > 0, "MoE swap has no expert data to transfer.");
+
+  swap_pinned_buffer_ = AllocateBufferOnCPUPinned<void>(swap_staging_bytes_);
+  swap_cuda_staging_ =
+      IAllocator::MakeUniquePtr<void>(cuda_allocator_, swap_staging_bytes_, true);
+  ORT_RETURN_IF_NOT(swap_pinned_buffer_ && swap_cuda_staging_,
+                    "Failed to allocate MoE expert swap staging buffers.");
+  swap_cuda_expert_ = cuda_expert_id;
+  swap_cpu_expert_ = cpu_expert_id;
+  swap_cuda_slot_ = static_cast<size_t>(std::distance(cuda_experts_.begin(), cuda_expert));
+  swap_phase_ = SwapPhase::TransferInFlight;
+
+  const auto schedule = [&]() -> Status {
+    CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(swap_d2h_stream_, last_expert_use_event_, 0));
+    for (int input_idx : {2, 3, 4, 5}) {
+      const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+      if (!packed.present) {
+        continue;
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+          static_cast<char*>(swap_pinned_buffer_.get()) + packed.swap_offset,
+          static_cast<const char*>(packed.cuda_data.get()) + swap_cuda_slot_ * packed.expert_bytes,
+          packed.expert_bytes, cudaMemcpyDeviceToHost, swap_d2h_stream_));
+    }
+    CUDA_RETURN_IF_ERROR(
+        cudaLaunchHostFunc(swap_d2h_stream_, PrepareIncomingExpertCallback, this));
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(swap_cpu_ready_event_, swap_d2h_stream_));
+    CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(swap_h2d_stream_, swap_cpu_ready_event_, 0));
+    for (int input_idx : {2, 3, 4, 5}) {
+      const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+      if (!packed.present) {
+        continue;
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+          static_cast<char*>(swap_cuda_staging_.get()) + packed.swap_offset,
+          static_cast<const char*>(swap_pinned_buffer_.get()) + packed.swap_offset,
+          packed.expert_bytes, cudaMemcpyHostToDevice, swap_h2d_stream_));
+    }
+    return CUDA_CALL(cudaEventRecord(swap_transfer_complete_event_, swap_h2d_stream_));
+  };
+  const Status status = schedule();
+  if (!status.IsOK()) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(swap_d2h_stream_)));
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(swap_h2d_stream_)));
+    swap_pinned_buffer_.reset();
+    swap_cuda_staging_.reset();
+    swap_phase_ = SwapPhase::Idle;
+  }
+  return status;
+}
+
+template <typename T>
+Status MoE<T>::PrepareExpertSwapForInvocation(cudaStream_t stream, KernelPilot* pilot) const {
+  if (swap_phase_ != SwapPhase::TransferInFlight) {
+    return Status::OK();
+  }
+  const cudaError_t result = cudaEventQuery(swap_transfer_complete_event_);
+  if (result == cudaErrorNotReady) {
+    return Status::OK();
+  }
+  CUDA_RETURN_IF_ERROR(result);
+
+  for (int input_idx : {2, 3, 4, 5}) {
+    const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+    if (!packed.present) {
+      continue;
+    }
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        static_cast<char*>(packed.cuda_data.get()) + swap_cuda_slot_ * packed.expert_bytes,
+        static_cast<const char*>(swap_cuda_staging_.get()) + packed.swap_offset,
+        packed.expert_bytes, cudaMemcpyDeviceToDevice, stream));
+  }
+
+  cuda_experts_[swap_cuda_slot_] = swap_cpu_expert_;
+  expert_map_[static_cast<size_t>(swap_cuda_expert_)] = -1;
+  expert_map_[static_cast<size_t>(swap_cpu_expert_)] = static_cast<int>(swap_cuda_slot_);
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(device_expert_map_.get(), expert_map_.data(),
+                                       expert_map_.size() * sizeof(int),
+                                       cudaMemcpyHostToDevice, stream));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(swap_publication_complete_event_, stream));
+  ORT_RETURN_IF_ERROR(pilot->PublishMoeExpertSwap(swap_cuda_expert_, swap_cpu_expert_));
+  swap_phase_ = SwapPhase::PublicationInFlight;
   return Status::OK();
 }
 #endif
@@ -314,6 +564,14 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   void* stream_obj = GetComputeStream(context);
   cudaStream_t stream = Stream(context);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  KernelPilot* moe_pilot = nullptr;
+  if (cpu_offload_enabled_) {
+    moe_pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(moe_pilot, "FP16 MoE CPU offload requires a KernelPilot.");
+    ORT_RETURN_IF_ERROR(PrepareExpertSwapForInvocation(stream, moe_pilot));
+  }
+#endif
 
   auto& device_prop = GetDeviceProp();
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -465,7 +723,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<MLFloat16> host_input;
   IAllocatorUniquePtr<int> host_expert_indices;
   IAllocatorUniquePtr<float> host_expert_scales;
-  KernelPilot* moe_pilot = nullptr;
   cudaEvent_t input_ready = nullptr;
   cudaEvent_t input_copy_ready = nullptr;
   cudaEvent_t routing_copy_ready = nullptr;
@@ -601,8 +858,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (cpu_offload_enabled_) {
     ORT_RETURN_IF_NOT(use_packed_fp16_weights && expert_map_.size() == static_cast<size_t>(moe_params.num_experts),
                       "FP16 MoE CPU offload weights were not initialized.");
-    moe_pilot = context->GetKernelPilot();
-    ORT_RETURN_IF_NOT(moe_pilot, "FP16 MoE CPU offload requires a KernelPilot.");
     ORT_RETURN_IF_ERROR(moe_pilot->Moe().BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
@@ -817,6 +1072,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   if (routing_snapshot_ && !cpu_offload_enabled_) {
     ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+  }
+  if (cpu_offload_enabled_) {
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(last_expert_use_event_, stream));
   }
 #endif
 
