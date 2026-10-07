@@ -23,6 +23,9 @@
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
+  # Non-shared builds without Python bindings (including WASM) still need the
+  # interpreter for source validation and WGSL generation.
+  find_package(Python 3.10 COMPONENTS Interpreter REQUIRED)
   set(webgpu_config_checker "${REPO_ROOT}/tools/python/webgpu/check_shader_config.py")
   add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/webgpu_shader_config_checked.stamp"
@@ -338,12 +341,6 @@
     set(WGSL_GEN_PYTHON_DIR "${REPO_ROOT}/tools/python")
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
 
-    # The top-level find_package(Python ...) in cmake/CMakeLists.txt is gated
-    # on BUILD_SHARED_LIB OR ENABLE_PYTHON, so Python_EXECUTABLE is not always
-    # set in WebGPU-enabled builds (e.g. the WASM lane). Find Python ourselves
-    # so this branch works in every config.
-    find_package(Python 3.10 COMPONENTS Interpreter REQUIRED)
-
     set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/wgsl_template_gen")
     # Define the output files that will be generated
     set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
@@ -358,6 +355,9 @@
         list(APPEND WGSL_SEARCH_PATHS "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.wgsl.template")
     endif()
     file(GLOB_RECURSE WGSL_TEMPLATE_FILES ${WGSL_SEARCH_PATHS})
+    file(GLOB_RECURSE WGSL_GENERATOR_FILES CONFIGURE_DEPENDS
+        "${WGSL_GEN_PYTHON_DIR}/wgsl_template/*.py")
+    list(FILTER WGSL_GENERATOR_FILES EXCLUDE REGEX "/test/")
 
     # Set wgsl-gen command line options as a list
     set(WGSL_GEN_OPTIONS
@@ -381,7 +381,7 @@
     add_custom_command(
       OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
       COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_gen.py" ${WGSL_GEN_OPTIONS}
-      DEPENDS ${WGSL_TEMPLATE_FILES}
+      DEPENDS ${WGSL_TEMPLATE_FILES} ${WGSL_GENERATOR_FILES} "${WGSL_GEN_PYTHON_DIR}/wgsl_gen.py"
       WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
       COMMENT "Generating WGSL templates from *.wgsl.template files (Python)"
       COMMAND_EXPAND_LISTS
