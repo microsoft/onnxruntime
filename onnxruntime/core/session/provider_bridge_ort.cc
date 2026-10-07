@@ -2415,6 +2415,12 @@ std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create
 
 ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() {
   ORT_TRY {
+    auto status = s_library_openvino.Load();
+    if (!status.IsOK()) {
+      LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
+      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      return nullptr;
+    }
     return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
   }
   ORT_CATCH_LOG_RETURN_NULLPTR;
