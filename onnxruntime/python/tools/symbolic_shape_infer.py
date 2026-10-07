@@ -2066,7 +2066,26 @@ class SymbolicShapeInference:
         self._infer_Split_Common(node, helper.make_tensor_value_info)
 
     def _infer_SplitToSequence(self, node):  # noqa: N802
-        self._infer_Split_Common(node, helper.make_sequence_value_info)
+        output_shape = list(self._get_shape(node, 0))
+        axis = handle_negative_axis(get_attribute(node, "axis", 0), len(output_shape))
+        if len(node.input) > 1 and node.input[1]:
+            split = self._try_get_value(node, 1)
+            if split is not None and np.ndim(split) == 1 and len(set(np.ravel(split).tolist())) == 1:
+                output_shape[axis] = int(np.ravel(split)[0])
+            else:
+                # The chunks can have different sizes, so their dim along axis is unknown.
+                output_shape[axis] = str(self._new_symbolic_dim_from_output(node, 0, axis))
+        elif get_attribute(node, "keepdims", 1):
+            output_shape[axis] = 1
+        else:
+            del output_shape[axis]
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_sequence_value_info(
+                node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, output_shape
+            )
+        )
 
     def _infer_Squeeze(self, node):  # noqa: N802
         input_shape = self._get_shape(node, 0)
