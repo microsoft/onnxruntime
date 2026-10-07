@@ -4,9 +4,10 @@
 
 #pragma once
 
+#include <atomic>
+#include <memory>
 #include <span>
 #include <string>
-#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -24,6 +25,12 @@
 
 struct pthreadpool;
 namespace onnxruntime {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+namespace ep::adapter {
+struct Logger;
+}
+#endif
+
 namespace webgpu {
 
 // forward declaration for this EP's namespace.
@@ -52,6 +59,10 @@ struct WebGpuExecutionProviderConfig {
   // generator's worth of intermediate buffers.
   size_t session_buffer_pool_generations{1};
   uint32_t kv_cache_quantization_bits{0};  // KV cache quantization bits (0 = off, 4 = 4-bit)
+  // Accumulate MatMulNBits dot products in f32 rather than in the output element type.
+  // This is the single line that decides the shipped default for the
+  // "enableMatmulFp32Accumulation" provider option.
+  bool enable_matmul_fp32_accumulation{false};
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -88,14 +99,14 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 
-  // WebGPU EP disallow concurrent run because actual implementation (eg. WebGPU backend) relies on global states to
-  // work, and concurrent run with async function may mess up the states and cause undefined behavior.
+  // A Session owns one command recording timeline, so Run calls on that Session must be serialized.
   bool ConcurrentRunSupported() const override { return false; }
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+  bool IsRunActive() const { return run_active_.load(); }
 
   // WebGPU EP reuses the Device ID as the key to get the WebGpuContext instance.
   int GetDeviceId() const override { return context_id_; }
@@ -110,19 +121,18 @@ class WebGpuExecutionProvider : public IExecutionProvider {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
   webgpu::BufferManager& BufferManager() const;
+  webgpu::BufferManager& InitializerBufferManager() const;
+  webgpu::CommandRecordingState& Recording() const { return *recording_; }
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
   uint32_t KvCacheQuantizationBits() const { return kv_cache_quantization_bits_; }
   bool KvCacheQuantizationEnabled() const { return kv_cache_quantization_bits_ != 0; }
+  bool EnableMatmulFp32Accumulation() const { return enable_matmul_fp32_accumulation_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
-    return *ep_logger_;
-  }
-  inline void SetEpLogger(const OrtLogger* logger) {
-    ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
-  }
+  onnxruntime::ep::adapter::Logger& GetEpLogger() const;
+  void SetEpLogger(const OrtLogger* logger);
 #endif
 
  private:
@@ -136,9 +146,11 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
+  std::atomic<bool> run_active_{false};
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
+  bool enable_matmul_fp32_accumulation_ = false;
   std::unordered_map<int, int> graph_id_to_run_count_;
   // Required regular runs before graph capture for any necessary allocations.
   const int min_num_runs_before_graph_capture_ = 0;
@@ -147,6 +159,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
+
+  // Command recording is per session and is passed separately from the context-level BufferManagers.
+  std::unique_ptr<webgpu::CommandRecordingState> recording_;
 
   // Per-graph buffer managers keyed by annotation ID.
   // Each captured graph gets its own buffer manager so that buffer caches

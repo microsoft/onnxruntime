@@ -131,6 +131,21 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_creat
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    cloneOptions
+ * Signature: (JJ)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_cloneOptions(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+  (void)jobj;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* clonedOptions = NULL;
+  checkOrtStatus(
+      jniEnv, api,
+      api->CloneSessionOptions((const OrtSessionOptions*)handle, &clonedOptions));
+  return (jlong)clonedOptions;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    closeOptions
  * Signature: (JJ)V
  */
@@ -139,6 +154,106 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeO
   (void)jniEnv; (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   api->ReleaseSessionOptions((OrtSessionOptions*)handle);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setEpContextDataReadCallback
+ * Signature: (JJLai/onnxruntime/OrtSession$SessionOptions$EpContextDataReadCallback;J)Lai/onnxruntime/OrtSession$SessionOptions$EpContextDataReadCallbackRegistration;
+ */
+JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setEpContextDataReadCallback
+    (JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jlong optionsHandle,
+     jobject callback, jlong maxDataSize) {
+  (void)jclazz;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  if (maxDataSize <= 0 ||
+      (sizeof(size_t) < sizeof(uint64_t) && (uint64_t)maxDataSize > SIZE_MAX)) {
+    throwOrtException(jniEnv, ORT_INVALID_ARGUMENT, "maxDataSize must be finite and greater than zero");
+    return NULL;
+  }
+
+  EpContextDataCallbackState* callbackState = createEpContextDataCallbackState(
+      jniEnv, api, callback, "read", "(Ljava/lang/String;)[B", (size_t)maxDataSize);
+  if (callbackState == NULL) {
+    return NULL;
+  }
+
+  jclass registrationClass = (*jniEnv)->FindClass(
+      jniEnv, "ai/onnxruntime/OrtSession$SessionOptions$EpContextDataReadCallbackRegistration");
+  if (registrationClass == NULL) {
+    releaseEpContextDataCallbackState(jniEnv, callbackState);
+    return NULL;
+  }
+
+  jmethodID constructor = (*jniEnv)->GetMethodID(jniEnv, registrationClass, "<init>", "(J)V");
+  jobject registration = NULL;
+  if (constructor != NULL) {
+    registration = (*jniEnv)->NewObject(jniEnv, registrationClass, constructor, (jlong)callbackState);
+  }
+  (*jniEnv)->DeleteLocalRef(jniEnv, registrationClass);
+  if (registration == NULL) {
+    releaseEpContextDataCallbackState(jniEnv, callbackState);
+    return NULL;
+  }
+
+  OrtStatus* status = api->SessionOptionsSetEpContextDataReadFunc(
+      (OrtSessionOptions*)optionsHandle, javaEpContextDataReadCallback, callbackState);
+
+  if (status != NULL) {
+    releaseEpContextDataCallbackState(jniEnv, callbackState);
+    (*jniEnv)->DeleteLocalRef(jniEnv, registration);
+    checkOrtStatus(jniEnv, api, status);
+    return NULL;
+  }
+
+  return registration;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_ai_onnxruntime_OrtSession_00024SessionOptions_isEpContextDataReadMemoryInfoHostAccessibleForTest
+    (JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jint deviceType, jint deviceMemoryType) {
+  (void)jclazz;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtMemoryInfo* memoryInfo = NULL;
+  OrtStatus* status = api->CreateMemoryInfo_V2(
+      "EpContextDataReadTest", (OrtMemoryInfoDeviceType)deviceType, 0, 0,
+      (OrtDeviceMemoryType)deviceMemoryType, 0, OrtDeviceAllocator, &memoryInfo);
+  if (status != NULL) {
+    checkOrtStatus(jniEnv, api, status);
+    return JNI_FALSE;
+  }
+
+  const int isHostAccessible =
+      isEpContextDataReadAllocatorHostAccessible(api, memoryInfo);
+  api->ReleaseMemoryInfo(memoryInfo);
+  return isHostAccessible ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    clearEpContextDataReadCallback
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_clearEpContextDataReadCallback
+    (JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jlong optionsHandle) {
+  (void)jclazz;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  checkOrtStatus(
+      jniEnv, api,
+      api->SessionOptionsSetEpContextDataReadFunc(
+          (OrtSessionOptions*)optionsHandle, NULL, NULL));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    releaseEpContextDataCallback
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_releaseEpContextDataCallback
+    (JNIEnv* jniEnv, jclass jclazz, jlong callbackHandle) {
+  (void)jclazz;
+  releaseEpContextDataCallbackState(
+      jniEnv, (EpContextDataCallbackState*)callbackHandle);
 }
 
 /*

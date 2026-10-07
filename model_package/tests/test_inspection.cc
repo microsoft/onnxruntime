@@ -276,6 +276,16 @@ bool test_executor_info_inline_and_external() {
   return true;
 }
 
+bool test_invalid_external_executor_info() {
+  Sandbox s;
+  s.Write("manifest.json", R"({"schema_version":1,"components":{"decoder":{"variants":{"cpu":{
+    "variant_directory":"v","executor_info":{"ort":"ort_info.json"}}}}}})");
+  s.Write("v/ort_info.json", "not-json");
+  ModelPackage* pkg = nullptr;
+  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+  return true;
+}
+
 bool test_inline_executor_info_without_directory_accepted() {
   // Library no longer requires variant_directory to exist for inline
   // executor_info. Executors interpret their own payload.
@@ -457,6 +467,14 @@ bool test_missing_manifest() {
   return true;
 }
 
+bool test_invalid_manifest_json() {
+  Sandbox s;
+  s.Write("manifest.json", "not-json");
+  ModelPackage* pkg = nullptr;
+  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+  return true;
+}
+
 bool test_unsupported_schema_version() {
   Sandbox s;
   s.Write("manifest.json", R"({"schema_version": 99, "components": {}})");
@@ -509,6 +527,12 @@ bool test_schema_version_string_and_minor() {
     ModelPackage* pkg = nullptr;
     CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
   }
+  {
+    Sandbox s;
+    s.Write("manifest.json", R"({"schema_version": "9223372036854775808.0", "components": {}})");
+    ModelPackage* pkg = nullptr;
+    CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+  }
   return true;
 }
 
@@ -547,6 +571,7 @@ const Test kTests[] = {
     {"external_component_file", test_external_component_file},
     {"external_component_directory", test_external_component_directory},
     {"executor_info_inline_and_external", test_executor_info_inline_and_external},
+    {"invalid_external_executor_info", test_invalid_external_executor_info},
     {"inline_executor_info_without_directory_accepted",
      test_inline_executor_info_without_directory_accepted},
     {"path_confinement_rejects_external_paths", test_path_confinement_rejects_external_paths},
@@ -558,6 +583,7 @@ const Test kTests[] = {
     {"round_trip_preserves_unknown_fields_lenient",
      test_round_trip_preserves_unknown_fields_lenient},
     {"missing_manifest", test_missing_manifest},
+    {"invalid_manifest_json", test_invalid_manifest_json},
     {"unsupported_schema_version", test_unsupported_schema_version},
     {"schema_version_string_and_minor", test_schema_version_string_and_minor},
     {"invalid_sha256_uri_rejected", test_invalid_sha256_uri_rejected},

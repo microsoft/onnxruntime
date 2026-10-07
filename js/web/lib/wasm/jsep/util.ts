@@ -366,6 +366,8 @@ export class PoolConvUtil {
    * @param pads Padding for the beginning and ending along each axis.
    * @param autoPad DEPRECATED attribute supported for legacy models. Specifies how to implicitly calculate pads in each
    *     dimension. Can take values NOTSET, SAME_UPPER, SAME_LOWER, or VALID.
+   * @param ceilMode When set to 1, use ceil() instead of floor() to compute the output spatial size (and apply the
+   *     "shrink the last window if it starts entirely in padding" rule). Defaults to 0 (floor).
    */
   static computePoolOutputShape(
     isGlobalOperator: boolean,
@@ -375,6 +377,7 @@ export class PoolConvUtil {
     kernelShape: number[],
     pads: number[],
     autoPad?: string,
+    ceilMode = 0,
   ): number[] {
     if (inputDims.length <= 0) {
       throw new Error('input shape must be of size greater than 0');
@@ -392,6 +395,7 @@ export class PoolConvUtil {
       kernelShape,
       pads,
       autoPad,
+      ceilMode,
     );
     return outputDims;
   }
@@ -438,6 +442,7 @@ export class PoolConvUtil {
     kernelShape: readonly number[],
     pads: number[],
     autoPad?: string,
+    ceilMode = 0,
   ) {
     if (isGlobalOperator) {
       for (let dim = 0; dim < inputDims.length - 2; dim++) {
@@ -455,10 +460,39 @@ export class PoolConvUtil {
             dim,
             dim + inputDims.length - 2,
             autoPad,
+            ceilMode,
           ),
         );
       }
     }
+  }
+
+  // Computes the output spatial size for a single dimension.
+  // Produces results identical to the C++ PoolAttributes::ComputeOutputSize
+  // (onnxruntime/core/providers/cpu/nn/pool_attributes.h), including the ceil_mode
+  // "shrink the last window if it starts entirely in the trailing padding" rule. The JS
+  // signature takes a pre-computed `numerator` (equal to `inSize + padHead + padTail - dkernel`,
+  // matching the C++ `in_size + pad_head + pad_tail - dilation * (kernel - 1) - 1`) instead of
+  // the raw pooling attributes, but the computed output size is the same.
+  // Keep in sync with the onnxjs/jsep copy.
+  private static computeOutputSize(
+    numerator: number,
+    stride: number,
+    inSize: number,
+    padHead: number,
+    ceilMode: number,
+  ): number {
+    let outSize = Math.floor(numerator / stride) + 1;
+    // Match C++ `ceil_mode == 1` exactly so out-of-spec ceil_mode values do not diverge.
+    if (ceilMode === 1) {
+      outSize = Math.ceil(numerator / stride) + 1;
+      // Ensure the last pooling window starts inside the image (ref: https://github.com/onnx/onnx/pull/5741).
+      // inSize and padHead are needed here to reconstruct the last window's start position.
+      if ((outSize - 1) * stride >= inSize + padHead) {
+        outSize -= 1;
+      }
+    }
+    return outSize;
   }
 
   // helper for computeShapeHelper() and adjustPadsBasedOnAutoPad()
@@ -472,6 +506,7 @@ export class PoolConvUtil {
     padHeadIndex: number,
     padTailIndex: number,
     autoPad?: string,
+    ceilMode = 0,
   ): number {
     const dkernel = dilation * (kernel - 1) + 1;
     if (autoPad && autoPad !== 'NOTSET') {
@@ -479,23 +514,36 @@ export class PoolConvUtil {
         case 'VALID':
           pads[padHeadIndex] = 0;
           pads[padTailIndex] = 0;
-          return Math.floor((inSize - dkernel) / stride + 1);
+          return PoolConvUtil.computeOutputSize(inSize - dkernel, stride, inSize, 0, ceilMode);
         case 'SAME_LOWER':
         case 'SAME_UPPER':
           if (dilation !== 1) {
             throw new Error('Dilation not supported for SAME_UPPER or SAME_LOWER');
           } else {
-            const legacyTargetSize = (inSize + stride - 1) / stride;
+            // Integer division to match C++ pool_attributes.h ComputeSizePadDilations; float division mis-rounds SAME_* pads.
+            const legacyTargetSize = Math.floor((inSize + stride - 1) / stride);
             const padNeeded = (legacyTargetSize - 1) * stride + kernel - inSize;
             pads[padHeadIndex] = autoPad === 'SAME_LOWER' ? Math.floor((padNeeded + 1) / 2) : Math.floor(padNeeded / 2);
             pads[padTailIndex] = padNeeded - pads[padHeadIndex];
-            return Math.floor((inSize + padNeeded - kernel) / stride + 1);
+            return PoolConvUtil.computeOutputSize(
+              inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel,
+              stride,
+              inSize,
+              pads[padHeadIndex],
+              ceilMode,
+            );
           }
         default:
           throw new Error('Unsupported AutoPad type');
       }
     } else {
-      return Math.floor((inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel) / stride + 1);
+      return PoolConvUtil.computeOutputSize(
+        inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel,
+        stride,
+        inSize,
+        pads[padHeadIndex],
+        ceilMode,
+      );
     }
   }
 }

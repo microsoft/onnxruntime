@@ -1011,6 +1011,8 @@ QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT mode
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
 and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
 and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+segment_ids, segment_embedding, segment_embedding_scale, and segment_embedding_zero_point must either all be provided or all
+be omitted.
 If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1021,21 +1023,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT,
               kDefaultEmbedLayerNormEpsilon)
         .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
-        .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+        .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length). Part of the all-or-none segment input group.", "T1", OpSchema::Optional)
         .Input(2, "word_embedding_quant", "2D with shape (,hidden_size)", "T2")
         .Input(3, "position_embedding_quant", "2D with shape (, hidden_size)", "T2")
-        .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T2", OpSchema::Optional)
+        .Input(4, "segment_embedding", "2D with shape (, hidden_size). Part of the all-or-none segment input group.", "T2", OpSchema::Optional)
         .Input(5, "gamma_quant", "1D gamma tensor for layer normalization with shape (hidden_size)", "T2")
         .Input(6, "beta_quant", "1D beta tensor for layer normalization  with shape (hidden_size)", "T2")
         .Input(7, "mask", "Mask", "T1", OpSchema::Optional)
         .Input(8, "word_embedding_scale", "Scale for word embeddings", "T")
         .Input(9, "position_embedding_scale", "Scale for position embeddings", "T")
-        .Input(10, "segment_embedding_scale", "Scale for segment embeddings", "T", OpSchema::Optional)
+        .Input(10, "segment_embedding_scale", "Scale for segment embeddings. Part of the all-or-none segment input group.", "T", OpSchema::Optional)
         .Input(11, "gamma_scale", "Scale for 1D gamma tensor", "T")
         .Input(12, "beta_scale", "Scale for 1D beta tensor", "T")
         .Input(13, "word_embedding_zero_point", "Zero point for word embeddings", "T2")
         .Input(14, "position_embedding_zero_point", "Zero point for position embeddings", "T2")
-        .Input(15, "segment_embedding_zero_point", "Zero Point for segment embeddings", "T2", OpSchema::Optional)
+        .Input(15, "segment_embedding_zero_point", "Zero Point for segment embeddings. Part of the all-or-none segment input group.", "T2", OpSchema::Optional)
         .Input(16, "gamma_zero_point", "Zero Point for 1D gamma tensor", "T2")
         .Input(17, "beta_zero_point", "Zero Point for 1D beta tensor", "T2")
         .Output(0, "layernorm_out", "LayerNorm Output", "T")
@@ -1043,7 +1045,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
         .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
         .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
-        .TypeAndShapeInferenceFunction(EmbedLayerNormalizationShapeInference));
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const bool has_segment_ids = ctx.getInputType(1) != nullptr;
+          if (has_segment_ids != (ctx.getInputType(4) != nullptr) ||
+              has_segment_ids != (ctx.getInputType(10) != nullptr) ||
+              has_segment_ids != (ctx.getInputType(15) != nullptr)) {
+            fail_type_inference(
+                "segment_ids, segment_embedding, segment_embedding_scale, and segment_embedding_zero_point "
+                "must either all be provided or all be omitted");
+          }
+
+          EmbedLayerNormalizationShapeInference(ctx);
+        }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QuantizeWithOrder, 1,

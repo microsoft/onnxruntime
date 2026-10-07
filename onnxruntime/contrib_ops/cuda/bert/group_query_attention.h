@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
@@ -24,10 +25,19 @@ class GroupQueryAttention final : public CudaKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const WorkspaceInputShape> input_shapes,
+      InlinedVector<WorkspaceRequirement>& requirements) const override;
+#endif
+
  protected:
   int num_heads_;     // number of attention heads
   int kv_num_heads_;  // different for k and v for group query attention
   int local_window_size_;
+  // sliding_window_cache attribute: past/present KV buffers are window-sized and the kernel uses
+  // cache-relative indexing with shift compaction. Requires local_window_size_ > 0.
+  bool sliding_window_cache_;
   bool is_unidirectional_;
   bool is_past_bsnh_;
   bool do_rotary_;
@@ -52,6 +62,10 @@ class GroupQueryAttention final : public CudaKernel {
   // FP32 head_sink cached in PrePack for the XQA path (empty when head_sink is not a constant initializer).
   IAllocatorUniquePtr<float> xqa_head_sink_;
   int xqa_head_sink_count_ = 0;  // Number of elements in xqa_head_sink_ (0 when not prepacked).
+  // Cached result of the XQA shared-memory fit check for this node (-1 unknown, 0 does not fit,
+  // 1 fits). head_size and group size are constant for a given GQA node, so the (device-symbol)
+  // query is done once and reused to avoid a per-decode-step device->host copy.
+  mutable std::atomic<int> xqa_shared_memory_ok_{-1};
   const AttentionKernelOptions* kernel_options_;
 };
 

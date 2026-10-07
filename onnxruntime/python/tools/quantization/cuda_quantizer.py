@@ -7,9 +7,13 @@
 """CUDA weight-only quantization helpers.
 
 This module contains small Python utilities for producing the weight layouts
-consumed by CUDA weight-only kernels. The helpers deliberately wrap the same C++
-pybind entry points used by runtime prepacking so tests and model builders can
-generate byte-identical quantized weights.
+consumed by CUDA weight-only kernels. The blockwise quantizers wrap the same C++
+pybind entry points used by runtime prepacking, and the mixed-GEMM weight packer
+is a PyTorch reimplementation of the runtime CUDA packing, so tests and model
+builders can generate byte-identical quantized weights. The PyTorch packer runs
+on CUDA when a device is available and falls back to CPU otherwise, which is the
+only option on platforms where the standalone CUDA packer is not built (Windows).
+A GPU-gated parity test validates it against that standalone CUDA packer.
 
 Two storage families are exposed:
 
@@ -24,9 +28,13 @@ All public helpers take one logical expert weight matrix with shape ``[N, K]``.
 
 from __future__ import annotations
 
+import functools
+import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import torch
@@ -43,20 +51,207 @@ def _get_torch():
 
 
 def _get_pack_weights_for_cuda_mixed_gemm():
-    """Return the CUDA mixed-GEMM weight prepacker from the ORT pybind module."""
+    """Return the standalone CUDA mixed-GEMM weight packer (parity oracle).
+
+    Production packing uses the PyTorch implementation (``_pack_weights_for_cuda_mixed_gemm``).
+    This standalone packer lives in ``onnxruntime.capi.onnxruntime_cuda_quant_preprocess``, a
+    separate extension module that links the CUDA runtime (built only on non-Windows CUDA
+    builds). It is imported lazily here (never at ``import onnxruntime`` time) and is used by
+    the parity test to validate the PyTorch packer byte-for-byte.
+    """
     try:
-        from onnxruntime.capi import _pybind_state as _pybind  # noqa: PLC0415
+        from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant  # noqa: PLC0415
     except ImportError as e:
         raise ImportError(
-            "CUDA weight prepacking requires pack_weights_for_cuda_mixed_gemm from an onnxruntime-gpu CUDA build."
+            "The standalone CUDA weight packer (onnxruntime_cuda_quant_preprocess) is unavailable; "
+            "it is built only on non-Windows onnxruntime-gpu CUDA builds."
         ) from e
 
     try:
-        return _pybind.pack_weights_for_cuda_mixed_gemm
+        return _cuda_quant.pack_weights_for_cuda_mixed_gemm
     except AttributeError as e:
-        raise ImportError(
-            "CUDA weight prepacking requires pack_weights_for_cuda_mixed_gemm from an onnxruntime-gpu CUDA build."
-        ) from e
+        raise ImportError("onnxruntime_cuda_quant_preprocess is missing pack_weights_for_cuda_mixed_gemm.") from e
+
+
+def has_cuda_weight_prepacking() -> bool:
+    """Return True if mixed-GEMM weight prepacking is available.
+
+    Prepacking is implemented with PyTorch (CUDA when available, CPU otherwise), so it is
+    available whenever torch is importable. Callers use this to skip prepack code paths
+    (and tests) when torch is unavailable.
+    """
+    try:
+        _get_torch()
+    except ImportError:
+        return False
+    return True
+
+
+@functools.lru_cache(maxsize=1)
+def _warn_cpu_prepack_once() -> None:
+    _logger.warning(
+        "CUDA device is not available; packing mixed-GEMM weights on CPU with PyTorch. "
+        "This is correct but significantly slower for large Mixture-of-Experts models. "
+        "Pack on a CUDA-enabled machine for best performance."
+    )
+
+
+def _prepack_device():
+    """Pick the torch device for mixed-GEMM weight packing (CUDA if available, else CPU)."""
+    torch = _get_torch()
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    _warn_cpu_prepack_once()
+    return torch.device("cpu")
+
+
+def _preprocess_weights_for_mixed_gemm_torch(tensor, bits: int, sm: int):
+    """PyTorch port of the runtime CUDA ``preprocess_weights_for_mixed_gemm``.
+
+    ``tensor`` is a signed int8 weight in ``(K, N/pack)`` packed row-major layout on any
+    device. Returns the CUTLASS mixed-GEMM layout with the same shape/dtype/device. This
+    mirrors ``preprocess_weights_for_mixed_gemm_cuda`` (permute_B_rows -> subbyte_transpose
+    -> interleave_column_major -> add_bias_and_interleave) so its output is byte-identical
+    to the standalone CUDA packer, for both the SM80 (Ampere) and SM90 (Hopper) layouts.
+    """
+    torch = _get_torch()
+    bits_a = 16  # fp16/bf16 activations
+    bits_b = 4 if bits == 4 else 8
+
+    if tensor.dim() == 2:
+        tensor = tensor.unsqueeze(0)
+
+    permutation_map = {
+        "16_8": [0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15],
+        "16_4": [
+            0,
+            1,
+            8,
+            9,
+            16,
+            17,
+            24,
+            25,
+            2,
+            3,
+            10,
+            11,
+            18,
+            19,
+            26,
+            27,
+            4,
+            5,
+            12,
+            13,
+            20,
+            21,
+            28,
+            29,
+            6,
+            7,
+            14,
+            15,
+            22,
+            23,
+            30,
+            31,
+        ],
+    }
+    mma_shape_n = 8
+    b_rows_per_mma = 8 * 16 // bits_b
+
+    num_experts, num_rows, num_cols = tensor.shape[0], tensor.shape[1], tensor.shape[2]
+    if num_rows % b_rows_per_mma != 0 or num_cols % mma_shape_n != 0:
+        raise ValueError(
+            f"weight shape (rows={num_rows}, packed_cols={num_cols}) is incompatible with mixed-GEMM "
+            f"packing (rows must be a multiple of {b_rows_per_mma}, packed cols a multiple of {mma_shape_n})."
+        )
+
+    # permute_B_rows_for_mixed_gemm
+    if sm < 100:
+        pmap = permutation_map[f"{bits_a}_{bits_b}"]
+        row_idx = [(r // b_rows_per_mma) * b_rows_per_mma + pmap[r % b_rows_per_mma] for r in range(num_rows)]
+        tensor = tensor[:, row_idx, :]
+
+    # subbyte_transpose
+    original_shape = tensor.shape
+    if bits_b == 4:
+        u = tensor.view(torch.uint8)
+        high = (u >> 4).permute(0, 2, 1).unsqueeze(2)
+        low = ((u << 4) >> 4).permute(0, 2, 1).unsqueeze(2)
+        merged = torch.cat([low, high], dim=2).reshape(u.shape[0], -1, u.shape[1])
+        merged = merged[:, :, 0::2] + merged[:, :, 1::2] * 16
+        tensor = merged.view(torch.int8).reshape(original_shape)
+    else:
+        tensor = tensor.permute(0, 2, 1).reshape(original_shape)
+
+    # interleave_column_major_tensor
+    interleave = bits_a // bits_b
+    if interleave > 1 and sm < 90:
+        rows_per_tile = 128 * 8 // bits_a
+        elts_in_int32 = 32 // bits_b
+        if num_rows % elts_in_int32 != 0 or num_rows % rows_per_tile != 0:
+            raise ValueError(f"num_rows ({num_rows}) is incompatible with column-interleave tiling.")
+        tensor = tensor.reshape(
+            num_experts, -1, interleave, num_rows // rows_per_tile, rows_per_tile * 4 // elts_in_int32
+        )
+        tensor = tensor.permute(0, 1, 3, 2, 4).reshape(original_shape)
+
+    # add_bias_and_interleave_quantized_tensor_inplace
+    if bits_b == 8:
+        t = tensor.to(torch.int64)  # widen so the +128 rebias cannot overflow int8
+        t += -256 * (t > 127).to(torch.int64) + 128
+        t = t.reshape(-1, 4)[:, [0, 2, 1, 3]].reshape(original_shape)
+        tensor = t.to(torch.uint8).view(torch.int8)
+    else:
+        u = tensor.view(torch.uint8)
+        high = (u >> 4).unsqueeze(-1)
+        low = ((u << 4) >> 4).unsqueeze(-1)
+        merged = torch.cat([low, high], dim=-1).reshape(u.shape[0], u.shape[1], -1)
+        merged = merged.reshape(-1, 8)[:, [0, 2, 4, 6, 1, 3, 5, 7]].reshape(merged.shape)
+        merged = merged.to(torch.int16)
+        merged += -16 * (merged > 7).to(torch.int16) + 8
+        merged = merged[:, :, 0::2] + merged[:, :, 1::2] * 16
+        tensor = merged.to(torch.uint8).view(torch.int8)
+
+    return tensor.squeeze(0).contiguous()
+
+
+def _pack_weights_for_cuda_mixed_gemm(q_weights, n: int, k: int, bits: int, force_arch: int = 80) -> np.ndarray:
+    """PyTorch implementation of the CUDA ``pack_weights_for_cuda_mixed_gemm``.
+
+    ``q_weights`` is ORT's unsigned MatMulNBits/QMoE storage ``(N, K/pack)`` (uint8). Returns
+    a flat ``int8`` numpy array with the CUTLASS mixed-GEMM layout, byte-identical to the
+    standalone CUDA packer. Runs on CUDA when available, otherwise on CPU.
+    """
+    torch = _get_torch()
+    bits = int(bits)
+    force_arch = int(force_arch)
+    if bits not in (4, 8):
+        raise ValueError(f"bits must be 4 or 8, got {bits}.")
+    if force_arch not in (80, 90):
+        raise ValueError(f"force_arch must be 80 (SM80) or 90 (SM90), got {force_arch}.")
+    pack = 8 // bits
+    device = _prepack_device()
+
+    q = torch.as_tensor(np.ascontiguousarray(q_weights)).view(torch.uint8).reshape(n, k // pack).to(device)
+
+    # Front-end adaptor: transpose ORT (N, K) -> (K, N) and convert unsigned -> signed int8.
+    if bits == 4:
+        low = (q & 0x0F).to(torch.int16)
+        high = (q >> 4).to(torch.int16)
+        unpacked = torch.empty((n, k), dtype=torch.int16, device=device)
+        unpacked[:, 0::2] = low
+        unpacked[:, 1::2] = high
+        signed_t = (unpacked - 8).transpose(0, 1).contiguous()  # (K, N), zero point 8
+        packed_t = ((signed_t[:, 0::2] & 0x0F) | ((signed_t[:, 1::2] & 0x0F) << 4)).to(torch.uint8).view(torch.int8)
+    else:
+        signed_t = (q.to(torch.int16) - 128).transpose(0, 1).contiguous()  # (K, N), zero point 128
+        packed_t = signed_t.to(torch.uint8).view(torch.int8)
+
+    out = _preprocess_weights_for_mixed_gemm_torch(packed_t.contiguous(), bits, force_arch)
+    return out.reshape(-1).cpu().numpy()
 
 
 def _get_quantize_matmul_nbits():
@@ -146,8 +341,7 @@ class CudaQuantizer:
 
         When ``prepack`` is true, returned weights have shape ``[K, N/pack]``.
         Otherwise, returned weights keep raw per-channel storage ``[N, K/pack]``.
-        CUDA prepacking requires ``pack_weights_for_cuda_mixed_gemm`` from an
-        onnxruntime-gpu CUDA build.
+        Prepacking uses PyTorch (CUDA when available, CPU otherwise).
         """
         torch = _get_torch()
 
@@ -159,14 +353,12 @@ class CudaQuantizer:
         if not prepack:
             return qweight, scales
 
-        pack_weights_for_cuda_mixed_gemm = _get_pack_weights_for_cuda_mixed_gemm()
-
         n, k = weights.shape
         pack = 8 // int(bits)
         if n % pack != 0:
             raise ValueError(f"N ({n}) must be divisible by {pack} for CUDA QMoE prepacked weights.")
 
-        packed = pack_weights_for_cuda_mixed_gemm(qweight.numpy(), n, k, int(bits), force_arch)
+        packed = _pack_weights_for_cuda_mixed_gemm(qweight.numpy(), n, k, int(bits), force_arch)
         packed = np.asarray(packed).view(np.uint8).reshape(k, n // pack)
         return torch.from_numpy(np.ascontiguousarray(packed)), scales
 
@@ -330,7 +522,7 @@ class CudaQuantizer:
             unsigned_full_range=unsigned_full_range,
         )
 
-        pack_weights_for_cuda_mixed_gemm = _get_pack_weights_for_cuda_mixed_gemm()
+        pack_weights_for_cuda_mixed_gemm = _pack_weights_for_cuda_mixed_gemm
         packed = pack_weights_for_cuda_mixed_gemm(qweight.reshape(n, -1).numpy(), n, k, bits, force_arch)
         packed = np.asarray(packed).view(np.uint8).reshape(qweight.shape)
         packed = torch.from_numpy(np.ascontiguousarray(packed))
@@ -375,7 +567,7 @@ class CudaQuantizer:
             unsigned_full_range=unsigned_full_range,
         )
 
-        pack_weights_for_cuda_mixed_gemm = _get_pack_weights_for_cuda_mixed_gemm()
+        pack_weights_for_cuda_mixed_gemm = _pack_weights_for_cuda_mixed_gemm
         packed = pack_weights_for_cuda_mixed_gemm(qweight.reshape(n, -1).numpy(), n, k, bits, force_arch)
         packed = np.asarray(packed).view(np.uint8).reshape(k, n // pack)
         torch = _get_torch()

@@ -29,6 +29,8 @@ gpu_related_header_files = [
     "onnxruntime_cxx_api.h",
     "onnxruntime_float16.h",
     "onnxruntime_cxx_inline.h",
+    "onnxruntime_experimental_c_api.h",
+    "onnxruntime_experimental_c_api.inc",
 ]
 dmlep_related_header_files = [
     "cpu_provider_factory.h",
@@ -37,6 +39,8 @@ dmlep_related_header_files = [
     "onnxruntime_float16.h",
     "onnxruntime_cxx_inline.h",
     "dml_provider_factory.h",
+    "onnxruntime_experimental_c_api.h",
+    "onnxruntime_experimental_c_api.inc",
 ]
 training_related_header_files = [
     "onnxruntime_c_api.h",
@@ -46,6 +50,8 @@ training_related_header_files = [
     "onnxruntime_training_c_api.h",
     "onnxruntime_training_cxx_api.h",
     "onnxruntime_training_cxx_inline.h",
+    "onnxruntime_experimental_c_api.h",
+    "onnxruntime_experimental_c_api.inc",
 ]
 
 
