@@ -9,6 +9,7 @@
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/path_utils.h"
@@ -177,7 +178,7 @@ static bool CheckNodeDataTypes(const Node* node) {
     if (input_def->Exists()) {
       const auto* type_proto = input_def->TypeAsProto();
       if (type_proto && type_proto->has_tensor_type()) {
-        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        auto data_type = utils::ToOrtTensorElementDataType(type_proto->tensor_type().elem_type());
         if (!IsSupportedDataType(data_type)) {
           LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
                                 << "' (OpType: " << node->OpType()
@@ -194,7 +195,7 @@ static bool CheckNodeDataTypes(const Node* node) {
     if (output_def->Exists()) {
       const auto* type_proto = output_def->TypeAsProto();
       if (type_proto && type_proto->has_tensor_type()) {
-        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        auto data_type = utils::ToOrtTensorElementDataType(type_proto->tensor_type().elem_type());
         if (!IsSupportedDataType(data_type)) {
           LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
                                 << "' (OpType: " << node->OpType()
@@ -1998,7 +1999,7 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   for (const auto* input : graph.GetInputs()) {
     const auto* tp = input->TypeAsProto();
     if (tp && tp->has_tensor_type()) {
-      auto data_type = static_cast<ONNXTensorElementDataType>(tp->tensor_type().elem_type());
+      auto data_type = utils::ToOrtTensorElementDataType(tp->tensor_type().elem_type());
       if (!IsSupportedInputOutputDataType(data_type)) {
         LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unsupported data type " << GetDataTypeName(data_type) << " for input node: " << input->Name();
         return result;
@@ -2008,7 +2009,7 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   for (const auto* output : graph.GetOutputs()) {
     const auto* tp = output->TypeAsProto();
     if (tp && tp->has_tensor_type()) {
-      auto data_type = static_cast<ONNXTensorElementDataType>(tp->tensor_type().elem_type());
+      auto data_type = utils::ToOrtTensorElementDataType(tp->tensor_type().elem_type());
       if (!IsSupportedInputOutputDataType(data_type)) {
         LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unsupported data type " << GetDataTypeName(data_type) << " for output node: " << output->Name();
         return result;

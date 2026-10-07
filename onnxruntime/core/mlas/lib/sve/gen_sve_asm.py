@@ -224,7 +224,10 @@ def main():
             obj = os.path.join(tmp, f"frozen{i}.o")
             cmd = [
                 args.cxx,
-                "-std=c++17",
+                # ORT requires C++20 (onnxruntime_MINIMUM_CXX_STANDARD_VERSION), and
+                # sve/elementwise_sve_fp16.cpp uses std::numbers, so C++17 cannot
+                # compile every TU this script is used to freeze.
+                "-std=c++20",
                 f"-{args.opt}",
                 f"-march={args.march}",
                 "-fno-stack-protector",
