@@ -263,17 +263,23 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
 endif()
 
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
-  # CUDA 13 diagnoses qualified friend declarations in Abseil and Protobuf as 970-D,
-  # and Protobuf's always_inline template redeclaration as 2189-D.
+  # CUDA 13 diagnoses Protobuf's intentional signed enum pointer-mask conversion as 68-D,
+  # qualified friend declarations in Abseil and Protobuf as 970-D, and Protobuf's
+  # always_inline template redeclaration as 2189-D.
   list(APPEND _cuda_plugin_shared_compile_options
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=68>"
       "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=970>"
       "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2189>"
   )
 
   if (MSVC)
-    # Suppress unrecognized __pragma warnings emitted from CUDA headers in device code.
+    # Suppress diagnostics from CUDA 13 headers: unrecognized __pragma in device code,
+    # cuda_fp4.hpp's unused parameter, and CCCL's unmatched #pragma warning(pop)
+    # in the MSVC host compiler.
     list(APPEND _cuda_plugin_shared_compile_options
         "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4100>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4193>"
     )
   endif()
 endif()
@@ -328,6 +334,11 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
   ${_cuda_plugin_shared_compile_options}
   "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
 )
+
+if(MSVC)
+  # NVCC emits CodeView references to a host compiler PDB that it does not retain.
+  target_link_options(onnxruntime_providers_cuda_plugin PRIVATE "/IGNORE:4099")
+endif()
 
 # SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
 # SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).

@@ -24,6 +24,13 @@ class BiasFusion : public NodeSelector {
  public:
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer,
                                                const Node& node) const override {
+    // Prepacked weights force a kernel/layout selected at export time. Some prepacked
+    // implementations do not support MatMulNBits bias input 5, so keep the Add separate.
+    if (const auto* weight_prepacked = graph_utils::GetNodeAttribute(node, "weight_prepacked");
+        weight_prepacked != nullptr && weight_prepacked->i() != 0) {
+      return std::nullopt;
+    }
+
     // check if MatMulNBits node already has a bias input
     if (const auto input_defs = node.InputDefs();
         input_defs.size() > 5 && input_defs[5]->Exists()) {

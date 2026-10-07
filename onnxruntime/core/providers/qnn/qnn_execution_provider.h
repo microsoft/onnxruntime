@@ -36,6 +36,8 @@ class QNNExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                 IResourceAccountant* /* resource_accountant */) const override;
 
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer& graph_viewer) const override;
+
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
