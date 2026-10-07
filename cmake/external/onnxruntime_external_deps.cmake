@@ -1112,10 +1112,18 @@ if(onnxruntime_USE_1DS_TELEMETRY)
   set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
   set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
   set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+  set(MATSDK_BUILD_APPLE_HTTP ${APPLE} CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
   set(MATSDK_DISABLE_LOGGING ON CACHE BOOL "Compile internal 1DS logging out" FORCE)
-  if(APPLE)
-    set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
+  set(MATSDK_DISABLE_EXCEPTIONS OFF CACHE BOOL "Retain 1DS SDK exception support" FORCE)
+  set(MATSDK_USE_WININET OFF CACHE BOOL "Use WinHTTP for desktop Windows telemetry" FORCE)
+  # Desktop ORT supplies a hashed, generated device ID; mobile builds use the SDK's platform ID.
+  if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "visionOS")
+    set(MATSDK_ENABLE_DEVICE_ID ON CACHE BOOL "Use the 1DS platform device ID on mobile" FORCE)
+  else()
+    set(MATSDK_ENABLE_DEVICE_ID OFF CACHE BOOL "Disable native 1DS device ID collection on desktop" FORCE)
   endif()
+  set(MATSDK_ANDROID_USE_ROOM OFF CACHE BOOL "Use native SQLite for Android telemetry storage" FORCE)
+  set(MATSDK_ENABLE_CAPI_HTTP_CLIENT OFF CACHE BOOL "Disable the alternative Android C API HTTP client" FORCE)
   set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT onnxruntime_USE_VCPKG)
     set(MATSDK_CURL_PROVIDER FETCH CACHE STRING "Build the SDK's pinned curl with mbedTLS" FORCE)
@@ -1164,7 +1172,6 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     # expression verbatim to MASM. ORT adds dependency includes to C/C++ targets separately.
     set_property(TARGET mat PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "")
   endif()
-  target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static AND NOT onnxruntime_BUILD_SHARED_LIB)
     # curl's imported mbedTLS helper is not exported with ORT's static package.
     get_target_property(_ort_curl_link_libraries libcurl_static INTERFACE_LINK_LIBRARIES)
@@ -1279,6 +1286,37 @@ if(onnxruntime_USE_1DS_TELEMETRY)
       target_compile_options(sqlite3_bundled PRIVATE -Wno-error=stringop-overread)
     endif()
   endif()
+
+  foreach(_ort_1ds_cache_var
+      MATSDK_BUILD_HEADERS
+      MATSDK_BUILD_LIBRARY
+      MATSDK_BUILD_TEST_TOOL
+      MATSDK_BUILD_UNIT_TESTS
+      MATSDK_BUILD_FUNC_TESTS
+      MATSDK_BUILD_PRIVACYGUARD
+      MATSDK_BUILD_CDS
+      MATSDK_BUILD_LIVEEVENTINSPECTOR
+      MATSDK_BUILD_SIGNALS
+      MATSDK_BUILD_SANITIZER
+      MATSDK_BUILD_AZMON
+      MATSDK_BUILD_OBJC_WRAPPER
+      MATSDK_BUILD_SWIFT_WRAPPER
+      MATSDK_BUILD_JNI_WRAPPER
+      MATSDK_BUILD_PACKAGE
+      MATSDK_BUILD_APPLE_HTTP
+      MATSDK_DISABLE_LOGGING
+      MATSDK_DISABLE_EXCEPTIONS
+      MATSDK_USE_WININET
+      MATSDK_ENABLE_DEVICE_ID
+      MATSDK_ANDROID_USE_ROOM
+      MATSDK_ENABLE_CAPI_HTTP_CLIENT
+      MATSDK_ANDROID_HTTP_CLIENT
+      MATSDK_CURL_PROVIDER
+      MATSDK_CURL_TLS_BACKEND
+      MATSDK_SQLITE_PROVIDER
+      MATSDK_ZLIB_PROVIDER)
+    unset(${_ort_1ds_cache_var} CACHE)
+  endforeach()
 
   set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)
   set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}")

@@ -300,28 +300,34 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
-      # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
-      # not namespace static symbols; static ORT consumers must not co-link another curl/mbedTLS copy.
-      string(CONCAT _onnxruntime_telemetry_build_exclude_libs
-        "LINKER:--exclude-libs="
-        "$<TARGET_FILE_NAME:libcurl_static>:"
-        "$<TARGET_FILE_NAME:mbedtls>:"
-        "$<TARGET_FILE_NAME:mbedx509>:"
-        "$<TARGET_FILE_NAME:mbedcrypto>:"
-        "$<TARGET_FILE_NAME:everest>:"
-        "$<TARGET_FILE_NAME:p256m>")
-      string(CONCAT _onnxruntime_telemetry_install_exclude_libs
-        "LINKER:--exclude-libs="
-        "$<TARGET_FILE_NAME:onnxruntime::libcurl_static>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedtls>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedx509>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedcrypto>:"
-        "$<TARGET_FILE_NAME:onnxruntime::everest>:"
-        "$<TARGET_FILE_NAME:onnxruntime::p256m>")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+      # Hide SDK/dependency archives without hiding ORT's archive-backed public API.
+      # This does not namespace static symbols or make duplicate static dependencies safe to co-link.
+      # Some GNU toolchains implicitly link versioned compatibility symbols from this archive.
+      set(_onnxruntime_telemetry_build_exclude_libs "libstdc++_nonshared.a")
+      set(_onnxruntime_telemetry_install_exclude_libs "libstdc++_nonshared.a")
+      foreach(_ort_telemetry_archive
+          mat
+          sqlite3_bundled
+          zlib_bundled
+          libcurl_static
+          mbedtls
+          mbedx509
+          mbedcrypto
+          everest
+          p256m)
+        if(TARGET ${_ort_telemetry_archive})
+          list(APPEND _onnxruntime_telemetry_build_exclude_libs
+            "$<TARGET_FILE_NAME:${_ort_telemetry_archive}>")
+          list(APPEND _onnxruntime_telemetry_install_exclude_libs
+            "$<TARGET_FILE_NAME:onnxruntime::${_ort_telemetry_archive}>")
+        endif()
+      endforeach()
+      list(JOIN _onnxruntime_telemetry_build_exclude_libs ":" _onnxruntime_telemetry_build_exclude_libs)
+      list(JOIN _onnxruntime_telemetry_install_exclude_libs ":" _onnxruntime_telemetry_install_exclude_libs)
       target_link_options(onnxruntime_common INTERFACE
-        "$<BUILD_INTERFACE:${_onnxruntime_telemetry_build_exclude_libs}>"
-        "$<INSTALL_INTERFACE:${_onnxruntime_telemetry_install_exclude_libs}>")
+        "$<BUILD_INTERFACE:LINKER:--exclude-libs=${_onnxruntime_telemetry_build_exclude_libs}>"
+        "$<INSTALL_INTERFACE:LINKER:--exclude-libs=${_onnxruntime_telemetry_install_exclude_libs}>")
     endif()
     # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
     # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in

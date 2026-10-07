@@ -202,6 +202,8 @@ TEST(DeviceIdWindowsTest, IncludesStorageSuffixInPathBudget) {
   const std::wstring suffix = L"\\Microsoft\\DeveloperTools\\.onnxruntime";
   const std::wstring app_data = drive + std::wstring(
                                             telemetry_detail::kMaxTelemetryPathBytes - drive.size() - suffix.size(), L'a');
+  ScopedEnvironmentVariables environment{
+      EnvVarMap{{"APPDATA", nullopt}, {"HOME", nullopt}, {"USERPROFILE", nullopt}, {"HOMEDRIVE", nullopt}, {"HOMEPATH", nullopt}}};
   for (const auto& extra : {std::wstring{}, std::wstring{L"a"}}) {
     ScopedWideEnvironmentVariable local_app_data(L"LOCALAPPDATA", app_data + extra);
     const std::string storage = DeviceId::GetStorageDirectory();
