@@ -1486,7 +1486,7 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
     };
 
     auto* round = model_proto.add_functions();
-    round->set_domain(kOnnxDomain);
+    round->set_domain(kOnnxDomainAlias);
     round->set_name("Round");
     round->add_input("x");
     round->add_output("y");
