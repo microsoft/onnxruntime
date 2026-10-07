@@ -1469,8 +1469,14 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
   for (const bool registered_schema_first : {false, true}) {
     SCOPED_TRACE(registered_schema_first);
     auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
-    model_proto.mutable_opset_import(0)->set_version(11);
-    model_proto.mutable_graph()->mutable_node(0)->set_op_type("wrapper");
+    model_proto.mutable_opset_import(0)->set_version(12);
+    auto* root_call = model_proto.mutable_graph()->mutable_node(0);
+    root_call->set_op_type("wrapper");
+    root_call->add_input("cond");
+    auto* cond_input = model_proto.mutable_graph()->add_input();
+    cond_input->set_name("cond");
+    cond_input->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_BOOL);
 
     auto add_opsets = [](ONNX_NAMESPACE::FunctionProto& function, int onnx_opset) {
       auto* onnx_import = function.add_opset_import();
@@ -1482,53 +1488,55 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
     };
     auto add_graph_ref = [](ONNX_NAMESPACE::NodeProto& node) {
       *node.add_attribute() = MakeGraphRefAttribute(
-          "body", "body", ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+          "then_branch", "body", ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
     };
 
-    auto* round = model_proto.add_functions();
-    round->set_domain(kOnnxDomain);
-    round->set_name("Round");
-    round->add_input("x");
-    round->add_output("y");
-    add_opsets(*round, 10);
-    auto* round_node = round->add_node();
-    round_node->set_domain("local");
-    round_node->set_op_type("function_0");
-    round_node->add_input("x");
-    round_node->add_output("y");
+    auto* celu = model_proto.add_functions();
+    celu->set_domain(kOnnxDomain);
+    celu->set_name("Celu");
+    celu->add_input("x");
+    celu->add_output("y");
+    add_opsets(*celu, 11);
+    auto* celu_node = celu->add_node();
+    celu_node->set_domain("local");
+    celu_node->set_op_type("function_0");
+    celu_node->add_input("x");
+    celu_node->add_output("y");
 
-    auto* sink = model_proto.add_functions();
-    sink->set_domain("local");
-    sink->set_name("sink");
-    sink->add_input("x");
-    sink->add_output("y");
-    sink->add_attribute("body");
-    add_opsets(*sink, 11);
-    auto* sink_node = sink->add_node();
-    sink_node->set_op_type("Identity");
-    sink_node->add_input("x");
-    sink_node->add_output("y");
-
-    for (const int opset : {10, 11}) {
+    for (const int opset : {11, 12}) {
       auto* visitor = model_proto.add_functions();
       visitor->set_domain("local");
       visitor->set_name("visit_" + std::to_string(opset));
       visitor->add_input("x");
+      visitor->add_input("cond");
       visitor->add_output("y");
       visitor->add_attribute("body");
       add_opsets(*visitor, opset);
       auto* visitor_node = visitor->add_node();
-      visitor_node->set_domain("local");
-      visitor_node->set_op_type("sink");
-      visitor_node->add_input("x");
+      visitor_node->set_op_type("If");
+      visitor_node->add_input("cond");
       visitor_node->add_output("y");
       add_graph_ref(*visitor_node);
+      auto* else_branch = visitor_node->add_attribute();
+      else_branch->set_name("else_branch");
+      else_branch->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      auto* else_graph = else_branch->mutable_g();
+      else_graph->set_name("else_branch");
+      auto* else_node = else_graph->add_node();
+      else_node->set_op_type("Identity");
+      else_node->add_input("x");
+      else_node->add_output("y");
+      auto* else_output = else_graph->add_output();
+      else_output->set_name("y");
+      else_output->mutable_type()->mutable_tensor_type()->set_elem_type(
+          ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     }
 
     auto* wrapper = model_proto.add_functions();
     wrapper->set_domain("local");
     wrapper->set_name("wrapper");
     wrapper->add_input("x");
+    wrapper->add_input("cond");
     wrapper->add_output("y");
     wrapper->add_attribute("body");
     auto* default_body = wrapper->add_attribute_proto();
@@ -1536,28 +1544,23 @@ TEST(FunctionTest, BoundGraphExpansionCacheIncludesFunctionOpsetImports) {
     default_body->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
     auto* body_graph = default_body->mutable_g();
     body_graph->set_name("shared_body");
-    auto* body_input = body_graph->add_input();
-    body_input->set_name("x");
-    body_input->mutable_type()->mutable_tensor_type()->set_elem_type(
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     auto* body_output = body_graph->add_output();
     body_output->set_name("y");
     body_output->mutable_type()->mutable_tensor_type()->set_elem_type(
         ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     auto* body_node = body_graph->add_node();
-    body_node->set_op_type("Round");
+    body_node->set_op_type("Celu");
     body_node->add_input("x");
     body_node->add_output("y");
-    // The shared default graph is defined by wrapper, so its ONNX lookup must remain at opset 10
-    // when the graph is forwarded through either visitor.
-    add_opsets(*wrapper, 10);
+    add_opsets(*wrapper, 12);
 
-    const int first_opset = registered_schema_first ? 11 : 10;
-    for (const int opset : {first_opset, 21 - first_opset}) {
+    const int first_opset = registered_schema_first ? 12 : 11;
+    for (const int opset : {first_opset, 23 - first_opset}) {
       auto* call = wrapper->add_node();
       call->set_domain("local");
       call->set_op_type("visit_" + std::to_string(opset));
       call->add_input(opset == first_opset ? "x" : "intermediate");
+      call->add_input("cond");
       call->add_output(opset == first_opset ? "intermediate" : "y");
       add_graph_ref(*call);
     }

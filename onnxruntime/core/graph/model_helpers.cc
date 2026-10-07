@@ -345,12 +345,14 @@ struct BoundAttributeExpansionState {
   size_t call_depth;
   size_t attribute_expansion_depth;
   bool use_onnx_schema_registry;
+  DomainToVersionMap effective_domain_to_version;
 
   bool operator==(const BoundAttributeExpansionState& other) const {
     return proto == other.proto && graph == other.graph && context == other.context &&
            call_depth == other.call_depth &&
            attribute_expansion_depth == other.attribute_expansion_depth &&
-           use_onnx_schema_registry == other.use_onnx_schema_registry;
+           use_onnx_schema_registry == other.use_onnx_schema_registry &&
+           effective_domain_to_version == other.effective_domain_to_version;
   }
 };
 
@@ -362,6 +364,10 @@ struct BoundAttributeExpansionStateHash {
     result ^= std::hash<size_t>{}(state.call_depth) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<size_t>{}(state.attribute_expansion_depth) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<bool>{}(state.use_onnx_schema_registry) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    for (const auto& [domain, version] : state.effective_domain_to_version) {
+      result ^= std::hash<std::string>{}(domain) ^
+                (std::hash<int>{}(version) + 0x9e3779b9);
+    }
     return result;
   }
 };
@@ -371,10 +377,12 @@ struct BoundAttributeActiveState {
   const Graph* graph;
   const AttributeBindingContext* context;
   bool use_onnx_schema_registry;
+  DomainToVersionMap effective_domain_to_version;
 
   bool operator==(const BoundAttributeActiveState& other) const {
     return proto == other.proto && graph == other.graph && context == other.context &&
-           use_onnx_schema_registry == other.use_onnx_schema_registry;
+           use_onnx_schema_registry == other.use_onnx_schema_registry &&
+           effective_domain_to_version == other.effective_domain_to_version;
   }
 };
 
@@ -384,6 +392,10 @@ struct BoundAttributeActiveStateHash {
     result ^= std::hash<const void*>{}(state.graph) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<const void*>{}(state.context) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<bool>{}(state.use_onnx_schema_registry) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    for (const auto& [domain, version] : state.effective_domain_to_version) {
+      result ^= std::hash<std::string>{}(domain) ^
+                (std::hash<int>{}(version) + 0x9e3779b9);
+    }
     return result;
   }
 };
@@ -528,6 +540,7 @@ Status ValidateProtoNodesCallDepth(
 Status ValidateGraphCallDepth(
     const Graph& graph,
     const AttributeBindings& bindings,
+    const DomainToVersionMap& domain_to_version,
     size_t call_depth,
     bool use_onnx_schema_registry,
     const ModelLocalFunctions& model_local_functions,
@@ -558,14 +571,14 @@ Status ValidateBoundAttributeCallDepth(
   const BoundAttributeExpansionState expansion_state{
       attribute.proto, attribute.graph, attribute.context.get(), call_depth,
       validated_states.active_attribute_expansions.size(),
-      use_onnx_schema_registry};
+      use_onnx_schema_registry, domain_to_version};
   if (validated_states.completed_attribute_expansions.find(expansion_state) !=
       validated_states.completed_attribute_expansions.end()) {
     return Status::OK();
   }
   const BoundAttributeActiveState active_state{
       attribute.proto, attribute.graph, attribute.context.get(),
-      use_onnx_schema_registry};
+      use_onnx_schema_registry, domain_to_version};
   if (!validated_states.active_attribute_expansions.insert(active_state).second) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
@@ -584,23 +597,22 @@ Status ValidateBoundAttributeCallDepth(
 
   const auto& attribute_bindings =
       attribute.context == nullptr ? bindings : attribute.context->bindings;
-  const auto& attribute_domain_to_version =
-      attribute.context == nullptr ? domain_to_version : attribute.context->domain_to_version;
 
   if (attribute.graph != nullptr) {
     ORT_RETURN_IF_ERROR(ValidateGraphCallDepth(
-        *attribute.graph, attribute_bindings, call_depth, use_onnx_schema_registry,
+        *attribute.graph, attribute_bindings, domain_to_version,
+        call_depth, use_onnx_schema_registry,
         model_local_functions,
         schema_registry, validated_states));
   } else if (attribute.proto->has_g()) {
     ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
-        attribute.proto->g().node(), attribute_bindings, attribute_domain_to_version,
+        attribute.proto->g().node(), attribute_bindings, domain_to_version,
         call_depth, model_local_functions, schema_registry, validated_states));
   }
 
   for (const auto& graph : attribute.proto->graphs()) {
     ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
-        graph.node(), attribute_bindings, attribute_domain_to_version,
+        graph.node(), attribute_bindings, domain_to_version,
         call_depth, model_local_functions, schema_registry, validated_states));
   }
 
@@ -710,6 +722,7 @@ Status ValidateProtoNodesCallDepth(
 Status ValidateGraphCallDepth(
     const Graph& graph,
     const AttributeBindings& bindings,
+    const DomainToVersionMap& domain_to_version,
     size_t call_depth,
     bool use_onnx_schema_registry,
     const ModelLocalFunctions& model_local_functions,
@@ -721,8 +734,8 @@ Status ValidateGraphCallDepth(
     const auto function_it = model_local_functions.find(function_id);
     if (function_it != model_local_functions.end() &&
         !(use_onnx_schema_registry
-              ? HasOnnxRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap())
-              : HasRegisteredSchema(node.Domain(), node.OpType(), graph.DomainToVersionMap(), schema_registry))) {
+              ? HasOnnxRegisteredSchema(node.Domain(), node.OpType(), domain_to_version)
+              : HasRegisteredSchema(node.Domain(), node.OpType(), domain_to_version, schema_registry))) {
       AttributeBindings callee_bindings;
       InlinedHashSet<std::string_view> explicit_binding_names;
       for (const auto& [attr_name, attr] : node.GetAttributes()) {
@@ -737,7 +750,7 @@ Status ValidateGraphCallDepth(
         }
       }
       CompleteFunctionAttributeBindings(
-          *function_it->second, explicit_binding_names, graph.DomainToVersionMap(),
+          *function_it->second, explicit_binding_names, domain_to_version,
           callee_bindings, validated_states);
       ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
           *function_it->second, std::move(callee_bindings), call_depth + 1,
@@ -749,7 +762,7 @@ Status ValidateGraphCallDepth(
         }
         ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
             ResolveAttribute(attr, bindings, attribute_graph),
-            bindings, graph.DomainToVersionMap(), call_depth,
+            bindings, domain_to_version, call_depth,
             use_onnx_schema_registry, model_local_functions,
             schema_registry, validated_states));
       }
@@ -763,7 +776,7 @@ Status ValidateGraphCallDepth(
       }
       ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
           ResolveAttribute(attr, bindings, attribute_graph),
-          bindings, graph.DomainToVersionMap(), call_depth,
+          bindings, domain_to_version, call_depth,
           use_onnx_schema_registry, model_local_functions,
           schema_registry, validated_states));
     }
@@ -984,7 +997,8 @@ Status ValidateModelLocalFunctionCallDepth(
   ORT_RETURN_IF_ERROR(ValidateCallGraphAcyclic(call_graph));
   ValidatedFunctionStates validated_states;
   return ValidateGraphCallDepth(
-      main_graph, {}, 0, /*use_onnx_schema_registry*/ false,
+      main_graph, {}, main_graph.DomainToVersionMap(),
+      0, /*use_onnx_schema_registry*/ false,
       model_local_functions,
       *main_graph.GetSchemaRegistry(), validated_states);
 }
