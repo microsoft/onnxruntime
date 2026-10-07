@@ -19,6 +19,8 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
+// The plugin EP C API does not expose KernelPilot initialization/context or the cache callbacks needed to coordinate
+// swaps between the session-owned placement policy and a provider-owned kernel.
 template <typename T>
 class MoE final : public CudaKernel, public MoEBase
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
