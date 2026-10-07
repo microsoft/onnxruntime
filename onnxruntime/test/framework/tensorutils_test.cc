@@ -2833,12 +2833,8 @@ class FileOnlyExternalLoader final : public IExternalDataLoader {
   mutable bool called{false};
   std::function<Status()> before_read;
   bool CanLoad(const OrtMemoryInfo&) const override { return true; }
-  Status LoadTensor(const Env&, const std::filesystem::path&, FileOffsetType, SafeInt<size_t>,
-                    Tensor&) const override {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected pathname-based loader call.");
-  }
-  Status LoadTensorFromFile(const RandomAccessFile& file, FileOffsetType offset, size_t length,
-                            Tensor& tensor) const override {
+  Status LoadTensor(const RandomAccessFile& file, FileOffsetType offset, SafeInt<size_t> length,
+                    Tensor& tensor) const override {
     called = true;
     ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "Unexpected tensor length.");
     if (before_read) {

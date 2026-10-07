@@ -444,7 +444,7 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
     mapped_memory = MappedMemoryPtr{
         reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
         MappedMemoryDeleter{mapped_base, mapped_length, [](void* base, size_t) noexcept {
-                              UnmapViewOfFile(base);
+                              UnmapFile(base);
                             }}};
     return Status::OK();
   }
