@@ -28,16 +28,21 @@ namespace contrib {
 namespace cuda {
 
 __global__ void SanitizeBlockTableKernel(const int32_t* block_table, int32_t* sanitized_block_table,
-                                         size_t element_count, int num_blocks) {
+                                         size_t element_count, int num_blocks,
+                                         int32_t* has_unmapped_page) {
   const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index < element_count) {
     const int32_t block_id = block_table[index];
     sanitized_block_table[index] = block_id >= -1 && block_id < num_blocks ? block_id : -1;
+    if (sanitized_block_table[index] < 0) {
+      atomicExch(has_unmapped_page, 1);
+    }
   }
 }
 
 Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
-                                size_t element_count, int num_blocks, cudaStream_t stream) {
+                                size_t element_count, int num_blocks,
+                                int32_t* has_unmapped_page, cudaStream_t stream) {
   if (element_count == 0) {
     return Status::OK();
   }
@@ -47,9 +52,10 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
                            "block_table element count exceeds the CUDA kernel indexing limit.");
   }
   constexpr int kThreadsPerBlock = 256;
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(has_unmapped_page, 0, sizeof(int32_t), stream));
   const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
   SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
-      block_table, sanitized_block_table, element_count, num_blocks);
+      block_table, sanitized_block_table, element_count, num_blocks, has_unmapped_page);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -410,8 +416,17 @@ __global__ void SanitizePastSequenceLengths(int32_t* sanitized_past_seqlens,
     const int64_t available_past_capacity = mapped_capacity - query_length;
     const int64_t max_past_length = available_past_capacity > 0 ? available_past_capacity : 0;
     const int64_t input_past_length = past_seqlens[b];
+    if (input_past_length < 0 || input_past_length > max_past_length) {
+      // Preserve an invalid sentinel so ReshapeAndCache suppresses writes for this sequence.
+      sanitized_past_seqlens[b] = -1;
+      cumulative_seqlens_kv[b + 1] = 0;
+      if (b == 0) {
+        cumulative_seqlens_kv[0] = 0;
+      }
+      return;
+    }
     const int64_t bounded_past_length =
-        input_past_length < 0 ? 0 : (input_past_length > max_past_length ? max_past_length : input_past_length);
+        input_past_length;
     sanitized_past_seqlens[b] = static_cast<int32_t>(bounded_past_length);
 
     const int64_t uncapped_kv_length = bounded_past_length + query_length;

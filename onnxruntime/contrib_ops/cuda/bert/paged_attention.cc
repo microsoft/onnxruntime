@@ -318,9 +318,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   const int max_kv_len_capacity = static_cast<int>(safe_max_kv_len_capacity);
   auto sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
+  auto has_unmapped_page = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
       reinterpret_cast<const int*>(block_table->Data<int>()),
-      sanitized_block_table.get(), block_table_element_count, parameters.num_blocks, cuda_stream));
+      sanitized_block_table.get(), block_table_element_count, parameters.num_blocks,
+      has_unmapped_page.get(), cuda_stream));
 
   // Kernel backend selection. The choice depends only on static shapes and on the optional
   // 'attention_metadata' bounds, never on a device-to-host readback, so it is identical on every
@@ -575,8 +577,17 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN attention path uniformly.
   const bool cudnn_paged_enabled =
       enable_cudnn_paged_ || (auto_enable_cudnn_paged_ && device_prop.major >= 9);
+  bool cudnn_page_table_valid = false;
+  if (cudnn_paged_enabled && !onnxruntime::llm::common::isCapturing(cuda_stream)) {
+    int32_t host_has_unmapped_page = 0;
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        &host_has_unmapped_page, has_unmapped_page.get(), sizeof(int32_t),
+        cudaMemcpyDeviceToHost, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    cudnn_page_table_valid = host_has_unmapped_page == 0;
+  }
   const bool cudnn_paged_eligible =
-      cudnn_paged_enabled &&
+      cudnn_page_table_valid &&
       has_metadata_bounds &&
       max_query_len_bound == 1 &&
       parameters.token_count == parameters.batch_size &&

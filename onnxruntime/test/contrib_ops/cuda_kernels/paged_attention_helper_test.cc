@@ -185,34 +185,44 @@ TEST(PagedAttentionHelperTest, SanitizeBlockTablePreservesSentinelAndBoundsInval
   const std::vector<int32_t> expected{-1, -1, 0, 3, -1};
   int32_t* input_device = nullptr;
   int32_t* output_device = nullptr;
+  int32_t* has_unmapped_page_device = nullptr;
   ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, input.size() * sizeof(int32_t)));
   ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, input.size() * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&has_unmapped_page_device, sizeof(int32_t)));
   auto cleanup = gsl::finally([&]() {
     cudaFree(input_device);
     cudaFree(output_device);
+    cudaFree(has_unmapped_page_device);
   });
 
   ASSERT_EQ(cudaSuccess,
             cudaMemcpy(input_device, input.data(), input.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
   const auto status = onnxruntime::contrib::cuda::LaunchSanitizeBlockTable(
-      input_device, output_device, static_cast<int>(input.size()), 4, nullptr);
+      input_device, output_device, static_cast<int>(input.size()), 4,
+      has_unmapped_page_device, nullptr);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   std::vector<int32_t> actual(input.size());
   ASSERT_EQ(cudaSuccess,
             cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
   EXPECT_EQ(actual, expected);
+  int32_t has_unmapped_page = 0;
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(
+                             &has_unmapped_page, has_unmapped_page_device,
+                             sizeof(int32_t), cudaMemcpyDeviceToHost));
+  EXPECT_EQ(has_unmapped_page, 1);
 }
 
 TEST(PagedAttentionHelperTest, SanitizeBlockTableAllowsZeroElements) {
   const auto status = onnxruntime::contrib::cuda::LaunchSanitizeBlockTable(
-      nullptr, nullptr, 0, 0, nullptr);
+      nullptr, nullptr, 0, 0, nullptr, nullptr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
 TEST(PagedAttentionHelperTest, SanitizeBlockTableRejectsUnsupportedElementCount) {
   const auto status = onnxruntime::contrib::cuda::LaunchSanitizeBlockTable(
-      nullptr, nullptr, static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1, 0, nullptr);
+      nullptr, nullptr, static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1,
+      0, nullptr, nullptr);
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the CUDA kernel indexing limit"));
 }
@@ -252,7 +262,7 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsCanonicalizesUnsafeInputs)
   std::vector<int32_t> actual(8);
   ASSERT_EQ(cudaSuccess,
             cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
-  EXPECT_EQ(actual, (std::vector<int32_t>{0, 0, 3, 0, 29, 0, 0, 32}));
+  EXPECT_EQ(actual, (std::vector<int32_t>{0, 0, 3, -1, -1, 0, 0, 0}));
 }
 
 TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsPreservesPastWithLeadingEvictedBlock) {
