@@ -4398,6 +4398,7 @@ TEST(ModOpTest, FloorMod_float_special_values_opset28) {
 
 TEST(ModOpTest, FloorMod_opset28_provider_fallback) {
   InlinedVector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
 #ifdef USE_CANN
   OrtCANNProviderOptions cann_options{};
   cann_options.enable_cann_graph = 1;
@@ -4407,12 +4408,10 @@ TEST(ModOpTest, FloorMod_opset28_provider_fallback) {
 #endif
   providers.push_back(DefaultMIGraphXExecutionProvider());
   providers.push_back(DefaultOpenVINOExecutionProvider());
-  bool tested_provider = false;
   for (auto& provider : providers) {
     if (!provider) {
       continue;
     }
-    tested_provider = true;
     SCOPED_TRACE(provider->Type());
     const std::vector<int64_t> shape{4};
     const float infinity = std::numeric_limits<float>::infinity();
@@ -4424,16 +4423,17 @@ TEST(ModOpTest, FloorMod_opset28_provider_fallback) {
     test.AddInput<float>("Y", shape, y);
     test.AddOutput<float>("Z", shape, {1.0f, -1.0f, infinity, -infinity});
     std::string model_data;
-    test.BuildModel().ToProto().SerializeToString(&model_data);
+    auto& model = test.BuildModel();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    model.ToProto().SerializeToString(&model_data);
     EPVerificationParams params;
-    params.ep_node_assignment = ExpectedEPNodeAssignment::None;
+    params.ep_node_assignment = provider->Type() == kCpuExecutionProvider
+                                    ? ExpectedEPNodeAssignment::All
+                                    : ExpectedEPNodeAssignment::None;
     RunAndVerifyOutputsWithEP(
         AsByteSpan(model_data.data(), model_data.size()), CurrentTestName(), std::move(provider),
         {{"X", CreateInputOrtValueOnCPU<float>(shape, x)}, {"Y", CreateInputOrtValueOnCPU<float>(shape, y)}},
         params);
-  }
-  if (!tested_provider) {
-    GTEST_SKIP() << "Requires CANN, MIGraphX, or OpenVINO.";
   }
 }
 
