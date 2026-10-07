@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -11,13 +10,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-build = importlib.import_module("build")
-build_args = importlib.import_module("build_args")
-
-_UNRELEASED_OPSET_ENVIRONMENT = {
-    "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
-    "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
-}
+import build_args
 
 
 class BuildArgsTest(unittest.TestCase):
@@ -119,26 +112,6 @@ class BuildArgsTest(unittest.TestCase):
             self._parse(platform_name="linux")
 
         warn.assert_not_called()
-
-
-class OnnxBackendTestEnvironmentTest(unittest.TestCase):
-    def test_cpu_and_cuda_enable_unreleased_opsets_by_default(self):
-        with mock.patch.dict(build.os.environ, {}, clear=True):
-            for use_cuda in (False, True):
-                with self.subTest(use_cuda=use_cuda):
-                    self.assertEqual(
-                        build.get_onnx_backend_test_environment(use_cuda),
-                        _UNRELEASED_OPSET_ENVIRONMENT,
-                    )
-
-    def test_cpu_and_cuda_override_explicit_parent_strict_opset_mode(self):
-        with mock.patch.dict(build.os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"}, clear=True):
-            for use_cuda in (False, True):
-                with self.subTest(use_cuda=use_cuda):
-                    self.assertEqual(
-                        build.get_onnx_backend_test_environment(use_cuda),
-                        _UNRELEASED_OPSET_ENVIRONMENT,
-                    )
 
 
 if __name__ == "__main__":

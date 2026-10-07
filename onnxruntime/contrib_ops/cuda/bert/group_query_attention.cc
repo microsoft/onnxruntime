@@ -13,6 +13,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#include "contrib_ops/cuda/bert/group_query_attention_eligibility.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
@@ -572,7 +573,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.is_windowed_kv_cache));
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
-  constexpr bool is_int8 = std::is_same<U, int8_t>::value;
   constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
 
   // Allocate XQA scratch if needed (only for Flash Decoding path)
@@ -602,51 +602,28 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   // The XQA kernel has no attention_bias input.
-  if (enable_xqa_ &&
-      parameters.is_unidirectional &&
-      !has_attention_bias &&
-      (device_prop.major >= 8) &&
-      !parameters.is_first_prompt &&
-      parameters.sequence_length == 1 &&
-      parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
-      parameters.past_present_share_buffer &&
-      parameters.softcap == 0.0f &&
-      xqa_qk_norm_ok &&
-      is_xqa_smooth_softmax_supported) {
-    int group_size = parameters.num_heads / parameters.kv_num_heads;
+  GQAXqaSeqFreeInputs xqa_inputs;
+  xqa_inputs.enable_xqa = enable_xqa_;
+  xqa_inputs.is_unidirectional = parameters.is_unidirectional;
+  xqa_inputs.has_attention_bias = has_attention_bias;
+  xqa_inputs.device_major = device_prop.major;
+  xqa_inputs.device_minor = device_prop.minor;
+  xqa_inputs.softcap = parameters.softcap;
+  xqa_inputs.qk_norm_ok = xqa_qk_norm_ok;
+  xqa_inputs.smooth_softmax_supported = is_xqa_smooth_softmax_supported;
+  xqa_inputs.is_inputs_quantized = is_inputs_quantized;
+  xqa_inputs.head_size = parameters.head_size;
+  xqa_inputs.num_heads = parameters.num_heads;
+  xqa_inputs.kv_num_heads = parameters.kv_num_heads;
+  xqa_inputs.k_quant_type = k_quant_type_;
+  xqa_inputs.v_quant_type = v_quant_type_;
 
-    // Sliding window (local_window_size > 0) is wired through to the quantized XQA kernels as well,
-    // so the INT8/FP8 variants no longer need to be restricted to global attention.
-    // K and V may use different scales: for PER_TENSOR the kernel folds k_scale into qkScale (applied
-    // to Q*K.T before softmax) and v_scale into voScale (applied to the P*V accumulator). PER_CHANNEL
-    // scales cannot be scalars inside the kernel, so ExtremeDecoding folds them into Q and into the
-    // attention output instead, which is exact and costs two O(num_heads * head_size) passes -- far
-    // cheaper than the alternative of dequantizing the whole cache on every decode step.
-    auto is_supported_quant_type = [](KVQuantizationType t) {
-      return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
-    };
-    bool is_int8_quantized_supported = is_int8 &&
-                                       (is_supported_quant_type(k_quant_type_) &&
-                                        is_supported_quant_type(v_quant_type_) &&
-                                        IsSupportedGQAXqaHeadSize(parameters.head_size) &&
-                                        IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true));
-
-#ifdef USE_FP8_KV_CACHE
-    bool is_fp8_quantized_supported = is_fp8 &&
-                                      (is_supported_quant_type(k_quant_type_) &&
-                                       is_supported_quant_type(v_quant_type_) &&
-                                       IsSupportedGQAXqaHeadSize(parameters.head_size) &&
-                                       IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true) &&
-                                       (device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));  // FP8 requires SM89+ (Ada Lovelace)
-#else
-    constexpr bool is_fp8_quantized_supported = false;
-#endif
-
-    bool is_non_quantized_supported = !is_inputs_quantized &&
-                                      IsSupportedGQAXqaHeadSize(parameters.head_size) &&
-                                      IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/false);
-
-    data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
+  // Phase and actual past/present buffer aliasing are per-Run facts, not partition-time inputs.
+  const bool xqa_phase_ok = !parameters.is_first_prompt &&
+                            parameters.sequence_length == 1 &&
+                            parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
+  if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
+    data.use_xqa = true;
 
     if (data.use_xqa) {
       // Consumer Blackwell (sm_120) and some other devices expose a smaller per-block opt-in
@@ -739,16 +716,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   bool use_cudnn_sdpa = !data.use_xqa &&
-                        !has_attention_bias &&
-                        !is_inputs_quantized &&
-                        std::is_same<T, U>::value &&
-                        parameters.softcap == 0.0f &&
-                        !parameters.use_smooth_softmax &&
-                        head_sink == nullptr &&
-                        parameters.local_window_size == -1 &&
-                        parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH &&
-                        (enable_cudnn_flash_attention_ ||
-                         (auto_enable_cudnn_flash_attention_ && device_prop.major >= 9)) &&
+                        IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
+                            has_attention_bias,
+                            is_inputs_quantized,
+                            parameters.softcap,
+                            parameters.use_smooth_softmax,
+                            head_sink != nullptr,
+                            parameters.local_window_size,
+                            parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH,
+                            enable_cudnn_flash_attention_ ||
+                                (auto_enable_cudnn_flash_attention_ && device_prop.major >= 9)) &&
                         onnxruntime::cudnn_sdpa::is_stable() &&
                         onnxruntime::cudnn_sdpa::is_supported(device_prop,
                                                               parameters.num_heads,
@@ -763,12 +740,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !data.use_xqa &&
                              !data.use_cudnn_sdpa &&
-                             !has_attention_bias &&  // flash_api.h has no bias parameter
-                             !disable_flash_attention_ &&
-                             onnxruntime::flash::is_supported<T>(device_prop,
-                                                                 parameters.head_size,
-                                                                 parameters.num_heads,
-                                                                 parameters.kv_num_heads);
+                             IsGQAFlashEligibleSeqFree<T>(device_prop,
+                                                          has_attention_bias,
+                                                          disable_flash_attention_,
+                                                          parameters.head_size,
+                                                          parameters.num_heads,
+                                                          parameters.kv_num_heads);
 
   data.use_flash_attention = use_flash_attention;
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
@@ -885,10 +862,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
-        !disable_memory_efficient_attention_ &&
-        !is_inputs_quantized &&
-        !has_attention_bias &&
-        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
+        IsGQAMemoryEfficientEligibleSeqFree<T>(sm,
+                                               disable_memory_efficient_attention_,
+                                               is_inputs_quantized,
+                                               has_attention_bias,
+                                               parameters.head_size);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
     // KV buffer for head expansion (when num_heads != kv_num_heads)

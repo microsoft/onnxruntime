@@ -44,3 +44,8 @@ other dependencies. Telemetry-enabled static Linux builds depend on static curl 
 mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built
 packages resolve these transport dependencies through vcpkg. Shared ORT libraries use
 a public-symbol allowlist, so embedded telemetry dependencies such as curl are not exported.
+
+Applications linking a telemetry-enabled static Linux ORT build must not co-link
+another copy of curl or mbedTLS. Symbol hiding does not namespace static archives,
+so duplicate-symbol or archive-order conflicts can still occur. Build ORT with
+`--no_telemetry` if your application needs its own curl or mbedTLS copy.
