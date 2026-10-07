@@ -227,6 +227,17 @@ final class OnnxRuntime {
   }
 
   /**
+   * Gets the detected OS and CPU architecture string (e.g. "linux-x64", "linux-aarch64",
+   * "osx-arm64"), matching the directory layout used under {@code ai/onnxruntime/native/} in the
+   * packaged JARs.
+   *
+   * @return The OS & architecture string.
+   */
+  static String osArch() {
+    return OS_ARCH_STR;
+  }
+
+  /**
    * Extracts the CUDA provider library from the classpath resources if present, or checks to see if
    * the CUDA provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
    *

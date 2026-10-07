@@ -138,12 +138,21 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: templates/linux-cpu-packaging-pipeline.yml
-
-    - template: templates/mac-cpu-packaging-pipeline.yml
+    - template: templates/c-api-cpu.yml
       parameters:
-        AllowReleasedOpsetOnly: 1
-        DoESRP: true
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+        ${{ else }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
+        AdditionalBuildFlags: ''
+        AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
+        BuildVariant: 'default'
+        QnnSDKVersion: ${{ parameters.QnnSdk }}
+        is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
 

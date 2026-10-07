@@ -16,8 +16,14 @@ public class EpContextDataCallbackTest {
   @BeforeAll
   public static void loadTestLibrary() throws IOException {
     OnnxRuntime.init();
-    String libraryPath = "aarch64".equals(System.getProperty("os.arch")) ? "/linux-aarch64/" : "/";
-    String libName = libraryPath + System.mapLibraryName("onnxruntime4j_jni_test");
+    // The JNI test helper is archived under an architecture-specific path (mirroring
+    // ai/onnxruntime/native/<os-arch>/...) because the Linux x64 and aarch64 builds otherwise
+    // produce a same-named library that would collide at the archive root.
+    String libName =
+        "/ai/onnxruntime/native/"
+            + OnnxRuntime.osArch()
+            + '/'
+            + System.mapLibraryName("onnxruntime4j_jni_test");
     Assumptions.assumeTrue(
         EpContextDataCallbackTest.class.getResource(libName) != null,
         "The native test library '"

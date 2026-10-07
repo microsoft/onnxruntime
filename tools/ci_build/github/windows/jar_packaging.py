@@ -52,8 +52,15 @@ def find_7z_executable():
 SEVEN_ZIP_EXE = find_7z_executable()
 
 
-def add_file_to_archive(archive_path: Path, file_to_add: Path, description: str, archive_name: str | None = None):
-    """Appends a single file to a zip archive (JAR file)."""
+def add_file_to_archive(archive_path: Path, file_to_add: Path, description: str, archive_rel_path: str | None = None):
+    """Appends a single file to a zip archive (JAR file) using 7z.
+
+    By default the file is stored at the archive root under its own name. When
+    `archive_rel_path` is given (e.g. 'ai/onnxruntime/native/linux-x64/libfoo.so'),
+    the file is stored at that path instead. This is required for files that share
+    the same basename across platforms (such as the JNI test helper library), so
+    that archiving one platform's copy does not silently overwrite another's.
+    """
     print(f"  -> {description}...")
     try:
         if archive_name:
@@ -62,14 +69,32 @@ def add_file_to_archive(archive_path: Path, file_to_add: Path, description: str,
             return
         if not SEVEN_ZIP_EXE:
             raise FileNotFoundError
-        # Run 7z from the file's parent directory to ensure a clean archive path.
-        subprocess.run(
-            [SEVEN_ZIP_EXE, "a", str(archive_path), file_to_add.name],
-            check=True,
-            cwd=file_to_add.parent,
-            capture_output=True,
-            text=True,
-        )
+        if archive_rel_path:
+            # Stage the file under the desired relative path in a scratch directory so that
+            # 7z preserves that path inside the archive, rather than just the bare filename.
+            staging_root = file_to_add.parent / "_archive_staging"
+            staged_file = staging_root / archive_rel_path
+            staged_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file_to_add, staged_file)
+            try:
+                subprocess.run(
+                    [SEVEN_ZIP_EXE, "a", str(archive_path), archive_rel_path],
+                    check=True,
+                    cwd=staging_root,
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                shutil.rmtree(staging_root, ignore_errors=True)
+        else:
+            # Run 7z from the file's parent directory to ensure a clean archive path.
+            subprocess.run(
+                [SEVEN_ZIP_EXE, "a", str(archive_path), file_to_add.name],
+                check=True,
+                cwd=file_to_add.parent,
+                capture_output=True,
+                text=True,
+            )
     except FileNotFoundError:
         print(
             "Error: '7z' command not found. Please ensure 7-Zip is installed and in your PATH, or in the default location 'C:\\Program Files\\7-Zip'.",
@@ -156,7 +181,7 @@ def process_platform_archive(
     custom_lib_file: str,
     archive_custom_lib: bool,
     test_lib_file: str,
-    test_lib_archive_path: str = "",
+    os_arch: str = "",
 ):
     """Processes a single platform directory, adding only the 'ai' subdirectory to the main JAR."""
     print(f"Processing platform: {platform_path}...")
@@ -176,13 +201,19 @@ def process_platform_archive(
 
     # 1b. Handle the JNI unit test helper library (onnxruntime4j_jni_test). It is only built when
     #     onnxruntime_BUILD_UNIT_TESTS is ON, so its absence is a warning rather than a fatal error.
+    #     Linux x64 and Linux aarch64 both produce a library with the same basename, so it is
+    #     archived under an architecture-specific path (mirroring the main JAR's
+    #     'ai/onnxruntime/native/<os-arch>/' layout) to avoid one platform's copy silently
+    #     overwriting the other's in testing.jar.
     test_lib_full_path = platform_path / test_lib_file
     if test_lib_file and test_lib_full_path.is_file():
+        archive_rel_path = f"ai/onnxruntime/native/{os_arch}/{test_lib_file}" if os_arch else None
         add_file_to_archive(
             test_archive_file,
             test_lib_full_path,
-            f"Archiving '{test_lib_file}' to test JAR",
-            test_lib_archive_path or None,
+            f"Archiving '{test_lib_file}' to test JAR"
+            + (f" under '{archive_rel_path}'" if archive_rel_path else ""),
+            archive_rel_path=archive_rel_path,
         )
         print(f"  -> Removing '{test_lib_file}' from source directory...")
         test_lib_full_path.unlink()
@@ -257,20 +288,21 @@ def run_packaging(package_type: str, build_dir: str):
                     "lib": "libcustom_op_library.so",
                     "archive_lib": True,
                     "test_lib": "libonnxruntime4j_jni_test.so",
+                    "os_arch": "linux-x64",
                 },
                 {
                     "path": "onnxruntime-java-linux-aarch64",
                     "lib": "libcustom_op_library.so",
                     "archive_lib": False,
                     "test_lib": "libonnxruntime4j_jni_test.so",
-                    # Keep this separate from the x64 helper, which has the same basename.
-                    "test_lib_archive_path": "linux-aarch64/libonnxruntime4j_jni_test.so",
+                    "os_arch": "linux-aarch64",
                 },
                 {
                     "path": "onnxruntime-java-osx-arm64",
                     "lib": "libcustom_op_library.dylib",
                     "archive_lib": True,
                     "test_lib": "libonnxruntime4j_jni_test.dylib",
+                    "os_arch": "osx-arm64",
                 },
             ]
         },
@@ -281,6 +313,7 @@ def run_packaging(package_type: str, build_dir: str):
                     "lib": "libcustom_op_library.so",
                     "archive_lib": True,
                     "test_lib": "libonnxruntime4j_jni_test.so",
+                    "os_arch": "linux-x64",
                 }
             ]
         },
@@ -313,7 +346,7 @@ def run_packaging(package_type: str, build_dir: str):
             custom_lib_file=platform["lib"],
             archive_custom_lib=platform["archive_lib"],
             test_lib_file=platform.get("test_lib", ""),
-            test_lib_archive_path=platform.get("test_lib_archive_path", ""),
+            os_arch=platform.get("os_arch", ""),
         )
 
     print("\nScript completed successfully.")
