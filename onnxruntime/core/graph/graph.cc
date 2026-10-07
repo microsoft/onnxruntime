@@ -7260,6 +7260,29 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
+  for (const auto& node : Nodes()) {
+    size_t expected_data_edges = 0;
+    for (const auto* input_def : node.InputDefs()) {
+      for (const auto& candidate : Nodes()) {
+        const auto& output_defs = candidate.OutputDefs();
+        if (input_def->Exists() &&
+            std::find(output_defs.begin(), output_defs.end(), input_def) != output_defs.end()) {
+          ++expected_data_edges;
+          break;
+        }
+      }
+    }
+
+    size_t data_edges = 0;
+    for (auto edge_it = node.InputEdgesBegin(); edge_it != node.InputEdgesEnd(); ++edge_it) {
+      if (edge_it->GetDstArgIndex() != INT_MAX) {
+        ++data_edges;
+      }
+    }
+
+    ORT_RETURN_IF_NOT(data_edges == expected_data_edges, "Node::LoadFromOrtFormat, missing data edge.");
+  }
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // populate NodeArg lookups after loading Nodes and NodeArgs
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
