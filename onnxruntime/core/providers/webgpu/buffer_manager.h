@@ -10,6 +10,7 @@
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
@@ -49,6 +50,8 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 class IBufferCacheManager {
  public:
   virtual ~IBufferCacheManager() = default;
+
+  virtual bool SupportsBufferReuse() const { return true; }
 
   // calculate actual buffer size to allocate based on the requested size.
   virtual size_t CalculateBufferSize(size_t request_size) = 0;
@@ -96,9 +99,12 @@ class BufferManager {
                     bool initialize_to_zero = false,
                     bool submit_zero_initialize = false) const;
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
-  void Release(CommandRecordingState& recording, WGPUBuffer buffer) const;
+  // A null recording releases directly to the cache (e.g., plugin Env allocations).
+  void Release(WGPUBuffer buffer, const CommandRecordingState* recording = nullptr) const;
   void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
-  void RefreshPendingBuffers(CommandRecordingState& recording) const;
+  void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
+  // Drop retained references when a recording is abandoned instead of submitted.
+  void DiscardPendingBuffers(CommandRecordingState& recording) const;
 
   std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
   void AbsorbCachedBuffers(wgpu::BufferUsage usage,
@@ -108,11 +114,14 @@ class BufferManager {
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
   WebGpuContext& context_;
+  // Protects both the caches and pending_buffers_.
   mutable std::mutex mutex_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
   std::unique_ptr<IBufferCacheManager> uniform_cache_;
   std::unique_ptr<IBufferCacheManager> query_resolve_cache_;
   std::unique_ptr<IBufferCacheManager> default_cache_;
+  // Created on release, only for reusable buffers waiting for this recording's submission.
+  mutable InlinedHashMap<const CommandRecordingState*, InlinedVector<wgpu::Buffer>> pending_buffers_;
 };
 
 class BufferManagerFactory {
