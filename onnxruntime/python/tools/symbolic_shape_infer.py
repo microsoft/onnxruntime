@@ -1082,55 +1082,51 @@ class SymbolicShapeInference:
         mid_index = equation.find(b"->")
         left_equation = equation[:mid_index] if mid_index != -1 else equation
 
-        num_operands = 0
-        num_ellipsis = 0
-        num_ellipsis_indices = 0
-
         letter_to_dim = {}
+        ellipsis_shape = []
 
         terms = left_equation.split(b",")
-        for term in terms:
+        for operand_index, term in enumerate(terms):
+            shape = self._get_shape(node, operand_index)
+            letters = term
+            letter_dims = shape
             ellipsis_index = term.find(b"...")
-            shape = self._get_shape(node, num_operands)
-            rank = len(shape)
             if ellipsis_index != -1:
-                if num_ellipsis == 0:
-                    num_ellipsis_indices = rank - len(term) + 3
-                num_ellipsis = num_ellipsis + 1
-            for i in range(1, rank + 1):
-                letter = term[-i]
-                if letter != 46:  # letter != b'.'
-                    dim = shape[-i]
-                    if letter not in letter_to_dim:
-                        letter_to_dim[letter] = dim
-                    elif type(dim) is not sympy.Symbol:
-                        letter_to_dim[letter] = dim
-            num_operands = num_operands + 1
+                # The ellipsis stands for the dims not named by letters, and those dims broadcast across operands.
+                num_ellipsis_dims = len(shape) - len(term) + 3
+                ellipsis_shape = self._broadcast_shapes(
+                    ellipsis_shape, shape[ellipsis_index : ellipsis_index + num_ellipsis_dims]
+                )
+                letters = term[:ellipsis_index] + term[ellipsis_index + 3 :]
+                letter_dims = shape[:ellipsis_index] + shape[ellipsis_index + num_ellipsis_dims :]
+            for letter, dim in zip(letters, letter_dims, strict=False):
+                if letter not in letter_to_dim:
+                    letter_to_dim[letter] = dim
+                elif type(dim) is not sympy.Symbol:
+                    letter_to_dim[letter] = dim
+        # Broadcasting two different symbolic dims has no known result, so use a new symbolic dim for it.
+        ellipsis_shape = [
+            str(self._new_symbolic_dim_from_output(node, 0, i)) if dim is None else dim
+            for i, dim in enumerate(ellipsis_shape)
+        ]
 
         new_sympy_shape = []
-        from collections import OrderedDict  # noqa: PLC0415
-
-        num_letter_occurrences = OrderedDict()
         if mid_index != -1:
-            right_equation = equation[mid_index + 2 :]
-            right_ellipsis_index = right_equation.find(b"...")
-            if right_ellipsis_index != -1:
-                for i in range(num_ellipsis_indices):
-                    new_sympy_shape.append(shape[i])
+            right_equation = equation[mid_index + 2 :].replace(b"...", b".")
             for c in right_equation:
-                if c != 46:  # c != b'.'
+                if c == 46:  # c == b'.'
+                    new_sympy_shape.extend(ellipsis_shape)
+                else:
                     new_sympy_shape.append(letter_to_dim[c])
         else:
-            for i in range(num_ellipsis_indices):
-                new_sympy_shape.append(shape[i])
+            # Implicit output: the ellipsis dims, then the letters used only once in alphabetical order.
+            new_sympy_shape.extend(ellipsis_shape)
+            num_letter_occurrences = {}
             for c in left_equation:
                 if c != 44 and c != 46:  # c != b',' and c != b'.':
-                    if c in num_letter_occurrences:
-                        num_letter_occurrences[c] = num_letter_occurrences[c] + 1
-                    else:
-                        num_letter_occurrences[c] = 1
-            for key, value in num_letter_occurrences.items():
-                if value == 1:
+                    num_letter_occurrences[c] = num_letter_occurrences.get(c, 0) + 1
+            for key in sorted(num_letter_occurrences):
+                if num_letter_occurrences[key] == 1:
                     new_sympy_shape.append(letter_to_dim[key])
 
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type

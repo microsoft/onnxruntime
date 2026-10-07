@@ -1061,6 +1061,18 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def test_einsum_transpose(self):
         self._test_einsum_one_input_impl(["a", "b"], ["b", "a"], "ij -> ji")
 
+    def test_einsum_implicit_output_is_sorted(self):
+        self._test_einsum_one_input_impl([2, 3], [3, 2], "ji")
+
+    def test_einsum_ellipsis(self):
+        self._test_einsum_two_inputs_impl([5, 2, 3], [3, 4], [5, 2, 4], "...j, jk -> ...k")
+
+    def test_einsum_ellipsis_broadcast(self):
+        self._test_einsum_two_inputs_impl([5, 2, 3], [1, 3, 4], [5, 2, 4], "...ij, ...jk")
+
+    def test_einsum_letters_before_ellipsis(self):
+        self._test_einsum_one_input_impl([2, 3, 4, 5, 6], [2, 3, 4, 6, 5], "b...ij -> b...ji")
+
     def test_mul_precision(self):
         graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [1024])
         graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
