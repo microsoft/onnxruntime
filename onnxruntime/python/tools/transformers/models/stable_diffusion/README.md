@@ -130,11 +130,11 @@ wget https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffus
 python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --controlnet-image input_image_vermeer.png --version xl-turbo --height 1024 --width 1024 "portrait of young Mona Lisa with mountain, river and forest in the background"
 ```
 
-## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
+## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers
 
 If you are able to run the above demo with docker, you can use the docker and skip the following setup and fast forward to [Export ONNX pipeline](#export-onnx-pipeline).
 
-Below setup does not use docker. We'll use the environment to optimize ONNX models of Stable Diffusion exported by huggingface diffusers or optimum.
+Below setup does not use docker. We'll use the environment to optimize ONNX models of Stable Diffusion exported by Hugging Face Diffusers.
 For Windows OS, please change the format of path to be like `.\sd` instead of `./sd`.
 
 It is recommended to create a Conda environment with Python 3.10 for the following setup:
@@ -168,28 +168,11 @@ curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/con
 python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd1.5_onnx/fp32
 ```
 
-For SDXL, use optimum to export the model:
-```
-pip install optimum diffusers onnx onnxruntime-gpu
-optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sdxl_onnx/fp32
-```
+The published Optimum ONNX packages currently require `transformers<4.58` and are not compatible with the secure Transformers 5.3 environment. Use the Diffusers export path until Optimum ONNX supports Transformers 5.
 
 #### Stable Diffusion 3.x and Flux 1.0
 
-Stable Diffusion 3.x and Flux 1.0 requires transformers >= 4.45, and optimum > 1.23.3.
-The default opset version for T5 is 12, which does not support bfloat16. To support bfloat16, please set opset version explicitly like below example.
-
-```
-git clone https://github.com/huggingface/optimum
-cd optimum
-pip install -e .
-
-optimum-cli export onnx --model stabilityai/stable-diffusion-3-medium-diffusers ./sd3_onnx/fp32 --opset 15
-optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-medium ./sd3.5_medium_onnx/fp32 --opset 15
-optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-large ./sd3.5_large_onnx/fp32 --opset 15
-optimum-cli export onnx --model black-forest-labs/FLUX.1-schnell ./flux1_schnell_onnx/fp32 --opset 15
-optimum-cli export onnx --model black-forest-labs/FLUX.1-dev ./flux1_dev_onnx/fp32 --opset 15
-```
+Stable Diffusion 3.x and Flux 1.0 require Transformers 5.3 or later. Optimum ONNX export is currently unavailable for these models due to its `transformers<4.58` constraint.
 
 ### Optimize ONNX Pipeline
 

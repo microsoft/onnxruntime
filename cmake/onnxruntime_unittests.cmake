@@ -469,9 +469,10 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
-if(LINUX)
+if(LINUX AND NOT onnxruntime_DISABLE_DEVICE_DISCOVERY)
   list(APPEND onnxruntime_test_framework_src_patterns
-    "${TEST_SRC_DIR}/platform/linux/*.cc" )
+    "${TEST_SRC_DIR}/platform/linux/npu_device_discovery_test.cc"
+    "${TEST_SRC_DIR}/platform/linux/pci_device_discovery_test.cc")
 endif()
 
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -734,7 +735,7 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
 endif()
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
@@ -1108,6 +1109,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
     list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp4_to_fp8_kernel_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp8_compaction_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
     )
   endif()
@@ -1262,13 +1264,44 @@ endfunction()
 
 # Set environment variables for plugin EP tests when run via CTest.
 function(onnxruntime_set_plugin_ep_test_environment target)
-  if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+  if(onnxruntime_WEBGPU_STATIC_PLUGIN)
+    # The WebGPU plugin EP is linked into the test binary and registered by ORT core, so there is no
+    # library to register by path here. onnxruntime_set_webgpu_plugin_ep_test_definitions() below gives
+    # test_main.cc an equivalent compiled-in default config.
+  elseif(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
     set(ORT_PLUGIN_EP_JSON_CONFIG "{\"ep_library_registration_name\": \"WebGPU_PluginEP\", \"ep_library_path\": \"$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>\", \"selected_ep_name\": \"WebGpuExecutionProvider\"}")
     set_tests_properties(${target} PROPERTIES
       ENVIRONMENT "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON=${ORT_PLUGIN_EP_JSON_CONFIG}"
     )
   # TODO: add for other plugin EPs if needed
   # elseif()
+  endif()
+endfunction()
+
+# Route the WebGPU EP through the dynamic plugin EP infrastructure in plugin builds
+# (--use_webgpu shared_lib or --use_webgpu static_plugin).
+# Without initializing the infra in test_main.cc, WebGpuExecutionProviderWithOptions() (default_providers.cc,
+# adapters branch) returns null and every WebGPU test skips itself, leaving the plugin path with no test coverage.
+# This must be applied to every test target that links test_main.cc and runs WebGPU tests.
+function(onnxruntime_set_webgpu_plugin_ep_test_definitions target)
+  if(NOT (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS))
+    return()
+  endif()
+
+  target_compile_definitions(${target} PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
+
+  if (onnxruntime_WEBGPU_STATIC_PLUGIN)
+    # The plugin EP is linked into the test binary and registered by ORT core during environment creation,
+    # so there is no library path to dlopen and no separate build-order dependency needed.
+    target_compile_definitions(${target} PRIVATE ORT_UNIT_TEST_HAS_WEBGPU_STATIC_PLUGIN_EP=1)
+  else()
+    target_compile_definitions(${target} PRIVATE
+      ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>")
+    # The plugin EP DLL is dlopen'd at test-run time (not linked), so add an explicit build-order
+    # dependency to ensure it (and its co-located dawn/dxcompiler DLLs) exist before the tests run.
+    add_dependencies(${target} onnxruntime_providers_webgpu)
   endif()
 endfunction()
 
@@ -1308,6 +1341,55 @@ target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core
 
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
+  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  foreach(fixture IN ITEMS valid missing_export)
+    onnxruntime_add_shared_library(onnxruntime_provider_bridge_${fixture}_fixture
+      "${TEST_SRC_DIR}/shared_lib/provider_bridge_test_library.cc")
+    set_target_properties(onnxruntime_provider_bridge_${fixture}_fixture PROPERTIES FOLDER "ONNXRuntimeTest")
+    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set_target_properties(onnxruntime_provider_bridge_${fixture}_fixture PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+    endif()
+  endforeach()
+  target_compile_definitions(onnxruntime_provider_bridge_valid_fixture PRIVATE ORT_TEST_PROVIDER_SET_HOST)
+
+  foreach(mode IN ITEMS normal no_exceptions)
+    set(bridge_test_target onnxruntime_provider_bridge_${mode}_test)
+    set(bridge_test_sources "${TEST_SRC_DIR}/shared_lib/provider_bridge_test.cc" ${onnxruntime_unittest_main_src})
+    if(mode STREQUAL "no_exceptions")
+      list(APPEND bridge_test_sources
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
+    endif()
+    AddTest(TARGET ${bridge_test_target}
+      SOURCES ${bridge_test_sources}
+      LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+      DEPENDS onnxruntime_provider_bridge_valid_fixture onnxruntime_provider_bridge_missing_export_fixture)
+    set_target_properties(${bridge_test_target} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${bridge_test_target}/$<CONFIG>")
+    target_compile_definitions(${bridge_test_target} PRIVATE
+      ORT_PROVIDER_BRIDGE_VALID_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_valid_fixture>"
+      ORT_PROVIDER_BRIDGE_MISSING_EXPORT_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_missing_export_fixture>")
+    add_custom_command(TARGET ${bridge_test_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:onnxruntime_provider_bridge_valid_fixture>
+        $<TARGET_FILE:onnxruntime_provider_bridge_missing_export_fixture>
+        $<TARGET_FILE_DIR:${bridge_test_target}>)
+    if(onnxruntime_providers_webgpu_dll_deps)
+      add_custom_command(TARGET ${bridge_test_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${onnxruntime_providers_webgpu_dll_deps}" "$<TARGET_FILE_DIR:${bridge_test_target}>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+    endif()
+    if(mode STREQUAL "no_exceptions")
+      target_compile_definitions(${bridge_test_target} PRIVATE ORT_NO_EXCEPTIONS)
+      target_include_directories(${bridge_test_target} PRIVATE
+        $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
+    endif()
+  endforeach()
+endif()
+
 if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   # ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE is required so that test_main.cc initializes
   # the dynamic plugin EP infrastructure. onnxruntime_test_utils (which compiles default_providers.cc)
@@ -1320,17 +1402,7 @@ if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
 endif()
 
 if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
-  # Route the WebGPU EP through the dynamic plugin EP infrastructure in plugin builds
-  # (--use_webgpu shared_lib). Same rationale as the CUDA-as-plugin block above: without initializing the
-  # infra in test_main.cc, WebGpuExecutionProviderWithOptions() (default_providers.cc, adapters branch)
-  # returns null and every WebGPU test skips itself, leaving the plugin path with no test coverage.
-  target_compile_definitions(onnxruntime_test_all PRIVATE
-    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
-    ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>"
-    ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
-  # The plugin EP DLL is dlopen'd at test-run time (not linked), so add an explicit build-order
-  # dependency to ensure it (and its co-located dawn/dxcompiler DLLs) exist before the tests run.
-  add_dependencies(onnxruntime_test_all onnxruntime_providers_webgpu)
+  onnxruntime_set_webgpu_plugin_ep_test_definitions(onnxruntime_test_all)
 endif()
 
 if (MSVC)
@@ -1580,6 +1652,7 @@ block()
 
   # enable dynamic plugin EP usage
   target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  onnxruntime_set_webgpu_plugin_ep_test_definitions(${onnxruntime_provider_test_target})
   onnxruntime_apply_emscripten_test_link_settings(${onnxruntime_provider_test_target})
 
   if (IOS)
