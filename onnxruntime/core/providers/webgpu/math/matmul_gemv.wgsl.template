@@ -1,0 +1,32 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+var<workgroup> partials: array<vec4<f32>, workgroup_size_x * workgroup_size_y>;
+
+$MAIN {
+  let n_vec = workgroup_idx * workgroup_size_x + local_id.x;
+  let n_vec_count = uniforms.N / 4u;
+  var acc = vec4<f32>(0);
+  if (n_vec < n_vec_count) {
+    for (var k = local_id.y; k < uniforms.K; k += workgroup_size_y) {
+      let av = f32(a.getByOffset(k));
+      let bv = vec4<f32>(b.getByOffset(k * n_vec_count + n_vec));
+      acc = fma(vec4<f32>(av), bv, acc);
+    }
+  }
+  partials[local_idx] = acc;
+  workgroupBarrier();
+
+  // All lanes participate in the barriers, including a partial N tile.
+  for (var stride = workgroup_size_y / 2u; stride > 0u; stride /= 2u) {
+    if (local_id.y < stride) {
+      partials[local_idx] += partials[local_idx + stride * workgroup_size_x];
+    }
+    workgroupBarrier();
+  }
+  if (local_id.y == 0u && n_vec < n_vec_count) {
+    output.setByOffset(n_vec, output_value_t(partials[local_idx]));
+  }
+}

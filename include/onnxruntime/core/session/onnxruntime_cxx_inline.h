@@ -1335,6 +1335,13 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(
+    OrtWriteNamedBufferFunc write_func, void* state) {
+  Ort::ThrowOnError(
+      GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
     bool embed_ep_context_in_model) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
@@ -1358,6 +1365,26 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetGraphOptimizationLev
 inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const OrtModel* model) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModel(this->p_, model));
   return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessEnabled(this->p_, use_weightless));
+  return *this;
+}
+
+inline EpContextConfig::EpContextConfig(const SessionOptions& session_options)
+    : EpContextConfig{session_options.GetConst()} {}
+
+inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
+  ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
+}
+
+inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state));
+}
+
+inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
 }
 
 namespace detail {
@@ -1519,6 +1546,19 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::Add(OrtCustomOpDomain* cust
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* config_key, const char* config_value) {
   ThrowOnError(GetApi().AddSessionConfigEntry(this->p_, config_key, config_value));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
+    OrtReadNamedBufferFunc read_func, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::ClearEpContextDataReadFunc() {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, nullptr, nullptr));
   return *this;
 }
 
@@ -1873,6 +1913,7 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOverridableInitializerNa
     char* name;
     ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, i, allocator, &name));
     initializer_names.emplace_back(name);
+    allocator.Free(name);
   }
 
   return initializer_names;
@@ -2867,6 +2908,12 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const int64_t* dim_va
 inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) const {
   OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dims.data(), dims.size(), &out));
+  return UnownedValue(out);
+}
+
+inline UnownedValue KernelContext::GetPreallocatedOutput(size_t index) const {
+  OrtValue* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetPreallocatedOutput(ctx_, index, &out));
   return UnownedValue(out);
 }
 

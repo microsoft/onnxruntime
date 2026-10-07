@@ -1,0 +1,11 @@
+:(top)cgmanifests/webgpu
+:(top)cmake/onnxruntime_providers_webgpu.cmake
+:(top)cmake/patches/dawn
+:(top)include/onnxruntime/core/providers/webgpu
+:(top)onnxruntime/contrib_ops/webgpu
+:(top)onnxruntime/core/providers/webgpu
+:(top)onnxruntime/core/session/plugin_ep/ep_factory_webgpu.cc
+:(top)onnxruntime/core/session/plugin_ep/ep_factory_webgpu.h
+:(top)onnxruntime/test/providers/webgpu
+:(top)onnxruntime/test/webgpu
+:(top)plugin-ep-webgpu

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-"""Ratchet on the number of GoogleTest ``DISABLED_`` tests.
+"""Ratchet on the number of GoogleTest ``DISABLED_`` declarations.
 
-GoogleTest silently excludes any test whose name is prefixed with ``DISABLED_``
+GoogleTest silently excludes any test or suite prefixed with ``DISABLED_``
 (only a run-time stderr note is emitted), so disabled tests rot indefinitely with
 no owner or linked issue. This script counts them and fails when the total grows
 beyond a baseline, so the count can only go down over time.
+
+Counts TEST, TEST_F, TEST_P, TYPED_TEST and TYPED_TEST_P declarations in all
+preprocessor branches, including multiline declarations and disabled suites.
+Comments and string literals are excluded; macro aliases are not expanded.
 
 Usage::
 
@@ -21,38 +25,45 @@ count drops below it (a reminder to lower the baseline so the ratchet stays tigh
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
 
-# Matches a disabled test declaration, e.g. ``TEST_F(SuiteName, DISABLED_Foo)``.
-# Mirrors GoogleTest's TEST / TEST_F / TEST_P / TYPED_TEST(_P) macros.
-_DISABLED_RE = re.compile(r"\b(?:TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*\w+\s*,\s*DISABLED_\w*")
+_TEST_RE = re.compile(r"\b(?:TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)")
+_NON_CODE_RE = re.compile(
+    r'R"([^ ()\\\t\r\n]{0,16})\(.*?\)\1"|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/',
+    re.DOTALL,
+)
 
-# Default baseline measured from the working tree (TEST/TEST_F/TEST_P/TYPED_TEST*
-# with a DISABLED_ name). Lower this (never raise it) whenever disabled tests are
-# re-enabled or removed.
-_DEFAULT_BASELINE = 170
+# Initial baseline is frozen against main 3d9d664a45. Count declarations, not
+# parameterized instances; inspect all preprocessor branches. Lower this when
+# disabled declarations are re-enabled or removed.
+_DEFAULT_BASELINE = 188
 
 _SOURCE_SUFFIXES = (".cc", ".cpp", ".cxx", ".cu")
 
 
 def find_disabled_tests(test_dir: Path) -> list[tuple[Path, int, str]]:
     """Return (path, line_number, matched_text) for every disabled test under test_dir."""
+
+    def raise_walk_error(error: OSError) -> None:
+        raise error
+
     hits: list[tuple[Path, int, str]] = []
-    for path in sorted(test_dir.rglob("*")):
-        if path.suffix not in _SOURCE_SUFFIXES or not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:  # pragma: no cover - defensive I/O guard
-            print(f"warning: could not read {path}: {exc}", file=sys.stderr)
-            continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            match = _DISABLED_RE.search(line)
-            if match:
-                hits.append((path, lineno, match.group(0).strip()))
-    return hits
+    for directory, _, filenames in os.walk(test_dir, onerror=raise_walk_error):
+        for filename in filenames:
+            path = Path(directory) / filename
+            if path.suffix not in _SOURCE_SUFFIXES:
+                continue
+            text = path.read_text(encoding="utf-8")
+            code = _NON_CODE_RE.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), text)
+            for match in _TEST_RE.finditer(code):
+                if any(name.startswith("DISABLED_") for name in match.groups()):
+                    lineno = code.count("\n", 0, match.start()) + 1
+                    declaration = " ".join(match.group().split())
+                    hits.append((path, lineno, declaration))
+    return sorted(hits)
 
 
 def main() -> int:
@@ -68,7 +79,7 @@ def main() -> int:
         "--baseline",
         type=int,
         default=_DEFAULT_BASELINE,
-        help=f"Maximum allowed disabled tests (default: {_DEFAULT_BASELINE}).",
+        help=f"Exact expected disabled declaration count (default: {_DEFAULT_BASELINE}).",
     )
     parser.add_argument("--list", action="store_true", help="Print every disabled test site.")
     parser.add_argument(
@@ -77,18 +88,26 @@ def main() -> int:
         help="Print the suggested baseline line for the current count and exit 0.",
     )
     args = parser.parse_args()
+    if args.baseline < 0:
+        parser.error("--baseline must be non-negative")
+    args.test_dir = args.test_dir.resolve()
 
     if not args.test_dir.is_dir():
         print(f"error: test directory not found: {args.test_dir}", file=sys.stderr)
         return 2
 
-    hits = find_disabled_tests(args.test_dir)
+    try:
+        hits = find_disabled_tests(args.test_dir)
+    except (OSError, UnicodeError) as exc:
+        print(f"error: cannot scan disabled tests: {exc}", file=sys.stderr)
+        return 2
     count = len(hits)
     file_count = len({path for path, _, _ in hits})
 
     if args.list:
         for path, lineno, text in hits:
-            print(f"{path.relative_to(repo_root).as_posix()}:{lineno}: {text}")
+            display_path = path.relative_to(repo_root) if path.is_relative_to(repo_root) else path
+            print(f"{display_path.as_posix()}:{lineno}: {text}")
 
     print(f"Disabled tests: {count} across {file_count} files (baseline {args.baseline}).")
 

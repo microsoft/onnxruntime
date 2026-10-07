@@ -237,22 +237,14 @@ class GpuDataManagerImpl implements GpuDataManager {
       throw new Error(`inconsistent data size. gpu data size=${gpuDataCache.originalSize}, data size=${srcLength}`);
     }
 
-    // create gpu buffer
-    const gpuBufferForUploading = this.backend.device.createBuffer(
-      // eslint-disable-next-line no-bitwise
-      { mappedAtCreation: true, size, usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC },
-    );
-
-    // copy (upload) data
-    const arrayBuffer = gpuBufferForUploading.getMappedRange();
-    new Uint8Array(arrayBuffer).set(new Uint8Array(srcArrayBuffer, srcOffset, srcLength));
-    gpuBufferForUploading.unmap();
-
-    // GPU copy
-    const commandEncoder = this.backend.device.createCommandEncoder();
-    commandEncoder.copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
-    this.backend.device.queue.submit([commandEncoder.finish()]);
-    gpuBufferForUploading.destroy();
+    if (size === srcLength && srcOffset % 4 === 0) {
+      // Fast path: already aligned; avoid allocating/copying a padded buffer.
+      this.backend.device.queue.writeBuffer(gpuDataCache.gpuData.buffer, 0, srcArrayBuffer, srcOffset, srcLength);
+    } else {
+      const uploadData = new Uint8Array(size);
+      uploadData.set(data);
+      this.backend.device.queue.writeBuffer(gpuDataCache.gpuData.buffer, 0, uploadData, 0, size);
+    }
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.upload(id=${id})`);
   }

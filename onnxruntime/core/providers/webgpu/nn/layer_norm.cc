@@ -27,20 +27,35 @@ static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
 
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("scale", ShaderUsage::UseUniform);
-  if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
-  shader.AddOutput("y", ShaderUsage::UseUniform);
-  if (has_mean_output_) {
-    shader.AddOutput("mean_output", ShaderUsage::None);
-  }
-  if (has_inv_std_dev_output_) {
-    shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
-  }
+  const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform);
+  const auto* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
+  const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto* mean_output = has_mean_output_ ? &shader.AddOutput("mean_output", ShaderUsage::None) : nullptr;
+  const auto* inv_std_dev_output = has_inv_std_dev_output_ ? &shader.AddOutput("inv_std_dev_output", ShaderUsage::None) : nullptr;
+
+  // Keep LayerNormalization's mean in f32: narrowing before subtraction amplifies rounding error.
+  // Preserve same-type SimplifiedLayerNormalization rounding to match fused RMSNorm kernels.
+  const bool normalize_in_f32 = !simplified_ || Inputs()[0].var_type != Outputs()[0].var_type;
+  const int components = x.NumComponents();
+  shader.AdditionalImplementation()
+      << "alias norm_element_t = " << (normalize_in_f32 || fp32_normalization_ ? "f32" : "x_element_t") << ";\n"
+      << "alias norm_value_t = "
+      << (components == 4 ? "vec4<norm_element_t>" : (components == 2 ? "vec2<norm_element_t>" : "norm_element_t"))
+      << ";\n";
 
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
-  std::string simpl2 = (simplified_) ? "" : "- x_element_t(mean) ";
+  std::string simpl2 = (simplified_) ? "" : "- norm_element_t(mean) ";
+
+  const auto output_expression = [&](const std::string& input, const std::string& scale_offset) {
+    const std::string normalized =
+        "(norm_value_t(" + input + ") " + simpl2 + ") * norm_element_t(inv_std_dev)";
+    if (fp32_normalization_) {
+      return "y_value_t(" + normalized + " * norm_value_t(" + scale.GetByOffset(scale_offset) + ")" +
+             (has_bias_ ? " + norm_value_t(" + bias->GetByOffset(scale_offset) + ")" : "") + ")";
+    }
+    return "y_value_t(" + normalized + ") * " + scale.GetByOffset(scale_offset) +
+           (has_bias_ ? " + " + bias->GetByOffset(scale_offset) : "");
+  };
 
   if (split_norm_dim_) {
     shader.AdditionalImplementation()
@@ -53,7 +68,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  var cur_input = x_value_t(0);\n"
         << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
         << "    let input_offset = i * workgroup_size_x + local_idx;\n"
-        << "    let input_value = x[input_offset];\n"
+        << "    let input_value = " << x.GetByOffset("input_offset") << ";\n"
         << "    if (i == workgroup_idx) {\n"
         << "      cur_input = input_value;\n"
         << "    }\n"
@@ -78,22 +93,20 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
         << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  y[offset] = ((cur_input " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ");\n";
+        << "  let output_value = " << output_expression("cur_input", "offset") << ";\n"
+        << "  " << y.SetByOffset("offset", "output_value") << "\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
-                                << "    mean_output[global_idx / uniforms.norm_size] = mean;\n"
+                                << "    " << mean_output->SetByOffset("global_idx / uniforms.norm_size", "mean") << "\n"
                                 << "  }\n";
     }
     if (has_inv_std_dev_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
-                                << "    inv_std_dev_output[global_idx / uniforms.norm_size] = inv_std_dev;\n"
+                                << "    " << inv_std_dev_output->SetByOffset("global_idx / uniforms.norm_size", "inv_std_dev") << "\n"
                                 << "  }\n";
     }
   } else {
-    int components = x.NumComponents();
-    std::string bias = (has_bias_) ? " + bias[offset1d + i] " : "";
-
     shader.AdditionalImplementation()
         << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
         << "var<workgroup> sum_shared : array<f32_val_t, workgroup_size_x>;\n"
@@ -101,7 +114,8 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
     shader.MainFunctionBody()
         << "let ix = local_idx;\n"
-        << "let iy = global_idx / workgroup_size_x;\n"
+        << "let iy = workgroup_idx;\n"
+        << (fp32_normalization_ ? "if (iy >= uniforms.norm_count) { return; }\n" : "")
         << "let norm_size_vectorized: u32 = uniforms.norm_size / uniforms.components;\n"
         << "var stride = norm_size_vectorized / workgroup_size_x;\n"
         << "let offset = ix * stride + iy * norm_size_vectorized;\n"
@@ -112,8 +126,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << " stride = norm_size_vectorized - stride * ix;\n"
         << "}\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " let input_value = x[offset + i];\n"
-        << " y[offset + i] = input_value;\n"
+        << " let input_value = " << x.GetByOffset("offset + i") << ";\n"
         << " let f32_value = f32_val_t(input_value);\n"
         << " sum_shared[ix] += f32_value;\n"
         << " sum_squared_shared[ix] += f32_value * f32_value;\n"
@@ -133,17 +146,18 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
         << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " y[offset + i] = (y[offset + i] " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset1d + i]" << bias << ";\n"
+        << " let output_value = " << output_expression(x.GetByOffset("offset + i"), "offset1d + i") << ";\n"
+        << " " << y.SetByOffset("offset + i", "output_value") << "\n"
         << "};\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "if (ix == 0) {\n"
-                                << "  mean_output[iy] = mean;\n"
+                                << "  " << mean_output->SetByOffset("iy", "mean") << "\n"
                                 << "}\n";
     }
     if (has_inv_std_dev_output_) {
       shader.MainFunctionBody() << "if (ix == 0) {\n"
-                                << "  inv_std_dev_output[iy] = inv_std_dev;\n"
+                                << "  " << inv_std_dev_output->SetByOffset("iy", "inv_std_dev") << "\n"
                                 << "}\n";
     }
   }
@@ -200,7 +214,8 @@ Status RunLayerNormProgram(ComputeContext& context,
                            bool simplified,
                            Tensor* y,
                            Tensor* mean,
-                           Tensor* inv_std_dev) {
+                           Tensor* inv_std_dev,
+                           bool fp32_normalization) {
   if (x->Shape().Size() == 0) {
     return Status::OK();
   }
@@ -210,13 +225,14 @@ Status RunLayerNormProgram(ComputeContext& context,
   // Check if we should use split norm dimension optimization
   const bool split_norm_dim = norm_size % 512 == 0 && norm_count == 1;
 
-  LayerNormProgram program{bias != nullptr, simplified, mean != nullptr, inv_std_dev != nullptr, split_norm_dim};
+  LayerNormProgram program{bias != nullptr, simplified, mean != nullptr, inv_std_dev != nullptr,
+                           split_norm_dim, fp32_normalization};
 
-  program.CacheHint(components, simplified, split_norm_dim)
+  program.CacheHint(components, simplified, split_norm_dim, fp32_normalization)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
       .AddInputs(
           {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
-      .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
+      .AddOutputs({{y, ProgramTensorMetadataDependency::Type, GetOverrideShape(y->Shape(), components), components}})
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
       })

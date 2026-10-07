@@ -33,10 +33,25 @@ TEST(DeviceDiscoveryTest, GpuDevicesHaveValidProperties) {
 
   // GPU detection should not crash. If GPUs are present, validate their properties.
   for (const auto& gpu_device : gpu_devices) {
+#if !defined(__wasm__)
     EXPECT_NE(gpu_device.vendor_id, 0u);
-    // Note: device_id may be 0 on some platforms (e.g., Apple Silicon) where it is not populated.
+#else
+    // WASM GPU device discovery is limited so vendor ID is unknown.
+    EXPECT_EQ(gpu_device.vendor_id, 0u);
+#endif
+    // Note: gpu_device.device_id may be 0 on some platforms (e.g., Apple Silicon) where it is not populated.
   }
 }
+
+#ifdef _WIN32
+TEST(DeviceDiscoveryTest, ExcludesMicrosoftBasicRenderDriver) {
+  const auto gpu_devices = GetDevicesByType(OrtHardwareDeviceType_GPU);
+
+  for (const auto& gpu_device : gpu_devices) {
+    EXPECT_FALSE(gpu_device.vendor_id == 0x1414 && gpu_device.device_id == 0x008c);
+  }
+}
+#endif
 
 }  // namespace onnxruntime::test
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)
