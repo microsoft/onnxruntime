@@ -10,6 +10,7 @@ namespace webgpu {
 
 enum class MatMulAlgorithm {
   SubgroupMatrix,
+  Gemv,
   Naive,
   Subgroup,
   Packed,

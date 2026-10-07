@@ -98,6 +98,7 @@ TEST(MatMulAlgorithmNameTest, ReturnsEveryAlgorithmName) {
 
   constexpr TestCase test_cases[] = {
       {"subgroup_matrix", MatMulAlgorithm::SubgroupMatrix},
+      {"gemv", MatMulAlgorithm::Gemv},
       {"naive", MatMulAlgorithm::Naive},
       {"subgroup", MatMulAlgorithm::Subgroup},
       {"packed", MatMulAlgorithm::Packed},
@@ -321,6 +322,36 @@ TEST(MatMulAlgorithmSchedulerTest, CommonFallbackPrefersSubgroupMatrix) {
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
 }
 
+TEST(MatMulAlgorithmSchedulerTest, GemvPrecedesGenericFallbacks) {
+  MatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.packed_m = 1;
+  params.n = 48;
+  params.k = 5120;
+  params.can_use_gemv = true;
+  params.is_vec4 = true;
+
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Gemv);
+
+  params.can_use_subgroup_matrix = true;
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
+}
+
+TEST(MatMulAlgorithmConfigurationTest, GemvUsesTypedEmptyConfiguration) {
+  MatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 48;
+  params.k = 5120;
+  params.can_use_gemv = true;
+
+  const MatMulExecutionPlan plan = scheduler.CreateExecutionPlan(params);
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Gemv);
+  EXPECT_TRUE(std::holds_alternative<MatMulGemvConfiguration>(plan.configuration));
+  EXPECT_TRUE(IsMatMulAlgorithmConfigurationCompatible(plan));
+}
+
 TEST(MatMulAlgorithmSchedulerTest, VendorPolicyPrecedesCommonHeuristics) {
   AlwaysPackedVendorScheduler scheduler;
   MatMulAlgorithmSelectionParams params{};
@@ -428,6 +459,14 @@ TEST(MatMulAlgorithmPrerequisiteTest, SplitKRejectsEachHardConstraint) {
 
   prerequisites.split_k_bias_layout_supported = false;
   EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+}
+
+TEST(MatMulAlgorithmPrerequisiteTest, GemvRequiresCompatibleInputs) {
+  MatMulAlgorithmPrerequisites prerequisites{};
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Gemv, prerequisites));
+
+  prerequisites.can_use_gemv = true;
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Gemv, prerequisites));
 }
 
 TEST(MatMulAlgorithmPrerequisiteTest, PackedAlgorithmsRejectZeroContractionDimension) {

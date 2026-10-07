@@ -50,7 +50,7 @@ Configuration is represented by an algorithm-specific variant rather than a bag 
 
 When set, the scheduler returns the requested enum before applying heuristic rules. The dispatcher then validates the algorithm's hard prerequisites. Unsupported device features, data types, layouts, deterministic-compute settings, or other correctness constraints produce a descriptive failure naming the forced algorithm; forced mode never silently falls back.
 
-Heuristic thresholds are not hard prerequisites. For example, forcing subgroup bypasses Intel's current `M/N/K` performance thresholds while still requiring subgroup support. Forcing Split-K bypasses performance thresholds while still requiring a usable Split-K configuration, non-deterministic compute, compatible packing/activation, and supported bias layout.
+Heuristic thresholds are not hard prerequisites. For example, forcing subgroup bypasses Intel's current `M/N/K` performance thresholds while still requiring subgroup support. GEMV retains its FP16 single-row shape, bias, and activation constraints because they are required by its shader. Forcing Split-K bypasses performance thresholds while still requiring a usable Split-K configuration, non-deterministic compute, compatible packing/activation, and supported bias layout.
 
 ## Dispatch and Implementation Boundaries
 

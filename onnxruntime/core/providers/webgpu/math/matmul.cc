@@ -50,6 +50,34 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     MatMul);
 
+namespace {
+
+class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
+ public:
+  MatMulGemvProgram() : Program{"MatMulGemv"} {}
+
+  static constexpr uint32_t kWorkgroupSizeX = 1;
+  static constexpr uint32_t kWorkgroupSizeY = 128;
+  static_assert(kWorkgroupSizeY != 0 && (kWorkgroupSizeY & (kWorkgroupSizeY - 1)) == 0,
+                "MatMulGemvProgram requires kWorkgroupSizeY to be a non-zero power of two "
+                "because the WGSL reduction loop halves workgroup_size_y each iteration.");
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& a = shader.AddInput("a", ShaderUsage::None);
+    const auto& b = shader.AddInput("b", ShaderUsage::None);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "math/matmul_gemv.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(a, a),
+                               WGSL_TEMPLATE_VARIABLE(b, b),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32});
+};
+
+}  // namespace
+
 static std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
@@ -216,6 +244,26 @@ static Status ApplyMatMulNaive(ComputeContext& context,
       .SetDispatchGroupSize(CeilDiv(output_size, 64u))
       .AddUniformVariables({{output_size}, {m}, {n}, {k}});
   AppendActivationUniformsData(activation, program);
+  return context.RunProgram(program);
+}
+
+static Status ApplyMatMulGemv(ComputeContext& context,
+                              const std::vector<const Tensor*>& inputs,
+                              Tensor* output_tensor,
+                              const MatMulComputeHelper& helper) {
+  const auto* a = inputs[0];
+  const auto* b = inputs[1];
+  const uint32_t n = narrow<uint32_t>(helper.N());
+  const uint32_t k = narrow<uint32_t>(helper.K());
+  const uint32_t n_vec_count = n / 4;
+
+  MatMulGemvProgram program;
+  program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
+                     {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+      .AddUniformVariables({{k}, {n}})
+      .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
+      .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX));
   return context.RunProgram(program);
 }
 
@@ -389,6 +437,13 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
                                         logical_output_shape.NumDimensions() - 2))
                                   : 1;
   const bool folds_batch_into_m = batch_a != 1 && batch_b == 1;
+  const bool can_use_gemv =
+      batch_size == 1 && helper.M() == 1 &&
+      helper.N() >= 16 && helper.N() <= 64 && helper.N() % 4 == 0 &&
+      helper.K() >= 2048 && helper.K() <= 8192 &&
+      !has_bias && activation.activation_kind_ == ActivationKind::None &&
+      a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() &&
+      output_tensor->IsDataType<MLFloat16>();
 
   MatMulAlgorithmSelectionParams selection_params{};
   selection_params.m = helper.M();
@@ -403,6 +458,7 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.a_data_type = a->GetElementType();
   selection_params.b_data_type = b->GetElementType();
   selection_params.can_use_subgroup_matrix = can_use_subgroup_matrix;
+  selection_params.can_use_gemv = can_use_gemv;
   selection_params.has_subgroup_capability = has_subgroup_capability;
   selection_params.subgroup_size = subgroup_size.value_or(0);
   selection_params.is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
@@ -422,6 +478,7 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
 
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
+  prerequisites.can_use_gemv = can_use_gemv;
   prerequisites.has_subgroup_capability = has_subgroup_capability;
   prerequisites.has_nonzero_k = helper.K() > 0;
   prerequisites.split_k_configured =
@@ -440,6 +497,8 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
                         "MatMul algorithm subgroup_matrix is unavailable.");
       return subgroup_impl->Compute(
           context, inputs, output_tensor, activation, is_channels_last, b_is_constant);
+    case MatMulAlgorithm::Gemv:
+      return ApplyMatMulGemv(context, inputs, output_tensor, helper);
     case MatMulAlgorithm::Naive:
       return ApplyMatMulNaive(
           context, activation, inputs, output_tensor, is_channels_last, helper);

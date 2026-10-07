@@ -28,6 +28,7 @@ struct MatMulAlgorithmSelectionParams {
   int32_t a_data_type = 0;
   int32_t b_data_type = 0;
   bool can_use_subgroup_matrix = false;
+  bool can_use_gemv = false;
   bool has_subgroup_capability = false;
   uint32_t subgroup_size = 0;
   bool is_vec4 = false;
@@ -39,6 +40,7 @@ struct MatMulAlgorithmSelectionParams {
 
 // Algorithm-specific tuning selected together with the implementation.
 struct MatMulSubgroupMatrixConfiguration {};
+struct MatMulGemvConfiguration {};
 struct MatMulNaiveConfiguration {};
 struct MatMulSubgroupConfiguration {
   uint32_t subgroup_size = 0;
@@ -62,6 +64,7 @@ std::optional<uint32_t> TryGetMatMulPackedDispatchGroupCount(
 
 using MatMulAlgorithmConfiguration =
     std::variant<MatMulSubgroupMatrixConfiguration,
+                 MatMulGemvConfiguration,
                  MatMulNaiveConfiguration,
                  MatMulSubgroupConfiguration,
                  MatMulPackedConfiguration>;
@@ -77,6 +80,7 @@ bool IsMatMulAlgorithmConfigurationCompatible(const MatMulExecutionPlan& plan);
 // Runtime correctness constraints validated immediately before dispatch.
 struct MatMulAlgorithmPrerequisites {
   bool can_use_subgroup_matrix = false;
+  bool can_use_gemv = false;
   bool has_subgroup_capability = false;
   bool has_nonzero_k = false;
   bool split_k_configured = false;

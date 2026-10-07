@@ -10,6 +10,8 @@ std::string_view MatMulAlgorithmName(MatMulAlgorithm algorithm) {
   switch (algorithm) {
     case MatMulAlgorithm::SubgroupMatrix:
       return "subgroup_matrix";
+    case MatMulAlgorithm::Gemv:
+      return "gemv";
     case MatMulAlgorithm::Naive:
       return "naive";
     case MatMulAlgorithm::Subgroup:

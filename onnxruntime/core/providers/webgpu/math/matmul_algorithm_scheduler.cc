@@ -50,6 +50,8 @@ bool IsMatMulAlgorithmConfigurationCompatible(const MatMulExecutionPlan& plan) {
   switch (plan.algorithm) {
     case MatMulAlgorithm::SubgroupMatrix:
       return std::holds_alternative<MatMulSubgroupMatrixConfiguration>(plan.configuration);
+    case MatMulAlgorithm::Gemv:
+      return std::holds_alternative<MatMulGemvConfiguration>(plan.configuration);
     case MatMulAlgorithm::Naive:
       return std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration);
     case MatMulAlgorithm::Subgroup:
@@ -67,6 +69,8 @@ bool MeetsMatMulAlgorithmPrerequisites(
   switch (algorithm) {
     case MatMulAlgorithm::SubgroupMatrix:
       return prerequisites.can_use_subgroup_matrix;
+    case MatMulAlgorithm::Gemv:
+      return prerequisites.can_use_gemv;
     case MatMulAlgorithm::Subgroup:
       return prerequisites.has_subgroup_capability &&
              prerequisites.has_nonzero_k;
@@ -133,6 +137,9 @@ MatMulAlgorithm MatMulAlgorithmScheduler::SelectCommonAlgorithm(
   if (params.can_use_subgroup_matrix) {
     return MatMulAlgorithm::SubgroupMatrix;
   }
+  if (params.can_use_gemv) {
+    return MatMulAlgorithm::Gemv;
+  }
   if (params.n < 8 && params.k < 8) {
     return MatMulAlgorithm::Naive;
   }
@@ -148,6 +155,8 @@ MatMulAlgorithmConfiguration MatMulAlgorithmScheduler::SelectCommonConfiguration
   switch (algorithm) {
     case MatMulAlgorithm::SubgroupMatrix:
       return MatMulSubgroupMatrixConfiguration{};
+    case MatMulAlgorithm::Gemv:
+      return MatMulGemvConfiguration{};
     case MatMulAlgorithm::Naive:
       return MatMulNaiveConfiguration{};
     case MatMulAlgorithm::Subgroup:

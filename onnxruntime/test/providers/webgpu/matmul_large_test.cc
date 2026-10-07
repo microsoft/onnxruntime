@@ -99,6 +99,7 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
     case webgpu::MatMulAlgorithm::PackedSplitK:
     case webgpu::MatMulAlgorithm::SubgroupMatrix:
       return "hardware-specific forced MatMul tests require direct adapter capability inspection.";
+    case webgpu::MatMulAlgorithm::Gemv:
     case webgpu::MatMulAlgorithm::Naive:
     case webgpu::MatMulAlgorithm::Packed:
       return std::nullopt;
@@ -144,6 +145,7 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
       }
       break;
     }
+    case webgpu::MatMulAlgorithm::Gemv:
     case webgpu::MatMulAlgorithm::Naive:
     case webgpu::MatMulAlgorithm::Packed:
       break;
@@ -284,6 +286,16 @@ static std::string BuildDynamicMatMulModelBytes() {
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedNaive) {
   RunTestTyped<float>({8, 8}, {8, 8}, false, webgpu::MatMulAlgorithm::Naive);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedGemv) {
+  RunTestTyped<MLFloat16>({1, 2048}, {2048, 16}, false, webgpu::MatMulAlgorithm::Gemv);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedGemvRejectsFloatInputs) {
+  RunTestTyped<float>({1, 2048}, {2048, 16}, false, webgpu::MatMulAlgorithm::Gemv,
+                      OpTester::ExpectResult::kExpectFailure,
+                      "MatMul algorithm gemv");
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedPacked) {
