@@ -16,7 +16,7 @@ namespace onnxruntime::test {
 namespace {
 
 void RunLoraTest(int64_t rank, bool bias, bool empty = false, bool mismatched_rank = false,
-                 bool vector = false) {
+                 bool vector = false, int64_t weight_prepacked = 0) {
   constexpr int64_t K = 32;
   constexpr int64_t N = 16;
   const int64_t rows = empty ? 0 : 3;
@@ -25,6 +25,9 @@ void RunLoraTest(int64_t rank, bool bias, bool empty = false, bool mismatched_ra
   test.AddAttribute("N", N);
   test.AddAttribute("bits", int64_t{4});
   test.AddAttribute("block_size", int64_t{32});
+  if (weight_prepacked != 0) {
+    test.AddAttribute("weight_prepacked", weight_prepacked);
+  }
   const std::vector<int64_t> input_shape = vector ? std::vector<int64_t>{K}
                                                   : std::vector<int64_t>{2, rows, K};
   const std::vector<int64_t> output_shape = vector ? std::vector<int64_t>{N}
@@ -47,8 +50,11 @@ void RunLoraTest(int64_t rank, bool bias, bool empty = false, bool mismatched_ra
                                            static_cast<float>(K * rank + (bias ? 1 : 0))));
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(mismatched_rank ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
-           mismatched_rank ? "MatMulNBitsLora requires" : "", {}, nullptr, &providers);
+  const bool failure = mismatched_rank || weight_prepacked != 0;
+  test.Run(failure ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+           weight_prepacked != 0 ? "weight_prepacked=0" : mismatched_rank ? "MatMulNBitsLora requires"
+                                                                          : "",
+           {}, nullptr, &providers);
 }
 
 }  // namespace
@@ -61,6 +67,11 @@ TEST(MatMulNBitsLora, EmptyOutput) { RunLoraTest(2, false, true); }
 TEST(MatMulNBitsLora, RejectMismatchedRank) { RunLoraTest(2, false, false, true); }
 TEST(MatMulNBitsLora, VectorZeroRank) { RunLoraTest(0, false, false, false, true); }
 TEST(MatMulNBitsLora, VectorActiveRank) { RunLoraTest(2, true, false, false, true); }
+TEST(MatMulNBitsLora, RejectPrepackedWeights) {
+  for (int64_t weight_prepacked : {int64_t{1}, int64_t{2}}) {
+    RunLoraTest(2, false, false, false, false, weight_prepacked);
+  }
+}
 
 TEST(MatMulNBitsLora, ValidateFloat16ShapesWithoutGpu) {
   const auto allocator = CPUAllocator::DefaultInstance();

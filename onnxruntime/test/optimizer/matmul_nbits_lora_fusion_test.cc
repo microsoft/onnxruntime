@@ -16,6 +16,7 @@
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 #if !defined(DISABLE_CONTRIB_OPS) && !defined(ORT_MINIMAL_BUILD)
 namespace onnxruntime::test {
@@ -179,6 +180,103 @@ TEST(MatMulNBitsLoraFusion, RequiresExplicitSessionOptIn) {
   EXPECT_TRUE(contains_fusion());
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableMatMulNBitsLoraFusion, "0"));
   EXPECT_FALSE(contains_fusion());
+}
+
+TEST(MatMulNBitsLoraFusion, SymbolicRankDefaultActiveDefaultSession) {
+  constexpr int64_t K = 32;
+  constexpr int64_t N = 16;
+  Model model("optional_lora_session", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}, {kMSDomain, 1}},
+              {}, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  auto* input = builder.MakeInput<float>({2, K}, 1.0f, 1.0f);
+  auto* packed = builder.MakeInitializer<uint8_t>({N, 1, 16}, uint8_t{0x88}, uint8_t{0x88});
+  auto* scales = builder.MakeInitializer<float>({N, 1}, 1.0f, 1.0f);
+  auto make_slot = [&](const char* name, const std::array<int64_t, 2>& shape) {
+    ONNX_NAMESPACE::TypeProto type;
+    auto* tensor_type = type.mutable_tensor_type();
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int64_t dimension : shape) {
+      auto* dim = tensor_type->mutable_shape()->add_dim();
+      if (dimension == 0) {
+        dim->set_dim_param("lora_rank");
+      } else {
+        dim->set_dim_value(dimension);
+      }
+    }
+    auto* slot = &graph.GetOrCreateNodeArg(name, &type);
+    ONNX_NAMESPACE::TensorProto initializer;
+    initializer.set_name(name);
+    initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int64_t dimension : shape) {
+      initializer.add_dims(dimension);
+    }
+    graph.AddInitializedTensor(initializer);
+    return slot;
+  };
+  auto* lora_a = make_slot("lora_A", {K, 0});
+  auto* lora_b = make_slot("lora_B", {0, N});
+  auto* base_output = builder.MakeIntermediate();
+  auto* low_rank = builder.MakeIntermediate();
+  auto* delta = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+  auto& base = builder.AddNode("MatMulNBits", {input, packed, scales}, {base_output}, kMSDomain);
+  base.AddAttribute("K", K);
+  base.AddAttribute("N", N);
+  base.AddAttribute("bits", int64_t{4});
+  base.AddAttribute("block_size", int64_t{32});
+  builder.AddNode("MatMul", {input, lora_a}, {low_rank});
+  builder.AddNode("MatMul", {low_rank, lora_b}, {delta});
+  builder.AddNode("Add", {base_output, delta}, {output});
+  graph.SetInputs({input, lora_a, lora_b});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  const std::string bytes = model.ToProto().SerializeAsString();
+
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.graph_optimization_level = TransformerLevel::Level2;
+  InferenceSessionWrapper reference{options, GetEnvironment()};
+  ASSERT_STATUS_OK(reference.Load(bytes.data(), static_cast<int>(bytes.size())));
+  ASSERT_STATUS_OK(reference.Initialize());
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableMatMulNBitsLoraFusion, "1"));
+  InferenceSessionWrapper fused{options, GetEnvironment()};
+  ASSERT_STATUS_OK(fused.Load(bytes.data(), static_cast<int>(bytes.size())));
+  ASSERT_STATUS_OK(fused.Initialize());
+  EXPECT_EQ(OpCount(CountOpsInGraph(reference.GetGraph()), "com.microsoft.MatMulNBitsLora"), 0);
+  ASSERT_EQ(OpCount(CountOpsInGraph(fused.GetGraph()), "com.microsoft.MatMulNBitsLora"), 1);
+
+  OrtValue active_a;
+  OrtValue active_b;
+  const auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  CreateMLValue<float>(allocator, {K, 2}, std::vector<float>(K * 2, 1.0f), &active_a);
+  CreateMLValue<float>(allocator, {2, N}, std::vector<float>(2 * N, 1.0f), &active_b);
+  NameMLValMap active = builder.feeds_;
+  active.emplace("lora_A", active_a);
+  active.emplace("lora_B", active_b);
+  auto run_and_check = [&](const NameMLValMap& feeds, float expected) {
+    for (auto* session : {&reference, &fused}) {
+      std::vector<OrtValue> results;
+      ASSERT_STATUS_OK(session->Run(RunOptions{}, feeds, builder.output_names_, &results));
+      ASSERT_EQ(results.size(), 1u);
+      const auto& tensor = results[0].Get<Tensor>();
+      ASSERT_EQ(tensor.Shape(), TensorShape({2, N}));
+      for (float value : tensor.DataAsSpan<float>()) {
+        EXPECT_EQ(value, expected);
+      }
+    }
+  };
+  run_and_check(builder.feeds_, 0.0f);
+  run_and_check(active, 64.0f);
+  run_and_check(builder.feeds_, 0.0f);
+
+  OrtValue wrong_rank;
+  CreateMLValue<float>(allocator, {K, 3}, std::vector<float>(K * 3, 1.0f), &wrong_rank);
+  active["lora_A"] = wrong_rank;
+  std::vector<OrtValue> results;
+  EXPECT_FALSE(fused.Run(RunOptions{}, active, builder.output_names_, &results).IsOK());
+  run_and_check(builder.feeds_, 0.0f);
 }
 
 }  // namespace onnxruntime::test

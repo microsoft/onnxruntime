@@ -61,6 +61,10 @@ values that are not graph outputs. Nonempty defaults, unsupported dtypes,
 prepacked-weight attributes, shared intermediates, and non-unit or
 transposed Gemm variants are left unchanged.
 
+Directly authored MatMulNBitsLora nodes must also use `weight_prepacked=0`.
+Nonzero values represent CUDA-specific layouts that CPU and WebGPU cannot
+decode; shape inference and both kernels reject them before execution.
+
 Reduced builds loading an optimized model need the new operator in their
 required-operator configuration. The transformer itself is available in
 full builds; it is not registered for minimal-build optimization replay.

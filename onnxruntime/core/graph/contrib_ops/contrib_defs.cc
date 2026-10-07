@@ -3966,6 +3966,9 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .TypeConstraint("T3", {"tensor(uint8)", "tensor(float)"}, "Quantized zero points.")
       .TypeConstraint("T4", {"tensor(int32)"}, "Group indices.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (getAttribute(ctx, "weight_prepacked", 0) != 0) {
+          fail_shape_inference("MatMulNBitsLora supports only weight_prepacked=0.");
+        }
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         const int64_t K = getAttribute(ctx, "K", -1);
         const int64_t N = getAttribute(ctx, "N", -1);

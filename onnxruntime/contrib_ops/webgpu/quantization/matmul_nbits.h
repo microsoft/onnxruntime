@@ -99,7 +99,10 @@ class MatMulNBits : public WebGpuKernel {
 class MatMulNBitsLora final : public MatMulNBits {
  public:
   explicit MatMulNBitsLora(const OpKernelInfo& info)
-      : MatMulNBits(info), K_(info.GetAttr<int64_t>("K")), N_(info.GetAttr<int64_t>("N")) {}
+      : MatMulNBits(info), K_(info.GetAttr<int64_t>("K")), N_(info.GetAttr<int64_t>("N")) {
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("weight_prepacked", 0) == 0,
+                "MatMulNBitsLora supports only weight_prepacked=0.");
+  }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsLora);
 
