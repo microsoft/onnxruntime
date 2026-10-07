@@ -2443,7 +2443,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta_activation</tt> : string</dt>
 <dd>'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a sigmoid.</dd>
 <dt><tt>chunk_size</tt> : int</dt>
-<dd>Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; any other value lets the implementation take the widest chunk the device can hold. Default 64.</dd>
+<dd>Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow chunk and any other value lets the implementation select the widest chunk the device can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; default 64 retains recurrent execution. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
 <dd>'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes -exp(a_log) * Softplus(decay + dt_bias) in float32.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
