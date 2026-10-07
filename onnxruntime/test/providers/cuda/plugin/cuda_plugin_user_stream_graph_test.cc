@@ -26,7 +26,9 @@
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -86,6 +88,41 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
     }
   }
   return Ort::ConstEpDevice{nullptr};
+}
+
+std::string BuildGatherNDModel() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("gather_nd");
+  auto add_value_info = [graph](const char* name, int32_t element_type,
+                                std::initializer_list<int64_t> shape, bool is_input) {
+    auto* value_info = is_input ? graph->add_input() : graph->add_output();
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(element_type);
+    for (const auto dim : shape) {
+      tensor_type->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+  };
+  add_value_info("data", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 2}, true);
+  add_value_info("indices", ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, 1}, true);
+  add_value_info("output", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 2}, false);
+
+  auto* node = graph->add_node();
+  node->set_name("gather_nd");
+  node->set_op_type("GatherND");
+  node->add_input("data");
+  node->add_input("indices");
+  node->add_output("output");
+
+  std::string serialized;
+  ORT_ENFORCE(model.SerializeToString(&serialized));
+  return serialized;
 }
 
 // Dummy external allocator callbacks. They are only used to make the external-allocator
@@ -220,86 +257,162 @@ TEST_F(CudaPluginUserStreamGraphTest, SessionCreatesWithUserStreamAndCudaGraph) 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }
 
+TEST_F(CudaPluginUserStreamGraphTest, GatherNDCudaGraphZeroFillsInvalidIndicesAcrossReplay) {
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  const std::unordered_map<std::string, std::string> provider_options{{"enable_cuda_graph", "1"}};
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+  const auto model = BuildGatherNDModel();
+  Ort::Session session(*ort_env, model.data(), model.size(), so);
+
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(allocator, nullptr);
+
+  const std::array<int64_t, 2> data_shape{2, 2};
+  const std::array<int64_t, 2> indices_shape{1, 1};
+  const std::array<int64_t, 2> output_shape{1, 2};
+  const std::array<float, 4> data{1.0f, 2.0f, 3.0f, 4.0f};
+  std::array<int64_t, 1> indices{1};
+  const size_t data_bytes = data.size() * sizeof(float);
+  const size_t indices_bytes = indices.size() * sizeof(int64_t);
+  constexpr size_t output_element_count = 2;
+  constexpr size_t output_bytes = output_element_count * sizeof(float);
+
+  void* data_gpu = allocator.Alloc(data_bytes);
+  void* indices_gpu = allocator.Alloc(indices_bytes);
+  void* output_gpu = allocator.Alloc(output_bytes);
+  ASSERT_NE(data_gpu, nullptr);
+  ASSERT_NE(indices_gpu, nullptr);
+  ASSERT_NE(output_gpu, nullptr);
+
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(data_gpu, data.data(), data_bytes, cudaMemcpyHostToDevice));
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(indices_gpu, indices.data(), indices_bytes, cudaMemcpyHostToDevice));
+
+  Ort::Value data_tensor = Ort::Value::CreateTensor(
+      device_memory_info, static_cast<float*>(data_gpu), data.size(),
+      data_shape.data(), data_shape.size());
+  Ort::Value indices_tensor = Ort::Value::CreateTensor(
+      device_memory_info, static_cast<int64_t*>(indices_gpu), indices.size(),
+      indices_shape.data(), indices_shape.size());
+  Ort::Value output_tensor = Ort::Value::CreateTensor(
+      device_memory_info, static_cast<float*>(output_gpu), output_element_count,
+      output_shape.data(), output_shape.size());
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("data", data_tensor);
+  binding.BindInput("indices", indices_tensor);
+  binding.BindOutput("output", output_tensor);
+
+  const auto run_and_read_output = [&]() {
+    session.Run(Ort::RunOptions{}, binding);
+    EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    std::array<float, output_element_count> output{};
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(output.data(), output_gpu, output_bytes, cudaMemcpyDeviceToHost));
+    return output;
+  };
+
+  auto output = run_and_read_output();
+  EXPECT_FLOAT_EQ(output[0], 3.0f);
+  EXPECT_FLOAT_EQ(output[1], 4.0f);
+
+  indices[0] = 2;
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(indices_gpu, indices.data(), indices_bytes, cudaMemcpyHostToDevice));
+  for (int i = 0; i < 3; ++i) {
+    output = run_and_read_output();
+    EXPECT_FLOAT_EQ(output[0], 0.0f) << "mismatch at invalid-index iteration " << i;
+    EXPECT_FLOAT_EQ(output[1], 0.0f) << "mismatch at invalid-index iteration " << i;
+  }
+
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+  allocator.Free(data_gpu);
+  allocator.Free(indices_gpu);
+  allocator.Free(output_gpu);
+}
+
 // Full capture + replay on the user stream, including replay after an in-place input
 // update. mul_1.onnx computes Y = X * W with W = [1, 2, 3, 4, 5, 6] (shape 3x2).
 TEST_F(CudaPluginUserStreamGraphTest, CaptureAndReplayOnUserStream) {
   cudaStream_t user_stream = nullptr;
   ASSERT_EQ(cudaSuccess, cudaStreamCreate(&user_stream));
 
-  Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  {
+    Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
 
-  // Device allocator backing the plugin EP's default memory.
-  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
-  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
-  ASSERT_NE(allocator, nullptr);
+    // Device allocator backing the plugin EP's default memory.
+    auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+    auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+    ASSERT_NE(allocator, nullptr);
 
-  constexpr size_t kNumElements = 6;
-  constexpr size_t kBytes = kNumElements * sizeof(float);
-  const std::array<int64_t, 2> shape = {3, 2};
-  const std::array<float, kNumElements> w_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    constexpr size_t kNumElements = 6;
+    constexpr size_t kBytes = kNumElements * sizeof(float);
+    const std::array<int64_t, 2> shape = {3, 2};
+    const std::array<float, kNumElements> w_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
-  // Pre-allocate device input/output buffers (required for CUDA graph IO binding).
-  void* input_gpu = allocator.Alloc(kBytes);
-  void* output_gpu = allocator.Alloc(kBytes);
-  ASSERT_NE(input_gpu, nullptr);
-  ASSERT_NE(output_gpu, nullptr);
+    // Pre-allocate device input/output buffers (required for CUDA graph IO binding).
+    void* input_gpu = allocator.Alloc(kBytes);
+    void* output_gpu = allocator.Alloc(kBytes);
+    ASSERT_NE(input_gpu, nullptr);
+    ASSERT_NE(output_gpu, nullptr);
 
-  auto upload_input = [&](const std::array<float, kNumElements>& host_values) {
-    ASSERT_EQ(cudaSuccess,
-              cudaMemcpyAsync(input_gpu, host_values.data(), kBytes,
-                              cudaMemcpyHostToDevice, user_stream));
-  };
+    auto upload_input = [&](const std::array<float, kNumElements>& host_values) {
+      ASSERT_EQ(cudaSuccess,
+                cudaMemcpyAsync(input_gpu, host_values.data(), kBytes,
+                                cudaMemcpyHostToDevice, user_stream));
+    };
 
-  auto read_output = [&](std::array<float, kNumElements>& host_values) {
-    // Kernels run on the user stream; wait for them before copying the result back.
-    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
-    ASSERT_EQ(cudaSuccess,
-              cudaMemcpy(host_values.data(), output_gpu, kBytes, cudaMemcpyDeviceToHost));
-  };
+    auto read_output = [&](std::array<float, kNumElements>& host_values) {
+      // Kernels run on the user stream; wait for them before copying the result back.
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
+      ASSERT_EQ(cudaSuccess,
+                cudaMemcpy(host_values.data(), output_gpu, kBytes, cudaMemcpyDeviceToHost));
+    };
 
-  Ort::Value input_tensor = Ort::Value::CreateTensor(
-      device_memory_info, reinterpret_cast<float*>(input_gpu), kNumElements,
-      shape.data(), shape.size());
-  Ort::Value output_tensor = Ort::Value::CreateTensor(
-      device_memory_info, reinterpret_cast<float*>(output_gpu), kNumElements,
-      shape.data(), shape.size());
+    Ort::Value input_tensor = Ort::Value::CreateTensor(
+        device_memory_info, reinterpret_cast<float*>(input_gpu), kNumElements,
+        shape.data(), shape.size());
+    Ort::Value output_tensor = Ort::Value::CreateTensor(
+        device_memory_info, reinterpret_cast<float*>(output_gpu), kNumElements,
+        shape.data(), shape.size());
 
-  Ort::IoBinding binding(session);
-  binding.BindInput("X", input_tensor);
-  binding.BindOutput("Y", output_tensor);
+    Ort::IoBinding binding(session);
+    binding.BindInput("X", input_tensor);
+    binding.BindOutput("Y", output_tensor);
 
-  // First run: warmup + capture + first replay on the user stream.
-  const std::array<float, kNumElements> x0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  upload_input(x0);
-  session.Run(Ort::RunOptions{}, binding);
+    // First run: warmup + capture + first replay on the user stream.
+    const std::array<float, kNumElements> x0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    upload_input(x0);
+    session.Run(Ort::RunOptions{}, binding);
 
-  std::array<float, kNumElements> y{};
-  read_output(y);
-  for (size_t i = 0; i < kNumElements; ++i) {
-    EXPECT_FLOAT_EQ(y[i], x0[i] * w_values[i]) << "capture mismatch at " << i;
+    std::array<float, kNumElements> y{};
+    read_output(y);
+    for (size_t i = 0; i < kNumElements; ++i) {
+      EXPECT_FLOAT_EQ(y[i], x0[i] * w_values[i]) << "capture mismatch at " << i;
+    }
+
+    // Second run: pure graph replay (same inputs) on the user stream.
+    session.Run(Ort::RunOptions{}, binding);
+    read_output(y);
+    for (size_t i = 0; i < kNumElements; ++i) {
+      EXPECT_FLOAT_EQ(y[i], x0[i] * w_values[i]) << "replay mismatch at " << i;
+    }
+
+    // Update the input in place on the user stream and replay again.
+    const std::array<float, kNumElements> x1 = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+    upload_input(x1);
+    session.Run(Ort::RunOptions{}, binding);
+    read_output(y);
+    for (size_t i = 0; i < kNumElements; ++i) {
+      EXPECT_FLOAT_EQ(y[i], x1[i] * w_values[i]) << "updated-input replay mismatch at " << i;
+    }
+
+    binding.ClearBoundInputs();
+    binding.ClearBoundOutputs();
+    allocator.Free(input_gpu);
+    allocator.Free(output_gpu);
   }
-
-  // Second run: pure graph replay (same inputs) on the user stream.
-  session.Run(Ort::RunOptions{}, binding);
-  read_output(y);
-  for (size_t i = 0; i < kNumElements; ++i) {
-    EXPECT_FLOAT_EQ(y[i], x0[i] * w_values[i]) << "replay mismatch at " << i;
-  }
-
-  // Update the input in place on the user stream and replay again.
-  const std::array<float, kNumElements> x1 = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
-  upload_input(x1);
-  session.Run(Ort::RunOptions{}, binding);
-  read_output(y);
-  for (size_t i = 0; i < kNumElements; ++i) {
-    EXPECT_FLOAT_EQ(y[i], x1[i] * w_values[i]) << "updated-input replay mismatch at " << i;
-  }
-
-  binding.ClearBoundInputs();
-  binding.ClearBoundOutputs();
-  allocator.Free(input_gpu);
-  allocator.Free(output_gpu);
 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }
@@ -357,12 +470,14 @@ TEST_F(CudaPluginUserStreamGraphTest, GraphAnnotationIdSwitchingWithUserStream) 
   cudaStream_t user_stream = nullptr;
   ASSERT_EQ(cudaSuccess, cudaStreamCreate(&user_stream));
 
-  Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  {
+    Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
 
-  // Alternate between annotation ids "1" and "2". With min_num_runs_before_cuda_graph_capture == 2,
-  // 8 iterations let each id accumulate warmup runs, capture, and then replay on the user stream.
-  RunAndVerifyOnStream(session, user_stream, /*iterations=*/8, /*graph_ids=*/{"1", "2"});
+    // Alternate between annotation ids "1" and "2". With min_num_runs_before_cuda_graph_capture == 2,
+    // 8 iterations let each id accumulate warmup runs, capture, and then replay on the user stream.
+    RunAndVerifyOnStream(session, user_stream, /*iterations=*/8, /*graph_ids=*/{"1", "2"});
+  }
 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }

@@ -397,7 +397,7 @@ class ThreadPool {
   static int DegreeOfParallelism(const ThreadPool* tp);
 
   // Return the number of worker threads created by the pool, excluding the caller.
-  // Returns zero if tp is null.
+  // Returns zero if tp is null; unlike DegreeOfParallelism, this does not count the caller.
   static int WorkerThreadCount(const ThreadPool* tp);
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);

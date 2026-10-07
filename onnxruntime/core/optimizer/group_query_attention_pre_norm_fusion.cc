@@ -342,6 +342,15 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
 
     const std::string original_name = node.Name();
     const std::string original_ep = node.GetExecutionProviderType();
+    const std::array<NodeIndex, 7> source_node_indices{
+        node.Index(),
+        q_reshape_outer->Index(),
+        q_sln->Index(),
+        q_reshape_inner->Index(),
+        k_reshape_outer->Index(),
+        k_sln->Index(),
+        k_reshape_inner->Index(),
+    };
 
     // Snapshot the GQA's original input edges (we will rewire them, except for slots 0/1).
     auto gqa_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(node);
@@ -371,6 +380,7 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
                                 &new_attrs,
                                 kMSDomain);
     fused.SetExecutionProviderType(original_ep);
+    graph.NotifyNodeReplacement(source_node_indices, fused.Index());
 
     // Rewire upstream edges that fed the original GQA. Skip slots 0 and 1 (now driven by
     // the projection outputs which are still produced by their upstream nodes; the

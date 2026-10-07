@@ -97,14 +97,19 @@ Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                       new_scegrad_node_inputs, new_scegrad_node_outputs, &node.GetAttributes(), kMSDomain);
     new_scegrad_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
+    const InlinedVector<NodeIndex> source_node_indices{node.Index(), sum_node.Index()};
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
     if (p_reshape) {
-      graph_utils::FinalizeNodeFusion(graph, *p_reshape, sum_node);
+      graph_utils::RemoveNodeOutputEdges(graph, *p_reshape);
+      p_reshape->MutableOutputDefs() = sum_node.MutableOutputDefs();
+      graph_utils::ReplaceDownstreamNodeInput(graph, sum_node, 0, *p_reshape, 0);
+      graph.RemoveNode(sum_node.Index());
     } else {
       graph_utils::RemoveNodeOutputEdges(graph, sum_node);
       graph.RemoveNode(sum_node.Index());
     }
+    graph.NotifyNodeReplacement(source_node_indices, new_scegrad_node.Index());
 
     modified = true;
   }

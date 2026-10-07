@@ -16,6 +16,10 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
+#ifdef USE_POSIX_TELEMETRY
+#include "core/platform/posix/telemetry.h"
+#endif
+
 #include <assert.h>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -31,6 +35,8 @@ limitations under the License.
 #endif
 #include <unistd.h>
 
+#include <array>
+#include <climits>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -48,6 +54,9 @@ limitations under the License.
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/sysctl.h>
+#endif
+#if defined(__FreeBSD__)
+#include <sys/user.h>
 #endif
 
 #include "core/common/common.h"
@@ -98,6 +107,143 @@ long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
   } while (result == -1 && errno == EINTR);
   return result;
 }
+
+common::Status ReportSystemError(const char* operation_name, const std::string& path) {
+  auto [err_no, err_msg] = GetErrnoInfo();
+  std::ostringstream oss;
+  oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
+  return common::Status(common::SYSTEM, err_no, oss.str());
+}
+
+common::Status GetFileLength(int fd, size_t& file_size) {
+  if (fd < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
+  }
+
+  struct stat buf;
+  if (TempFailureRetry(fstat, fd, &buf) < 0) {
+    return ReportSystemError("fstat", "");
+  }
+  if (buf.st_size < 0) {
+    return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+  }
+  if (static_cast<uintmax_t>(buf.st_size) > std::numeric_limits<size_t>::max()) {
+    return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+  }
+
+  file_size = static_cast<size_t>(buf.st_size);
+  return common::Status::OK();
+}
+
+class PosixRandomAccessFile final : public RandomAccessFile {
+ public:
+  PosixRandomAccessFile(ScopedFileDescriptor descriptor, std::string path)
+      : descriptor_(std::move(descriptor)), path_(std::move(path)) {}
+
+  common::Status GetLength(uint64_t& length) const override {
+    struct stat file_stat{};
+    if (TempFailureRetry(fstat, descriptor_.Get(), &file_stat) < 0) {
+      return ReportSystemError("fstat", path_);
+    }
+    ORT_RETURN_IF(file_stat.st_size < 0, "RandomAccessFile: received negative file length.");
+    length = static_cast<uint64_t>(file_stat.st_size);
+    return Status::OK();
+  }
+
+  common::Status GetCanonicalPath(PathString& path) const override {
+#if defined(F_GETPATH)
+    std::array<char, PATH_MAX> buffer{};
+    if (fcntl(descriptor_.Get(), F_GETPATH, buffer.data()) != 0) {
+      return ReportSystemError("fcntl(F_GETPATH)", path_);
+    }
+    path.assign(buffer.data());
+    return Status::OK();
+#elif defined(__linux__) || defined(__ANDROID__)
+    const std::string fd_path = "/proc/self/fd/" + std::to_string(descriptor_.Get());
+    std::array<char, PATH_MAX> buffer{};
+    const auto length = readlink(fd_path.c_str(), buffer.data(), buffer.size() - 1);
+    if (length < 0) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL, "Secure opened-file canonicalization requires procfs at ", fd_path,
+          ". Ensure /proc is mounted in the sandbox or chroot. Error: ", strerror(errno));
+    }
+    path.assign(buffer.data(), static_cast<size_t>(length));
+    return Status::OK();
+#elif defined(__FreeBSD__) && defined(F_KINFO)
+    struct kinfo_file file_info{};
+    if (fcntl(descriptor_.Get(), F_KINFO, &file_info) != 0) {
+      return ReportSystemError("fcntl(F_KINFO)", path_);
+    }
+    path.assign(file_info.kf_path);
+    return Status::OK();
+#else
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "Secure canonical-path lookup for an opened file is not available on this POSIX platform.");
+#endif
+  }
+
+  common::Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(offset >= 0, "RandomAccessFile::Map: offset must be nonnegative.");
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    uint64_t file_size = 0;
+    ORT_RETURN_IF_ERROR(GetLength(file_size));
+    const uint64_t requested_end = SafeInt<uint64_t>(offset) + length;
+    ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
+
+    const long system_page_size = sysconf(_SC_PAGESIZE);
+    ORT_RETURN_IF_NOT(system_page_size > 0, "sysconf(_SC_PAGESIZE) failed.");
+    const size_t page_size = narrow<size_t>(system_page_size);
+    const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
+    const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
+    const FileOffsetType mapped_offset = offset - offset_to_page;
+    void* const mapped_base =
+        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, descriptor_.Get(), mapped_offset);
+    if (mapped_base == MAP_FAILED) {
+      return ReportSystemError("mmap", path_);
+    }
+
+    mapped_memory = MappedMemoryPtr{
+        reinterpret_cast<char*>(mapped_base) + offset_to_page,
+        MappedMemoryDeleter{mapped_base, mapped_length, [](void* base, size_t mapped_size) noexcept {
+                              UnmapFile(base, mapped_size);
+                            }}};
+    return Status::OK();
+  }
+
+  common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
+    if (offset < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile::Read: offset must be nonnegative.");
+    }
+    if (static_cast<uintmax_t>(buffer.size()) >
+        static_cast<uintmax_t>(std::numeric_limits<FileOffsetType>::max() - offset)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile::Read: file range is not representable.");
+    }
+
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < buffer.size()) {
+      constexpr size_t kMaxBytesToRead = 1 << 30;
+      const auto bytes_to_read = std::min(buffer.size() - total_bytes_read, kMaxBytesToRead);
+      const auto bytes_read = TempFailureRetry(pread, descriptor_.Get(), buffer.data() + total_bytes_read,
+                                               bytes_to_read, offset + static_cast<FileOffsetType>(total_bytes_read));
+      if (bytes_read < 0) {
+        return ReportSystemError("pread", path_);
+      }
+      ORT_RETURN_IF(bytes_read == 0, "RandomAccessFile::Read: unexpected end of file: ", path_);
+      total_bytes_read += static_cast<size_t>(bytes_read);
+    }
+    return common::Status::OK();
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PosixRandomAccessFile);
+  ScopedFileDescriptor descriptor_;
+  const std::string path_;
+};
 
 // nftw() callback to remove a file
 int nftw_remove(
@@ -367,26 +513,30 @@ class PosixEnv : public Env {
   }
 
   common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
-    using namespace common;
-    if (fd < 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
-    }
+    return onnxruntime::GetFileLength(fd, file_size);
+  }
 
-    struct stat buf;
-    int rc = fstat(fd, &buf);
-    if (rc < 0) {
-      return ReportSystemError("fstat", "");
+  common::Status OpenRandomAccessFile(const ORTCHAR_T* file_path,
+                                      std::unique_ptr<RandomAccessFile>& file) const override {
+    if (file_path == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "file_path == nullptr");
     }
-
-    if (buf.st_size < 0) {
-      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+    // Nonblocking open lets us reject FIFOs without waiting for a writer.
+    int flags = O_RDONLY | O_NONBLOCK;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    // Android's fortified open is overloaded; resolve the call inside a lambda.
+    ScopedFileDescriptor descriptor{static_cast<int>(TempFailureRetry([&] { return open(file_path, flags); }))};
+    if (!descriptor.IsValid()) {
+      return ReportSystemError("open", file_path);
     }
-
-    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
-      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    struct stat info;
+    if (TempFailureRetry(fstat, descriptor.Get(), &info) < 0) {
+      return ReportSystemError("fstat", file_path);
     }
-
-    file_size = static_cast<size_t>(buf.st_size);
+    ORT_RETURN_IF_NOT(S_ISREG(info.st_mode), "Random-access reads require a regular file: ", file_path);
+    file = std::make_unique<PosixRandomAccessFile>(std::move(descriptor), file_path);
     return Status::OK();
   }
 
@@ -480,13 +630,6 @@ class PosixEnv : public Env {
                         }};
 
     return Status::OK();
-  }
-
-  static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
-    auto [err_no, err_msg] = GetErrnoInfo();
-    std::ostringstream oss;
-    oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
-    return common::Status(common::SYSTEM, err_no, oss.str());
   }
 
   bool FolderExists(const std::string& path) const override {
@@ -658,7 +801,11 @@ class PosixEnv : public Env {
   }
 
  private:
+#ifdef USE_POSIX_TELEMETRY
+  PosixTelemetry telemetry_provider_;
+#else
   Telemetry telemetry_provider_;
+#endif
 #ifdef ORT_USE_CPUINFO
   PosixEnv() {
     cpuinfo_available_ = cpuinfo_initialize();

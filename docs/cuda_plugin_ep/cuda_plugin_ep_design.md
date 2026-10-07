@@ -43,6 +43,12 @@ There is intentionally no provider option for a custom cuDNN DLL/SO path. Provid
 
 No-cuDNN plugin validation runs `test_cuda_plugin_ep.py` with `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`. That mode passes `enable_cudnn=0` to plugin sessions and skips tests for operators that still require cuDNN in the current implementation. Non-cuDNN operator coverage, plugin registration, device enumeration, graph assignment, CUDA graph, I/O binding, and profiling tests continue to run.
 
+### 2.1.2 Optional cuFFT Runtime Dependency
+
+The CUDA Plugin EP applies the same optional-dependency model to **cuFFT**. cuFFT is only used by the FFT contrib operators (`Rfft` / `Irfft`), so the plugin shared library must not link directly to cuFFT or contain a cuFFT DLL/SO in its dynamic dependency table. cuFFT is loaded lazily through the ORT cuFFT loader (`CufftLibrary`, `core/providers/cuda/cufft_loader.{h,cc}`) on first FFT-op use; the entry points ORT calls are provided by `cufft_stub.cc` trampolines that forward to the resolved symbols.
+
+Unlike cuDNN, there is **no provider option** for cuFFT (no `enable_cufft`) and no frontend library to configure. When cuFFT is unavailable, `CUFFT_RETURN_IF_ERROR` (and `CudaCall<cufftResult>`) return `NOT_IMPLEMENTED` with an actionable message, so FFT ops fail cleanly while all other operators keep working. cuFFT headers (part of the CUDA toolkit) are still required at build time, but `CUDA::cufft` is no longer linked. The loader picks the cuFFT library name at compile time from the `CUDA_VERSION` macro (cuFFT 12 for CUDA 13.x, cuFFT 11 for CUDA 12.x); unsupported CUDA major versions fail at compile time until their mapping is added.
+
 ### 2.2 Preprocessor Defines
 
 Each build target uses different preprocessor defines that control how framework types are resolved:
@@ -78,7 +84,7 @@ Migrated CUDA kernels
 
 Key ownership relationships:
 - `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
-- `CudaEpFactory` also implements the factory-level `OrtEpFactory::CreateAllocator` and `OrtEpFactory::CreateSyncStreamForDevice` callbacks as fallback paths when the `OrtEp` callback is not used. Factory-created allocators are shared per device for internal arena/mempool use.
+- `CudaEpFactory` also implements the factory-level `OrtEpFactory::CreateAllocator` and `OrtEpFactory::CreateSyncStreamForDevice` callbacks as fallback paths when the `OrtEp` callback is not used. Every factory `CreateAllocator` call for device memory returns a new BFC arena, so each session and the environment's shared allocator own separate device arenas; the pinned arena and CUDA mempool allocator are shared per device.
 - `CudaEp` inherits from `ep::adapter::Ep`, which itself derives from `OrtEp` and owns a framework-facing `IExecutionProvider` object.
 - `CudaEp` implements the `OrtEp::CreateSyncStreamForDevice` callback, which is the per-session stream-creation entry point used in preference to the factory callback.
 - `CudaEp` implements `OrtEp::CreateAllocator` only when that EP instance was configured with `gpu_external_alloc` and `gpu_external_free`. External allocator callbacks are session-scoped provider options, so they are stored in `CudaEp::Config` and produce per-session `CudaExternalDeviceAllocator` instances rather than mutating shared factory device-cache state.
@@ -651,7 +657,7 @@ Use `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF` when you need to build the origina
 
 ### 9.3 Plugin Independence
 
-The plugin build's `libonnxruntime_providers_cuda.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`) and protobuf. cuDNN is loaded lazily only when enabled and available at runtime. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
+The plugin build's `libonnxruntime_providers_cuda.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`) and protobuf. cuDNN and cuFFT are loaded lazily only when available at runtime (cuDNN additionally gated by `enable_cudnn`), so neither appears in the library's dynamic dependency table. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
 
 ### 9.4 Build Outputs
 

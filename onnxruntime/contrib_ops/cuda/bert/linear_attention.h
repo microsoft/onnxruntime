@@ -24,6 +24,10 @@ class LinearAttention final : public onnxruntime::cuda::CudaKernel {
   std::string update_rule_;
   float scale_;
   int chunk_size_;
+  // Leading (axis-0) extent of past_state / present_state; 0 means no window axis (single state).
+  int state_window_;
+  int decode_seq_threshold_;
+  int row_split_;
 };
 
 }  // namespace cuda

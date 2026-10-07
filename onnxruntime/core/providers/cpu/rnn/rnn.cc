@@ -159,13 +159,12 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   const auto* initial_h = ctx->Input<Tensor>(5);
 
   int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
+  ORT_RETURN_IF_ERROR(rnn::detail::ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 1, sequence_lens, initial_h,
+                                                           num_directions, hidden_size_));
+
   int64_t seq_length = X.Shape()[0];
   int64_t batch_size = X.Shape()[1];
   int64_t input_size = X.Shape()[2];
-
-  auto status = rnn::detail::ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 1, sequence_lens, initial_h,
-                                                     num_directions, hidden_size_);
-  ORT_RETURN_IF_ERROR(status);
 
   // RNN outputs are optional
   std::vector<int64_t> Y_dims({seq_length, num_directions, batch_size, hidden_size_});
@@ -210,6 +209,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
   for (int direction = 0; direction < num_directions; direction++) {
     auto activation_func = GetFuncByName<float>(activations_[direction], "Tanh");
+    const auto& activation = activation_funcs_.Entries()[direction];
     bool isReverse = direction_ == "reverse" || direction == 1;
 
     if (B != nullptr) {
@@ -279,7 +279,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
       // apply activation
       ApplyActivationToBatches<float>(sequence_lens, h_prev, Y_buffer_data_current_frame,
                                       time_step, batch_size, hidden_size_,
-                                      activation_alpha_[direction], activation_beta_[direction], clip_, activation_func);
+                                      activation.alpha, activation.beta, clip_, activation_func);
     }  // close sequence loop
 
     if (Y_h)
