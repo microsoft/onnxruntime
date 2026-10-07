@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -13,31 +14,39 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-class RotaryEmbeddingProgram final : public Program<RotaryEmbeddingProgram> {
- public:
-  RotaryEmbeddingProgram(bool interleaved, bool use_seqlens_for_position = false)
-      : Program{"RotaryEmbedding"}, interleaved_{interleaved}, use_seqlens_for_position_{use_seqlens_for_position} {}
+#define WEBGPU_ROTARY_EMBEDDING_PROGRAM_CONFIG(F) \
+  F(bool, interleaved_)                           \
+  F(bool, use_seqlens_for_position_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct RotaryEmbeddingProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+    Config(bool interleaved, bool use_seqlens_for_position = false)
+        : interleaved_{interleaved}, use_seqlens_for_position_{use_seqlens_for_position} {}
+  };
+  static constexpr std::string_view name = "RotaryEmbedding";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"scale", ProgramUniformVariableDataType::Float32},
                                           {"global_shape", ProgramUniformVariableDataType::Uint32},
                                           {"global_stride", ProgramUniformVariableDataType::Uint32},
                                           {"input_output_stride", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool interleaved_;
-  const bool use_seqlens_for_position_;
 };
+#undef WEBGPU_ROTARY_EMBEDDING_PROGRAM_CONFIG
 
-class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddingProgram> {
- public:
-  FusedQKRotaryEmbeddingProgram(bool interleaved, bool has_qk_norm)
-      : Program{"FusedQKRotaryEmbedding"},
-        interleaved_{interleaved},
-        has_qk_norm_{has_qk_norm} {}
+using RotaryEmbeddingProgram = ConfiguredProgram<RotaryEmbeddingProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_CONFIG(F) \
+  F(bool, interleaved_)                                     \
+  F(bool, has_qk_norm_)
+
+struct FusedQKRotaryEmbeddingProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+    Config(bool interleaved, bool has_qk_norm) : interleaved_{interleaved}, has_qk_norm_{has_qk_norm} {}
+  };
+  static constexpr std::string_view name = "FusedQKRotaryEmbedding";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   // q_* describes query rotation domain (same definition as existing program)
   // k_* describes key rotation domain.
@@ -56,11 +65,10 @@ class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddin
       {"q_domain_size", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32});
-
- private:
-  const bool interleaved_;
-  const bool has_qk_norm_;
 };
+#undef WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_CONFIG
+
+using FusedQKRotaryEmbeddingProgram = ConfiguredProgram<FusedQKRotaryEmbeddingProgramShader>;
 
 class RotaryEmbedding final : public WebGpuKernel {
  public:

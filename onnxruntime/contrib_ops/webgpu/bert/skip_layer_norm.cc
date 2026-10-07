@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -12,47 +13,47 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status SkipLayerNormProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                      ConfiguredShaderHelper& shader) {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("skip", ShaderUsage::UseUniform);
   shader.AddInput("gamma", ShaderUsage::UseUniform);
-  if (hasBeta_) {
+  if (config.hasBeta_) {
     shader.AddInput("beta", ShaderUsage::UseUniform);
   }
-  if (hasBias_) {
+  if (config.hasBias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
-  if (has_input_skip_bias_sum_) {
+  if (config.has_input_skip_bias_sum_) {
     shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseUniform);
   }
 
-  std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
-  std::string simpl2 = (simplified_) ? "" : "- x_element_t(mean) ";
-  if (split_hidden_dim_) {
+  std::string simpl1 = (config.simplified_) ? "" : "- mean * mean ";
+  std::string simpl2 = (config.simplified_) ? "" : "- x_element_t(mean) ";
+  if (config.split_hidden_dim_) {
     shader.AdditionalImplementation()
         << "var<workgroup> sum_shared : array<f32, workgroup_size_x>;\n"
         << "var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;\n";
 
     SS(input_skip_bias_sum_ss, 512);
-    if (has_input_skip_bias_sum_) {
-      input_skip_bias_sum_ss
-          << "  let workgroup_half_idx = uniforms.hidden_size / (workgroup_size_x * 4);\n"
-          << "  if (workgroup_idx >= workgroup_half_idx) {\n"
-          << "    offset = (workgroup_idx - workgroup_half_idx) * workgroup_size_x + local_idx;\n"
-          << "    let skip_offset = offset % (uniforms.skip_size / 4);\n"
-          << "    let skip_value = skip[skip_offset];\n"
-          << "    let input_value = x[offset];\n"
-          << "    let value = input_value + skip_value" << (hasBias_ ? " + bias[offset]" : "") << ";\n"
-          << "    input_skip_bias_sum[offset] = value;\n"
-          << "    return;\n"
-          << "  }\n";
+    if (config.has_input_skip_bias_sum_) {
+      input_skip_bias_sum_ss << "  let workgroup_half_idx = uniforms.hidden_size / (workgroup_size_x * 4);\n"
+                             << "  if (workgroup_idx >= workgroup_half_idx) {\n"
+                             << "    offset = (workgroup_idx - workgroup_half_idx) * workgroup_size_x + local_idx;\n"
+                             << "    let skip_offset = offset % (uniforms.skip_size / 4);\n"
+                             << "    let skip_value = skip[skip_offset];\n"
+                             << "    let input_value = x[offset];\n"
+                             << "    let value = input_value + skip_value" << (config.hasBias_ ? " + bias[offset]" : "")
+                             << ";\n"
+                             << "    input_skip_bias_sum[offset] = value;\n"
+                             << "    return;\n"
+                             << "  }\n";
     }
 
     shader.MainFunctionBody()
         << "  var offset: u32 = 0;\n"
-        << (has_input_skip_bias_sum_ ? SS_GET(input_skip_bias_sum_ss) : "")
-        << "  var sum_vec4 = vec4<f32>(0);\n"
+        << (config.has_input_skip_bias_sum_ ? SS_GET(input_skip_bias_sum_ss) : "") << "  var sum_vec4 = vec4<f32>(0);\n"
         << "  var sum_squared_vec4 = vec4<f32>(0);\n"
         << "  var cur_input_skip_bias_sum = x_value_t(0);\n"
         << "  for (var i: u32 = 0; i < uniforms.hidden_size / (workgroup_size_x * 4); i++) {\n"
@@ -60,7 +61,7 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "    let skip_input_offset = input_offset % (uniforms.skip_size / 4);\n"
         << "    let skip_value = skip[skip_input_offset];\n"
         << "    let input_value = x[input_offset];\n"
-        << "    let value = input_value + skip_value" << (hasBias_ ? " + bias[input_offset]" : "") << ";\n"
+        << "    let value = input_value + skip_value" << (config.hasBias_ ? " + bias[input_offset]" : "") << ";\n"
         << "    if (i == workgroup_idx) {\n"
         << "      cur_input_skip_bias_sum = value;\n"
         << "    }\n"
@@ -83,14 +84,17 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "    workgroupBarrier();\n"
         << "  }\n"
         << "  let mean = sum_shared[0] / f32(uniforms.hidden_size);\n"
-        << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.hidden_size) " << simpl1 << "+ uniforms.epsilon);\n"
+        << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.hidden_size) " << simpl1
+        << "+ uniforms.epsilon);\n"
         << "  offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  output[offset] = ((cur_input_skip_bias_sum " << simpl2 << ") * x_element_t(inv_std_dev) * gamma[offset]" << (hasBeta_ ? " + beta[offset] " : "") << ");\n";
+        << "  output[offset] = ((cur_input_skip_bias_sum " << simpl2 << ") * x_element_t(inv_std_dev) * gamma[offset]"
+        << (config.hasBeta_ ? " + beta[offset] " : "") << ");\n";
   } else {
     int components = x.NumComponents();
-    std::string bias = (hasBias_) ? " + bias[offset1d + i] " : "";
-    std::string beta = (hasBeta_) ? " + beta[offset1d + i] " : "";
-    std::string input_skip_bias_sum = (has_input_skip_bias_sum_) ? "input_skip_bias_sum[offset + i] = value;\n" : "";
+    std::string bias = (config.hasBias_) ? " + bias[offset1d + i] " : "";
+    std::string beta = (config.hasBeta_) ? " + beta[offset1d + i] " : "";
+    std::string input_skip_bias_sum =
+        (config.has_input_skip_bias_sum_) ? "input_skip_bias_sum[offset + i] = value;\n" : "";
 
     shader.AdditionalImplementation()
         << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
@@ -181,13 +185,11 @@ Status RunSkipLayerNormProgram(ComputeContext& context,
 
   const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip->Shape().Size());
 
-  SkipLayerNormProgram program{
-      beta != nullptr, bias != nullptr, epsilon, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
+  SkipLayerNormProgram program{beta != nullptr, bias != nullptr, has_input_skip_bias_sum, simplified, split_hidden_dim};
   program
-      .CacheHint(simplified, beta != nullptr, bias != nullptr, has_input_skip_bias_sum, split_hidden_dim)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
+      .AddInputs({{x, ProgramTensorMetadataDependency::None, components}})
+      .AddInputs({{skip, ProgramTensorMetadataDependency::None, components}})
+      .AddInputs({{gamma, ProgramTensorMetadataDependency::None, components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::None, components}})
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(ceil(1.0 * x_shape.Size() / hidden_size)))
       .AddUniformVariables({
@@ -211,10 +213,10 @@ Status RunSkipLayerNormProgram(ComputeContext& context,
   }
 
   if (beta != nullptr) {
-    program.AddInput({beta, ProgramTensorMetadataDependency::Type, components});
+    program.AddInput({beta, ProgramTensorMetadataDependency::None, components});
   }
   if (bias != nullptr) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::Type, components});
+    program.AddInput({bias, ProgramTensorMetadataDependency::None, components});
   }
   if (has_input_skip_bias_sum) {
     program.AddOutputs({{input_skip_bias_sum, ProgramTensorMetadataDependency::None, components}});

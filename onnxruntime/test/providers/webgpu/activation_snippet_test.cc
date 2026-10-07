@@ -22,6 +22,12 @@ namespace test {
 
 namespace {
 
+std::string ActivationIdentity(const webgpu::Activation& activation) {
+  std::string key;
+  webgpu::AppendConfigValue(key, webgpu::ShaderActivation{activation});
+  return key;
+}
+
 // Extract numeric literals that are not part of identifiers.
 std::vector<std::string> ExtractNumericLiterals(const std::string& wgsl) {
   std::vector<std::string> literals;
@@ -204,24 +210,24 @@ TEST(WebGpuActivationSnippetTest, QuickGeluUnitAlphaIsASeparateShaderAndCacheKey
       << "non-unit alpha must read its alpha from a uniform: " << general_wgsl;
   EXPECT_NE(silu_wgsl, general_wgsl);
 
-  EXPECT_NE(silu.CacheKey(), general.CacheKey());
+  EXPECT_NE(ActivationIdentity(silu), ActivationIdentity(general));
 }
 
 TEST(WebGpuActivationSnippetTest, ParameterValuesDoNotAffectTheCacheKey) {
   const Activation leaky_a = MakeActivation(ActivationKind::LeakyRelu, 0.01f);
   const Activation leaky_b = MakeActivation(ActivationKind::LeakyRelu, 0.25f);
-  EXPECT_EQ(leaky_a.CacheKey(), leaky_b.CacheKey());
+  EXPECT_EQ(ActivationIdentity(leaky_a), ActivationIdentity(leaky_b));
   EXPECT_EQ(GetActivationSnippet(leaky_a, "vec4<f32>", "f32"),
             GetActivationSnippet(leaky_b, "vec4<f32>", "f32"));
 
   const Activation clip_a = MakeActivation(ActivationKind::Clip, 0.0f, 6.0f);
   const Activation clip_b = MakeActivation(ActivationKind::Clip, -1.0f, 1.0f);
-  EXPECT_EQ(clip_a.CacheKey(), clip_b.CacheKey());
+  EXPECT_EQ(ActivationIdentity(clip_a), ActivationIdentity(clip_b));
   EXPECT_EQ(GetActivationSnippet(clip_a, "vec4<f32>", "f32"),
             GetActivationSnippet(clip_b, "vec4<f32>", "f32"));
 
-  EXPECT_NE(MakeActivation(ActivationKind::Relu).CacheKey(),
-            MakeActivation(ActivationKind::Sigmoid).CacheKey());
+  EXPECT_NE(ActivationIdentity(MakeActivation(ActivationKind::Relu)),
+            ActivationIdentity(MakeActivation(ActivationKind::Sigmoid)));
 }
 
 TEST(WebGpuActivationSnippetTest, ParameterlessActivationsReadNoUniforms) {

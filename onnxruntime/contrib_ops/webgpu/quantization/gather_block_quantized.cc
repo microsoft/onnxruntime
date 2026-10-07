@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <sstream>
 #include <cstring>
 #include <algorithm>
@@ -80,48 +81,49 @@ std::string BuildFpDequantLutWgsl(int32_t fp_elem_type) {
 }
 }  // namespace
 
-Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatherBlockQuantizedProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                             ConfiguredShaderHelper& shader) {
   const auto& x = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
   const auto& x_shape = shader.AddIndices("input_shape", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& indices = shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseIndicesToOffset | ShaderUsage::UseValueTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
-  const bool is_2bit = bits_ == 2;
-  const bool is_4bit = bits_ == 4;
-  const std::string unpack = (is_signed_) ? "unpack4xI8" : "unpack4xU8";
+  const bool is_2bit = config.bits_ == 2;
+  const bool is_4bit = config.bits_ == 4;
+  const std::string unpack = (config.is_signed_) ? "unpack4xI8" : "unpack4xU8";
 
-  if (is_fp_quantized_) {
-    shader.AdditionalImplementation() << BuildFpDequantLutWgsl(fp_elem_type_);
+  if (config.is_fp_quantized_) {
+    shader.AdditionalImplementation() << BuildFpDequantLutWgsl(config.fp_elem_type_);
   }
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
       << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n";
 
-  if (indices_rank_ > 1) {
-    shader.MainFunctionBody()
-        << "var indices_indices = indices_indices_t(0);\n"
-        << "for (var i: u32 = 0; i < " << indices_rank_ << "; i++) {\n"
-        << "  let index = " << output.IndicesGet("output_indices", "uniforms.gather_axis + i") << ";\n"
-        << "  " << indices.IndicesSet("indices_indices", "i", "index") << ";\n};\n";
+  if (config.indices_rank_ > 1) {
+    shader.MainFunctionBody() << "var indices_indices = indices_indices_t(0);\n"
+                              << "for (var i: u32 = 0; i < " << config.indices_rank_ << "; i++) {\n"
+                              << "  let index = " << output.IndicesGet("output_indices", "uniforms.gather_axis + i")
+                              << ";\n"
+                              << "  " << indices.IndicesSet("indices_indices", "i", "index") << ";\n};\n";
   } else {
     shader.MainFunctionBody()
         << "let indices_indices = " << output.IndicesGet("output_indices", "uniforms.gather_axis") << ";\n";
   }
 
-  shader.MainFunctionBody()
-      << "var index = " << indices.GetByIndices("indices_indices") << ";\n"
-      << "let gather_axis_dim = indices_value_t(" << x_shape.IndicesGet("uniforms.input_shape_shape", gather_axis_) << ");\n"
-      << "if (index < 0) { index += gather_axis_dim;}\n"
-      << "if (index < 0 || index >= gather_axis_dim) {\n"
-      << "  " << output.SetByOffset("global_idx", "output_value_t(0)") << ";\n"
-      << "  return;\n"
-      << "}\n"
-      << "var data_indices = input_shape_indices_t(0);\n";
+  shader.MainFunctionBody() << "var index = " << indices.GetByIndices("indices_indices") << ";\n"
+                            << "let gather_axis_dim = indices_value_t("
+                            << x_shape.IndicesGet("uniforms.input_shape_shape", config.gather_axis_) << ");\n"
+                            << "if (index < 0) { index += gather_axis_dim;}\n"
+                            << "if (index < 0 || index >= gather_axis_dim) {\n"
+                            << "  " << output.SetByOffset("global_idx", "output_value_t(0)") << ";\n"
+                            << "  return;\n"
+                            << "}\n"
+                            << "var data_indices = input_shape_indices_t(0);\n";
 
   for (int i = 0, j = 0; i < x_shape.Rank(); i++) {
-    if (static_cast<int>(i) == gather_axis_) {
+    if (static_cast<int>(i) == config.gather_axis_) {
       shader.MainFunctionBody() << "  " << x_shape.IndicesSet("data_indices", i, "u32(index)") << ";\n";
       j += indices.Rank();
     } else {
@@ -144,7 +146,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "  let byte_in_word_2b = byte_idx_2b % 4;\n"
         << "  let unpacked_bytes_2b = " << unpack << "(u32(packed_word_2b));\n"
         << "  var quantized_data = (unpacked_bytes_2b[byte_in_word_2b] >> bit_shift_2b) & 0x3;\n";
-    if (is_signed_) {
+    if (config.is_signed_) {
       shader.MainFunctionBody()
           << "  if((quantized_data & 0x2) != 0) { quantized_data = quantized_data - 4 ;};\n";
     }
@@ -155,7 +157,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "  let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;\n"
         << "  let quantized_data_vec = " << unpack << "(u32(packed_8bit_quantized_data));\n"
         << "  var quantized_data = quantized_data_vec[data_index / 2];\n";
-    if (is_signed_) {
+    if (config.is_signed_) {
       shader.MainFunctionBody()
           << "  if((quantized_data & 0x8) != 0) { quantized_data = quantized_data - 16 ;};\n";
     }
@@ -172,12 +174,12 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  let quantize_axis_index = " << scales.IndicesGet("data_indices", "uniforms.quantize_axis") << "/ uniforms.block_size;\n  "
       << scales.IndicesSet("scale_indices", "uniforms.quantize_axis", "quantize_axis_index") << ";\n";
 
-  if (is_fp_quantized_ && scale_broadcast_axes_.find('1') != std::string::npos) {
+  if (config.is_fp_quantized_ && config.scale_broadcast_axes_.find('1') != std::string::npos) {
     // Broadcast axes (scales dim == 1) always index 0 along that axis, regardless of the
-    // corresponding data index. The set of broadcast axes is fixed per-kernel-instance (part of
-    // the cache hint), so unroll this at shader-generation time rather than at shader run time.
-    for (size_t axis = 0; axis < x_shape_.NumDimensions(); ++axis) {
-      if (scale_broadcast_axes_[axis] == '1') {
+    // corresponding data index. Broadcast axes are declared configuration, so this loop
+    // can be unrolled during shader generation.
+    for (size_t axis = 0; axis < config.x_rank_; ++axis) {
+      if (config.scale_broadcast_axes_[axis] == '1') {
         shader.MainFunctionBody()
             << "  " << scales.IndicesSet("scale_indices", axis, "0u") << ";\n";
       }
@@ -187,9 +189,9 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
   shader.MainFunctionBody()
       << "  var scale = " << scales.GetByIndices("scale_indices") << ";\n";
 
-  if (!has_zeropoint_) {
+  if (!config.has_zeropoint_) {
     std::string default_zero_point;
-    if (is_uint8_) {
+    if (config.is_uint8_) {
       if (is_2bit) {
         default_zero_point = "input_element_t(2)";
       } else if (is_4bit) {
@@ -236,7 +238,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
           << "  let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
           << "  var zero_point = zero_point_vec[zero_point_index];\n";
     }
-    if (is_signed_) {
+    if (config.is_signed_) {
       if (is_2bit) {
         shader.MainFunctionBody()
             << "  if((zero_point & 0x2) != 0) { zero_point = zero_point - 4 ;};\n";
@@ -248,7 +250,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
   }
   shader.MainFunctionBody()
       << "  var dequantized_data = output_value_t(0);\n";
-  if (is_fp_quantized_) {
+  if (config.is_fp_quantized_) {
     shader.MainFunctionBody()
         << "  dequantized_data = output_value_t(bitcast<f32>(kFpDequantLutBits[quantized_data])) * scale;\n";
   } else {
@@ -437,15 +439,21 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   const uint32_t scale_qaxis_dim = static_cast<uint32_t>(scales_shape[quantize_axis]);
   const uint32_t zp_packed_qaxis_dim = (scale_qaxis_dim + 3) / 4;
 
-  GatherBlockQuantizedProgram program{is_signed && !is_fp_quantized, is_int8, indices_rank, gather_axis, bits,
-                                      zero_points != nullptr, x_shape, output_shape, is_fp_quantized,
-                                      static_cast<int32_t>(x_dtype), scale_broadcast_axes};
+  GatherBlockQuantizedProgram program{is_signed && !is_fp_quantized,
+                                      is_int8,
+                                      indices_rank,
+                                      gather_axis,
+                                      bits,
+                                      zero_points != nullptr,
+                                      x_shape,
+                                      is_fp_quantized,
+                                      static_cast<int32_t>(x_dtype),
+                                      scale_broadcast_axes};
 
-  program
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, (bits == 4) ? 8 : 4}})
+  program.AddInputs({{x, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, (bits == 4) ? 8 : 4}})
       .AddIndices(x_shape)
-      .AddInputs({{indices, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddInputs({{scales, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddInputs({{indices, ProgramTensorMetadataDependency::None}})
+      .AddInputs({{scales, ProgramTensorMetadataDependency::None}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}})
@@ -453,10 +461,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{static_cast<uint32_t>(gather_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(effective_block_size)}})
       .AddUniformVariables({{scale_qaxis_dim}})
-      .AddUniformVariables({{zp_packed_qaxis_dim}})
-      .CacheHint(std::to_string(bits), std::to_string(gather_axis), std::to_string(quantize_axis),
-                 std::to_string(effective_block_size), std::to_string(x_dtype),
-                 scale_broadcast_axes);
+      .AddUniformVariables({{zp_packed_qaxis_dim}});
 
   if (zero_points != nullptr) {
     if (bits == 2 && is_uint8) {

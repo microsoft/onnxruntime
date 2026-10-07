@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -17,20 +18,24 @@ class Range : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 };
 
-class RangeProgram : public Program<RangeProgram> {
- public:
-  RangeProgram() : Program{"Range"} {}
-  RangeProgram(int32_t data_type) : Program{"Range"}, data_type_(data_type) {}
+#define WEBGPU_RANGE_PROGRAM_CONFIG(F) F(int32_t, data_type_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct RangeProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_RANGE_PROGRAM_CONFIG);
+    Config(int32_t data_type = 0) : data_type_{data_type} {}
+  };
+  static constexpr std::string_view name = "Range";
+
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"start", ProgramUniformVariableDataType::Uint32},
                                           {"delta", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int32_t data_type_{0};
 };
+#undef WEBGPU_RANGE_PROGRAM_CONFIG
+
+using RangeProgram = ConfiguredProgram<RangeProgramShader>;
 
 // Register Range kernels with conditional int64 support
 void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_int64);

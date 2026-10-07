@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -9,7 +10,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DP4AMatMulQuantizeProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                           ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   const auto& scales = shader.AddOutput("scales", ShaderUsage::UseUniform);
@@ -19,77 +21,70 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
                              WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
-Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DP4AMatMulNBitsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                        ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& scales_a = shader.AddInput("scales_a", ShaderUsage::UseUniform);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   const auto& scales_b = shader.AddInput("scales_b", ShaderUsage::UseUniform);
-  if (has_zero_points_) {
+  if (config.has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  if (has_weight_idx_indirect_) {
+  if (config.has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
-                             WGSL_TEMPLATE_PARAMETER(block_size, block_size_),
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
-                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
-                             WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
-                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
-                             WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
-                             WGSL_TEMPLATE_VARIABLE(a, a),
-                             WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "quantization/dp4a_matmul.wgsl.template", WGSL_TEMPLATE_PARAMETER(acc_f32, config.acc_f32_),
+      WGSL_TEMPLATE_PARAMETER(block_size, config.block_size_), WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_),
+      WGSL_TEMPLATE_PARAMETER(has_weight_idx, config.has_weight_idx_),
+      WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, config.has_weight_idx_indirect_),
+      WGSL_TEMPLATE_PARAMETER(has_zero_points, config.has_zero_points_),
+      WGSL_TEMPLATE_PARAMETER(is_qualcomm, config.is_qualcomm_), WGSL_TEMPLATE_PARAMETER(n_bits, config.nbits_),
+      WGSL_TEMPLATE_PARAMETER(output_type_i32, true), WGSL_TEMPLATE_VARIABLE(a, a), WGSL_TEMPLATE_VARIABLE(b, b),
+      WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
+      WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 // scale_A components = 1, b components = 4, output components = 1
-Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DP4AMatMulNBitsSmallMProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                              ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform);
   const auto& scales_a = shader.AddInput("scales_a", ShaderUsage::UseUniform);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   const auto& scales_b = shader.AddInput("scales_b", ShaderUsage::UseUniform);
-  if (has_zero_points_) {
+  if (config.has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
-  if (has_bias_) {
+  if (config.has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  if (has_weight_idx_indirect_) {
+  if (config.has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0 && tile_size_k_vec_ % 4 == 0, "tile_size_k_vec_ must evenly divide workgroup size X and be divisible by 4");
-  const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec_;
-  ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
+  ORT_ENFORCE(shader.WorkgroupSizeX() % config.tile_size_k_vec_ == 0 && config.tile_size_k_vec_ % 4 == 0,
+              "tile_size_k_vec_ must evenly divide workgroup size X and be divisible by 4");
+  const uint32_t sub_tile_count = shader.WorkgroupSizeX() / config.tile_size_k_vec_;
+  ORT_ENFORCE(config.tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
 
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul_small_m.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
-                             WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_),
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
-                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
-                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
-                             WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
-                             WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
-                             WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
-                             WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_),
-                             WGSL_TEMPLATE_VARIABLE(a, a),
-                             WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "quantization/dp4a_matmul_small_m.wgsl.template", WGSL_TEMPLATE_PARAMETER(acc_f32, config.acc_f32_),
+      WGSL_TEMPLATE_PARAMETER(broadcast_a_row, config.broadcast_a_row_),
+      WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_),
+      WGSL_TEMPLATE_PARAMETER(has_weight_idx, config.has_weight_idx_),
+      WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, config.has_weight_idx_indirect_),
+      WGSL_TEMPLATE_PARAMETER(has_zero_points, config.has_zero_points_), WGSL_TEMPLATE_PARAMETER(n_bits, config.nbits_),
+      WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
+      WGSL_TEMPLATE_PARAMETER(single_scale_weights, config.single_scale_weights_),
+      WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count), WGSL_TEMPLATE_PARAMETER(tile_size, config.tile_size_),
+      WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, config.tile_size_k_vec_), WGSL_TEMPLATE_VARIABLE(a, a),
+      WGSL_TEMPLATE_VARIABLE(b, b), WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
+      WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
@@ -120,9 +115,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
   TensorShapeVector a_scales_dims({batch_count, 1, M, K / kBlockSizeA});
   Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
-  quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
-      .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
-                   {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
+  quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::None, static_cast<int>(kVec4Components)}})
+      .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::None, a_quant.Shape(), 1},
+                   {&a_scale, ProgramTensorMetadataDependency::None, 1}})
       .AddUniformVariable({batch_count * M * K / kU32Components});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
@@ -142,13 +137,14 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(batch_count * dispatch_M * num_N_tile);
-    mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
-                           {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                           {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(b_components * kU32Components)},
-                           {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddUniformVariables({batch_count, M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col, weight_index, dispatch_M})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, broadcast_a, acc_f32);
+    mul_program
+        .AddInputs({{&a_quant, ProgramTensorMetadataDependency::None, static_cast<int>(kVec4Components)},
+                    {&a_scale, ProgramTensorMetadataDependency::None, 1},
+                    {b, ProgramTensorMetadataDependency::None, static_cast<int>(b_components * kU32Components)},
+                    {scales, ProgramTensorMetadataDependency::None, 1}})
+        .AddUniformVariables({batch_count, M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col,
+                              weight_index, dispatch_M})
+        .AddOutput({y, ProgramTensorMetadataDependency::None, 1});
     if (has_zero_points) {
       mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
     }
@@ -170,10 +166,11 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(batch_count * num_M_tile * num_N_tile);
-  mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
-                         {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>((nbits / 2) * kU32Components)},
-                         {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+  mul_program
+      .AddInputs({{&a_quant, ProgramTensorMetadataDependency::None, static_cast<int>(kVec4Components)},
+                  {&a_scale, ProgramTensorMetadataDependency::None, 1},
+                  {b, ProgramTensorMetadataDependency::None, static_cast<int>((nbits / 2) * kU32Components)},
+                  {scales, ProgramTensorMetadataDependency::None, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(batch_count)},
                             {static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
@@ -184,8 +181,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {num_N_tile},
                             {zero_blocks_per_col},
                             {weight_index}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm, has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32);
+      .AddOutput(
+          {y, ProgramTensorMetadataDependency::None, reshaped_y_shape, static_cast<int>(kVec4Components)});
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

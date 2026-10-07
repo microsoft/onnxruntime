@@ -40,3 +40,7 @@ jobs:
     - name: Run wgsl_template tests
       run: python wgsl_template/test/run_tests.py
       working-directory: tools/python
+    - name: Check shader configuration schemas
+      run: |
+        python tools/python/webgpu/check_shader_config.py
+        python -m unittest discover -s tools/python/webgpu -p "test_*.py"

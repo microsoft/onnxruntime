@@ -11,6 +11,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -19,22 +20,28 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
- public:
-  Im2ColMatMulProgram(bool has_bias,
-                      uint32_t tile_m,
-                      uint32_t tile_n,
-                      uint32_t vec_size,
-                      bool use_subgroup,
-                      const Activation& activation) : Program("Im2ColMatMul"),
-                                                      has_bias_(has_bias),
-                                                      tile_m_(tile_m),
-                                                      tile_n_(tile_n),
-                                                      vec_size_(vec_size),
-                                                      use_subgroup_(use_subgroup),
-                                                      activation_(activation) {}
+#define WEBGPU_IM2_COL_MAT_MUL_PROGRAM_CONFIG(F) \
+  F(bool, has_bias_)                             \
+  F(uint32_t, tile_m_)                           \
+  F(uint32_t, tile_n_)                           \
+  F(uint32_t, vec_size_)                         \
+  F(bool, use_subgroup_)                         \
+  F(ShaderActivation, activation_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct Im2ColMatMulProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_IM2_COL_MAT_MUL_PROGRAM_CONFIG);
+    Config(bool has_bias, uint32_t tile_m, uint32_t tile_n, uint32_t vec_size, bool use_subgroup,
+           const Activation& activation)
+        : has_bias_(has_bias),
+          tile_m_(tile_m),
+          tile_n_(tile_n),
+          vec_size_(vec_size),
+          use_subgroup_(use_subgroup),
+          activation_(activation) {}
+  };
+  static constexpr std::string_view name = "Im2ColMatMul";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch", ProgramUniformVariableDataType::Uint32},
@@ -55,16 +62,10 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
       {"pads", ProgramUniformVariableDataType::Uint32},
       {"strides", ProgramUniformVariableDataType::Uint32},
       WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
-
- private:
-  bool has_bias_;
-
-  uint32_t tile_m_;
-  uint32_t tile_n_;
-  uint32_t vec_size_;
-  bool use_subgroup_;
-  const Activation& activation_;
 };
+#undef WEBGPU_IM2_COL_MAT_MUL_PROGRAM_CONFIG
+
+using Im2ColMatMulProgram = ConfiguredProgram<Im2ColMatMulProgramShader>;
 
 bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,

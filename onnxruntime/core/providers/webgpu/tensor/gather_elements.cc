@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -26,7 +27,8 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
     GatherElements);
 
-Status GatherElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GatherElementsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const ShaderVariableHelper& indices = shader.AddInput("indices", ShaderUsage::UseUniform);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform);
@@ -72,8 +74,8 @@ Status GatherElements::ComputeInternal(ComputeContext& context) const {
 
   GatherElementsProgram program{};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddInputs({{indices_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None}})
+      .AddInputs({{indices_tensor, ProgramTensorMetadataDependency::None}})
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},

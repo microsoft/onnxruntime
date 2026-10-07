@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -11,24 +12,32 @@ namespace contrib {
 namespace webgpu {
 
 using onnxruntime::webgpu::ComputeContext;
-using onnxruntime::webgpu::Program;
+using onnxruntime::webgpu::ConfiguredProgram;
+using onnxruntime::webgpu::ConfiguredShaderHelper;
 using onnxruntime::webgpu::ProgramUniformVariableDataType;
-using onnxruntime::webgpu::ShaderHelper;
 using onnxruntime::webgpu::WebGpuKernel;
 
 // Computes per-(batch, group) mean and inverse standard deviation of x (+ skip + bias).
 // One workgroup per (batch, group); output is [N * G] with 2 components (mean, inv_std) in f32.
-class GroupNormStatsProgram final : public Program<GroupNormStatsProgram> {
- public:
-  GroupNormStatsProgram(int components, uint32_t workgroup_size, bool has_skip, bool skip_broadcast, bool has_bias)
-      : Program{"GroupNormStats"},
-        components_{components},
-        workgroup_size_{workgroup_size},
-        has_skip_{has_skip},
-        skip_broadcast_{skip_broadcast},
-        has_bias_{has_bias} {}
+#define WEBGPU_GROUP_NORM_STATS_PROGRAM_CONFIG(F) \
+  F(int, components_)                             \
+  F(uint32_t, workgroup_size_)                    \
+  F(bool, has_skip_)                              \
+  F(bool, skip_broadcast_)                        \
+  F(bool, has_bias_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct GroupNormStatsProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_GROUP_NORM_STATS_PROGRAM_CONFIG);
+    Config(int components, uint32_t workgroup_size, bool has_skip, bool skip_broadcast, bool has_bias)
+        : components_{components},
+          workgroup_size_{workgroup_size},
+          has_skip_{has_skip},
+          skip_broadcast_{skip_broadcast},
+          has_bias_{has_bias} {}
+  };
+  static constexpr std::string_view name = "GroupNormStats";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"hw", ProgramUniformVariableDataType::Uint32},
@@ -36,29 +45,34 @@ class GroupNormStatsProgram final : public Program<GroupNormStatsProgram> {
       {"cg_comp", ProgramUniformVariableDataType::Uint32},
       {"groups", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32});
-
- private:
-  int components_;
-  uint32_t workgroup_size_;
-  bool has_skip_;
-  bool skip_broadcast_;
-  bool has_bias_;
 };
+#undef WEBGPU_GROUP_NORM_STATS_PROGRAM_CONFIG
+
+using GroupNormStatsProgram = ConfiguredProgram<GroupNormStatsProgramShader>;
 
 // Applies normalization with per-channel affine (gamma, beta) and optional SiLU activation.
 // With skip: normalizes (x + skip + bias) and optionally writes the sum to the S output.
-class GroupNormApplyProgram final : public Program<GroupNormApplyProgram> {
- public:
-  GroupNormApplyProgram(int components, bool use_silu, bool has_skip, bool skip_broadcast, bool has_bias, bool has_sum_output)
-      : Program{"GroupNormApply"},
-        components_{components},
-        use_silu_{use_silu},
-        has_skip_{has_skip},
-        skip_broadcast_{skip_broadcast},
-        has_bias_{has_bias},
-        has_sum_output_{has_sum_output} {}
+#define WEBGPU_GROUP_NORM_APPLY_PROGRAM_CONFIG(F) \
+  F(int, components_)                             \
+  F(bool, use_silu_)                              \
+  F(bool, has_skip_)                              \
+  F(bool, skip_broadcast_)                        \
+  F(bool, has_bias_)                              \
+  F(bool, has_sum_output_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct GroupNormApplyProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_GROUP_NORM_APPLY_PROGRAM_CONFIG);
+    Config(int components, bool use_silu, bool has_skip, bool skip_broadcast, bool has_bias, bool has_sum_output)
+        : components_{components},
+          use_silu_{use_silu},
+          has_skip_{has_skip},
+          skip_broadcast_{skip_broadcast},
+          has_bias_{has_bias},
+          has_sum_output_{has_sum_output} {}
+  };
+  static constexpr std::string_view name = "GroupNormApply";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"output_size", ProgramUniformVariableDataType::Uint32},
@@ -66,15 +80,10 @@ class GroupNormApplyProgram final : public Program<GroupNormApplyProgram> {
       {"c_comp", ProgramUniformVariableDataType::Uint32},
       {"cg_comp", ProgramUniformVariableDataType::Uint32},
       {"groups", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int components_;
-  bool use_silu_;
-  bool has_skip_;
-  bool skip_broadcast_;
-  bool has_bias_;
-  bool has_sum_output_;
 };
+#undef WEBGPU_GROUP_NORM_APPLY_PROGRAM_CONFIG
+
+using GroupNormApplyProgram = ConfiguredProgram<GroupNormApplyProgramShader>;
 
 // Handles both com.microsoft.GroupNorm and com.microsoft.SkipGroupNorm (channels_last only).
 class GroupNorm final : public WebGpuKernel {

@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -12,9 +13,9 @@ namespace contrib {
 namespace webgpu {
 
 // Avoid `using namespace` in headers. Pull in only what we need.
-using onnxruntime::webgpu::Program;
+using onnxruntime::webgpu::ConfiguredProgram;
+using onnxruntime::webgpu::ConfiguredShaderHelper;
 using onnxruntime::webgpu::ProgramUniformVariableDataType;
-using onnxruntime::webgpu::ShaderHelper;
 
 // Returns floor(log2(value)) for a positive power-of-two `value`
 // (i.e. the bit position of its single set bit).
@@ -26,22 +27,24 @@ inline int Log2OfPowerOfTwo(int value) {
   return log2;
 }
 
-class HadamardTransformProgram final : public Program<HadamardTransformProgram> {
- public:
-  HadamardTransformProgram(int slice_size_log2, int components)
-      : Program{"HadamardTransform"},
-        slice_size_log2_(slice_size_log2),
-        components_(components) {}
+#define WEBGPU_HADAMARD_TRANSFORM_PROGRAM_CONFIG(F) \
+  F(int, slice_size_log2_)                          \
+  F(int, components_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct HadamardTransformProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_HADAMARD_TRANSFORM_PROGRAM_CONFIG);
+    Config(int slice_size_log2, int components) : slice_size_log2_(slice_size_log2), components_(components) {}
+  };
+  static constexpr std::string_view name = "HadamardTransform";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_slices", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int slice_size_log2_;
-  int components_;
 };
+#undef WEBGPU_HADAMARD_TRANSFORM_PROGRAM_CONFIG
+
+using HadamardTransformProgram = ConfiguredProgram<HadamardTransformProgramShader>;
 
 // Apply the normalized Walsh-Hadamard transform.
 // The normalized Hadamard matrix is symmetric (H == H^T) and orthogonal

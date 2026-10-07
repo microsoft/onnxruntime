@@ -13,7 +13,7 @@
 
 #include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
 
-#include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 

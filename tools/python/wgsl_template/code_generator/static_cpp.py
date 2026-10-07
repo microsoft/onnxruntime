@@ -218,7 +218,7 @@ class StaticCodeGenerator:
             out.append("")
             out.append("template <>")
             out.append(
-                f"Status ApplyTemplate<{quoted}>(ShaderHelper& shader_helper, "
+                f"Status ApplyTemplate<{quoted}>(ConfiguredShaderHelper& shader_helper, "
                 f"TemplateParameter<{quoted}>::type params);"
             )
             out.append("")
@@ -328,7 +328,7 @@ class StaticCodeGenerator:
         out.append("template <>")
         params_arg = "" if params_unused else "params"
         out.append(
-            f"Status ApplyTemplate<{quoted}>(ShaderHelper& shader_helper, "
+            f"Status ApplyTemplate<{quoted}>(ConfiguredShaderHelper& shader_helper, "
             f"TemplateParameter<{quoted}>::type {params_arg}) {{"
         )
         out.append("  [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();")

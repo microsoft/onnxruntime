@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 
 #include <cstdint>
@@ -140,14 +141,10 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
       program.SetSubgroupSize(config.subgroupSize);
     }
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
-    program.CacheHint(has_c, trans_a, trans_b,
-                      static_cast<uint32_t>(config.componentType),
-                      static_cast<uint32_t>(config.resultComponentType),
-                      config.M, config.N, config.K, config.subgroupSize,
-                      sg_mat_count_m, sg_mat_count_n, split_k)
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddOutput({output, ProgramTensorMetadataDependency::Rank, output->Shape(), 1})
+    program
+        .AddInputs({{a, ProgramTensorMetadataDependency::None, 1},
+                    {b, ProgramTensorMetadataDependency::None, 1}})
+        .AddOutput({output, ProgramTensorMetadataDependency::None, output->Shape(), 1})
         .AddUniformVariables({{M}, {N}, {K}, {alpha}, {beta}, {c_stride_m}, {c_stride_n}});
     if (has_c) {
       program.AddInput({c, ProgramTensorMetadataDependency::None});
@@ -163,9 +160,9 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
   SubgroupMatrixTilingSelector tiling_selector_;
 };
 
-Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelper& output,
-                                 bool has_c, bool trans_a, bool trans_b,
-                                 uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k) {
+Status GenerateShaderCode8x16x16(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output, bool has_c,
+                                 bool trans_a, bool trans_b, uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
+                                 uint32_t split_k) {
   return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_gemm_8x16x16.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_c, has_c),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_m, sg_mat_count_m),
@@ -190,17 +187,18 @@ SubgroupMatrixTilingSelector MakeDefaultTilingSelector() {
 
 }  // namespace
 
-Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status SubgroupMatrixGemmProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                           ConfiguredShaderHelper& shader) {
   shader.AddInput("input_a", ShaderUsage::UseUniform);
   shader.AddInput("input_b", ShaderUsage::UseUniform);
-  if (has_c_) {
+  if (config.has_c_) {
     shader.AddInput("input_c", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  if (config_.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, output, has_c_, trans_a_, trans_b_,
-                                     sg_mat_count_m_, sg_mat_count_n_, split_k_);
+  if (config.config_.Is(8, 16, 16)) {
+    return GenerateShaderCode8x16x16(shader, output, config.has_c_, config.trans_a_, config.trans_b_,
+                                     config.sg_mat_count_m_, config.sg_mat_count_n_, config.split_k_);
   }
   return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                 "Unsupported subgroup matrix config dimensions.");

@@ -5,21 +5,29 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class CumSumProgram final : public Program<CumSumProgram> {
- public:
-  CumSumProgram() : Program{"CumSum"} {}
+#define WEBGPU_CUM_SUM_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct CumSumProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_CUM_SUM_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "CumSum";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"axis", ProgramUniformVariableDataType::Uint32},
                                           {"exclusive", ProgramUniformVariableDataType::Uint32},
                                           {"reverse", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_CUM_SUM_PROGRAM_CONFIG
+
+using CumSumProgram = ConfiguredProgram<CumSumProgramShader>;
 
 class CumSum final : public WebGpuKernel {
  public:

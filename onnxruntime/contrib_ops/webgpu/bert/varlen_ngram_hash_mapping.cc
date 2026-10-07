@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/varlen_ngram_hash_mapping.h"
 
 #include "contrib_ops/cpu/bert/engram_helper.h"
@@ -24,7 +25,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()),
     VarlenNGramHashMapping);
 
-Status VarlenNGramValidateCuSeqlensProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenNGramValidateCuSeqlensProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                     ConfiguredShaderHelper& shader) {
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
   const auto& is_valid = shader.AddOutput("is_valid", ShaderUsage::UseUniform);
 
@@ -51,23 +53,24 @@ Status VarlenNGramValidateCuSeqlensProgram::GenerateShaderCode(ShaderHelper& sha
   return Status::OK();
 }
 
-Status VarlenNGramFillDefaultProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenNGramFillDefaultProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                               ConfiguredShaderHelper& shader) {
   const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
   const ShaderVariableHelper* eos_token_id = nullptr;
-  if (has_present_ids_ && has_eos_token_id_) {
+  if (config.has_present_ids_ && config.has_eos_token_id_) {
     eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   const ShaderVariableHelper* present_ids = nullptr;
-  if (has_present_ids_) {
+  if (config.has_present_ids_) {
     present_ids = &shader.AddOutput("present_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* present_segment_ids = nullptr;
-  if (has_present_segment_ids_) {
+  if (config.has_present_segment_ids_) {
     present_segment_ids = &shader.AddOutput("present_segment_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* state_update = nullptr;
-  if (has_state_update_) {
+  if (config.has_state_update_) {
     state_update = &shader.AddOutput("state_update", ShaderUsage::UseUniform);
   }
 
@@ -76,21 +79,21 @@ Status VarlenNGramFillDefaultProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "  if (global_idx < uniforms.output_count) {\n"
       << "    " << output.SetByOffset("global_idx", "0i") << "\n"
       << "  }\n";
-  if (has_present_ids_) {
+  if (config.has_present_ids_) {
     const std::string missing_history_value =
-        has_eos_token_id_ ? eos_token_id->GetByOffset("0u") : "uniforms.pad_id";
+        config.has_eos_token_id_ ? eos_token_id->GetByOffset("0u") : "uniforms.pad_id";
     shader.MainFunctionBody()
         << "  if (global_idx < uniforms.present_count) {\n"
         << "    " << present_ids->SetByOffset("global_idx", missing_history_value) << "\n"
         << "  }\n";
   }
-  if (has_present_segment_ids_) {
+  if (config.has_present_segment_ids_) {
     shader.MainFunctionBody()
         << "  if (global_idx < uniforms.present_count) {\n"
         << "    " << present_segment_ids->SetByOffset("global_idx", "0i") << "\n"
         << "  }\n";
   }
-  if (has_state_update_) {
+  if (config.has_state_update_) {
     shader.MainFunctionBody()
         << "  if (global_idx < uniforms.state_update_count) {\n"
         << "    " << state_update->SetByOffset("global_idx", "uniforms.pad_id") << "\n"
@@ -99,22 +102,23 @@ Status VarlenNGramFillDefaultProgram::GenerateShaderCode(ShaderHelper& shader) c
   return Status::OK();
 }
 
-Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenNGramHashMappingProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                               ConfiguredShaderHelper& shader) {
   const auto& input_ids = shader.AddInput("input_ids", ShaderUsage::UseUniform);
   const auto& multipliers = shader.AddInput("multipliers", ShaderUsage::UseUniform);
   const auto& vocab_sizes = shader.AddInput("vocab_sizes", ShaderUsage::UseUniform);
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
   const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
   const ShaderVariableHelper* past_ids = nullptr;
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* eos_token_id = nullptr;
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* nearest_reset = nullptr;
-  if (has_nearest_reset_) {
+  if (config.has_nearest_reset_) {
     nearest_reset = &shader.AddInput("nearest_reset", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
@@ -139,7 +143,7 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "  let state_length = uniforms.max_ngram_size - 1u;\n"
       << "  let num_heads = state_length * uniforms.n_head_per_ngram;\n"
       << "  let past_base = b * state_length;\n";
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     shader.MainFunctionBody()
         << "  let missing_history_value = " << eos_token_id->GetByOffset("0u") << ";\n";
   } else {
@@ -152,7 +156,7 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "    let out_h = work_item % num_heads;\n"
       << "    let n = out_h / uniforms.n_head_per_ngram + 2u;\n"
       << "    let mod_value = " << vocab_sizes.GetByOffset("out_h") << ";\n";
-  if (has_nearest_reset_) {
+  if (config.has_nearest_reset_) {
     shader.MainFunctionBody()
         << "    let last_reset = " << nearest_reset->GetByOffset("u32(start) + t") << ";\n";
   }
@@ -165,13 +169,13 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "      if (t >= k) {\n"
       << "        token = " << input_ids.GetByOffset("u32(start) + t - k") << ";\n"
       << "      }\n";
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     shader.MainFunctionBody()
         << "      if (t < k) {\n"
         << "        token = " << past_ids->GetByOffset("past_base + state_length + t - k") << ";\n"
         << "      }\n";
   }
-  if (has_nearest_reset_) {
+  if (config.has_nearest_reset_) {
     shader.MainFunctionBody()
         << "      if (last_reset != 0xffffffffu && source <= last_reset) { token = missing_history_value; }\n";
   }
@@ -188,24 +192,25 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
   return Status::OK();
 }
 
-Status VarlenNGramPrepareNearestResetProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenNGramPrepareNearestResetProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                       ConfiguredShaderHelper& shader) {
   const auto& input_ids = shader.AddInput("input_ids", ShaderUsage::UseUniform);
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
   const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
   const ShaderVariableHelper* past_ids = nullptr;
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* eos_token_id = nullptr;
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* segment_ids = nullptr;
-  if (has_segment_ids_) {
+  if (config.has_segment_ids_) {
     segment_ids = &shader.AddInput("segment_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* past_segment_ids = nullptr;
-  if (has_past_segment_ids_) {
+  if (config.has_past_segment_ids_) {
     past_segment_ids = &shader.AddInput("past_segment_ids", ShaderUsage::UseUniform);
   }
   const auto& nearest_reset = shader.AddOutput("nearest_reset", ShaderUsage::UseUniform);
@@ -219,7 +224,7 @@ Status VarlenNGramPrepareNearestResetProgram::GenerateShaderCode(ShaderHelper& s
       << "  if (start < 0 || start >= end || u32(end) > uniforms.total_tokens) { return; }\n"
       << "  let state_length = uniforms.max_ngram_size - 1u;\n"
       << "  let past_base = b * state_length;\n";
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     shader.MainFunctionBody()
         << "  let missing_history_value = " << eos_token_id->GetByOffset("0u") << ";\n";
   } else {
@@ -228,11 +233,11 @@ Status VarlenNGramPrepareNearestResetProgram::GenerateShaderCode(ShaderHelper& s
   shader.MainFunctionBody()
       << "  var has_reset = false;\n"
       << "  var last_reset = 0u;\n";
-  if (reset_on_eos_ && has_eos_token_id_) {
+  if (config.reset_on_eos_ && config.has_eos_token_id_) {
     shader.MainFunctionBody()
         << "  for (var i = 0u; i < state_length; i++) {\n"
         << "    var history_token = missing_history_value;\n";
-    if (has_past_ids_) {
+    if (config.has_past_ids_) {
       shader.MainFunctionBody()
           << "    history_token = " << past_ids->GetByOffset("past_base + i") << ";\n";
     }
@@ -240,7 +245,7 @@ Status VarlenNGramPrepareNearestResetProgram::GenerateShaderCode(ShaderHelper& s
         << "    if (history_token == missing_history_value) { has_reset = true; last_reset = i; }\n"
         << "  }\n";
   }
-  if (has_past_segment_ids_) {
+  if (config.has_past_segment_ids_) {
     shader.MainFunctionBody()
         << "  for (var i = 1u; i < state_length; i++) {\n"
         << "    if (" << past_segment_ids->GetByOffset("past_base + i") << " != "
@@ -257,12 +262,12 @@ Status VarlenNGramPrepareNearestResetProgram::GenerateShaderCode(ShaderHelper& s
       << "  " << nearest_reset.SetByOffset("u32(start)", "select(0xffffffffu, last_reset, has_reset)") << "\n"
       << "  for (var t = 1u; t < u32(end - start); t++) {\n"
       << "    var boundary = false;\n";
-  if (reset_on_eos_ && has_eos_token_id_) {
+  if (config.reset_on_eos_ && config.has_eos_token_id_) {
     shader.MainFunctionBody()
         << "    boundary = " << input_ids.GetByOffset("u32(start) + t - 1u")
         << " == missing_history_value;\n";
   }
-  if (has_segment_ids_) {
+  if (config.has_segment_ids_) {
     shader.MainFunctionBody()
         << "    boundary = boundary || " << segment_ids->GetByOffset("u32(start) + t")
         << " != " << segment_ids->GetByOffset("u32(start) + t - 1u") << ";\n";
@@ -275,7 +280,8 @@ Status VarlenNGramPrepareNearestResetProgram::GenerateShaderCode(ShaderHelper& s
   return Status::OK();
 }
 
-Status VarlenNGramAddHeadOffsetsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenNGramAddHeadOffsetsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                  ConfiguredShaderHelper& shader) {
   const auto& hash_ids = shader.AddInput("hash_ids", ShaderUsage::UseUniform);
   const auto& head_offsets = shader.AddInput("head_offsets", ShaderUsage::UseUniform);
   const auto& vocab_sizes = shader.AddInput("vocab_sizes", ShaderUsage::UseUniform);
@@ -295,35 +301,36 @@ Status VarlenNGramAddHeadOffsetsProgram::GenerateShaderCode(ShaderHelper& shader
   return Status::OK();
 }
 
-Status VarlenNGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenNGramPresentIdsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                              ConfiguredShaderHelper& shader) {
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
   const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
   const ShaderVariableHelper* eos_token_id = nullptr;
-  if (has_present_ids_ && has_eos_token_id_) {
+  if (config.has_present_ids_ && config.has_eos_token_id_) {
     eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* input_ids = nullptr;
-  if (has_present_ids_) {
+  if (config.has_present_ids_) {
     input_ids = &shader.AddInput("input_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* past_ids = nullptr;
-  if (has_present_ids_ && has_past_ids_) {
+  if (config.has_present_ids_ && config.has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* segment_ids = nullptr;
   const ShaderVariableHelper* past_segment_ids = nullptr;
-  if (has_present_segment_ids_) {
+  if (config.has_present_segment_ids_) {
     segment_ids = &shader.AddInput("segment_ids", ShaderUsage::UseUniform);
-    if (has_past_segment_ids_) {
+    if (config.has_past_segment_ids_) {
       past_segment_ids = &shader.AddInput("past_segment_ids", ShaderUsage::UseUniform);
     }
   }
   const ShaderVariableHelper* present_ids = nullptr;
-  if (has_present_ids_) {
+  if (config.has_present_ids_) {
     present_ids = &shader.AddOutput("present_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* present_segment_ids = nullptr;
-  if (has_present_segment_ids_) {
+  if (config.has_present_segment_ids_) {
     present_segment_ids = &shader.AddOutput("present_segment_ids", ShaderUsage::UseUniform);
   }
 
@@ -340,9 +347,9 @@ Status VarlenNGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) co
       // Defense-in-depth: is_valid already guarantees this globally.
       << "  if (start >= 0 && start < end && u32(end) <= uniforms.total_tokens) {\n"
       << "    let local_length = u32(end - start);\n";
-  if (has_present_ids_) {
+  if (config.has_present_ids_) {
     shader.MainFunctionBody() << "    var token = ";
-    if (has_eos_token_id_) {
+    if (config.has_eos_token_id_) {
       shader.MainFunctionBody() << eos_token_id->GetByOffset("0u");
     } else {
       shader.MainFunctionBody() << "uniforms.pad_id";
@@ -354,25 +361,25 @@ Status VarlenNGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) co
         << "      token = " << input_ids->GetByOffset("u32(start) + source_t") << ";\n"
         << "    }\n";
   }
-  if (has_present_ids_ && has_past_ids_) {
+  if (config.has_present_ids_ && config.has_past_ids_) {
     shader.MainFunctionBody()
         << "    if (slot + local_length < uniforms.state_length) {\n"
         << "      token = "
         << past_ids->GetByOffset("b * uniforms.state_length + slot + local_length") << ";\n"
         << "    }\n";
   }
-  if (has_present_ids_) {
+  if (config.has_present_ids_) {
     shader.MainFunctionBody()
         << "    " << present_ids->SetByOffset("global_idx", "token") << "\n";
   }
-  if (has_present_segment_ids_) {
+  if (config.has_present_segment_ids_) {
     shader.MainFunctionBody()
         << "    var segment = " << segment_ids->GetByOffset("u32(start)") << ";\n"
         << "    if (slot + local_length >= uniforms.state_length) {\n"
         << "      let source_t = slot + local_length - uniforms.state_length;\n"
         << "      segment = " << segment_ids->GetByOffset("u32(start) + source_t") << ";\n"
         << "    }\n";
-    if (has_past_segment_ids_) {
+    if (config.has_past_segment_ids_) {
       shader.MainFunctionBody()
           << "    if (slot + local_length < uniforms.state_length) {\n"
           << "      segment = "
@@ -387,24 +394,25 @@ Status VarlenNGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) co
   return Status::OK();
 }
 
-Status VarlenNGramStateUpdateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status VarlenNGramStateUpdateProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                               ConfiguredShaderHelper& shader) {
   const auto& input_ids = shader.AddInput("input_ids", ShaderUsage::UseUniform);
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
   const auto& capture_count = shader.AddInput("capture_count", ShaderUsage::UseUniform);
   const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
   const ShaderVariableHelper* past_ids = nullptr;
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* eos_token_id = nullptr;
-  if (has_eos_token_id_) {
+  if (config.has_eos_token_id_) {
     eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
   }
   const auto& state_update = shader.AddOutput("state_update", ShaderUsage::UseUniform);
 
   shader.MainFunctionBody()
-      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
-      << "  if (" << is_valid.GetByOffset("0u") << " == 0u) { return; }\n"
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total") << "  if (" << is_valid.GetByOffset("0u")
+      << " == 0u) { return; }\n"
       << "  let row_width = uniforms.state_update_capacity * uniforms.state_length;\n"
       << "  let b = global_idx / row_width;\n"
       << "  let item = global_idx % row_width;\n"
@@ -418,15 +426,14 @@ Status VarlenNGramStateUpdateProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "  let captured = select(0u, min(u32(requested), min(local_length, uniforms.state_update_capacity)), "
          "requested > 0);\n"
       << "  let missing_history_value = "
-      << (has_eos_token_id_ ? eos_token_id->GetByOffset("0u") : "uniforms.pad_id") << ";\n"
+      << (config.has_eos_token_id_ ? eos_token_id->GetByOffset("0u") : "uniforms.pad_id") << ";\n"
       << "  var token = uniforms.pad_id;\n"
       << "  if (t < captured) {\n"
       << "    let consumed = t + 1u;\n"
       << "    if (consumed + slot >= uniforms.state_length) {\n"
-      << "      token = "
-      << input_ids.GetByOffset("u32(start) + consumed + slot - uniforms.state_length") << ";\n"
+      << "      token = " << input_ids.GetByOffset("u32(start) + consumed + slot - uniforms.state_length") << ";\n"
       << "    }\n";
-  if (has_past_ids_) {
+  if (config.has_past_ids_) {
     shader.MainFunctionBody()
         << "    if (consumed + slot < uniforms.state_length) {\n"
         << "      token = " << past_ids->GetByOffset("b * uniforms.state_length + consumed + slot") << ";\n"
@@ -598,8 +605,7 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
     const bool fill_uses_eos_token_id = has_present_ids && has_eos_token_id;
     VarlenNGramFillDefaultProgram fill_program{
         has_present_ids, has_present_segment_ids, state_update != nullptr, fill_uses_eos_token_id};
-    fill_program.CacheHint(
-        has_present_ids, has_present_segment_ids, state_update != nullptr, fill_uses_eos_token_id);
+
     fill_program.AddInput({&is_valid, ProgramTensorMetadataDependency::None});
     if (fill_uses_eos_token_id) {
       fill_program.AddInput({eos_token_id, ProgramTensorMetadataDependency::None});
@@ -631,11 +637,9 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
       nearest_reset = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), TensorShape({total_tokens}));
       VarlenNGramPrepareNearestResetProgram prepare_program{
           has_past_ids, has_eos_token_id, has_segment_ids, has_past_segment_ids, reset_on_eos_};
-      prepare_program.CacheHint(
-                         has_past_ids, has_eos_token_id, has_segment_ids, has_past_segment_ids, reset_on_eos_)
-          .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
-                      {cu_seqlens, ProgramTensorMetadataDependency::None},
-                      {&is_valid, ProgramTensorMetadataDependency::None}});
+      prepare_program.AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
+                                 {cu_seqlens, ProgramTensorMetadataDependency::None},
+                                 {&is_valid, ProgramTensorMetadataDependency::None}});
       if (has_past_ids) {
         prepare_program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
       }
@@ -666,12 +670,11 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
     }
 
     VarlenNGramHashMappingProgram program{has_past_ids, has_eos_token_id, has_nearest_reset};
-    program.CacheHint(has_past_ids, has_eos_token_id, has_nearest_reset)
-        .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
-                    {multipliers, ProgramTensorMetadataDependency::None},
-                    {vocab_sizes, ProgramTensorMetadataDependency::None},
-                    {cu_seqlens, ProgramTensorMetadataDependency::None},
-                    {&is_valid, ProgramTensorMetadataDependency::None}});
+    program.AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
+                       {multipliers, ProgramTensorMetadataDependency::None},
+                       {vocab_sizes, ProgramTensorMetadataDependency::None},
+                       {cu_seqlens, ProgramTensorMetadataDependency::None},
+                       {&is_valid, ProgramTensorMetadataDependency::None}});
     if (has_past_ids) {
       program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }
@@ -708,8 +711,7 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
   if (present_count > 0) {
     VarlenNGramPresentIdsProgram present_program{
         has_present_ids, has_present_segment_ids, has_past_ids, has_past_segment_ids, has_eos_token_id};
-    present_program.CacheHint(
-        has_present_ids, has_present_segment_ids, has_past_ids, has_past_segment_ids, has_eos_token_id);
+
     present_program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
     present_program.AddInput({&is_valid, ProgramTensorMetadataDependency::None});
     if (has_present_ids && has_eos_token_id) {
@@ -745,11 +747,10 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
 
   if (state_update_count > 0) {
     VarlenNGramStateUpdateProgram state_update_program{has_past_ids, has_eos_token_id};
-    state_update_program.CacheHint(has_past_ids, has_eos_token_id)
-        .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
-                    {cu_seqlens, ProgramTensorMetadataDependency::None},
-                    {capture_count, ProgramTensorMetadataDependency::None},
-                    {&is_valid, ProgramTensorMetadataDependency::None}});
+    state_update_program.AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
+                                    {cu_seqlens, ProgramTensorMetadataDependency::None},
+                                    {capture_count, ProgramTensorMetadataDependency::None},
+                                    {&is_valid, ProgramTensorMetadataDependency::None}});
     if (has_past_ids) {
       state_update_program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }

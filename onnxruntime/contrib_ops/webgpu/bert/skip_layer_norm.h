@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -13,36 +14,37 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
- public:
-  SkipLayerNormProgram(bool hasBeta, bool hasBias, float epsilon, uint32_t hidden_size, bool has_input_skip_bias_sum, bool simplified, bool split_hidden_dim) : Program{"SkipLayerNorm"} {
-    epsilon_ = epsilon;
-    hasBeta_ = hasBeta;
-    hasBias_ = hasBias;
-    epsilon_ = epsilon;
-    hidden_size_ = hidden_size;
-    has_input_skip_bias_sum_ = has_input_skip_bias_sum;
-    simplified_ = simplified;
-    split_hidden_dim_ = split_hidden_dim;
-  }
+#define WEBGPU_SKIP_LAYER_NORM_PROGRAM_CONFIG(F) \
+  F(bool, hasBeta_)                              \
+  F(bool, hasBias_)                              \
+  F(bool, has_input_skip_bias_sum_)              \
+  F(bool, simplified_)                           \
+  F(bool, split_hidden_dim_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct SkipLayerNormProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_SKIP_LAYER_NORM_PROGRAM_CONFIG);
+    Config(bool hasBeta, bool hasBias, bool has_input_skip_bias_sum, bool simplified, bool split_hidden_dim) {
+      hasBeta_ = hasBeta;
+      hasBias_ = hasBias;
+
+      has_input_skip_bias_sum_ = has_input_skip_bias_sum;
+      simplified_ = simplified;
+      split_hidden_dim_ = split_hidden_dim;
+    }
+  };
+  static constexpr std::string_view name = "SkipLayerNorm";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"components", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32},
       {"skip_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool hasBeta_;
-  bool hasBias_;
-  float epsilon_;
-  uint32_t hidden_size_;
-  bool has_input_skip_bias_sum_;
-  bool simplified_;
-  bool split_hidden_dim_;
 };
+#undef WEBGPU_SKIP_LAYER_NORM_PROGRAM_CONFIG
+
+using SkipLayerNormProgram = ConfiguredProgram<SkipLayerNormProgramShader>;
 
 template <bool simplified>
 class SkipLayerNorm final : public WebGpuKernel {
@@ -52,9 +54,6 @@ class SkipLayerNorm final : public WebGpuKernel {
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
-
- protected:
-  std::string cache_hint;
 
  private:
   float epsilon_;

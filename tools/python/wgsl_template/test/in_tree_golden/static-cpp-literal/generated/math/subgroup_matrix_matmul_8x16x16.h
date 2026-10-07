@@ -6,7 +6,7 @@
 // Source: math/subgroup_matrix_matmul_8x16x16.wgsl.template
 
 template <>
-Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">::type params) {
+Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">::type params) {
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract parameters

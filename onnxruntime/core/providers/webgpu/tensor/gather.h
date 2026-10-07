@@ -4,25 +4,31 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/cpu/tensor/gatherbase.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class GatherProgram final : public Program<GatherProgram> {
- public:
-  GatherProgram(const uint32_t axis, bool is_int64) : Program{"Gather"}, axis_{axis}, is_int64_{is_int64} {}
+#define WEBGPU_GATHER_PROGRAM_CONFIG(F) \
+  F(uint32_t, axis_)                    \
+  F(bool, is_int64_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct GatherProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_GATHER_PROGRAM_CONFIG);
+    Config(const uint32_t axis, bool is_int64) : axis_{axis}, is_int64_{is_int64} {}
+  };
+  static constexpr std::string_view name = "Gather";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32},
                                           {"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t axis_;
-  bool is_int64_;
 };
+#undef WEBGPU_GATHER_PROGRAM_CONFIG
+
+using GatherProgram = ConfiguredProgram<GatherProgramShader>;
 
 class Gather final : public WebGpuKernel, public GatherBase {
  public:

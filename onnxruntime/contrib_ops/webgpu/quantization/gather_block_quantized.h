@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -16,25 +17,37 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedProgram> {
- public:
-  GatherBlockQuantizedProgram(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, int bits, bool has_zeropoint,
-                              TensorShape x_shape, TensorShape output_shape, bool is_fp_quantized = false,
-                              int32_t fp_elem_type = 0, std::string scale_broadcast_axes = {})
-      : Program<GatherBlockQuantizedProgram>{"GatherBlockQuantized"},
-        is_signed_{is_signed},
-        is_uint8_{is_uint8},
-        indices_rank_{indices_rank},
-        gather_axis_{gather_axis},
-        bits_{bits},
-        has_zeropoint_{has_zeropoint},
-        x_shape_{x_shape},
-        output_shape_{output_shape},
-        is_fp_quantized_{is_fp_quantized},
-        fp_elem_type_{fp_elem_type},
-        scale_broadcast_axes_{std::move(scale_broadcast_axes)} {}
+#define WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_CONFIG(F) \
+  F(bool, is_signed_)                                   \
+  F(bool, is_uint8_)                                    \
+  F(size_t, indices_rank_)                              \
+  F(int, gather_axis_)                                  \
+  F(int, bits_)                                         \
+  F(bool, has_zeropoint_)                               \
+  F(size_t, x_rank_)                                    \
+  F(bool, is_fp_quantized_)                             \
+  F(int32_t, fp_elem_type_)                             \
+  F(std::string, scale_broadcast_axes_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct GatherBlockQuantizedProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_CONFIG);
+    Config(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, int bits,
+           bool has_zeropoint, const TensorShape& x_shape, bool is_fp_quantized = false, int32_t fp_elem_type = 0,
+           std::string scale_broadcast_axes = {})
+        : is_signed_{is_signed},
+          is_uint8_{is_uint8},
+          indices_rank_{indices_rank},
+          gather_axis_{gather_axis},
+          bits_{bits},
+          has_zeropoint_{has_zeropoint},
+          x_rank_{x_shape.NumDimensions()},
+          is_fp_quantized_{is_fp_quantized},
+          fp_elem_type_{fp_elem_type},
+          scale_broadcast_axes_{std::move(scale_broadcast_axes)} {}
+  };
+  static constexpr std::string_view name = "GatherBlockQuantized";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"quantize_axis", ProgramUniformVariableDataType::Uint32},
@@ -43,25 +56,17 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
                                           {"scale_qaxis_dim", ProgramUniformVariableDataType::Uint32},
                                           {"zp_packed_qaxis_dim", ProgramUniformVariableDataType::Uint32});
 
- private:
-  bool is_signed_;
-  bool is_uint8_;
-  size_t indices_rank_;
-  int gather_axis_;
-  int bits_;
-  bool has_zeropoint_;
-  TensorShape x_shape_;
-  TensorShape output_shape_;
   // When true, `data` holds FP8 or FP4 codes (rather than integer block-quantized codes) and
   // GenerateShaderCode emits a dequantization lookup table (indexed on the raw bit pattern)
   // instead of the (code - zero_point) integer formula. `fp_elem_type_` is the
   // ONNX_TENSOR_ELEMENT_DATA_TYPE_* value identifying which FP8/FP4 variant to build the table for.
-  bool is_fp_quantized_;
-  int32_t fp_elem_type_;
+
   // Entry `i` is '1' when axis `i` of `scales` is broadcast (dim == 1 while `data`'s dim is > 1);
   // only possible for FP8/FP4 data on axes other than quantize_axis.
-  std::string scale_broadcast_axes_;
 };
+#undef WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_CONFIG
+
+using GatherBlockQuantizedProgram = ConfiguredProgram<GatherBlockQuantizedProgramShader>;
 
 class GatherBlockQuantized final : public WebGpuKernel {
  public:

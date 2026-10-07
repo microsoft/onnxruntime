@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <string>
 
 #include "core/providers/common.h"
@@ -12,15 +13,15 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status ExpandProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size");
   // bool and uint8 are both 1-byte-per-element types that are packed 4-per-u32 in the storage buffer,
   // so they share the same broadcast logic and differ only in how a single element is extracted from
   // and assembled into the packed word.
-  const bool is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
-  const bool is_uint8 = Inputs()[0].var_type == ProgramVariableDataType::Uint8x4;
+  const bool is_bool = shader.InputType(0) == ProgramVariableDataType::Boolx4;
+  const bool is_uint8 = shader.InputType(0) == ProgramVariableDataType::Uint8x4;
   if (is_bool || is_uint8) {
     const auto& input_indices = shader.AddIndices("input_indices");
     const auto& output_indices = shader.AddIndices("output_indices");
@@ -52,13 +53,13 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
       return is_bool ? input.GetByOffset(word_offset) : ("unpack4xU8(" + input.GetByOffset(word_offset) + ")");
     };
 
-    if (input_last_dim_divisible_by_4_) {
+    if (config.input_last_dim_divisible_by_4_) {
       // The last dims of input shape and output shape are all divisible by 4, so a whole packed word
       // maps directly to a whole packed word.
       shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "  let input_offset = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
                                 << output.SetByOffset("global_idx", unpack_word("input_offset / 4"));
-    } else if (output_last_dim_divisible_by_4_) {
+    } else if (config.output_last_dim_divisible_by_4_) {
       // The last dim of output shape is divisible by 4, and the last dim of input shape is 1.
       shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "  let input_offset = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
@@ -126,13 +127,13 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
           {data_size},
       });
   if (is_packed_byte) {
-    program.CacheHint(std::to_string(static_cast<int>(input_last_dim_divisible_by_4)), std::to_string(static_cast<int>(output_last_dim_divisible_by_4)))
-        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, components_i}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, {data_size}, components_o}})
+    program
+        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, components_i}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, {data_size}, components_o}})
         .AddIndices(std::move(input_shape));
   } else {
-    program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_i}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_o}});
+    program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::None, components_i}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, components_o}});
   }
   if (is_packed_byte || components_i != components_o) {
     program.AddIndices(std::move(output_shape));

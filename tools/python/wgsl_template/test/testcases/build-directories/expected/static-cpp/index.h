@@ -15,7 +15,7 @@ struct TemplateParameter<"utils.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"utils.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"utils.wgsl.template">::type params);
+Status ApplyTemplate<"utils.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"utils.wgsl.template">::type params);
 
 //
 // Template: @effects/blur.wgsl.template
@@ -28,7 +28,7 @@ struct TemplateParameter<"@effects/blur.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"@effects/blur.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"@effects/blur.wgsl.template">::type params);
+Status ApplyTemplate<"@effects/blur.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"@effects/blur.wgsl.template">::type params);
 
 //
 // Template: @effects/lighting.wgsl.template
@@ -41,4 +41,4 @@ struct TemplateParameter<"@effects/lighting.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"@effects/lighting.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"@effects/lighting.wgsl.template">::type params);
+Status ApplyTemplate<"@effects/lighting.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"@effects/lighting.wgsl.template">::type params);

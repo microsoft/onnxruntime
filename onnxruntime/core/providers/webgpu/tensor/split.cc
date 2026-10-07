@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/tensor/split.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -8,12 +9,12 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status SplitProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   InlinedVector<const ShaderVariableHelper*> outputs;
-  outputs.reserve(output_count_);
-  for (size_t i = 0; i < output_count_; ++i) {
+  outputs.reserve(config.output_count_);
+  for (size_t i = 0; i < config.output_count_; ++i) {
     outputs.push_back(
         &shader.AddOutput("output_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias));
   }
@@ -26,8 +27,8 @@ Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let within_outer = global_idx % uniforms.total_segment_elements;\n"
                             << "  var segment_start = 0u;\n";
 
-  for (size_t i = 0; i < output_count_; ++i) {
-    const std::string segment_size = GetElementAt("uniforms.segment_sizes", i, output_count_);
+  for (size_t i = 0; i < config.output_count_; ++i) {
+    const std::string segment_size = GetElementAt("uniforms.segment_sizes", i, config.output_count_);
     shader.MainFunctionBody()
         << "  {\n"
         << "    let segment_size = " << segment_size << ";\n"
@@ -126,14 +127,15 @@ Status Split::ComputeInternal(ComputeContext& context) const {
   const uint32_t element_count = input_size / components;
 
   SplitProgram program{non_empty_output_indices.size()};
-  program.AddInput({input, ProgramTensorMetadataDependency::Type, TensorShape({element_count}), components});
+  program.AddInput({input, ProgramTensorMetadataDependency::None, TensorShape({element_count}), components});
   for (int output_idx : non_empty_output_indices) {
     Tensor* output = all_outputs[output_idx];
-    program.AddOutput({output, ProgramTensorMetadataDependency::Type,
+    program.AddOutput({output, ProgramTensorMetadataDependency::None,
                        TensorShape({output->Shape().Size() / components}), components});
   }
-  program.SetDispatchGroupSize((element_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(non_empty_output_indices.size(), components)
+  program
+      .SetDispatchGroupSize((element_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+
       .AddUniformVariables({element_count, total_segment_elements,
                             gsl::span<const uint32_t>(segment_sizes.data(), segment_sizes.size())});
   return context.RunProgram(program);

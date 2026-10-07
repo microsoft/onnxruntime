@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -29,24 +30,34 @@ LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str);
 // WebGPU program for the fused linear attention kernel.
 // Each workgroup processes one (batch, head, dv_tile) combination.
 // Threads within a workgroup (one per dk row) cooperate on reductions.
-class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
- public:
-  LinearAttentionProgram(LinearAttentionUpdateRule update_rule, bool has_initial_state,
-                         bool initial_state_in_present_state,
-                         bool has_decay, bool has_beta, bool decay_broadcast_dk, int tile_v, int components,
-                         int subgroup_min_size)
-      : Program{"LinearAttention"},
-        update_rule_(update_rule),
-        has_initial_state_(has_initial_state),
-        initial_state_in_present_state_(initial_state_in_present_state),
-        has_decay_(has_decay),
-        has_beta_(has_beta),
-        decay_broadcast_dk_(decay_broadcast_dk),
-        tile_v_(tile_v),
-        components_(components),
-        subgroup_min_size_(subgroup_min_size) {}
+#define WEBGPU_LINEAR_ATTENTION_PROGRAM_CONFIG(F) \
+  F(LinearAttentionUpdateRule, update_rule_)      \
+  F(bool, has_initial_state_)                     \
+  F(bool, initial_state_in_present_state_)        \
+  F(bool, has_decay_)                             \
+  F(bool, has_beta_)                              \
+  F(bool, decay_broadcast_dk_)                    \
+  F(int, tile_v_)                                 \
+  F(int, components_)                             \
+  F(int, subgroup_min_size_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct LinearAttentionProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_LINEAR_ATTENTION_PROGRAM_CONFIG);
+    Config(LinearAttentionUpdateRule update_rule, bool has_initial_state, bool initial_state_in_present_state,
+           bool has_decay, bool has_beta, bool decay_broadcast_dk, int tile_v, int components, int subgroup_min_size)
+        : update_rule_(update_rule),
+          has_initial_state_(has_initial_state),
+          initial_state_in_present_state_(initial_state_in_present_state),
+          has_decay_(has_decay),
+          has_beta_(has_beta),
+          decay_broadcast_dk_(decay_broadcast_dk),
+          tile_v_(tile_v),
+          components_(components),
+          subgroup_min_size_(subgroup_min_size) {}
+  };
+  static constexpr std::string_view name = "LinearAttention";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -60,18 +71,10 @@ class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
       {"kv_per_k_head", ProgramUniformVariableDataType::Uint32},
       {"q_num_heads", ProgramUniformVariableDataType::Uint32},
       {"n_k_heads", ProgramUniformVariableDataType::Uint32});
-
- private:
-  LinearAttentionUpdateRule update_rule_;
-  bool has_initial_state_;
-  bool initial_state_in_present_state_;
-  bool has_decay_;
-  bool has_beta_;
-  bool decay_broadcast_dk_;
-  int tile_v_;
-  int components_;
-  int subgroup_min_size_;
 };
+#undef WEBGPU_LINEAR_ATTENTION_PROGRAM_CONFIG
+
+using LinearAttentionProgram = ConfiguredProgram<LinearAttentionProgramShader>;
 
 // Kernel for LinearAttention
 class LinearAttention : public WebGpuKernel {

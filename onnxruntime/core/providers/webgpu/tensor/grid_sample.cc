@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/tensor/grid_sample.h"
 
 #include "core/providers/webgpu/shader_helper.h"
@@ -9,13 +10,14 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status GridSampleProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GridSampleProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                   ConfiguredShaderHelper& shader) {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& grid = shader.AddInput("grid", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 
   // gs_denormalize: specialized per align_corners
-  if (align_corners_) {
+  if (config.align_corners_) {
     shader.AdditionalImplementation()
         << "fn gs_denormalize(n: f32, length: u32) -> f32 {\n"
         << "  return (n + 1.0) * 0.5 * f32(length - 1u);\n"
@@ -28,7 +30,7 @@ Status GridSampleProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // gs_reflect: only needed for reflection padding mode
-  if (padding_mode_ == 2) {
+  if (config.padding_mode_ == 2) {
     shader.AdditionalImplementation()
         << "fn gs_reflect(v: f32, v_min: f32, v_max: f32) -> f32 {\n"
         << "  var fv = v;\n"
@@ -49,7 +51,7 @@ Status GridSampleProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // gs_cubic_coeffs: only needed for bicubic mode
-  if (mode_ == 2) {
+  if (config.mode_ == 2) {
     shader.AdditionalImplementation()
         << "fn gs_cubic_coeffs(t: f32) -> vec4<f32> {\n"
         << "  let ax = abs(t);\n"
@@ -67,14 +69,14 @@ Status GridSampleProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation()
       << "fn gs_pixel(img_base: u32, r: i32, col: i32) -> f32 {\n";
 
-  if (padding_mode_ == 0) {
+  if (config.padding_mode_ == 0) {
     // zeros: out-of-bounds -> 0
     shader.AdditionalImplementation()
         << "  if (r < 0 || r >= i32(uniforms.H_in) || col < 0 || col >= i32(uniforms.W_in)) {\n"
         << "    return 0.0;\n"
         << "  }\n"
         << "  return f32(" << x.GetByOffset("img_base + u32(r) * uniforms.W_in + u32(col)") << ");\n";
-  } else if (padding_mode_ == 1) {
+  } else if (config.padding_mode_ == 1) {
     // border: clamp to nearest edge
     shader.AdditionalImplementation()
         << "  let cr = u32(clamp(r, 0, i32(uniforms.H_in) - 1));\n"
@@ -82,7 +84,7 @@ Status GridSampleProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  return f32(" << x.GetByOffset("img_base + cr * uniforms.W_in + cc") << ");\n";
   } else {
     // reflection: oscillating reflect, bounds depend on align_corners
-    if (align_corners_) {
+    if (config.align_corners_) {
       // reflect within [0, length-1]
       shader.AdditionalImplementation()
           << "  let rr = i32(gs_reflect(f32(r),   0.0, f32(uniforms.H_in) - 1.0));\n"
@@ -122,12 +124,12 @@ Status GridSampleProgram::GenerateShaderCode(ShaderHelper& shader) const {
        // Base flat offset for this (n, c) plane of X: [N, C, H_in, W_in]
        << "  let img_base = (n * uniforms.C + c) * uniforms.H_in * uniforms.W_in;\n";
 
-  if (mode_ == 1) {
+  if (config.mode_ == 1) {
     // nearest: round to nearest integer
     body << "  let rx = i32(round(px));\n"
          << "  let ry = i32(round(py));\n"
          << "  let result = gs_pixel(img_base, ry, rx);\n";
-  } else if (mode_ == 0) {
+  } else if (config.mode_ == 0) {
     // bilinear: 4-neighbor weighted interpolation
     body << "  let x1 = i32(floor(px));\n"
          << "  let y1 = i32(floor(py));\n"
@@ -233,11 +235,11 @@ Status GridSample::ComputeInternal(ComputeContext& context) const {
 
   GridSampleProgram program{mode_, padding_mode_, align_corners_};
   program
-      .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank},
-                  {grid, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({Y, ProgramTensorMetadataDependency::Rank})
+      .AddInputs(
+          {{X, ProgramTensorMetadataDependency::None}, {grid, ProgramTensorMetadataDependency::None}})
+      .AddOutput({Y, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(mode_, padding_mode_, static_cast<int>(align_corners_))
+
       .AddUniformVariables({{output_size},
                             {static_cast<uint32_t>(C)},
                             {static_cast<uint32_t>(H_in)},

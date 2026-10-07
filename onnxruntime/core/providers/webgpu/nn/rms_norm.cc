@@ -74,10 +74,9 @@ Status RMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
   LayerNormProgram program{/*has_bias=*/false, /*simplified=*/true, /*has_mean_output=*/false,
                            /*has_inv_std_dev_output=*/inv_std_dev != nullptr, split_norm_dim};
 
-  program.CacheHint(components, /*simplified=*/true, split_norm_dim)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
+  program.AddInputs({{x, ProgramTensorMetadataDependency::None, GetOverrideShape(x->Shape(), components), components}})
       .AddInputs(
-          {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
+          {{scale, ProgramTensorMetadataDependency::None, GetOverrideShape(scale->Shape(), components), components}})
       .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},

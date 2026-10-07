@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
@@ -20,7 +21,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     BiasGelu);
 
-Status BiasGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status BiasGeluProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                 ConfiguredShaderHelper& shader) {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
@@ -30,7 +32,7 @@ Status BiasGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var a = " << x.GetByOffset("global_idx") << ";\n";
 
   // Add bias to input
-  if (bias_components_ == 1) {
+  if (config.bias_components_ == 1) {
     shader.MainFunctionBody() << "  let bias_offset = global_idx * 4;\n"
                                  "  a += x_value_t("
                               << bias.GetByOffset("bias_offset % uniforms.bias_shape") << ", "
@@ -81,8 +83,8 @@ Status BiasGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) c
   }
 
   BiasGeluProgram program{bias_components};
-  program.AddInput({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
-      .AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, {bias_size}, bias_components})
+  program.AddInput({input, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+      .AddInput({bias, ProgramTensorMetadataDependency::None, {bias_size}, bias_components})
       .AddOutput({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariable({vec_size});

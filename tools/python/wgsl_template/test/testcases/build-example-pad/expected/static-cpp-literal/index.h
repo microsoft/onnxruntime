@@ -19,4 +19,4 @@ struct TemplateParameter<"tensor/pad.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"tensor/pad.wgsl.template">::type params);
+Status ApplyTemplate<"tensor/pad.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"tensor/pad.wgsl.template">::type params);

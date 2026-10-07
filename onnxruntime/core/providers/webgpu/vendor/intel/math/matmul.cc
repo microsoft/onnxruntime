@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
@@ -12,7 +13,8 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
-Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status MatMulSubgroupProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
@@ -22,17 +24,19 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   const ShaderVariableHelper* bias = nullptr;
-  if (has_bias_) {
+  if (config.has_bias_) {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
+  std::string apply_activation = GetActivationSnippet(config.activation_, "output_value_t", "output_element_t");
   // Emit activation helpers before the write function uses them.
-  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
+  shader.AdditionalImplementation() << GetActivationDeclaration(config.activation_, "output_value_t",
+                                                                "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
-  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
+  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, config.is_channels_last_);
   // generate the main function
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_, a_vec4_, b_is_fp16_));
+  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, config.elements_per_thread_, &batch_dims, config.is_vec4_,
+                                               config.a_vec4_, config.b_is_fp16_));
   return Status::OK();
 }
 
@@ -130,11 +134,9 @@ Status ApplyMatMulIntel(ComputeContext& context,
   MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16,
                                 is_channels_last, elements_per_thread};
   program
-      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
-                 a_vec4, b_is_fp16, is_channels_last)
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
-      .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
+      .AddInputs({{a, ProgramTensorMetadataDependency::None, a_shape_temp, a_components},
+                  {b, ProgramTensorMetadataDependency::None, b_shape_temp, b_components}})
+      .AddOutputs({{output, ProgramTensorMetadataDependency::None, output_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
@@ -146,7 +148,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
     const int bias_components = is_channels_last ? components : 1;
     const auto* bias = inputs[2];
     TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
+    program.AddInput({bias, ProgramTensorMetadataDependency::None, reduced_bias_shape, bias_components});
   }
 
   return context.RunProgram(program);

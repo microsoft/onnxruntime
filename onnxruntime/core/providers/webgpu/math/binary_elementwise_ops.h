@@ -7,71 +7,75 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> {
- public:
-  BinaryElementwiseProgram(const std::string& kernel_name,
-                           const std::string& expression,
-                           const std::string& additional_impl,
-                           const bool is_broadcast,
-                           const bool is_lhs_scalar,
-                           const bool is_rhs_scalar,
-                           const bool is_lhs_use_4_components,
-                           const bool is_rhs_use_4_components,
-                           const bool vectorize,
-                           const bool is_int64_input = false,
-                           const bool is_int64_output = false) : Program{kernel_name},
-                                                                 expression_{expression},
-                                                                 additional_impl_{additional_impl},
-                                                                 is_broadcast_{is_broadcast},
-                                                                 is_lhs_scalar_{is_lhs_scalar},
-                                                                 is_rhs_scalar_{is_rhs_scalar},
-                                                                 is_lhs_use_4_components_{is_lhs_use_4_components},
-                                                                 is_rhs_use_4_components_{is_rhs_use_4_components},
-                                                                 vectorize_{vectorize},
-                                                                 is_int64_input_{is_int64_input},
-                                                                 is_int64_output_{is_int64_output} {}
+enum class BinaryImplementation { None,
+                                  Min,
+                                  Max,
+                                  Pow };
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG(F) \
+  F(std::string, program_name_)                     \
+  F(ShaderLiteral, expression_)                     \
+  F(BinaryImplementation, implementation_)          \
+  F(bool, is_broadcast_)                            \
+  F(bool, is_lhs_scalar_)                           \
+  F(bool, is_rhs_scalar_)                           \
+  F(bool, is_lhs_use_4_components_)                 \
+  F(bool, is_rhs_use_4_components_)                 \
+  F(bool, vectorize_)                               \
+  F(bool, is_int64_input_)                          \
+  F(bool, is_int64_output_)
+
+struct BinaryElementwiseProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG);
+    Config(const std::string& kernel_name, ShaderLiteral expression, BinaryImplementation implementation,
+           const bool is_broadcast, const bool is_lhs_scalar, const bool is_rhs_scalar,
+           const bool is_lhs_use_4_components, const bool is_rhs_use_4_components, const bool vectorize,
+           const bool is_int64_input = false, const bool is_int64_output = false)
+        : program_name_{kernel_name},
+          expression_{expression},
+          implementation_{implementation},
+          is_broadcast_{is_broadcast},
+          is_lhs_scalar_{is_lhs_scalar},
+          is_rhs_scalar_{is_rhs_scalar},
+          is_lhs_use_4_components_{is_lhs_use_4_components},
+          is_rhs_use_4_components_{is_rhs_use_4_components},
+          vectorize_{vectorize},
+          is_int64_input_{is_int64_input},
+          is_int64_output_{is_int64_output} {}
+  };
+  static std::string_view Name(const Config& config) { return config.program_name_; }
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
                                           {"element_count", ProgramUniformVariableDataType::Uint32});
-
- private:
-  std::string_view expression_;
-  std::string_view additional_impl_;
-  bool is_broadcast_;
-  bool is_lhs_scalar_;
-  bool is_rhs_scalar_;
-  bool is_lhs_use_4_components_;
-  bool is_rhs_use_4_components_;
-  bool vectorize_;
-  bool is_int64_input_;
-  bool is_int64_output_;
 };
+#undef WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG
+
+using BinaryElementwiseProgram = ConfiguredProgram<BinaryElementwiseProgramShader>;
 
 class BinaryElementwise : public WebGpuKernel {
  public:
-  using GetAdditionalImplementationFunction = std::string (*)(int lhs_element_type, int rhs_element_type);
-
   BinaryElementwise(const OpKernelInfo& info,
                     const std::string& kernel_name,
-                    const std::string& expression,
-                    const GetAdditionalImplementationFunction get_additional_impl = nullptr) : WebGpuKernel{info},
-                                                                                               kernel_name_{kernel_name},
-                                                                                               expression_{expression},
-                                                                                               get_additional_impl_{get_additional_impl} {}
+                    ShaderLiteral expression,
+                    BinaryImplementation implementation = BinaryImplementation::None) : WebGpuKernel{info},
+                                                                                        kernel_name_{kernel_name},
+                                                                                        expression_{expression},
+                                                                                        implementation_{implementation} {}
 
  protected:
   Status ComputeInternal(ComputeContext& context) const final;
 
  private:
   std::string kernel_name_;
-  std::string expression_;
-  const GetAdditionalImplementationFunction get_additional_impl_;
+  ShaderLiteral expression_;
+  const BinaryImplementation implementation_;
 };
 
 // Registers the binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
@@ -85,23 +89,21 @@ void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enab
 // two-input binary element-wise program, reusing its broadcasting and vectorization paths.
 class VariadicElementwise : public WebGpuKernel {
  public:
-  using GetAdditionalImplementationFunction = std::string (*)(int lhs_element_type, int rhs_element_type);
-
   VariadicElementwise(const OpKernelInfo& info,
                       const std::string& kernel_name,
-                      const std::string& expression,
-                      const GetAdditionalImplementationFunction get_additional_impl = nullptr) : WebGpuKernel{info},
-                                                                                                 kernel_name_{kernel_name},
-                                                                                                 expression_{expression},
-                                                                                                 get_additional_impl_{get_additional_impl} {}
+                      ShaderLiteral expression,
+                      BinaryImplementation implementation = BinaryImplementation::None) : WebGpuKernel{info},
+                                                                                          kernel_name_{kernel_name},
+                                                                                          expression_{expression},
+                                                                                          implementation_{implementation} {}
 
  protected:
   Status ComputeInternal(ComputeContext& context) const final;
 
  private:
   std::string kernel_name_;
-  std::string expression_;
-  const GetAdditionalImplementationFunction get_additional_impl_;
+  ShaderLiteral expression_;
+  const BinaryImplementation implementation_;
 };
 
 }  // namespace webgpu

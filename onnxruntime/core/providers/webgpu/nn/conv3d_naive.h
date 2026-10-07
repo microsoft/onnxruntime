@@ -5,16 +5,24 @@
 
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class Conv3DNaiveProgram final : public Program<Conv3DNaiveProgram> {
- public:
-  Conv3DNaiveProgram(const Activation& activation, bool has_bias, bool is_channels_last)
-      : Program("Conv3DNaive"), activation_(activation), has_bias_(has_bias), is_channels_last_(is_channels_last) {
-  }
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_CONV3_D_NAIVE_PROGRAM_CONFIG(F) \
+  F(ShaderActivation, activation_)             \
+  F(bool, has_bias_)                           \
+  F(bool, is_channels_last_)
+
+struct Conv3DNaiveProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_CONV3_D_NAIVE_PROGRAM_CONFIG);
+    Config(const Activation& activation, bool has_bias, bool is_channels_last)
+        : activation_(activation), has_bias_(has_bias), is_channels_last_(is_channels_last) {}
+  };
+  static constexpr std::string_view name = "Conv3DNaive";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"output_size", ProgramUniformVariableDataType::Uint32},
       {"filter_dims", ProgramUniformVariableDataType::Uint32},
@@ -24,12 +32,10 @@ class Conv3DNaiveProgram final : public Program<Conv3DNaiveProgram> {
       {"x_spatial", ProgramUniformVariableDataType::Uint32},
       {"x_channels", ProgramUniformVariableDataType::Uint32},
       WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
-
- private:
-  const Activation& activation_;
-  bool has_bias_;
-  bool is_channels_last_;
 };
+#undef WEBGPU_CONV3_D_NAIVE_PROGRAM_CONFIG
+
+using Conv3DNaiveProgram = ConfiguredProgram<Conv3DNaiveProgramShader>;
 
 }  // namespace webgpu
 }  // namespace onnxruntime

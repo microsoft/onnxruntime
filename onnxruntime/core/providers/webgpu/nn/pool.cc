@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -76,7 +77,7 @@ POOLING_KERNEL_WITH_INDICES(MaxPool, kMSInternalNHWCDomain, true, MaxPool<8>, 12
 POOLING_KERNEL(GlobalMaxPool, kOnnxDomain, false, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, kMSInternalNHWCDomain, true, MaxPool<1>, 1)
 
-Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status PoolProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   // The value type carries the component count: for NHWC the channel is innermost and pooling
   // never crosses it, so a thread can carry four channels through the same window arithmetic.
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -92,13 +93,14 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string downsampling_code;
 
   constexpr const size_t kStringInitialSize = 128;
-  if (is_max_pool_) {
+  if (config.is_max_pool_) {
     SS(var_decl_ss, kStringInitialSize);
-    var_decl_ss << "  var value = input_value_t(" << (is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f") << ");\n";
+    var_decl_ss << "  var value = input_value_t(" << (config.is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f")
+                << ");\n";
     var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
-    if (use_parallel_reduction_) {
+    if (config.use_parallel_reduction_) {
       downsampling_code = "  sum_or_max_shared[local_idx] = value;\n";
     }
   } else {
@@ -116,30 +118,29 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // Divisor: with count_include_pad, count every cell inside the padded region (excluding only the
     // ceil_mode overflow cells, flagged by is_outside_padded_region); otherwise count real input
     // cells only. is_pad / is_outside_padded_region are computed in the kernel loop below.
-    counting_code = count_include_pad_
-                        ? "    if (!is_outside_padded_region) {\n      count++;\n    }\n"
-                        : "    if (!is_pad) {\n      count++;\n    }\n";
+    counting_code = config.count_include_pad_ ? "    if (!is_outside_padded_region) {\n      count++;\n    }\n"
+                                              : "    if (!is_pad) {\n      count++;\n    }\n";
 
     SS(downsampling_ss, kStringInitialSize);
-    if (use_parallel_reduction_) {
+    if (config.use_parallel_reduction_) {
       downsampling_ss << "  sum_or_max_shared[local_idx] = value;\n"
                       << "  count_shared[local_idx] = count;\n";
     } else {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       downsampling_ss << "  if (count > 0u) {\n"
-                      << "    value /= input_value_t(" << (is_float16_ ? "f16" : "f32") << "(count));\n"
+                      << "    value /= input_value_t(" << (config.is_float16_ ? "f16" : "f32") << "(count));\n"
                       << "  }\n";
     }
     downsampling_code = SS_GET(downsampling_ss);
   }
 
-  const auto kernel_rank = kernel_shape_.size();
-  const auto pads_rank = kernel_shape_.size() * 2;
+  const auto kernel_rank = config.kernel_rank_;
+  const auto pads_rank = config.kernel_rank_ * 2;
   // The dimension index for H or D1
-  const auto data_dim_begin = is_nhwc_ ? 1 : 2;
+  const auto data_dim_begin = config.is_nhwc_ ? 1 : 2;
   // The dimension index after W or Dn
   auto data_dim_end = input.Rank();
-  data_dim_end = is_nhwc_ ? data_dim_end - 1 : data_dim_end;
+  data_dim_end = config.is_nhwc_ ? data_dim_end - 1 : data_dim_end;
 
   // For AveragePool with count_include_pad, detect window cells that fall beyond the padded region
   // (input + end padding). ceil_mode can round the output size up and push the last window past that
@@ -148,7 +149,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // can overflow, since the smallest window position is -pad_begin.
   std::string outside_flag_decl;
   std::string overflow_check_code;
-  if (!is_max_pool_ && count_include_pad_) {
+  if (!config.is_max_pool_ && config.count_include_pad_) {
     outside_flag_decl = "    var is_outside_padded_region = false;\n";
     SS(overflow_ss, kStringInitialSize);
     overflow_ss
@@ -168,15 +169,17 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string pad_break_code = overflow_check_code.empty() ? "        break;\n" : "";
 
   std::string sum_or_max_shared;
-  if (use_parallel_reduction_) {
-    shader.AdditionalImplementation()
-        << "var<workgroup> sum_or_max_shared : array<" << (is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
-        << (!is_max_pool_ ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n" : "");
+  if (config.use_parallel_reduction_) {
+    shader.AdditionalImplementation() << "var<workgroup> sum_or_max_shared : array<"
+                                      << (config.is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
+                                      << (!config.is_max_pool_
+                                              ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n"
+                                              : "");
 
     SS(shared_ss, 512);
     std::string sum_or_max_shared_op;
     std::string count_shared_op;
-    if (is_max_pool_) {
+    if (config.is_max_pool_) {
       sum_or_max_shared_op = "sum_or_max_shared[local_idx] = max(sum_or_max_shared[local_idx], sum_or_max_shared[local_idx + reduce_size]);\n";
     } else {
       sum_or_max_shared_op = "sum_or_max_shared[local_idx] += sum_or_max_shared[local_idx + reduce_size];\n";
@@ -195,16 +198,19 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
               << "  }\n";
     sum_or_max_shared = SS_GET(shared_ss);
   }
-  std::string kernel_loop_decl_code = use_parallel_reduction_ ? "  for (var i: u32 = local_idx; i < uniforms.kernel_size; i += workgroup_size_x) {\n" : "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n";
+  std::string kernel_loop_decl_code =
+      config.use_parallel_reduction_
+          ? "  for (var i: u32 = local_idx; i < uniforms.kernel_size; i += workgroup_size_x) {\n"
+          : "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n";
 
   SS(output_ss, kStringInitialSize);
-  if (use_parallel_reduction_) {
+  if (config.use_parallel_reduction_) {
     output_ss << "  if (local_idx == 0) {\n"
               << "    value = sum_or_max_shared[0];\n";
-    if (!is_max_pool_) {
+    if (!config.is_max_pool_) {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       output_ss << "    if (count_shared[0] > 0u) {\n"
-                << "      value /= " << (is_float16_ ? "f16" : "f32") << "(count_shared[0]);\n"
+                << "      value /= " << (config.is_float16_ ? "f16" : "f32") << "(count_shared[0]);\n"
                 << "    }\n";
     }
     output_ss << "    " << output.SetByOffset("workgroup_idx", "value") << ";\n"
@@ -215,12 +221,12 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string output_code = SS_GET(output_ss);
 
   auto& body = shader.MainFunctionBody();
-  body << (use_parallel_reduction_ ? "" : shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"))
-       << "  let y_indices = " << output.OffsetToIndices((use_parallel_reduction_ ? "workgroup_idx" : "global_idx")) << ";\n"
+  body << (config.use_parallel_reduction_ ? "" : shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"))
+       << "  let y_indices = "
+       << output.OffsetToIndices((config.use_parallel_reduction_ ? "workgroup_idx" : "global_idx")) << ";\n"
        << "  var x_indices = y_indices;\n"
        << "  var k_indices: array<u32, " << kernel_rank << ">;\n"
-       << var_decl_code
-       << kernel_loop_decl_code
+       << var_decl_code << kernel_loop_decl_code
        << "    var offset = i;\n"
        // ---- Compute offset to indices in pooling window.
        << "    for (var j = 0; j < " << kernel_rank << "; j++) {\n"
@@ -239,26 +245,21 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "      x_indices[j] = y_indices[j] * " << GetElementAt("uniforms.strides", "d_idx", kernel_rank) << ";\n"
        << "      x_indices[j] += k_indices[d_idx];\n"
        << "      x_indices[j] -= " << GetElementAt("uniforms.pads", "d_idx", pads_rank) << ";\n"
-       << "      let j_dim_len = " << input.IndicesGet("uniforms.input_shape", "j") << ";\n"
+       << "      let j_dim_len = " << input.IndicesGet("uniforms.input_shape", "j")
+       << ";\n"
        // ------ Check if x_indices[j] is out of bounds to handle padding. Once a cell is known to be
        //        padding, later dimensions can't change that, so break early -- EXCEPT under
        //        AveragePool + count_include_pad, where the overflow check below must run for every
        //        spatial dimension (pad_break_code is empty in that case).
        << "      if (x_indices[j] < 0 || x_indices[j] >= j_dim_len) {\n"
        << "        is_pad = true;\n"
-       << pad_break_code
-       << "      }\n"
-       << overflow_check_code
-       << "    }\n"
+       << pad_break_code << "      }\n"
+       << overflow_check_code << "    }\n"
        << "    if (!is_pad) {\n"
        << "      let x_val = " << input.GetByIndices("x_indices") << ";\n"
-       << sampling_code
-       << "    }\n"
-       << counting_code
-       << "  }\n"
-       << downsampling_code
-       << sum_or_max_shared
-       << output_code;
+       << sampling_code << "    }\n"
+       << counting_code << "  }\n"
+       << downsampling_code << sum_or_max_shared << output_code;
 
   return Status::OK();
 }
@@ -360,8 +361,7 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, use_parallel_reduction};
 
   program
-      .CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction)
-      .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddInputs({{X, ProgramTensorMetadataDependency::None, components}})
       .AddOutputs({{Y, ProgramTensorMetadataDependency::None, components}})
       .AddUniformVariables({output_size, kernel_size,
                             gsl::span<const uint32_t>(kernel_strides.data(), kernel_strides.size()),

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
 
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -13,11 +14,8 @@ namespace webgpu {
 // which are used in the MatMulWriteFnSource function.
 namespace {
 
-void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
-                                const ShaderVariableHelper& output,
-                                const ShaderVariableHelper* c,
-                                int output_components,
-                                bool c_is_scalar) {
+void HandleMaybeHaveBiasForGEMM(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
+                                const ShaderVariableHelper* c, int output_components, bool c_is_scalar) {
   shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));\n";
 
   if (c != nullptr) {
@@ -38,11 +36,8 @@ void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
   shader.AdditionalImplementation() << output.SetByIndices("coords", "value") << "\n";
 }
 
-void HandleMaybeBiasForMatMul(ShaderHelper& shader,
-                              const ShaderVariableHelper& output,
-                              const ShaderVariableHelper* bias,
-                              std::string activation_snippet,
-                              bool is_channels_last) {
+void HandleMaybeBiasForMatMul(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
+                              const ShaderVariableHelper* bias, std::string activation_snippet, bool is_channels_last) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
   if (bias != nullptr) {
     shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? bias->GetByOffset("colIn") : bias->GetByOffset("row")) << ");\n";
@@ -51,11 +46,8 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                                     << "    " << output.SetByIndices("coords", "value") << "\n";
 }
 
-void HandleMatMulWithSplitK(
-    ShaderHelper& shader,
-    bool is_gemm,
-    const ShaderVariableHelper& output,
-    ProgramVariableDataType output_variable_type) {
+void HandleMatMulWithSplitK(ConfiguredShaderHelper& shader, bool is_gemm, const ShaderVariableHelper& output,
+                            ProgramVariableDataType output_variable_type) {
   if (is_gemm) {
     shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));";
   } else {
@@ -109,7 +101,7 @@ void HandleMatMulWithSplitK(
 // `ProgramBase.SetDispatchGroupSize()` may be normalized in
 // `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
 // `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
-void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
+void InitializeLogicalWorkgroupIDAndGlobalID(ConfiguredShaderHelper& shader) {
   shader.MainFunctionBody()
       << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
       << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
@@ -119,7 +111,7 @@ void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
       << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
 }
 
-void EmitMatMulWriteFnHeader(ShaderHelper& shader, const ShaderVariableHelper& output) {
+void EmitMatMulWriteFnHeader(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output) {
   const int output_components = output.NumComponents();
   shader.AdditionalImplementation()
       << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) {\n";
@@ -130,7 +122,7 @@ void EmitMatMulWriteFnHeader(ShaderHelper& shader, const ShaderVariableHelper& o
                                     << "    var value = valueIn;\n";
 }
 
-void EmitMatMulWriteFnFooter(ShaderHelper& shader) {
+void EmitMatMulWriteFnFooter(ConfiguredShaderHelper& shader) {
   shader.AdditionalImplementation()
       << "  }\n"
       << "}\n\n";
@@ -138,14 +130,10 @@ void EmitMatMulWriteFnFooter(ShaderHelper& shader) {
 
 }  // namespace
 
-void MatMulReadFnSource(ShaderHelper& shader,
-                        std::string_view function_name,
-                        const ShaderVariableHelper& input,
-                        const std::string& input_name,
-                        const ShaderIndicesHelper* batch_dims,
-                        std::string_view rows,
-                        std::string_view components_per_row,
-                        bool transpose) {
+void MatMulReadFnSource(ConfiguredShaderHelper& shader, std::string_view function_name,
+                        const ShaderVariableHelper& input, const std::string& input_name,
+                        const ShaderIndicesHelper* batch_dims, std::string_view rows,
+                        std::string_view components_per_row, bool transpose) {
   const int components = input.NumComponents();
   const std::string data_type = "output_element_t";
   const std::string type_string = MakeScalarOrVectorType(components, data_type);
@@ -179,58 +167,39 @@ void MatMulReadFnSource(ShaderHelper& shader,
                                     << "}\n\n";
 }
 
-void MatMulReadFnSource(ShaderHelper& shader,
-                        const ShaderVariableHelper& a,
-                        const ShaderVariableHelper& b,
-                        const ShaderIndicesHelper* batch_dims,
-                        bool transA,
-                        bool transB) {
+void MatMulReadFnSource(ConfiguredShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
+                        const ShaderIndicesHelper* batch_dims, bool transA, bool transB) {
   MatMulReadFnSource(shader, "mm_readA", a, "a", batch_dims, "uniforms.dim_a_outer", "uniforms.dim_inner", transA);
   MatMulReadFnSource(shader, "mm_readB", b, "b", batch_dims, "uniforms.dim_inner", "uniforms.dim_b_outer", transB);
 }
 
-void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
-                                  const ShaderVariableHelper& output,
-                                  const ShaderVariableHelper* bias,
-                                  std::string activation_snippet,
+void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
+                                  const ShaderVariableHelper* bias, std::string activation_snippet,
                                   bool is_channels_last) {
   EmitMatMulWriteFnHeader(shader, output);
   HandleMaybeBiasForMatMul(shader, output, bias, activation_snippet, is_channels_last);
   EmitMatMulWriteFnFooter(shader);
 }
 
-void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
-                                const ShaderVariableHelper& output,
-                                const ShaderVariableHelper* bias,
-                                bool c_is_scalar) {
+void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
+                                const ShaderVariableHelper* bias, bool c_is_scalar) {
   EmitMatMulWriteFnHeader(shader, output);
   HandleMaybeHaveBiasForGEMM(shader, output, bias, output.NumComponents(), c_is_scalar);
   EmitMatMulWriteFnFooter(shader);
 }
 
-void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,
-                                   const ShaderVariableHelper& output,
-                                   bool is_gemm,
+void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output, bool is_gemm,
                                    ProgramVariableDataType output_variable_type) {
   EmitMatMulWriteFnHeader(shader, output);
   HandleMatMulWithSplitK(shader, is_gemm, output, output_variable_type);
   EmitMatMulWriteFnFooter(shader);
 }
 
-Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
-                                  const InlinedVector<int64_t>& elements_per_thread,
-                                  uint32_t workgroup_size_x,
-                                  uint32_t workgroup_size_y,
-                                  const std::string& data_type,
-                                  const ShaderIndicesHelper* batch_dims,
-                                  bool transpose_a,
-                                  bool transpose_b,
-                                  float alpha,
-                                  bool need_handle_matmul,
-                                  int output_components,
-                                  uint32_t tile_inner,
-                                  bool split_k,
-                                  uint32_t split_dim_inner) {
+Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
+                                  uint32_t workgroup_size_x, uint32_t workgroup_size_y, const std::string& data_type,
+                                  const ShaderIndicesHelper* batch_dims, bool transpose_a, bool transpose_b,
+                                  float alpha, bool need_handle_matmul, int output_components, uint32_t tile_inner,
+                                  bool split_k, uint32_t split_dim_inner) {
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
   std::string write_data_to_sub_a_vec4_snippet =
@@ -466,19 +435,10 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
   return Status::OK();
 }
 
-Status MakeMatMulPackedSource(ShaderHelper& shader,
-                              const InlinedVector<int64_t>& elements_per_thread,
-                              uint32_t workgroup_size_x,
-                              uint32_t workgroup_size_y,
-                              const std::string& data_type,
-                              const ShaderIndicesHelper* batch_dims,
-                              bool transpose_a,
-                              bool transpose_b,
-                              float alpha,
-                              bool need_handle_matmul,
-                              uint32_t tile_inner,
-                              bool split_k,
-                              uint32_t split_dim_inner) {
+Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
+                              uint32_t workgroup_size_x, uint32_t workgroup_size_y, const std::string& data_type,
+                              const ShaderIndicesHelper* batch_dims, bool transpose_a, bool transpose_b, float alpha,
+                              bool need_handle_matmul, uint32_t tile_inner, bool split_k, uint32_t split_dim_inner) {
   ORT_UNUSED_PARAMETER(split_k);
   ORT_UNUSED_PARAMETER(split_dim_inner);
 

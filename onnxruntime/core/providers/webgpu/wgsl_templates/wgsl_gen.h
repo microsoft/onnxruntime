@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/webgpu/configured_program.h"
 #include <array>
 #include <string_view>
 
@@ -14,7 +15,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class ShaderHelper;
+class ConfiguredShaderHelper;
 class ShaderVariableHelper;
 
 }  // namespace webgpu
@@ -66,8 +67,9 @@ template <string_template_filepath TemplateName>
 struct TemplateParameter;
 
 // Allow specialization for specific templates.
-template <string_template_filepath TemplateName, typename TemplateParameterType = typename TemplateParameter<TemplateName>::type>
-onnxruntime::common::Status ApplyTemplate(ShaderHelper& shader_helper, TemplateParameterType parameter);
+template <string_template_filepath TemplateName,
+          typename TemplateParameterType = typename TemplateParameter<TemplateName>::type>
+onnxruntime::common::Status ApplyTemplate(ConfiguredShaderHelper& shader_helper, TemplateParameterType parameter);
 
 #if defined(INCLUDED_BY_WGSL_GEN_HEADER)
 #error "macro INCLUDED_BY_WGSL_GEN_HEADER should not be defined yet."

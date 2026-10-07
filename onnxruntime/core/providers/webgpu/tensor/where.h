@@ -7,22 +7,27 @@
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class WhereProgram final : public Program<WhereProgram> {
- public:
-  WhereProgram(bool is_broadcast, bool is_int64 = false) : Program{"Where"}, is_broadcast_{is_broadcast}, is_int64_{is_int64} {
-  }
+#define WEBGPU_WHERE_PROGRAM_CONFIG(F) \
+  F(bool, is_broadcast_)               \
+  F(bool, is_int64_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct WhereProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_WHERE_PROGRAM_CONFIG);
+    Config(bool is_broadcast, bool is_int64 = false) : is_broadcast_{is_broadcast}, is_int64_{is_int64} {}
+  };
+  static constexpr std::string_view name = "Where";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool is_broadcast_;
-  const bool is_int64_;
 };
+#undef WEBGPU_WHERE_PROGRAM_CONFIG
+
+using WhereProgram = ConfiguredProgram<WhereProgramShader>;
 
 class Where final : public WebGpuKernel {
  public:

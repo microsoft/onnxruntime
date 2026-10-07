@@ -34,13 +34,13 @@ std::string pass_as_string(T&& v) {
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/math/matmul_gemv.h"  // 5ae837e52fbaa856b637c6f8801781389406334a2359f8efc49c49226d8e2983
-#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // 1aaff98897bad5e6e46888a2948ca3ac245eda97bdbbe7463c7cec4b6da6d0a9
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // e8c57a24be7028a3abfc97b621682fcbaa50068bb03648d092012c0936e307a3
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 8f4e48274de5ab42febd2d062ee1aca30efd78d7fb8c075d08f8d0b28ba7f9b6
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 460a3bdbd567ff378e9291aeee336fb81f19d2194f8a3f1ba036a663a488f16e
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // ea6d6ea3ad39540d34a2153b291792f6e419401941c9f1fcbc910a9d0880df54
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 2c39520bb179cbd18964c7364065e3de93d7f99b6e3eacee1e662ec8c4b88c04
+#include "wgsl_template_gen/generated/math/matmul_gemv.h"  // 9a2dfa487f81c1d879ca7fd1f22f5168a609dd6b0f0e28bde9920d64da3610b9
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // e4d4e632b627e3527f2a8448bdaaa996eb790a03befb030429af34c50400c6fd
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 42e4f2ce086e2618a213bd6695ece7fb1858c1864396c6a59b4cbe7fff8a3853
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // d3f4c3f262840606d0eed6de0550add7e622561448f9517b4a6b2d253cd34867
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // c51c36ba8f8b1c624f51daf78450271001177798f00e41d5b58e4cfd382cda6f
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 778821f611cf95f57bbdc512aac8cff341156a04d649b7fc2c851f16f3d99d38
+#include "wgsl_template_gen/generated/tensor/pad.h"  // a08c564e78ff2b4d15647ae29195c31739db9897dde1ae2fe513d4614c4e3795
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")

@@ -9,20 +9,28 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
- public:
-  GemmNaiveProgram(bool transA, bool transB, bool need_handle_bias, bool need_handle_matmul)
-      : Program{"GemmNaive"},
-        transA_{transA},
-        transB_{transB},
-        need_handle_bias_{need_handle_bias},
-        need_handle_matmul_{need_handle_matmul} {}
+#define WEBGPU_GEMM_NAIVE_PROGRAM_CONFIG(F) \
+  F(bool, transA_)                          \
+  F(bool, transB_)                          \
+  F(bool, need_handle_bias_)                \
+  F(bool, need_handle_matmul_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct GemmNaiveProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_GEMM_NAIVE_PROGRAM_CONFIG);
+    Config(bool transA, bool transB, bool need_handle_bias, bool need_handle_matmul)
+        : transA_{transA},
+          transB_{transB},
+          need_handle_bias_{need_handle_bias},
+          need_handle_matmul_{need_handle_matmul} {}
+  };
+  static constexpr std::string_view name = "GemmNaive";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"output_size", ProgramUniformVariableDataType::Uint32},
@@ -31,13 +39,10 @@ class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
       {"K", ProgramUniformVariableDataType::Uint32},
       {"alpha", ProgramUniformVariableDataType::Float32},
       {"beta", ProgramUniformVariableDataType::Float32});
-
- private:
-  bool transA_;
-  bool transB_;
-  bool need_handle_bias_;
-  bool need_handle_matmul_;
 };
+#undef WEBGPU_GEMM_NAIVE_PROGRAM_CONFIG
+
+using GemmNaiveProgram = ConfiguredProgram<GemmNaiveProgramShader>;
 
 class Gemm final : public WebGpuKernel {
  public:

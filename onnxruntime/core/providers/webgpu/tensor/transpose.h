@@ -7,16 +7,21 @@
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 // Transpose OIHW Weight to OHWI
-class OIHW2OHWIProgram final : public Program<OIHW2OHWIProgram> {
- public:
-  OIHW2OHWIProgram() : Program("OIHW2OHWI") {}
+#define WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct OIHW2OHWIProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_CONFIG);
+    Config() {}
+  };
+  static constexpr std::string_view name = "OIHW2OHWI";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"O", ProgramUniformVariableDataType::Uint32},
@@ -26,6 +31,9 @@ class OIHW2OHWIProgram final : public Program<OIHW2OHWIProgram> {
       {"Ci_tiles", ProgramUniformVariableDataType::Uint32},
       {"H_W_tiles", ProgramUniformVariableDataType::Uint32});
 };
+#undef WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_CONFIG
+
+using OIHW2OHWIProgram = ConfiguredProgram<OIHW2OHWIProgramShader>;
 
 class Transpose final : public WebGpuKernel, public TransposeBase {
  public:
@@ -42,22 +50,26 @@ class Transpose final : public WebGpuKernel, public TransposeBase {
   constexpr static uint32_t TILE_ROWS = 8;
 };
 
-class TransposeProgram final : public Program<TransposeProgram> {
- public:
-  TransposeProgram(const gsl::span<const size_t>& permutations, bool use_shared)
-      : Program{"Transpose"}, perm_(permutations.begin(), permutations.end()), use_shared_(use_shared) {
-  }
+#define WEBGPU_TRANSPOSE_PROGRAM_CONFIG(F) \
+  F(InlinedVector<int64_t>, perm_)         \
+  F(bool, use_shared_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct TransposeProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_TRANSPOSE_PROGRAM_CONFIG);
+    Config(const gsl::span<const size_t>& permutations, bool use_shared)
+        : perm_(permutations.begin(), permutations.end()), use_shared_(use_shared) {}
+  };
+  static constexpr std::string_view name = "Transpose";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
   WEBGPU_PROGRAM_DEFINE_CONSTANTS({"tile_size", Transpose::TILE_SIZE},
                                   {"tile_rows", Transpose::TILE_ROWS});
-
- private:
-  InlinedVector<int64_t> perm_;
-  const bool use_shared_;
 };
+#undef WEBGPU_TRANSPOSE_PROGRAM_CONFIG
+
+using TransposeProgram = ConfiguredProgram<TransposeProgramShader>;
 
 }  // namespace webgpu
 }  // namespace onnxruntime

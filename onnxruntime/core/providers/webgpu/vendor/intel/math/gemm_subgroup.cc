@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/string_macros.h"
@@ -161,16 +162,9 @@ int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M) {
   return M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : (is_xe_lpg_or_xe_3lpg ? 4 : 8)));
 }
 
-Status MakeMatMulSubgroupSource(ShaderHelper& shader,
-                                const InlinedVector<int64_t>& elements_per_thread,
-                                const ShaderIndicesHelper* batch_dims,
-                                bool is_vec4,
-                                bool a_vec4,
-                                bool b_is_fp16,
-                                bool transpose_a,
-                                bool transpose_b,
-                                float alpha,
-                                bool need_handle_matmul) {
+Status MakeMatMulSubgroupSource(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
+                                const ShaderIndicesHelper* batch_dims, bool is_vec4, bool a_vec4, bool b_is_fp16,
+                                bool transpose_a, bool transpose_b, float alpha, bool need_handle_matmul) {
   ORT_UNUSED_PARAMETER(transpose_a);
   ORT_UNUSED_PARAMETER(transpose_b);
 

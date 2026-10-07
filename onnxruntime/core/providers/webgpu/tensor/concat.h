@@ -6,25 +6,30 @@
 #include "core/providers/cpu/tensor/concatbase.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class ConcatProgram final : public Program<ConcatProgram> {
- public:
-  ConcatProgram(size_t axis, bool is_int64) : Program{"Concat"}, axis_{axis}, is_int64_{is_int64} {
-  }
+#define WEBGPU_CONCAT_PROGRAM_CONFIG(F) \
+  F(size_t, axis_)                      \
+  F(bool, is_int64_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct ConcatProgramShader {
+  struct Config final {
+    WEBGPU_CONFIG_MEMBERS(WEBGPU_CONCAT_PROGRAM_CONFIG);
+    Config(size_t axis, bool is_int64) : axis_{axis}, is_int64_{is_int64} {}
+  };
+  static constexpr std::string_view name = "Concat";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"offsets", ProgramUniformVariableDataType::Uint32},
                                           {"sizes_in_concat_axis", ProgramUniformVariableDataType::Uint32},
                                           {"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  size_t axis_;
-  bool is_int64_;
 };
+#undef WEBGPU_CONCAT_PROGRAM_CONFIG
+
+using ConcatProgram = ConfiguredProgram<ConcatProgramShader>;
 
 class Concat final : public WebGpuKernel, public ConcatBase {
  public:
