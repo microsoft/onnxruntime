@@ -18,7 +18,6 @@
 //    │   ├── dlls
 //    │   │   ├── onnxruntime.dll
 //    │   │   ├── webgpu_dawn.dll
-//    │   │   ├── dxil.dll
 //    │   │   └── dxcompiler.dll
 //    │   └── test.exe
 //    └── onnxruntime_webgpu_delay_load_test.exe (this binary)
@@ -63,7 +62,6 @@ int prepare_main() {
 
   // copy the required DLLs to the dlls folder
   fs::copy_file(L"onnxruntime.dll", dlls_folder / L"onnxruntime.dll");
-  fs::copy_file(L"dxil.dll", dlls_folder / L"dxil.dll");
   fs::copy_file(L"dxcompiler.dll", dlls_folder / L"dxcompiler.dll");
   if (fs::exists(L"webgpu_dawn.dll")) {
     fs::copy_file(L"webgpu_dawn.dll", dlls_folder / L"webgpu_dawn.dll");

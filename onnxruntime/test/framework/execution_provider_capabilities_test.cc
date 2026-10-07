@@ -250,8 +250,9 @@ TEST(ExecutionProviderCapabilitiesTest, GraphCaptureCapabilityIsQueryableAndUsab
             OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES);
 
   ASSERT_TRUE(gc->ReplayGraph(GraphCaptureEp::kCapturedId, /*sync*/ true).IsOK());
+  ASSERT_TRUE(base.ReplayGraph(GraphCaptureEp::kCapturedId).IsOK());
   EXPECT_TRUE(gc->ReleaseCapturedGraph(GraphCaptureEp::kCapturedId).IsOK());
-  EXPECT_EQ(ep.replay_count(), 1) << "Replay must reach the concrete implementation.";
+  EXPECT_EQ(ep.replay_count(), 2) << "Both capability and legacy replay must reach the same implementation.";
 }
 
 // An EP that supports a data-layout preference is queryable through the base

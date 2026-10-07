@@ -449,20 +449,20 @@ struct EpilogueMoeFusedFinalizeBuilder {
 
     // Dummy methods to perform different parts of TMA/Tensormap modifications
 
-    template <bool IsLoad, class ProblemShapeMNKL>
+    template <bool IsLoad, bool WaitForInflightTmaRequests = true, class ProblemShapeMNKL, class TensorMaps>
     CUTLASS_DEVICE void tensormaps_perform_update([[maybe_unused]] TensorMapStorage& shared_tensormaps,
                                                   [[maybe_unused]] typename EpilogueOp::Params const& params,
-                                                  [[maybe_unused]] cute::TmaDescriptor const* tensormap, [[maybe_unused]] ProblemShapeMNKL problem_shape,
+                                                  [[maybe_unused]] TensorMaps const& tensormaps, [[maybe_unused]] ProblemShapeMNKL problem_shape,
                                                   [[maybe_unused]] int32_t next_batch, [[maybe_unused]] int32_t warp_group_idx) {
     }
 
-    template <bool IsLoad>
+    template <bool IsLoad, bool WaitForInflightTmaRequests = true, class TensorMaps>
     CUTLASS_DEVICE void tensormaps_cp_fence_release([[maybe_unused]] TensorMapStorage& shared_tensormaps,
-                                                    [[maybe_unused]] cute::TmaDescriptor const* tensormap, [[maybe_unused]] int32_t warp_group_idx) {
+                                                    [[maybe_unused]] TensorMaps const& tensormaps, [[maybe_unused]] int32_t warp_group_idx) {
     }
 
-    template <bool IsLoad>
-    CUTLASS_DEVICE void tensormaps_fence_acquire([[maybe_unused]] cute::TmaDescriptor const* tensormap) {
+    template <bool IsLoad, class TensorMaps>
+    CUTLASS_DEVICE void tensormaps_fence_acquire([[maybe_unused]] TensorMaps const& tensormaps) {
     }
   };
 

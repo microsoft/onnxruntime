@@ -420,10 +420,14 @@ Status TritonFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, co
     fused_node.AddAttribute("onnx_string", model_str);
     fused_node.SetExecutionProviderType(partition.nodes[0]->GetExecutionProviderType());
 
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(partition.nodes.size());
     for (auto& p_node : partition.nodes) {
+      source_node_indices.push_back(p_node->Index());
       graph_utils::RemoveNodeOutputEdges(graph, *p_node);
       graph.RemoveNode(p_node->Index());
     }
+    graph.NotifyNodeReplacement(source_node_indices, fused_node.Index());
 
     modified = true;
   }

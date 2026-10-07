@@ -1,0 +1,5 @@
+-keep class ai.onnxruntime.TelemetryInitializer { *; }
+-keep class ai.onnxruntime.telemetry.HttpClient { *; }
+-keep class ai.onnxruntime.telemetry.HttpClient$* { *; }
+-keep class ai.onnxruntime.telemetry.HttpClientRequest { *; }
+-keep class ai.onnxruntime.telemetry.HttpClientRequest$* { *; }

@@ -3,8 +3,8 @@
     "@chiragrupani/karma-chromium-edge-launcher": "^2.3.1",
     "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-node-resolve": "^15.2.3",
-    "@rollup/plugin-terser": "^0.4.4",
-    "copy-webpack-plugin": "^12.0.2",
+    "@rollup/plugin-terser": "^1.0.0",
+    "copy-webpack-plugin": "^14.0.0",
     "fs-extra": "^11.2.0",
     "globby": "^14.0.1",
     "karma": "^6.4.3",
@@ -13,15 +13,18 @@
     "karma-mocha-reporter": "^2.2.5",
     "light-server": "^2.9.1",
     "minimist": "^1.2.8",
-    "mocha": "^10.4.0",
+    "mocha": "^12.0.2",
     "parcel": "^2.12.0",
     "parcel-reporter-static-files-copy": "^1.5.3",
     "puppeteer-core": "23.11.0",
     "rollup": "^4.13.2",
     "rollup-plugin-copy": "^3.5.0",
     "tree-kill": "^1.2.2",
-    "vite": "^7.1.12",
+    "vite": ">=7.1.12 <=7.3.7",
     "webpack-cli": "^5.1.4"
+  },
+  "overrides": {
+    "terser": "5.49.0"
   },
   "scripts": {
     "build:w:esmjs": "webpack --mode=production --config webpack.config.esm-js.js",

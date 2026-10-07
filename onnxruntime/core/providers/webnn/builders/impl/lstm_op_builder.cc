@@ -258,14 +258,24 @@ bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
   bool has_Y_h = TensorExists(output_defs, 1);
   bool has_Y_c = TensorExists(output_defs, 2);
 
+  // WebNN lstm output names: output0 -> Y_h, output1 -> Y_c, output2 -> Y.
   if (has_Y && GetType(*output_defs[0], Y_type, logger)) {
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output2", "Y", logger);
+    std::vector<int64_t> Y_shape;
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output2", "Y", logger) &&
+           GetShape(*output_defs[0], Y_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "lstm", "output2", Y_shape.size(), node.Name(), logger);
   }
   if (has_Y_h && GetType(*output_defs[1], Y_h_type, logger)) {
-    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "output0", "Y_h", logger);
+    std::vector<int64_t> Y_h_shape;
+    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "output0", "Y_h", logger) &&
+           GetShape(*output_defs[1], Y_h_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "lstm", "output0", Y_h_shape.size(), node.Name(), logger);
   }
   if (has_Y_c && GetType(*output_defs[2], Y_c_type, logger)) {
-    return IsDataTypeSupportedByOp(op_type, Y_c_type, wnn_limits, "output1", "Y_c", logger);
+    std::vector<int64_t> Y_c_shape;
+    return IsDataTypeSupportedByOp(op_type, Y_c_type, wnn_limits, "output1", "Y_c", logger) &&
+           GetShape(*output_defs[2], Y_c_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "lstm", "output1", Y_c_shape.size(), node.Name(), logger);
   }
 
   return false;
