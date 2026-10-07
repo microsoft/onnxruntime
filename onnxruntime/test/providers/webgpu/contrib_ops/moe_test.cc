@@ -449,7 +449,7 @@ static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
   weights_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc;
   auto weights_buffer = context.Device().CreateBuffer(&weights_desc);
   wgpu::BufferDescriptor indices_desc{};
-  indices_desc.size = k * sizeof(uint32_t);
+  indices_desc.size = (k * sizeof(uint32_t) + 15) & ~size_t{15};
   indices_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc;
   auto indices_buffer = context.Device().CreateBuffer(&indices_desc);
   ASSERT_NE(weights_buffer.Get(), nullptr);
