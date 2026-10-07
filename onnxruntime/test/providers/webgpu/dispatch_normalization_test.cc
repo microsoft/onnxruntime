@@ -7,7 +7,6 @@
 #include <limits>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -17,14 +16,10 @@
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/math/gemm_packed.h"
-#include "core/providers/webgpu/math/matmul_packed.h"
+#include "core/providers/webgpu/math/gemm_utils.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/program_manager.h"
-#include "core/providers/webgpu/vendor/intel/math/gemm.h"
-#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
-#include "core/providers/webgpu/webgpu_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
@@ -33,26 +28,6 @@ namespace test {
 namespace {
 
 using namespace webgpu;
-
-TEST(WebGpuDispatchNormalizationTest, CeilDivHandlesIntegerLimits) {
-  constexpr uint32_t max_u32 = std::numeric_limits<uint32_t>::max();
-  constexpr uint64_t max_u64 = std::numeric_limits<uint64_t>::max();
-  constexpr int64_t max_i64 = std::numeric_limits<int64_t>::max();
-  EXPECT_EQ(CeilDiv(uint32_t{0}, uint32_t{2}), 0U);
-  EXPECT_EQ(CeilDiv(uint32_t{8}, uint32_t{2}), 4U);
-  EXPECT_EQ(CeilDiv(uint32_t{9}, uint32_t{2}), 5U);
-  EXPECT_EQ(CeilDiv(max_u32, uint32_t{1}), max_u32);
-  EXPECT_EQ(CeilDiv(max_u32, uint32_t{2}), max_u32 / 2 + 1);
-  EXPECT_EQ(CeilDiv(max_u64, uint64_t{2}), max_u64 / 2 + 1);
-  EXPECT_EQ(CeilDiv(max_i64, int64_t{1}), max_i64);
-  EXPECT_EQ(CeilDiv(max_i64, int64_t{2}), max_i64 / 2 + 1);
-}
-
-TEST(WebGpuDispatchNormalizationTest, CeilDivRejectsInvalidArguments) {
-  EXPECT_THROW(CeilDiv(uint32_t{1}, uint32_t{0}), OnnxRuntimeException);
-  EXPECT_THROW(CeilDiv(int64_t{1}, int64_t{-1}), OnnxRuntimeException);
-  EXPECT_THROW(CeilDiv(int64_t{-1}, int64_t{2}), OnnxRuntimeException);
-}
 
 TEST(WebGpuDispatchNormalizationTest, Conv2dMMRejectsSpatialSizeOverflow) {
   std::array<float, 1> data{};
@@ -123,127 +98,7 @@ TEST(WebGpuDispatchNormalizationTest, RejectsInvalidAndUnrepresentableCounts) {
   EXPECT_EQ(x, max);
 }
 
-class WebGpuDispatchShaderTest : public ::testing::Test {
- protected:
-  void SetUp() override {
-    WebGpuContextConfig config;
-    config.compile_only = true;
-    context_ = &WebGpuContextFactory::CreateContext(config);
-  }
-
-  void TearDown() override {
-    if (context_ != nullptr) {
-      WebGpuContextFactory::ReleaseContext(0);
-    }
-  }
-
-  void CheckGuard(const ProgramBase& program, bool split_k = false) {
-    std::vector<uint32_t> inputs_segments(program.Inputs().size(), 1);
-    std::vector<uint32_t> outputs_segments(program.Outputs().size(), 1);
-    ShaderHelper shader{program, program.Metadata(), *context_,
-                        inputs_segments, outputs_segments, 3, 3, 1};
-    ASSERT_STATUS_OK(program.GenerateShaderCode(shader));
-    const std::string body = std::move(shader.MainFunctionBody()).str();
-    const auto guard = body.find("if (logical_workgroup_id_z >= uniforms.logical_dispatch_z) { return; }");
-    ASSERT_NE(guard, std::string::npos) << body;
-    EXPECT_EQ(body.find("uniforms.logical_dispatch_x * uniforms.logical_dispatch_y"), std::string::npos);
-    EXPECT_EQ(body.substr(0, guard).find("local_id"), std::string::npos)
-        << "The return must be workgroup-uniform.";
-    for (const char* operation : {"mm_readA(", "mm_readB(", "mm_write(", "workgroupBarrier()"}) {
-      const auto position = body.find(operation);
-      if (position != std::string::npos) {
-        EXPECT_LT(guard, position) << operation;
-      }
-    }
-    if (split_k) {
-      const auto split = body.find("let split_index");
-      ASSERT_NE(split, std::string::npos);
-      EXPECT_LT(guard, split);
-    }
-  }
-
- private:
-  WebGpuContext* context_{nullptr};
-};
-
-TEST_F(WebGpuDispatchShaderTest, PackedMatMulScalarVec4AndSplitK) {
-  std::vector<float> data(2 * 8 * 64);
-  const OrtMemoryInfo memory_info;
-  for (bool vec4 : {false, true}) {
-    for (uint32_t split_dim_inner : {1U, 32U}) {
-      if (!vec4 && split_dim_inner > 1) continue;
-      SCOPED_TRACE(::testing::PrintToString(std::make_pair(vec4, split_dim_inner)));
-      const int components = vec4 ? 4 : 1;
-      Tensor a(DataTypeImpl::GetType<float>(), {2, 8, 64}, data.data(), memory_info);
-      Tensor b(DataTypeImpl::GetType<float>(), {2, 64, 8}, data.data(), memory_info);
-      Tensor output(DataTypeImpl::GetType<float>(), {2, 8, 8}, data.data(), memory_info);
-      InlinedVector<int64_t> elements_per_thread{4, 1, 1};
-      MatMulProgram program{Activation{}, false, vec4, elements_per_thread, true, split_dim_inner};
-      ProgramOutput program_output{&output, ProgramTensorMetadataDependency::Rank, components};
-      program_output.is_atomic = split_dim_inner > 1;
-      program.AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank, components},
-                         {&b, ProgramTensorMetadataDependency::TypeAndRank, components}})
-          .AddOutput(std::move(program_output))
-          .AddIndices(TensorShape{2})
-          .SetWorkgroupSize(8, 8, 1);
-      ASSERT_NO_FATAL_FAILURE(CheckGuard(program, split_dim_inner > 1));
-    }
-  }
-}
-
-TEST_F(WebGpuDispatchShaderTest, PackedGemmAndIntelSubgroupPrograms) {
-  std::vector<float> data(8 * 8);
-  const OrtMemoryInfo memory_info;
-  Tensor a(DataTypeImpl::GetType<float>(), {8, 8}, data.data(), memory_info);
-  Tensor b(DataTypeImpl::GetType<float>(), {8, 8}, data.data(), memory_info);
-  Tensor output(DataTypeImpl::GetType<float>(), {8, 8}, data.data(), memory_info);
-  for (bool vec4 : {false, true}) {
-    const int components = vec4 ? 4 : 1;
-    GemmProgram gemm{false, false, 1.0f, false, true, false, components, vec4};
-    gemm.AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank, components},
-                    {&b, ProgramTensorMetadataDependency::TypeAndRank, components}})
-        .AddOutput({&output, ProgramTensorMetadataDependency::Rank, components})
-        .SetWorkgroupSize(8, 8, 1);
-    ASSERT_NO_FATAL_FAILURE(CheckGuard(gemm));
-
-    InlinedVector<int64_t> elements_per_thread{4, 1, 1};
-    intel::GemmSubgroupProgram intel_gemm{false, false, 1.0f, false, true,
-                                          false, vec4, false, false, elements_per_thread};
-    intel_gemm.AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank},
-                          {&b, ProgramTensorMetadataDependency::TypeAndRank, components}})
-        .AddOutput({&output, ProgramTensorMetadataDependency::Rank, components})
-        .SetWorkgroupSize(256, 1, 1);
-    ASSERT_NO_FATAL_FAILURE(CheckGuard(intel_gemm));
-
-    intel::MatMulSubgroupProgram intel_matmul{Activation{}, false, vec4, false,
-                                              false, true, elements_per_thread};
-    intel_matmul.AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank},
-                            {&b, ProgramTensorMetadataDependency::TypeAndRank, components}})
-        .AddOutput({&output, ProgramTensorMetadataDependency::Rank, components})
-        .AddIndices(TensorShape{})
-        .SetWorkgroupSize(256, 1, 1);
-    ASSERT_NO_FATAL_FAILURE(CheckGuard(intel_matmul));
-  }
-}
-
-TEST_F(WebGpuDispatchShaderTest, Conv2dMMBothLayouts) {
-  std::vector<float> data(8 * 8 * 2 * 2);
-  const OrtMemoryInfo memory_info;
-  Tensor x(DataTypeImpl::GetType<float>(), {2, 8, 3, 3}, data.data(), memory_info);
-  Tensor w(DataTypeImpl::GetType<float>(), {8, 8, 2, 2}, data.data(), memory_info);
-  Tensor output(DataTypeImpl::GetType<float>(), {2, 8, 2, 2}, data.data(), memory_info);
-  const Activation activation;
-  for (bool channels_last : {false, true}) {
-    const std::vector<TensorShape> shapes = channels_last
-                                                ? std::vector<TensorShape>{{2, 3, 3, 8}, {2, 2, 8, 8}, {2, 2, 2, 8}}
-                                                : std::vector<TensorShape>{x.Shape(), {2, 2, 8, 8}, output.Shape()};
-    auto program = CreateConv2dMMProgram(
-        activation, {&x, &w}, {0, 0, 0, 0}, {1, 1}, {1, 1}, &output,
-        channels_last ? 4 : 8, channels_last ? 8 : 4, 32, channels_last, shapes);
-    ASSERT_NO_FATAL_FAILURE(CheckGuard(program));
-  }
-}
-
+// Supplies node metadata to ComputeContextBase; Compute() is not called.
 class DispatchTestKernel final : public OpKernel {
  public:
   explicit DispatchTestKernel(const OpKernelInfo& info) : OpKernel(info) {}
@@ -269,112 +124,167 @@ void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
 }
 
 wgpu::Buffer CreateStorageBuffer(WebGpuExecutionProvider& ep, gsl::span<float> data) {
-  auto& context = WebGpuContextFactory::GetContext(0);
-  wgpu::BufferDescriptor desc{};
-  desc.size = data.size() * sizeof(float);
-  desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
-  auto buffer = context.Device().CreateBuffer(&desc);
-  ep.BufferManager().Upload(ep.Recording(), data.data(), buffer.Get(), desc.size);
+  const size_t size = data.size() * sizeof(float);
+  auto buffer = wgpu::Buffer::Acquire(ep.BufferManager().Create(
+      ep.Recording(), size, wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst));
+  ep.BufferManager().Upload(ep.Recording(), data.data(), buffer.Get(), size);
   return buffer;
 }
 
-// Bind larger physical buffers while keeping logical tensor shapes unchanged.
-// Even a broken shader stays in-bounds physically; padding writes fail the test.
-void CheckMatMulPadding(uint32_t batches, uint32_t m, uint32_t n, uint32_t k,
-                        uint32_t dispatch_limit, bool broadcast_a = false, uint32_t splits = 1) {
-  ConfigOptions options;
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(ep, nullptr);
-  ep->SetLogger(&DefaultLoggingManager().DefaultLogger());
-  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
-  auto& context = WebGpuContextFactory::GetContext(0);
-  ASSERT_TRUE(context.HasDevice());
-
-  const bool vec4 = n % 4 == 0 && k % 4 == 0;
-  const int components = vec4 ? 4 : 1;
-  InlinedVector<int64_t> elements_per_thread{4, 1, 1};
-  const std::array<uint32_t, 3> logical{(n + 31) / 32, (m + 7) / 8, batches * splits};
-  auto physical = logical;
-  ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(
-      physical[0], physical[1], physical[2], dispatch_limit));
-  const uint32_t physical_count = physical[0] * physical[1] * physical[2];
-  const uint32_t padded_batches = (physical_count + logical[0] * logical[1] * splits - 1) /
-                                  (logical[0] * logical[1] * splits);
-  const size_t output_size = static_cast<size_t>(batches) * m * n;
-  constexpr float canary = -12345.0f;
-  std::vector<float> a_data(static_cast<size_t>(padded_batches) * m * k, 1.0f);
-  std::vector<float> b_data(static_cast<size_t>(padded_batches) * k * n, 1.0f);
-  std::vector<float> output_data(static_cast<size_t>(padded_batches) * m * n, canary);
-  if (splits > 1) {
-    std::fill_n(output_data.begin(), output_size, 0.0f);
+class WebGpuDispatchExecutionTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    ConfigOptions options;
+    ep_ = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    ASSERT_NE(ep_, nullptr);
+    ep_->SetLogger(&DefaultLoggingManager().DefaultLogger());
+    ASSERT_TRUE(WebGpuContextFactory::GetContext(0).HasDevice());
   }
 
-  auto a_buffer = CreateStorageBuffer(webgpu_ep, a_data);
-  auto b_buffer = CreateStorageBuffer(webgpu_ep, b_data);
-  auto output_buffer = CreateStorageBuffer(webgpu_ep, output_data);
-  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, WebGpuDevice, OrtMemTypeDefault);
-  Tensor a(DataTypeImpl::GetType<float>(), {broadcast_a ? 1 : batches, m, k}, a_buffer.Get(), memory_info);
-  Tensor b(DataTypeImpl::GetType<float>(), {batches, k, n}, b_buffer.Get(), memory_info);
-  Tensor output(DataTypeImpl::GetType<float>(), {batches, m, n}, output_buffer.Get(), memory_info);
-  MatMulProgram program{Activation{}, false, vec4, elements_per_thread, true, splits > 1 ? k / splits : 1};
-  ProgramOutput program_output{&output, ProgramTensorMetadataDependency::Rank, components};
-  program_output.is_atomic = splits > 1;
-  program.CacheHint(vec4, splits)
-      .AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank, components},
-                  {&b, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .AddOutput(std::move(program_output))
-      .AddIndices(TensorShape{batches})
-      .AddUniformVariables({{m}, {n}, {k}, {logical[0]}, {logical[1]}, {logical[2]}, {splits}})
-      .SetWorkgroupSize(8, 8, 1)
-      .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
-  AppendActivationUniformsData(Activation{}, program);
-  ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(webgpu_ep, program, output_buffer.Get(), output_data));
+  WebGpuExecutionProvider& Ep() { return static_cast<WebGpuExecutionProvider&>(*ep_); }
+
+ private:
+  std::unique_ptr<IExecutionProvider> ep_;
+};
+
+constexpr float kOutputPaddingCanary = -12345.0f;
+
+void CheckResultsAndPadding(gsl::span<const float> output_data, size_t output_size, float expected) {
+  ASSERT_LE(output_size, output_data.size());
   EXPECT_TRUE(std::all_of(output_data.begin(), output_data.begin() + output_size,
-                          [k](float value) { return value == static_cast<float>(k); }));
+                          [expected](float value) { return value == expected; }));
   EXPECT_TRUE(std::all_of(output_data.begin() + output_size, output_data.end(),
-                          [](float value) { return value == canary; }))
+                          [](float value) { return value == kOutputPaddingCanary; }))
       << "Normalization-added workgroups modified output padding.";
 }
 
-TEST(WebGpuDispatchExecutionTest, PackedMatMulPreservesPadding) {
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(7, 8, 8, 8, 5));
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(7, 8, 8, 7, 5));
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(7, 8, 8, 8, 5, true));
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(2, 24, 224, 8, 5));
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(2, 56, 96, 7, 5));
+class LogicalDispatchProbeProgram final : public Program<LogicalDispatchProbeProgram> {
+ public:
+  LogicalDispatchProbeProgram() : Program{"LogicalDispatchProbe"} {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LogicalDispatchProbeProgram);
+
+  static constexpr std::array<uint32_t, 3> kWorkgroupSize{4, 2, 2};
+  static constexpr uint32_t kValuesPerWorkgroup = 6;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    InitializeLogicalWorkgroupIDAndGlobalID(shader);
+    // Padded groups must return uniformly before this barrier.
+    shader.MainFunctionBody() << R"(
+  workgroupBarrier();
+  if (all(local_id == vec3u(workgroup_size_x - 1u, workgroup_size_y - 1u, workgroup_size_z - 1u))) {
+    let offset = workgroup_idx * 6u;
+)"
+                              << output.SetByOffset("offset", "f32(logical_workgroup_id.x)") << "\n"
+                              << output.SetByOffset("offset + 1u", "f32(logical_workgroup_id.y)") << "\n"
+                              << output.SetByOffset("offset + 2u", "f32(logical_workgroup_id.z)") << "\n"
+                              << output.SetByOffset("offset + 3u", "f32(logical_global_id.x)") << "\n"
+                              << output.SetByOffset("offset + 4u", "f32(logical_global_id.y)") << "\n"
+                              << output.SetByOffset("offset + 5u", "f32(logical_global_id.z)") << "\n"
+                              << "  }\n";
+    return Status::OK();
+  }
+};
+
+void CheckLogicalDispatch(WebGpuExecutionProvider& ep, const std::array<uint32_t, 3>& logical,
+                          uint32_t dispatch_limit, bool expect_logical_oob_writes = false) {
+  SCOPED_TRACE(::testing::PrintToString(logical));
+  auto physical = logical;
+  ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(
+      physical[0], physical[1], physical[2], dispatch_limit));
+  const uint32_t logical_count = logical[0] * logical[1] * logical[2];
+  const uint32_t physical_count = physical[0] * physical[1] * physical[2];
+  ASSERT_GE(physical_count, logical_count);
+  if (expect_logical_oob_writes) {
+    ASSERT_GT(physical_count, logical_count);
+  }
+  const uint32_t allowed_dispatch_z = expect_logical_oob_writes ? physical_count : logical[2];
+  constexpr auto workgroup_size = LogicalDispatchProbeProgram::kWorkgroupSize;
+  constexpr uint32_t values_per_workgroup = LogicalDispatchProbeProgram::kValuesPerWorkgroup;
+  const size_t output_size = static_cast<size_t>(logical_count) * values_per_workgroup;
+  // Even without the guard, every physical workgroup has a valid output slot.
+  std::vector<float> output_data(static_cast<size_t>(physical_count) * values_per_workgroup, kOutputPaddingCanary);
+  auto output_buffer = CreateStorageBuffer(ep, output_data);
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, WebGpuDevice, OrtMemTypeDefault);
+  Tensor output(DataTypeImpl::GetType<float>(), {static_cast<int64_t>(output_size)}, output_buffer.Get(), memory_info);
+  LogicalDispatchProbeProgram program;
+  program.AddOutput({&output, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddUniformVariables({{logical[0]}, {logical[1]}, {allowed_dispatch_z}})
+      .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
+      .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+  ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(ep, program, output_buffer.Get(), output_data));
+
+  size_t offset = 0;
+  for (uint32_t z = 0; z < logical[2]; ++z) {
+    for (uint32_t y = 0; y < logical[1]; ++y) {
+      for (uint32_t x = 0; x < logical[0]; ++x) {
+        const std::array<uint32_t, 3> coordinates{x, y, z};
+        for (size_t axis = 0; axis < coordinates.size(); ++axis) {
+          ASSERT_EQ(output_data[offset + axis], static_cast<float>(coordinates[axis]));
+          ASSERT_EQ(output_data[offset + 3 + axis],
+                    static_cast<float>(coordinates[axis] * workgroup_size[axis] + workgroup_size[axis] - 1));
+        }
+        offset += values_per_workgroup;
+      }
+    }
+  }
+  if (expect_logical_oob_writes) {
+    EXPECT_TRUE(std::any_of(output_data.begin() + output_size, output_data.end(),
+                            [](float value) { return value != kOutputPaddingCanary; }))
+        << "The canary must detect writes by excess workgroups.";
+  } else {
+    EXPECT_TRUE(std::all_of(output_data.begin() + output_size, output_data.end(),
+                            [](float value) { return value == kOutputPaddingCanary; }))
+        << "Normalization-added workgroups modified output padding.";
+  }
 }
 
-TEST(WebGpuDispatchExecutionTest, SplitKPreservesPaddingAndValidSplits) {
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(7, 8, 8, 96, 5, false, 3));
+TEST_F(WebGpuDispatchExecutionTest, LogicalCoordinatesAndPadding) {
+  struct Case {
+    std::array<uint32_t, 3> logical;
+    uint32_t limit;
+  };
+  const Case cases[] = {
+      {{1, 1, 1}, 5},
+      {{3, 2, 2}, 5},
+      {{7, 1, 1}, 5},
+      {{1, 7, 1}, 5},
+      {{1, 1, 7}, 5},
+      {{7, 3, 2}, 5},
+      {{1, 1, 65535}, 65535},
+      {{1, 1, 65536}, 65535},
+      {{1, 1, 70000}, 65535},
+  };
+  for (const auto& test_case : cases) {
+    ASSERT_NO_FATAL_FAILURE(CheckLogicalDispatch(Ep(), test_case.logical, test_case.limit));
+  }
 }
 
-TEST(WebGpuDispatchExecutionTest, LargeBatchAndExactDispatchControls) {
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(65535, 8, 8, 8, 65535));
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(65536, 8, 8, 8, 65535));
-  ASSERT_NO_FATAL_FAILURE(CheckMatMulPadding(70000, 8, 8, 8, 65535));
+TEST_F(WebGpuDispatchExecutionTest, CanaryDetectsExcessWorkgroups) {
+  // Trigger logical OOB writes into physically valid padding to verify canary detection.
+  ASSERT_NO_FATAL_FAILURE(CheckLogicalDispatch(Ep(), {1, 1, 7}, 5, true));
 }
 
-TEST(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
-  ConfigOptions options;
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(ep, nullptr);
-  ep->SetLogger(&DefaultLoggingManager().DefaultLogger());
-  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
+TEST_F(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
   const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, WebGpuDevice, OrtMemTypeDefault);
   constexpr uint32_t batches = 7;
-  constexpr float canary = -12345.0f;
   std::array<uint32_t, 3> physical{1, 1, batches};
   ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], 5));
   const uint32_t padded_batches = physical[0] * physical[1] * physical[2];
   std::vector<float> x_data(padded_batches * 8 * 3 * 3, 1.0f);
   std::vector<float> w_data(8 * 8 * 2 * 2, 1.0f);
-  auto x_buffer = CreateStorageBuffer(webgpu_ep, x_data);
-  auto w_buffer = CreateStorageBuffer(webgpu_ep, w_data);
+  auto x_buffer = CreateStorageBuffer(Ep(), x_data);
+  auto w_buffer = CreateStorageBuffer(Ep(), w_data);
   const Activation activation;
   for (bool channels_last : {false, true}) {
     SCOPED_TRACE(channels_last);
-    std::vector<float> output_data(padded_batches * 8 * 2 * 2, canary);
-    auto output_buffer = CreateStorageBuffer(webgpu_ep, output_data);
+    std::vector<float> output_data(padded_batches * 8 * 2 * 2, kOutputPaddingCanary);
+    auto output_buffer = CreateStorageBuffer(Ep(), output_data);
     const TensorShape x_shape = channels_last ? TensorShape{batches, 3, 3, 8} : TensorShape{batches, 8, 3, 3};
     const TensorShape output_shape = channels_last ? TensorShape{batches, 2, 2, 8} : TensorShape{batches, 8, 2, 2};
     Tensor x(DataTypeImpl::GetType<float>(), x_shape, x_buffer.Get(), memory_info);
@@ -385,10 +295,8 @@ TEST(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
         channels_last ? 4 : 8, channels_last ? 8 : 4, 32, channels_last,
         {x_shape, w.Shape(), output_shape});
     program.SetDispatchGroupSize(physical[0], physical[1], physical[2]);
-    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(webgpu_ep, program, output_buffer.Get(), output_data));
-    const auto padding = output_data.begin() + batches * 8 * 2 * 2;
-    EXPECT_TRUE(std::all_of(output_data.begin(), padding, [](float value) { return value == 32.0f; }));
-    EXPECT_TRUE(std::all_of(padding, output_data.end(), [](float value) { return value == canary; }));
+    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+    CheckResultsAndPadding(output_data, batches * 8 * 2 * 2, 32.0f);
   }
 }
 
