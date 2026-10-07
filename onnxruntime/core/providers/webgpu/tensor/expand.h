@@ -32,10 +32,8 @@ class Expand final : public WebGpuKernel {
 };
 
 // Create Expand kernel info with appropriate type constraints based on int64 support
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateExpandKernelInfo(bool enable_int64);
+KernelCreateInfo CreateExpandVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateExpandKernelInfo(int since_version, bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

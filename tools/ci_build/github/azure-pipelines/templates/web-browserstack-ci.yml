@@ -10,8 +10,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
-    submodules: false
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'
@@ -27,9 +27,9 @@ jobs:
     displayName: 'Read commit SHA and checkout'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
 
-  - task: NodeTool@0
+  - task: UseNode@1
     inputs:
-      versionSpec: '22.x'
+      version: '24.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: 'Release_*/**/*'

@@ -41,7 +41,17 @@ export interface InferenceSessionHandler extends SessionHandler {
     feeds: SessionHandler.FeedsType,
     fetches: SessionHandler.FetchesType,
     options: InferenceSession.RunOptions,
+    activeLoraAdapters?: readonly LoraAdapterHandler[],
   ): Promise<SessionHandler.ReturnType>;
+}
+
+/**
+ * Represent a handler instance of a LoRA adapter.
+ *
+ * @ignore
+ */
+export interface LoraAdapterHandler {
+  dispose(): Promise<void>;
 }
 
 /**
@@ -59,6 +69,12 @@ export interface Backend {
     uriOrBuffer: string | Uint8Array,
     options?: InferenceSession.SessionOptions,
   ): Promise<InferenceSessionHandler>;
+
+  /**
+   * Create a LoRA adapter handler. Optional. A backend that does not implement this method does not support LoRA
+   * adapters.
+   */
+  createLoraAdapterHandler?(uriOrBuffer: string | Uint8Array): Promise<LoraAdapterHandler>;
 }
 
 export { registerBackend } from './backend-impl.js';

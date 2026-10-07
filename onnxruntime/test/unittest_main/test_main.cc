@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -32,6 +31,7 @@
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
+#include "test/util/include/telemetry_test_environment.h"
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 #define TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
@@ -41,6 +41,11 @@
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/skipping_test_listener.h"
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE) && defined(ORT_UNIT_TEST_HAS_WEBGPU_STATIC_PLUGIN_EP)
+#define TEST_MAIN_ENABLE_WEBGPU_STATIC_PLUGIN_EP_USAGE
+#include "core/session/onnxruntime_env_config_keys.h"
+#endif
 
 std::unique_ptr<Ort::Env> ort_env;
 
@@ -61,6 +66,9 @@ constexpr const char* kDynamicPluginEpConfigJsonFile = "ORT_UNIT_TEST_MAIN_DYNAM
 
 // ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
 extern "C" void ortenv_setup() {
+  // Fully suppress telemetry for the unit-test process before any Ort::Env (and therefore the platform
+  // telemetry provider) is created, so local non-CI runs never spin up the uploader or emit events.
+  onnxruntime::test::SuppressTelemetryForTests();
   ORT_TRY {
 #ifdef _WIN32
     // Set the locale to UTF-8 to ensure proper handling of wide characters on Windows
@@ -79,7 +87,27 @@ extern "C" void ortenv_setup() {
       log_level = static_cast<OrtLoggingLevel>(*log_level_override);
     }
 
+#if defined(TEST_MAIN_ENABLE_WEBGPU_STATIC_PLUGIN_EP_USAGE)
+    // The WebGPU plugin EP is statically linked into the ORT binary and is registered by ORT core while the
+    // environment is created, so "allow_virtual_devices" must be set here rather than being derived from a
+    // ".virtual" EP library registration name (there is no library registration call to name). This lets the
+    // WebGPU factory surface a virtual GPU device, which gives dynamic_plugin_ep_infra::Initialize() below a
+    // selectable WebGPU device so the binary doesn't exit at startup when GetEpDevices() would otherwise be
+    // empty (no real GPU). It does not make non-compile-only WebGPU tests runnable without a device.
+    Ort::KeyValuePairs env_config_entries{};
+    env_config_entries.Add(kOrtEnvAllowVirtualDevices, "1");
+
+    OrtEnvCreationOptions env_creation_options{};
+    env_creation_options.version = ORT_API_VERSION;
+    env_creation_options.logging_severity_level = static_cast<int32_t>(log_level);
+    env_creation_options.log_id = "Default";
+    env_creation_options.threading_options = &tpo;
+    env_creation_options.config_entries = env_config_entries.GetConst();
+
+    ort_env.reset(new Ort::Env(&env_creation_options));
+#else
     ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
+#endif
 
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
     {
@@ -112,6 +140,45 @@ extern "C" void ortenv_setup() {
             "  \"ep_library_path\": \"" ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH
             "\",\n"
             "  \"selected_ep_name\": \"CUDAExecutionProvider\"\n"
+            "}");
+      }
+#endif
+
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP) && defined(ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH)
+      if (!dynamic_plugin_ep_config_json.has_value()) {
+        // Register with a ".virtual" suffix so ORT auto-sets env config "allow_virtual_devices"=1, letting
+        // the WebGPU factory surface a virtual GPU device. Its only purpose here is to give
+        // dynamic_plugin_ep_infra::Initialize() (below) a selectable WebGPU device so the binary doesn't
+        // exit at startup when GetEpDevices() would otherwise be empty (no real GPU). It does not make
+        // non-compile-only WebGPU tests runnable without a device: the virtual device only backs device-free
+        // compile-only sessions, and a real GPU, when present, is enumerated first and preferred (see the
+        // resize(1) de-dup in test_dynamic_plugin_ep.cc).
+        dynamic_plugin_ep_config_json.emplace(
+            "{\n"
+            "  \"ep_library_registration_name\": \"WebGpuExecutionProvider.virtual\",\n"
+            "  \"ep_library_path\": \"" ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH
+            "\",\n"
+            // Enable int64 so the generic (EP-agnostic) int64 operator tests exercise the WebGPU
+            // int64 kernels on the plugin path too (mirrors DefaultWebGpuExecutionProvider on the
+            // static path). The key is the un-prefixed provider option name for plugin EPs.
+            "  \"default_ep_options\": { \"enableInt64\": \"1\" },\n"
+            "  \"selected_ep_name\": \"WebGpuExecutionProvider\"\n"
+            "}");
+      }
+#endif
+
+#if defined(TEST_MAIN_ENABLE_WEBGPU_STATIC_PLUGIN_EP_USAGE)
+      if (!dynamic_plugin_ep_config_json.has_value()) {
+        // No "ep_library_path": ORT core already registered the statically linked WebGPU plugin EP when the
+        // environment above was created.
+        dynamic_plugin_ep_config_json.emplace(
+            "{\n"
+            "  \"ep_library_registration_name\": \"WebGpuExecutionProvider\",\n"
+            // Enable int64 so the generic (EP-agnostic) int64 operator tests exercise the WebGPU
+            // int64 kernels on the plugin path too (mirrors DefaultWebGpuExecutionProvider on the
+            // internal EP path). The key is the un-prefixed provider option name for plugin EPs.
+            "  \"default_ep_options\": { \"enableInt64\": \"1\" },\n"
+            "  \"selected_ep_name\": \"WebGpuExecutionProvider\"\n"
             "}");
       }
 #endif
