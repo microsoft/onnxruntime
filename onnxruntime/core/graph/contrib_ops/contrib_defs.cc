@@ -4259,7 +4259,8 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
   5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
-     for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+     for `bits` < 8 the values are packed along the last dimension (low-order bits first), and `gather_axis`
+     and `quantize_axis` must differ.
   6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
      (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
      no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
@@ -4390,6 +4391,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         }
 
         uint32_t components = (data_elem_type == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
+        if (components > 1 && gather_axis == quantize_axis) {
+          fail_shape_inference("gather_axis and quantize_axis must not be the same for packed uint8 data");
+        }
+
         for (int i = 0; i < r; ++i) {
           if (data_shape.dim(i).has_dim_value() && scales_shape.dim(i).has_dim_value()) {
             if (i == quantize_axis) {
@@ -4448,7 +4453,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         // Find the correct dimension to expand and multiply it by components
         if (components > 1) {
           int quantize_output_dim_idx = (quantize_axis < gather_axis) ? quantize_axis : quantize_axis + q - 1;
-          if (quantize_output_dim_idx < out_rank) {
+          if (quantize_output_dim_idx >= 0 && quantize_output_dim_idx < out_rank) {
             auto* dim_to_update = output_shape->mutable_dim(quantize_output_dim_idx);
             if (dim_to_update->has_dim_value()) {
               dim_to_update->set_dim_value(dim_to_update->dim_value() * components);

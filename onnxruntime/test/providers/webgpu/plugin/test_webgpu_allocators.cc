@@ -19,14 +19,22 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/providers/webgpu/plugin/webgpu_plugin_test_utils.h"
 #include "test/util/include/api_asserts.h"
 
 #if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP) && !defined(USE_EXTERNAL_DAWN) && !defined(BUILD_DAWN_SHARED_LIBRARY)
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 #include "dawn/dawn_proc.h"
 #include "dawn/native/DawnNative.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -145,8 +153,17 @@ class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
  protected:
   void SetUp() override {
     registration_.emplace(*ort_env, "webgpu_allocator_test");
+
+    const auto is_virtual_device = [](const Ort::ConstEpDevice& device) {
+      const auto metadata = device.Device().Metadata().GetKeyValuePairs();
+      const auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+      return is_virtual != metadata.end() && is_virtual->second == "1";
+    };
+
     for (const auto& device : registration_->GetEpDevices()) {
-      ep_devices_.push_back(device);
+      if (!is_virtual_device(device)) {
+        ep_devices_.push_back(device);
+      }
     }
     ASSERT_FALSE(ep_devices_.empty());
   }
