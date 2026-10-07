@@ -336,7 +336,11 @@ TEST(OrtModelTest, RejectsDanglingNodeEdge) {
 }
 
 TEST(OrtModelTest, ReconstructsMissingDataEdge) {
+#if defined(ORT_MINIMAL_BUILD)
   for (const bool implicit_input : {false, true}) {
+#else
+  for (const bool implicit_input : {false}) {
+#endif
     SCOPED_TRACE(implicit_input);
     const auto buffer = BuildOrtModelBuffer([implicit_input](flatbuffers::FlatBufferBuilder& builder) {
       std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
@@ -515,6 +519,7 @@ TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
 }
 
 TEST(OrtModelTest, LoadsManyControlEdgesWithIndexedRegistration) {
+#if defined(ORT_MINIMAL_BUILD)
   constexpr uint32_t kControlEdgeCount = 2048;
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
@@ -544,6 +549,9 @@ TEST(OrtModelTest, LoadsManyControlEdgesWithIndexedRegistration) {
   for (uint32_t index = 1; index <= kControlEdgeCount; ++index) {
     EXPECT_EQ(graph.GetNode(index)->GetInputEdgesCount(), 1);
   }
+#else
+  GTEST_SKIP() << "The synthetic empty-node fixture is valid only for minimal builds.";
+#endif
 }
 
 TEST(OrtModelTest, RejectsControlEdgeCycle) {

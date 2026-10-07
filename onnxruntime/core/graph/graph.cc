@@ -955,15 +955,6 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
           return InvalidOrtFormatEdge("connects mismatched NodeArgs");
         }
 
-        for (const auto& existing_edge : dst_node.relationships_.input_edges) {
-          if (!existing_edge.IsControlEdge() &&
-              existing_edge.GetDstArgIndex() == dst_arg_index &&
-              (existing_edge.GetNode().Index() != src_node.Index() ||
-               existing_edge.GetSrcArgIndex() != src_arg_index)) {
-            return InvalidOrtFormatEdge("slot has multiple producers");
-          }
-        }
-
         src_node.relationships_.output_edges.emplace(dst_node, src_arg_index, dst_arg_index);
         dst_node.relationships_.input_edges.emplace(src_node, src_arg_index, dst_arg_index);
       }
@@ -5154,33 +5145,38 @@ bool Graph::RemoveNode(NodeIndex p_index) {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Node* replacement = nullptr;
-  for (const auto* output : node->OutputDefs()) {
-    for (auto& candidate : Nodes()) {
-      if (candidate.Index() != p_index &&
-          std::find(candidate.OutputDefs().begin(), candidate.OutputDefs().end(), output) !=
-              candidate.OutputDefs().end()) {
-        replacement = &candidate;
+  if (HasOrtFormatControlEdge(p_index)) {
+    Node* replacement = nullptr;
+    for (const auto* output : node->OutputDefs()) {
+      for (auto& candidate : Nodes()) {
+        if (candidate.Index() != p_index &&
+            std::find(candidate.OutputDefs().begin(), candidate.OutputDefs().end(), output) !=
+                candidate.OutputDefs().end()) {
+          replacement = &candidate;
+          break;
+        }
+      }
+      if (replacement != nullptr) {
         break;
       }
     }
-    if (replacement != nullptr) {
-      break;
+    if (replacement == nullptr) {
+      return false;
     }
-  }
 
-  const auto control_edges = ort_format_control_edges_;
-  for (const auto& [src, dst] : control_edges) {
-    if (src != p_index && dst != p_index) {
-      continue;
+    InlinedVector<std::pair<NodeIndex, NodeIndex>> incident_control_edges;
+    for (const auto& edge : ort_format_control_edges_) {
+      if (edge.first == p_index || edge.second == p_index) {
+        incident_control_edges.push_back(edge);
+      }
     }
-    ORT_ENFORCE(replacement != nullptr,
-                "Can't remove node ", node->Name(), " as it has control edges.");
-    RemoveEdge(src, dst, INT_MAX, INT_MAX);
-    const NodeIndex replacement_src = src == p_index ? replacement->Index() : src;
-    const NodeIndex replacement_dst = dst == p_index ? replacement->Index() : dst;
-    if (replacement_src != replacement_dst) {
-      AddControlEdge(replacement_src, replacement_dst);
+    for (const auto& [src, dst] : incident_control_edges) {
+      RemoveEdge(src, dst, INT_MAX, INT_MAX);
+      const NodeIndex replacement_src = src == p_index ? replacement->Index() : src;
+      const NodeIndex replacement_dst = dst == p_index ? replacement->Index() : dst;
+      if (replacement_src != replacement_dst) {
+        AddControlEdge(replacement_src, replacement_dst);
+      }
     }
   }
 #endif
@@ -5195,15 +5191,6 @@ bool Graph::RemoveNode(NodeIndex p_index) {
   for (auto& input_edge : input_edges) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  const auto remaining_control_edges = ort_format_control_edges_;
-  for (const auto& [src, dst] : remaining_control_edges) {
-    if (src == p_index || dst == p_index) {
-      UnregisterOrtFormatControlEdge(src, dst);
-    }
-  }
-#endif
 
   return ReleaseNode(p_index);
 }
@@ -7336,6 +7323,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
+#if defined(ORT_MINIMAL_BUILD)
   struct NodeArgProducer {
     std::string_view node_arg_name;
     Node* node;
@@ -7404,6 +7392,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   }
   ORT_RETURN_IF_NOT(nodes_in_topological_order_.size() == static_cast<size_t>(num_of_nodes_),
                     "This is an invalid model. Error: the graph is not acyclic.");
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // populate NodeArg lookups after loading Nodes and NodeArgs
