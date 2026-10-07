@@ -257,11 +257,13 @@ DomainToVersionMap GetFunctionDomainToVersionMap(
 struct FunctionValidationState {
   const ONNX_NAMESPACE::FunctionProto* function_proto;
   size_t call_depth;
+  size_t attribute_expansion_depth;
   AttributeBindings bindings;
 
   bool operator==(const FunctionValidationState& other) const {
     return function_proto == other.function_proto &&
            call_depth == other.call_depth &&
+           attribute_expansion_depth == other.attribute_expansion_depth &&
            bindings.size() == other.bindings.size() &&
            std::equal(bindings.begin(), bindings.end(), other.bindings.begin(),
                       [](const AttributeBinding& lhs, const AttributeBinding& rhs) {
@@ -281,6 +283,7 @@ struct FunctionValidationStateHash {
     };
 
     combine(std::hash<size_t>{}(state.call_depth));
+    combine(std::hash<size_t>{}(state.attribute_expansion_depth));
     for (const auto& binding : state.bindings) {
       combine(std::hash<std::string_view>{}(binding.name));
       combine(std::hash<const void*>{}(binding.attribute.proto));
@@ -340,11 +343,13 @@ struct BoundAttributeExpansionState {
   const Graph* graph;
   const AttributeBindingContext* context;
   size_t call_depth;
+  size_t attribute_expansion_depth;
   bool use_onnx_schema_registry;
 
   bool operator==(const BoundAttributeExpansionState& other) const {
     return proto == other.proto && graph == other.graph && context == other.context &&
            call_depth == other.call_depth &&
+           attribute_expansion_depth == other.attribute_expansion_depth &&
            use_onnx_schema_registry == other.use_onnx_schema_registry;
   }
 };
@@ -355,6 +360,7 @@ struct BoundAttributeExpansionStateHash {
     result ^= std::hash<const void*>{}(state.graph) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<const void*>{}(state.context) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<size_t>{}(state.call_depth) + 0x9e3779b9 + (result << 6) + (result >> 2);
+    result ^= std::hash<size_t>{}(state.attribute_expansion_depth) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= std::hash<bool>{}(state.use_onnx_schema_registry) + 0x9e3779b9 + (result << 6) + (result >> 2);
     return result;
   }
@@ -498,6 +504,7 @@ Status ValidateBoundAttributeCallDepth(
 
   const BoundAttributeExpansionState expansion_state{
       attribute.proto, attribute.graph, attribute.context.get(), call_depth,
+      validated_states.active_attribute_expansions.size(),
       use_onnx_schema_registry};
   if (validated_states.completed_attribute_expansions.find(expansion_state) !=
       validated_states.completed_attribute_expansions.end()) {
@@ -581,7 +588,10 @@ Status ValidateFunctionCallDepth(
     }
   }
 
-  FunctionValidationState validation_state{&function_proto, call_depth, std::move(graph_bindings)};
+  FunctionValidationState validation_state{
+      &function_proto, call_depth,
+      validated_states.active_attribute_expansions.size(),
+      std::move(graph_bindings)};
   if (!validated_states.states.insert(std::move(validation_state)).second) {
     return Status::OK();
   }
@@ -622,6 +632,12 @@ Status ValidateProtoNodesCallDepth(
       ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
           *function_it->second, std::move(callee_bindings), call_depth + 1,
           model_local_functions, schema_registry, validated_states));
+      for (const auto& attr : node.attribute()) {
+        ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
+            ResolveAttribute(attr, bindings), bindings, domain_to_version,
+            call_depth, /*use_onnx_schema_registry*/ true,
+            model_local_functions, schema_registry, validated_states));
+      }
       continue;
     }
 
@@ -666,6 +682,17 @@ Status ValidateGraphCallDepth(
       ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
           *function_it->second, std::move(callee_bindings), call_depth + 1,
           model_local_functions, schema_registry, validated_states));
+      for (const auto& [attr_name, attr] : node.GetAttributes()) {
+        const Graph* attribute_graph = nullptr;
+        if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
+          attribute_graph = node.GetGraphAttribute(attr_name);
+        }
+        ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
+            ResolveAttribute(attr, bindings, attribute_graph),
+            bindings, graph.DomainToVersionMap(), call_depth,
+            use_onnx_schema_registry, model_local_functions,
+            schema_registry, validated_states));
+      }
       continue;
     }
 

@@ -1462,6 +1462,48 @@ TEST(FunctionTest, FunctionInferenceRegistryTakesPrecedenceInsideBoundGraph) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
+TEST(FunctionTest, UnusedCallSiteGraphContributesToFunctionDepth) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
+  auto* root_call = model_proto.mutable_graph()->mutable_node(0);
+  root_call->set_op_type("wrapper");
+
+  auto* unused_graph_attribute = root_call->add_attribute();
+  unused_graph_attribute->set_name("unused_tag");
+  unused_graph_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* unused_graph = unused_graph_attribute->mutable_g();
+  unused_graph->set_name("unused_tag");
+  auto* deep_call = unused_graph->add_node();
+  deep_call->set_domain("local");
+  deep_call->set_op_type("function_0");
+  deep_call->add_input("x");
+  deep_call->add_output("y");
+  auto* unused_graph_output = unused_graph->add_output();
+  unused_graph_output->set_name("y");
+  unused_graph_output->mutable_type()->mutable_tensor_type()->set_elem_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* wrapper = model_proto.add_functions();
+  wrapper->set_domain("local");
+  wrapper->set_name("wrapper");
+  wrapper->add_input("x");
+  wrapper->add_output("y");
+  auto* onnx_opset = wrapper->add_opset_import();
+  onnx_opset->set_domain(kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* wrapper_node = wrapper->add_node();
+  wrapper_node->set_op_type("Identity");
+  wrapper_node->add_input("x");
+  wrapper_node->add_output("y");
+
+  Model model(
+      std::move(model_proto), nullptr,
+      DefaultLoggingManager().DefaultLogger());
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
 TEST(FunctionTest, RepeatedLocalFunctionCallDagDepthValidationCompletes) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(CreateRepeatedLocalFunctionCallDagModel(30), nullptr, logger);
@@ -2685,21 +2727,30 @@ TEST(FunctionTest, ResolveRejectsExcessiveDefaultGraphReferenceDepth) {
     }
   }
 
-  auto function = MakeFunctionWithDefaultGraphAttributes(
-      defaults,
-      {MakeGraphRefAttribute(
-          "body_attr", defaults.front().name(),
-          ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH)});
-  auto& logger = DefaultLoggingManager().DefaultLogger();
-  Model model(
-      MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
-      nullptr, logger);
-  const auto status = model.MainGraph().Resolve();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
-  EXPECT_THAT(
-      status.ErrorMessage(),
-      testing::HasSubstr("graph attribute expansion depth exceeds"));
+  for (const bool visit_leaf_first : {false, true}) {
+    SCOPED_TRACE(visit_leaf_first);
+    std::vector<ONNX_NAMESPACE::AttributeProto> body_attributes;
+    if (visit_leaf_first) {
+      body_attributes.push_back(MakeGraphRefAttribute(
+          "leaf_attr", defaults.back().name(),
+          ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH));
+    }
+    body_attributes.push_back(MakeGraphRefAttribute(
+        "body_attr", defaults.front().name(),
+        ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH));
+
+    auto function = MakeFunctionWithDefaultGraphAttributes(defaults, body_attributes);
+    auto& logger = DefaultLoggingManager().DefaultLogger();
+    Model model(
+        MakeModelWithDefaultGraphAttributeFunction(std::move(function)),
+        nullptr, logger);
+    const auto status = model.MainGraph().Resolve();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+    EXPECT_THAT(
+        status.ErrorMessage(),
+        testing::HasSubstr("graph attribute expansion depth exceeds"));
+  }
 }
 
 TEST(FunctionTest, RepeatedDefaultGraphDagExpansionCompletes) {
