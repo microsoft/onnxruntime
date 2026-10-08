@@ -68,6 +68,10 @@ enum class KVQuantizationType : int {
   NONE = 0,
   PER_TENSOR = 1,
   PER_CHANNEL = 2,
+  // Per-token, per-group asymmetric (scale + zero-point). Used by the OSCAR 2-bit KV cache:
+  // each KV row is split into groups of kv_quant_group_size channels, and every group gets
+  // its own scale/zero computed dynamically at append time and stored alongside the codes.
+  PER_GROUP = 3,
 };
 
 inline KVQuantizationType StringToKVQuantizationType(std::string s) {
@@ -81,8 +85,11 @@ inline KVQuantizationType StringToKVQuantizationType(std::string s) {
   if (s == "PER_CHANNEL") {
     return KVQuantizationType::PER_CHANNEL;
   }
+  if (s == "PER_GROUP") {
+    return KVQuantizationType::PER_GROUP;
+  }
   ORT_THROW("Invalid KV quantization type: '", s,
-            "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL.");
+            "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL, PER_GROUP.");
 }
 
 // Logical element type of a KV cache. Members are named after the ONNX element type they denote.
