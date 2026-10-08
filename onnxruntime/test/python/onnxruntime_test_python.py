@@ -10,7 +10,9 @@ import os
 import pathlib
 import platform
 import queue
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -26,7 +28,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     _graph_annotation_id,
     _has_foreign_webgpu_context,
 )
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -3186,6 +3188,62 @@ class TestInferenceSession(unittest.TestCase):
         result_leaf_neg = sess_leaf_neg.run(None, test_input)
         with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
             np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
+
+    def test_weightless_mode_invalid_value(self):
+        # "ep.enable_weightless_mode" only accepts the exact strings "0", "1" and "2". The value is validated when the
+        # session is initialized, even if no plugin EP is used.
+        for value in ["3", "0x2", "", " 1", "abc"]:
+            with self.subTest(value=value):
+                so = onnxrt.SessionOptions()
+                so.add_session_config_entry("ep.enable_weightless_mode", value)
+                with self.assertRaisesRegex(InvalidArgument, f"Invalid value '{value}'"):
+                    onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+        so = onnxrt.SessionOptions()
+        so.add_session_config_entry("ep.enable_weightless_mode", "0")
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+    def test_weightless_all_model_warns_without_source_model(self):
+        # A model compiled with weightless mode OrtWeightlessSupport_ALL records "weightless_mode" = "2" in its metadata
+        # and needs the source model at runtime. ORT logs a warning when such a model is loaded without
+        # "ep.context_source_model_path" or a source model buffer. The warning is written to the native stderr, so the
+        # session is created in a subprocess.
+        import onnx  # noqa: PLC0415
+
+        model = onnx.load(get_name("mul_1.onnx"))
+        onnx.helper.set_model_props(model, {"weightless_mode": "2"})
+
+        script = (
+            "import sys\n"
+            "import onnxruntime as ort\n"
+            "so = ort.SessionOptions()\n"
+            "if len(sys.argv) > 2:\n"
+            "    so.add_session_config_entry('ep.context_source_model_path', sys.argv[2])\n"
+            "ort.InferenceSession(sys.argv[1], sess_options=so, providers=['CPUExecutionProvider'])\n"
+        )
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            [os.path.dirname(os.path.dirname(os.path.abspath(onnxrt.__file__))), env.get("PYTHONPATH", "")]
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = os.path.join(temp_dir, "weightless_all.onnx")
+            onnx.save(model, model_path)
+
+            def create_session(*args):
+                result = subprocess.run(
+                    [sys.executable, "-c", script, model_path, *args],
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    check=True,
+                )
+                # On Windows, ORT writes log messages to stderr as UTF-16, so drop the NUL characters of ASCII text.
+                return result.stderr.replace("\x00", "")
+
+            warning = "compiled with weightless mode OrtWeightlessSupport_ALL"
+            self.assertIn(warning, create_session())
+            self.assertNotIn(warning, create_session(get_name("mul_1.onnx")))
 
 
 if __name__ == "__main__":
