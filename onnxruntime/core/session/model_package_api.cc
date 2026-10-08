@@ -147,8 +147,10 @@ ORT_API_STATUS_IMPL(ModelPackage_GetVariantCount,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, component_name, and out_count must be non-null");
   }
 
+  size_t count = 0;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantCount(component_name, *out_count));
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantCount(component_name, count));
+  *out_count = count;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);

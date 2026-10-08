@@ -203,6 +203,13 @@ TEST(ModelPackageApiTest, PackageContextQueries) {
       model_pkg_context.get(), "model_1", &variant_count));
   ASSERT_EQ(variant_count, 2u);
 
+  size_t missing_variant_count = 123;
+  OrtStatus* status = pkg_api.ModelPackage_GetVariantCount(
+      model_pkg_context.get(), "missing_component", &missing_variant_count);
+  ASSERT_NE(status, nullptr);
+  EXPECT_EQ(missing_variant_count, 123u);
+  Ort::GetApi().ReleaseStatus(status);
+
   const char* const* variant_names = nullptr;
   size_t variant_name_count = 0;
   ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetVariantNames(
@@ -216,6 +223,71 @@ TEST(ModelPackageApiTest, PackageContextQueries) {
   }
   EXPECT_EQ(variant_name_set.count("variant_1"), 1u);
   EXPECT_EQ(variant_name_set.count("variant_2"), 1u);
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageApiTest, CxxWrappers_MetadataSelectionAndSessionLifetime) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_cxx_api_test";
+  BuildTwoVariantPackage(package_root,
+                         "variant_1", "cpu", "",
+                         "testdata/mul_1.onnx",
+                         "variant_2", "npu", "",
+                         "testdata/mul_16.onnx");
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  Ort::ModelPackageComponentContext component_context{nullptr};
+  {
+    Ort::ModelPackageOptions options_source(*ort_env, session_options.GetConst());
+    Ort::ModelPackageOptions package_options = std::move(options_source);
+    Ort::ModelPackageContext context_source(package_root.c_str());
+    Ort::ModelPackageContext package_context = std::move(context_source);
+
+    EXPECT_EQ(package_context.GetSchemaVersion(), 1);
+    EXPECT_EQ(package_context.GetComponentCount(), 1u);
+    EXPECT_THAT(package_context.GetComponentNames(), ::testing::ElementsAre("model_1"));
+    EXPECT_EQ(package_context.GetVariantCount("model_1"), 2u);
+    EXPECT_THAT(package_context.GetVariantNames("model_1"),
+                ::testing::UnorderedElementsAre("variant_1", "variant_2"));
+
+    try {
+      (void)package_context.GetVariantCount("missing_component");
+      FAIL() << "Expected missing component lookup to throw";
+    } catch (const Ort::Exception& ex) {
+      EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    }
+
+    auto selected = package_context.SelectComponent("model_1", package_options);
+    EXPECT_EQ(selected.GetSelectedVariantName(), "variant_1");
+    component_context = std::move(selected);
+  }
+
+  Ort::Session session = component_context.CreateSession(*ort_env, session_options.GetConst());
+
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  Ort::Value input = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
+                                                     shape.data(), shape.size());
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y"};
+  std::vector<Ort::Value> inputs;
+  inputs.push_back(std::move(input));
+
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, inputs.data(), inputs.size(),
+                             output_names, 1);
+  ASSERT_EQ(outputs.size(), 1u);
+  const float* out = outputs[0].GetTensorData<float>();
+  gsl::span<const float> out_span(out, input_data.size());
+  EXPECT_THAT(out_span, ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
