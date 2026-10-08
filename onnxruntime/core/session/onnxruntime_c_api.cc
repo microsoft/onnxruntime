@@ -43,6 +43,7 @@
 #include "core/session/environment.h"
 #include "core/session/ep_graph_assignment_info.h"
 #include "core/session/interop_api.h"
+#include "core/session/model_package_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
@@ -3715,6 +3716,10 @@ ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   return OrtCompileAPI::GetCompileApi();
 }
 
+ORT_API(const OrtModelPackageApi*, OrtApis::GetModelPackageApi) {
+  return OrtModelPackageAPI::GetModelPackageApi();
+}
+
 ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
   auto kvps = std::make_unique<OrtKeyValuePairs>();
   *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
@@ -4946,6 +4951,7 @@ static constexpr OrtApi ort_api_1_to_29 = {
     // End of Version 30 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::SessionOptionsSetEpContextDataReadFunc,
+    &OrtApis::GetModelPackageApi,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
