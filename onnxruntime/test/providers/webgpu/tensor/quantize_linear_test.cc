@@ -11,6 +11,7 @@
 
 #include "gtest/gtest.h"
 #include "core/graph/graph.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -92,6 +93,91 @@ TEST(WebGpuDequantizeLinearTest, Uint8Float16ScalarAndVectorCache) {
 
 TEST(WebGpuDequantizeLinearTest, Int8Float16ScalarAndVectorCache) {
   TestPackedDequantizeLinearCache<int8_t, MLFloat16>();
+}
+
+template <typename T>
+void TestEmptyDequantization(const std::vector<int64_t>& input_shape,
+                             const std::vector<int64_t>& scale_shape,
+                             const std::vector<int64_t>* zero_point_shape,
+                             int64_t block_size, const char* error = "") {
+  ConfigOptions config;
+  ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kValidationMode,
+                                         webgpu::options::kValidationMode_full));
+  ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                         webgpu::options::kEnableGraphCapture_ON));
+  auto provider = WebGpuExecutionProviderWithOptions(config);
+  if (!provider) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  OpTester test("DequantizeLinear", 21);
+  // Exercise kernel validation rather than model-load shape inference.
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("axis", int64_t{0});
+  test.AddAttribute("block_size", block_size);
+  test.AddInput<int8_t>("x", input_shape, {});
+  test.AddInput<T>("x_scale", scale_shape,
+                   std::vector<T>(TensorShape(scale_shape).Size(), T{0.5f}));
+  if (zero_point_shape) {
+    test.AddInput<int8_t>("x_zero_point", *zero_point_shape,
+                          std::vector<int8_t>(TensorShape(*zero_point_shape).Size(), 0));
+  }
+  test.AddOutput<T>("y", input_shape, {});
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  options.graph_optimization_level = TransformerLevel::Default;
+  const bool expect_failure = error[0] != '\0';
+  test.SetNumRunCalls(expect_failure ? 1 : 4);
+  test.Config(options)
+      .Config(expect_failure ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+              error)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(WebGpuDequantizeLinearTest, EmptyBlockedShapesAreValidatedBeforeNoDispatch) {
+  for (const auto& shape : {std::vector<int64_t>{35, 0}, std::vector<int64_t>{0, 16}}) {
+    const std::vector<int64_t> scale_shape{(shape[0] + 31) / 32, shape[1]};
+    TestEmptyDequantization<float>(shape, scale_shape, nullptr, 32);
+    TestEmptyDequantization<MLFloat16>(shape, scale_shape, &scale_shape, 32);
+  }
+  TestEmptyDequantization<float>({35, 0}, {3, 0}, nullptr, 32,
+                                 "x_scale must be ceil(Di/block_size)");
+  TestEmptyDequantization<float>({0, 16}, {0, 15}, nullptr, 32,
+                                 "same shape on non-quantize axes");
+  TestEmptyDequantization<float>({0, 16}, {0, 16, 1}, nullptr, 32,
+                                 "same rank for blocked quantization");
+  TestEmptyDequantization<float>({35, 0}, {0}, nullptr, 32,
+                                 "same rank for blocked quantization");
+  const std::vector<int64_t> wrong_zero_shape{2, 1};
+  TestEmptyDequantization<float>({35, 0}, {2, 0}, &wrong_zero_shape, 32,
+                                 "x_zero_point and x_scale must have the same shape");
+  const std::vector<int64_t> wrong_zero_rank{0};
+  TestEmptyDequantization<float>({35, 0}, {2, 0}, &wrong_zero_rank, 32,
+                                 "x_zero_point and x_scale must have the same rank");
+}
+
+TEST(WebGpuDequantizeLinearTest, EmptyShapeBlockInferenceIsSafe) {
+  TestEmptyDequantization<float>({32, 0}, {2, 0}, nullptr, 0);
+  TestEmptyDequantization<MLFloat16>({0, 16}, {0, 16}, nullptr, 0);
+  TestEmptyDequantization<float>({35, 0}, {0, 0}, nullptr, 0,
+                                 "x_scale must be nonempty on a nonempty quantize axis");
+  TestEmptyDequantization<float>({35, 0}, {0}, nullptr, 0,
+                                 "x_scale must be nonempty on a nonempty quantize axis");
+}
+
+TEST(WebGpuDequantizeLinearTest, EmptyPerTensorAndPerAxisShapesAreValidated) {
+  const std::vector<int64_t> scalar{};
+  const std::vector<int64_t> empty_axis{0};
+  TestEmptyDequantization<float>({0, 16}, {}, &scalar, 0);
+  TestEmptyDequantization<MLFloat16>({0, 16}, {0}, &empty_axis, 0);
+  TestEmptyDequantization<float>({0, 16}, {}, &empty_axis, 0,
+                                 "x_zero_point must be a scalar or size-1 vector");
+  TestEmptyDequantization<float>({0, 16}, {2}, nullptr, 0,
+                                 "x_scale must match the quantize axis");
+  const std::vector<int64_t> wrong_zero_shape{2};
+  TestEmptyDequantization<float>({0, 16}, {0}, &wrong_zero_shape, 0,
+                                 "x_zero_point must match x_scale");
 }
 
 }  // namespace

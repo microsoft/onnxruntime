@@ -159,9 +159,6 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   const auto x_shape = x->Shape();
   int64_t x_size = x_shape.Size();
   auto* output_tensor = context.Output(0, x_shape);
-  if (x_size == 0) {
-    return Status::OK();
-  }
   int64_t x_scale_rank = x_scale->Shape().NumDimensions();
 
   auto x_type = x->GetElementType();
@@ -173,15 +170,17 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
                             : PackingMode::None;
   bool packed = packing != PackingMode::None;
   bool is_packed_signed = x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
-  int64_t axis = (axis_ >= 0) ? axis_ : axis_ + x_shape.NumDimensions();
-
-  int max_components = GetMaxComponents(x_size);
+  int64_t axis = (axis_ >= 0) ? axis_ : axis_ + static_cast<int64_t>(x_shape.NumDimensions());
 
   // scaler - single scaler for all elements
-  bool per_layer = x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1);
+  bool per_layer = block_size_ == 0 && (x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1));
 
   // 1D tensor - 1 scaler for per axis
-  bool per_axis = per_layer == false && x_scale_rank == 1;
+  bool per_axis = per_layer == false && x_scale_rank == 1 && block_size_ == 0;
+  ORT_RETURN_IF(!per_layer && (axis < 0 || axis >= static_cast<int64_t>(x_shape.NumDimensions())),
+                "axis must be within the input rank");
+  ORT_RETURN_IF(!per_layer && !per_axis && x_scale_rank != static_cast<int64_t>(x_shape.NumDimensions()),
+                "x_scale and x must have the same rank for blocked quantization");
 
   // Compute effective block_size. When block_size_ is 0 (default) but scale is 1D with
   // fewer elements than the input dimension on the axis, infer block_size from the ratio.
@@ -190,6 +189,7 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
     int64_t input_dim = x_shape[onnxruntime::narrow<size_t>(axis)];
     int64_t scale_dim = x_scale->Shape()[0];
     if (scale_dim < input_dim) {
+      ORT_RETURN_IF(scale_dim == 0, "x_scale must be nonempty on a nonempty quantize axis");
       block_size = input_dim / scale_dim;
       per_axis = false;  // treat as block quantization
     }
@@ -202,6 +202,7 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
     const auto& scale_shape = x_scale->Shape();
     for (size_t i = 0; i < x_shape.NumDimensions(); i++) {
       if (scale_shape[i] < x_shape[i]) {
+        ORT_RETURN_IF(scale_shape[i] == 0, "x_scale must be nonempty on a nonempty quantize axis");
         axis = static_cast<int64_t>(i);
         block_size = x_shape[i] / scale_shape[i];
         break;
@@ -227,6 +228,8 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
       }
     }
     if (x_zeropoint != nullptr) {
+      ORT_RETURN_IF(x_zeropoint->Shape().NumDimensions() != scale_shape.NumDimensions(),
+                    "x_zero_point and x_scale must have the same rank for blocked quantization");
       for (size_t i = 0; i < x_shape.NumDimensions(); i++) {
         ORT_RETURN_IF(x_zeropoint->Shape()[i] != scale_shape[i],
                       "x_zero_point and x_scale must have the same shape for blocked quantization");
@@ -234,6 +237,25 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
     }
   }
 
+  if (per_layer) {
+    ORT_RETURN_IF(x_zeropoint != nullptr &&
+                      !(x_zeropoint->Shape().NumDimensions() == 0 ||
+                        (x_zeropoint->Shape().NumDimensions() == 1 && x_zeropoint->Shape()[0] == 1)),
+                  "x_zero_point must be a scalar or size-1 vector for per-tensor quantization");
+  } else if (per_axis) {
+    const int64_t input_dim = x_shape[onnxruntime::narrow<size_t>(axis)];
+    ORT_RETURN_IF(x_scale->Shape()[0] != input_dim,
+                  "x_scale must match the quantize axis for per-axis quantization");
+    ORT_RETURN_IF(x_zeropoint != nullptr &&
+                      (x_zeropoint->Shape().NumDimensions() != 1 || x_zeropoint->Shape()[0] != input_dim),
+                  "x_zero_point must match x_scale for per-axis quantization");
+  }
+
+  if (x_size == 0) {
+    return Status::OK();
+  }
+
+  int max_components = GetMaxComponents(x_size);
   bool use_components = per_layer && packing != PackingMode::Packed4 && (!packed || max_components == 4);
   int components = use_components ? max_components : 1;
   int input_component = use_components ? max_components : 1;
