@@ -41,10 +41,15 @@ test('the runner reads CI-bundled configuration when no document configuration i
   expect(RNFS.readFile).toHaveBeenLastCalledWith('/bundle/ort-encryption/config.json', 'utf8');
 });
 
-test('bundled fixture paths cannot escape the bundle directory', async () => {
+test.each(['../plugin', '.', '..'])('bundled fixture rejects special path %s', async (path) => {
   RNFS.exists.mockResolvedValue(false);
-  RNFS.readFile.mockResolvedValue(JSON.stringify({ plugin: '../plugin', sourceModel: 'model.onnx' }));
-  await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('must be filenames');
+  for (const config of [
+    { plugin: path, sourceModel: 'model.onnx' },
+    { plugin: 'example_plugin_ep.dylib', sourceModel: path },
+  ]) {
+    RNFS.readFile.mockResolvedValue(JSON.stringify(config));
+    await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('must be filenames');
+  }
 });
 
 test('the mobile AES-GCM dependency round trips and rejects wrong keys, tampering, and asset names', () => {

@@ -37,7 +37,10 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   ) {
     throw new Error('Encryption test configuration requires plugin and sourceModel paths');
   }
-  if (bundled && [config.plugin, config.sourceModel].some((path) => !/^[a-zA-Z0-9_.-]+$/.test(path))) {
+  if (
+    bundled &&
+    [config.plugin, config.sourceModel].some((path) => path === '.' || path === '..' || !/^[a-zA-Z0-9_.-]+$/.test(path))
+  ) {
     throw new Error('Bundled encryption fixture paths must be filenames');
   }
   const plugin = bundled ? `${bundleDirectory}/${config.plugin}` : config.plugin;
