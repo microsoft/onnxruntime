@@ -172,7 +172,7 @@ Status ComputeMatMul(ComputeContext* context,
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
-  const bool requires_fp32_accumulation = a->IsDataType<MLFloat16>();
+  const bool requires_fp32_accumulation = context->EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
   MatMulOptImpl* subgroup_impl = requires_fp32_accumulation ? nullptr : cache.GetOrCreate(*context);
   if (subgroup_impl != nullptr) {
     bool handled = false;
@@ -302,7 +302,7 @@ Status ComputeMatMul(ComputeContext* context,
       }
 
       Tensor* reduction_output = output_tensor;
-      if (output_tensor->IsDataType<MLFloat16>()) {
+      if (requires_fp32_accumulation) {
         split_k_output = context->CreateGPUTensor(DataTypeImpl::GetType<float>(), output_tensor->Shape());
         reduction_output = &split_k_output;
         output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::TypeAndRank, output_shape_temp, components);
@@ -330,9 +330,9 @@ Status ComputeMatMul(ComputeContext* context,
     }
   }
 
-  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
+  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner, requires_fp32_accumulation};
   matmul_program
-      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
+      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner, requires_fp32_accumulation)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
@@ -350,7 +350,7 @@ Status ComputeMatMul(ComputeContext* context,
   }
 
   ORT_RETURN_IF_ERROR(context->RunProgram(matmul_program));
-  if (split_dim_inner > 1 && output_tensor->IsDataType<MLFloat16>()) {
+  if (split_dim_inner > 1 && requires_fp32_accumulation) {
     const uint32_t output_size = narrow<uint32_t>(output_tensor->Shape().Size());
     const uint32_t vec_size = output_size / 4;
     CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, false, true, false, false};

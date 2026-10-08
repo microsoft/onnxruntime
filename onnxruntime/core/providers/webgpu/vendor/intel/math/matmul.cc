@@ -111,7 +111,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const bool a_vec4 = is_xe_3lpg && dim_inner % 4 == 0;
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
   const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-  const bool use_f32_accumulation = a->IsDataType<MLFloat16>();
+  const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /

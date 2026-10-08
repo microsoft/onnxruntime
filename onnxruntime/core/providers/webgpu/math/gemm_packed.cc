@@ -27,9 +27,6 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, 4, 1});
 
   const std::string data_type = "output_element_t";
-  const auto output_type = this->Outputs()[0].var_type;
-  const bool use_f32_accumulation = output_type == ProgramVariableDataType::Float16 ||
-                                    output_type == ProgramVariableDataType::Float16x4;
 
   if (need_handle_matmul_) {
     const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -38,9 +35,9 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_, use_f32_accumulation));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_, use_f32_accumulation_));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, 32, need_split_k, split_dim_inner_, use_f32_accumulation));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, 32, need_split_k, split_dim_inner_, use_f32_accumulation_));
   }
 
   const ShaderVariableHelper* c = nullptr;
@@ -112,6 +109,7 @@ Status ApplyGemmPacked(const Tensor* a,
   ProgramOutput output(y, ProgramTensorMetadataDependency::TypeAndRank, output_components);
   uint32_t dispatch_z = 1;
   uint32_t split_dim_inner = 1;
+  const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && y->IsDataType<MLFloat16>();
 
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
   if (!context.KernelContext().GetUseDeterministicCompute()) {
@@ -122,7 +120,7 @@ Status ApplyGemmPacked(const Tensor* a,
     const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, M, N, K);
     if (need_split_k) {
       Tensor* reduction_output = y;
-      if (y->IsDataType<MLFloat16>()) {
+      if (use_f32_accumulation) {
         split_k_output = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), y->Shape());
         reduction_output = &split_k_output;
         output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::TypeAndRank, output_components);
@@ -155,7 +153,7 @@ Status ApplyGemmPacked(const Tensor* a,
     }
   }
 
-  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, output_components, is_vec4, split_dim_inner};
+  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, output_components, is_vec4, split_dim_inner, use_f32_accumulation};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, components},
@@ -170,7 +168,7 @@ Status ApplyGemmPacked(const Tensor* a,
   const uint32_t dispatch_x = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t dispatch_y = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  program.CacheHint(alpha, transA, transB, c_is_scalar, split_dim_inner)
+  program.CacheHint(alpha, transA, transB, c_is_scalar, split_dim_inner, use_f32_accumulation)
       .AddOutput(std::move(output))
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
@@ -185,7 +183,7 @@ Status ApplyGemmPacked(const Tensor* a,
       );
 
   ORT_RETURN_IF_ERROR(context.RunProgram(program));
-  if (split_dim_inner > 1 && y->IsDataType<MLFloat16>()) {
+  if (split_dim_inner > 1 && use_f32_accumulation) {
     const uint32_t cast_output_size = narrow<uint32_t>(output_size);
     const uint32_t vec_size = cast_output_size / 4;
     CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, false, true, false, false};

@@ -73,7 +73,7 @@ Status ApplyGemmIntel(const Tensor* a,
   const bool a_vec4 = is_xe_3lpg && (K % 4 == 0);
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
   const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-  const bool use_f32_accumulation = a->IsDataType<MLFloat16>();
+  const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
   // Components for A, B
   int a_components = a_vec4 ? 4 : 1;
   int b_components = is_vec4 ? 4 : 1;

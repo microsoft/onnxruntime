@@ -127,7 +127,8 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   std::call_once(impl_init_flag_, [&]() {
     impl_ = CreateSubgroupMatrixGemmImpl(*this, context);
   });
-  if (impl_ && !A->IsDataType<MLFloat16>()) {
+  const bool requires_fp32_accumulation = context.EnableMatmulFp32Accumulation() && A->IsDataType<MLFloat16>();
+  if (impl_ && !requires_fp32_accumulation) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
     if (handled) {

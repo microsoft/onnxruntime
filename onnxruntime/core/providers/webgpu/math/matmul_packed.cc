@@ -48,11 +48,11 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
         shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
         /*transA = */ false, /*transB = */ false, /*alpha = */ 1.f, /*need_handle_matmul = */ true,
         /*output_components = */ 4, /*tile_inner = */ 32, need_split_k, split_dim_inner_,
-        /*use_f32_accumulation = */ true));
+        use_f32_accumulation_));
   } else {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(
         shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
-        false, false, 1.f, true, 32, need_split_k, split_dim_inner_, true));
+        false, false, 1.f, true, 32, need_split_k, split_dim_inner_, use_f32_accumulation_));
   }
   return Status::OK();
 }

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -30,7 +31,9 @@ const constexpr auto run_with_tunable_op = &run_options;
 }  // namespace
 
 TEST(MathOpTest, MatMulPackedFp16LongReductionUsesFloat32Accumulator) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
@@ -53,7 +56,9 @@ TEST(MathOpTest, MatMulPackedFp16LongReductionUsesFloat32Accumulator) {
 }
 
 TEST(MathOpTest, MatMulIntelEligibleFp16LongReductionCancellation) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
@@ -108,7 +113,9 @@ TEST(MathOpTest, MatMulPackedFp16SplitKEligibleCancellationKeepsFloat32Precision
         SCOPED_TRACE(deterministic);
         SCOPED_TRACE(batch_size);
         SCOPED_TRACE(batched_weights);
-        auto webgpu_ep = DefaultWebGpuExecutionProvider();
+        ConfigOptions provider_options;
+        ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+        auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
         if (!webgpu_ep) {
           GTEST_SKIP() << "WebGPU execution provider is not available";
         }
@@ -149,7 +156,9 @@ TEST(MathOpTest, MatMulPackedScalarFp16LongReductionUsesFloat32Accumulator) {
     const auto [reduction_size, output_columns] = dimensions;
     SCOPED_TRACE(reduction_size);
     SCOPED_TRACE(output_columns);
-    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    ConfigOptions provider_options;
+    ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+    auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
     if (!webgpu_ep) {
       GTEST_SKIP() << "WebGPU execution provider is not available";
     }

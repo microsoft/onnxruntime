@@ -18,7 +18,7 @@ constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovide
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
-// Accumulate the dot products of the MatMulNBits kernels in f32 instead of in the output element
+// Accumulate the dot products of MatMul, Gemm and MatMulNBits kernels in f32 instead of in the output element
 // type. The input and weight tensors keep their own type, so global memory traffic is identical
 // either way. Enabling it avoids saturating the f16 maximum (65504) when partial sums along K grow
 // large, at the cost of registers and shared memory.
@@ -29,8 +29,8 @@ constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvC
 // reference is looser with the option on than with it off. Fused MLP shapes that fall back to
 // ApplyUnfusedMlp materialize the gate and up tensors in the output element type before the
 // activation, so their epilogue keeps rounding at the output precision either way.
-// Today this covers MatMulNBits and its fused variants; the unquantized MatMul family is planned
-// as follow-up work under the same option.
+// Unquantized MatMul/Gemm covers both generic and Intel subgroup kernels. FP16-only
+// subgroup-matrix implementations are bypassed when fp32 accumulation is required.
 constexpr const char* kEnableMatmulFp32Accumulation = "ep.webgpuexecutionprovider.enableMatmulFp32Accumulation";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";

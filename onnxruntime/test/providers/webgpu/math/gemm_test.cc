@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -41,7 +42,9 @@ TEST(GemmOpTest, WebGpuPackedFp16LongReduction) {
     SCOPED_TRACE(rows);
     SCOPED_TRACE(reduction_size);
     SCOPED_TRACE(columns);
-    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    ConfigOptions provider_options;
+    ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+    auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
     if (!webgpu_ep) {
       GTEST_SKIP() << "WebGPU execution provider is not available";
     }
@@ -65,7 +68,9 @@ TEST(GemmOpTest, WebGpuPackedFp16LongReduction) {
 }
 
 TEST(GemmOpTest, WebGpuPackedFp16SplitKCancellation) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
@@ -90,7 +95,9 @@ TEST(GemmOpTest, WebGpuPackedFp16SplitKCancellation) {
 }
 
 TEST(GemmOpTest, WebGpuIntelEligibleFp16LongReductionCancellation) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
