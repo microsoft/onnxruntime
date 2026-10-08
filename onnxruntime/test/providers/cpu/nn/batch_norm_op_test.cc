@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <cmath>
+
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/nn/batch_norm.h"  // for BATCHNORM_INCLUDE_TRAINING_SUPPORT
 #include "core/session/inference_session.h"
@@ -55,6 +58,98 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
 #endif
   test.Run(expect_result, err_str, excluded_eps);
 }
+
+template <typename T>
+void TestBatchNormContiguousChannels(bool training, int opset_version) {
+  // Include SIMD tails, single-channel/batch inputs, and equivalent singleton spatial axes.
+  const std::array<TensorShapeVector, 9> shapes{
+      {{5}, {1, 1}, {1, 65}, {5, 1}, {5, 3}, {17, 64}, {5, 65}, {5, 65, 1}, {5, 65, 1, 1}}};
+  for (const auto& shape : shapes) {
+    SCOPED_TRACE(TensorShape(shape).ToString());
+    SCOPED_TRACE(opset_version);
+    const int64_t n = shape[0];
+    const int64_t c = shape.size() == 1 ? 1 : shape[1];
+    constexpr float epsilon = 0.25f;
+    constexpr float momentum = 0.25f;
+    InlinedVector<T> x, y, scale, bias, mean, var, running_mean, running_var, saved_mean, saved_inv_std;
+    x.reserve(n * c);
+    y.reserve(n * c);
+    for (auto* values : {&scale, &bias, &mean, &var, &running_mean, &running_var, &saved_mean, &saved_inv_std}) {
+      values->reserve(c);
+    }
+    for (int64_t channel = 0; channel < c; ++channel) {
+      const double offset = static_cast<double>(channel % 7);
+      // Include a constant channel to exercise zero batch variance.
+      const double step = ((channel + 1) % 4) * 0.25;
+      const double batch_var = (n * n - 1) * step * step / 12;
+      scale.push_back(static_cast<T>((channel % 5 - 2) * 0.5));
+      bias.push_back(static_cast<T>((channel % 3 - 1) * 0.25));
+      mean.push_back(static_cast<T>(offset * 0.25 + 1));
+      var.push_back(static_cast<T>(0.5 + (channel % 3) * 0.25));
+      saved_mean.push_back(static_cast<T>(offset));
+      saved_inv_std.push_back(static_cast<T>(1 / std::sqrt(batch_var + epsilon)));
+      running_mean.push_back(static_cast<T>(momentum * mean.back() + (1 - momentum) * offset));
+      running_var.push_back(static_cast<T>(momentum * var.back() + (1 - momentum) * batch_var));
+    }
+    for (int64_t sample = 0; sample < n; ++sample) {
+      for (int64_t channel = 0; channel < c; ++channel) {
+        const double step = ((channel + 1) % 4) * 0.25;
+        const double value = channel % 7 + (sample - (n - 1) / 2.0) * step;
+        const double batch_var = (n * n - 1) * step * step / 12;
+        const double estimated_mean = training ? channel % 7 : mean[channel];
+        const double estimated_var = training ? batch_var : var[channel];
+        x.push_back(static_cast<T>(value));
+        y.push_back(static_cast<T>((value - estimated_mean) / std::sqrt(estimated_var + epsilon) *
+                                       scale[channel] +
+                                   bias[channel]));
+      }
+    }
+
+    OpTester test("BatchNormalization", opset_version);
+    test.AddAttribute("epsilon", epsilon);
+    test.AddAttribute("momentum", momentum);
+    if (opset_version >= 14) {
+      test.AddAttribute("training_mode", static_cast<int64_t>(training));
+    }
+    test.AddInput<T>("X", shape, x.data(), x.size());
+    test.AddInput<T>("scale", {c}, scale.data(), scale.size());
+    test.AddInput<T>("B", {c}, bias.data(), bias.size());
+    test.AddInput<T>("mean", {c}, mean.data(), mean.size());
+    test.AddInput<T>("var", {c}, var.data(), var.size());
+    test.AddOutput<T>("Y", shape, y.data(), y.size());
+    if (training) {
+      test.AddOutput<T>("running_mean", {c}, running_mean.data(), running_mean.size());
+      test.AddOutput<T>("running_var", {c}, running_var.data(), running_var.size());
+      if (opset_version == 9) {
+        test.AddOutput<T>("saved_mean", {c}, saved_mean.data(), saved_mean.size());
+        test.AddOutput<T>("saved_inv_std", {c}, saved_inv_std.data(), saved_inv_std.size());
+      }
+    }
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(BatchNormTest, ContiguousChannelsInferenceFloat) {
+  TestBatchNormContiguousChannels<float>(false, 15);
+}
+
+TEST(BatchNormTest, ContiguousChannelsInferenceDouble) {
+  TestBatchNormContiguousChannels<double>(false, 15);
+}
+
+#ifdef BATCHNORM_INCLUDE_TRAINING_SUPPORT
+TEST(BatchNormTest, ContiguousChannelsTrainingFloat) {
+  for (int opset : {9, 14, 15}) {
+    TestBatchNormContiguousChannels<float>(true, opset);
+  }
+}
+
+TEST(BatchNormTest, ContiguousChannelsTrainingDouble) {
+  for (int opset : {9, 14, 15}) {
+    TestBatchNormContiguousChannels<double>(true, opset);
+  }
+}
+#endif
 
 TEST(BatchNormTest, PositiveTestCase) {
   // This input was taken from the SpatialBN_1.pb, SpatialBN_1_input.pb and SpatialBN_1_output.pb files.

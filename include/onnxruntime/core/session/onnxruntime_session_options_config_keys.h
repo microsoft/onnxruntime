@@ -470,6 +470,19 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
+/// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
+static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
+
+/// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
+/// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
+/// forwarded to the Level-1 estimator but is not consumed, so it does not change workspace
+/// estimates or partitioning. Non-windowed estimation remains unavailable.
+/// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
+/// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating
+/// resource accountants. This is not a runtime-enforced input limit or a no-OOM guarantee.
+static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
+    "ep.cuda.gqa_workspace_max_total_sequence_length";
+
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
 /// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
 /// and the 256 MiB estimated A/C row-size gate; ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses that gate.
