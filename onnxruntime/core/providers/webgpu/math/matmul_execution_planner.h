@@ -28,7 +28,7 @@ struct MatMulAlgorithmSelectionParams {
   int32_t a_data_type = 0;
   int32_t b_data_type = 0;
   bool can_use_subgroup_matrix = false;
-  bool can_use_gemv = false;
+  bool can_run_gemv = false;
   bool has_subgroup_capability = false;
   uint32_t subgroup_size = 0;
   bool is_vec4 = false;
@@ -80,7 +80,7 @@ bool IsMatMulAlgorithmConfigurationCompatible(const MatMulExecutionPlan& plan);
 // Runtime correctness constraints validated immediately before dispatch.
 struct MatMulAlgorithmPrerequisites {
   bool can_use_subgroup_matrix = false;
-  bool can_use_gemv = false;
+  bool can_run_gemv = false;
   bool has_subgroup_capability = false;
   bool has_nonzero_k = false;
   bool split_k_configured = false;
@@ -131,6 +131,7 @@ class MatMulExecutionPlanner {
       const MatMulAlgorithmSelectionParams& params) const;
 
   bool ShouldUseSplitK(const MatMulAlgorithmSelectionParams& params) const;
+  bool ShouldUseGemv(const MatMulAlgorithmSelectionParams& params) const;
 
   SplitKConfig split_k_config_;
 };

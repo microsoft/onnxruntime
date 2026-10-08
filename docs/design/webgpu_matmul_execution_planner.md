@@ -25,7 +25,7 @@ Add a `MatMulExecutionPlanner` base class. Automatic selection uses this order:
 2. Ask the virtual `SelectVendorAlgorithm` policy hook for any algorithm. A vendor may use its own thresholds for every algorithm, not only vendor-specific implementations.
 3. If the vendor returns no selection, call the private, non-virtual `SelectCommonAlgorithm` fallback. It selects `SubgroupMatrix` when supported, then `Gemv` for its compatible single-row FP16 shape, `Naive` when `N < 8 && K < 8`, `PackedSplitK` when the existing `SplitKConfig::UseSplitK` rule succeeds, and otherwise `Packed`.
 
-The `Gemv` path requires batch size 1, effective `M == 1`, FP16 inputs and output, `2048 <= K <= 8192`, `16 <= N <= 64` with `N` divisible by four, no bias, and no fused activation. These are implementation prerequisites, so forced selection retains the same gate. The planner keeps `SubgroupMatrix` ahead of `Gemv`, preserving the precedence that existed when GEMV was introduced.
+The `Gemv` implementation requires batch size 1, effective `M == 1`, nonzero `K`, FP16 inputs and output, `N` divisible by four, no bias, and no fused activation. Automatic policy additionally limits GEMV to `2048 <= K <= 8192` and `16 <= N <= 64`; those ranges are measured performance thresholds rather than implementation prerequisites. Forced selection bypasses the performance thresholds while retaining the implementation constraints. The planner keeps `SubgroupMatrix` ahead of `Gemv`, preserving the precedence that existed when GEMV was introduced.
 
 An Intel-derived planner implements the vendor hook. It preserves the original policy by selecting `SubgroupMatrix` first when applicable, then selecting the common `Subgroup` implementation under Intel-specific shape thresholds. Other vendors use the base planner unchanged. Future vendor policies can derive from the base planner, override as many performance ranges as needed, and return no selection to delegate the remaining ranges to the common fallback without adding vendor conditionals to `MatMulComputeDispatcher`.
 
@@ -53,7 +53,7 @@ Configuration is represented by an algorithm-specific variant rather than a bag 
 
 When set, the planner returns the requested enum before applying heuristic rules. The dispatcher then validates the algorithm's hard prerequisites. Unsupported device features, data types, layouts, deterministic-compute settings, or other correctness constraints produce a descriptive failure naming the forced algorithm; forced mode never silently falls back.
 
-Heuristic thresholds are not hard prerequisites. For example, forcing subgroup bypasses Intel's current `M/N/K` performance thresholds while still requiring subgroup support. GEMV retains its FP16 single-row shape, bias, and activation constraints because they are required by its shader. Forcing Split-K bypasses performance thresholds while still requiring a usable Split-K configuration, non-deterministic compute, compatible packing/activation, and supported bias layout.
+Heuristic thresholds are not hard prerequisites. For example, forcing subgroup bypasses Intel's current `M/N/K` performance thresholds while still requiring subgroup support. Forcing GEMV bypasses its automatic `N/K` tuning window while retaining its single-row, FP16, vector-width, bias, and activation constraints. Forcing Split-K bypasses performance thresholds while still requiring a usable Split-K configuration, non-deterministic compute, compatible packing/activation, and supported bias layout.
 
 ## Dispatch and Implementation Boundaries
 

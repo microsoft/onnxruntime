@@ -289,7 +289,7 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedNaive) {
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedGemv) {
-  RunTestTyped<MLFloat16>({1, 2048}, {2048, 16}, false, webgpu::MatMulAlgorithm::Gemv);
+  RunTestTyped<MLFloat16>({1, 128}, {128, 4}, false, webgpu::MatMulAlgorithm::Gemv);
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedGemvRejectsFloatInputs) {

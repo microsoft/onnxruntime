@@ -70,7 +70,7 @@ bool MeetsMatMulAlgorithmPrerequisites(
     case MatMulAlgorithm::SubgroupMatrix:
       return prerequisites.can_use_subgroup_matrix;
     case MatMulAlgorithm::Gemv:
-      return prerequisites.can_use_gemv;
+      return prerequisites.can_run_gemv;
     case MatMulAlgorithm::Subgroup:
       return prerequisites.has_subgroup_capability &&
              prerequisites.has_nonzero_k;
@@ -137,7 +137,7 @@ MatMulAlgorithm MatMulExecutionPlanner::SelectCommonAlgorithm(
   if (params.can_use_subgroup_matrix) {
     return MatMulAlgorithm::SubgroupMatrix;
   }
-  if (params.can_use_gemv) {
+  if (ShouldUseGemv(params)) {
     return MatMulAlgorithm::Gemv;
   }
   if (params.n < 8 && params.k < 8) {
@@ -192,6 +192,13 @@ bool MatMulExecutionPlanner::ShouldUseSplitK(
       static_cast<uint64_t>(params.n),
       static_cast<uint64_t>(params.k),
       params.is_channels_last);
+}
+
+bool MatMulExecutionPlanner::ShouldUseGemv(
+    const MatMulAlgorithmSelectionParams& params) const {
+  return params.can_run_gemv &&
+         params.n >= 16 && params.n <= 64 &&
+         params.k >= 2048 && params.k <= 8192;
 }
 
 }  // namespace webgpu

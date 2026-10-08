@@ -329,7 +329,7 @@ TEST(MatMulExecutionPlannerTest, GemvPrecedesGenericFallbacks) {
   params.packed_m = 1;
   params.n = 48;
   params.k = 5120;
-  params.can_use_gemv = true;
+  params.can_run_gemv = true;
   params.is_vec4 = true;
 
   EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Gemv);
@@ -338,13 +338,35 @@ TEST(MatMulExecutionPlannerTest, GemvPrecedesGenericFallbacks) {
   EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::SubgroupMatrix);
 }
 
+TEST(MatMulExecutionPlannerTest, GemvAutomaticSelectionUsesPerformanceThresholds) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 16;
+  params.k = 2048;
+  params.can_run_gemv = true;
+
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Gemv);
+
+  params.n = 12;
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
+  params.n = 68;
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
+  params.n = 16;
+
+  params.k = 2047;
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
+  params.k = 8193;
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
+}
+
 TEST(MatMulAlgorithmConfigurationTest, GemvUsesTypedEmptyConfiguration) {
   MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.m = 1;
   params.n = 48;
   params.k = 5120;
-  params.can_use_gemv = true;
+  params.can_run_gemv = true;
 
   const MatMulExecutionPlan plan = planner.CreateExecutionPlan(params);
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Gemv);
@@ -465,7 +487,7 @@ TEST(MatMulAlgorithmPrerequisiteTest, GemvRequiresCompatibleInputs) {
   MatMulAlgorithmPrerequisites prerequisites{};
   EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Gemv, prerequisites));
 
-  prerequisites.can_use_gemv = true;
+  prerequisites.can_run_gemv = true;
   EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Gemv, prerequisites));
 }
 

@@ -437,10 +437,9 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
                                         logical_output_shape.NumDimensions() - 2))
                                   : 1;
   const bool folds_batch_into_m = batch_a != 1 && batch_b == 1;
-  const bool can_use_gemv =
+  const bool can_run_gemv =
       batch_size == 1 && helper.M() == 1 &&
-      helper.N() >= 16 && helper.N() <= 64 && helper.N() % 4 == 0 &&
-      helper.K() >= 2048 && helper.K() <= 8192 &&
+      helper.N() > 0 && helper.N() % 4 == 0 && helper.K() > 0 &&
       !has_bias && activation.activation_kind_ == ActivationKind::None &&
       a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() &&
       output_tensor->IsDataType<MLFloat16>();
@@ -458,7 +457,7 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.a_data_type = a->GetElementType();
   selection_params.b_data_type = b->GetElementType();
   selection_params.can_use_subgroup_matrix = can_use_subgroup_matrix;
-  selection_params.can_use_gemv = can_use_gemv;
+  selection_params.can_run_gemv = can_run_gemv;
   selection_params.has_subgroup_capability = has_subgroup_capability;
   selection_params.subgroup_size = subgroup_size.value_or(0);
   selection_params.is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
@@ -478,7 +477,7 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
 
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
-  prerequisites.can_use_gemv = can_use_gemv;
+  prerequisites.can_run_gemv = can_run_gemv;
   prerequisites.has_subgroup_capability = has_subgroup_capability;
   prerequisites.has_nonzero_k = helper.K() > 0;
   prerequisites.split_k_configured =
