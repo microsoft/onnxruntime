@@ -312,6 +312,15 @@ OrtStatus* _Nullable ORT_API_CALL EpContextDataReadCallback(void* state,
   return [self namesWithType:NamedValueType::Output error:error];
 }
 
+- (nullable NSString*)endProfilingWithError:(NSError**)error {
+  try {
+    Ort::AllocatorWithDefaultOptions allocator;
+    Ort::AllocatedStringPtr path = _session->EndProfilingAllocated(allocator);
+    return utils::toNSString(path.get());
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
 #pragma mark - Private
 
 - (nullable NSArray<NSString*>*)namesWithType:(NamedValueType)namedValueType
@@ -513,6 +522,22 @@ OrtStatus* _Nullable ORT_API_CALL EpContextDataReadCallback(void* state,
 - (BOOL)enableOrtExtensionsCustomOpsWithError:(NSError**)error {
   try {
     _sessionOptions->EnableOrtCustomOps();
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
+- (BOOL)enableProfilingWithFilePrefix:(NSString*)filePrefix error:(NSError**)error {
+  try {
+    _sessionOptions->EnableProfiling(filePrefix.UTF8String);
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
+- (BOOL)disableProfilingWithError:(NSError**)error {
+  try {
+    _sessionOptions->DisableProfiling();
     return YES;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
