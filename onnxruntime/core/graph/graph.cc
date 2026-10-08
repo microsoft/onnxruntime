@@ -4480,7 +4480,7 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       SafeInt<FileOffsetType> end_of_read(file_offset);
       end_of_read += tensor_byte_size;
 
-      auto user_provided_entry = external_initializer_files.find(external_file);
+      auto user_provided_entry = external_initializer_files.find(ExternalDataInfo::NormalizeFileName(external_file));
       ORT_RETURN_IF(user_provided_entry == external_initializer_files.end(),
                     "External file: ", ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(external_file),
                     " not found from the table user provided.");

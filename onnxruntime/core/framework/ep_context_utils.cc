@@ -55,6 +55,8 @@ class FixedBufferStreamBuf final : public std::streambuf {
  public:
   FixedBufferStreamBuf(void* buffer, size_t size) : buffer_{static_cast<char*>(buffer)}, size_{size} {}
 
+  size_t Size() const noexcept { return position_; }
+
  protected:
   std::streamsize xsputn(const char* data, std::streamsize count) override {
     if (count < 0 || static_cast<uintmax_t>(count) > size_ - position_) {
@@ -127,6 +129,8 @@ Status SerializeExternalInitializersToBuffer(const Model& model,
   ORT_RETURN_IF_ERROR(model.ToGraphProtoWithExternalInitializers(logical_file_name, saving_options,
                                                                  output_stream, output_proto));
   ORT_RETURN_IF_NOT(output_stream.good(), "Failed to serialize external initializers to buffer");
+  ORT_RETURN_IF_NOT(output_buffer.Size() == buffer_size,
+                    "External initializer buffer size changed between serialization passes");
 
   model_proto = std::move(output_proto);
   *buffer_info.buffer_ptr = buffer.release();

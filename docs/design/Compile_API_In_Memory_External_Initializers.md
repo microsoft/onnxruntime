@@ -19,6 +19,8 @@ Compilation produces two buffers:
 
 The ONNX model records the caller-provided logical filename, offset, and length for every externalized initializer.
 Multiple initializers share the same logical file and buffer.
+Leading current-directory prefixes (`./` or `.\\`, including repeated prefixes) are removed consistently when
+recording logical filenames, registering in-memory files, and looking up external initializer data.
 
 ## Compile API
 
@@ -43,6 +45,8 @@ ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
 The setter records the allocator and output pointer locations; it does not take a preallocated buffer or allocate
 immediately. `CompileModel` uses the allocator to allocate the buffer and fills both outputs on success. The allocator
 and output pointer locations must remain valid until `CompileModel` returns.
+When the model also uses an output buffer, the model and external-initializer buffer pointer locations must be distinct,
+as must their size pointer locations. Compilation rejects aliasing before allocating either buffer.
 
 Add the corresponding C++ wrapper and an `ExternalInitializerBufferInfo` alternative to
 `epctx::ModelGenOptions::initializers_location`.
@@ -84,6 +88,9 @@ Use a two-pass implementation:
   size with exactly the same traversal, alignment, endian conversion, and prepacked-blob handling as the write pass.
 2. Allocate the exact size once and run the serializer again against a fixed-size stream over that allocation. Emit
   the logical filename, offset, and length into each externalized `TensorProto`.
+
+Sort prepacked-blob keys before writing so both passes have identical alignment padding and offsets. Verify that the
+write pass fills the entire measured buffer before publishing it.
 
 Write externalized initializers in load-ready tensor storage and align each tensor's offset to its natural alignment;
 the writer controls the layout, so this alignment is guaranteed for ORT-produced buffers. Additionally apply the
@@ -165,10 +172,13 @@ A misaligned supplied buffer is valid; direct-use loading copies only slices tha
 - Cover threshold boundaries, subgraph initializers (compiled and reloaded through both copy and direct-use paths),
   natural and configured offset alignment, and misaligned direct buffers that fall back to per-initializer copies while
   neighboring aligned initializers still borrow.
-- Verify logical filename metadata, offsets, lengths, output ownership, and direct-buffer lifetime requirements.
+- Verify logical filename metadata, relative-name normalization through the public compile/load APIs, offsets, lengths,
+  output ownership, and direct-buffer lifetime requirements.
 - Verify that the file and buffer external-initializer destinations are mutually exclusive (last setter wins), and
   that a buffer destination works with file, buffer, and callback output-model destinations.
-- Verify invalid arguments, allocation failure, checked-arithmetic failure, and unchanged outputs on failure.
+- Verify invalid arguments (including aliased output locations in either setter order), allocation failure,
+  checked-arithmetic failure, and unchanged outputs on failure.
+- Verify deterministic prepacked-blob metadata, bytes, and total size with alignment and different hash-set layouts.
 - Exercise aggregate external-data sizes beyond 2 GB with a counting or sparse test sink so routine CI does not require
   a 2 GB allocation.
 - Compile with the example plugin EP and verify that its non-embedded EPContext data reaches the configured stable

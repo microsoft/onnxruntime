@@ -8565,12 +8565,15 @@ struct OrtCompileApi {
   /** \brief Store external initializers for the compiled model in one caller-owned buffer.
    *
    * This destination replaces any external-initializer file or callback destination configured previously. The
-   * logical file name is recorded in each externalized TensorProto and must be a non-empty relative path.
+   * logical file name must be a non-empty relative path. Leading current-directory prefixes (`./` or `.\\`) are
+   * removed before the name is recorded in each externalized TensorProto.
    * This setter only configures the destination; CompileModel allocates the buffer using `allocator`.
    * On successful CompileModel completion, the caller owns the allocated buffer and must release it with `allocator`.
    * If no data is externalized, the output buffer is NULL and its size is zero.
    * If CompileModel fails, both outputs are unchanged and temporary allocations are freed.
    * The allocator and output pointer locations must remain valid until CompileModel returns.
+   * If the model also uses an output buffer, its buffer and size output locations must each be distinct from those
+   * provided here. CompileModel rejects aliased output locations with ORT_INVALID_ARGUMENT.
    *
    * The output model may be written to a file, buffer, or write callback. When the output model is written to a file,
    * the caller is responsible for persisting or otherwise supplying this buffer under `logical_file_name` when the

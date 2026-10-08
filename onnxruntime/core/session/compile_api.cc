@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/session/allocator_adapters.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #include "core/session/model_compilation_options.h"
@@ -195,7 +196,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
                     "OrtModelCompilationOptions is null");
   ORT_API_RETURN_IF(logical_file_name == nullptr, ORT_INVALID_ARGUMENT,
                     "External initializer logical file name is null");
-  const std::filesystem::path logical_path{logical_file_name};
+  const std::filesystem::path logical_path{onnxruntime::ExternalDataInfo::NormalizeFileName(logical_file_name)};
   ORT_API_RETURN_IF(logical_path.empty() || logical_path.is_absolute(), ORT_INVALID_ARGUMENT,
                     "External initializer logical file name must be a non-empty relative path");
   ORT_API_RETURN_IF(ort_allocator == nullptr, ORT_INVALID_ARGUMENT,

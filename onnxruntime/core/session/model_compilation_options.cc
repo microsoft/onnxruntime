@@ -399,6 +399,13 @@ Status ModelCompilationOptions::Check() const {
                            "Invalid buffer configuration for output model: allocator is null");
   }
 
+  if (external_buffer_info != nullptr && output_buffer_ptr != nullptr &&
+      (external_buffer_info->buffer_ptr == output_buffer_ptr->buffer_ptr ||
+       external_buffer_info->buffer_size_ptr == output_buffer_ptr->buffer_size_ptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Model and external initializer buffers require distinct output pointer locations");
+  }
+
   const epctx::BufferWriteFuncHolder* output_write_func_holder = ep_context_gen_options.TryGetOutputModelWriteFunc();
 
   if (output_write_func_holder != nullptr && output_write_func_holder->write_func == nullptr) {

@@ -9,7 +9,11 @@
 #include "core/common/string_utils.h"
 #include "core/platform/path_lib.h"
 
+#include <algorithm>
+#include <array>
 #include <vector>
+
+#include "core/common/inlined_containers.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -19,6 +23,20 @@ using ::ONNX_NAMESPACE::StringStringEntryProto;
 
 namespace onnxruntime {
 ExternalDataInfo::ExternalDataInfo() = default;
+
+PathString ExternalDataInfo::NormalizeFileName(std::basic_string_view<PathChar> file_name) {
+  static constexpr std::array<std::basic_string_view<PathChar>, 4> prefixes{
+      ORT_TSTR(".//"), ORT_TSTR("./"), ORT_TSTR(".\\\\"), ORT_TSTR(".\\")};
+  while (true) {
+    const auto prefix = std::find_if(prefixes.begin(), prefixes.end(), [&](auto candidate) {
+      return file_name.substr(0, candidate.size()) == candidate;
+    });
+    if (prefix == prefixes.end()) {
+      return PathString{file_name};
+    }
+    file_name.remove_prefix(prefix->size());
+  }
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 ExternalDataInfo::ExternalDataInfo(const PathString& rel_path, OFFSET_TYPE offset, size_t length)
@@ -121,8 +139,11 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
     const InlinedHashSet<std::string>& blob_keys, bool align,
     int64_t align_threshold, int64_t on_disk_alignment,
     std::ostream& os, int64_t& external_offset, ::ONNX_NAMESPACE::TensorProto& proto) {
+  // Alignment padding must be identical in the sizing and writing passes.
+  InlinedVector<std::string> sorted_blob_keys{blob_keys.begin(), blob_keys.end()};
+  std::sort(sorted_blob_keys.begin(), sorted_blob_keys.end());
   size_t key_count = 0;
-  for (const auto& key : blob_keys) {
+  for (const auto& key : sorted_blob_keys) {
     size_t prepack_count = 0;
     const auto* prepacked_weights = prepacked_for_graph.GetPrepackedWeights(key);
     ORT_ENFORCE(prepacked_weights != nullptr, "Prepacked weights not found for key ", key);
