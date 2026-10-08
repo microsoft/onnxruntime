@@ -3,6 +3,9 @@
 
 #include "core/platform/telemetry_sampling.h"
 
+#include <array>
+#include <cmath>
+
 #include "gtest/gtest.h"
 
 namespace onnxruntime::test {
@@ -15,19 +18,30 @@ TEST(TelemetrySamplingTest, HonorsBoundaryRates) {
 
 TEST(TelemetrySamplingTest, SessionDecisionsAreStableAndSampleExpectedFraction) {
   constexpr uint32_t session_count = 100000;
-  uint32_t sampled_count = 0;
-  for (uint32_t session_id = 0; session_id < session_count; ++session_id) {
-    const bool sampled = telemetry_internal::ShouldSampleSession(
-        "00000000-0000-0000-0000-000000000001", session_id, 1.0);
-    ASSERT_EQ(telemetry_internal::ShouldSampleSession(
-                  "00000000-0000-0000-0000-000000000001", session_id, 1.0),
-              sampled)
-        << session_id;
-    sampled_count += sampled ? 1 : 0;
-  }
+  constexpr std::string_view guid = "00000000-0000-0000-0000-000000000001";
+  constexpr std::array rates{
+      telemetry_internal::kModelSessionSampleRatePercent,
+      telemetry_internal::kHighVolumeEventSampleRatePercent,
+      telemetry_internal::kOtherProcessEventSampleRatePercent,
+  };
+  for (const double rate : rates) {
+    SCOPED_TRACE(rate);
+    uint32_t sampled_count = 0;
+    for (uint32_t session_id = 0; session_id < session_count; ++session_id) {
+      const bool sampled = telemetry_internal::ShouldSampleSession(guid, session_id, rate);
+      ASSERT_EQ(telemetry_internal::ShouldSampleSession(guid, session_id, rate), sampled) << session_id;
+      ASSERT_EQ(telemetry_internal::ShouldSampleSession(guid, session_id),
+                telemetry_internal::ShouldSampleSession(
+                    guid, session_id, telemetry_internal::kModelSessionSampleRatePercent))
+          << session_id;
+      sampled_count += sampled ? 1 : 0;
+    }
 
-  EXPECT_GT(sampled_count, 900u);
-  EXPECT_LT(sampled_count, 1100u);
+    const double probability = rate / 100.0;
+    const double expected_count = session_count * probability;
+    const double tolerance = 6.0 * std::sqrt(expected_count * (1.0 - probability));
+    EXPECT_NEAR(sampled_count, expected_count, tolerance);
+  }
 }
 
 }  // namespace

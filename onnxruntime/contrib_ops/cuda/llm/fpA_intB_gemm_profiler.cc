@@ -100,6 +100,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
+    params.paired_k = tactic.cudaKernelVariant == 1;
     params.wave_aware = mWaveAwareGemv;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
@@ -129,14 +130,28 @@ size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, s
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
-    int /*m*/, int /*n*/, int /*k*/) const {
-  return mRunner->getConfigs();
+    int m, int /*n*/, int /*k*/) const {
+  auto tactics = mRunner->getConfigs();
+  if (mPairedGemvMode != 0 && m >= 5 && m <= 8) {
+    for (auto const& tactic : tactics) {
+      if (tactic.enableCudaKernel) {
+        auto paired = tactic;
+        paired.cudaKernelVariant = 1;
+        if (mPairedGemvMode == 2) {
+          return {paired};
+        }
+        tactics.push_back(paired);
+        break;
+      }
+    }
+  }
+  return tactics;
 }
 
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
   // stop to profile Cuda kernel for m >= 16
   if (tactic.enableCudaKernel) {
-    return m < 16;
+    return m < 16 && (tactic.cudaKernelVariant == 0 || (m >= 5 && m <= 8));
   }
   return true;
 }

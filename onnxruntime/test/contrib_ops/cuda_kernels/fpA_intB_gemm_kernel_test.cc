@@ -11,6 +11,7 @@
 #include "cutlass/numeric_types.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
@@ -25,6 +26,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <set>
 #include <sstream>
@@ -683,6 +685,76 @@ TEST(FpAIntBGemvTest, TacticCacheSeparatesWaveAwareMode) {
   ASSERT_EQ(cache.size(), 2u);
   EXPECT_EQ(cache.at(default_id), 4);
   EXPECT_EQ(cache.at(wave_aware_id), 2);
+}
+
+TEST(FpAIntBGemvTest, TacticCacheSeparatesPairedAndWaveAwareModes) {
+  using Profiler = wo_profile::WeightOnlyGroupwiseQuantGemmPluginProfiler;
+  auto cache = std::make_shared<Profiler::MNKProfileMap>();
+  Profiler profiler;
+  profiler.setSelectionTactics(cache);
+
+  for (bool wave_aware : {false, true}) {
+    for (int mode : {0, 1, 2}) {
+      wo_profile::GemmIdCore const id(512, 1024, onnxruntime::llm::nvinfer::DataType::kHALF,
+                                      80, wave_aware, mode);
+      cache->createMProfileMap(id);
+      CutlassGemmConfig tactic;
+      tactic.enableCudaKernel = true;
+      tactic.cudaKernelVariant = mode == 0 ? 0 : 1;
+      tactic.stages = mode + (wave_aware ? 3 : 0);
+      (*cache->getMProfileMap(id))[8] = tactic;
+    }
+  }
+
+  ASSERT_EQ(cache->profileMap.size(), 6u);
+  for (bool wave_aware : {false, true}) {
+    for (int mode : {0, 1, 2}) {
+      wo_profile::GemmIdCore const id(512, 1024, onnxruntime::llm::nvinfer::DataType::kHALF,
+                                      80, wave_aware, mode);
+      for (int m : {5, 6, 7, 8}) {
+        auto const tactic = profiler.getBestConfig(m, id);
+        ASSERT_TRUE(tactic.has_value());
+        EXPECT_EQ(tactic->cudaKernelVariant, mode == 0 ? 0 : 1);
+        EXPECT_EQ(tactic->stages, mode + (wave_aware ? 3 : 0));
+      }
+    }
+  }
+}
+
+TEST(FpAIntBGemvTest, PairedTacticsFollowMRangeAndMode) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "fp16 int4 groupwise GEMV requires SM " << kMinSupportedSm << " or later";
+  }
+
+  class TestProfiler : public wo_profile::WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    explicit TestProfiler(WeightOnlyGemmRunnerPtr const& runner) {
+      mRunner = runner;
+    }
+    using wo_profile::WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic;
+    using wo_profile::WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics;
+  };
+
+  using Runner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner<
+      half, cutlass::uint4b_t, cutlassTypeMapper<wo::KernelType::FP16Int4Groupwise>::QuantOp>;
+  auto runner = std::make_shared<Runner>();
+  runner->setArch(80);
+  TestProfiler profiler(runner);
+  for (int mode : {0, 1, 2}) {
+    profiler.setPairedGemvMode(mode);
+    for (int m : {4, 5, 6, 7, 8, 9}) {
+      auto const tactics = profiler.getTactics(m, 512, 1024);
+      bool const eligible = mode != 0 && m >= 5 && m <= 8;
+      EXPECT_EQ(std::count_if(tactics.begin(), tactics.end(),
+                              [](auto const& tactic) { return tactic.cudaKernelVariant == 1; }),
+                eligible ? 1 : 0);
+      if (mode == 2 && eligible) {
+        ASSERT_EQ(tactics.size(), 1u);
+        EXPECT_TRUE(tactics[0].enableCudaKernel);
+        EXPECT_TRUE(profiler.checkTactic(m, 512, 1024, tactics[0]));
+      }
+    }
+  }
 }
 
 TEST_F(Fp16Int8GroupwiseTest, Fp16_Int8_Gemm_CudaKernel) {
