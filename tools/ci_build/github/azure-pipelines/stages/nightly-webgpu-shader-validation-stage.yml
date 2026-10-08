@@ -43,6 +43,7 @@ stages:
           --use_webgpu
           --wgsl_template static
           --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          --cmake_extra_defines onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
           --update
           --build --parallel
         workingDirectory: '$(Build.SourcesDirectory)'
@@ -115,7 +116,7 @@ stages:
           --config RelWithDebInfo
           --build_dir "$(Build.BinariesDirectory)"
           --test
-          --test_parallel 0
+          --test_parallel 1
         workingDirectory: '$(Build.SourcesDirectory)'
       env:
         ORT_WEBGPU_EP_SHADER_DUMP_FILE: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\shader_dump.log'
