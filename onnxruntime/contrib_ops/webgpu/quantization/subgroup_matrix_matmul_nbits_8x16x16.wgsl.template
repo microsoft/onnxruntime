@@ -65,30 +65,12 @@ var<workgroup> scratch : array<f16, kTileM * kTileN>;
 
 // --- Offset Helpers ---
 
-fn get_weight_offset() -> u32 {
-#if has_weight_idx
-#if has_weight_idx_indirect
-  let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
-#else
-  let actual_weight_idx = uniforms.weight_idx;
-#endif
+fn get_weight_offset(actual_weight_idx : u32) -> u32 {
   return actual_weight_idx * uniforms.K * uniforms.N;
-#else
-  return 0u;
-#endif
 }
 
-fn get_scale_offset() -> u32 {
-#if has_weight_idx
-#if has_weight_idx_indirect
-  let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
-#else
-  let actual_weight_idx = uniforms.weight_idx;
-#endif
+fn get_scale_offset(actual_weight_idx : u32) -> u32 {
   return actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
-#else
-  return 0u;
-#endif
 }
 
 // --- Data Loading Functions ---
@@ -117,10 +99,17 @@ fn load_b(row : u32, pack_idx : u32, weight_offset : u32) -> BPackT {
 
 $MAIN {
   // Resolve the (possibly indirect) weight index once per workgroup.
-  let scale_offset = get_scale_offset();
+#if has_weight_idx_indirect
+  let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#elif has_weight_idx
+  let actual_weight_idx = uniforms.weight_idx;
+#else
+  let actual_weight_idx = 0u;
+#endif
+  let scale_offset = get_scale_offset(actual_weight_idx);
   // In block units; load_b scales this up to pack units (kU32sPerBPack is the
   // same pack-per-block count for both n_bits).
-  let weight_offset = get_weight_offset() / 32u;
+  let weight_offset = get_weight_offset(actual_weight_idx) / 32u;
 
   let m_tile = (workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile;
 
@@ -142,7 +131,8 @@ $MAIN {
       if (global_n < uniforms.N) {
         let packed = load_b(global_n, k_block_idx * kU32sPerBPack + pack_idx, weight_offset);
         let scale = load_scale(global_n, k_block_idx, scale_offset);
-        let zero_point = mm_read_zero(global_n, k_block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+        let zero_point = mm_read_zero(actual_weight_idx, global_n, k_block_idx,
+                                      uniforms.N, uniforms.zero_blocks_per_col);
 #if n_bits == 4
         let lower =
             (vec4<output_element_t>(unpack4xU8(packed & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero_point)) * scale;
