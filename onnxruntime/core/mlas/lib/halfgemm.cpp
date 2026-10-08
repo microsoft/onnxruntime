@@ -48,6 +48,48 @@ MlasHalfGemmZeroKBatch(
     }
 }
 
+#if defined(MLAS_TARGET_POWER) && defined(__linux__)
+#include <sys/auxv.h>
+#ifndef PPC_FEATURE2_ARCH_3_00
+#define PPC_FEATURE2_ARCH_3_00 0x00800000
+#endif
+#ifndef PPC_FEATURE2_ARCH_3_1
+#define PPC_FEATURE2_ARCH_3_1 0x00040000
+#endif
+#ifndef PPC_FEATURE2_MMA
+#define PPC_FEATURE2_MMA 0x00020000
+#endif
+#endif
+
+#if defined(MLAS_TARGET_POWER)
+
+// Define MLAS_FORCE_POWER9 to force POWER9 VSX kernel and bypass POWER10 MMA for testing.
+// Comment out or undefine to restore automatic POWER10 detection.
+// #define MLAS_FORCE_POWER9 1
+
+const MLAS_HALFGEMM_DISPATCH* MlasGetPowerDispatch()
+{
+    static const MLAS_HALFGEMM_DISPATCH* cached = []() -> const MLAS_HALFGEMM_DISPATCH* {
+#if defined(MLAS_FORCE_POWER9)
+        // Force POWER9 kernel execution (POWER10 bypassed for testing)
+        return &MlasHalfGemmDispatchPOWER9;
+#elif defined(__linux__)
+        unsigned long hwcap2 = getauxval(AT_HWCAP2);
+        if ((hwcap2 & PPC_FEATURE2_ARCH_3_1) && (hwcap2 & PPC_FEATURE2_MMA)) {
+            return &MlasHalfGemmDispatchPOWER10;
+        }
+        if (hwcap2 & PPC_FEATURE2_ARCH_3_00) {
+            return &MlasHalfGemmDispatchPOWER9;
+        }
+#elif defined(_AIX)
+        // AIX path if needed
+#endif
+        return &MlasHalfGemmDispatchDefault;
+    }();
+    return cached;
+}
+#endif
+
 bool MLASCALL
 MlasFp16AccelerationSupported()
 {
@@ -55,6 +97,17 @@ MlasFp16AccelerationSupported()
     return MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration();
 #elif defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH)
     return MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration();
+#elif defined(MLAS_TARGET_POWER)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        return true;
+    }
+#if defined(__linux__)
+    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+    return ((hwcap2 & PPC_FEATURE2_ARCH_3_1) != 0 && (hwcap2 & PPC_FEATURE2_MMA) != 0) ||
+           ((hwcap2 & PPC_FEATURE2_ARCH_3_00) != 0);
+#else
+    return false;
+#endif
 #else
     return false;
 #endif
@@ -71,8 +124,20 @@ MlasHalfGemmAccelerationSupported(
     }
 
 #if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
-    (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH))
+    (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH)) || \
+    defined(MLAS_TARGET_POWER)
     return MlasFp16AccelerationSupported();
+#else
+    return false;
+#endif
+}
+
+bool MLASCALL
+MlasHalfGemmTransposedBSupported()
+{
+#if defined(MLAS_TARGET_POWER)
+    const auto* dispatch = MlasHalfGemmGetDispatch();
+    return dispatch == &MlasHalfGemmDispatchPOWER10 || dispatch == &MlasHalfGemmDispatchPOWER9;
 #else
     return false;
 #endif
@@ -159,6 +224,17 @@ MlasHalfGemmBatch(
     }
 
     const MLAS_HALFGEMM_DISPATCH* dispatch = MlasHalfGemmGetDispatch();
+
+#if defined(MLAS_TARGET_POWER)
+    for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+        if (DataParams[gemm_i].BIsTransposed && dispatch != &MlasHalfGemmDispatchPOWER10 && dispatch != &MlasHalfGemmDispatchPOWER9) {
+            MLAS_THROW_EX(
+                std::runtime_error,
+                "transposed halfgemm B is not supported by current MLAS backend");
+        }
+    }
+#endif
+
     MLAS_HALFGEMM_OPERATION* operation = dispatch->Operation;
 
     if (ThreadPool == nullptr) {
@@ -198,7 +274,7 @@ MlasHalfGemmBatch(
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
-            nc = std::min(nc, MlasDivRoundup(nc, max_nc * MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+            nc = std::min(nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
                                   MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
         }
     }
@@ -269,6 +345,26 @@ MlasHalfGemmPackB(
     }
 
     dispatch->CopyPackBRoutine((_mlas_fp16_*)PackedB, (const _mlas_fp16_*)B, ldb, N, K);
+}
+
+void
+MLASCALL
+MlasHalfGemmPackB_Transposed(
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    )
+{
+    const auto* dispatch = MlasHalfGemmGetDispatch();
+    assert(N == 0 || K == 0 || (B != nullptr && PackedB != nullptr && ldb >= K));
+    if (B == nullptr || PackedB == nullptr || ldb < K ||
+        dispatch->CopyPackB_TransposedRoutine == nullptr || MlasHalfGemmPackBSize(N, K, false) == 0) {
+        return;
+    }
+
+    dispatch->CopyPackB_TransposedRoutine((_mlas_fp16_*)PackedB, (const _mlas_fp16_*)B, ldb, N, K);
 }
 
 size_t

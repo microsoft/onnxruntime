@@ -151,7 +151,174 @@ inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
     if (MlasHGemmSupported(transA, transB)) {
       MlasGemm(transA, transB, M, N, K, A, lda, B, ldb, C, ldc,
                MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
-    } else {
+      return;
+    }
+
+#if defined(MLAS_TARGET_POWER)
+    if (MlasHalfGemmAccelerationSupported(mlas_backend_kernel_selector_config)) {
+      if (transA == CblasNoTrans && transB == CblasNoTrans) {
+        if (beta == 0.0f) {
+          MLAS_HALF_GEMM_DATA_PARAMS data{};
+          data.A = A;
+          data.lda = static_cast<size_t>(lda);
+          data.B = B;
+          data.ldb = static_cast<size_t>(ldb);
+          data.C = C;
+          data.ldc = static_cast<size_t>(ldc);
+          data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+          MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, nullptr);
+
+          if (alpha != 1.0f) {
+            if (ldc == N) {
+              const size_t total_elements = static_cast<size_t>(M) * static_cast<size_t>(N);
+              for (size_t idx = 0; idx < total_elements; ++idx) {
+                C[idx] = MLFloat16(C[idx].ToFloat() * alpha);
+              }
+            } else {
+              for (int m = 0; m < M; ++m) {
+                MLFloat16* c_row = C + static_cast<size_t>(m) * ldc;
+                for (int n = 0; n < N; ++n) {
+                  c_row[n] = MLFloat16(c_row[n].ToFloat() * alpha);
+                }
+              }
+            }
+          }
+          return;
+        } else {
+          std::vector<MLFloat16> c_tmp(static_cast<size_t>(M) * static_cast<size_t>(N));
+          MLAS_HALF_GEMM_DATA_PARAMS data{};
+          data.A = A;
+          data.lda = static_cast<size_t>(lda);
+          data.B = B;
+          data.ldb = static_cast<size_t>(ldb);
+          data.C = c_tmp.data();
+          data.ldc = static_cast<size_t>(N);
+          data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+          MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, nullptr);
+
+          for (int m = 0; m < M; ++m) {
+            MLFloat16* c_row = C + static_cast<size_t>(m) * ldc;
+            const MLFloat16* c_tmp_row = c_tmp.data() + static_cast<size_t>(m) * N;
+            for (int n = 0; n < N; ++n) {
+              c_row[n] = MLFloat16(c_tmp_row[n].ToFloat() * alpha + c_row[n].ToFloat() * beta);
+            }
+          }
+          return;
+        }
+      } else if (transA == CblasNoTrans && transB == CblasTrans) {
+        if (MlasHalfGemmTransposedBSupported()) {
+          if (beta == 0.0f) {
+            MLAS_HALF_GEMM_DATA_PARAMS data{};
+            data.A = A;
+            data.lda = static_cast<size_t>(lda);
+            data.B = B;
+            data.ldb = static_cast<size_t>(ldb);
+            data.BIsTransposed = true;
+            data.C = C;
+            data.ldc = static_cast<size_t>(ldc);
+            data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+            MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, nullptr);
+
+            if (alpha != 1.0f) {
+              if (ldc == N) {
+                const size_t total_elements = static_cast<size_t>(M) * static_cast<size_t>(N);
+                for (size_t idx = 0; idx < total_elements; ++idx) {
+                  C[idx] = MLFloat16(C[idx].ToFloat() * alpha);
+                }
+              } else {
+                for (int m = 0; m < M; ++m) {
+                  MLFloat16* c_row = C + static_cast<size_t>(m) * ldc;
+                  for (int n = 0; n < N; ++n) {
+                    c_row[n] = MLFloat16(c_row[n].ToFloat() * alpha);
+                  }
+                }
+              }
+            }
+            return;
+          } else {
+            std::vector<MLFloat16> c_tmp(static_cast<size_t>(M) * static_cast<size_t>(N));
+            MLAS_HALF_GEMM_DATA_PARAMS data{};
+            data.A = A;
+            data.lda = static_cast<size_t>(lda);
+            data.B = B;
+            data.ldb = static_cast<size_t>(ldb);
+            data.BIsTransposed = true;
+            data.C = c_tmp.data();
+            data.ldc = static_cast<size_t>(N);
+            data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+            MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, nullptr);
+
+            for (int m = 0; m < M; ++m) {
+              MLFloat16* c_row = C + static_cast<size_t>(m) * ldc;
+              const MLFloat16* c_tmp_row = c_tmp.data() + static_cast<size_t>(m) * N;
+              for (int n = 0; n < N; ++n) {
+                c_row[n] = MLFloat16(c_tmp_row[n].ToFloat() * alpha + c_row[n].ToFloat() * beta);
+              }
+            }
+            return;
+          }
+        }
+
+        std::vector<MLFloat16> b_trans(static_cast<size_t>(K) * static_cast<size_t>(N));
+        for (int n = 0; n < N; ++n) {
+          for (int k = 0; k < K; ++k) {
+            b_trans[static_cast<size_t>(k) * N + n] = B[static_cast<size_t>(n) * ldb + k];
+          }
+        }
+
+        if (beta == 0.0f) {
+          MLAS_HALF_GEMM_DATA_PARAMS data{};
+          data.A = A;
+          data.lda = static_cast<size_t>(lda);
+          data.B = b_trans.data();
+          data.ldb = static_cast<size_t>(N);
+          data.C = C;
+          data.ldc = static_cast<size_t>(ldc);
+          data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+          MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, nullptr);
+
+          if (alpha != 1.0f) {
+            if (ldc == N) {
+              const size_t total_elements = static_cast<size_t>(M) * static_cast<size_t>(N);
+              for (size_t idx = 0; idx < total_elements; ++idx) {
+                C[idx] = MLFloat16(C[idx].ToFloat() * alpha);
+              }
+            } else {
+              for (int m = 0; m < M; ++m) {
+                MLFloat16* c_row = C + static_cast<size_t>(m) * ldc;
+                for (int n = 0; n < N; ++n) {
+                  c_row[n] = MLFloat16(c_row[n].ToFloat() * alpha);
+                }
+              }
+            }
+          }
+          return;
+        } else {
+          std::vector<MLFloat16> c_tmp(static_cast<size_t>(M) * static_cast<size_t>(N));
+          MLAS_HALF_GEMM_DATA_PARAMS data{};
+          data.A = A;
+          data.lda = static_cast<size_t>(lda);
+          data.B = b_trans.data();
+          data.ldb = static_cast<size_t>(N);
+          data.C = c_tmp.data();
+          data.ldc = static_cast<size_t>(N);
+          data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+          MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, nullptr);
+
+          for (int m = 0; m < M; ++m) {
+            MLFloat16* c_row = C + static_cast<size_t>(m) * ldc;
+            const MLFloat16* c_tmp_row = c_tmp.data() + static_cast<size_t>(m) * N;
+            for (int n = 0; n < N; ++n) {
+              c_row[n] = MLFloat16(c_tmp_row[n].ToFloat() * alpha + c_row[n].ToFloat() * beta);
+            }
+          }
+          return;
+        }
+      }
+    }
+#endif
+
+    {
       // fp16 fallback: upcast to fp32, run optimized SGEMM, downcast result.
       // Compute the exact contiguous span each matrix occupies: (rows-1)*stride + cols.
       // This is the distance from the first element to the last accessed element + 1.

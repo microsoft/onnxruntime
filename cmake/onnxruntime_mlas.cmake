@@ -762,8 +762,13 @@ else()
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/power/QuantizePowerVSX.cpp
+            ${MLAS_SRC_DIR}/power/CastPowerVSX.cpp
+            ${MLAS_SRC_DIR}/power/halfgemm_kernel_power9.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/power/QuantizePowerVSX.cpp PROPERTIES COMPILE_FLAGS "-mcpu=power9")
+          set_source_files_properties(${MLAS_SRC_DIR}/power/CastPowerVSX.cpp PROPERTIES COMPILE_FLAGS "-mcpu=power9 -O3")
+          set_source_files_properties(${MLAS_SRC_DIR}/power/halfgemm_kernel_power9.cpp PROPERTIES COMPILE_FLAGS "-mcpu=power9 -O3 -DPOWER9")
+          set_property(SOURCE ${MLAS_SRC_DIR}/halfgemm.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " -DPOWER9")
         endif()
 
         check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
@@ -807,13 +812,14 @@ else()
             if (HAS_P10_RUNTIME)
               set_source_files_properties(${MLAS_SRC_DIR}/platform.cpp PROPERTIES COMPILE_FLAGS "-DPOWER10")
               set_source_files_properties(${MLAS_SRC_DIR}/qgemm.cpp PROPERTIES COMPILE_FLAGS "-DPOWER10")
+              set_property(SOURCE ${MLAS_SRC_DIR}/halfgemm.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " -DPOWER10")
             endif()
             set(mlas_platform_srcs_power10
               ${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp
               ${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp
               ${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp
             )
-	    # Only compile assembly on non-AIX systems
+            # Only compile assembly on non-AIX systems
             if (NOT AIX)
               list(APPEND mlas_platform_srcs_power10 ${MLAS_SRC_DIR}/power/SgemmKernelPackA.S)
               set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPackA.S PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
@@ -821,6 +827,27 @@ else()
             set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10 -DSINGLE")
             set_source_files_properties(${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
             set_source_files_properties(${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp PROPERTIES COMPILE_FLAGS "-O3 -mcpu=power10")
+
+            # Check whether the compiler supports xvf16ger2pp (POWER10 MMA FP16).
+            set(CMAKE_REQUIRED_FLAGS "-mcpu=power10")
+            check_cxx_source_compiles("
+              #include <altivec.h>
+              int main() {
+                __vector_quad acc0;
+                __vector unsigned char a = {0}, b = {0};
+                __builtin_mma_xvf16ger2pp(&acc0, a, b);
+                return 0;
+              }"
+              COMPILES_P10_MMA_FP16
+            )
+            if(COMPILES_P10_MMA_FP16)
+              list(APPEND mlas_platform_srcs_power10
+                ${MLAS_SRC_DIR}/power/halfgemm_kernel_power10.cpp
+              )
+              set_source_files_properties(${MLAS_SRC_DIR}/power/halfgemm_kernel_power10.cpp
+                PROPERTIES COMPILE_FLAGS "-O3 -mcpu=power10 -DPOWER10")
+            endif()
+
             set(mlas_platform_srcs
               ${mlas_platform_srcs}
               ${mlas_platform_srcs_power10}

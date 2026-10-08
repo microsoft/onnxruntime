@@ -621,6 +621,70 @@ TEST(HalfGemmPackB, GenericPackedBFlagRunsOnFallback) {
   }
 }
 
+TEST(HalfGemmPackB, PrePackAndComputeMultiShapes) {
+  if (!MlasFp16AccelerationSupported()) {
+    GTEST_SKIP();
+  }
+
+  const struct Shape {
+    size_t M, N, K;
+  } test_shapes[] = {
+      {16, 32, 64},
+      {11, 27, 35},
+      {1, 64, 128},
+      {33, 48, 256},
+  };
+
+  for (const auto& shape : test_shapes) {
+    const size_t M = shape.M;
+    const size_t N = shape.N;
+    const size_t K = shape.K;
+
+    const size_t packed_b_size = MlasHalfGemmPackBSize(N, K, false);
+    if (packed_b_size == 0) {
+      continue;
+    }
+
+    std::vector<MLFp16> A(M * K);
+    std::vector<MLFp16> B(K * N);
+    std::vector<MLFp16> C_unpacked(M * N, MLFp16(0.0f));
+    std::vector<MLFp16> C_packed(M * N, MLFp16(0.0f));
+
+    SmallFloatFill(A.data(), A.size());
+    SmallFloatFill(B.data(), B.size());
+
+    // 1. Unpacked baseline
+    MLAS_HALF_GEMM_DATA_PARAMS data_unpacked{};
+    data_unpacked.A = A.data();
+    data_unpacked.B = B.data();
+    data_unpacked.C = reinterpret_cast<MLAS_FP16*>(C_unpacked.data());
+    data_unpacked.lda = K;
+    data_unpacked.ldb = N;
+    data_unpacked.ldc = N;
+    MlasHalfGemmBatch(M, N, K, 1, &data_unpacked, nullptr);
+
+    // 2. Pre-packed run
+    std::vector<std::byte> packed_b(packed_b_size);
+    MlasHalfGemmPackB(N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N, packed_b.data());
+
+    MLAS_HALF_GEMM_DATA_PARAMS data_packed{};
+    data_packed.A = A.data();
+    data_packed.B = packed_b.data();
+    data_packed.C = reinterpret_cast<MLAS_FP16*>(C_packed.data());
+    data_packed.lda = K;
+    data_packed.ldb = 0;
+    data_packed.ldc = N;
+    data_packed.BIsPacked = true;
+
+    MlasHalfGemmBatch(M, N, K, 1, &data_packed, nullptr);
+
+    for (size_t i = 0; i < C_packed.size(); ++i) {
+      ASSERT_TRUE(CloseEnough(float(C_packed[i]), float(C_unpacked[i])))
+          << "Mismatch at index " << i << " for shape (" << M << "," << N << "," << K << ")";
+    }
+  }
+}
+
 TEST(HalfGemmKleidiAINativeFp16, NoPackSingleThreadWithoutOutputProcessor) {
   if (!MlasFp16AccelerationSupported()) {
     GTEST_SKIP();
@@ -1288,5 +1352,84 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsInvalidLeadingDimension) {
   std::vector<std::byte> packed_b(packed_b_size);
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
       CblasNoTrans, CblasNoTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N - 1, packed_b.data()));
+}
+#endif
+
+#if defined(MLAS_TARGET_POWER)
+TEST(HalfGemm, TransposedB) {
+  if (!MlasHalfGemmTransposedBSupported()) {
+    GTEST_SKIP() << "Transposed B halfgemm not supported on this platform.";
+  }
+
+  const std::vector<std::tuple<size_t, size_t, size_t>> test_shapes = {
+      {8, 16, 32},
+      {1, 32, 79},
+      {43, 128, 64},
+      {16, 25, 33},  // odd and non-multiple shapes
+      {64, 48, 80},
+      {1, 64, 1024}, // multi-K-tile shape
+      {1, 1000, 2048}, // ResNet-50 classification GEMM shape
+  };
+
+  MLAS_THREADPOOL* threadpools[] = {nullptr, GetMlasThreadPool()};
+
+  for (auto* threadpool : threadpools) {
+    for (bool with_bias : {false, true}) {
+      for (const auto& [M, N, K] : test_shapes) {
+        std::vector<MLFp16> A(M * K);
+        std::vector<MLFp16> B(N * K);  // Transposed shape [N, K], row-major
+        std::vector<MLFp16> Bias(with_bias ? N : 0);
+        std::vector<MLFp16> C(M * N, MLFp16(0.0f));
+        std::vector<float> C_ref(M * N, 0.0f);
+
+        SmallFloatFill(A.data(), A.size());
+        SmallFloatFill(B.data(), B.size());
+        if (with_bias) {
+          SmallFloatFill(Bias.data(), Bias.size());
+        }
+
+        // Compute CPU reference: C_ref[m, n] = sum_k (A[m, k] * B[n, k]) + (with_bias ? Bias[n] : 0)
+        for (size_t m = 0; m < M; ++m) {
+          for (size_t n = 0; n < N; ++n) {
+            float sum = 0.0f;
+            for (size_t k = 0; k < K; ++k) {
+              sum += float(A[m * K + k]) * float(B[n * K + k]);
+            }
+            if (with_bias) {
+              sum += float(Bias[n]);
+            }
+            C_ref[m * N + n] = sum;
+          }
+        }
+
+        MLAS_HALF_GEMM_DATA_PARAMS data{};
+        data.A = A.data();
+        data.lda = K;
+        data.B = B.data();
+        data.ldb = K;
+        data.BIsTransposed = true;
+        data.C = reinterpret_cast<MLAS_FP16*>(C.data());
+        data.ldc = N;
+        if (with_bias) {
+          data.Bias = reinterpret_cast<const MLAS_FP16*>(Bias.data());
+        }
+
+        MlasHalfGemmBatch(M, N, K, 1, &data, threadpool);
+
+        for (size_t m = 0; m < M; ++m) {
+          for (size_t n = 0; n < N; ++n) {
+            float actual = float(C[m * N + n]);
+            float expected = C_ref[m * N + n];
+            float diff = std::abs(actual - expected);
+            float tol = std::max(2e-2f, std::abs(expected) * 2e-2f);
+            EXPECT_LE(diff, tol) << "M=" << M << " N=" << N << " K=" << K
+                                 << " with_bias=" << with_bias
+                                 << " threaded=" << (threadpool != nullptr)
+                                 << " at (" << m << ", " << n << ")";
+          }
+        }
+      }
+    }
+  }
 }
 #endif

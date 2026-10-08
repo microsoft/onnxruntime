@@ -16,3 +16,7 @@
 #if defined(__riscv) && __riscv_xlen == 64
 #define CPUIDINFO_ARCH_RISCV64
 #endif
+
+#if defined(__powerpc__) || defined(__ppc__) || defined(_ARCH_PPC)
+#define CPUIDINFO_ARCH_POWER
+#endif

@@ -142,6 +142,62 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   return true;
 }
 
+bool GemmPackBHalf(AllocatorPtr& alloc,
+                   const Tensor& tensor_b,
+                   bool trans_a,
+                   bool trans_b,
+                   IAllocatorUniquePtr<void>& packed_b,
+                   size_t& packed_b_size,
+                   TensorShape& b_shape,
+                   const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  // Only handle the common case of a 2D weight matrix. Additional matrices
+  // could be handled by stacking the packed buffers.
+  if (tensor_b.Shape().NumDimensions() != 2) {
+    return false;
+  }
+#if defined(MLAS_TARGET_POWER)
+  const bool can_use_trans_b = (!trans_b) || (trans_b && MlasHalfGemmTransposedBSupported());
+  if (trans_a || !can_use_trans_b) {
+    return false;
+  }
+#else
+  // Currently pre-packing is supported for NoTrans on both A and B
+  if (trans_a || trans_b) {
+    return false;
+  }
+#endif
+  if (!MlasHalfGemmAccelerationSupported(mlas_backend_kernel_selector_config)) {
+    return false;
+  }
+
+  b_shape = tensor_b.Shape();
+
+  const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
+  const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
+
+  packed_b_size = MlasHalfGemmPackBSize(N, K, false);
+  if (packed_b_size == 0) {
+    return false;
+  }
+
+  packed_b = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
+  auto* packed_b_data = packed_b.get();
+
+  // Initialize memory to 0 to avoid uninitialized padding.
+  memset(packed_b_data, 0, packed_b_size);
+
+#if defined(MLAS_TARGET_POWER)
+  if (trans_b) {
+    MlasHalfGemmPackB_Transposed(N, K, reinterpret_cast<const MLAS_FP16*>(tensor_b.Data<MLFloat16>()), K, packed_b_data);
+  } else {
+    MlasHalfGemmPackB(N, K, reinterpret_cast<const MLAS_FP16*>(tensor_b.Data<MLFloat16>()), N, packed_b_data);
+  }
+#else
+  MlasHalfGemmPackB(N, K, reinterpret_cast<const MLAS_FP16*>(tensor_b.Data<MLFloat16>()), N, packed_b_data);
+#endif
+  return true;
+}
+
 template <typename T>
 void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
@@ -219,6 +275,27 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   }
   const bool use_mlas_no_bias = beta == onnxruntime::MLFloat16::Zero;
   const bool use_mlas_bias = beta == onnxruntime::MLFloat16::One && support_mlas_bias;
+#if defined(MLAS_TARGET_POWER)
+  const bool can_use_trans_b = (trans_b == CblasNoTrans) ||
+                               (trans_b == CblasTrans && MlasHalfGemmTransposedBSupported());
+  if (has_accelerated_half_gemm && trans_a == CblasNoTrans && can_use_trans_b &&
+      alpha == onnxruntime::MLFloat16::One && (use_mlas_no_bias || use_mlas_bias)) {
+    MLAS_HALF_GEMM_DATA_PARAMS data{};
+    data.A = a_data;
+    data.lda = K;
+    data.B = b_data;
+    data.ldb = (trans_b == CblasTrans) ? K : N;
+    data.BIsTransposed = (trans_b == CblasTrans);
+    data.C = y_data;
+    data.ldc = N;
+    if (use_mlas_bias && c_shape != nullptr) {
+      data.Bias = c_data;
+    }
+    data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+    MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
+    return;
+  }
+#else
   if (has_accelerated_half_gemm && trans_a == CblasNoTrans && trans_b == CblasNoTrans &&
       alpha == onnxruntime::MLFloat16::One && (use_mlas_no_bias || use_mlas_bias)) {
     MLAS_HALF_GEMM_DATA_PARAMS data{};
@@ -235,6 +312,7 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }
+#endif
   // Fallback to Eigen
   // Broadcast the bias as needed if bias is given
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
@@ -300,6 +378,26 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
   return Status::OK();
 }
 
+template <>
+Status Gemm<MLFloat16>::PrePack(const Tensor& tensor, int input_idx,
+                                AllocatorPtr alloc, /*out*/ bool& is_packed,
+                                /*out*/ PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+
+  // only pack Matrix B
+  if (input_idx == 1) {
+    size_t packed_b_size;
+    is_packed = GemmPackBHalf(alloc, tensor, trans_A_ != CblasNoTrans, trans_B_ != CblasNoTrans,
+                              packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
+    bool share_prepacked_weights = (prepacked_weights != nullptr);
+    if (is_packed && share_prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+    }
+  }
+  return Status::OK();
+}
+
 template <typename T>
 Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
                                           gsl::span<const size_t> /*prepacked_buffer_sizes*/,
@@ -314,6 +412,20 @@ Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
                                               gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                               int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == 1) {
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
+  }
+  return Status::OK();
+}
+
+template <>
+Status Gemm<MLFloat16>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                  gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                  int input_idx,
+                                                  /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
   if (input_idx == 1) {
@@ -409,7 +521,68 @@ Status Gemm<MLFloat16>::Compute(OpKernelContext* context) const {
     ComputeGemm(trans_A_, trans_B_, M, N, K, static_cast<MLFloat16>(alpha_), A->Data<MLFloat16>(), B->Data<MLFloat16>(), static_cast<MLFloat16>(beta_),
                 c_data, c_shape, y_data, thread_pool, &mlas_backend_kernel_selector_config_);
   } else {
-    ORT_NOT_IMPLEMENTED("Prepacking of B is supported by MLAS half gemm API, but not implemented by this kernel yet");
+    if (K == 0) {
+      if (beta_ != 0.0f && c_data != nullptr) {
+        GemmBroadcastBias(M, N, static_cast<MLFloat16>(beta_), c_data, c_shape, y_data);
+      } else {
+        auto output_span = gsl::make_span(y_data, SafeInt<size_t>(M) * N);
+        std::fill(output_span.begin(), output_span.end(), onnxruntime::MLFloat16::Zero);
+      }
+    } else {
+      bool support_mlas_bias = false;
+      if (c_shape == nullptr) {
+        support_mlas_bias = true;
+      } else if (c_shape->NumDimensions() == 1 && (*c_shape)[0] == N) {
+        support_mlas_bias = true;
+      } else if (c_shape->NumDimensions() == 2 &&
+                 (((*c_shape)[0] == 1 && (*c_shape)[1] == N) || ((*c_shape)[0] == N && (*c_shape)[1] == 1))) {
+        support_mlas_bias = true;
+      }
+      const bool use_mlas_no_bias = (c_data == nullptr || beta_ == 0.0f);
+      const bool use_mlas_bias = (beta_ == 1.0f && support_mlas_bias);
+
+      MLAS_HALF_GEMM_DATA_PARAMS data{};
+      data.A = A->Data<MLFloat16>();
+      data.lda = static_cast<size_t>(trans_A_ != CblasNoTrans ? M : K);
+      data.B = packed_b_.get();
+      data.ldb = 0;
+      data.BIsPacked = true;
+      data.C = y_data;
+      data.ldc = static_cast<size_t>(N);
+      if (alpha_ == 1.0f && use_mlas_bias && c_shape != nullptr) {
+        data.Bias = reinterpret_cast<const MLAS_FP16*>(c_data);
+      }
+      data.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
+
+      MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N),
+                        static_cast<size_t>(K), 1, &data, thread_pool);
+
+      if (alpha_ != 1.0f || (!use_mlas_no_bias && !use_mlas_bias)) {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+        auto y_mat = EigenMatrixMapRowMajor<Eigen::half>(reinterpret_cast<Eigen::half*>(y_data), M, N);
+        if (alpha_ != 1.0f) {
+          y_mat *= Eigen::half(alpha_);
+        }
+        if (c_data != nullptr && beta_ != 0.0f && !use_mlas_bias) {
+          Eigen::half beta_h(beta_);
+          if (c_shape->Size() == 1) {
+            y_mat.array() += beta_h * (*reinterpret_cast<const Eigen::half*>(c_data));
+          } else if (c_shape->NumDimensions() == 1 || (*c_shape)[0] == 1) {
+            y_mat.rowwise() += (ConstEigenVectorMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(c_data), N) * beta_h).transpose();
+          } else if ((*c_shape)[1] == 1) {
+            y_mat.colwise() += ConstEigenVectorMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(c_data), M) * beta_h;
+          } else {
+            y_mat += ConstEigenMatrixMapRowMajor<Eigen::half>(reinterpret_cast<const Eigen::half*>(c_data), M, N) * beta_h;
+          }
+        }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+      }
+    }
   }
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
