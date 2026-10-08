@@ -397,6 +397,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                          (fc1_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 2) &&
                          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 1) != 0;
 
+  zero_point_offset_ = op_kernel_info.GetAttrOrDefault<float>(
+      "zero_point_offset", std::numeric_limits<float>::quiet_NaN());
+  if (!std::isnan(zero_point_offset_)) {
+    ORT_ENFORCE(quant_type_ == "int" && block_size_ > 0,
+                "zero_point_offset is only supported for integer block-wise quantization "
+                "(quant_type='int' with block_size > 0).");
+  }
+
   fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
   enable_fp4_deep_gemm_ =
       quant_type_ == "fp4" && !is_fp16_ && sm_ == 90 && GetDeviceProp().multiProcessorCount == 132 &&
@@ -780,9 +788,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
   // SwiGLU activation with swiglu_fusion == 0 means the gate and value projections are actually pre-fused
   // into FC1 (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  // GeGLU is a gated activation with the same interleaved fc1 layout as SwiGLU (fc1 emits
+  // 2*inter_size: gate|up). All shape/layout and prefill logic treats it identically; only the
+  // gate nonlinearity differs, which is resolved inside the activation epilogue by activation_type_.
+  const bool is_gated_activation =
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu;
   int swiglu_fusion = swiglu_fusion_;
-  if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
-      swiglu_fusion == 0 && !split_fp8_fc1) {
+  if (is_gated_activation && swiglu_fusion == 0 && !split_fp8_fc1) {
     swiglu_fusion = 1;
     LogQMoESwigluFusionRemapOnce();
   }
@@ -859,8 +872,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "QMoE asymmetric zero_points are currently supported only when block_size >= 32. "
                            "Use block_size >= 32 or remove fc*_zero_points.");
   }
+  // The fractional zero_point_offset attribute and uint8 fc*_zero_points tensors are two different
+  // ways to request asymmetric dequant; supplying both is ambiguous (the offset path ignores the
+  // uint8 zeros). Reject the combination so a model does not silently drop one of them.
+  if (!std::isnan(zero_point_offset_) && has_any_zero_point) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "QMoE cannot combine the 'zero_point_offset' attribute with fc*_zero_points "
+                           "inputs. Use one or the other.");
+  }
 
-  bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
+  // Gated activations (SwiGLU + GeGLU) share the interleaved fc1 layout, so is_fused_swiglu drives
+  // the fc1=2*inter_size shape logic for both. Kernels that are SiLU-specific (e.g. the symmetric
+  // int decode GEMV, which hardcodes the sigmoid gate) must additionally check activation_type_.
+  bool is_fused_swiglu = is_gated_activation;
   MoEParameters moe_params;
   // Prefer the cached shapes when PrePack consumed the source initializer.
   const TensorShape& fc1_shape = weights_consumed_by_prepack ? fc1_weights_shape_ : fc1_experts_weights->Shape();
@@ -1188,7 +1212,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool packed_int_routing_supported =
       moe_params.num_rows <= 256 && moe_params.num_experts <= 256 &&
       (k_ == 1 || k_ == 2 || k_ == 4 || k_ == 6 || k_ == 8);
-  if (enable_int2_gemv_ && !has_any_zero_point && is_fused_swiglu && swiglu_fusion == 1 &&
+  // The symmetric int decode GEMV kernel hardcodes the SiLU/sigmoid gate, so it is SwiGLU-only;
+  // GeGLU (same interleaved layout) must fall through to the prefill grouped GEMM instead.
+  const bool is_swiglu_only =
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
+  // A finite zero_point_offset makes int2 asymmetric (fractional center). The packed GEMV and prefill
+  // grouped GEMM are symmetric-only (no zero/bias term), so fractional-zp int2 must use the dense
+  // dequant path, which applies the offset as a per-block float zero-point. Treat it like a zero-point.
+  const bool has_fractional_zp = !std::isnan(zero_point_offset_);
+  if (enable_int2_gemv_ && !has_any_zero_point && !has_fractional_zp && is_swiglu_only && swiglu_fusion == 1 &&
       (block_size_ == 64 || block_size_ == 128) && packed_fc1_weights_ != nullptr &&
       packed_fc2_weights_ != nullptr) {
     use_packed_int_gemv = packed_int_fc1_shape_supported && packed_int_fc2_shape_supported &&
@@ -1209,8 +1241,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                           << " routing=" << packed_int_routing_supported;
   }
   const bool use_packed_int_prefill =
-      enable_int2_prefill_ && !use_packed_int_gemv && !has_any_zero_point && is_fused_swiglu &&
-      swiglu_fusion == 1 && packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr &&
+      enable_int2_prefill_ && !use_packed_int_gemv && !has_any_zero_point && !has_fractional_zp &&
+      is_fused_swiglu && swiglu_fusion == 1 && packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr &&
       moe_params.num_rows > 0 && packed_int_expanded <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size > 0 && moe_params.hidden_size <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size % 64 == 0 && moe_params.inter_size > 0 &&
@@ -1920,6 +1952,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.alpha = activation_alpha_;
     params.beta = activation_beta_;
     params.limit = swiglu_limit_;
+    // SwiGLU or GeGLU (both interleaved gated); the prefill epilogue applies the matching gate.
+    params.activation_type = activation_type_;
     params.stream = stream;
     const size_t prefill_bytes = packed_prefill_workspace_bytes;
     auto prefill_workspace = GetScratchBuffer<void>(prefill_bytes, GetComputeStream(context));
@@ -2388,32 +2422,82 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     const auto* fc1_zero_data = fc1_zeros ? static_cast<const uint8_t*>(fc1_zeros->DataRaw()) : nullptr;
     const auto* fc2_zero_data = fc2_zeros ? static_cast<const uint8_t*>(fc2_zeros->DataRaw()) : nullptr;
+    // A finite zero_point_offset selects an asymmetric (fractional-center) dequant. DequantizeNBits
+    // computes (code - zero_point) * scale and already supports a per-block float zero-point when
+    // ZeroT == T, so build a constant per-block zero-point buffer = offset (one entry per scale) and
+    // feed it as the typed zero-point. Symmetric int2/mixed-width keeps the default uint8-zeros path.
+    // (int2 rejects uint8 fc*_zero_points, so fractional-zp and uint8 zeros are mutually exclusive.)
+    const bool use_fractional_zp = !std::isnan(zero_point_offset_);
+    IAllocatorUniquePtr<void> fc1_offset_zp;
+    IAllocatorUniquePtr<void> fc2_offset_zp;
     if (is_fp16_) {
       ORT_RETURN_IF_NOT(fc1_scales->IsDataType<MLFloat16>() && fc2_scales->IsDataType<MLFloat16>(),
                         "INT2 or mixed-width CUDA QMoE with FP16 activations requires FP16 scales.");
-      ORT_RETURN_IF_ERROR((DequantizeNBits<half, uint8_t>(
-          static_cast<int>(fc1_expert_weight_bits_), static_cast<half*>(dequant_fc1_weights.get()),
-          static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
-          reinterpret_cast<const half*>(fc1_scales->DataRaw()), fc1_zero_data, nullptr,
-          fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
-      ORT_RETURN_IF_ERROR((DequantizeNBits<half, uint8_t>(
-          static_cast<int>(fc2_expert_weight_bits_), static_cast<half*>(dequant_fc2_weights.get()),
-          static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
-          reinterpret_cast<const half*>(fc2_scales->DataRaw()), fc2_zero_data, nullptr,
-          fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+      if (use_fractional_zp) {
+        const int fc1_scale_count = static_cast<int>(fc1_scales->Shape().Size());
+        const int fc2_scale_count = static_cast<int>(fc2_scales->Shape().Size());
+        fc1_offset_zp = GetScratchBuffer<void>(SafeInt<size_t>(fc1_scale_count) * sizeof(half), GetComputeStream(context));
+        fc2_offset_zp = GetScratchBuffer<void>(SafeInt<size_t>(fc2_scale_count) * sizeof(half), GetComputeStream(context));
+        LaunchQMoEConstantFill(static_cast<half*>(fc1_offset_zp.get()), fc1_scale_count, zero_point_offset_, stream);
+        LaunchQMoEConstantFill(static_cast<half*>(fc2_offset_zp.get()), fc2_scale_count, zero_point_offset_, stream);
+        ORT_RETURN_IF_ERROR((DequantizeNBits<half, half>(
+            static_cast<int>(fc1_expert_weight_bits_), static_cast<half*>(dequant_fc1_weights.get()),
+            static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
+            reinterpret_cast<const half*>(fc1_scales->DataRaw()),
+            static_cast<const half*>(fc1_offset_zp.get()), nullptr,
+            fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
+        ORT_RETURN_IF_ERROR((DequantizeNBits<half, half>(
+            static_cast<int>(fc2_expert_weight_bits_), static_cast<half*>(dequant_fc2_weights.get()),
+            static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
+            reinterpret_cast<const half*>(fc2_scales->DataRaw()),
+            static_cast<const half*>(fc2_offset_zp.get()), nullptr,
+            fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+      } else {
+        ORT_RETURN_IF_ERROR((DequantizeNBits<half, uint8_t>(
+            static_cast<int>(fc1_expert_weight_bits_), static_cast<half*>(dequant_fc1_weights.get()),
+            static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
+            reinterpret_cast<const half*>(fc1_scales->DataRaw()), fc1_zero_data, nullptr,
+            fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
+        ORT_RETURN_IF_ERROR((DequantizeNBits<half, uint8_t>(
+            static_cast<int>(fc2_expert_weight_bits_), static_cast<half*>(dequant_fc2_weights.get()),
+            static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
+            reinterpret_cast<const half*>(fc2_scales->DataRaw()), fc2_zero_data, nullptr,
+            fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+      }
     } else {
       ORT_RETURN_IF_NOT(fc1_scales->IsDataType<BFloat16>() && fc2_scales->IsDataType<BFloat16>(),
                         "INT2 or mixed-width CUDA QMoE with BF16 activations requires BF16 scales.");
-      ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, uint8_t>(
-          static_cast<int>(fc1_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc1_weights.get()),
-          static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
-          reinterpret_cast<const __nv_bfloat16*>(fc1_scales->DataRaw()), fc1_zero_data, nullptr,
-          fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
-      ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, uint8_t>(
-          static_cast<int>(fc2_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc2_weights.get()),
-          static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
-          reinterpret_cast<const __nv_bfloat16*>(fc2_scales->DataRaw()), fc2_zero_data, nullptr,
-          fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+      if (use_fractional_zp) {
+        const int fc1_scale_count = static_cast<int>(fc1_scales->Shape().Size());
+        const int fc2_scale_count = static_cast<int>(fc2_scales->Shape().Size());
+        fc1_offset_zp = GetScratchBuffer<void>(SafeInt<size_t>(fc1_scale_count) * sizeof(__nv_bfloat16), GetComputeStream(context));
+        fc2_offset_zp = GetScratchBuffer<void>(SafeInt<size_t>(fc2_scale_count) * sizeof(__nv_bfloat16), GetComputeStream(context));
+        LaunchQMoEConstantFill(static_cast<__nv_bfloat16*>(fc1_offset_zp.get()), fc1_scale_count, zero_point_offset_, stream);
+        LaunchQMoEConstantFill(static_cast<__nv_bfloat16*>(fc2_offset_zp.get()), fc2_scale_count, zero_point_offset_, stream);
+        ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, __nv_bfloat16>(
+            static_cast<int>(fc1_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc1_weights.get()),
+            static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
+            reinterpret_cast<const __nv_bfloat16*>(fc1_scales->DataRaw()),
+            static_cast<const __nv_bfloat16*>(fc1_offset_zp.get()), nullptr,
+            fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
+        ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, __nv_bfloat16>(
+            static_cast<int>(fc2_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc2_weights.get()),
+            static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
+            reinterpret_cast<const __nv_bfloat16*>(fc2_scales->DataRaw()),
+            static_cast<const __nv_bfloat16*>(fc2_offset_zp.get()), nullptr,
+            fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+      } else {
+        ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, uint8_t>(
+            static_cast<int>(fc1_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc1_weights.get()),
+            static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
+            reinterpret_cast<const __nv_bfloat16*>(fc1_scales->DataRaw()), fc1_zero_data, nullptr,
+            fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
+        ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, uint8_t>(
+            static_cast<int>(fc2_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc2_weights.get()),
+            static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
+            reinterpret_cast<const __nv_bfloat16*>(fc2_scales->DataRaw()), fc2_zero_data, nullptr,
+            fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+      }
     }
     fc1_weight_data = dequant_fc1_weights.get();
     fc2_weight_data = dequant_fc2_weights.get();
@@ -2738,8 +2822,16 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   }
 
   const auto int_weight_supports_packed_execution = [&](int64_t weight_bits) {
-    if ((!enable_int2_gemv_ && !enable_int2_prefill_) ||
-        activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
+    // SwiGLU and GeGLU are both interleaved gated activations eligible for the packed int2 paths;
+    // the decode GEMV stays SwiGLU-only (gated in ComputeInternal), but prefill serves GeGLU too, so
+    // its weights must be prepacked here.
+    const bool packed_eligible_activation =
+        activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
+        activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu;
+    // A finite zero_point_offset forces the asymmetric dense dequant path (symmetric GEMV/prefill
+    // cannot apply it), which consumes the raw weights -- so do not prepack them away.
+    if ((!enable_int2_gemv_ && !enable_int2_prefill_) || !packed_eligible_activation ||
+        !std::isnan(zero_point_offset_) ||
         swiglu_fusion_ != 1 || (block_size_ != 32 && block_size_ != 64 && block_size_ != 128)) {
       return false;
     }
