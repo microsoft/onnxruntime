@@ -6,10 +6,20 @@ import { runEncryptedEpContextWorkflow } from '../src/EncryptedEpContextWorkflow
 import RNFS from 'react-native-fs';
 
 jest.mock('onnxruntime-react-native', () => ({ InferenceSession: {}, Tensor: jest.fn() }), { virtual: true });
-jest.mock('react-native-fs', () => ({ DocumentDirectoryPath: '/test', readFile: jest.fn() }), { virtual: true });
+jest.mock(
+  'react-native-fs',
+  () => ({
+    DocumentDirectoryPath: '/test',
+    MainBundlePath: '/bundle',
+    exists: jest.fn().mockResolvedValue(true),
+    readFile: jest.fn(),
+  }),
+  { virtual: true },
+);
 
 afterEach(() => {
   delete globalThis.OrtApi;
+  RNFS.exists.mockResolvedValue(true);
 });
 
 test('the opt-in runner rejects invalid configuration rather than reporting a skipped success', async () => {
@@ -21,6 +31,20 @@ test('the runner rejects production builds without the native compilation fixtur
   RNFS.readFile.mockResolvedValue(JSON.stringify({ plugin: '/test/plugin', sourceModel: '/test/model' }));
   globalThis.OrtApi = {};
   await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('ORT_RN_TEST_EP_CONTEXT=1');
+});
+
+test('the runner reads CI-bundled configuration when no document configuration is provisioned', async () => {
+  RNFS.exists.mockResolvedValue(false);
+  RNFS.readFile.mockResolvedValue(JSON.stringify({ plugin: 'example_plugin_ep.dylib', sourceModel: 'model.onnx' }));
+  globalThis.OrtApi = {};
+  await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('ORT_RN_TEST_EP_CONTEXT=1');
+  expect(RNFS.readFile).toHaveBeenLastCalledWith('/bundle/ort-encryption/config.json', 'utf8');
+});
+
+test('bundled fixture paths cannot escape the bundle directory', async () => {
+  RNFS.exists.mockResolvedValue(false);
+  RNFS.readFile.mockResolvedValue(JSON.stringify({ plugin: '../plugin', sourceModel: 'model.onnx' }));
+  await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('must be filenames');
 });
 
 test('the mobile AES-GCM dependency round trips and rejects wrong keys, tampering, and asset names', () => {

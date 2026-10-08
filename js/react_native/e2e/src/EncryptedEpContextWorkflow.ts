@@ -21,8 +21,11 @@ interface TestApi {
 
 export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   // This explicit configuration is provisioned by the device test runner, not by production applications.
+  const documentConfig = `${RNFS.DocumentDirectoryPath}/ort-encryption-config.json`;
+  const bundled = !(await RNFS.exists(documentConfig));
+  const bundleDirectory = `${RNFS.MainBundlePath}/ort-encryption`;
   const config: unknown = JSON.parse(
-    await RNFS.readFile(`${RNFS.DocumentDirectoryPath}/ort-encryption-config.json`, 'utf8'),
+    await RNFS.readFile(bundled ? `${bundleDirectory}/config.json` : documentConfig, 'utf8'),
   );
   if (
     !config ||
@@ -34,6 +37,11 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   ) {
     throw new Error('Encryption test configuration requires plugin and sourceModel paths');
   }
+  if (bundled && [config.plugin, config.sourceModel].some((path) => !/^[a-zA-Z0-9_.-]+$/.test(path))) {
+    throw new Error('Bundled encryption fixture paths must be filenames');
+  }
+  const plugin = bundled ? `${bundleDirectory}/${config.plugin}` : config.plugin;
+  const sourceModel = bundled ? `${bundleDirectory}/${config.sourceModel}` : config.sourceModel;
   const api = globalThis.OrtApi as typeof globalThis.OrtApi & Partial<TestApi>;
   // eslint-disable-next-line no-underscore-dangle
   const compile = api?.__testCompileEpContextModel;
@@ -43,14 +51,14 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
     throw new Error('Rebuild the mobile binding with ORT_RN_TEST_EP_CONTEXT=1');
   }
   // Initialize the real language binding before using its native fixture environment.
-  const warmup = await InferenceSession.create(config.sourceModel);
+  const warmup = await InferenceSession.create(sourceModel);
   await warmup.release();
   const directory = `${RNFS.DocumentDirectoryPath}/ort-encryption-${Date.now()}`;
   await RNFS.mkdir(directory);
   const registration = 'rn_encryption_test';
   let registered = false;
   try {
-    const compiled = compile(config.plugin, registration, config.sourceModel, directory);
+    const compiled = compile(plugin, registration, sourceModel, directory);
     registered = true;
     // A new native-generated key per compilation permits distinct per-asset counter nonces.
     const key = compiled.key;

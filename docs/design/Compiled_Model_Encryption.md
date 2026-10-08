@@ -99,7 +99,18 @@ from `js/react_native/e2e`. The Detox test asserts
 the exact success result after two numerical cases and all negative controls.
 Without this opt-in, it is explicitly skipped. Host Jest crypto/configuration
 tests and native-header syntax checks do **not** establish device coverage.
-This workflow still requires an Apple/Android runner for end-to-end validation.
+The React Native CI iOS simulator job enables this opt-in automatically. Its build
+job compiles the plugin for the same arm64 simulator architecture as the ORT pod,
+using only the runtime-supplied API pointers rather than linking another ORT
+runtime. The E2E job enables the native hooks at pod installation, bundles and
+ad-hoc signs the plugin/model/configuration, and requires the exact Detox success
+assertion. Missing provisioning, authentication failures, and inference failures
+fail the job instead of skipping the test. The app reads this bundle configuration
+only when no document-directory configuration was supplied.
+
+This establishes coverage only after the actual CI simulator test passes; Windows
+host checks are not a substitute. Android encrypted-workflow provisioning is not
+enabled by this iOS job, and physical-device coverage is not claimed.
 
 The portable React Native C++ policy tests can run on Windows:
 
