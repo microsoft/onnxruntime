@@ -1014,6 +1014,89 @@ TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
   EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
 }
 
+// Sandbox scenario for a compiling EP: no filesystem is needed to compile or to load the compiled model. The model,
+// external initializers and EPContext data all travel through caller-owned buffers.
+TEST(OrtEpLibrary, PluginEp_CompileAndLoadWithoutFilesystem_ExternalInitializersAndEpContextData) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // mul_1 (compiled by the plugin EP) followed by an Add with an initializer that stays on the CPU EP.
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(ORT_TSTR("testdata/mul_1.onnx"), model));
+  auto& graph = *model.mutable_graph();
+  ASSERT_EQ(graph.node_size(), 1);
+  const std::string output_name = graph.node(0).output(0);
+  graph.mutable_node(0)->set_output(0, "mul_intermediate");
+  auto& bias = *graph.add_initializer();
+  bias.set_name("bias");
+  bias.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  bias.add_float_data(1.0f);
+  auto& add = *graph.add_node();
+  add.set_name("cpu_add");
+  add.set_op_type("Add");
+  add.add_input("mul_intermediate");
+  add.add_input("bias");
+  add.add_output(output_name);
+  const std::string model_bytes = model.SerializeAsString();
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* compiled_model = nullptr;
+  size_t compiled_model_size = 0;
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  auto free_buffers = gsl::finally([&]() {
+    allocator.Free(compiled_model);
+    allocator.Free(external_buffer);
+  });
+  const std::basic_string<ORTCHAR_T> logical_file_name = ORT_TSTR("weights.bin");
+
+  EpContextDataCallbackState write_callback_state;
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelFromBuffer(model_bytes.data(), model_bytes.size());
+    compile_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+    compile_options.SetEpContextEmbedMode(false);
+    compile_options.SetOutputModelBuffer(allocator, &compiled_model, &compiled_model_size);
+    compile_options.SetOutputModelExternalInitializersBuffer(logical_file_name.c_str(), 0, allocator,
+                                                             &external_buffer, &external_size);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state));
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  }
+
+  ASSERT_NE(compiled_model, nullptr);
+  ASSERT_NE(external_buffer, nullptr);
+  EXPECT_EQ(external_size, sizeof(float));
+  ASSERT_TRUE(write_callback_state.write_called);
+  EXPECT_FALSE(std::filesystem::exists(logical_file_name));
+
+  for (const char* use_buffers_directly : {"0", "1"}) {
+    SCOPED_TRACE(use_buffers_directly);
+    EpContextDataCallbackState read_callback_state;
+    read_callback_state.payload = write_callback_state.payload;
+
+    Ort::SessionOptions session_options;
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &read_callback_state));
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly,
+                                   use_buffers_directly);
+    session_options.AddExternalInitializersFromFilesInMemory({logical_file_name},
+                                                             {static_cast<char*>(external_buffer)},
+                                                             {external_size});
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    ASSERT_NO_THROW((Ort::Session{*ort_env, compiled_model, compiled_model_size, session_options}));
+    EXPECT_TRUE(read_callback_state.read_called);
+    EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
+  }
+}
+
 TEST(OrtEpLibrary, PluginEp_ExternalEpContextCallbacksRequireAdvertisedSupport) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
