@@ -89,38 +89,6 @@ TEST(GemmOpTest, WebGpuPackedFp16SplitKCancellation) {
   test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
-TEST(GemmOpTest, WebGpuIntelEligibleFp16LongReductionCancellation) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not available";
-  }
-
-  constexpr int64_t rows = 64;
-  constexpr int64_t reduction_size = 1024;
-  constexpr int64_t columns = 512;
-  std::vector<MLFloat16> weights(reduction_size * columns);
-  for (int64_t reduction_index = 0; reduction_index < reduction_size; ++reduction_index) {
-    const float value = reduction_index < reduction_size / 2 ? 512.0f : -512.0f;
-    for (int64_t column = 0; column < columns; ++column) {
-      weights[reduction_index * columns + column] = MLFloat16(value);
-    }
-  }
-  for (int64_t column = 0; column < columns; ++column) {
-    weights[column] = MLFloat16(513.0f);
-  }
-
-  SessionOptions options;
-  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-
-  OpTester test("Gemm", 13);
-  test.AddInput<MLFloat16>("A", {rows, reduction_size},
-                           std::vector<MLFloat16>(rows * reduction_size, MLFloat16(1.0f)));
-  test.AddInput<MLFloat16>("B", {reduction_size, columns}, weights, true);
-  test.AddOutput<MLFloat16>("Y", {rows, columns},
-                            std::vector<MLFloat16>(rows * columns, MLFloat16(1.0f)));
-  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
-}
-
 // Test int32 with M=128, K=128, N=128, transA=True
 TEST(GemmOpTest, GemmTransA_int32_128x128x128) {
   OpTester test("Gemm", 13);

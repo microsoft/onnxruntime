@@ -55,9 +55,7 @@ std::string LoadBCacheStr(bool is_vec4, uint32_t offset, const std::string& buf)
   return SS_GET(b_cache_ss);
 }
 
-std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t elements_per_thread_y,
-                            bool is_vec4, bool a_vec4, bool use_f32_accumulation,
-                            const std::string& buf) {
+std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t elements_per_thread_y, bool is_vec4, bool a_vec4, const std::string& buf) {
   SS(cal_acc_ss, 1024);
 
   if (a_vec4) {
@@ -110,11 +108,7 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
           const uint32_t k = kvec * 4 + c;
           cal_acc_ss << "        " << LoadBCacheStr(is_vec4, k, buf);
           for (uint32_t r = 0; r < elements_per_thread_y; r++) {
-            cal_acc_ss << "        acc_" << r << " += "
-                       << (use_f32_accumulation ? "f32(" : "")
-                       << "aB_" << r << "[" << c << "]"
-                       << (use_f32_accumulation ? ") * vec4<f32>(BCache)" : " * BCache")
-                       << ";\n";
+            cal_acc_ss << "        acc_" << r << " += aB_" << r << "[" << c << "] * BCache;\n";
           }
         }
         cal_acc_ss << "      }\n";
@@ -137,11 +131,7 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
       for (uint32_t sg_idx = 0; sg_idx < simd; sg_idx++) {
         cal_acc_ss << "      " << LoadBCacheStr(is_vec4, sg_idx + offset, buf);
         for (uint32_t i = 0; i < elements_per_thread_y; i++) {
-          cal_acc_ss << "      acc_" << i << " += "
-                     << (use_f32_accumulation ? "f32(" : "")
-                     << "subgroupBroadcast(a_val_" << i << ", " << sg_idx << ")"
-                     << (use_f32_accumulation ? ") * vec4<f32>(BCache)" : " * BCache")
-                     << ";\n";
+          cal_acc_ss << "      acc_" << i << " += subgroupBroadcast(a_val_" << i << ", " << sg_idx << ") * BCache;\n";
         }
       }
     }
@@ -177,7 +167,6 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 bool is_vec4,
                                 bool a_vec4,
                                 bool b_is_fp16,
-                                bool use_f32_accumulation,
                                 bool transpose_a,
                                 bool transpose_b,
                                 float alpha,
@@ -191,7 +180,6 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
 
   const auto tile_a_outer = kSubgroupLogicalWorkGroupSizeY * elements_per_thread_y;
   const auto tile_b_outer = kSubgroupLogicalWorkGroupSizeX * elements_per_thread_x;
-  const std::string accumulator_type = use_f32_accumulation ? "f32" : "output_element_t";
 
   // Double-buffering of the B tile in workgroup memory is only enabled for float16 B inputs.
   // The workgroup buffer holds the B tile, so its footprint scales with B's element size. For
@@ -221,7 +209,7 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
       << "  var BCache: vec4<b_element_t>;\n";
 
   for (uint32_t i = 0; i < elements_per_thread_y; i++) {
-    shader.MainFunctionBody() << "  var acc_" << i << " = vec4<" << accumulator_type << ">(0);\n"
+    shader.MainFunctionBody() << "  var acc_" << i << " = vec4<output_element_t>(0);\n"
                               << "  var a_val_" << i << " = a_value_t(0);\n";
   }
 
@@ -240,8 +228,7 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
           << "  for (var t = 0; t < i32(numTiles); t++) {\n"
           << "    let curr = t % 2;\n"
           << (a_vec4 ? "" : "    aCol = kStart + tileCol % i32(sg_size);\n")
-          << CalculateAccStr(batch_dims, elements_per_thread_y, is_vec4, a_vec4,
-                             use_f32_accumulation, "curr")
+          << CalculateAccStr(batch_dims, elements_per_thread_y, is_vec4, a_vec4, "curr")
           << "    if (t + 1 < i32(numTiles)) {\n"
           << LoadBStr(batch_dims, tile_b_outer, is_vec4, "(t + 1) % 2", "kStart + 32")
           << "    }\n"
@@ -259,8 +246,7 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
           << "    }\n"
           << "    workgroupBarrier();\n"
           << (a_vec4 ? "" : "    aCol = kStart + tileCol % i32(sg_size);\n")
-          << CalculateAccStr(batch_dims, elements_per_thread_y, is_vec4, a_vec4,
-                             use_f32_accumulation, "0")
+          << CalculateAccStr(batch_dims, elements_per_thread_y, is_vec4, a_vec4, "0")
           << "    kStart = kStart + 32;\n"
           << "    workgroupBarrier();\n"
           << "  }\n";  // main for loop
@@ -269,7 +255,7 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
     // Calculate alpha * acc
     if (alpha != 1.0f) {
       for (uint32_t i = 0; i < elements_per_thread_y; i++) {
-        shader.MainFunctionBody() << "  acc_" << i << " *= " << accumulator_type << "(uniforms.alpha);\n";
+        shader.MainFunctionBody() << "  acc_" << i << " *= output_element_t(uniforms.alpha);\n";
       }
     }
   }
@@ -278,15 +264,14 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
   if (is_vec4) {
     for (uint32_t i = 0; i < elements_per_thread_y; i++) {
       shader.MainFunctionBody() << "  mm_write(batch, globalRowStart + " << i
-                                << ", globalColStart, output_value_t(acc_" << i << "));\n";
+                                << ", globalColStart, acc_" << i << ");\n";
     }
   } else {
     for (uint32_t i = 0; i < elements_per_thread_y; i++) {
       for (uint32_t j = 0; j < elements_per_thread_x; j++) {
         shader.MainFunctionBody() << "  "
                                   << "mm_write(batch, globalRowStart + " << i << ", globalColStart + "
-                                  << j * kSubgroupLogicalWorkGroupSizeX << ", output_value_t(acc_" << i << "["
-                                  << j << "]));\n";
+                                  << j * kSubgroupLogicalWorkGroupSizeX << ", acc_" << i << "[" << j << "]);\n";
       }
     }
   }
