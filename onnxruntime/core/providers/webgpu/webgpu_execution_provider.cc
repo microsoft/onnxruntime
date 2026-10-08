@@ -902,8 +902,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       }
 #if defined(ORT_USE_EP_API_ADAPTERS)
       if (legacy) {
-        ORT_RETURN_IF_ERROR(context_.Flush(context_.LegacyBufferManager(), *recording_));
-        context_.SetLegacyBufferManager(it->second.get());
+        ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
       }
 #endif
       graph_buffer_mgr_active_ = true;
@@ -1012,8 +1011,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
 #if defined(ORT_USE_EP_API_ADAPTERS)
   if (legacy_replay) {
-    ORT_RETURN_IF_ERROR(context_.Flush(context_.LegacyBufferManager(), *recording_));
-    context_.SetLegacyBufferManager(per_graph_buffer_mgrs_.at(graph_annotation_id).get());
+    ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
   }
 #endif
   // TODO: enable profiling in run level

@@ -973,6 +973,17 @@ TEST_F(PluginEpWebGpuConcurrency, SerialSessionDestructionPreservesBoundSessionA
   CopyTensorRoundTrip(shared_allocator, -456.0f);
 }
 
+TEST_F(PluginEpWebGpuConcurrency, SerialGraphCaptureWithCpuFeedsAndFetches) {
+  auto session = CreateSession(true);
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    RunWithCpuInputAndOutput(*session, static_cast<float>(iteration + 1));
+    // Framework feed/fetch copies run while the graph manager is active. Recapture each time:
+    // those copies are not replayed, and the next Run supplies new CPU inputs and outputs.
+    session->ReleaseCapturedGraph(0);
+  }
+}
+
 TEST_F(PluginEpWebGpuConcurrency, SerialSingleSessionMultipleGraphCaptureIds) {
   auto session = CreateSession(true);
   Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));

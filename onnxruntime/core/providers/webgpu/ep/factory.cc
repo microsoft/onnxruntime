@@ -280,7 +280,7 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
           // Legacy Env copies share this context-owned recording. Ordinary allocations still submit clears.
           auto recording = context->LegacyRecording();
           return std::make_shared<GpuBufferAllocator>(
-              [context = std::move(context)]() -> const BufferManager& { return context->LegacyBufferManager(); },
+              [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
               [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
               false,
               []() { return true; });

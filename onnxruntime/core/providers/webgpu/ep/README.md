@@ -47,12 +47,14 @@ for GPU completion. A matching `AllocOnStream` continues to defer clears. Run-en
 active flag on success and failure; a copy or the existing dispatch/Run boundary submits pending work.
 An omitted allocation submission policy defaults to no immediate submission, as in built-in WebGPU.
 Session and Env allocators set explicit policies; the default does not change their behavior.
-Graph capture switches the active buffer manager only after draining pending shared work;
-capture completion restores the default manager.
+Framework/Env copies and Env allocations use the default context buffer manager. Graph execution
+keeps its per-graph buffer manager, while sharing the same legacy recording with those copies.
+Capture/replay boundaries drain pending shared work. Run-end flushing refreshes the graph and
+default managers before capture ends, even if a framework copy already submitted the recording.
 BufferManager tracks deferred releases by recording. Destroying one legacy Session must not
 discard the context-owned recording's pending entries, which may still belong to other Sessions
 or Env allocations. Modern Session-owned recordings are discarded on Session teardown.
-Run/replay guards release the legacy Run gate and reset buffer-manager routing on exit.
+Run/replay guards release the legacy Run gate; Run cleanup also resets the Session's graph-manager selection.
 They do not abandon a partially recorded replay; recovery after replay failure is not guaranteed.
 
 The recording mode is selected once at plugin registration using the host's minor and patch

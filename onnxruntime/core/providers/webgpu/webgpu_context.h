@@ -312,15 +312,8 @@ class WebGpuContext final {
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   const std::shared_ptr<CommandRecordingState>& LegacyRecording() const { return legacy_recording_; }
-  webgpu::BufferManager& LegacyBufferManager() const {
-    return legacy_buffer_mgr_ ? *legacy_buffer_mgr_ : *buffer_mgr_;
-  }
-  void SetLegacyBufferManager(webgpu::BufferManager* manager) { legacy_buffer_mgr_ = manager; }
   bool TryBeginLegacyRun() { return !legacy_run_active_.exchange(true); }
-  void EndLegacyRun() {
-    legacy_buffer_mgr_ = nullptr;
-    legacy_run_active_.store(false);
-  }
+  void EndLegacyRun() { legacy_run_active_.store(false); }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -473,7 +466,6 @@ class WebGpuContext final {
   // Old plugin hosts cannot reliably associate framework copies with a Session.
   // All operations on this timeline must be serialized, including across Sessions.
   std::shared_ptr<CommandRecordingState> legacy_recording_{std::make_shared<CommandRecordingState>()};
-  webgpu::BufferManager* legacy_buffer_mgr_{nullptr};
   std::atomic<bool> legacy_run_active_{false};
 
   uint32_t max_num_pending_dispatches_ = 16;

@@ -524,7 +524,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       // Legacy copies must follow the clears and kernels already recorded on the shared timeline,
       // even if the host dropped the stream. Keep this path separate from modern per-call recording.
       auto& recording = *impl.context_->LegacyRecording();
-      auto& buffer_manager = impl.context_->LegacyBufferManager();
+      auto& buffer_manager = impl.context_->BufferManager();
       DataTransferImpl data_transfer{buffer_manager, recording};
       for (size_t idx = 0; idx < num_tensors; ++idx) {
         Ort::ConstValue src_value{src_tensors[idx]};
