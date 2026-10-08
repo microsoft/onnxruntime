@@ -895,6 +895,9 @@ TEST(HalfGemmKleidiAISVE2p1, RejectsTransposedB) {
 
   EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K), size_t{0});
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+#if !defined(ORT_NO_EXCEPTIONS)
+  EXPECT_THROW(MlasHalfGemmBatch(M, N, K, 1, &data, nullptr), std::runtime_error);
+#endif
 #else
   GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
 #endif
@@ -1201,6 +1204,13 @@ TEST(HalfGemmKleidiAIPath, TransposedBRuntimePacking) {
       EXPECT_EQ(c[m * N + n], MLFp16(expected));
     }
   }
+
+  std::fill(c.begin(), c.end(), MLFp16(-1.0f));
+  data.ldb = K - 1;
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+  for (const auto value : c) {
+    EXPECT_EQ(value, MLFp16(-1.0f));
+  }
 #else
   GTEST_SKIP() << "Transposed-B HalfGemm requires an ARM64 KleidiAI build.";
 #endif
@@ -1259,6 +1269,13 @@ TEST(HalfGemmKleidiAIPath, TransposedBBackendNativePacking) {
       EXPECT_EQ(c[m * N + n], MLFp16(expected));
     }
   }
+
+  constexpr std::byte packed_b_initial_value{0x7f};
+  std::fill(packed_b.begin(), packed_b.end(), packed_b_initial_value);
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(b.data()), K - 1, packed_b.data()));
+  ExpectBufferFilledWith(packed_b, packed_b_initial_value);
 #else
   GTEST_SKIP() << "Transposed-B HalfGemm requires an ARM64 KleidiAI build.";
 #endif
