@@ -150,7 +150,7 @@ std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuCont
   return result;
 }
 
-void TestCopyAfterDeferredDispatch(bool upload) {
+void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -200,7 +200,9 @@ void TestCopyAfterDeferredDispatch(bool upload) {
   recording.deferred_dispatches.push_back(std::move(dispatch));
   recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
 
-  if (upload) {
+  if (checked_completion) {
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(buffer_manager, recording));
+  } else if (upload) {
     // The dispatch must consume the original input before Upload overwrites it.
     input_data.fill(42);
     buffer_manager.Upload(recording, input_data.data(), input.Get(), sizeof(input_data));
@@ -223,6 +225,265 @@ TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
 
 TEST(WebGpuContextTest, MemCpyFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(false);
+}
+
+void ExpectQueueCompleted(webgpu::WebGpuContext& context) {
+  auto result = std::make_shared<wgpu::QueueWorkDoneStatus>(wgpu::QueueWorkDoneStatus::CallbackCancelled);
+  const auto future = context.Device().GetQueue().OnSubmittedWorkDone(
+      wgpu::CallbackMode::WaitAnyOnly,
+      [result](wgpu::QueueWorkDoneStatus status, wgpu::StringView /*message*/) noexcept {
+        *result = status;
+      });
+  EXPECT_EQ(context.Instance().WaitAny(future, 0), wgpu::WaitStatus::Success);
+  EXPECT_EQ(*result, wgpu::QueueWorkDoneStatus::Success);
+}
+
+TEST(WebGpuContextTest, CheckedCompletionHandlesEmptyAndPendingEncoders) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& recording = webgpu_ep.Recording();
+
+  for (bool pending_encoder : {false, true}) {
+    SCOPED_TRACE(pending_encoder);
+    if (pending_encoder) {
+      context.GetCommandEncoder(recording);
+      ASSERT_TRUE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+    }
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording));
+    EXPECT_EQ(recording.command_encoder, nullptr);
+    EXPECT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+    ExpectQueueCompleted(context);
+  }
+}
+
+TEST(WebGpuContextTest, CheckedCompletionSubmitsAndWaitsForCopies) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& recording = webgpu_ep.Recording();
+  std::array<uint32_t, 16> expected;
+  expected.fill(42);
+  wgpu::BufferDescriptor desc{};
+  desc.size = sizeof(expected);
+  desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto source = context.Device().CreateBuffer(&desc);
+  desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
+  auto destination = context.Device().CreateBuffer(&desc);
+  context.Device().GetQueue().WriteBuffer(source, 0, expected.data(), sizeof(expected));
+
+  for (bool already_submitted : {false, true}) {
+    SCOPED_TRACE(already_submitted);
+    context.GetCommandEncoder(recording).CopyBufferToBuffer(source, 0, destination, 0, sizeof(expected));
+    if (already_submitted) {
+      ASSERT_STATUS_OK(context.Flush(webgpu_ep.BufferManager(), recording));
+    }
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording));
+    ExpectQueueCompleted(context);
+
+    auto map_status = std::make_shared<wgpu::MapAsyncStatus>(wgpu::MapAsyncStatus::Error);
+    ASSERT_STATUS_OK(context.Wait(destination.MapAsync(
+        wgpu::MapMode::Read, 0, sizeof(expected), wgpu::CallbackMode::WaitAnyOnly,
+        [map_status](wgpu::MapAsyncStatus status, wgpu::StringView /*message*/) noexcept {
+          *map_status = status;
+        })));
+    ASSERT_EQ(*map_status, wgpu::MapAsyncStatus::Success);
+    std::array<uint32_t, 16> actual;
+    std::copy_n(static_cast<const uint32_t*>(destination.GetConstMappedRange()), actual.size(), actual.begin());
+    EXPECT_EQ(actual, expected);
+    destination.Unmap();
+  }
+}
+
+TEST(WebGpuContextTest, CheckedCompletionEncodesDeferredDispatch) {
+  TestCopyAfterDeferredDispatch(true, true);
+}
+
+TEST(WebGpuContextTest, CheckedCompletionDrainsAfterDeferredDispatchFailure) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& recording = webgpu_ep.Recording();
+  webgpu::CapturedCommandInfo invalid_dispatch;
+  invalid_dispatch.program_key = "checked-completion-missing-pipeline";
+  recording.deferred_dispatches.push_back(std::move(invalid_dispatch));
+  recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
+
+  const auto status = context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("No cached or pending pipeline"));
+  EXPECT_TRUE(recording.deferred_dispatches.empty());
+  EXPECT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+  ExpectQueueCompleted(context);
+  ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording));
+}
+
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+template <typename TestBody>
+void RunWithExternalCompletionContext(TestBody test_body, bool timed_wait = true) {
+  ConfigOptions options;
+  auto owned_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(owned_ep, nullptr);
+
+  const auto instance_feature = wgpu::InstanceFeatureName::TimedWaitAny;
+  wgpu::InstanceDescriptor instance_desc{};
+  instance_desc.requiredFeatureCount = timed_wait ? 1 : 0;
+  instance_desc.requiredFeatures = timed_wait ? &instance_feature : nullptr;
+  dawn::native::Instance instance{&instance_desc};
+  wgpu::RequestAdapterOptions adapter_options{};
+  adapter_options.backendType = static_cast<wgpu::BackendType>(webgpu::WebGpuContextConfig{}.backend_type);
+  auto adapters = instance.EnumerateAdapters(&adapter_options);
+  ASSERT_FALSE(adapters.empty());
+
+  const auto device_feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
+  auto lost = std::make_shared<bool>(false);
+  wgpu::DeviceDescriptor device_desc{};
+  device_desc.requiredFeatureCount = 1;
+  device_desc.requiredFeatures = &device_feature;
+  device_desc.SetDeviceLostCallback(
+      wgpu::CallbackMode::WaitAnyOnly,
+      [lost](const wgpu::Device&, wgpu::DeviceLostReason, wgpu::StringView) noexcept { *lost = true; });
+  auto device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_desc));
+  ASSERT_NE(device, nullptr);
+
+  ConfigOptions external_options;
+  ASSERT_STATUS_OK(external_options.AddConfigEntry(kDeviceId, "1"));
+  ASSERT_STATUS_OK(external_options.AddConfigEntry(
+      kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(instance.Get())).c_str()));
+  ASSERT_STATUS_OK(external_options.AddConfigEntry(
+      kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
+  auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
+  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*external_ep);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(1);
+  test_body(context, webgpu_ep, lost);
+}
+#endif
+
+TEST(WebGpuContextTest, CheckedCompletionPropagatesValidationAndPreservesOuterScope) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+    auto& recording = ep.Recording();
+    wgpu::BufferDescriptor desc{};
+    desc.size = 64;
+    desc.usage = wgpu::BufferUsage::CopySrc;
+    auto buffer = context.Device().CreateBuffer(&desc);
+
+    context.PushErrorScope();
+    context.Device().InjectError(wgpu::ErrorType::Validation, "checked-completion-outer-scope-error");
+    // Poison the encoder before the helper's scopes; finishing it must report validation too.
+    context.GetCommandEncoder(recording).ClearBuffer(buffer, 0, 64);
+    const auto status = context.FlushAndWaitChecked(ep.BufferManager(), recording);
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("WebGPU error scope failed"));
+    const auto outer_status = context.PopErrorScope();
+    EXPECT_FALSE(outer_status.IsOK());
+    EXPECT_THAT(outer_status.ErrorMessage(), testing::HasSubstr("checked-completion-outer-scope-error"));
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), recording));
+    ExpectQueueCompleted(context);
+  });
+#endif
+}
+
+TEST(WebGpuContextTest, ErrorScopesPropagateValidationAndOutOfMemory) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native error injection is unavailable.";
+#else
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+    for (const auto filter : {wgpu::ErrorFilter::Validation, wgpu::ErrorFilter::OutOfMemory}) {
+      SCOPED_TRACE(static_cast<uint32_t>(filter));
+      const auto type = filter == wgpu::ErrorFilter::Validation ? wgpu::ErrorType::Validation
+                                                                : wgpu::ErrorType::OutOfMemory;
+      context.PushErrorScope(filter);
+      context.Device().InjectError(type, "checked-completion-scope-error");
+      const auto status = context.PopErrorScope();
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("checked-completion-scope-error"));
+      ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording()));
+    }
+  });
+#endif
+}
+
+TEST(WebGpuContextTest, CheckedCompletionCleansScopesAfterWaitFailure) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+    const auto status = context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording());
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Failed to wait for the operation"));
+
+    auto pop_status = std::make_shared<wgpu::PopErrorScopeStatus>(wgpu::PopErrorScopeStatus::Success);
+    const auto future = context.Device().PopErrorScope(
+        wgpu::CallbackMode::WaitAnyOnly,
+        [pop_status](wgpu::PopErrorScopeStatus status, wgpu::ErrorType, wgpu::StringView) noexcept {
+          *pop_status = status;
+        });
+    ASSERT_EQ(context.Instance().WaitAny(future, 0), wgpu::WaitStatus::Success);
+    // No helper-owned scopes remain, even though its completion/scope waits failed.
+    EXPECT_EQ(*pop_status, wgpu::PopErrorScopeStatus::Error);
+  },
+                                   false);
+#endif
+}
+
+void TestCheckedCompletionUncapturedError(wgpu::ErrorType type) {
+#if !GTEST_HAS_DEATH_TEST || defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  ORT_UNUSED_PARAMETER(type);
+  GTEST_SKIP() << "Uncaptured errors require an isolated ORT-owned Dawn device.";
+#else
+  RunWithFreshDefaultContext([type]() {
+    ConfigOptions options;
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    context.Device().InjectError(type, "checked-completion-uncaptured-error");
+    const auto status = context.FlushAndWaitChecked(webgpu_ep.BufferManager(), webgpu_ep.Recording());
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("checked-completion-uncaptured-error"));
+    EXPECT_FALSE(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), webgpu_ep.Recording()).IsOK());
+    context.PushErrorScope();
+    EXPECT_TRUE(context.PopErrorScope().IsOK());
+  });
+#endif
+}
+
+TEST(WebGpuContextTest, CheckedCompletionReportsEarlierUncapturedValidation) {
+  TestCheckedCompletionUncapturedError(wgpu::ErrorType::Validation);
+}
+
+TEST(WebGpuContextTest, CheckedCompletionReportsEarlierUncapturedOutOfMemory) {
+  TestCheckedCompletionUncapturedError(wgpu::ErrorType::OutOfMemory);
+}
+
+TEST(WebGpuContextTest, CheckedCompletionDetectsLostExternalDevice) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device loss injection is unavailable.";
+#else
+  for (bool pending_encoder : {false, true}) {
+    RunWithExternalCompletionContext([pending_encoder](auto& context, auto& ep, const auto& lost) {
+      auto& recording = ep.Recording();
+      ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), recording));
+      if (pending_encoder) {
+        context.GetCommandEncoder(recording);
+      }
+      context.Device().ForceLoss(wgpu::DeviceLostReason::Unknown, "checked-completion-device-loss");
+
+      // Dawn can report successful queue completion on a lost device.
+      ExpectQueueCompleted(context);
+      const auto status = context.FlushAndWaitChecked(ep.BufferManager(), recording);
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("WebGPU device lost"));
+      EXPECT_TRUE(*lost);
+      EXPECT_FALSE(context.FlushAndWaitChecked(ep.BufferManager(), recording).IsOK());
+    });
+  }
+#endif
 }
 
 TEST(WebGpuContextTest, BufferReuseFollowsCachePolicyAndRecordingSubmission) {
@@ -520,6 +781,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
@@ -560,6 +822,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
                                        webgpu::BufferCacheMode::Disabled);
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false);
@@ -605,6 +868,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
@@ -768,6 +1032,20 @@ TEST(WebGpuContextTest, KvCacheQuantizationAcceptsSupportedBitWidths) {
 
 TEST(WebGpuContextTest, KvCacheQuantizationRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(KvCacheQuantizationOptions("3")), OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, DeviceIdRejectsInvalidValueBeforeContextCreation) {
+  for (const char* value : {"-1", "-32768", "32768", "2147483647", "2147483648", "", "1x", "0x", "x"}) {
+    SCOPED_TRACE(value);
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDeviceId, value));
+    try {
+      WebGpuProviderFactoryCreator::Create(options);
+      FAIL() << "Expected deviceId to be rejected.";
+    } catch (const OnnxRuntimeException& ex) {
+      EXPECT_NE(std::string_view{ex.what()}.find("Invalid deviceId value"), std::string_view::npos);
+    }
+  }
 }
 
 TEST(WebGpuContextTest, AdapterIndexRejectsInvalidValue) {
