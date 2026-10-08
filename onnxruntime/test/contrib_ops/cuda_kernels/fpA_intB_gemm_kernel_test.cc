@@ -704,26 +704,28 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
   }
 }
 
-// Keep group-32 INT4 decode and its scale-only reference in the SM80-compatible layout, including on Hopper.
+// Check FP16 narrow-tile bounds and small/deep/wide fallbacks with a symmetric SM80-compatible reference.
 TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
   EXPECT_EQ(GetKernelArch(90), 80);
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT4 decode requires SM " << kMinSupportedSm << " or later";
   }
-  for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{{128, 256}, {256, 768}, {2880, 4096}}) {
+  for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{
+           {32, 256}, {64, 64}, {128, 256}, {256, 768}, {2880, 4096}, {8192, 256}, {8192, 2560}, {8192, 4096}, {8256, 256}, {128, 4160}}) {
     SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
     InitBuffers(1, columns, depth, 32);
     EXPECT_TRUE(BenchmarkAndVerifyKernel());
   }
 }
 
-// Keep BF16 group-32 decode and its reference symmetric and SM80-compatible in both build configurations.
+// Check the same BF16 bounds and fallbacks with a symmetric reference in both build configurations.
 TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
   EXPECT_EQ(GetKernelArch(90), 80);
   if (onnxruntime::llm::common::getSMVersion() < 80) {
     GTEST_SKIP() << "BF16 INT4 decode requires SM 80 or later";
   }
-  for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{{128, 256}, {256, 768}, {2880, 4096}}) {
+  for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{
+           {32, 256}, {64, 64}, {128, 256}, {256, 768}, {2880, 4096}, {8192, 256}, {8192, 2560}, {8192, 4096}, {8256, 256}, {128, 4160}}) {
     SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
     InitBuffers(1, columns, depth, 32);
     EXPECT_TRUE(BenchmarkAndVerifyKernel());
