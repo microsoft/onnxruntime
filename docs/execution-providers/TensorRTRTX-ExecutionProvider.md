@@ -21,7 +21,7 @@ TensorRT RTX EP provides the following benefits:
 
 The TensorRT RTX EP leverages NVIDIA’s new deep learning inference engine, [TensorRT for RTX](https://developer.nvidia.com/tensorrt-rtx), to accelerate ONNX models on RTX GPUs. Microsoft and NVIDIA collaborated closely to integrate the TensorRT RTX EP with ONNX Runtime.
 
-TensorRT RTX EP supports RTX GPUs based on Ampere and later architectures - NVIDIA GeForce RTX 30xx and above.
+TensorRT RTX EP supports RTX GPUs based on Turing and later architectures - NVIDIA GeForce RTX 20xx and above.
 
 ## Contents
 {: .no_toc }
