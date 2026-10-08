@@ -3,6 +3,7 @@
 
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_module_functions.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -37,7 +38,6 @@ void addGlobalMethods(py::module& m);
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m);
 void addObjectMethodsForEager(py::module& m);
-void InstallPythonCallbackLoggingSink(OrtEnv& ort_env);
 #ifdef ENABLE_LAZY_TENSOR
 void addObjectMethodsForLazyTensor(py::module& m);
 #endif
@@ -120,26 +120,11 @@ onnxruntime::Environment& GetEnv() {
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
+  lm_info.sink_factory = CreatePythonCallbackSink;
   Status status;
-
-  // Detect whether a process-wide OrtEnv already exists.  An embedding application may have
-  // created one via the C/C++ API before importing the Python module; in that case existing
-  // sessions/threads may already hold loggers backed by its LoggingManager, so replacing that
-  // manager with the PythonCallbackSink below could invalidate those loggers (use-after-free).
-  const bool env_preexisted = OrtEnv::TryGetInstance() != nullptr;
 
   OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr);
   if (!status.IsOK()) return status;
-
-  // Only install the PythonCallbackSink when this module actually created the OrtEnv.  The
-  // set_default_logger_callback() Python API (registered via the shared addGlobalMethods)
-  // relies on this sink being present.  When the env pre-existed we leave its LoggingManager
-  // untouched and set_default_logger_callback() reports that the sink is unavailable.  This is
-  // safe here because no ORT sessions or background threads exist yet, so there is no
-  // concurrent logging activity.
-  if (!env_preexisted) {
-    InstallPythonCallbackLoggingSink(*ort_env);
-  }
 
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {

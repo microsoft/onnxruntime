@@ -15,6 +15,7 @@ import threading
 import time
 import unittest
 import weakref
+from unittest import mock
 
 import numpy as np
 from helper import get_name
@@ -357,14 +358,105 @@ class TestInferenceSession(unittest.TestCase):
             raise ValueError("intentional error from callback")
 
         onnxrt.set_default_logger_callback(raising_callback, severity=0)
-        # Create a session to trigger some ORT log output; it should not crash even though
-        # the callback raises.
-        onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        errors = []
+        with mock.patch.object(sys, "unraisablehook", errors.append):
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        self.assertGreater(len(errors), 0)
+        self.assertTrue(all(error.exc_type is ValueError and error.object is raising_callback for error in errors))
 
         # Clean up: restore platform default logger and the default (Warning) severity so the
         # Verbose level set above does not leak into the rest of the Python test suite.
         onnxrt.set_default_logger_callback(None)
         onnxrt.set_default_logger_severity(2)
+
+    def test_logging_callback_replacement_and_reset(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        messages = []
+        replacement_messages = []
+
+        def callback(*record):
+            messages.append(record)
+            onnxrt.set_default_logger_callback(lambda *record: replacement_messages.append(record), severity=0)
+
+        onnxrt.set_default_logger_callback(callback, severity=0)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(len(messages), 1)
+        self.assertGreater(len(replacement_messages), 0)
+
+        onnxrt.set_default_logger_callback(None)
+        count = len(replacement_messages)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(len(replacement_messages), count)
+
+    def test_logging_callback_finalizer_reentrancy(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        finalized = []
+        nested_messages = []
+
+        def replacement(*record):
+            if record[2] == "callback_finalizer":
+                nested_messages.append(record)
+
+        class Callback:
+            def __call__(self, *record):
+                onnxrt.set_default_logger_callback(replacement, severity=0)
+
+            def __del__(self):
+                nested_options = onnxrt.SessionOptions()
+                nested_options.intra_op_num_threads = 1
+                nested_options.logid = "callback_finalizer"
+                onnxrt.InferenceSession(get_name("mul_1.onnx"), nested_options, providers=["CPUExecutionProvider"])
+                finalized.append(True)
+
+        onnxrt.set_default_logger_callback(Callback(), severity=0)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(finalized, [True])
+        self.assertEqual(nested_messages, [])
+
+    def test_logging_callback_concurrent_replacement(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.log_severity_level = 0
+        messages = []
+        errors = []
+        barrier = threading.Barrier(3)
+        logging_started = threading.Event()
+
+        class Callback:
+            def __call__(self, *record):
+                messages.append(record)
+                logging_started.set()
+
+        def log_messages():
+            try:
+                barrier.wait(timeout=10)
+                for _ in range(20):
+                    onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+            except Exception as error:
+                errors.append(error)
+
+        onnxrt.set_default_logger_callback(Callback(), severity=0)
+        workers = [threading.Thread(target=log_messages, daemon=True) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        barrier.wait(timeout=10)
+        self.assertTrue(logging_started.wait(timeout=10), "logging callback was never invoked")
+        for _ in range(500):
+            onnxrt.set_default_logger_callback(Callback(), severity=0)
+            time.sleep(0)
+        for worker in workers:
+            worker.join(timeout=30)
+            self.assertFalse(worker.is_alive(), "logging callback deadlocked")
+        self.assertEqual(errors, [])
+        self.assertGreater(len(messages), 0)
 
     def test_deserialization_from_path_object(self):
         # path object is allowed
