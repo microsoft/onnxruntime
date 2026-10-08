@@ -928,7 +928,7 @@ class HistogramCollector(CalibrationDataCollector):
                 assert len(dtypes) == 1, (
                     f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
                 )
-                data_arr_np = np.asarray(data_arr)
+                data_arr_np = np.concatenate(data_arr, axis=None)
             elif not isinstance(data_arr, np.ndarray):
                 raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
             else:
@@ -979,6 +979,8 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on real value
         """
         for tensor, data_arr in name_to_arr.items():
+            if isinstance(data_arr, list) and data_arr:
+                data_arr = np.concatenate(data_arr, axis=None)  # noqa: PLW2901
             data_arr = np.asarray(data_arr)  # noqa: PLW2901
             data_arr = data_arr.flatten()  # noqa: PLW2901
 
