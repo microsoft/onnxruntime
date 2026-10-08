@@ -36,6 +36,8 @@ struct ModelSavingOptions {
   // Force embed all external initializer into the Onnx file
   // Used for EPContext model generation while some nodes fallback on CPU which has external data dependency
   bool force_embed_external_ini = false;
+  // Keep subgraph initializers embedded when the external destination only supports main-graph injection.
+  bool force_embed_external_ini_in_subgraphs = false;
 };
 
 }  // namespace onnxruntime
