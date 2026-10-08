@@ -2,6 +2,8 @@
 
 ## Executive Summary
 
+The separate [INT3 QMoE delivery plan](int3-qmoe-end-to-end-delivery-plan.md) defines a proposed portable INT3 contract, provider-internal 2+1-plane prepacking and staged end-to-end qualification. It is a design proposal for eventual ONNX committee review, not approved ONNX INT3 support.
+
 The priority is an end-to-end deployable INT2 QMoE path for Qwen3.8-Flash-Next-class models. The target recipe uses INT2 for expert gate/up projections and INT4 for expert down projections, while sensitive non-expert tensors remain at higher precision. This follows the tensor placement of the published Unsloth `UD-Q2_K_XL` model without claiming numerical compatibility with its `IQ2_XS` and `IQ4_NL` formats.
 
 The delivery is complete only when a supported source checkpoint can be quantized, exported to ONNX, loaded by ONNX Runtime, and executed by CUDA with demonstrated model quality, memory reduction, decode throughput, and prefill TTFT. Operator-only correctness is necessary but is not an end-to-end deliverable.
