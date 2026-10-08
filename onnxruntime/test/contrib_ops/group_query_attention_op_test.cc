@@ -43,6 +43,31 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(GroupQueryAttentionTest, FlashAttentionBlockSizesUseFallbackForUnknownL2Cache) {
+  constexpr int head_size = 128;
+
+  const auto zero_cache_sizes =
+      contrib::group_query_attention_helper::GetFlashAttentionBlockSizes(0, head_size);
+  const auto unavailable_cache_sizes =
+      contrib::group_query_attention_helper::GetFlashAttentionBlockSizes(-1, head_size);
+
+  EXPECT_EQ(zero_cache_sizes.q_block_size, 256);
+  EXPECT_EQ(zero_cache_sizes.kv_block_size, 256);
+  EXPECT_EQ(unavailable_cache_sizes.q_block_size, zero_cache_sizes.q_block_size);
+  EXPECT_EQ(unavailable_cache_sizes.kv_block_size, zero_cache_sizes.kv_block_size);
+}
+
+TEST(GroupQueryAttentionTest, FlashAttentionBlockSizesUseDetectedL2Cache) {
+  constexpr int head_size = 128;
+  constexpr int l2_cache_size = 4 * 1024 * 1024;
+
+  const auto block_sizes =
+      contrib::group_query_attention_helper::GetFlashAttentionBlockSizes(l2_cache_size, head_size);
+
+  EXPECT_EQ(block_sizes.q_block_size, 256);
+  EXPECT_EQ(block_sizes.kv_block_size, 1024);
+}
+
 TEST(GroupQueryAttentionTest, RequiresEqualQueryKeyValueHeadSizes) {
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   Tensor query(DataTypeImpl::GetType<float>(), TensorShape{1, 1, 16}, allocator);
@@ -388,11 +413,9 @@ TEST(GroupQueryAttentionTest, QuantizedWindowedCacheRaggedBiasOffsetsDecode_CPU)
   constexpr int head_size = 256;
   constexpr int hidden_size = num_heads * head_size;
 
-  const int l2_cache_size = std::max(Env::Default().GetL2CacheSize(), 1);
-  const int kv_block_size = std::max(l2_cache_size / (static_cast<int>(sizeof(float)) * 4 *
-                                                      (head_size + head_size)),
-                                     1);
-  const int cache_capacity = 2 * kv_block_size;
+  const auto block_sizes =
+      contrib::group_query_attention_helper::GetFlashAttentionBlockSizes(Env::Default().GetL2CacheSize(), head_size);
+  const int cache_capacity = 2 * block_sizes.kv_block_size;
   const int total_sequence_length = cache_capacity + 2;
   const size_t cache_elements = static_cast<size_t>(batch_size) * kv_num_heads * cache_capacity * head_size;
 
