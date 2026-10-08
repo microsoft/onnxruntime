@@ -47,15 +47,27 @@ class TrackingExternalDataLoader final : public IExternalDataLoader {
     return memory_info.device.Type() == OrtDevice::CPU;
   }
 
+#if defined(__wasm__)
   Status LoadTensor(const Env& env, const std::filesystem::path& path, FileOffsetType offset,
                     SafeInt<size_t> length, Tensor& tensor) const override {
+#else
+  Status LoadTensor(const RandomAccessFile& file, FileOffsetType offset,
+                    SafeInt<size_t> length, Tensor& tensor) const override {
+#endif
     state_->offsets.push_back(offset);
     if (state_->failure == ReadFailure::Exception) {
       ORT_THROW("external loader read exception");
     }
     ORT_RETURN_IF(state_->failure == ReadFailure::Status, "external loader read failure");
-    return env.ReadFileIntoBuffer(path.c_str(), offset, length,
-                                  gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
+    ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "external data length does not match tensor size");
+#if defined(__wasm__)
+    return env.ReadFileIntoBuffer(
+        path.c_str(), offset, length,
+        gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
+#else
+    return file.Read(offset,
+                     gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
+#endif
   }
 
  private:

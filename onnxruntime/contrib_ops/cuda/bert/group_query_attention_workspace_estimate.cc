@@ -203,6 +203,9 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   // full past tensor when only one past/present pair aliases, but alias state is
   // unavailable here. Windowed execution is bounded by the cache shape and the
   // runtime requires both past/present pairs to alias before allocating scratch.
+  // config.max_total_sequence_length carries the externally declared KV-length envelope
+  // (session option ep.cuda.gqa_workspace_max_total_sequence_length) intended to bound this
+  // non-windowed path; it is plumbed but not yet consumed here, so behavior is unchanged.
   if (!config.sliding_window_cache) return std::nullopt;
 
   const bool packed = !Present(shapes, kKey);
@@ -392,7 +395,12 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   return bounds;
 }
 
-std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
+}  // namespace
+
+std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
+    const Node& node,
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
   if (node.OpType() != "GroupQueryAttention") return std::nullopt;
   GQAWorkspaceEstimateConfig config;
   bool found_heads = false;
@@ -461,10 +469,10 @@ std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
       ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0;
   config.disable_flash_decode =
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FLASH_DECODE", false);
+  config.head_sink_may_be_prepacked = head_sink_is_constant_initializer;
+  config.max_total_sequence_length = max_total_sequence_length;
   return config;
 }
-
-}  // namespace
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
@@ -484,10 +492,11 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
-    bool head_sink_is_constant_initializer) {
-  auto config = ConfigFromNode(node);
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
+  const auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
+      node, head_sink_is_constant_initializer, max_total_sequence_length);
   if (!config.has_value()) return std::nullopt;
-  config->head_sink_may_be_prepacked = head_sink_is_constant_initializer;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);
 }

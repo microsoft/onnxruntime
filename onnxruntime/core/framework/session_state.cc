@@ -8,6 +8,7 @@
 #include <sstream>
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include <filesystem>
 #include <fstream>
 #include "core/common/parse_string.h"
 #endif
@@ -1728,7 +1729,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     const auto state_file =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
     if (!state_file.empty()) {
-      std::ifstream input(ToPathString(state_file));
+      std::ifstream input{std::filesystem::path(ToPathString(state_file))};
       ORT_RETURN_IF_NOT(input.is_open(), "Unable to open MoE expert counter state file: ", state_file);
       ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
     }

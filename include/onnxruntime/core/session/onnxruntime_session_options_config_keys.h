@@ -128,6 +128,11 @@ static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimiz
 // Its default value is "0".
 static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
 
+// Limits cumulative model-local function expansion across AOT and fallback inlining.
+// Values must be positive decimal integers. Defaults are 1,000,000 nodes and 1 GiB of serialized node payload.
+static const char* const kOrtSessionOptionsFunctionExpansionNodeLimit = "session.function_expansion_node_limit";
+static const char* const kOrtSessionOptionsFunctionExpansionByteLimit = "session.function_expansion_byte_limit";
+
 #ifdef ENABLE_TRAINING
 // Specifies a path of the file containing a list of memory optimization configurations.
 // The value should be a string indicating the file path of the config file.
@@ -476,6 +481,19 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
+/// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
+static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
+
+/// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
+/// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
+/// forwarded to the Level-1 estimator but is not consumed, so it does not change workspace
+/// estimates or partitioning. Non-windowed estimation remains unavailable.
+/// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
+/// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating
+/// resource accountants. This is not a runtime-enforced input limit or a no-OOM guarantee.
+static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
+    "ep.cuda.gqa_workspace_max_total_sequence_length";
+
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
 /// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
 /// and the 256 MiB estimated A/C row-size gate; ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses that gate.
@@ -645,6 +663,16 @@ static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.
 // "0" or unset uses the MLAS default (128).
 // This option exists for perf experimentation; the default may be retuned in future releases.
 static const char* const kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch = "mlas.nchwc_pointwise_conv_max_input_channel_batch";
+
+// Selects the NCHWc depthwise convolution kernel on AVX-512 platforms. The sliding window kernel keeps
+// each input column of a kernel row in a register across the kernel columns and handles the padding
+// columns with masks. It supports stride 1, dilation 1 and kernel widths 3, 5 and 7 (other shapes use
+// the assembly kernel). Its results are bitwise identical to the assembly kernel, except that a NaN
+// result may carry a different NaN payload or sign.
+// Option values:
+// - "1": Use the sliding window kernel where it applies. [DEFAULT]
+// - "0": Always use the assembly kernel.
+static const char* const kOrtSessionOptionsMlasNchwcDepthwiseSliding = "mlas.nchwc_depthwise_sliding";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
