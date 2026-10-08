@@ -611,6 +611,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 #endif
 
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
+  gemmProfiler_->setWaveAwareGemv(wave_aware_gemv_);
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
@@ -628,9 +629,11 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF,
+                         kernel_sm, wave_aware_gemv_);
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16,
+                         kernel_sm, wave_aware_gemv_);
   }
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
@@ -1021,6 +1024,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
               fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
               bias_data, chunk_out_data,
               alpha, rows, n, k, static_cast<int>(block_size_), cuda_kernel_type, apply_alpha_in_advance);
+          params.wave_aware = wave_aware_gemv_;
 
           // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),
           // not the raw device SM. The GEMV interleave layout is arch-dependent: arch in [90,100)

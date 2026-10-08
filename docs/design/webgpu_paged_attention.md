@@ -578,7 +578,7 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 ## 9. Testing plan
 
 - **Correctness (host-side enforce paths, lavapipe-compatible)**: input
-  validation tests. See the [`webgpu-local-testing`](../../.agents/skills/webgpu-local-testing/SKILL.md)
+  validation tests. See the [`webgpu-local-testing`](../../.github/skills/webgpu-local-testing/SKILL.md)
   skill for lavapipe details.
 - **End-to-end op tests** (`onnxruntime/test/contrib_ops/paged_attention_op_test.cc`,
   `PagedAttention.EndToEnd_*`): cover MHA, GQA, single/multi-batch,
