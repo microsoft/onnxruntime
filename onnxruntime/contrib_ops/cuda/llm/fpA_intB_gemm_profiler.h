@@ -106,6 +106,13 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mL2CacheBytes = l2CacheBytes;
   }
 
+  // Paired-K fp16 int4 GEMV tactic for the M = 8 bucket (M = 5..8 at run time). Mode 1 adds it as an extra
+  // candidate, so it is kept only where it beats the default GEMV and the CUTLASS kernels; mode 2 offers
+  // only that tactic (testing and benchmarking); mode 0 disables it.
+  void setPairedGemvMode(int mode) {
+    mPairedGemvMode = mode;
+  }
+
   void setWaveAwareGemv(bool enabled) {
     mWaveAwareGemv = enabled;
   }
@@ -126,6 +133,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
  private:
   bool mHasBiases;
+  int mPairedGemvMode = 0;
   bool mHasZeros;
   int mQuantBits;
   int mGroupSize;
