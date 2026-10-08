@@ -574,7 +574,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       (std::is_same_v<TCACHE, uint8_t> || (kIsQuantizedCache && per_channel_k && !enable_per_channel_xqa_));
   const bool cudnn_paged_enabled =
       enable_cudnn_paged_ || (auto_enable_cudnn_paged_ && device_prop.major >= 9);
-  bool use_cudnn_paged =
+  const bool cudnn_paged_eligible =
       cudnn_paged_enabled &&
       has_metadata_bounds &&
       max_query_len_bound == 1 &&
@@ -585,7 +585,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       parameters.softcap == 0.0f &&
       parameters.local_window_size <= 0 &&
       !parameters.use_smooth_softmax &&
-      !fp16_xqa_eligible &&
       onnxruntime::cudnn_sdpa::is_stable() &&
       onnxruntime::cudnn_sdpa::is_supported_paged(
           device_prop,
@@ -593,6 +592,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
           parameters.head_size, parameters.head_size,
           /*sequence_length_q=*/1,
           parameters.block_size);
+  bool use_cudnn_paged = cudnn_paged_eligible && !fp16_xqa_eligible;
   if (use_cudnn_paged) {
     use_cudnn_paged = onnxruntime::cudnn_sdpa::try_build_paged_graph(
         parameters.batch_size,
@@ -758,6 +758,24 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     }
     use_xqa_decode = (xqa_smem_ok != 0);
     use_xqa_spec_dec = use_xqa_decode && use_xqa_spec_dec;
+  }
+  if (fp16_xqa_eligible && cudnn_paged_eligible &&
+      !use_cudnn_paged && !use_xqa_decode) {
+    use_cudnn_paged = onnxruntime::cudnn_sdpa::try_build_paged_graph(
+        parameters.batch_size,
+        parameters.num_heads, parameters.kv_num_heads,
+        parameters.head_size, parameters.head_size,
+        parameters.num_blocks,
+        parameters.block_size,
+        parameters.max_num_blocks_per_seq,
+        cudnn_scale,
+        std::is_same<T, BFloat16>::value,
+        GetCudnnHandle(context),
+        ort_stream.get());
+    if (use_cudnn_paged) {
+      use_paged_decode = false;
+      use_flash_attention = false;
+    }
   }
   // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
   // checks pass. Restore Flash for ragged decode steps and unsupported devices instead of leaving

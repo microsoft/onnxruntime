@@ -500,7 +500,8 @@ __global__ void SanitizePastSequenceLengths(int32_t* sanitized_past_seqlens,
     const int64_t available_past_capacity = mapped_capacity - query_length;
     const int64_t max_past_length = available_past_capacity > 0 ? available_past_capacity : 0;
     const int64_t input_past_length = past_seqlens[b];
-    if (input_past_length < 0 || input_past_length > max_past_length) {
+    if (query_length > mapped_capacity ||
+        input_past_length < 0 || input_past_length > max_past_length) {
       sanitized_past_seqlens[b] = 0;
       sequence_validity[b] = 0;
       cumulative_seqlens_kv[b + 1] = 0;

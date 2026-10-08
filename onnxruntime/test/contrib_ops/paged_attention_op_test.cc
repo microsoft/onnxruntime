@@ -95,6 +95,7 @@ struct IoBindingCase {
   bool skip_reference_check = false;
   bool verify_malformed_cache_unchanged = false;
   bool verify_malformed_output_finite = false;
+  bool verify_malformed_output_zero = false;
 };
 
 // Masked positions get zero probability. Uses fp32 throughout to establish a
@@ -836,6 +837,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                 output_value.Get<Tensor>(), cpu_output));
         for (const MLFloat16 value : cpu_output.DataAsSpan<MLFloat16>()) {
           EXPECT_TRUE(std::isfinite(value.ToFloat()));
+          if (c.verify_malformed_output_zero) {
+            EXPECT_EQ(value.ToFloat(), 0.0f);
+          }
         }
       }
       continue;
@@ -2039,6 +2043,55 @@ TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
 }
 
+TEST(PagedAttention, CudaOversizedQueryIsSuppressedWithoutReadback) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.token_count = 257;
+  c.block_size = 256;
+  c.num_blocks = 1;
+  c.max_num_blocks_per_seq = 1;
+  c.cumulative_seqlens_q = {0, 257};
+  c.past_seqlens = {0};
+  c.block_table = {0};
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
+  c.verify_malformed_output_zero = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaGraphOversizedQueryIsSuppressed) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.token_count = 257;
+  c.block_size = 256;
+  c.num_blocks = 1;
+  c.max_num_blocks_per_seq = 1;
+  c.cumulative_seqlens_q = {0, 257};
+  c.replay_past_seqlens = {{0}, {0}, {0}, {0}};
+  c.block_table = {0};
+  c.attention_metadata = {257, 256};
+  c.enable_cuda_graph = true;
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
+  c.verify_malformed_output_zero = true;
+  RunIoBindingCase(
+      CudaExecutionProviderWithOptions(&provider_options),
+      kCudaExecutionProvider, true, false, c);
+}
+
 TEST(PagedAttention, CudaRejectsZeroPhysicalCacheBlocks) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -2238,12 +2291,10 @@ TEST(PagedAttention, Cuda_CudnnPagedDispatchWhenEnabled) {
 }
 
 TEST(PagedAttention, Cuda_CudnnPagedRunsWhenPreferredXqaIsRejected) {
-  ScopedEnvironmentVariables scoped_env_vars{
+  ScopedEnvironmentVariables common_env_vars{
       EnvVarMap{
           {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
-          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
-          {"ORT_ENABLE_XQA_NATIVE_KV", "1"},
-          {"ORT_TEST_ONLY_PAGED_ATTENTION_XQA_SHARED_MEMORY_LIMIT", "0"}}};
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -2256,14 +2307,27 @@ TEST(PagedAttention, Cuda_CudnnPagedRunsWhenPreferredXqaIsRejected) {
   c.num_heads = 6;
   c.head_size = 256;
 
+  {
+    ScopedEnvironmentVariables disable_xqa{
+        EnvVarMap{{"ORT_ENABLE_XQA_NATIVE_KV", "0"}}};
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+    const std::string probe_output = testing::internal::GetCapturedStdout();
+    if (probe_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+      GTEST_SKIP() << "cuDNN paged SDPA is not runnable for the target XQA shape.\n"
+                   << probe_output;
+    }
+  }
+
+  ScopedEnvironmentVariables reject_xqa{
+      EnvVarMap{
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"},
+          {"ORT_TEST_ONLY_PAGED_ATTENTION_XQA_SHARED_MEMORY_LIMIT", "0"}}};
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
 
-  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
-    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
-                 << debug_output;
-  }
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
   EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_EQ(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
 }
