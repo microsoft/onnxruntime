@@ -26,12 +26,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Intent-level attention dispatch policy (Tier 1, session option
-// session.attention_dispatch_policy). Hardware-neutral intent that selects which route set the
-// Level-1 workspace estimate assumes: latency favors high-workspace fast routes, memory favors
-// low-workspace routes (so more nodes fit on GPU), and safe assumes the bounded fallback
-// everywhere. Auto (default) keeps the current route-aware behavior. Defined here because the CUDA
-// GQA estimator is the only consumer today; hoist to a neutral header when a second op consumes it.
+// Reader-only session.attention_dispatch_policy intent; no value changes sizing or dispatch.
+// Keep local to GQA until another operator needs the hardware-neutral enum.
 enum class AttentionDispatchPolicy {
   Auto,
   Latency,
@@ -65,16 +61,18 @@ struct GQAWorkspaceEstimateConfig {
   bool head_sink_is_prepacked = false;
   // Level-1 possibility; true charges persistent and initialization lifetimes.
   bool head_sink_may_be_prepacked = false;
-  // KV-length envelope for workspace estimation: the maximum total_sequence_length (accumulated
-  // past + current tokens) to assume. total_sequence_length is a runtime scalar not recoverable
-  // from graph shapes, so callers supply the bound here (session option
-  // ep.cuda.gqa_workspace_max_total_sequence_length). Zero means unspecified.
+  // Declared total KV-length envelope for non-windowed estimation from session option
+  // ep.cuda.gqa_workspace_max_total_sequence_length. Zero means unspecified;
+  // this field does not enforce a runtime input limit.
   int64_t max_total_sequence_length = 0;
-  // Intent-level dispatch policy (session option session.attention_dispatch_policy) selecting which
-  // route set workspace estimation assumes. Plumbed reader-only; the estimator does not yet bias
-  // route selection on it, so Auto (default) and every other value currently behave identically.
+  // Parsed intent only; all values currently leave sizing and dispatch unchanged.
   AttentionDispatchPolicy dispatch_policy = AttentionDispatchPolicy::Auto;
 };
+
+std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
+    const Node& node,
+    bool head_sink_is_constant_initializer = false,
+    int64_t max_total_sequence_length = 0);
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,

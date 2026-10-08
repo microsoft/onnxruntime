@@ -117,6 +117,11 @@ static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimiz
 // Its default value is "0".
 static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
 
+// Limits cumulative model-local function expansion across AOT and fallback inlining.
+// Values must be positive decimal integers. Defaults are 1,000,000 nodes and 1 GiB of serialized node payload.
+static const char* const kOrtSessionOptionsFunctionExpansionNodeLimit = "session.function_expansion_node_limit";
+static const char* const kOrtSessionOptionsFunctionExpansionByteLimit = "session.function_expansion_byte_limit";
+
 #ifdef ENABLE_TRAINING
 // Specifies a path of the file containing a list of memory optimization configurations.
 // The value should be a string indicating the file path of the config file.
@@ -465,25 +470,36 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
-/// Maximum total KV sequence length (accumulated past + current tokens) that CUDA
-/// GroupQueryAttention Level-1 workspace estimation should assume. total_sequence_length is a
-/// runtime scalar input that cannot be recovered from graph shapes, so this hands the estimator
-/// the KV-length envelope directly for capacity-aware partitioning. A positive integer sets the
-/// bound; "0" or unset (default) leaves it unspecified and the estimator keeps its shape-derived
-/// behavior.
+/// Opt-in: lets the CUDA MatMulNBits tactic profiler also try a paired-K GEMV kernel (fp16 activations,
+/// 4-bit block_size-32 weights without zero points or bias, SM80-interleaved layout) for M = 5..8. The
+/// profiler keeps it only for shapes where it is faster than the default GEMV and the CUTLASS kernels.
+/// "0", "off", or unset (default) disables it; "force" offers only that tactic for M = 5..8 (for testing and
+/// benchmarking); any other value enables it as an extra candidate.
+/// Overrides the process-wide ORT_FPA_INTB_GEMV_PAIRED_K environment variable. Requires the fpA_intB path.
+/// Experimental: separate FP16 partial sums can overflow before cancellation, producing non-finite
+/// results even when the default GEMV stays finite. Tactic profiling checks speed, not numerical safety.
+static const char* const kOrtSessionOptionsCudaFpAIntBGemvPairedK = "ep.cuda.fpa_intb_gemv_paired_k";
+
+/// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
+static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
+
+/// Declared total KV-length envelope (accumulated past + current tokens) for CUDA
+/// GroupQueryAttention workspace estimation. A positive value enables non-windowed Level-1
+/// estimation using this bound; "0" or unset (default) leaves non-windowed estimation unavailable.
+/// The estimate also covers the allocated past cache capacity if it exceeds this envelope.
+/// Windowed estimation continues to use the cache capacity instead.
+/// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
+/// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating
+/// resource accountants. This is not a runtime-enforced input limit or a no-OOM guarantee.
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 
-/// Intent-level attention dispatch policy for Level-1 workspace estimation (Tier 1,
-/// hardware-neutral). Selects which route set the estimator assumes when bounding workspace,
-/// trading peak memory against latency:
-///   "latency" - favor high-workspace fast routes (e.g. Flash/XQA); larger estimate.
-///   "memory"  - favor low-workspace routes so more nodes fit on GPU; smaller estimate.
-///   "safe"    - assume the bounded fallback route everywhere; smallest guaranteed estimate.
-/// Unset (default) or any unrecognized value means "auto": the estimator keeps its current
-/// route-aware behavior. Session-scoped because the intent is hardware-neutral and shared by all
-/// attention nodes. Currently plumbed to the CUDA GroupQueryAttention estimator but not yet
-/// consumed; a follow-up PR biases route selection on it.
+/// Reader-only, hardware-neutral attention dispatch intent. "latency", "memory", and "safe"
+/// are parsed and retained for future policy resolution. Unset, empty, or unrecognized values
+/// map to "auto"; matching is case-sensitive.
+/// Currently forwarded to the CUDA GroupQueryAttention Level-1 estimator but not consumed.
+/// No value changes runtime dispatch, workspace estimates, or partitioning, and this option
+/// does not enforce a workload envelope or memory budget or provide a no-OOM guarantee.
 static const char* const kOrtSessionOptionsAttentionDispatchPolicy = "session.attention_dispatch_policy";
 
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
@@ -493,9 +509,10 @@ static const char* const kOrtSessionOptionsAttentionDispatchPolicy = "session.at
 static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
 
 /// Enables per-shape GEMM kernel auto-tuning for CUDA fp16/bf16 MatMul: "1" enables, "0" (default) disables.
-/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS and a small-N
-/// GEMV for small M) on the current device and caches the fastest for the process. Tuning is skipped
-/// while a CUDA graph is being captured, so run at least one warm-up inference before capture.
+/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS, a small-N
+/// GEMV, and on SM 9.0+ the TMA-based tinygemm2) on the current device and caches the fastest for the
+/// process. Tuning is skipped while a CUDA graph is being captured, so run at least one warm-up inference
+/// before capture.
 /// When disabled, cuBLAS is used. Overrides the ORT_CUDA_GEMM_AUTO_TUNE environment variable;
 /// ORT_ENABLE_SMALL_N_GEMV=1/0, when set, forces the small-N GEMV on/off and bypasses tuning.
 static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.enable_gemm_auto_tune";
@@ -654,6 +671,16 @@ static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.
 // "0" or unset uses the MLAS default (128).
 // This option exists for perf experimentation; the default may be retuned in future releases.
 static const char* const kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch = "mlas.nchwc_pointwise_conv_max_input_channel_batch";
+
+// Selects the NCHWc depthwise convolution kernel on AVX-512 platforms. The sliding window kernel keeps
+// each input column of a kernel row in a register across the kernel columns and handles the padding
+// columns with masks. It supports stride 1, dilation 1 and kernel widths 3, 5 and 7 (other shapes use
+// the assembly kernel). Its results are bitwise identical to the assembly kernel, except that a NaN
+// result may carry a different NaN payload or sign.
+// Option values:
+// - "1": Use the sliding window kernel where it applies. [DEFAULT]
+// - "0": Always use the assembly kernel.
+static const char* const kOrtSessionOptionsMlasNchwcDepthwiseSliding = "mlas.nchwc_depthwise_sliding";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.

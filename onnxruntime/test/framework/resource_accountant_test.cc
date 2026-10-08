@@ -825,9 +825,90 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   EXPECT_EQ(estimator_config.cuda_fpa_intb_gemm, std::optional<std::string>{"1"});
   EXPECT_EQ(estimator_config.cuda_fpa_intb_profile_m, std::optional<std::string>{"1,16"});
   EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length,
-            std::optional<std::string>{"4096"});
+            int64_t{4096});
   EXPECT_EQ(estimator_config.attention_dispatch_policy,
             std::optional<std::string>{"memory"});
+}
+
+TEST(RealAccountantTest, FactoryRetainsAttentionDispatchPolicyReader) {
+  struct Case {
+    const char* value;
+  };
+  for (const auto& test_case : {
+           Case{nullptr}, Case{""}, Case{"auto"}, Case{"latency"}, Case{"memory"},
+           Case{"safe"}, Case{"Latency"}, Case{"unknown"}, Case{" memory "}}) {
+    SCOPED_TRACE(test_case.value != nullptr ? test_case.value : "<unset>");
+    ConfigOptions config;
+    ASSERT_STATUS_OK(config.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+    if (test_case.value != nullptr) {
+      ASSERT_STATUS_OK(config.AddConfigEntry(
+          kOrtSessionOptionsAttentionDispatchPolicy, test_case.value));
+    }
+    std::optional<ResourceAccountantMap> acc_map;
+    ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
+    ASSERT_TRUE(acc_map.has_value());
+    const auto& estimator_config =
+        acc_map->at(kCudaExecutionProvider)->GetWorkspaceEstimatorConfig();
+    if (test_case.value == nullptr) {
+      EXPECT_FALSE(estimator_config.attention_dispatch_policy.has_value());
+    } else {
+      EXPECT_EQ(estimator_config.attention_dispatch_policy,
+                std::optional<std::string>{test_case.value});
+    }
+    EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length, int64_t{0});
+  }
+}
+
+TEST(RealAccountantTest, FactoryParsesGqaWorkspaceEnvelope) {
+  struct Case {
+    const char* value;
+    int64_t expected;
+  };
+  for (const auto& test_case : {
+           Case{nullptr, 0}, Case{"0", 0}, Case{"4096", 4096},
+           Case{"9223372036854775807", std::numeric_limits<int64_t>::max()}}) {
+    SCOPED_TRACE(test_case.value != nullptr ? test_case.value : "<unset>");
+    ConfigOptions config;
+    ASSERT_STATUS_OK(config.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+    if (test_case.value != nullptr) {
+      ASSERT_STATUS_OK(config.AddConfigEntry(
+          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, test_case.value));
+    }
+    std::optional<ResourceAccountantMap> acc_map;
+    ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
+    ASSERT_TRUE(acc_map.has_value());
+    const auto& estimator_config =
+        acc_map->at(kCudaExecutionProvider)->GetWorkspaceEstimatorConfig();
+    EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length,
+              test_case.expected);
+  }
+}
+
+TEST(RealAccountantTest, FactoryRejectsInvalidGqaWorkspaceEnvelope) {
+  for (bool enable_partitioning : {false, true}) {
+    SCOPED_TRACE(enable_partitioning);
+    for (const char* value : {"-1", "", "malformed", "4096x", "+4096",
+                              " 4096", "4096 ", "9223372036854775808"}) {
+      SCOPED_TRACE(value);
+      ConfigOptions config;
+      if (enable_partitioning) {
+        ASSERT_STATUS_OK(config.AddConfigEntry(
+            kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+      }
+      ASSERT_STATUS_OK(config.AddConfigEntry(
+          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, value));
+      std::optional<ResourceAccountantMap> acc_map;
+      const auto status = CreateAccountants(config, PathString(), acc_map);
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+      EXPECT_NE(status.ErrorMessage().find(
+                    kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength),
+                std::string::npos);
+      EXPECT_FALSE(acc_map.has_value());
+    }
+  }
 }
 
 // Factory returns empty optional when no config is set.

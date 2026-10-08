@@ -1354,8 +1354,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, Tanh);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, Gemm);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ReduceSum);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 27, Mod);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, Mod);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Mod);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, QuantizeLinear);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, uint8_t, QuantizeLinear);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, DequantizeLinear);
@@ -2648,8 +2647,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, Tanh)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, Gemm)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ReduceSum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 27, Mod)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, Mod)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Mod)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, QuantizeLinear)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, uint8_t, QuantizeLinear)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, DequantizeLinear)>,
@@ -3638,26 +3636,13 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             input_defs.size() > 11 && input_defs[11] != nullptr &&
             input_defs[11]->Exists() &&
             graph.IsConstantInitializer(input_defs[11]->Name(), true);
-        // KV-length envelope for the non-windowed workspace estimate. total_sequence_length is a
-        // runtime scalar that is not recoverable from graph shapes, so the user hands it to the
-        // estimator via ep.cuda.gqa_workspace_max_total_sequence_length. Zero (unset or invalid)
-        // leaves the estimator's shape-derived behavior unchanged.
-        int64_t gqa_workspace_max_total_sequence_length = 0;
-        if (const auto& knob = resource_accountant->GetWorkspaceEstimatorConfig()
-                                   .cuda_gqa_workspace_max_total_sequence_length;
-            knob.has_value()) {
-          int64_t parsed = 0;
-          if (TryParseStringWithClassicLocale(*knob, parsed) && parsed > 0) {
-            gqa_workspace_max_total_sequence_length = parsed;
-          }
-        }
-        // Intent-level dispatch policy (session.attention_dispatch_policy). Hardware-neutral
-        // selection of which route set the workspace estimate assumes. Unset or unrecognized maps
-        // to Auto, which keeps the current route-aware behavior.
+        const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
+        const auto gqa_workspace_max_total_sequence_length =
+            estimator_config.cuda_gqa_workspace_max_total_sequence_length;
+        // Reader-only intent; no value changes route selection or sizing.
         contrib::cuda::AttentionDispatchPolicy attention_dispatch_policy =
             contrib::cuda::AttentionDispatchPolicy::Auto;
-        if (const auto& policy = resource_accountant->GetWorkspaceEstimatorConfig()
-                                     .attention_dispatch_policy;
+        if (const auto& policy = estimator_config.attention_dispatch_policy;
             policy.has_value()) {
           attention_dispatch_policy = contrib::cuda::ParseAttentionDispatchPolicy(*policy);
         }

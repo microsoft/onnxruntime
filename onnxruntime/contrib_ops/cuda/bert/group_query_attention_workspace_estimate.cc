@@ -200,14 +200,10 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   // WorkspaceInputShape exposes the total_sequence_length scalar's shape, not
   // its value. For a non-windowed cache that value can exceed past dim 2 and
   // directly scales backend workspace, so a sound bound needs the KV-length
-  // envelope config.max_total_sequence_length (session option
-  // ep.cuda.gqa_workspace_max_total_sequence_length). Without it there is no
-  // sound non-windowed bound, so decline -- this preserves the prior behavior
-  // whenever the envelope is unset. Windowed execution is bounded by the cache
-  // shape. The other non-windowed concern -- a full past-tensor copy when only
-  // one past/present pair aliases -- is charged separately as preservation
-  // scratch via bounds.account_partial_alias_preservation below; windowed
-  // execution requires both pairs to alias, so it never incurs that copy.
+  // envelope config.max_total_sequence_length. Without it, decline as before.
+  // A full past-tensor copy when only one past/present pair aliases is charged
+  // separately via bounds.account_partial_alias_preservation below. Windowed
+  // execution is bounded by the cache shape and requires both pairs to alias.
   const bool windowed = config.sliding_window_cache;
   if (!windowed && config.max_total_sequence_length <= 0) return std::nullopt;
 
@@ -239,9 +235,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   if (head_bound < 8 || batch_bound <= 0 || sequence_bound <= 0) return std::nullopt;
 
   // Past tensors are required for both cache kinds: they carry the kv-head and
-  // per-head cache geometry validated below, and for a windowed cache dim 2 is
-  // also the KV-length bound. (A non-windowed KV length comes from the envelope
-  // above, not this shape.)
+  // per-head cache geometry and allocated capacity validated below.
   if (!Present(shapes, kPastKey)) return std::nullopt;
   const auto* past_key = Shape(shapes, kPastKey);
   const auto* past_value = Shape(shapes, kPastValue);
@@ -255,13 +249,11 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
     return std::nullopt;
   }
   if ((*past_key)[2] != (*past_value)[2]) return std::nullopt;
-  // Windowed: the cache shape bounds the KV length (and must equal the window).
-  // Non-windowed: the runtime sizes backend scratch from the absolute total
-  // sequence length (GetGQAEffectiveWorkspaceKvLength), a scalar not recoverable
-  // from shapes, so use the declared envelope. The past length never exceeds the
-  // total present length, so this also bounds the past-preservation copy.
+  // A non-windowed static cache can exceed the active total KV length. MEA
+  // expands the present capacity, and partial aliasing preserves the full past
+  // allocation, so bound both the allocated cache and the declared KV length.
   const int64_t capacity_bound =
-      windowed ? (*past_key)[2] : config.max_total_sequence_length;
+      windowed ? (*past_key)[2] : std::max((*past_key)[2], config.max_total_sequence_length);
   int64_t cache_head_bound = std::min((*past_key)[3], (*past_value)[3]);
   if (config.kv_cache_bit_width == 4) {
     if (cache_head_bound > std::numeric_limits<int64_t>::max() / 2) return std::nullopt;
@@ -270,7 +262,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   head_bound = std::min(head_bound, cache_head_bound);
   if (batch_bound <= 0 || capacity_bound <= 0 || head_bound < 8 ||
       (windowed && capacity_bound != config.local_window_size) ||
-      (!windowed && (capacity_bound < sequence_bound ||
+      (!windowed && (config.max_total_sequence_length < sequence_bound ||
                      capacity_bound > std::numeric_limits<int32_t>::max())) ||
       !ValidateAuxiliaryShapes(config, shapes, batch_bound, sequence_bound,
                                head_bound, capacity_bound)) {
@@ -410,7 +402,12 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   return bounds;
 }
 
-std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
+}  // namespace
+
+std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
+    const Node& node,
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
   if (node.OpType() != "GroupQueryAttention") return std::nullopt;
   GQAWorkspaceEstimateConfig config;
   bool found_heads = false;
@@ -479,10 +476,10 @@ std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
       ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0;
   config.disable_flash_decode =
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FLASH_DECODE", false);
+  config.head_sink_may_be_prepacked = head_sink_is_constant_initializer;
+  config.max_total_sequence_length = max_total_sequence_length;
   return config;
 }
-
-}  // namespace
 
 AttentionDispatchPolicy ParseAttentionDispatchPolicy(std::string_view value) {
   if (value == "latency") return AttentionDispatchPolicy::Latency;
@@ -512,10 +509,9 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     bool head_sink_is_constant_initializer,
     int64_t max_total_sequence_length,
     AttentionDispatchPolicy dispatch_policy) {
-  auto config = ConfigFromNode(node);
+  auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
+      node, head_sink_is_constant_initializer, max_total_sequence_length);
   if (!config.has_value()) return std::nullopt;
-  config->head_sink_may_be_prepacked = head_sink_is_constant_initializer;
-  config->max_total_sequence_length = max_total_sequence_length;
   config->dispatch_policy = dispatch_policy;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);

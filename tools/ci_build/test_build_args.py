@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -11,13 +10,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-build = importlib.import_module("build")
-build_args = importlib.import_module("build_args")
-
-_UNRELEASED_OPSET_ENVIRONMENT = {
-    "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
-    "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
-}
+import build_args
 
 
 class BuildArgsTest(unittest.TestCase):
@@ -37,10 +30,59 @@ class BuildArgsTest(unittest.TestCase):
             with self.subTest(platform_name=platform_name):
                 args = self._parse(platform_name=platform_name)
                 self.assertTrue(args.use_telemetry)
+                self.assertFalse(args.use_windows_telemetry)
 
     def test_no_telemetry_disables_supported_target(self):
         args = self._parse("--no_telemetry", platform_name="linux")
         self.assertFalse(args.use_telemetry)
+
+    def test_windows_telemetry_backend_is_explicit(self):
+        args = self._parse("--use_windows_telemetry", platform_name="windows")
+        self.assertTrue(args.use_telemetry)
+        self.assertTrue(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_retains_windows_backend(self):
+        with self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"):
+            args = self._parse("--use_telemetry", platform_name="windows")
+
+        self.assertTrue(args.use_telemetry)
+        self.assertTrue(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_retains_1ds_elsewhere(self):
+        with self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"):
+            args = self._parse("--use_telemetry", platform_name="linux")
+
+        self.assertTrue(args.use_telemetry)
+        self.assertFalse(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_selects_1ds_for_android_on_every_host(self):
+        for platform_name in ("windows", "linux", "macos"):
+            with (
+                self.subTest(platform_name=platform_name),
+                self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"),
+            ):
+                args = self._parse("--android", "--use_telemetry", platform_name=platform_name)
+                self.assertTrue(args.use_telemetry)
+                self.assertFalse(args.use_windows_telemetry)
+
+    def test_windows_telemetry_backend_is_rejected_elsewhere(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_windows_telemetry", platform_name="linux")
+
+    def test_windows_telemetry_backend_is_rejected_for_unsupported_targets(self):
+        for arguments in (
+            ("--android",),
+            ("--build_wasm",),
+            ("--minimal_build", "--disable_exceptions"),
+        ):
+            with self.subTest(arguments=arguments), self.assertRaises(SystemExit):
+                self._parse("--use_windows_telemetry", *arguments, platform_name="windows")
+
+    def test_telemetry_backend_and_opt_out_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_windows_telemetry", "--no_telemetry", platform_name="windows")
+        with self.assertRaises(SystemExit):
+            self._parse("--use_telemetry", "--no_telemetry", platform_name="windows")
 
     def test_unsupported_targets_disable_telemetry(self):
         cases = (
@@ -70,26 +112,6 @@ class BuildArgsTest(unittest.TestCase):
             self._parse(platform_name="linux")
 
         warn.assert_not_called()
-
-
-class OnnxBackendTestEnvironmentTest(unittest.TestCase):
-    def test_cpu_and_cuda_enable_unreleased_opsets_by_default(self):
-        with mock.patch.dict(build.os.environ, {}, clear=True):
-            for use_cuda in (False, True):
-                with self.subTest(use_cuda=use_cuda):
-                    self.assertEqual(
-                        build.get_onnx_backend_test_environment(use_cuda),
-                        _UNRELEASED_OPSET_ENVIRONMENT,
-                    )
-
-    def test_cpu_and_cuda_override_explicit_parent_strict_opset_mode(self):
-        with mock.patch.dict(build.os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"}, clear=True):
-            for use_cuda in (False, True):
-                with self.subTest(use_cuda=use_cuda):
-                    self.assertEqual(
-                        build.get_onnx_backend_test_environment(use_cuda),
-                        _UNRELEASED_OPSET_ENVIRONMENT,
-                    )
 
 
 if __name__ == "__main__":

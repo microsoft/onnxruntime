@@ -37,8 +37,8 @@ constexpr bool HasGQAReachableBackend(GQAReachableBackend mask,
 // componentwise bounds, not a claim that their combination is one runtime shape.
 // The aggregate assumes both past/present K/V pairs alias. A caller that permits
 // partial aliasing must separately account for preservation scratch. For a
-// non-windowed cache, present_kv_cache_capacity_bound must bound the runtime
-// present KV length, not only the past input tensor's sequence dimension.
+// non-windowed cache, present_kv_cache_capacity_bound must bound both the allocated
+// past capacity and the active total KV length.
 struct GQAWorkspaceBounds {
   size_t qkv_element_size = 0;
   size_t cache_element_size = 0;
