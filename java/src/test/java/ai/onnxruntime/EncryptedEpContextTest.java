@@ -25,6 +25,8 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 public class EncryptedEpContextTest {
+  private static final SecureRandom RANDOM = new SecureRandom();
+
   @Test
   @EnabledOnOs(OS.WINDOWS)
   public void encryptedCompiledModelAndContextRunInference() throws Exception {
@@ -36,7 +38,7 @@ public class EncryptedEpContextTest {
     Path modelFile = directory.resolve("model.aesgcm");
     Path contextFile = directory.resolve("context.aesgcm");
     byte[] key = new byte[32];
-    new SecureRandom().nextBytes(key);
+    RANDOM.nextBytes(key);
     AtomicReference<String> contextName = new AtomicReference<>();
     AtomicInteger writes = new AtomicInteger();
     AtomicInteger reads = new AtomicInteger();
@@ -202,7 +204,7 @@ public class EncryptedEpContextTest {
   // Persist nonce || tag || ciphertext, with the logical asset name as authenticated data.
   private static byte[] encrypt(byte[] plaintext, byte[] key, String name) throws Exception {
     byte[] nonce = new byte[12];
-    new SecureRandom().nextBytes(nonce);
+    RANDOM.nextBytes(nonce);
     Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
     cipher.init(
         Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
