@@ -59,12 +59,24 @@ if ! command -v qemu-aarch64 >/dev/null 2>&1; then
     # dynamically from the Packages index so this doesn't rot.
     echo "Distro packages unavailable; falling back to static qemu-aarch64 from Debian..."
     QEMU_TMP="$(mktemp -d)"
-    QEMU_DEB_FILENAME="$(curl -fsSL http://ftp.debian.org/debian/dists/stable/main/binary-arm64/Packages.gz \
+    df -h "${QEMU_TMP}"  # debug: check disk space
+    QEMU_DEB_FILENAME="$(curl -fsSL --retry 3 http://ftp.debian.org/debian/dists/stable/main/binary-arm64/Packages.gz \
       | gzip -dc | awk '/^Package: qemu-user-static$/{found=1} found && /^Filename: /{print $2; exit}')"
+    echo "Deb filename: ${QEMU_DEB_FILENAME}"  # debug
     if [[ -n "${QEMU_DEB_FILENAME}" ]]; then
-      curl -fsSL -o "${QEMU_TMP}/qemu.deb" "http://ftp.debian.org/debian/${QEMU_DEB_FILENAME}" && \
+      for i in 1 2 3; do
+        if curl -fsSL --retry 3 -o "${QEMU_TMP}/qemu.deb" "http://ftp.debian.org/debian/${QEMU_DEB_FILENAME}"; then
+          break
+        fi
+        echo "Download attempt $i failed, retrying..." >&2
+        sleep 5
+      done
+      if [[ -f "${QEMU_TMP}/qemu.deb" ]]; then
         ( cd "${QEMU_TMP}" && ar x qemu.deb data.tar.xz && tar -xf data.tar.xz ./usr/bin/qemu-aarch64-static ) && \
-        install -m 755 "${QEMU_TMP}/usr/bin/qemu-aarch64-static" /usr/local/bin/qemu-aarch64 || true
+          install -m 755 "${QEMU_TMP}/usr/bin/qemu-aarch64-static" /usr/local/bin/qemu-aarch64 || true
+      else
+        echo "ERROR: failed to download qemu-user-static .deb after 3 attempts" >&2
+      fi
     fi
     rm -rf "${QEMU_TMP}"
   fi
