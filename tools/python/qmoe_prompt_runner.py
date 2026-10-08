@@ -2,15 +2,15 @@
 """Run prompts with ONNX Runtime GenAI and collect MoE expert counter logs."""
 
 import argparse
+import importlib
 import json
 import math
 import os
+import subprocess
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-
-import onnxruntime_genai as og
 
 COUNTER_MARKER = "moe_expert_counters "
 COUNTER_COMPLETE_MARKER = "moe_expert_counters_complete "
@@ -110,8 +110,44 @@ def redirect_native_stderr(path):
             os.close(saved_stderr)
 
 
-def create_model(model_path, provider, cpu_offload_experts, counter_alpha, counter_beta):
-    config = og.Config(str(model_path))
+def parse_free_gpu_indices(output):
+    free_gpu_indices = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        fields = [field.strip() for field in line.split(",")]
+        if len(fields) != 2:
+            raise ValueError(f"Unexpected nvidia-smi output: {line!r}")
+        gpu_index, memory_used = map(int, fields)
+        if memory_used == 0:
+            free_gpu_indices.append(gpu_index)
+    return sorted(free_gpu_indices)
+
+
+def first_free_gpu_index(free_gpu_indices):
+    if not free_gpu_indices:
+        raise RuntimeError("No free GPU found.")
+    return min(free_gpu_indices)
+
+
+def select_first_free_gpu():
+    result = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,memory.used",
+            "--format=csv,noheader,nounits",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    gpu_index = first_free_gpu_index(parse_free_gpu_indices(result.stdout))
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+    return gpu_index
+
+
+def create_model(genai, model_path, provider, cpu_offload_experts, counter_alpha, counter_beta):
+    config = genai.Config(str(model_path))
     if provider != "follow_config":
         config.clear_providers()
         if provider != "cpu":
@@ -133,7 +169,7 @@ def create_model(model_path, provider, cpu_offload_experts, counter_alpha, count
             }
         )
     )
-    return og.Model(config)
+    return genai.Model(config)
 
 
 def format_prompt(tokenizer, prompt, raw_prompt):
@@ -146,15 +182,15 @@ def format_prompt(tokenizer, prompt, raw_prompt):
     )
 
 
-def generate(model, tokenizer, prompt, max_new_tokens, raw_prompt):
+def generate(genai, model, tokenizer, prompt, max_new_tokens, raw_prompt):
     formatted_prompt = format_prompt(tokenizer, prompt, raw_prompt)
     prompt_tokens = tokenizer.encode(formatted_prompt)
-    params = og.GeneratorParams(model)
+    params = genai.GeneratorParams(model)
     params.set_search_options(
         max_length=len(prompt_tokens) + max_new_tokens,
         do_sample=False,
     )
-    generator = og.Generator(model, params)
+    generator = genai.Generator(model, params)
     generator.append_tokens(prompt_tokens)
 
     generated_tokens = []
@@ -200,15 +236,21 @@ def main():
     prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
+    if args.provider == "cuda":
+        gpu_index = select_first_free_gpu()
+        print(f"[qmoe_prompt_runner] using GPU {gpu_index}")
+    genai = importlib.import_module("onnxruntime_genai")
+
     with redirect_native_stderr(args.counter_log):
         model = create_model(
+            genai,
             args.model,
             args.provider,
             args.moe_cpu_offload_experts,
             args.moe_expert_counter_alpha,
             args.moe_expert_counter_beta,
         )
-        tokenizer = og.Tokenizer(model)
+        tokenizer = genai.Tokenizer(model)
         results = []
         for prompt_index, prompt in enumerate(prompts, start=1):
             print(
@@ -217,6 +259,7 @@ def main():
                 flush=True,
             )
             result = generate(
+                genai,
                 model,
                 tokenizer,
                 prompt,
