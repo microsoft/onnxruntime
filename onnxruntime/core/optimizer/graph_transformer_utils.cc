@@ -404,6 +404,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                  qdq_matmulnbits_block_size));
       }
 
+      // Preserve the LoRA boundary before Gemm absorbs a following activation.
+      if (session_options.config_options.GetConfigOrDefault(
+              kOrtSessionOptionsEnableLoraMulAddFusion,
+              session_options.config_options.GetConfigOrDefault(
+                  kOrtSessionOptionsEnableMatMulNBitsLoraFusion, "0")) == "1") {
+        transformers.emplace_back(std::make_unique<LoraMulAddFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kCpuExecutionProvider,
+                                             onnxruntime::kWebGpuExecutionProvider}));
+      }
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_acl_eps));
@@ -462,12 +471,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
-      if (session_options.config_options.GetConfigOrDefault(
-              kOrtSessionOptionsEnableMatMulNBitsLoraFusion, "0") == "1") {
-        transformers.emplace_back(std::make_unique<MatMulNBitsLoraFusion>(
-            InlinedHashSet<std::string_view>{onnxruntime::kCpuExecutionProvider,
-                                             onnxruntime::kWebGpuExecutionProvider}));
-      }
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider}));

@@ -3938,51 +3938,39 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsLora)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LoraMulAdd)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "Y = MatMulNBits(A, ...) + (A * lora_A) * lora_B. "
-          "Rank-zero LoRA inputs execute only the base quantized projection. "
-          "The LoRA inputs remain overridable; their rank is checked at runtime.")
-      .Attr("K", "Input feature dimension.", AttributeProto::INT)
-      .Attr("N", "Output feature dimension.", AttributeProto::INT)
-      .Attr("bits", "Quantized weight bit-width.", AttributeProto::INT, static_cast<int64_t>(4))
-      .Attr("block_size", "Quantization block size.", AttributeProto::INT)
-      .Attr("accuracy_level", "Same semantics as MatMulNBits.", AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("weight_prepacked", "Same semantics as MatMulNBits.", AttributeProto::INT, static_cast<int64_t>(0))
-      .Input(0, "A", "Input activation.", "T1")
-      .Input(1, "B", "Packed quantized base weights.", "T2")
-      .Input(2, "scales", "Base weight quantization scales.", "T1")
-      .Input(3, "zero_points", "Base weight zero points.", "T3", OpSchema::Optional)
-      .Input(4, "g_idx", "Deprecated group indices.", "T4", OpSchema::Optional)
-      .Input(5, "bias", "Optional base projection bias [N].", "T1", OpSchema::Optional)
-      .Input(6, "lora_A", "LoRA weights [K, rank].", "T1")
-      .Input(7, "lora_B", "LoRA weights [rank, N].", "T1")
-      .Output(0, "Y", "Base projection plus the low-rank update.", "T1")
-      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"},
-                      "Matching FP32 or FP16 activations, scales, and LoRA weights.")
-      .TypeConstraint("T2", {"tensor(uint8)"}, "Packed quantized weights.")
-      .TypeConstraint("T3", {"tensor(uint8)", "tensor(float)"}, "Quantized zero points.")
-      .TypeConstraint("T4", {"tensor(int32)"}, "Group indices.")
+          "Y = base + (X * Dequantize(Q_A, S_A)) * Dequantize(Q_B, S_B). "
+          "Dequantization uses INT8 weights and FP32 scales with axis 0, block size 32, and zero point 0. "
+          "FP16 computation casts dequantized weights before multiplication. Adapter scaling is folded into S_B. "
+          "Empty rank returns base without LoRA computation; buffer reuse is optional, not an aliasing guarantee.")
+      .Attr("block_size", "Axis-0 quantization group size; only 32 is supported.",
+            AttributeProto::INT, static_cast<int64_t>(32))
+      .Input(0, "base", "Existing base result [..., N].", "T")
+      .Input(1, "X", "Activation [..., K].", "T")
+      .Input(2, "Q_A", "INT8 LoRA weights [K, rank].", "tensor(int8)")
+      .Input(3, "Q_B", "INT8 LoRA weights [rank, N].", "tensor(int8)")
+      .Input(4, "S_A", "FP32 scales [ceil(K / 32), rank].", "tensor(float)")
+      .Input(5, "S_B", "FP32 scales [ceil(rank / 32), N].", "tensor(float)")
+      .Output(0, "Y", "Base result plus the optional low-rank update.", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"},
+                      "Matching base, activation, and output types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (getAttribute(ctx, "weight_prepacked", 0) != 0) {
-          fail_shape_inference("MatMulNBitsLora supports only weight_prepacked=0.");
+        if (getAttribute(ctx, "block_size", 32) != 32) {
+          fail_shape_inference("LoraMulAdd supports only block_size=32.");
         }
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        const int64_t K = getAttribute(ctx, "K", -1);
-        const int64_t N = getAttribute(ctx, "N", -1);
-        MatmulWithQuantWeightShapeInference(ctx, K, N, true);
-        if (ctx.hasInput(5) && hasInputShape(ctx, 5)) {
-          const auto& bias = getInputShape(ctx, 5);
-          if (bias.dim_size() != 1 ||
-              (bias.dim(0).has_dim_value() && bias.dim(0).dim_value() != N)) {
-            fail_shape_inference("MatMulNBitsLora bias must have shape [N].");
+        if (hasInputShape(ctx, 0)) {
+          if (getInputShape(ctx, 0).dim_size() == 0) {
+            fail_shape_inference("LoraMulAdd base must have rank at least one.");
           }
+          propagateShapeFromInputToOutput(ctx, 0, 0);
         }
-        for (size_t input : {size_t{6}, size_t{7}}) {
+        for (size_t input : {size_t{2}, size_t{3}, size_t{4}, size_t{5}}) {
           if (hasInputShape(ctx, input) && getInputShape(ctx, input).dim_size() != 2) {
-            fail_shape_inference("MatMulNBitsLora weights must be matrices.");
+            fail_shape_inference("LoraMulAdd weights and scales must be matrices.");
           }
         }
       });

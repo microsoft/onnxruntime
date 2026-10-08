@@ -162,64 +162,138 @@ bool IsEmptyLoraDefault(const Graph& graph, const NodeArg* input,
   return tensor && tensor->data_type() == data_type &&
          tensor->dims_size() == 2 && tensor->dims(0) == first &&
          tensor->dims(1) == second && tensor->external_data_size() == 0 &&
+         tensor->data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL &&
          tensor->raw_data().empty() && tensor->float_data_size() == 0 &&
          tensor->int32_data_size() == 0;
 }
 
-bool FuseLoraUpdate(Graph& graph, Node& root, Node* base, Node* lora_a,
+struct QuantizedLoraWeight {
+  Node* dequantize{};
+  Node* cast{};
+  NodeArg* weights{};
+  NodeArg* scales{};
+};
+
+bool MatchQuantizedLoraWeight(Graph& graph, NodeArg* value,
+                              const Node& root, int32_t compute_type,
+                              QuantizedLoraWeight& result) {
+  Node* node = graph.GetMutableProducerNode(value->Name());
+  if (compute_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    if (!node || !graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Cast", {9, 13, 19, 21}) ||
+        !IsSingleUseIntermediate(graph, *node) || node->InputDefs().size() != 1 ||
+        node->GetExecutionProviderType() != root.GetExecutionProviderType()) {
+      return false;
+    }
+    const auto* to = graph_utils::GetNodeAttribute(*node, "to");
+    if (!to || to->i() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      return false;
+    }
+    result.cast = node;
+    node = graph.GetMutableProducerNode(node->InputDefs()[0]->Name());
+  }
+  if (!node ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*node, "DequantizeLinear", {21, 23, 24}) ||
+      !IsSingleUseIntermediate(graph, *node) ||
+      node->GetExecutionProviderType() != root.GetExecutionProviderType() ||
+      node->InputDefs().size() < 2 || node->InputDefs().size() > 3 ||
+      (node->InputDefs().size() == 3 && node->InputDefs()[2]->Exists())) {
+    return false;
+  }
+  const auto* axis = graph_utils::GetNodeAttribute(*node, "axis");
+  const auto* block = graph_utils::GetNodeAttribute(*node, "block_size");
+  const auto* output_dtype = graph_utils::GetNodeAttribute(*node, "output_dtype");
+  if (!axis || axis->i() != 0 || !block || block->i() != 32 ||
+      (output_dtype && output_dtype->i() != 0 &&
+       output_dtype->i() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+    return false;
+  }
+  result.dequantize = node;
+  result.weights = node->MutableInputDefs()[0];
+  result.scales = node->MutableInputDefs()[1];
+  return true;
+}
+
+bool FuseLoraUpdate(Graph& graph, Node& root, NodeArg* base_result, Node* lora_a,
                     NodeArg* lora_b_weight, Node* lora_b_node = nullptr) {
+  Node* base = graph.GetMutableProducerNode(base_result->Name());
   if (!base || !lora_a || !lora_b_weight ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*base, "MatMulNBits", {1}, kMSDomain) ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*lora_a, "MatMul", {1, 9, 13}) ||
       !IsSingleUseIntermediate(graph, *base) || !IsSingleUseIntermediate(graph, *lora_a) ||
-      base->InputDefs().size() > 6 || lora_a->InputDefs().size() != 2 ||
-      base->InputDefs()[0] != lora_a->InputDefs()[0] ||
+      lora_a->InputDefs().size() != 2 ||
       base->GetExecutionProviderType() != root.GetExecutionProviderType() ||
       lora_a->GetExecutionProviderType() != root.GetExecutionProviderType() ||
       (lora_b_node && (!IsSingleUseIntermediate(graph, *lora_b_node) ||
                        lora_b_node->GetExecutionProviderType() != root.GetExecutionProviderType()))) {
     return false;
   }
-  const auto* type = base->InputDefs()[0]->TypeAsProto();
-  const auto* k = graph_utils::GetNodeAttribute(*base, "K");
-  const auto* n = graph_utils::GetNodeAttribute(*base, "N");
-  const auto* prepacked = graph_utils::GetNodeAttribute(*base, "weight_prepacked");
-  if (!type || !type->has_tensor_type() ||
-      !k || !n || k->i() <= 0 || n->i() <= 0 || (prepacked && prepacked->i() != 0)) {
+  const auto* type = lora_a->InputDefs()[0]->TypeAsProto();
+  if (!type || !type->has_tensor_type()) {
     return false;
   }
   const int32_t data_type = type->tensor_type().elem_type();
+  QuantizedLoraWeight a, b;
   if ((data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
        (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
         root.GetExecutionProviderType() != kWebGpuExecutionProvider)) ||
-      !IsEmptyLoraDefault(graph, lora_a->InputDefs()[1], k->i(), 0, data_type) ||
-      !IsEmptyLoraDefault(graph, lora_b_weight, 0, n->i(), data_type)) {
+      !MatchQuantizedLoraWeight(graph, lora_a->MutableInputDefs()[1], root, data_type, a) ||
+      !MatchQuantizedLoraWeight(graph, lora_b_weight, root, data_type, b)) {
     return false;
   }
-  auto inputs = base->MutableInputDefs();
-  while (inputs.size() < 6) {
-    inputs.push_back(&graph.GetOrCreateNodeArg("", nullptr));
+  const auto* a_default = graph.GetInitializer(a.weights->Name(), true);
+  const auto* b_default = graph.GetInitializer(b.weights->Name(), true);
+  if (!a_default || !b_default || a_default->dims_size() != 2 || b_default->dims_size() != 2) {
+    return false;
   }
-  inputs.push_back(lora_a->MutableInputDefs()[1]);
-  inputs.push_back(lora_b_weight);
-  const auto attributes = base->GetAttributes();
+  const int64_t K = a_default->dims(0);
+  const int64_t N = b_default->dims(1);
+  if (K <= 0 || N <= 0 ||
+      !IsEmptyLoraDefault(graph, a.weights, K, 0, ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
+      !IsEmptyLoraDefault(graph, b.weights, 0, N, ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
+      !IsEmptyLoraDefault(graph, a.scales, (K - 1) / 32 + 1, 0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
+      !IsEmptyLoraDefault(graph, b.scales, 0, N, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+    return false;
+  }
+  const auto* input_shape = lora_a->InputDefs()[0]->Shape();
+  const auto* base_shape = base_result->Shape();
+  if (!input_shape || !base_shape || input_shape->dim_size() == 0 ||
+      input_shape->dim_size() != base_shape->dim_size() ||
+      !base_shape->dim(base_shape->dim_size() - 1).has_dim_value() ||
+      base_shape->dim(base_shape->dim_size() - 1).dim_value() != N) {
+    return false;
+  }
+  // LoraMulAdd does not implement Add/Gemm's broadcasted base input.
+  for (int axis = 0; axis + 1 < input_shape->dim_size(); ++axis) {
+    const auto& input_dim = input_shape->dim(axis);
+    const auto& base_dim = base_shape->dim(axis);
+    if (!((input_dim.has_dim_value() && base_dim.has_dim_value() &&
+           input_dim.dim_value() == base_dim.dim_value()) ||
+          (input_dim.has_dim_param() && base_dim.has_dim_param() &&
+           !input_dim.dim_param().empty() && input_dim.dim_param() == base_dim.dim_param()))) {
+      return false;
+    }
+  }
+  std::vector<NodeArg*> inputs{base_result, lora_a->MutableInputDefs()[0],
+                               a.weights, b.weights, a.scales, b.scales};
   Node& fused = graph.AddNode(
-      graph.GenerateNodeName("MatMulNBitsLora"), "MatMulNBitsLora",
-      "quantized projection with a runtime-selectable low-rank update",
-      inputs, root.MutableOutputDefs(), &attributes, kMSDomain);
+      graph.GenerateNodeName("LoraMulAdd"), "LoraMulAdd",
+      "optional quantized low-rank update of an existing base result",
+      inputs, root.MutableOutputDefs(), nullptr, kMSDomain);
   fused.SetExecutionProviderType(root.GetExecutionProviderType());
+  std::vector<std::reference_wrapper<Node>> nodes{*a.dequantize, *b.dequantize, *lora_a};
+  if (a.cast) nodes.push_back(*a.cast);
+  if (b.cast) nodes.push_back(*b.cast);
   if (lora_b_node) {
-    graph_utils::FinalizeNodeFusion(graph, {*base, *lora_a, *lora_b_node, root}, fused);
-  } else {
-    graph_utils::FinalizeNodeFusion(graph, {*base, *lora_a, root}, fused);
+    nodes.push_back(*lora_b_node);
   }
+  nodes.push_back(root);
+  graph_utils::FinalizeNodeFusion(graph, nodes, fused);
   return true;
 }
 
 }  // namespace
 
-Status MatMulNBitsLoraFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                        const logging::Logger& logger) const {
+Status LoraMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                   const logging::Logger& logger) const {
   GraphViewer viewer(graph);
   for (auto index : viewer.GetNodesInTopologicalOrder()) {
     Node* root = graph.GetNode(index);
@@ -239,7 +313,7 @@ Status MatMulNBitsLoraFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       if ((!alpha || alpha->f() == 1.0f) && (!beta || beta->f() == 1.0f) &&
           (!trans_a || trans_a->i() == 0) && (!trans_b || trans_b->i() == 0)) {
         if (FuseLoraUpdate(graph, *root,
-                           graph.GetMutableProducerNode(root->InputDefs()[2]->Name()),
+                           root->MutableInputDefs()[2],
                            graph.GetMutableProducerNode(root->InputDefs()[0]->Name()),
                            root->MutableInputDefs()[1])) {
           modified = true;
@@ -252,7 +326,6 @@ Status MatMulNBitsLoraFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       continue;
     }
     for (size_t base_index = 0; base_index < 2; ++base_index) {
-      Node* base = graph.GetMutableProducerNode(root->InputDefs()[base_index]->Name());
       Node* lora_b = graph.GetMutableProducerNode(root->InputDefs()[1 - base_index]->Name());
       if (!lora_b ||
           !graph_utils::IsSupportedOptypeVersionAndDomain(*lora_b, "MatMul", {1, 9, 13}) ||
@@ -260,7 +333,8 @@ Status MatMulNBitsLoraFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
         continue;
       }
       Node* lora_a = graph.GetMutableProducerNode(lora_b->InputDefs()[0]->Name());
-      if (FuseLoraUpdate(graph, *root, base, lora_a, lora_b->MutableInputDefs()[1], lora_b)) {
+      if (FuseLoraUpdate(graph, *root, root->MutableInputDefs()[base_index], lora_a,
+                         lora_b->MutableInputDefs()[1], lora_b)) {
         modified = true;
         break;
       }

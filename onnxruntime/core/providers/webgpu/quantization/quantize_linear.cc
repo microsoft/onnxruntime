@@ -159,6 +159,9 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   const auto x_shape = x->Shape();
   int64_t x_size = x_shape.Size();
   auto* output_tensor = context.Output(0, x_shape);
+  if (x_size == 0) {
+    return Status::OK();
+  }
   int64_t x_scale_rank = x_scale->Shape().NumDimensions();
 
   auto x_type = x->GetElementType();

@@ -74,7 +74,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool acc_f32_;
 };
 
-class MatMulNBits : public WebGpuKernel {
+class MatMulNBits final : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -96,21 +96,18 @@ class MatMulNBits : public WebGpuKernel {
   int64_t bits_;
 };
 
-class MatMulNBitsLora final : public MatMulNBits {
+class LoraMulAdd final : public WebGpuKernel {
  public:
-  explicit MatMulNBitsLora(const OpKernelInfo& info)
-      : MatMulNBits(info), K_(info.GetAttr<int64_t>("K")), N_(info.GetAttr<int64_t>("N")) {
-    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("weight_prepacked", 0) == 0,
-                "MatMulNBitsLora supports only weight_prepacked=0.");
+  explicit LoraMulAdd(const OpKernelInfo& info) : WebGpuKernel(info) {
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("block_size", 32) == 32,
+                "LoraMulAdd supports only block_size=32.");
   }
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsLora);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoraMulAdd);
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
-  const int64_t K_;
-  const int64_t N_;
   mutable MatMulOptImplCache lora_a_cache_;
   mutable MatMulOptImplCache lora_b_cache_;
 };

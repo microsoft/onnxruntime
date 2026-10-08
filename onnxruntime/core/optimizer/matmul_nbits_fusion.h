@@ -20,12 +20,12 @@ class MatMulNBitsFusion : public SelectorActionTransformer {
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
-class MatMulNBitsLoraFusion final : public GraphTransformer {
+class LoraMulAddFusion final : public GraphTransformer {
  public:
-  explicit MatMulNBitsLoraFusion(const InlinedHashSet<std::string_view>& compatible_eps)
-      : GraphTransformer("MatMulNBitsLoraFusion", compatible_eps) {}
+  explicit LoraMulAddFusion(const InlinedHashSet<std::string_view>& compatible_eps)
+      : GraphTransformer("LoraMulAddFusion", compatible_eps) {}
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsLoraFusion);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoraMulAddFusion);
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level,
