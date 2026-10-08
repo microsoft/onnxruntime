@@ -2392,6 +2392,56 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   }
 }
 
+static Status LoadAndInitializeMul1(InferenceSession& session) {
+  ORT_RETURN_IF_ERROR(session.Load(MODEL_URI));
+  return session.Initialize();
+}
+
+TEST(InferenceSessionTests, RunWithWrongInputDimensionsReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithWrongInputDimensionsReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(LoadAndInitializeMul1(session_object));
+
+  // "X" expects {3, 2}; feed {2, 3} (same rank, wrong dimensions).
+  std::vector<int64_t> dims_x = {2, 3};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feeds, output_names, &fetches),
+      "Got invalid dimensions for input: X");
+}
+
+TEST(InferenceSessionTests, RunWithNoRequestedOutputsReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithNoRequestedOutputsReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(LoadAndInitializeMul1(session_object));
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names;  // intentionally empty
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feeds, output_names, &fetches),
+      "At least one output should be requested");
+}
+
 static void CreateNestedIfModel(const PathString& model_file_name) {
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
