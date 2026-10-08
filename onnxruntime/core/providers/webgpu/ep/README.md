@@ -24,7 +24,9 @@ To ensure both static library and dynamic library builds work, we need to make a
 
 ### Runtime compatibility
 
-The plugin supports ORT 1.24.4 and later. Hosts before 1.31 use a serial compatibility path:
+The plugin supports ORT 1.24.4 and later. Session-owned recording is enabled on 1.28.x starting
+at 1.28.3, on 1.30.x starting at 1.30.1, and on 1.31 and later. Other supported versions,
+including all 1.29.x hosts, use a serial compatibility path:
 Session kernels, allocators, and framework/Env copies share a context-owned recording. This
 preserves `clear -> upload -> compute -> readback` ordering even when the host drops the stream
 on a single-tensor copy. Cached-buffer clearing remains enabled, and kernels still batch their
@@ -54,11 +56,11 @@ If replay fails, its unfinished encoder, replay state, pending releases, and inc
 queries are discarded before the legacy Run gate is released. Already submitted GPU work is not
 rolled back. Both direct replay and the initial replay from `OnRunEnd` use this cleanup.
 
-Hosts from 1.31 use the Session-owned recording path described below. The conservative boundary
-includes all 1.30.x hosts in legacy mode because the single-copy stream-forwarding fix landed after
-the original 1.30.1 minimum was selected. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` **before loading the
-plugin** to exercise the serial path on a newer host. The setting is process-wide and only forces
-the safe compatibility direction; it cannot enable the modern path on an old host.
+The recording mode is selected once at plugin registration using the host's minor and patch
+versions. The Session-owned recording path is described below. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`
+**before loading the plugin** to exercise the serial path on a host that supports Session-owned
+recording. The setting is process-wide and only forces the safe compatibility direction; it
+cannot enable the modern path on an unsupported host.
 
 ### Session streams
 

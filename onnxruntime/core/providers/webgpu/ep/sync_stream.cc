@@ -82,9 +82,8 @@ bool UseLegacyRecording() {
     const auto force_legacy = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY");
     ORT_ENFORCE(force_legacy.empty() || force_legacy == "0" || force_legacy == "1",
                 "ORT_WEBGPU_EP_FORCE_LEGACY must be 0 or 1.");
-    // Conservatively include every 1.30.x runtime: the single-copy stream fix landed
-    // after the original 1.30.1 minimum was chosen.
-    return onnxruntime::ep::CurrentOrtApiVersion() < 31 || force_legacy == "1";
+    return ShouldUseLegacyRecording(onnxruntime::ep::CurrentOrtApiVersion(),
+                                     onnxruntime::ep::CurrentOrtPatchVersion(), force_legacy == "1");
   }();
   return legacy;
 }

@@ -1125,7 +1125,8 @@ TEST_F(PluginEpWebGpuConcurrency, LegacyOnlyConcurrentRunsAreRejected) {
   ASSERT_TRUE(first_started) << first_error;
   ASSERT_FALSE(gate.timed_out) << "Overlapping Run did not return while the first Run was held";
   ASSERT_TRUE(first_error.empty()) << first_error;
-  ASSERT_NE(rejection.find("WebGPU legacy mode requires serialized operations"), std::string::npos) << rejection;
+  ASSERT_NE(rejection.find("Sessions on the same device to run sequentially"), std::string::npos) << rejection;
+  ASSERT_NE(rejection.find("upgrade to the latest ONNX Runtime"), std::string::npos) << rejection;
   std::array<float, kElements> output_data{};
   auto cpu_output = Ort::Value::CreateTensor<float>(
       cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());

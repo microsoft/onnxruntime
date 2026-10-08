@@ -46,15 +46,24 @@ nuget.org, or the ORT-Nightly feed. Publishing to public feeds is handled by sep
 
 ### Runtime compatibility and concurrency
 
-The minimum runtime is ORT 1.24.4. ORT versions before 1.31 use the serial compatibility path:
-serialize all WebGPU operations on the same device, including operations on different Sessions,
-I/O binding, Env copies, allocation, and Session creation/destruction. Use sequential graph
-execution. Multiple Sessions can be used in sequence; overlapping Runs are rejected.
+The minimum runtime is ORT 1.24.4. The default execution path depends on the host version:
 
-ORT 1.31 and later use Session-owned command recordings and support independent Sessions running
-concurrently. This does not permit overlapping I/O binding and Run on the same Session.
-Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` before registering the plugin to test the serial path on a newer
-runtime. This process-wide override cannot enable concurrency on older runtimes.
+| ORT version | Execution path |
+| --- | --- |
+| 1.28.x starting at 1.28.3 | Session-owned recording |
+| 1.30.x starting at 1.30.1 | Session-owned recording |
+| 1.31 and later | Session-owned recording |
+| Other supported versions, including 1.29.x | Serial compatibility |
+
+The serial compatibility path requires serializing all WebGPU operations on the same device,
+including operations on different Sessions, I/O binding, Env copies, allocation, and Session
+creation/destruction. Use sequential graph execution. Multiple Sessions can be used in sequence;
+overlapping Runs are rejected.
+
+Session-owned command recordings support independent Sessions running concurrently. This does not
+permit overlapping I/O binding and Run on the same Session. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`
+before registering the plugin to test the serial path on a host that supports Session-owned
+recording. This process-wide override cannot enable concurrency on unsupported hosts.
 
 Both paths retain cached-buffer clearing and dispatch batching. The serial path does not submit
 after every kernel. Public Session/Env ordinary allocations submit cached-buffer clears before

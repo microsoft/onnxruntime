@@ -854,7 +854,8 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool legacy = webgpu::ep::UseLegacyRecording();
   ORT_RETURN_IF(legacy && !context_.TryBeginLegacyRun(),
-                "WebGPU legacy mode requires serialized operations across all Sessions on the device.");
+                "This WebGPU configuration requires Sessions on the same device to run sequentially. "
+                "To run Sessions concurrently, upgrade to the latest ONNX Runtime.");
   bool started = false;
   auto release_on_error = gsl::finally([&] {
     if (legacy && !started) {
@@ -999,7 +1000,8 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool legacy_replay = webgpu::ep::UseLegacyRecording() && !IsRunActive();
   ORT_RETURN_IF(legacy_replay && !context_.TryBeginLegacyRun(),
-                "WebGPU legacy mode requires serialized operations across all Sessions on the device.");
+                "This WebGPU configuration requires Sessions on the same device to run sequentially. "
+                "To run Sessions concurrently, upgrade to the latest ONNX Runtime.");
   auto release_legacy_run = gsl::finally([&] {
     if (legacy_replay) {
       context_.EndLegacyRun();

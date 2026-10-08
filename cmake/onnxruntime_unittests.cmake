@@ -1669,6 +1669,7 @@ block()
       NOT IOS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # Run legacy-safe regressions separately; concurrent-success tests require modern mode.
     string(JOIN ":" webgpu_legacy_test_filter
+      "WebGpuPluginRecordingModeTest.*"
       "WebGpuPluginSharedAllocatorRegistrationTest.*"
       "WebGpuPluginSharedAllocatorTest.*"
       "WebGpuSessionAllocatorDeathTest.*"
