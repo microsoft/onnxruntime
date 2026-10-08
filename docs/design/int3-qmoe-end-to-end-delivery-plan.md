@@ -302,7 +302,7 @@ Every heading in this section uses a **proposed label**, not an actual PR number
 
 - Build on PR 0/1's reviewed format and versioning proposals, independent decoders and PR 5/6 interoperability; include actual PR 7 quality/capacity/performance evidence for submission. Drafting can proceed earlier.
 - Assemble a CUDA-independent specification, mathematical semantics, golden bytes including tails/zero points, shape inference, invalid-model definitions, at least two independent decoders, standard-graph reference decomposition, and interoperability reports.
-- Propose `uint8` packed-input container semantics with existing external data, and explicitly separate decisions on native INT3/UINT3 datatypes, a packed operator, and standardization of fused MoE.
+- Propose `uint8` packed-input container semantics with existing external data. Do not request native INT3/UINT3 datatype identifiers in this delivery sequence; Section 7.1 explains the deferral and reconsideration criteria. A packed operator and standardization of fused MoE remain separate review decisions.
 - Exit gate: submit a reviewable package and record the committee's container/operator/version decisions; unresolved decisions remain open. ORT contrib merges do not approve an ONNX INT3 datatype, standard QMoE, or standard opset.
 - Ownership and timing remain conditional on an assigned proposal sponsor and committee review; no approval deadline or outcome is promised.
 
@@ -331,6 +331,24 @@ Stop or adjust if quality offers no meaningful value over INT2; effective capaci
 The package should include an independent packed-format specification and mathematical semantics, golden bytes including tails/zero points, shape inference and invalid-model definitions, at least two independent decoders, exporter/runtime interoperability reports, a standard-graph reference decomposition, and real performance/quality/capacity evidence.
 
 Prefer a `uint8` container with explicit operator semantics for opaque packed inputs and existing ONNX external data. Adding native INT3/UINT3 datatypes is a separate decision. A three-bit bitstream cannot be passed directly to existing `DequantizeLinear` as ordinary uint8 elements; it requires an explicitly decoding reference decomposition or an approved packed operator. Whether to standardize the full fused MoE operator or first a general packed quantization representation/operation is also a separate discussion.
+
+### 7.1 Why Native INT3/UINT3 Datatype Standardization Is Deferred
+
+**Decision: do not propose new native ONNX INT3/UINT3 tensor datatypes as part of the current delivery plan.** The committee package still proposes portable packed-weight semantics and interoperability evidence; deferring a datatype proposal does not mean abandoning format review or treating a contrib contract as an ONNX standard.
+
+- The immediate use case is operator-consumed packed weights, not general-purpose three-bit graph tensors. All three baseline combinations `(3,4)`, `(3,3)`, and `(4,3)` can use `uint8` containers with explicit logical dimensions, effective widths, packing, scales, and zero-point semantics. Native datatype registration is not required to implement or export them.
+- A native datatype would not reduce the existing three-bit payload, provide native packed INT3 CUDA arithmetic, or remove extraction, scaling, prepacking, and dispatch work. These costs and benefits must be established by the actual runtime implementation; a datatype enum alone cannot deliver them.
+- The scope is substantially larger than adding enum entries. A proposal must define numerical encoding, logical tensor shapes, raw and typed-field serialization, padding, and IR compatibility, then coordinate checker, shape/type inference, tensor utilities, exporter/runtime support, and relevant operator type constraints. Datatype acceptance does not automatically provide standard quantization operators or kernels.
+- The format and product evidence are not yet mature. First establish useful quality/effective-size/runtime trade-offs and independent exporter/decoder interoperability. Premature datatype standardization risks fixing semantics before representative use cases and implementation costs are understood.
+- Our codes use offset-binary `q=u-4`, not signed two's-complement. A future native signed INT3 type must define its encoding independently. Our row-local packed shape and padding rules are also operator-format choices, not automatically a general tensor serialization rule. Existing model bytes must not be relabeled as native INT3 without an explicitly reviewed conversion and versioning contract.
+
+ONNX already defines `UINT2=25` and `INT2=26` in IR version 13; native INT2 uses two's-complement encoding. See the [ONNX protobuf definition](https://github.com/onnx/onnx/blob/main/onnx/onnx.in.proto). This is distinct from the current QMoE integer-weight input, which uses a packed `tensor(uint8)` container. The existence of native INT2 is therefore not a requirement to follow the same datatype route for QMoE INT3, nor evidence that every runtime/operator supports native INT2. ONNX does not currently define native INT3/UINT3.
+
+Reconsider a separate native datatype proposal when there is demonstrated demand for three-bit tensors across multiple independent frameworks/runtimes or standard operators beyond this QMoE packed-input use case; reproducible model evidence supporting adoption; and agreement on numerical encoding, general tensor serialization, migration, and an operator/tooling support plan. These are triggers for review, not claims of current adoption or a guarantee of committee approval.
+
+Until then, PR 0/1/5 establish the portable packed contract and its ORT/export integration, PR 7 supplies measured product evidence, and PR 8 submits the format/operator discussion package without making native datatype approval a baseline dependency. Any future INT3/UINT3 datatype proposal should be tracked separately and must not retroactively reinterpret existing packed models.
+
+### 7.2 Open Decisions for the Current Proposal
 
 Open approval questions include whether the schema upgrade needs a new contrib version; acceptance of the initial symmetric-only profile, block32/64/128 set, and tail rules; explicit zero-point extension strategy; scale-dtype constraints; specification name/identifier; reference decomposition and shape inference; and diagnostics for older exporters and unsupported providers. Do not claim an ONNX standard is frozen before review resolves these questions.
 
