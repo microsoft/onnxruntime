@@ -61,6 +61,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.LoraMulAdd">com.microsoft.LoraMulAdd</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
@@ -2443,7 +2444,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta_activation</tt> : string</dt>
 <dd>'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a sigmoid.</dd>
 <dt><tt>chunk_size</tt> : int</dt>
-<dd>Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; any other value lets the implementation take the widest chunk the device can hold. Default 64.</dd>
+<dd>Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow chunk and any other value lets the implementation select the widest chunk the device can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; default 64 retains recurrent execution. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
 <dd>'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes -exp(a_log) * Softplus(decay + dt_bias) in float32.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
@@ -3608,6 +3609,53 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.LoraMulAdd"></a><a name="com.microsoft.loramuladd">**com.microsoft.LoraMulAdd**</a>
+
+  Y = base + (X * Dequantize(Q_A, S_A)) * Dequantize(Q_B, S_B). Dequantization uses INT8 weights and FP32 scales with axis 0, block size 32, and zero point 0. FP16 computation casts dequantized weights before multiplication. Adapter scaling is folded into S_B. Empty rank returns base without LoRA computation; buffer reuse is optional, not an aliasing guarantee.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Axis-0 quantization group size; only 32 is supported.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>base</tt> : T</dt>
+<dd>Existing base result [..., N].</dd>
+<dt><tt>X</tt> : T</dt>
+<dd>Activation [..., K].</dd>
+<dt><tt>Q_A</tt> : tensor(int8)</dt>
+<dd>INT8 LoRA weights [K, rank].</dd>
+<dt><tt>Q_B</tt> : tensor(int8)</dt>
+<dd>INT8 LoRA weights [rank, N].</dd>
+<dt><tt>S_A</tt> : tensor(float)</dt>
+<dd>FP32 scales [ceil(K / 32), rank].</dd>
+<dt><tt>S_B</tt> : tensor(float)</dt>
+<dd>FP32 scales [ceil(rank / 32), N].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Base result plus the optional low-rank update.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Matching base, activation, and output types.</dd>
 </dl>
 
 
