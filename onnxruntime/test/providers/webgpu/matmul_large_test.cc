@@ -12,6 +12,7 @@
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/webgpu/graph_capture_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
@@ -132,24 +133,36 @@ void RunZeroKTest(std::initializer_list<int64_t> a_dims,
   MatMulComputeHelper helper;
   ASSERT_STATUS_OK(helper.Compute(TensorShape(a_dims), TensorShape(b_dims)));
   ASSERT_EQ(helper.K(), 0);
-  const auto& output_shape = helper.OutputShape();
   TensorShapeVector output_dims;
-  output_dims.assign(output_shape.GetDims().begin(), output_shape.GetDims().end());
-  OpTester test("MatMul", 13);
+  std::vector<float> expected;
+  ComputeExpectedResult(a_dims, b_dims, {}, {}, output_dims, expected);
+  ASSERT_EQ(helper.OutputShape(), TensorShape(output_dims));
+  WebGpuGraphCaptureTester test("MatMul", 13);
   test.AddInput<T>("A", a_dims, std::vector<T>{});
   test.AddInput<T>("B", b_dims, std::vector<T>{});
-  test.AddOutput<T>("Y", output_dims,
-                    std::vector<T>(output_shape.Size(), T{0.0f}));
-  test.SetNumRunCalls(graph_capture ? 4 : 1);
+  const std::vector<T> expected_output(expected.size(), T{0.0f});
+  test.AddOutput<T>("Y", output_dims, expected_output);
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+  if (graph_capture) {
+    test.RunWithBoundCapture<T>(std::move(ep), options, TensorShape(output_dims), expected_output);
+  } else {
+    test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+  }
 }
 
 TEST(MatMulZeroKTest, Float32MatrixAndBatch) {
   RunZeroKTest<float>({2, 0}, {0, 3});
   RunZeroKTest<float>({1, 35, 0}, {0, 1024});
   RunZeroKTest<float>({2, 1, 3, 0}, {1, 4, 0, 5});
+}
+
+TEST(MatMulZeroKTest, HelperPreservesBroadcastBatchesWithZeroK) {
+  MatMulComputeHelper helper;
+  ASSERT_STATUS_OK(helper.Compute(TensorShape({2, 1, 3, 0}), TensorShape({1, 4, 0, 5})));
+  EXPECT_EQ(helper.OutputShape(), TensorShape({2, 4, 3, 5}));
+  ASSERT_STATUS_OK(helper.Compute(TensorShape({2, 1, 3, 4}), TensorShape({1, 4, 4, 5})));
+  EXPECT_EQ(helper.OutputShape(), TensorShape({2, 4, 3, 5}));
 }
 
 TEST(MatMulZeroKTest, Float16MatrixAndBatch) {
@@ -187,7 +200,7 @@ void RunConvMatMulTest(bool channels_last, bool initializer, bool empty_output =
   if (!ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
-  OpTester test("Conv", 11, channels_last ? kMSInternalNHWCDomain : kOnnxDomain);
+  WebGpuGraphCaptureTester test("Conv", 11, channels_last ? kMSInternalNHWCDomain : kOnnxDomain);
   test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 1});
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
@@ -212,11 +225,10 @@ void RunConvMatMulTest(bool channels_last, bool initializer, bool empty_output =
     expected.push_back(T{channels_last ? std::clamp(value, -0.5f, 2.0f) : value});
   }
   test.AddOutput<T>("Y", output_shape, expected);
-  test.SetNumRunCalls(4);
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Default;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+  test.RunWithBoundCapture<T>(std::move(ep), options, TensorShape(output_shape), expected);
 }
 
 TEST(MatMulZeroKTest, ChannelsFirstConvBias) {

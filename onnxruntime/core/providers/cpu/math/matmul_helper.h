@@ -47,7 +47,7 @@ class MatMulComputeHelper {
     // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
     // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
     if (!transa && !trans_batch_a && !trans_batch_b && left_num_dims >= 2 && right_num_dims >= 2 && left_num_dims >= right_num_dims &&
-        orig_right_shape.SizeToDimension(right_num_dims - 1) == orig_right_shape[right_num_dims - 2]) {
+        orig_right_shape.SizeToDimension(right_num_dims - 2) == 1) {
       M_ = static_cast<ptrdiff_t>(orig_left_shape.SizeToDimension(left_num_dims - 1));
       K_ = static_cast<ptrdiff_t>(orig_left_shape[left_num_dims - 1]);
       N_ = static_cast<ptrdiff_t>(transb ? orig_right_shape[right_num_dims - 2] : orig_right_shape[right_num_dims - 1]);
