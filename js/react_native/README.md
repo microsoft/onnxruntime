@@ -56,7 +56,9 @@ See [here](https://onnxruntime.ai/docs/reference/operators/MobileOps.html) for t
 From `js/react_native`, run `npm run test:cpp` for the native option-policy tests and
 `npm --prefix e2e run test:unit` for the E2E component unit tests after installing the E2E dependencies.
 `npm run bootstrap-no-pods` runs both checks before the Android and iOS Detox tests in CI.
-The device checks exercise in-flight aborts, pre-dispatch aborts, and isolated Env-listener teardown.
+The device checks exercise in-flight aborts, pre-dispatch aborts, isolated Env-listener teardown,
+and 64 resolve/reject publications that must observe native worker completion before promise settlement.
+Worker completion runs before publication because promise settlement can release the last JS owner.
 The `__testEpContextDataReadCallback` native hook and its `__testWorker` handles are internal test APIs.
 
 ### License
