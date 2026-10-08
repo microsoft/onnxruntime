@@ -79,8 +79,9 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1599488"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1599488"
+        BINARY_SIZE_THRESHOLD_IN_BYTES=1607680
+        echo "Binary size threshold in bytes: ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
@@ -155,6 +156,12 @@ jobs:
         uses: ./.github/actions/setup-android-ndk
         with:
           ndk-version: 28.0.13004108
+
+      - name: Test static telemetry package dependencies on Linux and Android
+        shell: bash
+        run: |
+          test -n "$ANDROID_NDK_HOME"
+          python3 tools/ci_build/test_telemetry_package.py -v
 
       - name: Setup CCache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0

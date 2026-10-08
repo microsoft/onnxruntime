@@ -1775,5 +1775,11 @@ struct OrtSessionOptions final {
   bool GetEnableProfiling() const {
     return onnxruntime::g_host->SessionOptions__GetEnableProfiling(this);
   }
+
+  void GetEpContextDataCallbacks(OrtReadNamedBufferFunc* read_func, void** read_state,
+                                 OrtWriteNamedBufferFunc* write_func, void** write_state) const {
+    onnxruntime::g_host->SessionOptions__GetEpContextDataCallbacks(this, read_func, read_state,
+                                                                   write_func, write_state);
+  }
   PROVIDER_DISALLOW_ALL(OrtSessionOptions)
 };

@@ -203,6 +203,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
     variadic_arg_idx = -1;
     for (int i = 0; i < node.output_size(); ++i) {
+      if (node_op_schema && variadic_arg_idx == -1) {
+        // Model::Load validates counts before construction; retain this invariant for direct constructor callers.
+        ORT_ENFORCE(static_cast<size_t>(i) < node_op_schema->outputs().size(),
+                    "Too many outputs for op " + node.op_type());
+      }
+
       auto& out_name = node.output().Get(i);
       auto iter = output_name_idx_map.find(out_name);
       if (iter != output_name_idx_map.end()) {

@@ -47,7 +47,8 @@ class SparseAttentionIndexerQsaConcatProgram final
 class SparseAttentionIndexerQsaSelectProgram final
     : public Program<SparseAttentionIndexerQsaSelectProgram> {
  public:
-  SparseAttentionIndexerQsaSelectProgram() : Program{"SparseAttentionIndexerQsaSelect"} {}
+  explicit SparseAttentionIndexerQsaSelectProgram(bool has_mask)
+      : Program{"SparseAttentionIndexerQsaSelect"}, has_mask_{has_mask} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"rows", ProgramUniformVariableDataType::Uint32},
@@ -57,6 +58,7 @@ class SparseAttentionIndexerQsaSelectProgram final
       {"query_row_stride", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
+      {"rotary_cache_batch_stride", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"capacity", ProgramUniformVariableDataType::Uint32},
       {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -64,6 +66,9 @@ class SparseAttentionIndexerQsaSelectProgram final
       {"block_topk", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32},
       {"scale", ProgramUniformVariableDataType::Float32});
+
+ private:
+  bool has_mask_;
 };
 
 class SparseAttentionIndexerCsaCopyCompressedProgram final
@@ -90,6 +95,7 @@ class SparseAttentionIndexerCsaCompressProgram final
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
+      {"rotary_cache_batch_stride", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"past_compressed_length", ProgramUniformVariableDataType::Uint32},
       {"present_compressed_length", ProgramUniformVariableDataType::Uint32},
@@ -135,6 +141,7 @@ class SparseAttentionIndexerCsaSelectProgram final
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
+      {"rotary_cache_batch_stride", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"capacity", ProgramUniformVariableDataType::Uint32},
       {"present_compressed_length", ProgramUniformVariableDataType::Uint32},
