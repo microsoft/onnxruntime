@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/framework/ep_context_options.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"
@@ -581,6 +582,20 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+// Validates the "ep.enable_weightless_mode" session option before EPs are created and the model is partitioned.
+// Later checks only run when a plugin EP is created or nodes are compiled, so without this an invalid value would be
+// accepted by a session that uses no plugin EP or compiles no nodes.
+static Status ValidateWeightlessMode(const InferenceSession& sess) {
+  const std::string weightless_mode_str =
+      sess.GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightlessMode, "");
+  if (weightless_mode_str.empty()) {
+    return Status::OK();
+  }
+
+  OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
+  return epctx::ParseWeightlessMode(weightless_mode_str, weightless_mode);
+}
+
 // Warns if a model compiled with OrtWeightlessSupport_ALL is loaded without a source model. The EP may still
 // locate the source model via the "onnx_model_filename" EPContext node attribute, so this is not an error.
 static void CheckWeightlessSourceModel(const OrtSessionOptions* options, InferenceSession& sess) {
@@ -612,6 +627,10 @@ static void CheckWeightlessSourceModel(const OrtSessionOptions* options, Inferen
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateWeightlessMode(sess));
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   if (sess.GetRegisteredProviderTypes().empty()) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(options, sess));
   }

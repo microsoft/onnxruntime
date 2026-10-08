@@ -30,7 +30,7 @@ device.
 | EP discovery | `"weightless_supported_modes"` EP metadata entry (`kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes`) on each `OrtEpDevice`, with `"weightless_support"` (`kOrtEpDevice_EpMetadataKey_WeightlessSupport`) as the fallback for EPs built for earlier versions. |
 | EP enforcement | `OrtEp::GetWeightlessSupport(const OrtEp*, OrtWeightlessSupport* support)` returns the same value. ORT calls it during `Compile()`. |
 | Application request | Exactly **one** mode, via `OrtCompileApi::ModelCompilationOptions_SetWeightlessMode()` or the `"ep.enable_weightless_mode"` session option (`kOrtSessionOptionEpEnableWeightlessMode`). |
-| Validation | Before creating the EP, ORT rejects unknown values, checks the requested mode against the EP metadata, and sets the deprecated `"ep.enable_weightless"` option to match. During `Compile()`, ORT checks the mode against `GetWeightlessSupport()`. |
+| Validation | When the session is initialized, ORT rejects unknown values. Before creating each plugin EP, ORT checks the requested mode against the EP metadata and sets the deprecated `"ep.enable_weightless"` option to match. During `Compile()`, ORT checks the mode against `GetWeightlessSupport()`. |
 | Compiled model | ORT records the mode in the compiled model's metadata under `"weightless_mode"` (`kOrtModelMetadata_WeightlessMode`). |
 | Deprecated | `ModelCompilationOptions_SetWeightlessEnabled(bool)`, `"ep.enable_weightless"` (since 1.31) and `"ep.enable_weightless_ep_context_nodes"` (since 1.29). |
 
@@ -191,7 +191,7 @@ When `"ep.enable_weightless_mode"` is set, ORT therefore prepares the session op
 | `"1"` (`EXTERNAL_ONLY`) | `"external_only"` or `"all_or_external_only"` | The EP sees `"ep.enable_weightless"` = `"1"`. |
 | `"2"` (`ALL`) | `"all"` or `"all_or_external_only"` | The EP sees `"ep.enable_weightless"` = `"1"`. |
 | `"1"` or `"2"` | Another value, an unrecognized value, or no entry | `ORT_EP_FAIL` before the EP is created. |
-| Any other value, including `"3"` | Any | `ORT_INVALID_ARGUMENT` before the EP is created. |
+| Any other value, including `"3"` | Any | `ORT_INVALID_ARGUMENT` when the session is initialized, before any EP is created. |
 
 The EP gets a copy of the session options; the application's session options are not modified. An EP built for an
 earlier version that reports `"weightless_support"` = `"all"` therefore works with `ALL`, and is rejected with
@@ -202,7 +202,7 @@ earlier version that reports `"weightless_support"` = `"all"` therefore works wi
 | Condition | Result |
 |---|---|
 | `ModelCompilationOptions_SetWeightlessMode()` called with a value other than 0, 1 or 2 (e.g. `3`) | `ORT_INVALID_ARGUMENT`, returned immediately. |
-| `"ep.enable_weightless_mode"` set to a value other than `"0"`, `"1"` or `"2"` | `ORT_INVALID_ARGUMENT` before the EP is created. |
+| `"ep.enable_weightless_mode"` set to a value other than `"0"`, `"1"` or `"2"` | `ORT_INVALID_ARGUMENT` when the session is initialized, before any EP is created. This applies even if the session uses no plugin EP or compiles no nodes. |
 | Mode is `NONE` | No weightless checks. |
 | The EP metadata of a device doesn't include the requested mode | `ORT_EP_FAIL` before the EP is created. |
 | EP built against API 29 or later does not implement `GetWeightlessSupport` | `ORT_NOT_IMPLEMENTED`. |

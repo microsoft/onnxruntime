@@ -98,6 +98,10 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       GetProcAddress(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
   hooks.get_enable_weightless_option = reinterpret_cast<ExampleEpHooks::GetEnableWeightlessOptionFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
+  hooks.reset_saved_initializer_count = reinterpret_cast<ExampleEpHooks::ResetSavedInitializerCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
+  hooks.get_saved_initializer_count = reinterpret_cast<ExampleEpHooks::GetSavedInitializerCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetSavedInitializerCount"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -120,6 +124,10 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       dlsym(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
   hooks.get_enable_weightless_option = reinterpret_cast<Utils::ExampleEpHooks::GetEnableWeightlessOptionFn>(
       dlsym(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
+  hooks.reset_saved_initializer_count = reinterpret_cast<Utils::ExampleEpHooks::ResetSavedInitializerCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
+  hooks.get_saved_initializer_count = reinterpret_cast<Utils::ExampleEpHooks::GetSavedInitializerCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetSavedInitializerCount"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(
