@@ -11,7 +11,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
-#include "core/providers/webgpu/vendor/intel/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul_execution_planner.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -24,10 +24,10 @@ void MatMulComputeDispatcher::Initialize(const ComputeContextBase& context) {
   std::call_once(init_flag_, [&]() {
     subgroup_matrix_impl_ = CreateSubgroupMatrixMatMulImpl(context);
     if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      scheduler_ = std::make_unique<intel::IntelMatMulAlgorithmScheduler>(
+      planner_ = std::make_unique<intel::IntelMatMulExecutionPlanner>(
           context.GetSplitKConfig());
     } else {
-      scheduler_ = std::make_unique<MatMulAlgorithmScheduler>(context.GetSplitKConfig());
+      planner_ = std::make_unique<MatMulExecutionPlanner>(context.GetSplitKConfig());
     }
   });
 }
@@ -467,7 +467,7 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.has_bias = has_bias;
   selection_params.is_channels_last = is_channels_last;
 
-  const MatMulExecutionPlan plan = scheduler_->CreateExecutionPlan(
+  const MatMulExecutionPlan plan = planner_->CreateExecutionPlan(
       selection_params, context.ForcedMatMulAlgorithm());
   const MatMulAlgorithm algorithm = plan.algorithm;
   ORT_RETURN_IF_NOT(IsMatMulAlgorithmConfigurationCompatible(plan),

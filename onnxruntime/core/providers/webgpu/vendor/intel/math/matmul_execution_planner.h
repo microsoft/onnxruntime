@@ -3,16 +3,16 @@
 
 #pragma once
 
-#include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/math/matmul_execution_planner.h"
 
 namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
-class IntelMatMulAlgorithmScheduler final : public MatMulAlgorithmScheduler {
+class IntelMatMulExecutionPlanner final : public MatMulExecutionPlanner {
  public:
-  IntelMatMulAlgorithmScheduler() = default;
-  explicit IntelMatMulAlgorithmScheduler(SplitKConfig split_k_config);
+  IntelMatMulExecutionPlanner() = default;
+  explicit IntelMatMulExecutionPlanner(SplitKConfig split_k_config);
 
  protected:
   std::optional<MatMulAlgorithm> SelectVendorAlgorithm(

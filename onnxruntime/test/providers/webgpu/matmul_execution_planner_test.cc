@@ -7,10 +7,10 @@
 #include "gtest/gtest.h"
 
 #include "core/providers/webgpu/math/matmul_algorithm.h"
-#include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/math/matmul_execution_planner.h"
 #include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
-#include "core/providers/webgpu/vendor/intel/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul_execution_planner.h"
 #include "core/providers/webgpu/vendor/intel/math/split_k_config.h"
 
 namespace onnxruntime {
@@ -19,10 +19,10 @@ namespace test {
 
 namespace {
 
-static_assert(!std::is_copy_constructible_v<MatMulAlgorithmScheduler>);
-static_assert(!std::is_copy_assignable_v<MatMulAlgorithmScheduler>);
-static_assert(!std::is_move_constructible_v<MatMulAlgorithmScheduler>);
-static_assert(!std::is_move_assignable_v<MatMulAlgorithmScheduler>);
+static_assert(!std::is_copy_constructible_v<MatMulExecutionPlanner>);
+static_assert(!std::is_copy_assignable_v<MatMulExecutionPlanner>);
+static_assert(!std::is_move_constructible_v<MatMulExecutionPlanner>);
+static_assert(!std::is_move_assignable_v<MatMulExecutionPlanner>);
 static_assert(!std::is_copy_constructible_v<SubgroupMatrixMatMulImpl>);
 static_assert(!std::is_copy_assignable_v<SubgroupMatrixMatMulImpl>);
 static_assert(!std::is_move_constructible_v<SubgroupMatrixMatMulImpl>);
@@ -32,7 +32,7 @@ static_assert(!std::is_copy_assignable_v<MatMulComputeDispatcher>);
 static_assert(!std::is_move_constructible_v<MatMulComputeDispatcher>);
 static_assert(!std::is_move_assignable_v<MatMulComputeDispatcher>);
 
-class AlwaysPackedVendorScheduler final : public MatMulAlgorithmScheduler {
+class AlwaysPackedVendorPlanner final : public MatMulExecutionPlanner {
  protected:
   std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
       const MatMulAlgorithmSelectionParams& /*params*/) const override {
@@ -40,7 +40,7 @@ class AlwaysPackedVendorScheduler final : public MatMulAlgorithmScheduler {
   }
 };
 
-class TunedPackedVendorScheduler final : public MatMulAlgorithmScheduler {
+class TunedPackedVendorPlanner final : public MatMulExecutionPlanner {
  protected:
   std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
       const MatMulAlgorithmSelectionParams& /*params*/) const override {
@@ -67,10 +67,10 @@ class TunedPackedVendorScheduler final : public MatMulAlgorithmScheduler {
   }
 };
 
-class VendorSplitKThresholdScheduler final : public MatMulAlgorithmScheduler {
+class VendorSplitKThresholdPlanner final : public MatMulExecutionPlanner {
  public:
-  VendorSplitKThresholdScheduler()
-      : MatMulAlgorithmScheduler{SplitKConfig{
+  VendorSplitKThresholdPlanner()
+      : MatMulExecutionPlanner{SplitKConfig{
             /*max_batch_size=*/8,
             /*split_dim_inner=*/128,
             /*min_dim_inner_with_split_k=*/256,
@@ -143,40 +143,40 @@ TEST(SplitKConfigTest, FactoryRoutesOnlySupportedVendorProfiles) {
   EXPECT_EQ(CreateSplitKConfig("nvidia", "pascal").GetSplitDimInner(), 0u);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, ForcedAlgorithmTakesPrecedence) {
-  AlwaysPackedVendorScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, ForcedAlgorithmTakesPrecedence) {
+  AlwaysPackedVendorPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.can_use_subgroup_matrix = true;
 
-  EXPECT_EQ(scheduler.Select(params, MatMulAlgorithm::Naive), MatMulAlgorithm::Naive);
+  EXPECT_EQ(planner.SelectAlgorithm(params, MatMulAlgorithm::Naive), MatMulAlgorithm::Naive);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, ReevaluatesSelectionForEachRuntimeShape) {
-  MatMulAlgorithmScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, ReevaluatesSelectionForEachRuntimeShape) {
+  MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.m = 4;
   params.packed_m = 4;
   params.n = 7;
   params.k = 7;
 
-  EXPECT_EQ(scheduler.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Naive);
+  EXPECT_EQ(planner.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Naive);
 
   params.m = 64;
   params.packed_m = 64;
   params.n = 64;
   params.k = 64;
-  EXPECT_EQ(scheduler.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Packed);
+  EXPECT_EQ(planner.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Packed);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, VendorCanTuneForcedAlgorithmConfiguration) {
-  TunedPackedVendorScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, VendorCanTuneForcedAlgorithmConfiguration) {
+  TunedPackedVendorPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.adapter_architecture = "test-architecture";
   params.a_data_type = 10;
   params.b_data_type = 10;
 
   const MatMulExecutionPlan plan =
-      scheduler.CreateExecutionPlan(params, MatMulAlgorithm::Packed);
+      planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed);
 
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Packed);
   const auto& configuration =
@@ -189,8 +189,8 @@ TEST(MatMulAlgorithmSchedulerTest, VendorCanTuneForcedAlgorithmConfiguration) {
   EXPECT_EQ(configuration.split_dim_inner, 128u);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, VendorCanSetIndependentSplitKThresholds) {
-  VendorSplitKThresholdScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, VendorCanSetIndependentSplitKThresholds) {
+  VendorSplitKThresholdPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.m = 32;
   params.n = 64;
@@ -200,17 +200,17 @@ TEST(MatMulAlgorithmSchedulerTest, VendorCanSetIndependentSplitKThresholds) {
   params.is_vec4 = true;
   params.is_channels_last = true;
 
-  const MatMulExecutionPlan plan = scheduler.CreateExecutionPlan(params);
+  const MatMulExecutionPlan plan = planner.CreateExecutionPlan(params);
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::PackedSplitK);
   EXPECT_EQ(std::get<MatMulPackedConfiguration>(plan.configuration).split_dim_inner, 128u);
 
   params.batch_size = 17;
   params.packed_batch_size = 17;
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, InjectedSplitKPolicyCreatesPackedSplitKPlan) {
-  intel::IntelMatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
+TEST(MatMulExecutionPlannerTest, InjectedSplitKPolicyCreatesPackedSplitKPlan) {
+  intel::IntelMatMulExecutionPlanner planner{intel::CreateSplitKConfig("xe-2lpg")};
   MatMulAlgorithmSelectionParams params{};
   params.m = 192;
   params.packed_m = 192;
@@ -218,7 +218,7 @@ TEST(MatMulAlgorithmSchedulerTest, InjectedSplitKPolicyCreatesPackedSplitKPlan) 
   params.k = 1024;
   params.is_vec4 = true;
 
-  const MatMulExecutionPlan plan = scheduler.CreateExecutionPlan(params);
+  const MatMulExecutionPlan plan = planner.CreateExecutionPlan(params);
 
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::PackedSplitK);
   const auto& configuration =
@@ -226,15 +226,15 @@ TEST(MatMulAlgorithmSchedulerTest, InjectedSplitKPolicyCreatesPackedSplitKPlan) 
   EXPECT_EQ(configuration.split_dim_inner, 256u);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, CommonPackedConfigurationPreservesCurrentTuning) {
-  MatMulAlgorithmScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, CommonPackedConfigurationPreservesCurrentTuning) {
+  MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.m = 8;
   params.packed_m = 8;
   params.n = 64;
   params.k = 64;
 
-  const MatMulExecutionPlan small_m_plan = scheduler.CreateExecutionPlan(params);
+  const MatMulExecutionPlan small_m_plan = planner.CreateExecutionPlan(params);
   const auto& small_m_configuration =
       std::get<MatMulPackedConfiguration>(small_m_plan.configuration);
   EXPECT_EQ(small_m_configuration.workgroup_size,
@@ -245,7 +245,7 @@ TEST(MatMulAlgorithmSchedulerTest, CommonPackedConfigurationPreservesCurrentTuni
 
   params.m = 9;
   params.packed_m = 9;
-  const MatMulExecutionPlan large_m_plan = scheduler.CreateExecutionPlan(params);
+  const MatMulExecutionPlan large_m_plan = planner.CreateExecutionPlan(params);
   const auto& large_m_configuration =
       std::get<MatMulPackedConfiguration>(large_m_plan.configuration);
   EXPECT_EQ(large_m_configuration.elements_per_thread,
@@ -265,11 +265,11 @@ TEST(MatMulAlgorithmConfigurationTest, PackedConfigurationKeepsBatchAxesUntiled)
 }
 
 TEST(MatMulAlgorithmConfigurationTest, SubgroupConfigurationCarriesSelectedSize) {
-  MatMulAlgorithmScheduler scheduler;
+  MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.subgroup_size = 16;
 
-  const auto plan = scheduler.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup);
+  const auto plan = planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup);
   const auto* configuration = std::get_if<MatMulSubgroupConfiguration>(&plan.configuration);
   ASSERT_NE(configuration, nullptr);
   EXPECT_EQ(configuration->subgroup_size, 16u);
@@ -309,8 +309,8 @@ TEST(MatMulAlgorithmConfigurationTest, PackedDispatchArithmeticIsOverflowSafe) {
             std::nullopt);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, CommonFallbackPrefersSubgroupMatrix) {
-  MatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
+TEST(MatMulExecutionPlannerTest, CommonFallbackPrefersSubgroupMatrix) {
+  MatMulExecutionPlanner planner{intel::CreateSplitKConfig("xe-2lpg")};
   MatMulAlgorithmSelectionParams params{};
   params.m = 64;
   params.packed_m = 64;
@@ -319,11 +319,11 @@ TEST(MatMulAlgorithmSchedulerTest, CommonFallbackPrefersSubgroupMatrix) {
   params.can_use_subgroup_matrix = true;
   params.is_vec4 = true;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::SubgroupMatrix);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, GemvPrecedesGenericFallbacks) {
-  MatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
+TEST(MatMulExecutionPlannerTest, GemvPrecedesGenericFallbacks) {
+  MatMulExecutionPlanner planner{intel::CreateSplitKConfig("xe-2lpg")};
   MatMulAlgorithmSelectionParams params{};
   params.m = 1;
   params.packed_m = 1;
@@ -332,87 +332,87 @@ TEST(MatMulAlgorithmSchedulerTest, GemvPrecedesGenericFallbacks) {
   params.can_use_gemv = true;
   params.is_vec4 = true;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Gemv);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Gemv);
 
   params.can_use_subgroup_matrix = true;
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::SubgroupMatrix);
 }
 
 TEST(MatMulAlgorithmConfigurationTest, GemvUsesTypedEmptyConfiguration) {
-  MatMulAlgorithmScheduler scheduler;
+  MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.m = 1;
   params.n = 48;
   params.k = 5120;
   params.can_use_gemv = true;
 
-  const MatMulExecutionPlan plan = scheduler.CreateExecutionPlan(params);
+  const MatMulExecutionPlan plan = planner.CreateExecutionPlan(params);
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Gemv);
   EXPECT_TRUE(std::holds_alternative<MatMulGemvConfiguration>(plan.configuration));
   EXPECT_TRUE(IsMatMulAlgorithmConfigurationCompatible(plan));
 }
 
-TEST(MatMulAlgorithmSchedulerTest, VendorPolicyPrecedesCommonHeuristics) {
-  AlwaysPackedVendorScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, VendorPolicyPrecedesCommonHeuristics) {
+  AlwaysPackedVendorPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.n = 4;
   params.k = 4;
   params.can_use_subgroup_matrix = true;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, ZeroContractionDimensionPrecedesVendorPolicy) {
-  AlwaysPackedVendorScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, ZeroContractionDimensionPrecedesVendorPolicy) {
+  AlwaysPackedVendorPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.n = 8;
   params.k = 0;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Naive);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Naive);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, NaiveUsesStrictSmallDimensionBoundaries) {
-  MatMulAlgorithmScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, NaiveUsesStrictSmallDimensionBoundaries) {
+  MatMulExecutionPlanner planner;
 
   MatMulAlgorithmSelectionParams small_params{};
   small_params.n = 7;
   small_params.k = 7;
-  EXPECT_EQ(scheduler.Select(small_params), MatMulAlgorithm::Naive);
+  EXPECT_EQ(planner.SelectAlgorithm(small_params), MatMulAlgorithm::Naive);
 
   MatMulAlgorithmSelectionParams n_boundary = small_params;
   n_boundary.n = 8;
-  EXPECT_EQ(scheduler.Select(n_boundary), MatMulAlgorithm::Packed);
+  EXPECT_EQ(planner.SelectAlgorithm(n_boundary), MatMulAlgorithm::Packed);
 
   MatMulAlgorithmSelectionParams k_boundary = small_params;
   k_boundary.k = 8;
-  EXPECT_EQ(scheduler.Select(k_boundary), MatMulAlgorithm::Packed);
+  EXPECT_EQ(planner.SelectAlgorithm(k_boundary), MatMulAlgorithm::Packed);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, ZeroContractionDimensionUsesNaive) {
-  MatMulAlgorithmScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, ZeroContractionDimensionUsesNaive) {
+  MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.n = 8;
   params.k = 0;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Naive);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Naive);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerAppliesCurrentVendorRule) {
-  intel::IntelMatMulAlgorithmScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, IntelPlannerAppliesCurrentVendorRule) {
+  intel::IntelMatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.m = 64;
   params.n = 512;
   params.k = 32;
   params.has_subgroup_capability = true;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Subgroup);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Subgroup);
 
   params.n = 511;
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerPreservesSubgroupMatrixPrecedence) {
-  intel::IntelMatMulAlgorithmScheduler scheduler;
+TEST(MatMulExecutionPlannerTest, IntelPlannerPreservesSubgroupMatrixPrecedence) {
+  intel::IntelMatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.m = 64;
   params.n = 512;
@@ -420,21 +420,21 @@ TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerPreservesSubgroupMatrixPreceden
   params.can_use_subgroup_matrix = true;
   params.has_subgroup_capability = true;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::SubgroupMatrix);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, SplitKPrecedesPackedFallback) {
-  MatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
+TEST(MatMulExecutionPlannerTest, SplitKPrecedesPackedFallback) {
+  MatMulExecutionPlanner planner{intel::CreateSplitKConfig("xe-2lpg")};
   MatMulAlgorithmSelectionParams params{};
   params.m = 64;
   params.packed_m = 64;
   params.n = 64;
   params.k = 1024;
   params.is_vec4 = true;
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::PackedSplitK);
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::PackedSplitK);
 
-  MatMulAlgorithmScheduler disabled_scheduler;
-  EXPECT_EQ(disabled_scheduler.Select(params), MatMulAlgorithm::Packed);
+  MatMulExecutionPlanner disabled_planner;
+  EXPECT_EQ(disabled_planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
 }
 
 TEST(MatMulAlgorithmPrerequisiteTest, SplitKRejectsEachHardConstraint) {
@@ -502,8 +502,8 @@ TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThre
   below_heuristic_threshold.n = 1;
   below_heuristic_threshold.k = 1;
   below_heuristic_threshold.has_subgroup_capability = true;
-  intel::IntelMatMulAlgorithmScheduler scheduler;
-  EXPECT_NE(scheduler.Select(below_heuristic_threshold), MatMulAlgorithm::Subgroup);
+  intel::IntelMatMulExecutionPlanner planner;
+  EXPECT_NE(planner.SelectAlgorithm(below_heuristic_threshold), MatMulAlgorithm::Subgroup);
 }
 
 TEST(MatMulAlgorithmPrerequisiteTest, SubgroupRejectsZeroContractionDimension) {

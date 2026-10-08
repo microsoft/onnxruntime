@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/math/matmul_execution_planner.h"
 
 #include <limits>
 #include <utility>
@@ -89,12 +89,12 @@ bool MeetsMatMulAlgorithmPrerequisites(
   return false;
 }
 
-MatMulAlgorithmScheduler::MatMulAlgorithmScheduler(SplitKConfig split_k_config)
+MatMulExecutionPlanner::MatMulExecutionPlanner(SplitKConfig split_k_config)
     : split_k_config_{std::move(split_k_config)} {}
 
-MatMulAlgorithmScheduler::~MatMulAlgorithmScheduler() = default;
+MatMulExecutionPlanner::~MatMulExecutionPlanner() = default;
 
-MatMulAlgorithm MatMulAlgorithmScheduler::Select(
+MatMulAlgorithm MatMulExecutionPlanner::SelectAlgorithm(
     const MatMulAlgorithmSelectionParams& params,
     std::optional<MatMulAlgorithm> forced_algorithm) const {
   if (forced_algorithm.has_value()) {
@@ -109,10 +109,10 @@ MatMulAlgorithm MatMulAlgorithmScheduler::Select(
   return SelectCommonAlgorithm(params);
 }
 
-MatMulExecutionPlan MatMulAlgorithmScheduler::CreateExecutionPlan(
+MatMulExecutionPlan MatMulExecutionPlanner::CreateExecutionPlan(
     const MatMulAlgorithmSelectionParams& params,
     std::optional<MatMulAlgorithm> forced_algorithm) const {
-  const MatMulAlgorithm algorithm = Select(params, forced_algorithm);
+  const MatMulAlgorithm algorithm = SelectAlgorithm(params, forced_algorithm);
   std::optional<MatMulAlgorithmConfiguration> configuration =
       SelectVendorConfiguration(algorithm, params);
   if (!configuration.has_value()) {
@@ -121,18 +121,18 @@ MatMulExecutionPlan MatMulAlgorithmScheduler::CreateExecutionPlan(
   return MatMulExecutionPlan{algorithm, std::move(*configuration)};
 }
 
-std::optional<MatMulAlgorithm> MatMulAlgorithmScheduler::SelectVendorAlgorithm(
+std::optional<MatMulAlgorithm> MatMulExecutionPlanner::SelectVendorAlgorithm(
     const MatMulAlgorithmSelectionParams& /*params*/) const {
   return std::nullopt;
 }
 
-std::optional<MatMulAlgorithmConfiguration> MatMulAlgorithmScheduler::SelectVendorConfiguration(
+std::optional<MatMulAlgorithmConfiguration> MatMulExecutionPlanner::SelectVendorConfiguration(
     MatMulAlgorithm /*algorithm*/,
     const MatMulAlgorithmSelectionParams& /*params*/) const {
   return std::nullopt;
 }
 
-MatMulAlgorithm MatMulAlgorithmScheduler::SelectCommonAlgorithm(
+MatMulAlgorithm MatMulExecutionPlanner::SelectCommonAlgorithm(
     const MatMulAlgorithmSelectionParams& params) const {
   if (params.can_use_subgroup_matrix) {
     return MatMulAlgorithm::SubgroupMatrix;
@@ -149,7 +149,7 @@ MatMulAlgorithm MatMulAlgorithmScheduler::SelectCommonAlgorithm(
   return MatMulAlgorithm::Packed;
 }
 
-MatMulAlgorithmConfiguration MatMulAlgorithmScheduler::SelectCommonConfiguration(
+MatMulAlgorithmConfiguration MatMulExecutionPlanner::SelectCommonConfiguration(
     MatMulAlgorithm algorithm,
     const MatMulAlgorithmSelectionParams& params) const {
   switch (algorithm) {
@@ -177,7 +177,7 @@ MatMulAlgorithmConfiguration MatMulAlgorithmScheduler::SelectCommonConfiguration
   return MatMulNaiveConfiguration{};
 }
 
-bool MatMulAlgorithmScheduler::ShouldUseSplitK(
+bool MatMulExecutionPlanner::ShouldUseSplitK(
     const MatMulAlgorithmSelectionParams& params) const {
   if (params.deterministic_compute || params.has_fused_activation ||
       params.packed_m < 0 || params.n < 0 || params.k < 0) {

@@ -9,7 +9,7 @@
 
 #include "core/common/common.h"
 #include "core/common/status.h"
-#include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/math/matmul_execution_planner.h"
 
 namespace onnxruntime {
 
@@ -59,7 +59,7 @@ class MatMulComputeDispatcher {
 
   std::once_flag init_flag_;
   std::unique_ptr<SubgroupMatrixMatMulImpl> subgroup_matrix_impl_;
-  std::unique_ptr<MatMulAlgorithmScheduler> scheduler_;
+  std::unique_ptr<MatMulExecutionPlanner> planner_;
 };
 
 }  // namespace webgpu

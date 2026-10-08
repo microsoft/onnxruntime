@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/vendor/intel/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul_execution_planner.h"
 
 #include <utility>
 
@@ -9,10 +9,10 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
-IntelMatMulAlgorithmScheduler::IntelMatMulAlgorithmScheduler(SplitKConfig split_k_config)
-    : MatMulAlgorithmScheduler{std::move(split_k_config)} {}
+IntelMatMulExecutionPlanner::IntelMatMulExecutionPlanner(SplitKConfig split_k_config)
+    : MatMulExecutionPlanner{std::move(split_k_config)} {}
 
-std::optional<MatMulAlgorithm> IntelMatMulAlgorithmScheduler::SelectVendorAlgorithm(
+std::optional<MatMulAlgorithm> IntelMatMulExecutionPlanner::SelectVendorAlgorithm(
     const MatMulAlgorithmSelectionParams& params) const {
   if (params.can_use_subgroup_matrix) {
     return MatMulAlgorithm::SubgroupMatrix;

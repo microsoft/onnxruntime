@@ -94,19 +94,23 @@ bool MeetsMatMulAlgorithmPrerequisites(
     MatMulAlgorithm algorithm,
     const MatMulAlgorithmPrerequisites& prerequisites);
 
-// Pure selection and tuning policy. Runtime validation remains in the dispatcher.
-class MatMulAlgorithmScheduler {
+// Pure policy object that selects an algorithm and its tuning configuration to create an execution plan.
+// Runtime prerequisite validation and execution remain in MatMulComputeDispatcher.
+class MatMulExecutionPlanner {
  public:
-  explicit MatMulAlgorithmScheduler(SplitKConfig split_k_config = {});
-  virtual ~MatMulAlgorithmScheduler();
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulAlgorithmScheduler);
+  explicit MatMulExecutionPlanner(SplitKConfig split_k_config = {});
+  virtual ~MatMulExecutionPlanner();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulExecutionPlanner);
 
-  MatMulAlgorithm Select(
+  // Selects one algorithm from immutable invocation facts. A forced algorithm bypasses
+  // automatic policy but remains subject to dispatcher prerequisite validation.
+  MatMulAlgorithm SelectAlgorithm(
       const MatMulAlgorithmSelectionParams& params,
       std::optional<MatMulAlgorithm> forced_algorithm = std::nullopt) const;
 
-  // A forced plan may intentionally violate runtime prerequisites; the dispatcher validates it
-  // and reports an error naming the requested algorithm instead of silently changing selection.
+  // Selects an algorithm and its typed tuning configuration as one immutable plan.
+  // A forced plan may intentionally violate runtime prerequisites; the dispatcher reports
+  // an error naming the requested algorithm instead of silently changing the selection.
   MatMulExecutionPlan CreateExecutionPlan(
       const MatMulAlgorithmSelectionParams& params,
       std::optional<MatMulAlgorithm> forced_algorithm = std::nullopt) const;
