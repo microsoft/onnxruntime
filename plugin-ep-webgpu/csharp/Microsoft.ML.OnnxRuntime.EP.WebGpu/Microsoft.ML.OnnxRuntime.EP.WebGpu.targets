@@ -1,0 +1,29 @@
+<Project>
+  <Target Name="_OrtWebGpuCopyAgilitySdkToOutput"
+          AfterTargets="CopyFilesToOutputDirectory">
+    <ItemGroup>
+      <_OrtWebGpuOutputProvider Include="@(ReferenceCopyLocalPaths)"
+                               Condition="'%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntime.EP.WebGpu' and '%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'onnxruntime_providers_webgpu.dll'" />
+      <_OrtWebGpuAgilitySdkDll Include="%(_OrtWebGpuOutputProvider.RootDir)%(_OrtWebGpuOutputProvider.Directory)D3D12\*.dll">
+        <SdkDestinationDirectory>$(TargetDir)%(_OrtWebGpuOutputProvider.DestinationSubDirectory)D3D12\</SdkDestinationDirectory>
+      </_OrtWebGpuAgilitySdkDll>
+    </ItemGroup>
+    <Copy SourceFiles="@(_OrtWebGpuAgilitySdkDll)"
+          DestinationFiles="@(_OrtWebGpuAgilitySdkDll->'%(SdkDestinationDirectory)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="_OrtWebGpuCopyAgilitySdkToPublish"
+          AfterTargets="Publish">
+    <ItemGroup>
+      <_OrtWebGpuPublishProvider Include="@(ResolvedFileToPublish)"
+                                Condition="'%(ResolvedFileToPublish.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntime.EP.WebGpu' and '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'onnxruntime_providers_webgpu.dll'" />
+      <_OrtWebGpuAgilitySdkPublishDll Include="%(_OrtWebGpuPublishProvider.RootDir)%(_OrtWebGpuPublishProvider.Directory)D3D12\*.dll">
+        <SdkDestinationDirectory>$(PublishDir)$([System.IO.Path]::GetDirectoryName('%(_OrtWebGpuPublishProvider.RelativePath)'))\D3D12\</SdkDestinationDirectory>
+      </_OrtWebGpuAgilitySdkPublishDll>
+    </ItemGroup>
+    <Copy SourceFiles="@(_OrtWebGpuAgilitySdkPublishDll)"
+          DestinationFiles="@(_OrtWebGpuAgilitySdkPublishDll->'%(SdkDestinationDirectory)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

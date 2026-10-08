@@ -33,6 +33,9 @@
     <!-- LICENSE and ThirdPartyNotices.txt are staged here from the repo root by pack_nuget.py. -->
     <None Include="LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="ThirdPartyNotices.txt" Pack="true" PackagePath="" Visible="false" />
+        <None Update="Microsoft.ML.OnnxRuntime.EP.WebGpu.targets"
+          Pack="true"
+          PackagePath="buildTransitive/" />
   </ItemGroup>
 
   <!-- Native binaries per platform. Each ItemGroup is conditioned on the runtimes/ directory

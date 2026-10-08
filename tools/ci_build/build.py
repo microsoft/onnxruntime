@@ -1007,8 +1007,10 @@ def generate_build_tree(
 
         if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
             raise BuildError(
-                "Dawn Agility SDK (--use_dawn_agility_sdk) does not support C#, NuGet, Java, or Node.js packaging "
-                "because the required D3D12 runtime DLLs are not deployed into those packages."
+                "--use_dawn_agility_sdk is not supported with --build_csharp, --build_nuget, "
+                "--build_java, or --build_nodejs because those build paths do not deploy "
+                "the required D3D12 runtime DLLs. "
+                "For the standalone WebGPU EP NuGet package, use plugin-ep-webgpu/csharp/pack_nuget.py."
             )
 
     if args.use_snpe:

@@ -235,13 +235,35 @@ stages:
                 Write-Host $json
 
                 # Collect the binaries (dll, so, dylib) and version.json
-                $filesToZip = Get-ChildItem -Path $binDir -File | Where-Object {
+                $filesToZip = @(Get-ChildItem -Path $binDir -File | Where-Object {
                   $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -eq 'version.json'
+                })
+                $agilityEntries = @()
+                if ($platformName -like 'win-*') {
+                  $agilityEntries = @('D3D12/D3D12Core.dll', 'D3D12/d3d12SDKLayers.dll')
+                  foreach ($entry in $agilityEntries) {
+                    if (-not (Test-Path (Join-Path $binDir $entry) -PathType Leaf)) {
+                      throw "Missing Agility SDK binary for ${platformName}: $entry"
+                    }
+                  }
+                  $filesToZip += Get-Item (Join-Path $binDir 'D3D12')
                 }
 
                 $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
                 if ($filesToZip) {
                   $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
+                  Add-Type -AssemblyName System.IO.Compression.FileSystem
+                  $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+                  try {
+                    $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+                    foreach ($entry in $agilityEntries) {
+                      if ($entryNames -cnotcontains $entry) {
+                        throw "Missing Agility SDK entry in ${zipPath}: $entry"
+                      }
+                    }
+                  } finally {
+                    $archive.Dispose()
+                  }
                   Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
                 } else {
                   throw "No files found to zip for $platformName in $binDir"

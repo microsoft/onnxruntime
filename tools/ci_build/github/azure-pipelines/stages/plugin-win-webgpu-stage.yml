@@ -230,5 +230,6 @@ stages:
           python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\build_wheel.py" `
             --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
             --version "$(PluginPythonPackageVersion)" `
+            --require-agility-sdk `
             --output_dir "$(Build.ArtifactStagingDirectory)\python"
         displayName: 'Build Python wheel'
