@@ -576,6 +576,46 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPas
             without.total_workspace_bytes + expected_copy);
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyIsReaderOnlyForBothCacheModes) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  for (bool windowed : {false, true}) {
+    SCOPED_TRACE(windowed);
+    auto config = Config();
+    EXPECT_EQ(config.dispatch_policy, KernelDispatchPolicy::Auto);
+    config.sliding_window_cache = windowed;
+    config.local_window_size = windowed ? 256 : -1;
+    config.max_total_sequence_length = windowed ? 0 : 512;
+    const auto baseline = EstimateGroupQueryAttentionWorkspace(
+        config, SeparateShapes(), Device(), options);
+    ASSERT_TRUE(baseline.has_value());
+    for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                              KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+      config.dispatch_policy = policy;
+      const auto estimate = EstimateGroupQueryAttentionWorkspace(
+          config, SeparateShapes(), Device(), options);
+      ASSERT_TRUE(estimate.has_value());
+      EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
+      EXPECT_EQ(estimate->sized_backends, baseline->sized_backends);
+    }
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyDoesNotEnableUnspecifiedEnvelope) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  for (const auto policy : {KernelDispatchPolicy::Latency, KernelDispatchPolicy::Memory,
+                            KernelDispatchPolicy::Safe, KernelDispatchPolicy::Auto}) {
+    config.dispatch_policy = policy;
+    EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                     config, SeparateShapes(), Device(), options)
+                     .has_value());
+  }
+}
+
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);

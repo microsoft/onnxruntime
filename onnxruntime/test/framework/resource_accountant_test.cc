@@ -3,6 +3,7 @@
 
 #include "core/framework/resource_accountant.h"
 #include "core/framework/config_options.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
@@ -802,6 +803,26 @@ TEST(RealAccountantTest, Factory_NoLimitNoStats) {
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
+TEST(KernelDispatchPolicyTest, ParsesTokens) {
+  struct Case {
+    const char* value;
+    KernelDispatchPolicy expected;
+  };
+  for (const auto& test_case : {
+           Case{"", KernelDispatchPolicy::Auto},
+           Case{"auto", KernelDispatchPolicy::Auto},
+           Case{"latency", KernelDispatchPolicy::Latency},
+           Case{"memory", KernelDispatchPolicy::Memory},
+           Case{"safe", KernelDispatchPolicy::Safe},
+           Case{"Latency", KernelDispatchPolicy::Auto},
+           Case{" memory", KernelDispatchPolicy::Auto},
+           Case{"memory ", KernelDispatchPolicy::Auto},
+           Case{"unknown", KernelDispatchPolicy::Auto}}) {
+    SCOPED_TRACE(test_case.value);
+    EXPECT_EQ(ParseKernelDispatchPolicy(test_case.value), test_case.expected);
+  }
+}
+
 TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   ConfigOptions config;
   ASSERT_STATUS_OK(config.AddConfigEntry(
@@ -812,6 +833,8 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
       kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "4096"));
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsKernelDispatchPolicy, "memory"));
   ASSERT_STATUS_OK(config.AddConfigEntry("unrelated.config", "not copied"));
 
   std::optional<ResourceAccountantMap> acc_map;
@@ -824,6 +847,49 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   EXPECT_EQ(estimator_config.cuda_fpa_intb_profile_m, std::optional<std::string>{"1,16"});
   EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length,
             int64_t{4096});
+  EXPECT_EQ(estimator_config.kernel_dispatch_policy,
+            std::optional<std::string>{"memory"});
+}
+
+TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyReader) {
+  struct Case {
+    const char* value;
+  };
+  for (const auto& test_case : {
+           Case{nullptr}, Case{""}, Case{"auto"}, Case{"latency"}, Case{"memory"},
+           Case{"safe"}, Case{"Latency"}, Case{"unknown"}, Case{" memory "}}) {
+    SCOPED_TRACE(test_case.value != nullptr ? test_case.value : "<unset>");
+    ConfigOptions config;
+    ASSERT_STATUS_OK(config.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+    if (test_case.value != nullptr) {
+      ASSERT_STATUS_OK(config.AddConfigEntry(
+          kOrtSessionOptionsKernelDispatchPolicy, test_case.value));
+    }
+    std::optional<ResourceAccountantMap> acc_map;
+    ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
+    ASSERT_TRUE(acc_map.has_value());
+    const auto& estimator_config =
+        acc_map->at(kCudaExecutionProvider)->GetWorkspaceEstimatorConfig();
+    if (test_case.value == nullptr) {
+      EXPECT_FALSE(estimator_config.kernel_dispatch_policy.has_value());
+    } else {
+      EXPECT_EQ(estimator_config.kernel_dispatch_policy,
+                std::optional<std::string>{test_case.value});
+    }
+    EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length, int64_t{0});
+  }
+}
+
+TEST(RealAccountantTest, KernelDispatchPolicyDoesNotEnablePartitioning) {
+  for (const char* value : {"auto", "latency", "memory", "safe", "unknown"}) {
+    SCOPED_TRACE(value);
+    ConfigOptions config;
+    ASSERT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsKernelDispatchPolicy, value));
+    std::optional<ResourceAccountantMap> acc_map;
+    ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
+    EXPECT_FALSE(acc_map.has_value());
+  }
 }
 
 TEST(RealAccountantTest, FactoryParsesGqaWorkspaceEnvelope) {

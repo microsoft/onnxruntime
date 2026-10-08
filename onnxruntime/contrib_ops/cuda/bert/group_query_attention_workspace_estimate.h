@@ -13,6 +13,7 @@
 #include <gsl/span>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/framework/level1_memory_estimate.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/framework/workspace_requirement.h"
@@ -51,6 +52,8 @@ struct GQAWorkspaceEstimateConfig {
   // ep.cuda.gqa_workspace_max_total_sequence_length. Zero means unspecified;
   // this field does not enforce a runtime input limit.
   int64_t max_total_sequence_length = 0;
+  // Parsed intent only; all values currently leave sizing and dispatch unchanged.
+  KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto;
 };
 
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
@@ -70,7 +73,8 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer = false,
-    int64_t max_total_sequence_length = 0);
+    int64_t max_total_sequence_length = 0,
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 void SetGroupQueryAttentionWorkspaceRequirements(
     const GQAWorkspaceAggregate& estimate,

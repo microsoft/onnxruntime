@@ -500,10 +500,12 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
-  const auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
+  auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
       node, head_sink_is_constant_initializer, max_total_sequence_length);
   if (!config.has_value()) return std::nullopt;
+  config->dispatch_policy = dispatch_policy;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);
 }

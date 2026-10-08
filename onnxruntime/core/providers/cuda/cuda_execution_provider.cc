@@ -8,6 +8,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "core/framework/node_shape_resolver.h"
 #endif
@@ -3636,14 +3637,19 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             input_defs.size() > 11 && input_defs[11] != nullptr &&
             input_defs[11]->Exists() &&
             graph.IsConstantInitializer(input_defs[11]->Name(), true);
-        // The factory validates the envelope once.
+        const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
         const auto gqa_workspace_max_total_sequence_length =
-            resource_accountant->GetWorkspaceEstimatorConfig()
-                .cuda_gqa_workspace_max_total_sequence_length;
+            estimator_config.cuda_gqa_workspace_max_total_sequence_length;
+        // Reader-only intent; no value changes route selection or sizing.
+        KernelDispatchPolicy kernel_dispatch_policy = KernelDispatchPolicy::Auto;
+        if (const auto& policy = estimator_config.kernel_dispatch_policy;
+            policy.has_value()) {
+          kernel_dispatch_policy = ParseKernelDispatchPolicy(*policy);
+        }
         const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
             *GetAttentionKernelOptions(), head_sink_is_constant_initializer,
-            gqa_workspace_max_total_sequence_length);
+            gqa_workspace_max_total_sequence_length, kernel_dispatch_policy);
         if (ws.has_value()) {
           Level1MemoryEstimate estimate;
           contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate(*ws, estimate);
