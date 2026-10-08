@@ -1330,6 +1330,23 @@ std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string&
   return previewFeatures;
 }
 
+std::optional<nvinfer1::ProfilingVerbosity> ParseTrtProfilingVerbosity(std::string_view str) {
+  if (str.empty()) {
+    return std::nullopt;
+  }
+  if (str == "none") {
+    return nvinfer1::ProfilingVerbosity::kNONE;
+  }
+  if (str == "layer_names_only") {
+    return nvinfer1::ProfilingVerbosity::kLAYER_NAMES_ONLY;
+  }
+  if (str == "detailed") {
+    return nvinfer1::ProfilingVerbosity::kDETAILED;
+  }
+  ORT_THROW("Invalid trt_profiling_verbosity '", str,
+            "'. Supported values: 'none', 'layer_names_only', 'detailed'.");
+}
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
@@ -1444,6 +1461,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     op_types_to_exclude_ = info.op_types_to_exclude;
     preview_features_ = ParseTrtPreviewFeatures(info.preview_features);
     load_user_initializer_ = info.load_user_initializer;
+    profiling_verbosity_ = ParseTrtProfilingVerbosity(info.profiling_verbosity);
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1857,7 +1875,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
                         << ", trt_onnx_external_data_bytestream_size: " << onnx_external_data_bytestream_size_
                         << ", trt_op_types_to_exclude: " << op_types_to_exclude_
-                        << ", trt_load_user_initializer: " << load_user_initializer_;
+                        << ", trt_load_user_initializer: " << load_user_initializer_
+                        << ", trt_profiling_verbosity: " << info_.profiling_verbosity;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -3490,6 +3509,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     trt_config->setPreviewFeature(feature, true);
   }
 
+  if (profiling_verbosity_) {
+    trt_config->setProfilingVerbosity(*profiling_verbosity_);
+  }
+
   // Build TRT engine (if needed) and load TRT engine if:
   //   (1) Graph has no dynamic shape input
   //   (2) All the dynamic shape inputs have associated explicit profiles specified by user
@@ -3746,6 +3769,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     if (!trt_context) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
+    }
+    if (profiling_verbosity_) {
+      trt_context->setNvtxVerbosity(*profiling_verbosity_);
     }
   }
 
@@ -4134,6 +4160,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         trt_config->setPreviewFeature(feature, true);
       }
 
+      if (profiling_verbosity_) {
+        trt_config->setProfilingVerbosity(*profiling_verbosity_);
+      }
+
       // Build engine
       std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;
       {
@@ -4244,6 +4274,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
       }
       trt_context = trt_state->context->get();
+      if (profiling_verbosity_) {
+        trt_context->setNvtxVerbosity(*profiling_verbosity_);
+      }
     }
 
     // Check before using trt_engine
@@ -4494,6 +4527,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
+  }
+  if (profiling_verbosity_) {
+    trt_context->setNvtxVerbosity(*profiling_verbosity_);
   }
 
   // Create input/output to index maps

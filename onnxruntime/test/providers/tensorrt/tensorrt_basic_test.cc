@@ -1576,5 +1576,47 @@ TEST(TensorrtExecutionProviderTest, EPContextNode_NoSourceAttribute_BackwardComp
   std::filesystem::remove(model_path);
 }
 
+TEST(TensorrtExecutionProviderTest, ProfilingVerbosityProviderOptions) {
+  for (const std::string verbosity : {"none", "layer_names_only", "detailed"}) {
+    Ort::TensorRTProviderOptions trt_options;
+    trt_options.Update({{"trt_profiling_verbosity", verbosity}});
+    EXPECT_NE(trt_options.GetTensorRTProviderOptionsAsString().find("trt_profiling_verbosity=" + verbosity),
+              std::string::npos);
+  }
+}
+
+TEST(TensorrtExecutionProviderTest, ProfilingVerbosityInvalidValue) {
+  OrtTensorRTProviderOptionsV2 provider_options;
+  provider_options.trt_profiling_verbosity = "verbose";
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+  EXPECT_THROW(Ort::Session(*ort_env, ORT_TSTR("testdata/mnist.onnx"), session_options), Ort::Exception);
+}
+
+TEST(TensorrtExecutionProviderTest, ProfilingVerbosityBuildAndEPContext) {
+  PathString model_name = ORT_TSTR("trt_profiling_verbosity_test.onnx");
+  CreateBaseModel(model_name, "profiling_verbosity_test", {1, 3, 2});
+  const std::string ctx_model_name = "trt_profiling_verbosity_test_ctx.onnx";
+  {
+    OrtTensorRTProviderOptionsV2 provider_options;
+    provider_options.trt_profiling_verbosity = "detailed";
+    provider_options.trt_dump_ep_context_model = 1;
+    provider_options.trt_ep_context_embed_mode = 1;
+    provider_options.trt_ep_context_file_path = ctx_model_name.c_str();
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+    Ort::Session session(*ort_env, model_name.c_str(), session_options);
+  }
+  {
+    OrtTensorRTProviderOptionsV2 provider_options;
+    provider_options.trt_profiling_verbosity = "none";
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+    Ort::Session session(*ort_env, ToPathString(ctx_model_name).c_str(), session_options);
+  }
+  std::filesystem::remove(model_name);
+  std::filesystem::remove(ctx_model_name);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
