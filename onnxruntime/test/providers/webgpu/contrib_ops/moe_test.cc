@@ -459,7 +459,7 @@ static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
   ASSERT_NE(indices_buffer.Get(), nullptr);
 
   const auto dtype = use_fp16 ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
-  const auto memory_info = OrtMemoryInfo(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice, OrtMemTypeDefault);
+  const auto memory_info = OrtMemoryInfo(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
   Tensor router_logits(dtype, TensorShape{1, cols}, logits_buffer.Get(), memory_info);
   Tensor topk_values(dtype, TensorShape{1, cols}, weights_buffer.Get(), memory_info);
   Tensor indirect_experts(DataTypeImpl::GetType<uint32_t>(), TensorShape{k}, indices_buffer.Get(), memory_info);
