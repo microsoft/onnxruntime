@@ -205,7 +205,8 @@ def _unlock_file(file):
 
 def _gpu_worker(model, prefix, output, chunk="0"):
     plugin = os.environ.get("ORT_CUDA_PLUGIN_PATH")
-    if plugin:
+    # Plugin wheels may have already registered CUDA during import.
+    if plugin and not any(device.ep_name == "CUDAExecutionProvider" for device in ort.get_ep_devices()):
         ort.register_execution_provider_library("CUDAExecutionProvider", plugin)
     ort.set_default_logger_severity(1)
     options = tune._make_session_options(prefix, [1, 64])
@@ -225,6 +226,55 @@ def _gpu_worker(model, prefix, output, chunk="0"):
     Path(output + ".ready").touch()
     del session
     gc.collect()
+
+
+class TestFpAIntBWorker(unittest.TestCase):
+    def test_cuda_plugin_registration(self):
+        cuda_device = types.SimpleNamespace(ep_name="CUDAExecutionProvider")
+        cpu_device = types.SimpleNamespace(ep_name="CPUExecutionProvider")
+        cases = (
+            ("no_plugin", "", [], False),
+            ("unregistered", "/cuda.so", [], True),
+            ("other_provider", "/cuda.so", [cpu_device], True),
+            ("already_registered", "/cuda.so", [cpu_device, cuda_device], False),
+        )
+        for name, plugin, devices, should_register in cases:
+            with self.subTest(name=name):
+                session = MagicMock()
+                session.get_providers.return_value = ["CUDAExecutionProvider"]
+                with (
+                    patch.dict(os.environ, {"ORT_CUDA_PLUGIN_PATH": plugin}),
+                    patch.object(ort, "get_ep_devices", return_value=devices) as get_devices,
+                    patch.object(ort, "register_execution_provider_library") as register,
+                    patch.object(ort, "set_default_logger_severity"),
+                    patch.object(tune, "_make_session_options"),
+                    patch.object(ort, "InferenceSession", return_value=session) as create,
+                    patch.object(np, "savez"),
+                    patch.object(Path, "touch"),
+                ):
+                    _gpu_worker("model.onnx", "cache", "output.npz")
+                if should_register:
+                    register.assert_called_once_with("CUDAExecutionProvider", plugin)
+                else:
+                    register.assert_not_called()
+                if plugin:
+                    get_devices.assert_called_once_with()
+                else:
+                    get_devices.assert_not_called()
+                self.assertFalse(create.call_args.kwargs["enable_fallback"])
+                session.disable_fallback.assert_called_once_with()
+                self.assertEqual(session.run.call_count, 3)
+
+    def test_cuda_plugin_registration_failure_is_not_suppressed(self):
+        with (
+            patch.dict(os.environ, {"ORT_CUDA_PLUGIN_PATH": "/cuda.so"}),
+            patch.object(ort, "get_ep_devices", return_value=[]),
+            patch.object(ort, "register_execution_provider_library", side_effect=RuntimeError("Plugin load failed")),
+            patch.object(ort, "InferenceSession") as create,
+            self.assertRaisesRegex(RuntimeError, "Plugin load failed"),
+        ):
+            _gpu_worker("model.onnx", "cache", "output.npz")
+        create.assert_not_called()
 
 
 @unittest.skipUnless(os.environ.get("ORT_RUN_CUDA_TACTIC_CACHE_TESTS") == "1", "opt-in CUDA cache integration")
