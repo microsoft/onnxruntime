@@ -1165,7 +1165,7 @@ if(onnxruntime_USE_1DS_TELEMETRY)
   )
   block(PROPAGATE cpp_client_telemetry_SOURCE_DIR cpp_client_telemetry_BINARY_DIR)
     # The SDK otherwise derives its version from the build date, not the release tag.
-    set(BUILD_VERSION "3.10.279.1")
+    set(BUILD_VERSION "3.10.281.1")
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
   endblock()
   if(WIN32 AND TARGET mat)
