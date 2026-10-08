@@ -285,6 +285,7 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
 
     def _run(self, model: ModelProto, a: np.ndarray, config: dict[str, str] | None = None) -> np.ndarray:
         so = ort.SessionOptions()
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         for key, value in (config or {}).items():
             so.add_session_config_entry(key, value)
         sess = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
@@ -319,13 +320,21 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
 
     def test_gemv_paired_k_config_key(self):
         # "1" adds the paired-K GEMV as an extra tactic and "force" offers only it for M = 5..8; both
-        # must match the default fpA_intB result, and "0" must be accepted as off. The paired kernel is
+        # must match the default fpA_intB result, and "0"/"off" must be accepted as off. The paired kernel is
         # fp16, so a failure here is a numerical mismatch rather than a missing kernel.
         for m in (4, 5, 6, 7, 8, 9):
             model, a, _, _ = self._make_int4_case(m=m, k=1024, n=2048)
             ref = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
-            for value in ("0", "1", "force"):
-                out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_gemv_paired_k": value})
+            for value in ("0", "off", "1", "force"):
+                out = self._run(
+                    model,
+                    a,
+                    {
+                        "ep.cuda.fpa_intb_gemm": "1",
+                        "ep.cuda.fpa_intb_profile_m": str(m),
+                        "ep.cuda.fpa_intb_gemv_paired_k": value,
+                    },
+                )
                 np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"m={m} value={value}")
 
     def test_session_config_overrides_env(self):

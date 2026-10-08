@@ -131,7 +131,7 @@ size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, s
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
     int m, int /*n*/, int /*k*/) const {
   auto tactics = mRunner->getConfigs();
-  if (mPairedGemvMode != 0 && m == 8) {
+  if (mPairedGemvMode != 0 && m >= 5 && m <= 8) {
     for (auto const& tactic : tactics) {
       if (tactic.enableCudaKernel) {
         auto paired = tactic;
@@ -150,7 +150,7 @@ std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupw
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
   // stop to profile Cuda kernel for m >= 16
   if (tactic.enableCudaKernel) {
-    return m < 16 && (tactic.cudaKernelVariant == 0 || m == 8);
+    return m < 16 && (tactic.cudaKernelVariant == 0 || (m >= 5 && m <= 8));
   }
   return true;
 }

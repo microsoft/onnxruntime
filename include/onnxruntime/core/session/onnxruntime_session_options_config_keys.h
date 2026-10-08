@@ -473,8 +473,8 @@ static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_in
 /// Opt-in: lets the CUDA MatMulNBits tactic profiler also try a paired-K GEMV kernel (fp16 activations,
 /// 4-bit block_size-32 weights without zero points or bias, SM80-interleaved layout) for M = 5..8. The
 /// profiler keeps it only for shapes where it is faster than the default GEMV and the CUTLASS kernels.
-/// "0" or unset (default) disables it; "force" offers only that tactic for M = 5..8 (for testing and benchmarking);
-/// any other value enables it as an extra candidate.
+/// "0", "off", or unset (default) disables it; "force" offers only that tactic for M = 5..8 (for testing and
+/// benchmarking); any other value enables it as an extra candidate.
 /// Overrides the process-wide ORT_FPA_INTB_GEMV_PAIRED_K environment variable. Requires the fpA_intB path.
 static const char* const kOrtSessionOptionsCudaFpAIntBGemvPairedK = "ep.cuda.fpa_intb_gemv_paired_k";
 
