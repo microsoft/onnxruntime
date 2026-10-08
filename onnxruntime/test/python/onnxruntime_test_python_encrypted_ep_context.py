@@ -19,18 +19,24 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument
 
 
 class TestEncryptedEpContext(AutoEpTestCase):
-    @unittest.skipUnless(
-        importlib.util.find_spec("cryptography"),
-        "Install onnxruntime/test/python/requirements.txt to run authenticated encryption tests",
-    )
     def test_persisted_encrypted_compiled_model_and_context_run_inference(self):
+        required = os.environ.get("ORT_REQUIRE_ENCRYPTED_EP_CONTEXT") == "1"
+        if not importlib.util.find_spec("cryptography"):
+            message = "Install onnxruntime/test/python/requirements.txt to run authenticated encryption tests"
+            if required:
+                self.fail(message)
+            self.skipTest(message)
+            return
         from cryptography.exceptions import InvalidTag  # noqa: PLC0415
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: PLC0415
 
         try:
             library = get_name(get_shared_library_filename_for_platform("example_plugin_ep"))
         except FileNotFoundError:
+            if required:
+                self.fail("The required example plugin EP integration artifact is not available")
             self.skipTest("The example plugin EP integration artifact is not available")
+            return
         ep_name = "python_encrypted_ep_context"
         self.register_execution_provider_library(ep_name, os.path.abspath(library))
         try:
@@ -137,6 +143,14 @@ class TestEncryptedEpContext(AutoEpTestCase):
                     decrypt(encrypted_context, key, "different-context-name")
                 with self.assertRaisesRegex(InvalidArgument, "requires a model path"):
                     ort.InferenceSession(restored, sess_options=options())
+
+                invalid_record = encrypt(b"invalid compiled payload", context_name)
+                context_file.write_bytes(invalid_record)
+                invalid_options = options()
+                invalid_options.set_ep_context_data_read_func(read_context, len(invalid_record) - 28)
+                with self.assertRaisesRegex(InvalidArgument, "Invalid compiled test Mul payload"):
+                    ort.InferenceSession(restored, sess_options=invalid_options)
+                self.assertEqual(reads, 2)
                 self.assertFalse(Path(context_name).exists())
                 self.assertEqual({path.name for path in Path(directory).iterdir()}, {"model.aesgcm", "context.aesgcm"})
         finally:

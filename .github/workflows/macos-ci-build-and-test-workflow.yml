@@ -157,6 +157,8 @@ jobs:
         if: ${{ matrix.machine == matrix.target }}
         shell: bash
         working-directory: ${{ github.workspace }}
+        env:
+          ORT_REQUIRE_ENCRYPTED_EP_CONTEXT: '1'
         run: |
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
 
