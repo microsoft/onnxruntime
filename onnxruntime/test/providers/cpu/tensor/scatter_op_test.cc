@@ -336,6 +336,147 @@ TEST(ScatterElements, AddReduction_MLFloat16) {
 }
 #endif
 
+namespace {
+// Indices that repeat along the dimensions after the axis, which is what an Expand of an
+// [N, 1] index tensor produces. The rows are wide enough to take the contiguous path.
+std::vector<int64_t> RowBroadcastIndices(const std::vector<int64_t>& row_index, int64_t width) {
+  std::vector<int64_t> indices;
+  indices.reserve(row_index.size() * static_cast<size_t>(width));
+  for (int64_t r : row_index) {
+    indices.insert(indices.end(), static_cast<size_t>(width), r);
+  }
+  return indices;
+}
+
+std::vector<float> RepeatRows(const std::vector<float>& row_value, int64_t width) {
+  std::vector<float> values;
+  values.reserve(row_value.size() * static_cast<size_t>(width));
+  for (float v : row_value) {
+    values.insert(values.end(), static_cast<size_t>(width), v);
+  }
+  return values;
+}
+}  // namespace
+
+TEST(ScatterElements, RowBroadcastIndicesAdd) {
+  constexpr int64_t kWidth = 16;
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  // Update rows 0 and 2 both land on data row 1, so it accumulates 1 + 3.
+  test.AddInput<float>("data", {4, kWidth}, std::vector<float>(4 * kWidth, 0.f));
+  test.AddInput<int64_t>("indices", {3, kWidth}, RowBroadcastIndices({1, 2, 1}, kWidth));
+  test.AddInput<float>("updates", {3, kWidth}, RepeatRows({1.f, 2.f, 3.f}, kWidth));
+  test.AddOutput<float>("y", {4, kWidth}, RepeatRows({0.f, 4.f, 2.f, 0.f}, kWidth));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Two updates land on the same row, so this pins the order they are applied in: with
+// reduction='none' the later update along the axis has to win. It fails if the contiguous
+// path were to visit the axis in any other order.
+//
+// ONNX leaves the result unspecified when several updates target one element, so this is a
+// property of the CPU kernel rather than of the operator. Providers that apply the updates
+// concurrently pick an arbitrary winner, so the check runs on CPU only.
+TEST(ScatterElements, RowBroadcastIndicesNoneKeepsLastUpdate) {
+  constexpr int64_t kWidth = 16;
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "none");
+
+  test.AddInput<float>("data", {4, kWidth}, std::vector<float>(4 * kWidth, 0.f));
+  test.AddInput<int64_t>("indices", {3, kWidth}, RowBroadcastIndices({1, 2, 1}, kWidth));
+  test.AddInput<float>("updates", {3, kWidth}, RepeatRows({1.f, 2.f, 3.f}, kWidth));
+  test.AddOutput<float>("y", {4, kWidth}, RepeatRows({0.f, 3.f, 2.f, 0.f}, kWidth));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+}
+
+// Negative indices are normalized where they are read rather than up front, so exercise them
+// on the contiguous path too. A row of all -3 addresses the same place as a row of all 1.
+TEST(ScatterElements, RowBroadcastIndicesNegative) {
+  constexpr int64_t kWidth = 16;
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<float>("data", {4, kWidth}, std::vector<float>(4 * kWidth, 0.f));
+  test.AddInput<int64_t>("indices", {3, kWidth}, RowBroadcastIndices({-3, 2, 1}, kWidth));
+  test.AddInput<float>("updates", {3, kWidth}, RepeatRows({1.f, 2.f, 3.f}, kWidth));
+  test.AddOutput<float>("y", {4, kWidth}, RepeatRows({0.f, 4.f, 2.f, 0.f}, kWidth));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// A slice mixing the two spellings of one row is not constant by raw value, so it must fall back
+// to the generic path and still land in the right place.
+TEST(ScatterElements, RowBroadcastIndicesMixedSignFallsBack) {
+  constexpr int64_t kWidth = 16;
+  std::vector<int64_t> indices(static_cast<size_t>(2 * kWidth), 1);
+  for (int64_t j = 0; j < kWidth; j += 2) {
+    indices[static_cast<size_t>(j)] = -3;  // same row as 1, written the other way
+  }
+
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+  test.AddInput<float>("data", {4, kWidth}, std::vector<float>(4 * kWidth, 0.f));
+  test.AddInput<int64_t>("indices", {2, kWidth}, indices);
+  test.AddInput<float>("updates", {2, kWidth}, RepeatRows({1.f, 2.f}, kWidth));
+  test.AddOutput<float>("y", {4, kWidth}, RepeatRows({0.f, 3.f, 0.f, 0.f}, kWidth));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, RowBroadcastIndicesRank3) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  // Trailing dims agree between data and updates, so each update slice is one contiguous run
+  // of 2 * 8 elements.
+  test.AddInput<float>("data", {4, 2, 8}, std::vector<float>(4 * 2 * 8, 0.f));
+  test.AddInput<int64_t>("indices", {2, 2, 8}, RowBroadcastIndices({1, 2}, 16));
+  test.AddInput<float>("updates", {2, 2, 8}, RepeatRows({1.f, 2.f}, 16));
+  test.AddOutput<float>("y", {4, 2, 8}, RepeatRows({0.f, 1.f, 2.f, 0.f}, 16));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// The updates are narrower than the data in the last dimension, so an update slice is NOT a
+// contiguous run of the output even though the indices repeat. Getting this wrong would write
+// the second half of each slice at the wrong offset.
+//
+// This is about which path the CPU kernel takes, so it runs on CPU only rather than asserting
+// anything about how other providers handle the shape.
+TEST(ScatterElements, RowBroadcastIndicesNarrowerTrailingDim) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<float>("data", {4, 2, 8}, std::vector<float>(4 * 2 * 8, 0.f));
+  test.AddInput<int64_t>("indices", {2, 2, 4}, RowBroadcastIndices({1, 2}, 8));
+  test.AddInput<float>("updates", {2, 2, 4}, RepeatRows({1.f, 2.f}, 8));
+
+  // Only the first 4 of each group of 8 are touched.
+  std::vector<float> expected(4 * 2 * 8, 0.f);
+  for (int64_t d1 = 0; d1 < 2; ++d1) {
+    for (int64_t d2 = 0; d2 < 4; ++d2) {
+      expected[static_cast<size_t>(1 * 16 + d1 * 8 + d2)] = 1.f;
+      expected[static_cast<size_t>(2 * 16 + d1 * 8 + d2)] = 2.f;
+    }
+  }
+  test.AddOutput<float>("y", {4, 2, 8}, expected);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+}
+
 TEST(ScatterElements, AddReductionAxis1) {
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 1);
