@@ -230,8 +230,8 @@ TEST(MatMulZeroKTest, ChannelsLastConvBiasAndActivation) {
     RunZeroKConvTest<float>(true, initializer);
     RunZeroKConvTest<MLFloat16>(true, initializer);
   }
-#endif
 }
+#endif
 
 TEST(MatMulNaiveProgramTest, Broadcast4DExecution) {
   RunTestTyped<float>({3, 1, 1, 2}, {2, 2, 2});
