@@ -470,6 +470,9 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
+/// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
+static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
+
 /// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
 /// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
 /// forwarded to the Level-1 estimator but is not consumed, so it does not change workspace
