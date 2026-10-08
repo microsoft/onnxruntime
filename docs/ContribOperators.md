@@ -1310,7 +1310,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (1 - 12)
+#### Inputs (1 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2456,7 +2456,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
 </dl>
 
-#### Inputs (1 - 11)
+#### Inputs (1 - 12)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
