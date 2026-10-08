@@ -334,6 +334,9 @@ ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared exte
 ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
 ORT_RUNTIME_CLASS(EpAssignedSubgraph);
 ORT_RUNTIME_CLASS(EpAssignedNode);
+ORT_RUNTIME_CLASS(ModelPackageOptions);
+ORT_RUNTIME_CLASS(ModelPackageContext);
+ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -975,6 +978,9 @@ typedef struct OrtCompileApi OrtCompileApi;
 
 struct OrtInteropApi;
 typedef struct OrtInteropApi OrtInteropApi;
+
+struct OrtModelPackageApi;
+typedef struct OrtModelPackageApi OrtModelPackageApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
@@ -7678,6 +7684,17 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
                   _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
+
+  /** \brief Get the stable model package API table.
+   *
+   * The returned table provides model package inspection, variant selection, and session creation APIs.
+   * The table is owned by ONNX Runtime and must not be released.
+   *
+   * \return Pointer to the ::OrtModelPackageApi table.
+   *
+   * \since Version 1.31.
+   */
+  const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
 };
 
 /*
@@ -8831,6 +8848,267 @@ struct OrtInteropApi {
   ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 
   /// @}
+};
+
+/** \brief Stable API table for model package workflows.
+ *
+ * A model package contains one or more components, each with variants targeting execution providers and devices.
+ * Obtain this table from OrtApi::GetModelPackageApi().
+ *
+ * Typical usage creates model package options from session options, opens a package context, selects a component,
+ * and creates an OrtSession from the selected variant. Objects returned by this API must be released with the
+ * corresponding release function in this table.
+ *
+ * \since Version 1.31.
+ */
+struct OrtModelPackageApi {
+  /** \brief Create model package options from session options.
+   *
+   * Captures the execution provider configuration used to select a component variant.
+   *
+   * \param[in] env The ORT environment.
+   * \param[in] session_options Session options containing the execution provider configuration.
+   * \param[out] out Receives the created options. Release with ReleaseModelPackageOptions().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
+                  _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtModelPackageOptions** out);
+
+  /** \brief Release model package options.
+   *
+   * \param[in] input The options to release. May be NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(ModelPackageOptions);
+
+  /** \brief Open a model package.
+   *
+   * Parses the package manifest and metadata rooted at `package_root`.
+   *
+   * \param[in] package_root Path to the model package root directory.
+   * \param[out] out Receives the created context. Release with ReleaseModelPackageContext().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(CreateModelPackageContext,
+                  _In_ const ORTCHAR_T* package_root,
+                  _Outptr_ OrtModelPackageContext** out);
+
+  /** \brief Release a model package context.
+   *
+   * \param[in] input The context to release. May be NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(ModelPackageContext);
+
+  /** \brief Get the model package schema version.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_version Receives the schema version.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetSchemaVersion,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Out_ int64_t* out_version);
+
+  /** \brief Get the number of components in a model package.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_count Receives the component count.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetComponentCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the component names in a model package.
+   *
+   * The returned array and UTF-8 strings are owned by `ctx` and remain valid until `ctx` is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_names Receives the component name array, or NULL when the package has no components.
+   * \param[out] out_count Receives the number of names in `out_names`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetComponentNames,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the number of variants for a component.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[out] out_count Receives the variant count.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the variant names for a component.
+   *
+   * The returned array and UTF-8 strings are owned by `ctx` and remain valid until `ctx` is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[out] out_variant_names Receives the variant name array, or NULL when the component has no variants.
+   * \param[out] out_count Receives the number of names in `out_variant_names`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantNames,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the execution provider name declared by a variant.
+   *
+   * The returned UTF-8 string is owned by `ctx` and remains valid until `ctx` is released. `out_ep` is set to NULL
+   * when the variant does not declare an execution provider.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[in] variant_name UTF-8 variant name.
+   * \param[out] out_ep Receives the execution provider name or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Outptr_result_maybenull_ const char** out_ep);
+
+  /** \brief Resolve a package path reference.
+   *
+   * Resolves content-addressed `sha256:<hex>[/path]` references and package-relative paths. When `must_exist` is
+   * nonzero, the resolved path must exist. The returned UTF-8 path is owned by `ctx` and remains valid until the next
+   * call to this function on the same context or until `ctx` is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] base_dir Base directory for relative references, or NULL to use the package root.
+   * \param[in] input UTF-8 path reference to resolve.
+   * \param[in] must_exist Nonzero to require that the resolved path exists.
+   * \param[out] out_path Receives the resolved UTF-8 path.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_ResolveStringRef,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_opt_ const char* base_dir,
+                  _In_ const char* input,
+                  _In_ int must_exist,
+                  _Outptr_ const char** out_path);
+
+  /** \brief Select a component and resolve its best matching variant.
+   *
+   * The returned component context is independent of `context` and must be released with
+   * ReleaseModelPackageComponentContext().
+   *
+   * \param[in] context The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[in] options Options that provide the execution provider configuration for variant selection.
+   * \param[out] out Receives the selected component context.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(SelectComponent,
+                  _In_ const OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_ const OrtModelPackageOptions* options,
+                  _Outptr_ OrtModelPackageComponentContext** out);
+
+  /** \brief Release a selected component context.
+   *
+   * \param[in] input The component context to release. May be NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(ModelPackageComponentContext);
+
+  /** \brief Get the selected variant name.
+   *
+   * The returned UTF-8 string is owned by `ctx` and remains valid until `ctx` is released.
+   *
+   * \param[in] ctx The selected component context.
+   * \param[out] out_name Receives the selected variant name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantName,
+                  _In_ const OrtModelPackageComponentContext* ctx,
+                  _Outptr_ const char** out_name);
+
+  /** \brief Get the selected variant directory.
+   *
+   * The returned path is owned by `ctx` and remains valid until `ctx` is released.
+   *
+   * \param[in] ctx The selected component context.
+   * \param[out] folder_path Receives the selected variant directory path.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFolderPath,
+                  _In_ const OrtModelPackageComponentContext* ctx,
+                  _Outptr_ const ORTCHAR_T** folder_path);
+
+  /** \brief Create a session for the selected component variant.
+   *
+   * When `session_options` is NULL, ONNX Runtime creates fresh session options and applies the selected variant's
+   * session and provider options. When `session_options` is non-NULL, the caller's options are used and package
+   * provider options are not applied; package path-valued session options are still added when the caller did not
+   * provide them.
+   *
+   * \param[in] env The ORT environment.
+   * \param[in] context The selected component context.
+   * \param[in] session_options Optional caller-provided session options.
+   * \param[out] session Receives the created session. Release with OrtApi::ReleaseSession().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(CreateSession,
+                  _In_ const OrtEnv* env,
+                  _In_ OrtModelPackageComponentContext* context,
+                  _In_opt_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtSession** session);
 };
 
 /*

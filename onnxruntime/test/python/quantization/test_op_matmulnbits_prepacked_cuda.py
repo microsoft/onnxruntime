@@ -8,10 +8,13 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import unittest
 from contextlib import contextmanager
 
 import numpy as np
+import pytest
 from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
@@ -319,9 +322,6 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
 
     def test_gemv_paired_k_config_key(self):
-        # "1" adds the paired-K GEMV as an extra tactic and "force" offers only it for M = 5..8; both
-        # must match the default fpA_intB result, and "0"/"off" must be accepted as off. The paired kernel is
-        # fp16, so a failure here is a numerical mismatch rather than a missing kernel.
         for m in (4, 5, 6, 7, 8, 9):
             model, a, _, _ = self._make_int4_case(m=m, k=1024, n=2048)
             ref = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
@@ -336,6 +336,29 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
                     },
                 )
                 np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"m={m} value={value}")
+
+    def test_wave_aware_gemv_config_key_matches_default(self):
+        for m in (7, 8, 9):
+            for n in (512, 10240):
+                with self.subTest(m=m, n=n):
+                    model, a, _, _ = self._make_int4_case(m=m, n=n)
+                    config = {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_profile_m": "8,16"}
+                    ref = self._run(model, a, config)
+                    for value in ("0", "1", "0"):
+                        out = self._run(model, a, {**config, "ep.cuda.fpa_intb_gemv_wave_aware": value})
+                        np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"value={value}")
+
+    def test_invalid_wave_aware_gemv_config_rejected(self):
+        model, a, _, _ = self._make_int4_case(m=8, weight_prepacked=1)
+        for value in ("", "-1", "2", "on"):
+            with self.subTest(value=value):
+                with self.assertRaises(Exception) as error:
+                    self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_gemv_wave_aware": value})
+                if "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON" in str(
+                    error.exception
+                ):
+                    self.skipTest("fpA_intB GEMM is not compiled in this build")
+                self.assertRegex(str(error.exception), "Invalid MatMulNBits wave-aware GEMV option")
 
     def test_session_config_overrides_env(self):
         # env var says off, session config says on -> the session config must win.
@@ -391,6 +414,51 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
             ):
                 self.skipTest("fpA_intB GEMM is not compiled in this build")
             self.assertRegex(str(error.exception), "Invalid MatMulNBits M chunk size")
+
+
+@pytest.mark.skipif("CUDAExecutionProvider" not in ort.get_available_providers(), reason="CUDA is not available")
+@pytest.mark.skipif(not hasattr(_pybind, "quantize_matmul_4bits"), reason="MatMulNBits 4-bit quantizer is unavailable")
+def test_gemv_paired_k_tactic_selection():
+    # The native debug flag is cached on first use, so set it in a fresh process.
+    script = """
+import runpy
+import sys
+
+case = runpy.run_path(sys.argv[1])["TestFpAIntBConfigKeys"]()
+for m in (4, 5, 6, 7, 8, 9):
+    model, a, _, _ = case._make_int4_case(m=m, k=1024, n=2048)
+    for value in ("0", "off", "1", "force", "0", "force"):
+        print(f"paired_k_test M={m} value={value}", flush=True)
+        case._run(model, a, {
+            "ep.cuda.fpa_intb_gemm": "1",
+            "ep.cuda.fpa_intb_profile_m": str(m),
+            "ep.cuda.fpa_intb_gemv_paired_k": value,
+            "ep.cuda.matmul_nbits_m_chunk_size": "0",
+        })
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, os.path.abspath(__file__)],
+        env={**os.environ, "ORT_FPA_INTB_DEBUG": "1"},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=180,
+    )
+    if "[fpA_intB_debug]" not in result.stdout:
+        pytest.skip("fpA_intB GEMM is not available on this build/device")
+    dispatches = result.stdout.split("paired_k_test ")[1:]
+    assert len(dispatches) == 36, result.stdout
+    for dispatch in dispatches:
+        header = dispatch.splitlines()[0]
+        m = int(header.split()[0].split("=")[1])
+        value = header.split()[1].split("=")[1]
+        if value == "force" and 5 <= m <= 8:
+            assert "kernel=GEMV(cuda)" in dispatch, dispatch
+            assert "cuda kernel variant: 1" in dispatch, dispatch
+            assert "GEMV launch: paired_k=1" in dispatch, dispatch
+        elif value in ("0", "off") or m not in (5, 6, 7, 8):
+            assert "cuda kernel variant: 0" in dispatch, dispatch
+            assert "GEMV launch: paired_k=1" not in dispatch, dispatch
 
 
 if __name__ == "__main__":

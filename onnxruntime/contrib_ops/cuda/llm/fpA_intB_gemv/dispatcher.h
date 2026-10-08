@@ -19,7 +19,42 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
+#include <atomic>
+#include <cstdio>
 #include <type_traits>
+
+namespace onnxruntime::llm {
+namespace kernels {
+namespace fpA_intB_gemv {
+
+// SM count of the current device if it is sm_12x (consumer / workstation Blackwell), else 0.
+inline int GemvPickSmCount() {
+  int device = 0;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    return 0;
+  }
+  static constexpr int kMaxDevices = 16;
+  static std::atomic<int> cache[kMaxDevices];  // 0 = unknown, -1 = not sm_12x
+  int count = device >= 0 && device < kMaxDevices ? cache[device].load(std::memory_order_relaxed) : 0;
+  if (count == 0) {
+    int major = 0;
+    if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
+        cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) {
+      return 0;
+    }
+    if (major != 12) {
+      count = -1;
+    }
+    if (device >= 0 && device < kMaxDevices) {
+      cache[device].store(count, std::memory_order_relaxed);
+    }
+  }
+  return count > 0 ? count : 0;
+}
+
+}  // namespace fpA_intB_gemv
+}  // namespace kernels
+}  // namespace onnxruntime::llm
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -481,6 +516,10 @@ void exec_kernel_paired(Params& params, cudaStream_t s) {
       reinterpret_cast<half*>(params.scales),
       reinterpret_cast<half*>(params.out),
       params.n, params.k);
+  if (params.debug) {
+    std::printf("[fpA_intB_debug] GEMV launch: paired_k=1 M=%d\n", params.m);
+    std::fflush(stdout);
+  }
 }
 
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
@@ -502,6 +541,10 @@ void exec_kernel(Params& params, cudaStream_t s) {
       reinterpret_cast<T*>(params.out),
       params.alpha,
       params.m, params.n, params.k);
+  if (params.debug) {
+    std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d\n", params.m);
+    std::fflush(stdout);
+  }
 }
 
 template <typename Details, int GroupSize, bool EnableActScale, bool EnableZero, bool EnableBias, bool ApplyAlphaInAdvance>
@@ -553,6 +596,24 @@ void dispatcher(Params& params, cudaStream_t s) {
   DISPATCHER_FOR_M(5, 5, CtaNLargeM, 128);
   DISPATCHER_FOR_M(6, 6, CtaNLargeM, 128);
   DISPATCHER_FOR_M(7, 7, CtaNLargeM, 128);
+  // M = 8 is the DFlash2 verify batch; its projections are sensitive to wave quantization. Only the
+  // fp16 int4 SM80-interleaved kernel was measured, so other types and layouts keep CtaNLargeM.
+  if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 && !EnableZero && CtaNLargeM == 4 &&
+                std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
+    int const sm_count = params.wave_aware && params.m == 8 ? GemvPickSmCount() : 0;
+    int const pick = PickGemvCtaN(params.wave_aware, params.m, params.n, Details::kInterleave, CtaNLargeM,
+                                  sm_count);
+    if (pick == CtaNLargeM / 2) {
+      exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                  ApplyAlphaInAdvance>(params, s);
+      return;
+    }
+    if (pick == CtaNLargeM * 2) {
+      exec_kernel<Details, 8, CtaNLargeM * 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                  ApplyAlphaInAdvance>(params, s);
+      return;
+    }
+  }
   DISPATCHER_FOR_M(8, 8, CtaNLargeM, 128);
   DISPATCHER_FOR_M(9, 9, CtaNLargeM, 128);
   DISPATCHER_FOR_M(10, 10, CtaNLargeM, 128);

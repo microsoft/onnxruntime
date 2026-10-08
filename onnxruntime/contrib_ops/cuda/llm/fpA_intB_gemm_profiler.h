@@ -113,6 +113,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mPairedGemvMode = mode;
   }
 
+  void setWaveAwareGemv(bool enabled) {
+    mWaveAwareGemv = enabled;
+  }
+
  protected:
   void runTactic(int m, int n, int k, Config const& tactic,
                  char* workspace, cudaStream_t const& stream) override;
@@ -136,6 +140,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   KernelType mCudaKernelType;
   int mArch;
   size_t mL2CacheBytes = 0;
+  bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
 };
 

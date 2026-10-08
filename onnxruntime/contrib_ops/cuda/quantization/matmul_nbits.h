@@ -216,6 +216,13 @@ class MatMulNBits final : public CudaKernel {
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
                 "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
+    const std::string wave_aware = info.GetConfigOptions()
+                                       .GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemvWaveAware)
+                                       .value_or("0");
+    ORT_ENFORCE(wave_aware == "0" || wave_aware == "1",
+                "Invalid MatMulNBits wave-aware GEMV option '", wave_aware, "': expected 0 or 1.");
+    wave_aware_gemv_ = wave_aware == "1" && std::is_same_v<T, MLFloat16> && sm_ / 10 == 12 &&
+                       nbits_ == 4 && !has_zero_points_ && FpAIntBPackingSmForKernel() == 80;
     m_chunk_size_ = ParseMatMulNBitsMChunkSize(ResolveFpAIntBConfigOrEnv(
         info, kOrtSessionOptionsCudaMatMulNBitsMChunkSize, kMChunkSizeEnvVar));
     m_chunk_size_ = static_cast<int>(FpAIntBProfileSafeMCap(m_chunk_size_));
@@ -407,6 +414,7 @@ class MatMulNBits final : public CudaKernel {
   // 0 = off, 1 = paired-K GEMV is an extra profiler tactic, 2 = it is the only GEMV/GEMM tactic for M = 8.
   int paired_gemv_mode_{0};
   bool has_fpA_intB_gemm_{false};
+  bool wave_aware_gemv_{false};
   int64_t weight_prepacked_{kMatMulNBitsWeightNotPrepacked};
   // Max rows of A per fpA_intB launch; 0 disables M chunking.
   int m_chunk_size_{0};

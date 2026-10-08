@@ -476,7 +476,12 @@ static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_in
 /// "0", "off", or unset (default) disables it; "force" offers only that tactic for M = 5..8 (for testing and
 /// benchmarking); any other value enables it as an extra candidate.
 /// Overrides the process-wide ORT_FPA_INTB_GEMV_PAIRED_K environment variable. Requires the fpA_intB path.
+/// Experimental: separate FP16 partial sums can overflow before cancellation, producing non-finite
+/// results even when the default GEMV stays finite. Tactic profiling checks speed, not numerical safety.
 static const char* const kOrtSessionOptionsCudaFpAIntBGemvPairedK = "ep.cuda.fpa_intb_gemv_paired_k";
+
+/// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
+static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
 
 /// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
 /// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
