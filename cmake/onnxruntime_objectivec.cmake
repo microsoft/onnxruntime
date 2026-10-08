@@ -126,6 +126,8 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         ${onnxruntime_objc_test_srcs})
 
     target_link_libraries(onnxruntime_objc_test PRIVATE onnxruntime)
+    find_library(SECURITY_LIB Security REQUIRED)
+    target_link_libraries(onnxruntime_objc_test PRIVATE ${SECURITY_LIB})
 
     onnxruntime_configure_target(onnxruntime_objc_test)
 
@@ -141,6 +143,10 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${OBJC_ROOT}/test/testdata"
             "${ONNXRUNTIME_ROOT}/test/testdata/training_api"
+            "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources")
+    add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_ROOT}/test/testdata/encrypted_ep_context_mul.onnx"
             "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources")
 
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)
