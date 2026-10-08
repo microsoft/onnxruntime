@@ -81,6 +81,20 @@ struct Context {
   std::vector<uint8_t> bytes;
 };
 
+NSData* DecryptOrReport(NSData* record, NSString* name, NSData* encryptionKey,
+                        NSData* authenticationKey, NSError** error) {
+  try {
+    return Decrypt(record, name, encryptionKey, authenticationKey);
+  } catch (const std::exception& failure) {
+    if (error != nullptr) {
+      *error = [NSError errorWithDomain:@"ORTEncryptionTest"
+                                   code:2
+                               userInfo:@{NSLocalizedDescriptionKey : [NSString stringWithUTF8String:failure.what()]}];
+    }
+    return nil;
+  }
+}
+
 OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t size) noexcept {
   try {
     auto& context = *static_cast<Context*>(state);
@@ -218,17 +232,12 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
           setEpContextDataReadBlock:^NSData*(NSString* name, NSError** callbackError) {
             ++calls;
             if (![name isEqualToString:contextName]) {
-              *callbackError = [NSError errorWithDomain:@"ORTEncryptionTest" code:1 userInfo:nil];
+              if (callbackError != nullptr) {
+                *callbackError = [NSError errorWithDomain:@"ORTEncryptionTest" code:1 userInfo:nil];
+              }
               return nil;
             }
-            try {
-              return Decrypt(contextRecord, name, encryptionKey, authenticationKey);
-            } catch (const std::exception& failure) {
-              *callbackError = [NSError errorWithDomain:@"ORTEncryptionTest"
-                                                   code:2
-                                               userInfo:@{NSLocalizedDescriptionKey : [NSString stringWithUTF8String:failure.what()]}];
-              return nil;
-            }
+            return DecryptOrReport(contextRecord, name, encryptionKey, authenticationKey, callbackError);
           }
                         maxDataSize:1024
                               error:&error];
@@ -267,11 +276,43 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
         }
       }
     }
-    ORTSessionOptions* missing = [[ORTSessionOptions alloc] initWithError:&error];
-    ORTAssertNullableResultSuccessful(missing, error);
-    configure(missing);
-    ORTSession* failed = [[ORTSession alloc] initWithEnv:env modelPath:modelPath sessionOptions:missing error:&error];
-    ORTAssertNullableResultUnsuccessful(failed, error);
+    auto rejectLoad = [&](ORTEpContextDataReadBlock block, NSString* expectedError) {
+      @autoreleasepool {
+        NSError* loadError = nil;
+        ORTSessionOptions* options = [[ORTSessionOptions alloc] initWithError:&loadError];
+        ORTAssertNullableResultSuccessful(options, loadError);
+        configure(options);
+        if (block != nil) {
+          BOOL set = [options setEpContextDataReadBlock:block maxDataSize:1024 error:&loadError];
+          ORTAssertBoolResultSuccessful(set, loadError);
+        }
+        ORTSession* failed = [[ORTSession alloc] initWithEnv:env
+                                                   modelPath:modelPath
+                                              sessionOptions:options
+                                                       error:&loadError];
+        ORTAssertNullableResultUnsuccessful(failed, loadError);
+        if (expectedError != nil) {
+          XCTAssertTrue([loadError.localizedDescription containsString:expectedError], @"%@", loadError);
+        }
+      }
+    };
+    rejectLoad(nil, nil);
+    rejectLoad(^NSData*(NSString* name, NSError** callbackError) {
+      return DecryptOrReport(contextRecord, name, encryptionKey, wrongKey, callbackError);
+    },
+               @"authentication");
+    NSMutableData* tamperedContext = [contextRecord mutableCopy];
+    static_cast<uint8_t*>(tamperedContext.mutableBytes)[tamperedContext.length - 1] ^= 1;
+    rejectLoad(^NSData*(NSString* name, NSError** callbackError) {
+      return DecryptOrReport(tamperedContext, name, encryptionKey, authenticationKey, callbackError);
+    },
+               @"authentication");
+    rejectLoad(^NSData*(NSString* name, NSError** callbackError) {
+      (void)name;
+      (void)callbackError;
+      return [@"invalid compiled payload" dataUsingEncoding:NSUTF8StringEncoding];
+    },
+               @"payload");
   } @finally {
     if (registered) {
       nativeEnv.UnregisterExecutionProviderLibrary(registration);

@@ -153,4 +153,9 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 
     set_property(TEST XCTest.onnxruntime_objc_test APPEND PROPERTY
         ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:onnxruntime>")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT onnxruntime_MINIMAL_BUILD)
+        add_dependencies(onnxruntime_objc_test example_plugin_ep)
+        set_property(TEST XCTest.onnxruntime_objc_test APPEND PROPERTY
+            ENVIRONMENT "ORT_ENCRYPTION_PLUGIN_LIBRARY=$<TARGET_FILE:example_plugin_ep>")
+    endif()
 endif()

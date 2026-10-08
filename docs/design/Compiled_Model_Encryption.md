@@ -68,6 +68,33 @@ formats. Node.js execution does not establish React Native coverage: its callbac
 bridge is a separate implementation. Objective-C and React Native still require
 Apple or mobile runners for end-to-end validation.
 
+### Opt-in Objective-C Apple workflow
+
+`ORTEncryptedEpContextTest.testEncryptedCompiledContextInference` compiles through
+the native fixture and stores the compiled ONNX and external EPContext as
+AES-256-CBC encrypt-then-HMAC-SHA256 records. Independent random encryption and
+authentication keys and random IVs are generated using Security.framework.
+The asset name, IV, and ciphertext are authenticated before decryption.
+The public Objective-C session/read-block APIs restore the context and run two
+numerical input cases. Wrong authentication keys, tampering, name mismatches,
+missing callbacks, callback authentication errors, and invalid payloads are
+negative controls.
+
+Build `onnxruntime_objc_test` on an Apple runner with matching ORT native libraries
+and the example plugin. Full macOS CMake/CTest builds automatically build and
+provision the plugin path. For other Apple runners, set
+`ORT_ENCRYPTION_PLUGIN_LIBRARY` to the absolute path
+of the matching loadable plugin and run
+`ctest --test-dir <build directory> -C Release -R '^XCTest.onnxruntime_objc_test$' --output-on-failure`.
+The integration explicitly skips when the variable is absent; ordinary green
+XCTest CI is not evidence that this opt-in workflow executed.
+
+Compilation/persistence writes only ciphertext, but the public Objective-C session
+constructor accepts only a model path. The test therefore temporarily writes the
+decrypted compiled ONNX during loading and removes it during cleanup. External
+context plaintext remains in memory. This is **not** no-plaintext-at-any-time
+coverage, and still requires an Apple runner for build and execution validation.
+
 The portable React Native C++ policy tests can run on Windows:
 
 ```powershell
