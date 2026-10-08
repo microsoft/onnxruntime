@@ -53,6 +53,7 @@ struct Params {
   int groupsize;
   KernelType type;
   bool apply_alpha_in_advance;
+  bool wave_aware = false;
 
   Params(ConstPointer _act, ConstPointer _act_scale, ConstPointer _weight, ConstPointer _scales, ConstPointer _zeros,
          ConstPointer _bias, Pointer _out, float _alpha, int _m, int _n, int _k, int _groupsize, KernelType _type,
