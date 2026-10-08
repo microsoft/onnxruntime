@@ -4,17 +4,16 @@
 from pathlib import Path
 
 import onnx
-from onnx import TensorProto, helper
 
 if __name__ == "__main__":
-    model = helper.make_model(
-        helper.make_graph(
-            [helper.make_node("Mul", ["x", "y"], ["z"], name="mul")],
+    model = onnx.helper.make_model(
+        onnx.helper.make_graph(
+            [onnx.helper.make_node("Mul", ["x", "y"], ["z"], name="mul")],
             "encrypted-context-mul",
-            [helper.make_tensor_value_info(name, TensorProto.FLOAT, [3, 2]) for name in ("x", "y")],
-            [helper.make_tensor_value_info("z", TensorProto.FLOAT, [3, 2])],
+            [onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, [3, 2]) for name in ("x", "y")],
+            [onnx.helper.make_tensor_value_info("z", onnx.TensorProto.FLOAT, [3, 2])],
         ),
-        opset_imports=[helper.make_opsetid("", 13)],
+        opset_imports=[onnx.helper.make_opsetid("", 13)],
         ir_version=8,
     )
     onnx.checker.check_model(model)
