@@ -131,6 +131,10 @@ TEST(MatMulProgramTest, VectorFallbackExecution) {
   RunTestTyped<float>({2, 2, 8}, {8});
 }
 
+TEST(MatMulProgramTest, NormalizedDispatchDoesNotAccessExcessBatch) {
+  RunTestTyped<float>({70000, 8, 8}, {70000, 8, 8});
+}
+
 // 2D aligned baseline shapes.
 TEST(MatMul_Large, DISABLED_Aligned) {
   RunBothTypes({128, 64}, {64, 1024});

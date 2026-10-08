@@ -112,6 +112,7 @@ void HandleMatMulWithSplitK(
 void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
   shader.MainFunctionBody()
       << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
+      << "  if (logical_workgroup_id_z >= uniforms.logical_dispatch_z) { return; }\n"
       << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
