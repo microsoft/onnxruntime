@@ -227,10 +227,10 @@ float measure_kernel_time(Func kernel_launcher, int warmup, int repeats, cudaStr
   return time / repeats;
 }
 
-template <wo::KernelType KT, typename Runner, typename Config>
+template <wo::KernelType KT, cutlass::WeightOnlyQuantOp QuantOp = cutlassTypeMapper<KT>::QuantOp,
+          typename Runner, typename Config>
 void run_cutlass_kernel([[maybe_unused]] void* scaled_act, Runner& runner, wo::Params& params, Config& config,
                         char* ws, size_t ws_size, cudaStream_t stream) {
-  static constexpr cutlass::WeightOnlyQuantOp QuantOp = cutlassTypeMapper<KT>::QuantOp;
   void* act = params.act;
   if (params.act_scale) {
     ORT_THROW("act_scale is not supported in this test fixture.");
@@ -314,7 +314,8 @@ void PrintBenchmarkSummary(std::vector<BenchmarkResult>& benchmark_results) {
   std::cout << std::string(kLength, '-') << std::endl;
 }
 
-template <wo::KernelType KT, bool has_bias = false, bool has_act_scale = false, bool filter_configs = false>
+template <wo::KernelType KT, bool has_bias = false, bool has_act_scale = false, bool filter_configs = false,
+          cutlass::WeightOnlyQuantOp QuantOp = cutlassTypeMapper<KT>::QuantOp>
 class KernelTestFixture : public ::testing::Test {
  protected:
   int m_, n_, k_, block_size_;
@@ -353,10 +354,10 @@ class KernelTestFixture : public ::testing::Test {
     k_ = k;
     block_size_ = block_size;
 
-    if (cutlassTypeMapper<KT>::QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS) {
+    if (QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS) {
       ORT_ENFORCE(block_size_ == 64 || block_size_ == 128);
       ORT_ENFORCE(k_ % block_size_ == 0);
-    } else if (cutlassTypeMapper<KT>::QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY) {
+    } else if (QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY) {
       ORT_ENFORCE(block_size_ == (kIsInt2 ? 64 : 32));
       ORT_ENFORCE(k_ % block_size_ == 0);
     }
@@ -402,7 +403,7 @@ class KernelTestFixture : public ::testing::Test {
     d_bias_->from_cpu(h_bias_.data());
   }
 
-  bool BenchmarkAndVerifyKernel(bool use_zero_points = !USE_COMPACT_FPA_INTB_GEMM) {
+  bool BenchmarkAndVerifyKernel(bool use_zero_points = QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS) {
     std::cout << "m=" << m_ << ", n=" << n_ << ", k=" << k_ << ", block_size=" << block_size_ << std::endl;
 
     void* p_act_scale = nullptr;
@@ -447,7 +448,7 @@ class KernelTestFixture : public ::testing::Test {
     using AType = typename cutlassTypeMapper<KT>::AType;
     using WType = typename cutlassTypeMapper<KT>::WType;
     using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
-    auto runner = std::make_shared<CutlassFpAIntBGemmRunner<AType, WType, cutlassTypeMapper<KT>::QuantOp>>();
+    auto runner = std::make_shared<CutlassFpAIntBGemmRunner<AType, WType, QuantOp>>();
 #if USE_COMPACT_FPA_INTB_GEMM
     int const arch = onnxruntime::llm::common::getSMVersion();
     runner->setArch(arch < 80 ? arch : (arch == 89 ? 89 : 80));
@@ -478,7 +479,7 @@ class KernelTestFixture : public ::testing::Test {
       try {
         time = measure_kernel_time(
             [&]() {
-              run_cutlass_kernel<KT>(d_act_->data(), gemm_runner, params, config, ws_ptr, ws_bytes, s_);
+              run_cutlass_kernel<KT, QuantOp>(d_act_->data(), gemm_runner, params, config, ws_ptr, ws_bytes, s_);
             },
             2, 5, s_);
       } catch (std::exception const& e) {
@@ -498,7 +499,7 @@ class KernelTestFixture : public ::testing::Test {
 
     float cutlass_time_ms = measure_kernel_time(
         [&]() {
-          run_cutlass_kernel<KT>(d_act_->data(), gemm_runner, params, best_config, ws_ptr, ws_bytes, s_);
+          run_cutlass_kernel<KT, QuantOp>(d_act_->data(), gemm_runner, params, best_config, ws_ptr, ws_bytes, s_);
         },
         warmup_, repeats_, s_);
     d_out_->to_cpu(h_out2_.data());
@@ -627,6 +628,11 @@ using Fp16Int2GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int2Groupwis
 using Bf16Int2GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int2Groupwise>;
 #endif
 
+using Fp16Int4SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int4Groupwise, false, false, true,
+                                                         cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+using Bf16Int4SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int4Groupwise, false, false, true,
+                                                         cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+
 TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
   EXPECT_FALSE(wo::is_supported(74, 80, wo::KernelType::FP16Int4Groupwise));
   EXPECT_TRUE(wo::is_supported(75, 80, wo::KernelType::FP16Int4Groupwise));
@@ -696,27 +702,27 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
   }
 }
 
-// Exercise group-32 symmetric INT4 M=1 dispatch in both compact and full builds.
-TEST_F(Fp16Int4GroupwiseTest, Int4Group32SymmetricM1Decode) {
+// Use a scale-only fixture and reference for group-32 INT4 M=1 dispatch in both compact and full builds.
+TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT4 decode requires SM " << kMinSupportedSm << " or later";
   }
   for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{{128, 256}, {256, 768}, {2880, 4096}}) {
     SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
     InitBuffers(1, columns, depth, 32);
-    EXPECT_TRUE(BenchmarkAndVerifyKernel(false));
+    EXPECT_TRUE(BenchmarkAndVerifyKernel());
   }
 }
 
-// Verify BF16 uses the same symmetric INT4 decode specialization on SM80 and newer.
-TEST_F(Bf16Int4GroupwiseTest, Int4Group32SymmetricM1Decode) {
+// Keep the BF16 group-32 fixture and CUTLASS reference symmetric regardless of the build configuration.
+TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
   if (onnxruntime::llm::common::getSMVersion() < 80) {
     GTEST_SKIP() << "BF16 INT4 decode requires SM 80 or later";
   }
   for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{{128, 256}, {256, 768}, {2880, 4096}}) {
     SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
     InitBuffers(1, columns, depth, 32);
-    EXPECT_TRUE(BenchmarkAndVerifyKernel(false));
+    EXPECT_TRUE(BenchmarkAndVerifyKernel());
   }
 }
 
