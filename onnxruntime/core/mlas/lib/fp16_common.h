@@ -618,6 +618,13 @@ MlasCompareLessThanFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 }
 
 MLAS_FORCEINLINE
+MLAS_UINT16X8
+MlasCompareEqualFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vceqq_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasAbsFloat16(MLAS_FLOAT16X8 Vector)
 {

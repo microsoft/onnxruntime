@@ -1335,6 +1335,13 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(
+    OrtWriteNamedBufferFunc write_func, void* state) {
+  Ort::ThrowOnError(
+      GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
     bool embed_ep_context_in_model) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
@@ -1363,6 +1370,130 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const Ort
 inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessEnabled(this->p_, use_weightless));
   return *this;
+}
+
+inline ModelPackageOptions::ModelPackageOptions(const Env& env, const SessionOptions& session_options) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline ModelPackageOptions::ModelPackageOptions(const Env& env, ConstSessionOptions session_options) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline ModelPackageContext::ModelPackageContext(const ORTCHAR_T* package_root) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageContext(package_root, &this->p_));
+}
+
+inline int64_t ModelPackageContext::GetSchemaVersion() const {
+  int64_t version = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetSchemaVersion(this->p_, &version));
+  return version;
+}
+
+inline size_t ModelPackageContext::GetComponentCount() const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetComponentCount(this->p_, &count));
+  return count;
+}
+
+inline std::vector<std::string> ModelPackageContext::GetComponentNames() const {
+  const char* const* names = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetComponentNames(this->p_, &names, &count));
+  std::vector<std::string> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(names[i]);
+  }
+  return result;
+}
+
+inline size_t ModelPackageContext::GetVariantCount(const char* component_name) const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantCount(this->p_, component_name, &count));
+  return count;
+}
+
+inline std::vector<std::string> ModelPackageContext::GetVariantNames(const char* component_name) const {
+  const char* const* names = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantNames(this->p_, component_name, &names, &count));
+  std::vector<std::string> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(names[i]);
+  }
+  return result;
+}
+
+inline const char* ModelPackageContext::GetVariantEpName(const char* component_name,
+                                                         const char* variant_name) const {
+  const char* ep = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantEpName(
+      this->p_, component_name, variant_name, &ep));
+  return ep;
+}
+
+inline std::string ModelPackageContext::ResolveStringRef(const char* base_dir, const char* input,
+                                                         bool must_exist) const {
+  const char* path = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackage_ResolveStringRef(
+      this->p_, base_dir, input, must_exist ? 1 : 0, &path));
+  return std::string{path};
+}
+
+inline ModelPackageComponentContext ModelPackageContext::SelectComponent(
+    const char* component_name, const ModelPackageOptions& options) const {
+  OrtModelPackageComponentContext* out = nullptr;
+  ThrowOnError(GetModelPackageApi().SelectComponent(this->p_, component_name, options, &out));
+  return ModelPackageComponentContext{out};
+}
+
+inline std::string ModelPackageComponentContext::GetSelectedVariantName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantName(this->p_, &name));
+  return std::string{name};
+}
+
+inline std::basic_string<ORTCHAR_T> ModelPackageComponentContext::GetSelectedVariantFolderPath() const {
+  const ORTCHAR_T* path = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFolderPath(this->p_, &path));
+  return std::basic_string<ORTCHAR_T>{path};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, nullptr, &out));
+  return Session{out};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env,
+                                                           const SessionOptions& session_options) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, session_options, &out));
+  return Session{out};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env,
+                                                           ConstSessionOptions session_options) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, session_options, &out));
+  return Session{out};
+}
+
+inline EpContextConfig::EpContextConfig(const SessionOptions& session_options)
+    : EpContextConfig{session_options.GetConst()} {}
+
+inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
+  ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
+}
+
+inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state));
+}
+
+inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
 }
 
 namespace detail {
@@ -1524,6 +1655,19 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::Add(OrtCustomOpDomain* cust
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* config_key, const char* config_value) {
   ThrowOnError(GetApi().AddSessionConfigEntry(this->p_, config_key, config_value));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
+    OrtReadNamedBufferFunc read_func, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::ClearEpContextDataReadFunc() {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, nullptr, nullptr));
   return *this;
 }
 

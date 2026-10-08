@@ -41,10 +41,11 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
         with:
-          architecture: x64
+          key: windows-x64-cuda-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
@@ -66,11 +67,11 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20.x'
+          node-version: '24.x'
 
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -113,15 +114,53 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
-      - name: Build and Clean Binaries
+      - name: Configure build
         working-directory: ${{ runner.temp }}
         run: |
           npm install -g typescript
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          # Execute the build process
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+        shell: pwsh
+
+      - name: Verify targeted provider-test build
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\test_gen_test_exports.py
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $buildDir = Join-Path $env:OnnxRuntimeBuildDirectory "RelWithDebInfo"
+          $binaryDir = Join-Path $buildDir "RelWithDebInfo"
+          $testBinaries = @("onnxruntime_provider_test.exe", "onnxruntime_provider_test.lib", "onnxruntime_providers_cuda_ut.dll")
+          foreach ($binary in $testBinaries) {
+            $path = Join-Path $binaryDir $binary
+            if (Test-Path -LiteralPath $path) {
+              throw "The targeted-build check requires fresh outputs, but $path already exists."
+            }
+          }
+
+          cmake --build "$buildDir" --config RelWithDebInfo --target onnxruntime_provider_test --parallel
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          foreach ($binary in $testBinaries) {
+            $path = Join-Path $binaryDir $binary
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Building only onnxruntime_provider_test did not produce $path"
+            }
+          }
+
+      - name: Build and Clean Binaries
+        working-directory: ${{ runner.temp }}
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -182,11 +221,11 @@ jobs:
           python-version: '3.14'
           architecture: x64
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20.x'
+          node-version: '24.x'
 
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -194,11 +233,6 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
-        with:
-          architecture: x64
-
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
@@ -239,6 +273,24 @@ jobs:
       - name: Verify GPU access
         shell: pwsh
         run: nvidia-smi
+
+      - name: Verify CUDA EP internal tests execute
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath cuda_ep_internal_ci.xml) {
+            Remove-Item -LiteralPath cuda_ep_internal_ci.xml
+          }
+          .\onnxruntime_provider_test.exe --gtest_filter=CUDA_EP_Unittest.All --gtest_output=xml:cuda_ep_internal_ci.xml
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          [xml]$results = Get-Content -LiteralPath cuda_ep_internal_ci.xml -Raw
+          $executedTest = $results.SelectNodes("/testsuites/testsuite[@name='CUDA_EP_Unittest']/testcase[@name='All' and @status='run' and @result='completed']")
+          if ($executedTest.Count -ne 1) {
+            throw "CUDA_EP_Unittest.All did not execute: the test must be present and must not be skipped."
+          }
 
       - name: Run Tests
         working-directory: ${{ runner.temp }}

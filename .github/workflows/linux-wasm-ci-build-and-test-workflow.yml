@@ -34,6 +34,10 @@ on:
         required: false
         type: boolean
         default: false
+      build_webgpu_static_plugin:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-wasm:
@@ -69,9 +73,9 @@ jobs:
           submodules: recursive
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24.x"
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -90,10 +94,9 @@ jobs:
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: ./.github/actions/setup-vcpkg-cache
         with:
-          key: vcpkg-cache | web.yml | ${{ inputs.job_name }}
-          path: ~/.cache/vcpkg
+          key: web-${{ inputs.job_name }}
 
       - name: Get vcpkg tool info
         id: vcpkg-tool-info
@@ -156,6 +159,24 @@ jobs:
             --use_webnn \
             --enable_wasm_jspi \
             --target onnxruntime_webassembly \
+            ${{ env.reduced_size_build_args }} \
+            --skip_tests
+        working-directory: ${{ github.workspace }}
+
+      # Build-only coverage for registering the WebGPU EP as a statically linked plugin EP under Emscripten.
+      # The output is deliberately not published: it has the same file names as the published WebGPU build, and
+      # the ORT Web test harness selects the wasm binary by file name, so both variants cannot ship together.
+      # This leg becomes redundant once the published WebGPU wasm build switches over to the plugin EP.
+      - name: Build (simd + threads + WebGPU experimental, static plugin EP)
+        if: ${{ inputs.build_webgpu_static_plugin == true }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu_static_plugin \
+            --use_webgpu static_plugin \
+            --use_webnn \
+            --target onnxruntime_webassembly \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             ${{ env.reduced_size_build_args }} \
             --skip_tests
         working-directory: ${{ github.workspace }}

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -85,6 +86,56 @@ static ModelProto ValidateAndCopyModelProto(const ModelProto& model_proto) {
   return model_proto;
 }
 
+// Validate before constructing Model, where function schemas are inferred and errors cannot return a Status.
+static Status ValidateFunctionNodeCounts(const ModelProto& model_proto) {
+  const auto* schema_registry = OpSchemaRegistry::Instance();
+  for (const auto& function : model_proto.functions()) {
+    InlinedHashMap<std::string, int> opset_imports;
+    for (const auto& opset : function.opset_import()) {
+      ORT_RETURN_IF_NOT(opset.version() > 0 && opset.version() <= std::numeric_limits<int>::max(),
+                        "Invalid opset version for domain ", opset.domain(), " in function ", function.name());
+      opset_imports[opset.domain()] = static_cast<int>(opset.version());
+    }
+
+    using NodeRange = google::protobuf::RepeatedPtrField<NodeProto>;
+    InlinedVector<const NodeRange*> pending{&function.node()};
+    auto add_subgraphs = [&](const auto& attributes) {
+      for (const auto& attribute : attributes) {
+        if (attribute.has_g()) {
+          pending.push_back(&attribute.g().node());
+        }
+        for (const auto& graph : attribute.graphs()) {
+          pending.push_back(&graph.node());
+        }
+      }
+    };
+    add_subgraphs(function.attribute_proto());
+
+    while (!pending.empty()) {
+      const auto* nodes = pending.back();
+      pending.pop_back();
+      for (const auto& node : *nodes) {
+        const auto opset = opset_imports.find(node.domain());
+        ORT_RETURN_IF_NOT(opset != opset_imports.end(),
+                          "No opset registered for domain ", node.domain(), " in function ", function.name());
+        if (const auto* schema = schema_registry->GetSchema(node.op_type(), opset->second, node.domain())) {
+          ORT_RETURN_IF_NOT(node.input_size() >= schema->min_input() && node.input_size() <= schema->max_input(),
+                            "Invalid input count for op ", node.op_type(), " in function ", function.name(),
+                            ": expected ", schema->min_input(), " to ", schema->max_input(),
+                            ", got ", node.input_size());
+          ORT_RETURN_IF_NOT(node.output_size() >= schema->min_output() && node.output_size() <= schema->max_output(),
+                            "Invalid output count for op ", node.op_type(), " in function ", function.name(),
+                            ": expected ", schema->min_output(), " to ", schema->max_output(),
+                            ", got ", node.output_size());
+        }
+        add_subgraphs(node.attribute());
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
@@ -139,10 +190,13 @@ Model::Model(const std::string& graph_name,
 
   model_local_functions_.reserve(model_local_functions.size());
   for (auto& func : model_local_functions) {
+    auto function_id = function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload());
+    ORT_ENFORCE(model_local_functions_.find(function_id) == model_local_functions_.end(),
+                "Duplicate model-local function identifier: ", function_id);
+
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name(), func_ptr->overload()),
-                                            func_ptr);
+    model_local_functions_.emplace(std::move(function_id), func_ptr);
   }
 
   ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
@@ -277,7 +331,9 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   model_local_functions_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload()), &func);
+    auto function_id = function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload());
+    const bool inserted = model_local_functions_.emplace(function_id, &func).second;
+    ORT_ENFORCE(inserted, "Duplicate model-local function identifier: ", function_id);
   }
 
   ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
@@ -495,6 +551,8 @@ Status Model::Load(const ModelProto& model_proto,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
 
+  ORT_RETURN_IF_ERROR(ValidateFunctionNodeCounts(model_proto));
+
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
 
@@ -539,6 +597,8 @@ Status Model::Load(ModelProto&& model_proto,
   if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
+
+  ORT_RETURN_IF_ERROR(ValidateFunctionNodeCounts(model_proto));
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
@@ -766,13 +826,7 @@ Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_pa
     return status;
   }
 
-  p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger, options);
-
-  Graph::ResolveOptions resolve_options;
-  resolve_options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(resolve_options));
-
-  return Status::OK();
+  return Load(std::move(model_proto), model_path, p_model, local_registries, logger, options);
 }
 
 using ::google::protobuf::io::CodedInputStream;
@@ -825,13 +879,7 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
 
   ORT_RETURN_IF_ERROR(Load(fd, model_proto));
 
-  p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger, options);
-
-  Graph::ResolveOptions resolve_options;
-  resolve_options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(resolve_options));
-
-  return Status::OK();
+  return Load(std::move(model_proto), model_path, p_model, local_registries, logger, options);
 }
 
 // static

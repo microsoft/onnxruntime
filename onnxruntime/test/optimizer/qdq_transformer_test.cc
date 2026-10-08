@@ -2647,6 +2647,60 @@ TEST(QDQTransformerTests, ConvRelu) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, false, false /*use_contrib_qdq*/);
 }
 
+// The QDQ selector treats a Relu/Clip made redundant by the Q node as part of the Conv group, even when
+// ReluQuantFusion/ClipQuantFusion cannot remove it. The Relu/Clip must be removed with the group. Otherwise the
+// original Conv survives and has the same name as the QLinearConv, and the graph fails to resolve.
+TEST(QDQTransformerTests, ConvRedundantActivationNotFusedIntoQ) {
+  DNNL_GTEST_SKIP();
+
+  auto test_case = [&](bool use_clip) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({1, 12, 37}, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<uint8_t>({32, 12, 5}, 0, 255);
+
+      // add QDQ + Conv
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* conv_output = builder.MakeIntermediate();
+      auto* dq_conv_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129);
+      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      builder.AddConvNode(dq_conv_output, dq_w_output, conv_output);
+
+      auto* activation_output = builder.MakeIntermediate();
+      if (use_clip) {
+        // Clip bounds produced by DQ nodes give the Clip multiple input edges, so ClipQuantFusion cannot remove it.
+        // [0, 6] covers the uint8 Q range [0, 255 * .0082940589], so the Clip is redundant.
+        auto* min_dq = builder.MakeIntermediate();
+        auto* max_dq = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(builder.MakeScalarInitializer<uint8_t>(128), .00784313772f, 128,
+                                                 min_dq);
+        builder.AddDequantizeLinearNode<uint8_t>(builder.MakeScalarInitializer<uint8_t>(255), .0235293377f, 0,
+                                                 max_dq);
+        builder.AddNode("Clip", {conv_output, min_dq, max_dq}, {activation_output});
+        builder.AddQuantizeLinearNode<uint8_t>(activation_output, .0082940589f, 0, output_arg);
+      } else {
+        // A Q node without a zero point input defaults to uint8 with zero point 0, which makes the Relu redundant,
+        // but ReluQuantFusion requires the zero point input to exist.
+        builder.AddNode("Relu", {conv_output}, {activation_output});
+        builder.AddQuantizeLinearNode(activation_output, .0039f, output_arg);
+      }
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["Conv"], 0);
+      EXPECT_EQ(op_to_count["Clip"], 0);
+      EXPECT_EQ(op_to_count["Relu"], 0);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  };
+
+  test_case(/*use_clip*/ false);
+  test_case(/*use_clip*/ true);
+}
+
 TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
   DNNL_GTEST_SKIP();
 
@@ -5634,6 +5688,37 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
 }
 
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
+TEST(QDQTransformerTests, QDQFinalCleanupTransformerReportsIntentionalRemoval) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("QDQFinalCleanupRemovalTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input = builder.MakeInput<float>({1, 4}, -1.0f, 1.0f);
+  auto* quantized = builder.MakeIntermediate();
+  builder.AddQuantizeLinearNode<uint8_t>(input, 0.05f, 128, quantized);
+  auto* output = builder.MakeOutput();
+  builder.AddDequantizeLinearNode<uint8_t>(quantized, 0.05f, 128, output);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InlinedVector<NodeIndex> removed_node_indices;
+  graph.SetNodeRemovalCallback(
+      [&removed_node_indices](const Graph&, gsl::span<const NodeIndex> node_indices) {
+        removed_node_indices.insert(
+            removed_node_indices.end(), node_indices.begin(), node_indices.end());
+      });
+
+  bool modified = false;
+  QDQFinalCleanupTransformer transformer(true);
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, logger));
+  EXPECT_TRUE(modified);
+  EXPECT_EQ(removed_node_indices.size(), 2U);
+  for (const NodeIndex node_index : removed_node_indices) {
+    EXPECT_EQ(graph.GetNode(node_index), nullptr);
+  }
+}
+
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        bool block_removal_of_last_dq,
@@ -6695,6 +6780,63 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_HandleNegativeDqAxis) {
 
   test_case(false);
   test_case(true);
+}
+
+TEST(QDQTransformerTests, WeightBiasQuantization_NonNegativeAxisWithUnknownWeightShape) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    constexpr int64_t channels = 24;
+    NodeArg* input_arg = builder.MakeInput<uint8_t>({1, channels, 8, 8}, 0, 255);
+    NodeArg* weight_arg = builder.MakeInput<uint8_t>(std::nullopt);
+    NodeArg* bias_arg = builder.MakeInitializer<float>({channels}, -0.1f, 0.1f);
+    NodeArg* input_dq_arg = builder.MakeIntermediate();
+    NodeArg* weight_dq_arg = builder.MakeIntermediate();
+    NodeArg* conv_arg = builder.MakeIntermediate();
+    NodeArg* output_arg = builder.MakeOutput();
+
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.07f, static_cast<uint8_t>(0), input_dq_arg);
+    auto& weight_dq_node = builder.AddDequantizeLinearNode<uint8_t>(
+        weight_arg, std::vector<float>(channels, 0.05f),
+        std::vector<uint8_t>(channels, static_cast<uint8_t>(0)), weight_dq_arg);
+    weight_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
+
+    auto& conv_node = builder.AddNode("Conv", {input_dq_arg, weight_dq_arg, bias_arg}, {conv_arg});
+    conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    conv_node.AddAttribute("group", channels);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    builder.AddQuantizeLinearNode<uint8_t>(conv_arg, 0.14f, static_cast<uint8_t>(127), output_arg);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const Node* conv_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv") {
+        conv_node = &node;
+        break;
+      }
+    }
+
+    TEST_RETURN_IF_NOT(conv_node != nullptr);
+    TEST_RETURN_IF_NOT(conv_node->InputDefs()[1]->Shape() == nullptr);
+    const Node* weight_dq_node = graph.GetProducerNode(conv_node->InputDefs()[1]->Name());
+    TEST_RETURN_IF_NOT(weight_dq_node != nullptr && weight_dq_node->OpType() == "DequantizeLinear");
+    TEST_RETURN_IF_NOT(weight_dq_node->InputDefs()[0]->Shape() == nullptr);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.count("DequantizeLinear") != 0 &&
+                       op_to_count.at("DequantizeLinear") == 3);
+    TEST_RETURN_IF_NOT(op_to_count.count("QuantizeLinear") != 0 &&
+                       op_to_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("Conv") != 0 && op_to_count.at("Conv") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("QLinearConv") == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::make_unique<WeightBiasQuantization>(), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
 }
 
 TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight_Bias) {
