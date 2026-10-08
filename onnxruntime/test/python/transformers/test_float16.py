@@ -318,7 +318,7 @@ class TestFloat16ModelPathConversion(unittest.TestCase):
             model_path,
             save_as_external_data=external_data,
             all_tensors_to_one_file=True,
-            location="weights.bin",
+            location=f"{directory.name}.weights.bin",
             size_threshold=0,
         )
         return model_path
