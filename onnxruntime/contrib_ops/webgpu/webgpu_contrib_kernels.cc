@@ -8,6 +8,7 @@
 #include "contrib_ops/webgpu/bert/engram_gate.h"
 #include "contrib_ops/webgpu/bert/gated_add.h"
 #include "contrib_ops/webgpu/bert/gated_delta_net.h"
+#include "contrib_ops/webgpu/bert/gated_delta_net_state_replay.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
 #include "contrib_ops/webgpu/bert/branchwise_rms_norm.h"
 #include "contrib_ops/webgpu/bert/hyper_connection_post_mix.h"
@@ -49,6 +50,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, GatherBlockQuantized)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, GatedAdd)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, GatedDeltaNet)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, GatedDeltaNetStateReplay)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, GatedRMSNorm)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BranchwiseRMSNorm)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, ScaledSiLU)>,

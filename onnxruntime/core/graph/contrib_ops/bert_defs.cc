@@ -5089,6 +5089,73 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedDeltaNetStateReplay, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Replay one request's captured GatedDeltaNet transitions into an inactive recurrent-state row.
+The WebGPU implementation uses FP32 backing tensors and CPU metadata; it does not recompute
+normalization, gates, beta, or retrieval. It waits for checked GPU completion before returning.
+
+`metadata` is int64 [11], ordered as:
+  source_offset, destination_offset, decay_offset, key_offset, delta_offset,
+  Hv, Dv, Dk, Hk, capacity, kept_count.
+Offsets are FP32-element offsets into the full backing tensors, not storage-binding byte offsets.
+All offsets are nonnegative; dimensions and capacity are positive; 1 <= kept_count <= capacity.
+The caller must ensure that all kept transitions were actually captured.
+
+The source_state selected by source_offset must be the state snapshot from immediately before
+the captured GatedDeltaNet transitions began. Using the producer's final state or another
+same-shaped snapshot is invalid because captured delta is state-dependent.
+The capsule geometry (Hv, Dv, Dk, Hk) and capacity must match the producer that generated it.
+capacity is the original capsule capture/layout capacity. kept_count only selects the leading
+transitions to replay; kept_count must NOT be substituted for capacity when deriving the
+decay/key/delta section offsets.
+
+State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
+key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+For every state element (h,v,i):
+  hk = floor(h * Hk / Hv)
+  s = source[h,v,i]
+  for t = 0 .. kept_count-1:
+    s *= decay[t,h]
+    s += key[t,hk,i] * delta[t,h,v]
+  destination[h,v,i] = s
+Unused capsule tail entries are not read. All other destination elements are preserved.
+
+The output must be explicitly prebound to the same full allocation as destination_backing.
+Destination backing must be distinct from source and capsule backing. This first implementation
+supports one descriptor, uint32 shader indexing and no graph capture.
+Source and capsule may share read-only backing; storage bindings are deduplicated only when
+their BufferViews have the same Program binding owner, not merely equal raw buffer handles.
+)DOC")
+        .Input(0, "source_backing",
+               "Full rank-1 FP32 backing tensor containing the state snapshot from immediately before capture.", "T")
+        .Input(1, "capsule_backing", "Full rank-1 FP32 compact-update backing tensor.", "T")
+        .Input(2, "destination_backing", "Full rank-1 FP32 inactive destination-state backing tensor.", "T")
+        .Input(3, "metadata", "CPU int64 [11] containing offsets, geometry, capacity and kept_count.", "TI")
+        .Output(0, "destination_out", "Same backing allocation and shape as destination_backing.", "T")
+        .TypeConstraint("T", {"tensor(float)"}, "State and capsule tensors are FP32.")
+        .TypeConstraint("TI", {"tensor(int64)"}, "CPU replay metadata is int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          for (size_t index = 0; index < 4; ++index) {
+            if (!hasInputShape(ctx, index)) {
+              continue;
+            }
+            const auto& shape = getInputShape(ctx, index);
+            if (shape.dim_size() != 1) {
+              fail_shape_inference("GatedDeltaNetStateReplay inputs must have rank 1.");
+            }
+            if (index == 3 && shape.dim(0).has_dim_value() && shape.dim(0).dim_value() != 11) {
+              fail_shape_inference("GatedDeltaNetStateReplay metadata must have shape [11].");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            propagateShapeFromInputToOutput(ctx, 2, 0);
+          }
+        }));
+
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
 Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
