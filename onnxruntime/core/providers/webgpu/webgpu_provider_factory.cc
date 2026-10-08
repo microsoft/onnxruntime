@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <limits>
 #include <mutex>
 
 #include "core/framework/error_code_helper.h"
+#include "core/framework/ortdevice.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
@@ -179,8 +181,12 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
-    ORT_ENFORCE(std::errc{} ==
-                std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(), config.context_id).ec);
+    const auto result = std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(),
+                                        config.context_id);
+    ORT_ENFORCE(result.ec == std::errc{} && result.ptr == context_id_str.data() + context_id_str.size() &&
+                    config.context_id >= 0 && config.context_id <= std::numeric_limits<OrtDevice::DeviceId>::max(),
+                "Invalid deviceId value: ", context_id_str, ". Must be an integer in the range 0 to ",
+                std::numeric_limits<OrtDevice::DeviceId>::max(), ".");
   }
 
   if (std::string adapter_index_str;
@@ -470,7 +476,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     if (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) {
       int src_device_id = impl.ep_api.MemoryDevice_GetDeviceId(src_memory_device);
       int dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_memory_device);
-      if (src_device_id != impl.context_id_ || dst_device_id != impl.context_id_) {
+      if (src_device_id != dst_device_id) {
         return false;  // Cannot copy between different devices
       }
     }
@@ -507,27 +513,41 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       return nullptr;
     }
 
-    {
-      std::lock_guard<std::mutex> lock(impl.init_mutex_);
-      if (impl.context_ == nullptr) {
-        // Always create a new context with context_id 0
-        if (impl.context_id_ != 0) {
-          return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Shared data transfer can only be created for the default device (0).");
-        }
-
-        impl.context_ = &WebGpuContextFactory::DefaultContext();
-      }
-    }
-
-#if defined(ORT_USE_EP_API_ADAPTERS)
-    // Plugin streamless calls may overlap. Each call submits its own recording before returning;
-    // explicit streams use their Session's recording instead.
-    CommandRecordingState recording;
-#else
-    auto& recording = impl.recording_;
-#endif
-    DataTransferImpl data_transfer{impl.context_->BufferManager(), recording};
     for (size_t idx = 0; idx < num_tensors; ++idx) {
+      const OrtMemoryInfo* src_memory_info = nullptr;
+      const OrtMemoryInfo* dst_memory_info = nullptr;
+      ORT_THROW_IF_ERROR(ToStatusAndRelease(impl.ort_api.GetTensorMemoryInfo(src_tensors[idx], &src_memory_info)));
+      ORT_THROW_IF_ERROR(ToStatusAndRelease(impl.ort_api.GetTensorMemoryInfo(dst_tensors[idx], &dst_memory_info)));
+      const auto* src_device = impl.ep_api.MemoryInfo_GetMemoryDevice(src_memory_info);
+      const auto* dst_device = impl.ep_api.MemoryInfo_GetMemoryDevice(dst_memory_info);
+      if (!CanCopyImpl(this_ptr, src_device, dst_device)) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported memory devices for WebGPU copy.");
+      }
+      const int context_id = impl.ep_api.MemoryDevice_GetDeviceId(
+          impl.ep_api.MemoryDevice_GetDeviceType(src_device) == OrtMemoryInfoDeviceType_GPU ? src_device : dst_device);
+      WebGpuContext* context = nullptr;
+      if (context_id == impl.context_id_) {
+        std::lock_guard<std::mutex> lock(impl.init_mutex_);
+        if (impl.context_ == nullptr) {
+          if (context_id == 0) {
+            impl.context_ = &WebGpuContextFactory::DefaultContext();
+          } else {
+            WebGpuContextFactory::RetainContext(context_id);
+            impl.context_ = &WebGpuContextFactory::GetContext(context_id);
+          }
+        }
+        context = impl.context_;
+      } else {
+        WebGpuContextFactory::RetainContext(context_id);
+        context = &WebGpuContextFactory::GetContext(context_id);
+      }
+      auto release_context = gsl::finally([&]() {
+        if (context_id != impl.context_id_) {
+          WebGpuContextFactory::ReleaseContext(context_id);
+        }
+      });
+      CommandRecordingState recording;
+      DataTransferImpl data_transfer{context->BufferManager(), recording};
 #if defined(ORT_USE_EP_API_ADAPTERS)
       Ort::ConstValue src_value{src_tensors[idx]};
       const void* src_data = src_value.GetTensorRawData();
@@ -563,7 +583,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       if (src_is_gpu && dst_is_gpu && !has_session_stream) {
         // Env copies use a separate recording: a subsequent Session::Run cannot submit this copy.
         // Flush here so later Session work on the same queue is ordered after it, without a CPU wait.
-        ORT_THROW_IF_ERROR(impl.context_->Flush(impl.context_->BufferManager(), recording));
+        ORT_THROW_IF_ERROR(context->Flush(context->BufferManager(), recording));
       }
     }
     return nullptr;
@@ -586,9 +606,6 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
-#if !defined(ORT_USE_EP_API_ADAPTERS)
-  CommandRecordingState recording_;
-#endif
   WebGpuContext* context_;  // Lazily retained until ReleaseImpl.
   int context_id_;          // Track which context we're using
   std::mutex init_mutex_;   // Protects lazy initialization
