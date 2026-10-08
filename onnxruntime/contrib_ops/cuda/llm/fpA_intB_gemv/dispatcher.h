@@ -26,41 +26,6 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
-// Picks the dense GEMV column tile (CtaN) that fills the GPU's block slots best.
-//
-// The M = 8 kernel is register-limited to 4 / 3 / 2 resident 128-thread blocks per SM for
-// CtaN = 2 / 4 / 8 (fp16 int4 on sm_120: 110 / 140 / 250 registers), and a decode projection
-// launches only n / (CtaN * interleave) blocks, so the last wave is often mostly empty (for
-// example N = 10240 at CtaN = 4 runs 640 blocks on the 510 slots of an RTX 5090). Returns the
-// candidate with the highest wave efficiency, and only leaves `base_cta_n` when the gain is clear.
-// The slot counts and the gain were measured on sm_120 only, so `sm_count` is 0 elsewhere.
-inline int PickGemvCtaN(int n, int interleave, int base_cta_n, int sm_count) {
-  if (sm_count <= 0) {
-    return base_cta_n;
-  }
-  auto efficiency = [&](int cta_n, int blocks_per_sm) {
-    int const cols = cta_n * interleave;
-    if (n % cols != 0) {
-      return 0.0;
-    }
-    long long const blocks = n / cols;
-    long long const slots = static_cast<long long>(sm_count) * blocks_per_sm;
-    long long const waves = (blocks + slots - 1) / slots;
-    return static_cast<double>(blocks) / static_cast<double>(waves * slots);
-  };
-  auto blocks_per_sm = [](int cta_n) { return cta_n <= 2 ? 4 : (cta_n <= 4 ? 3 : 2); };
-  int best = base_cta_n;
-  double best_eff = efficiency(base_cta_n, blocks_per_sm(base_cta_n)) * 1.05;
-  for (int cta_n : {base_cta_n / 2, base_cta_n * 2}) {
-    double const eff = efficiency(cta_n, blocks_per_sm(cta_n));
-    if (eff > best_eff) {
-      best = cta_n;
-      best_eff = eff;
-    }
-  }
-  return best;
-}
-
 // SM count of the current device if it is sm_12x (consumer / workstation Blackwell), else 0.
 inline int GemvPickSmCount() {
   int device = 0;
@@ -486,22 +451,22 @@ void dispatcher(Params& params, cudaStream_t s) {
   DISPATCHER_FOR_M(5, 5, CtaNLargeM, 128);
   DISPATCHER_FOR_M(6, 6, CtaNLargeM, 128);
   DISPATCHER_FOR_M(7, 7, CtaNLargeM, 128);
-  if (params.wave_aware && params.m == 8) {
-    // 8 is the DFlash2 verify batch; its projections are sensitive to wave quantization. Only the
-    // fp16 int4 SM80-interleaved kernel was measured, so other types and layouts keep CtaNLargeM.
-    if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 && !EnableZero && CtaNLargeM == 4 &&
-                  std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
-      int const pick = PickGemvCtaN(params.n, Details::kInterleave, CtaNLargeM, GemvPickSmCount());
-      if (pick == CtaNLargeM / 2) {
-        exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
-                    ApplyAlphaInAdvance>(params, s);
-        return;
-      }
-      if (pick == CtaNLargeM * 2) {
-        exec_kernel<Details, 8, CtaNLargeM * 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
-                    ApplyAlphaInAdvance>(params, s);
-        return;
-      }
+  // M = 8 is the DFlash2 verify batch; its projections are sensitive to wave quantization. Only the
+  // fp16 int4 SM80-interleaved kernel was measured, so other types and layouts keep CtaNLargeM.
+  if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 && !EnableZero && CtaNLargeM == 4 &&
+                std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
+    int const sm_count = params.wave_aware && params.m == 8 ? GemvPickSmCount() : 0;
+    int const pick = PickGemvCtaN(params.wave_aware, params.m, params.n, Details::kInterleave, CtaNLargeM,
+                                  sm_count);
+    if (pick == CtaNLargeM / 2) {
+      exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                  ApplyAlphaInAdvance>(params, s);
+      return;
+    }
+    if (pick == CtaNLargeM * 2) {
+      exec_kernel<Details, 8, CtaNLargeM * 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                  ApplyAlphaInAdvance>(params, s);
+      return;
     }
   }
   DISPATCHER_FOR_M(8, 8, CtaNLargeM, 128);
