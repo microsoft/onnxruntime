@@ -251,6 +251,19 @@ inline const OrtInteropApi& GetInteropApi() {
 }
 
 /// <summary>
+/// This returns a reference to the stable ORT Model Package API.
+/// </summary>
+/// <returns>ORT C Model Package API reference</returns>
+inline const OrtModelPackageApi& GetModelPackageApi() {
+  auto* api = GetApi().GetModelPackageApi();
+  if (api == nullptr) {
+    ORT_CXX_API_THROW("Model Package API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
+/// <summary>
 /// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
 /// </summary>
 /// <returns>ORT C EP API reference</returns>
@@ -658,6 +671,9 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageOptions, GetModelPackageApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageContext, GetModelPackageApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageComponentContext, GetModelPackageApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
@@ -792,6 +808,9 @@ struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
 struct Model;
+struct ModelPackageOptions;
+struct ModelPackageContext;
+struct ModelPackageComponentContext;
 struct Node;
 struct ModelMetadata;
 struct TypeInfo;
@@ -1822,6 +1841,52 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
  * \return A Status indicating success or failure.
  */
 Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
+
+/** \brief Options used to select a component variant from a model package.
+ *
+ * The constructor captures execution provider configuration from session options.
+ */
+struct ModelPackageOptions : detail::Base<OrtModelPackageOptions> {
+  using Base = detail::Base<OrtModelPackageOptions>;
+  using Base::Base;
+
+  explicit ModelPackageOptions(std::nullptr_t) {}
+  ModelPackageOptions(const Env& env, const SessionOptions& session_options);
+  ModelPackageOptions(const Env& env, ConstSessionOptions session_options);
+};
+
+/** \brief Context used to inspect a model package and select one of its components. */
+struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
+  using Base = detail::Base<OrtModelPackageContext>;
+  using Base::Base;
+
+  explicit ModelPackageContext(std::nullptr_t) {}
+  explicit ModelPackageContext(const ORTCHAR_T* package_root);
+
+  int64_t GetSchemaVersion() const;
+  size_t GetComponentCount() const;
+  std::vector<std::string> GetComponentNames() const;
+  size_t GetVariantCount(const char* component_name) const;
+  std::vector<std::string> GetVariantNames(const char* component_name) const;
+  const char* GetVariantEpName(const char* component_name, const char* variant_name) const;
+  std::string ResolveStringRef(const char* base_dir, const char* input, bool must_exist) const;
+  ModelPackageComponentContext SelectComponent(const char* component_name,
+                                               const ModelPackageOptions& options) const;
+};
+
+/** \brief Context for a selected model package component and variant. */
+struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentContext> {
+  using Base = detail::Base<OrtModelPackageComponentContext>;
+  using Base::Base;
+
+  explicit ModelPackageComponentContext(std::nullptr_t) {}
+
+  std::string GetSelectedVariantName() const;
+  std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;
+  Session CreateSession(const Env& env);
+  Session CreateSession(const Env& env, const SessionOptions& session_options);
+  Session CreateSession(const Env& env, ConstSessionOptions session_options);
+};
 
 /** \brief Wrapper around ::OrtModelMetadata
  *

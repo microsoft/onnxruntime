@@ -45,7 +45,7 @@ constexpr const char* kCacheMagic = "ort_cuda_gemm_tactic_cache";
 constexpr const char* kCacheFormatVersion = "v1";
 
 // Bump whenever profiling or tactic selection changes which tactic wins, so stale caches are rejected.
-constexpr const char* kTacticSelectionVersion = "2";
+constexpr const char* kTacticSelectionVersion = "3";
 
 constexpr const char* kTableMatMulNBits = "matmulnbits_fpa_intb";
 
@@ -98,14 +98,14 @@ std::string TsvDecode(const std::string& s);
 
 // Fixed integer column layout for a (possibly-absent) tactic, mirroring the doc:
 //   valid_config sm_version tile80 tile90 tile100 tile120
-//   split_k_style split_k stages cluster mainloop epilogue tma enable_cuda_kernel
-constexpr int kNumConfigColumns = 14;
+//   split_k_style split_k stages cluster mainloop epilogue tma enable_cuda_kernel cuda_kernel_variant
+constexpr int kNumConfigColumns = 15;
 
-// Appends the 14 config columns (as decimal strings) for `config` to `row`.
+// Appends the config columns (as decimal strings) for `config` to `row`.
 // A missing tactic (std::nullopt) is written with valid_config=0 and defaults elsewhere.
 void AppendConfigColumns(std::vector<std::string>& row, const std::optional<CutlassGemmConfig>& config);
 
-// Parses the 14 config columns starting at `columns[begin]`. Returns std::nullopt
+// Parses the config columns starting at `columns[begin]`. Returns std::nullopt
 // (outer) if the columns are malformed; the inner optional is std::nullopt when
 // valid_config==0 (a profiled bucket with no valid tactic).
 std::optional<std::optional<CutlassGemmConfig>> ParseConfigColumns(
@@ -125,6 +125,8 @@ struct MatMulNBitsKey {
   bool gemv_enabled = false;
   bool has_bias = false;
   int packing_sm = 0;
+  int paired_gemv_mode = 0;
+  bool wave_aware_gemv = false;
 
   bool operator==(const MatMulNBitsKey& o) const;
 };

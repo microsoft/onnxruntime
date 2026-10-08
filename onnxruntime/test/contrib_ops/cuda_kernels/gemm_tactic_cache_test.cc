@@ -110,6 +110,7 @@ void ExpectConfigEqual(const CutlassGemmConfig& a, const CutlassGemmConfig& b) {
   EXPECT_EQ(static_cast<int>(a.epilogue_schedule), static_cast<int>(b.epilogue_schedule));
   EXPECT_EQ(a.is_tma_warp_specialized, b.is_tma_warp_specialized);
   EXPECT_EQ(a.enableCudaKernel, b.enableCudaKernel);
+  EXPECT_EQ(a.cudaKernelVariant, b.cudaKernelVariant);
 }
 
 // Returns a unique temp file prefix and removes any leftover files from a prior run.
@@ -230,6 +231,22 @@ TEST(GemmTacticCacheTest, ConfigColumnsNullTacticRoundTrip) {
   auto parsed = gc::ParseConfigColumns(row, 0);
   ASSERT_TRUE(parsed.has_value());    // outer: the columns parsed
   EXPECT_FALSE(parsed->has_value());  // inner: no valid tactic
+}
+
+TEST(GemmTacticCacheTest, ConfigColumnsRoundTripPairedGemv) {
+  CutlassGemmConfig original;
+  original.enableCudaKernel = true;
+  original.cudaKernelVariant = 1;
+  std::vector<std::string> row;
+  gc::AppendConfigColumns(row, original);
+  auto parsed = gc::ParseConfigColumns(row, 0);
+  ASSERT_TRUE(parsed.has_value() && parsed->has_value());
+  ExpectConfigEqual(original, **parsed);
+
+  row.back() = "2";
+  EXPECT_FALSE(gc::ParseConfigColumns(row, 0).has_value());
+  row.back() = "-1";
+  EXPECT_FALSE(gc::ParseConfigColumns(row, 0).has_value());
 }
 
 TEST(GemmTacticCacheTest, StoreLoadRoundTrip) {
@@ -481,7 +498,69 @@ TEST(GemmTacticCacheTest, GemmIdCoreSeparatesQuantVariants) {
   const GemmIdCore rtx4060(1024, 4096, dtype, 80, 4, 64, false, true, false, "NVIDIA RTX 4060");
   EXPECT_FALSE(rtx4090 == rtx4060);
   EXPECT_EQ(rtx4090, GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true, false, "NVIDIA RTX 4090"));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true, false, "", true, 0));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true, false, "", false, 1));
+  EXPECT_FALSE(base == GemmIdCore(1024, 4096, dtype, 80, 4, 64, false, true, false, "", false, 2));
 }
+
+TEST(GemmTacticCacheTest, GemvOptionsArePartOfPersistentKey) {
+  const std::string file = UniqueTempPrefix("gemv_options") + ".matmulnbits_fpa_intb.tsv";
+  const auto sig = MakeSignature();
+  const auto base = MakeKey();
+  auto paired = base;
+  paired.paired_gemv_mode = 1;
+  auto forced = base;
+  forced.paired_gemv_mode = 2;
+  auto wave_aware = base;
+  wave_aware.wave_aware_gemv = true;
+  CutlassGemmConfig paired_config;
+  paired_config.enableCudaKernel = true;
+  paired_config.cudaKernelVariant = 1;
+  {
+    gc::MatMulNBitsTacticCache cache(file, sig);
+    cache.Put(base, 8, MakeSm80Config());
+    cache.Put(paired, 8, paired_config);
+    cache.Put(forced, 8, paired_config);
+    cache.Put(wave_aware, 8, MakeSm90Config());
+    ASSERT_TRUE(cache.Flush().IsOK());
+  }
+  gc::MatMulNBitsTacticCache reloaded(file, sig);
+  ASSERT_TRUE(reloaded.Load().IsOK());
+  for (const auto& key : {base, paired, forced, wave_aware}) {
+    auto config = reloaded.Get(key, 8);
+    ASSERT_TRUE(config.has_value() && config->has_value());
+    ExpectConfigEqual(key.paired_gemv_mode != 0 ? paired_config
+                      : key.wave_aware_gemv     ? MakeSm90Config()
+                                                : MakeSm80Config(),
+                      **config);
+  }
+  CleanUp(file);
+}
+
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+TEST(GemmTacticCacheTest, CachedGemvRespectsPairedMode) {
+  using namespace onnxruntime::llm::kernels::weight_only;
+  class Profiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    using WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic;
+  } profiler;
+  CutlassGemmConfig paired;
+  paired.enableCudaKernel = true;
+  paired.cudaKernelVariant = 1;
+  CutlassGemmConfig sequential = paired;
+  sequential.cudaKernelVariant = 0;
+  for (int mode : {0, 1, 2}) {
+    profiler.setPairedGemvMode(mode);
+    EXPECT_EQ(profiler.checkTactic(8, 16, 128, paired), mode != 0);
+    EXPECT_EQ(profiler.checkTactic(8, 16, 128, sequential), mode != 2);
+    EXPECT_EQ(profiler.checkTactic(8, 16, 128, MakeSm80Config()), mode != 2);
+    EXPECT_FALSE(profiler.checkTactic(4, 16, 128, paired));
+    EXPECT_TRUE(profiler.checkTactic(4, 16, 128, sequential));
+    EXPECT_FALSE(profiler.checkTactic(16, 16, 128, paired));
+    EXPECT_FALSE(profiler.checkTactic(16, 16, 128, sequential));
+  }
+}
+#endif
 
 TEST(GemmTacticCacheTest, BiasIsPartOfPersistentKey) {
   const std::string prefix = UniqueTempPrefix("bias");

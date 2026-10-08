@@ -110,11 +110,14 @@ class GemmIdCore {
   bool gemv_enabled;
   bool has_bias;
   std::string device_name;
+  // Distinguishes optional GEMV tactic sets and launch heuristics for the same shape.
+  bool wave_aware = false;
+  int tag = 0;
 
   GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, int bits_ = 0, int group_size_ = 0,
              bool has_zeros_ = false, bool gemv_enabled_ = false, bool has_bias_ = false,
-             std::string device_name_ = std::string())
-      : n(n_), k(k_), dtype(dtype_), sm(sm_), bits(bits_), group_size(group_size_), has_zeros(has_zeros_), gemv_enabled(gemv_enabled_), has_bias(has_bias_), device_name(std::move(device_name_)) {
+             std::string device_name_ = std::string(), bool wave_aware_ = false, int tag_ = 0)
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), bits(bits_), group_size(group_size_), has_zeros(has_zeros_), gemv_enabled(gemv_enabled_), has_bias(has_bias_), device_name(std::move(device_name_)), wave_aware(wave_aware_), tag(tag_) {
   }
 
   GemmIdCore()
@@ -138,6 +141,8 @@ class GemmIdCore {
     out << " bits=" << id.bits << " group_size=" << id.group_size;
     out << " has_zeros=" << id.has_zeros << " gemv=" << id.gemv_enabled << " has_bias=" << id.has_bias;
     out << " device=" << id.device_name;
+    out << " tag=" << id.tag;
+    out << " wave_aware=" << id.wave_aware;
     return out;
   }
 
@@ -145,7 +150,8 @@ class GemmIdCore {
   bool isEqual(GemmIdCore const& id) const {
     return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && bits == id.bits &&
            group_size == id.group_size && has_zeros == id.has_zeros && gemv_enabled == id.gemv_enabled &&
-           has_bias == id.has_bias && device_name == id.device_name;
+           has_bias == id.has_bias && device_name == id.device_name && tag == id.tag &&
+           wave_aware == id.wave_aware;
   }
 };
 
@@ -159,7 +165,9 @@ struct GemmIdCoreHash {
     auto h5 = std::hash<int>{}((id.bits << 16) ^ (id.group_size << 3) ^ (id.has_bias ? 4 : 0) ^
                                (id.has_zeros ? 2 : 0) ^ (id.gemv_enabled ? 1 : 0));
     auto h6 = std::hash<std::string>{}(id.device_name);
-    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6;
+    auto h7 = std::hash<int>{}(id.tag);
+    auto h8 = std::hash<bool>{}(id.wave_aware);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8;
   }
 };
 

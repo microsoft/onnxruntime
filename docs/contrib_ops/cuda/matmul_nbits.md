@@ -623,8 +623,9 @@ so all staged buckets are flushed, validates the cache signature against the act
 device and installed wheel, then prints the cache path and a summary of tuned shapes.
 CPU fallback, missing files, incompatible signatures, and caches without successful
 tactics are errors. BF16 dummy inputs use explicitly typed OrtValues.
-The tool also requires a fresh session-specific record of selected tactics, so an unrelated
-existing cache cannot report success. Valid cache hits succeed without rewriting the original
+The tool also requires a fresh session-specific record of selected tactics and verifies that
+each full tactic configuration was persisted, so an unrelated cache or an unsaved correction
+cannot report success. Valid cache hits succeed without rewriting the original
 file. The tool currently requires a built-in CUDA Python package; CPU packages with a registered
 CUDA plugin are rejected with an explicit build-metadata diagnostic. The cache itself supports
 both built-in and plugin providers.

@@ -268,7 +268,7 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-    if args.use_telemetry and not is_windows() and not args.android and not args.build_wasm:
+    if args.use_telemetry and not args.use_windows_telemetry and not args.android and not args.build_wasm:
         vcpkg_install_options.append("--x-feature=telemetry")
     overlay_triplets_dir = None
 
@@ -462,16 +462,18 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
-
     # VitisAI and OpenVINO providers currently only support the full protobuf option. Resolve this once: the
     # vcpkg triplets (which decide how the ONNX port is built) and the CMake configure must agree, otherwise
     # ONNX and ONNX Runtime end up with different protobuf runtimes in the same binary.
     use_full_protobuf = bool(
         args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface
     )
+    # Select 1DS by default, including on Windows; TraceLogging requires explicit opt-in.
+    telemetry_backend = "WINDOWS" if args.use_windows_telemetry else "1DS"
 
-    # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
     cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
+    cmake_args.append("-Donnxruntime_TELEMETRY_BACKEND=" + telemetry_backend)
+    cmake_args.append("-Donnxruntime_USE_WINDOWS_TELEMETRY=" + ("ON" if args.use_windows_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),

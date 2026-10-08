@@ -99,7 +99,7 @@ punctuation) that make CSV quoting fragile.
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	matmulnbits_fpa_intb
-# tactic_selection_version	2
+# tactic_selection_version	3
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -108,9 +108,9 @@ punctuation) that make CSV quoting fragile.
 # ort_version	1.23.0
 # ort_git_commit	<git-sha-or-unknown>
 # ort_build_config	Release
-n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	has_bias	packing_sm	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	1	1	80	23	0	0	0	0	1	1	3	0	0	0	0	1
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	64	1	80	17	0	0	0	0	0	-1	4	0	0	0	0	0
+n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	has_bias	packing_sm	paired_gemv_mode	wave_aware_gemv	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel	cuda_kernel_variant
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	1	1	80	23	0	0	0	1	1	3	0	0	0	0	1	0
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	64	1	80	17	0	0	0	0	-1	4	0	0	0	0	0	0
 ...
 ```
 
@@ -179,7 +179,8 @@ Use op-specific keys rather than a single sparse superset.
 ```
 matmulnbits_key = {
   n_16b, k, activation_dtype, weight_type, bits, block_size,
-  has_zero_points, zero_point_dtype, gemv_enabled, has_bias, packing_sm
+  has_zero_points, zero_point_dtype, gemv_enabled, has_bias, packing_sm,
+  paired_gemv_mode, wave_aware_gemv
 }
 
 qmoe_key = {
@@ -193,6 +194,10 @@ Each key maps to a set of `(m_bucket → optional<CutlassGemmConfig>)`. Many nod
 collapse to one entry. For `MatMulNBits`, `n_16b` is the value used by the existing `GemmIdCore`.
 For QMoE, the key includes the profiler parameters that affect `GemmProfilerBackend::init` so that
 cache reuse remains conservative.
+
+MatMulNBits keys separate paired-K modes (disabled, autotuned, forced) and wave-aware GEMV
+launches. `cuda_kernel_variant` preserves the selected GEMV implementation (0 = default,
+1 = paired-K). Selection version 3 rejects older files that cannot represent these choices.
 
 ## 7. Implemented architecture
 
@@ -277,7 +282,7 @@ unit-testable.
 | `ORT_FPA_INTB_PROFILE_M` | Comma-separated M buckets to profile (overrides the default set for MatMulNBits/fpA_intB). |
 | `ep.cuda.gemm_tactic_cache_dir` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_DIR`. |
 | `ep.cuda.gemm_tactic_cache_prefix` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX`. |
-| `ep.cuda.gemm_tactic_cache_tuning_results_prefix` | Optional separate TSV output of this session's selected tactics (including valid cache hits), flushed at EP teardown. The tuning tool uses a fresh temporary prefix to verify that the current model actually selected successful tactics. No environment-variable fallback. |
+| `ep.cuda.gemm_tactic_cache_tuning_results_prefix` | Optional separate TSV output of this session's selected tactics (including valid cache hits), flushed at EP teardown. The tuning tool uses a fresh temporary prefix to verify that the current model selected successful tactics and that their full settings reached the main cache. No environment-variable fallback. |
 
 ## 10. Original roadmap file inventory (includes future work)
 

@@ -30,17 +30,40 @@ class TestFpAIntBTune(unittest.TestCase):
         "ort_version": "1.28.0",
     }
 
-    def write_cache(self, prefix, **overrides):
+    def write_cache(self, prefix, *, tactic_values=None, **overrides):
         header = {
             **self.signature,
             "ort_cuda_gemm_tactic_cache": "v1",
             "table": "matmulnbits_fpa_intb",
-            "tactic_selection_version": "2",
+            "tactic_selection_version": "3",
             **overrides,
         }
+        columns = (*tune._CACHE_KEY_COLUMNS, "m_bucket", *tune._CACHE_CONFIG_COLUMNS)
+        row = dict.fromkeys(columns, "0")
+        row.update(
+            n_16b="16",
+            k="128",
+            activation_dtype="half",
+            weight_type="uint4b_t",
+            bits="4",
+            block_size="32",
+            zero_point_dtype="none",
+            gemv_enabled="1",
+            packing_sm="80",
+            m_bucket="1",
+            valid_config="1",
+            sm_version="80",
+            split_k="1",
+            stages="3",
+        )
+        row.update(tactic_values or {})
         path = Path(str(prefix) + tune._CACHE_TABLE_SUFFIX)
         path.write_text(
-            "".join(f"# {k}\t{v}\n" for k, v in header.items()) + "n_16b\tm_bucket\tvalid_config\n16\t1\t1\n",
+            "".join(f"# {k}\t{v}\n" for k, v in header.items())
+            + "\t".join(columns)
+            + "\n"
+            + "\t".join(row[c] for c in columns)
+            + "\n",
             encoding="utf-8",
         )
         return path
@@ -119,7 +142,7 @@ class TestFpAIntBTune(unittest.TestCase):
                 report = self.write_cache(
                     options.get_session_config_entry("ep.cuda.gemm_tactic_cache_tuning_results_prefix")
                 )
-                report.write_text(report.read_text().replace("16\t1\t1", "32\t1\t1"), encoding="utf-8")
+                report.write_text(report.read_text().replace("\n16\t", "\n32\t"), encoding="utf-8")
                 return session
 
             with (
@@ -130,6 +153,43 @@ class TestFpAIntBTune(unittest.TestCase):
             ):
                 tune.tune("model.onnx", prefix, [1], False)
             self.assertTrue(path.exists())
+
+    def test_corrected_settings_not_saved_does_not_report_success(self):
+        for column in tune._CACHE_CONFIG_COLUMNS[1:]:
+            with self.subTest(column=column), tempfile.TemporaryDirectory() as directory:
+                prefix = str(Path(directory) / "cache")
+                path = self.write_cache(prefix, tactic_values={column: "3" if column == "split_k" else "99"})
+                original = path.read_bytes()
+                session = MagicMock()
+                session.get_providers.return_value = ["CUDAExecutionProvider"]
+                session.get_provider_options.return_value = {"CUDAExecutionProvider": {"device_id": "0"}}
+
+                def create_session(_model, options, _session=session, **_kwargs):
+                    # Simulate a failed main-cache flush while the separate report is writable.
+                    self.write_cache(
+                        options.get_session_config_entry("ep.cuda.gemm_tactic_cache_tuning_results_prefix")
+                    )
+                    return _session
+
+                output = io.StringIO()
+                with (
+                    patch.object(ort, "get_available_providers", return_value=["CUDAExecutionProvider"]),
+                    patch.object(ort, "InferenceSession", side_effect=create_session),
+                    patch.object(tune, "_current_signature", return_value=self.signature),
+                    contextlib.redirect_stdout(output),
+                    self.assertRaisesRegex(RuntimeError, "not persisted"),
+                ):
+                    tune.tune("model.onnx", prefix, [1], False)
+                self.assertNotIn("Cache ready", output.getvalue())
+                self.assertEqual(original, path.read_bytes())
+
+    def test_missing_tactic_settings_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_cache(Path(directory) / "cache")
+            text = path.read_text(encoding="utf-8").replace("split_k\t", "missing_split_k\t")
+            path.write_text(text, encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "Missing problem-key or tactic-setting columns"):
+                tune._summarize_cache(str(path), self.signature)
 
     def test_incompatible_or_missing_cache_is_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -402,6 +462,20 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
                     row[columns.index("split_k")] = "3"  # K=128 cannot be split into three aligned K tiles.
                     lines[i] = "\t".join(row)
             cache_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            if not os.environ.get("ORT_CUDA_PLUGIN_PATH"):
+                args[args.index("--model") + 1] = str(model_path)
+                damaged = cache_path.read_bytes()
+                lock_path = Path(str(cache_path) + ".lock")
+                lock_path.unlink()
+                lock_path.mkdir()  # Make the main cache's file-lock acquisition fail.
+                try:
+                    result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=180)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("not persisted", result.stderr)
+                    self.assertNotIn("Cache ready", result.stdout)
+                    self.assertEqual(damaged, cache_path.read_bytes())
+                finally:
+                    lock_path.rmdir()
             repaired, log = run("repaired")
             self.assertTrue("Rejecting cached GEMM tactic" in log or "Dropping incompatible cached" in log, log)
             for key in cold:

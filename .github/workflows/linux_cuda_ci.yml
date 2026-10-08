@@ -127,6 +127,7 @@ jobs:
           mode: 'test' # Set mode to test
           execution_providers: 'cuda'
           extra_build_flags: >-
+            --enable_pybind
             --use_binskim_compliant_compile_flags
             --cuda_version=13.0
             --cuda_home=/usr/local/cuda-13.0

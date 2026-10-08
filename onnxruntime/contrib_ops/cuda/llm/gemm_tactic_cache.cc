@@ -293,9 +293,9 @@ void AppendConfigColumns(std::vector<std::string>& row, const std::optional<Cutl
   if (!config.has_value()) {
     // valid_config=0; remaining columns are placeholders (ignored on parse).
     // Order: valid_config sm_version tile80 tile90 tile100 tile120
-    //        split_k_style split_k stages cluster mainloop epilogue tma enable_cuda_kernel
+    //        split_k_style split_k stages cluster mainloop epilogue tma enable_cuda_kernel cuda_kernel_variant
     const char* placeholders[kNumConfigColumns] = {
-        "0", "0", "0", "0", "0", "0", "0", "-1", "-1", "0", "0", "0", "0", "0"};
+        "0", "0", "0", "0", "0", "0", "0", "-1", "-1", "0", "0", "0", "0", "0", "0"};
     for (const char* p : placeholders) {
       row.emplace_back(p);
     }
@@ -317,6 +317,7 @@ void AppendConfigColumns(std::vector<std::string>& row, const std::optional<Cutl
   row.emplace_back(std::to_string(static_cast<int>(c.epilogue_schedule)));  // epilogue
   row.emplace_back(c.is_tma_warp_specialized ? "1" : "0");                  // tma
   row.emplace_back(c.enableCudaKernel ? "1" : "0");                         // enable_cuda_kernel
+  row.emplace_back(std::to_string(c.cudaKernelVariant));                    // cuda_kernel_variant
 }
 
 std::optional<std::optional<CutlassGemmConfig>> ParseConfigColumns(
@@ -352,6 +353,10 @@ std::optional<std::optional<CutlassGemmConfig>> ParseConfigColumns(
   c.epilogue_schedule = static_cast<EpilogueScheduleType>(vals[11]);
   c.is_tma_warp_specialized = vals[12] != 0;
   c.enableCudaKernel = vals[13] != 0;
+  c.cudaKernelVariant = vals[14];
+  if (c.cudaKernelVariant < 0 || c.cudaKernelVariant > 1 || (!c.enableCudaKernel && c.cudaKernelVariant != 0)) {
+    return std::nullopt;
+  }
   return std::optional<CutlassGemmConfig>{c};
 }
 
@@ -360,7 +365,8 @@ bool MatMulNBitsKey::operator==(const MatMulNBitsKey& o) const {
          activation_dtype == o.activation_dtype && weight_type == o.weight_type &&
          bits == o.bits && block_size == o.block_size &&
          has_zero_points == o.has_zero_points && zero_point_dtype == o.zero_point_dtype &&
-         gemv_enabled == o.gemv_enabled && has_bias == o.has_bias && packing_sm == o.packing_sm;
+         gemv_enabled == o.gemv_enabled && has_bias == o.has_bias && packing_sm == o.packing_sm &&
+         paired_gemv_mode == o.paired_gemv_mode && wave_aware_gemv == o.wave_aware_gemv;
 }
 
 std::size_t MatMulNBitsKeyHash::operator()(const MatMulNBitsKey& k) const {
@@ -378,6 +384,8 @@ std::size_t MatMulNBitsKeyHash::operator()(const MatMulNBitsKey& k) const {
   mix(std::hash<bool>{}(k.gemv_enabled));
   mix(std::hash<bool>{}(k.has_bias));
   mix(std::hash<int>{}(k.packing_sm));
+  mix(std::hash<int>{}(k.paired_gemv_mode));
+  mix(std::hash<bool>{}(k.wave_aware_gemv));
   return h;
 }
 
@@ -388,9 +396,10 @@ const std::vector<std::string>& MatMulNBitsColumnNames() {
   static const std::vector<std::string> names = {
       "n_16b", "k", "activation_dtype", "weight_type", "bits",
       "block_size", "has_zero_points", "zero_point_dtype", "gemv_enabled", "has_bias", "packing_sm",
+      "paired_gemv_mode", "wave_aware_gemv",
       "m_bucket", "valid_config", "sm_version", "tile80", "tile90", "tile100", "tile120",
       "split_k_style", "split_k", "stages", "cluster", "mainloop", "epilogue", "tma",
-      "enable_cuda_kernel"};
+      "enable_cuda_kernel", "cuda_kernel_variant"};
   return names;
 }
 
@@ -569,6 +578,13 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load(std::istream& in) {
     int has_bias = 0;
     ParseInt(field("has_bias"), has_bias);
     key.has_bias = has_bias != 0;
+    int wave_aware = 0;
+    if (!ParseInt(field("paired_gemv_mode"), key.paired_gemv_mode) ||
+        key.paired_gemv_mode < 0 || key.paired_gemv_mode > 2 ||
+        !ParseInt(field("wave_aware_gemv"), wave_aware) || (wave_aware != 0 && wave_aware != 1)) {
+      continue;
+    }
+    key.wave_aware_gemv = wave_aware != 0;
 
     int m_bucket = 0;
     if (!ParseInt(field("m_bucket"), m_bucket)) {
@@ -664,6 +680,8 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
         row.emplace_back(key.gemv_enabled ? "1" : "0");
         row.emplace_back(key.has_bias ? "1" : "0");
         row.emplace_back(std::to_string(key.packing_sm));
+        row.emplace_back(std::to_string(key.paired_gemv_mode));
+        row.emplace_back(key.wave_aware_gemv ? "1" : "0");
         row.emplace_back(std::to_string(m_bucket));
         AppendConfigColumns(row, cfg);
         out << JoinTabs(row) << '\n';

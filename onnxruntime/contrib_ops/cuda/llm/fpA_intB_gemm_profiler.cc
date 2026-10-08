@@ -112,6 +112,8 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
+    params.paired_k = tactic.cudaKernelVariant == 1;
+    params.wave_aware = mWaveAwareGemv;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
@@ -140,14 +142,35 @@ size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, s
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
-    int /*m*/, int /*n*/, int /*k*/) const {
-  return mRunner->getConfigs();
+    int m, int /*n*/, int /*k*/) const {
+  auto tactics = mRunner->getConfigs();
+  if (mPairedGemvMode != 0 && m >= 5 && m <= 8) {
+    for (auto const& tactic : tactics) {
+      if (tactic.enableCudaKernel) {
+        auto paired = tactic;
+        paired.cudaKernelVariant = 1;
+        if (mPairedGemvMode == 2) {
+          return {paired};
+        }
+        tactics.push_back(paired);
+        break;
+      }
+    }
+  }
+  return tactics;
 }
 
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
   // stop to profile Cuda kernel for m >= 16
   if (tactic.enableCudaKernel) {
-    return m < 16;
+    const bool paired_bucket = m >= 5 && m <= 8;
+    if (tactic.cudaKernelVariant == 1) {
+      return mPairedGemvMode != 0 && paired_bucket;
+    }
+    return tactic.cudaKernelVariant == 0 && m < 16 && !(mPairedGemvMode == 2 && paired_bucket);
+  }
+  if (mPairedGemvMode == 2 && m >= 5 && m <= 8) {
+    return false;
   }
   return true;
 }
@@ -241,6 +264,8 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
   key.gemv_enabled = hasWeightOnlyCudaKernel;
   key.has_bias = mHasBiases;
   key.packing_sm = mArch;
+  key.paired_gemv_mode = gemmId.tag;
+  key.wave_aware_gemv = gemmId.wave_aware;
   return key;
 }
 

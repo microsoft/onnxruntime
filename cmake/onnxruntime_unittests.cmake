@@ -6,6 +6,10 @@ endif()
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
+if(NOT CMAKE_CROSSCOMPILING)
+  add_test(NAME onnxruntime_public_exports_test
+    COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_gen_def.py")
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
@@ -467,6 +471,10 @@ if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/windows/*.cc"
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
+  if(onnxruntime_USE_1DS_TELEMETRY)
+    list(APPEND onnxruntime_test_framework_src_patterns
+      "${TEST_SRC_DIR}/platform/windows_telemetry/*.cc" )
+  endif()
 endif()
 
 if(LINUX AND NOT onnxruntime_DISABLE_DEVICE_DISCOVERY)
@@ -871,6 +879,11 @@ endif()
 file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
+
+if(IOS)
+  # The ONNX test runner library is not built for iOS.
+  list(REMOVE_ITEM onnxruntime_test_framework_src "${TEST_SRC_DIR}/framework/onnx_test_loader_test.cc")
+endif()
 
 #This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
 #Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
@@ -1368,7 +1381,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS onnxruntime_provider_bridge_valid_fixture onnxruntime_provider_bridge_missing_export_fixture)
     set_target_properties(${bridge_test_target} PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${bridge_test_target}/$<CONFIG>")
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${bridge_test_target}")
     target_compile_definitions(${bridge_test_target} PRIVATE
       ORT_PROVIDER_BRIDGE_VALID_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_valid_fixture>"
       ORT_PROVIDER_BRIDGE_MISSING_EXPORT_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_missing_export_fixture>")
@@ -1387,6 +1400,67 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     if(mode STREQUAL "no_exceptions")
       target_compile_definitions(${bridge_test_target} PRIVATE ORT_NO_EXCEPTIONS)
       target_include_directories(${bridge_test_target} PRIVATE
+        $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
+    endif()
+  endforeach()
+endif()
+
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
+  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
+  AND NOT CMAKE_SYSTEM_NAME STREQUAL "AIX")
+  foreach(fixture IN ITEMS shared valid missing_export)
+    set(probe_fixture onnxruntime_optional_probe_${fixture}_fixture)
+    onnxruntime_add_shared_library(${probe_fixture}
+      "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test_library.cc")
+    target_include_directories(${probe_fixture} PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
+    target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    target_compile_definitions(${probe_fixture} PRIVATE ORT_TEST_OPTIONAL_PROVIDER_${fixture})
+    set_target_properties(${probe_fixture} PROPERTIES FOLDER "ONNXRuntimeTest")
+  endforeach()
+  foreach(mode IN ITEMS normal no_exceptions)
+    set(probe_target onnxruntime_optional_provider_probe_${mode}_test)
+    set(probe_sources "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test.cc" ${onnxruntime_unittest_main_src})
+    if(mode STREQUAL "no_exceptions")
+      list(APPEND probe_sources
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
+    endif()
+    AddTest(TARGET ${probe_target}
+      SOURCES ${probe_sources}
+      LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+      DEPENDS onnxruntime_optional_probe_shared_fixture onnxruntime_optional_probe_valid_fixture
+              onnxruntime_optional_probe_missing_export_fixture)
+    set_target_properties(${probe_target} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${probe_target}")
+    foreach(fixture IN ITEMS shared valid missing_export)
+      target_compile_definitions(${probe_target} PRIVATE
+        ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_optional_probe_${fixture}_fixture>")
+      add_custom_command(TARGET ${probe_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${probe_target}>/fixtures"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "$<TARGET_FILE:onnxruntime_optional_probe_${fixture}_fixture>"
+          "$<TARGET_FILE_DIR:${probe_target}>/fixtures"
+        VERBATIM)
+    endforeach()
+    if(onnxruntime_providers_webgpu_dll_deps)
+      add_custom_command(TARGET ${probe_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${onnxruntime_providers_webgpu_dll_deps}" "$<TARGET_FILE_DIR:${probe_target}>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+    endif()
+    if(mode STREQUAL "no_exceptions")
+      target_compile_definitions(${probe_target} PRIVATE ORT_NO_EXCEPTIONS ONNX_NO_EXCEPTIONS)
+      if(MSVC)
+        target_compile_options(${probe_target} PRIVATE /EHs-c- /wd4530)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+          target_compile_options(${probe_target} PRIVATE /clang:-fno-exceptions)
+        endif()
+      else()
+        target_compile_options(${probe_target} PRIVATE -fno-exceptions)
+      endif()
+      target_include_directories(${probe_target} PRIVATE
         $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
     endif()
   endforeach()
@@ -2969,15 +3043,16 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::da
   if (onnxruntime_BUILD_SHARED_LIB)
     AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-            LIBS dawn::dawn_native
+            LIBS dawn::dawn_native dawn::dawn_proc
             DEPENDS ${all_dependencies})
   else()
     AddTest(TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-            LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+            LIBS dawn::dawn_native dawn::dawn_proc ${onnxruntime_test_providers_libs}
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+  target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
 endif()
 
 if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

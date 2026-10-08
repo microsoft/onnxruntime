@@ -41,6 +41,38 @@ import numpy as np
 import onnxruntime as ort
 
 _CACHE_TABLE_SUFFIX = ".matmulnbits_fpa_intb.tsv"
+_CACHE_KEY_COLUMNS = (
+    "n_16b",
+    "k",
+    "activation_dtype",
+    "weight_type",
+    "bits",
+    "block_size",
+    "has_zero_points",
+    "zero_point_dtype",
+    "gemv_enabled",
+    "has_bias",
+    "packing_sm",
+    "paired_gemv_mode",
+    "wave_aware_gemv",
+)
+_CACHE_CONFIG_COLUMNS = (
+    "valid_config",
+    "sm_version",
+    "tile80",
+    "tile90",
+    "tile100",
+    "tile120",
+    "split_k_style",
+    "split_k",
+    "stages",
+    "cluster",
+    "mainloop",
+    "epilogue",
+    "tma",
+    "enable_cuda_kernel",
+    "cuda_kernel_variant",
+)
 
 
 def _parse_m_values(text: str) -> list[int]:
@@ -168,33 +200,24 @@ def _summarize_cache(cache_path: str, signature: dict[str, str], *, display: boo
             if columns is None:
                 columns = fields
                 n_key_col = {name: i for i, name in enumerate(columns)}
+                required = (*_CACHE_KEY_COLUMNS, "m_bucket", *_CACHE_CONFIG_COLUMNS)
+                if not set(required).issubset(n_key_col):
+                    raise RuntimeError(f"Missing problem-key or tactic-setting columns in {cache_path}")
                 continue
             if len(fields) != len(columns) or fields[n_key_col["valid_config"]] != "1":
                 raise RuntimeError(f"Invalid or unsuccessful tactic in {cache_path}")
             rows += 1
             # Build a key tuple from the problem-key columns for a unique-shape count.
-            key_cols = [
-                "n_16b",
-                "k",
-                "activation_dtype",
-                "weight_type",
-                "bits",
-                "block_size",
-                "has_zero_points",
-                "zero_point_dtype",
-                "gemv_enabled",
-                "has_bias",
-                "packing_sm",
-            ]
-            key = tuple(fields[n_key_col[c]] for c in key_cols if c in n_key_col)
+            key = tuple(fields[n_key_col[c]] for c in _CACHE_KEY_COLUMNS)
             unique_keys.add(key)
-            entries.add((*key, fields[n_key_col["m_bucket"]]))
+            config = tuple(fields[n_key_col[c]] for c in _CACHE_CONFIG_COLUMNS)
+            entries.add((*key, fields[n_key_col["m_bucket"]], *config))
 
     expected = {
         **signature,
         "ort_cuda_gemm_tactic_cache": "v1",
         "table": "matmulnbits_fpa_intb",
-        "tactic_selection_version": "2",
+        "tactic_selection_version": "3",
     }
     for key, value in expected.items():
         if header.get(key) != value:
