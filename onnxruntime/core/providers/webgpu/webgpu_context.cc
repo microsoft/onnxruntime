@@ -8,8 +8,6 @@
 #include <string>
 #include <vector>
 
-#include <gsl/gsl>
-
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
@@ -1262,29 +1260,6 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
                            const webgpu::BufferManager& buffer_manager,
                            CommandRecordingState& recording) {
-  bool replay_completed = false;
-  auto reset_failed_legacy_replay = gsl::finally([&] {
-    if (replay_completed || &recording != legacy_recording_.get()) {
-      return;
-    }
-    // Replay uses resolved captured commands, not pending pipeline builds. Discard its
-    // unfinished encoder before the caller releases the legacy gate; never submit it.
-    recording.compute_pass_encoder = nullptr;
-    recording.command_encoder = nullptr;
-    recording.num_pending_dispatches = 0;
-    recording.pending_kernels.clear();
-    recording.graph_capture_state = GraphCaptureState::Default;
-    recording.external_captured_commands = nullptr;
-    buffer_manager.DiscardPendingBuffers(recording);
-    if (&buffer_manager != buffer_mgr_.get()) {
-      buffer_mgr_->DiscardPendingBuffers(recording);
-    }
-    if (&buffer_manager != initializer_buffer_mgr_.get()) {
-      initializer_buffer_mgr_->DiscardPendingBuffers(recording);
-    }
-    pending_queries_.clear();
-    is_profiling_ = false;
-  });
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   recording.graph_capture_state = GraphCaptureState::Replaying;
   // Replay all captured commands from the provided vector
@@ -1312,7 +1287,6 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
 
   recording.graph_capture_state = GraphCaptureState::Default;
-  replay_completed = true;
 }
 
 void WebGpuContext::CaptureEnd(CommandRecordingState& recording) {
