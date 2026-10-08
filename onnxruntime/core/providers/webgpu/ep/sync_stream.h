@@ -19,8 +19,8 @@ OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep);
 constexpr bool ShouldUseLegacyRecording(uint32_t ort_api_version, uint32_t ort_patch_version, bool force_legacy) {
   // Patch-level fixes in the 1.28 and 1.30 release lines do not imply support in 1.29.
   const bool supports_session_recording = ort_api_version >= 31 ||
-                                         (ort_api_version == 30 && ort_patch_version >= 1) ||
-                                         (ort_api_version == 28 && ort_patch_version >= 3);
+                                          (ort_api_version == 30 && ort_patch_version >= 1) ||
+                                          (ort_api_version == 28 && ort_patch_version >= 3);
   return force_legacy || !supports_session_recording;
 }
 

@@ -83,7 +83,7 @@ bool UseLegacyRecording() {
     ORT_ENFORCE(force_legacy.empty() || force_legacy == "0" || force_legacy == "1",
                 "ORT_WEBGPU_EP_FORCE_LEGACY must be 0 or 1.");
     return ShouldUseLegacyRecording(onnxruntime::ep::CurrentOrtApiVersion(),
-                                     onnxruntime::ep::CurrentOrtPatchVersion(), force_legacy == "1");
+                                    onnxruntime::ep::CurrentOrtPatchVersion(), force_legacy == "1");
   }();
   return legacy;
 }
