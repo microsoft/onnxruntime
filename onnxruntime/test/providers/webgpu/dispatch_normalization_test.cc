@@ -210,7 +210,7 @@ void CheckLogicalDispatch(WebGpuExecutionProvider& ep, const std::array<uint32_t
   // Even without the guard, every physical workgroup has a valid output slot.
   std::vector<float> output_data(static_cast<size_t>(physical_count) * values_per_workgroup, kOutputPaddingCanary);
   auto output_buffer = CreateStorageBuffer(ep, output_data);
-  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, WebGpuDevice, OrtMemTypeDefault);
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
   Tensor output(DataTypeImpl::GetType<float>(), {static_cast<int64_t>(output_size)}, output_buffer.Get(), memory_info);
   LogicalDispatchProbeProgram program;
   program.AddOutput({&output, ProgramTensorMetadataDependency::TypeAndRank})
@@ -271,7 +271,7 @@ TEST_F(WebGpuDispatchExecutionTest, CanaryDetectsExcessWorkgroups) {
 }
 
 TEST_F(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
-  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, WebGpuDevice, OrtMemTypeDefault);
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
   constexpr uint32_t batches = 7;
   std::array<uint32_t, 3> physical{1, 1, batches};
   ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], 5));
