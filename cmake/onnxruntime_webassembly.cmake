@@ -172,6 +172,7 @@ else()
     file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
+      "${ONNXRUNTIME_ROOT}/core/session/lora_adapters.cc"
     )
     message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
     set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS "-sDISABLE_EXCEPTION_CATCHING=0")

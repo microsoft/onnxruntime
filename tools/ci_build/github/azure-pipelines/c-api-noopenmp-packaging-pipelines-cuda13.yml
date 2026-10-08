@@ -48,12 +48,6 @@ parameters:
   type: string
   default: '0'
 
-- name: CudaVersion
-  displayName: CUDA version
-  type: string
-  default: '13.0'
-  values:
-  - 13.0
 
 - name: EnableReactNative
   displayName: Whether to build React Native packages
@@ -96,6 +90,8 @@ variables:
     value: rc
   ${{ else }}:
     value: dev
+- name: CudaVersion
+  value: 13.0
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -142,16 +138,26 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: templates/linux-cpu-packaging-pipeline.yml
-
-    - template: templates/mac-cpu-packaging-pipeline.yml
+    - template: templates/c-api-cpu.yml
       parameters:
-        AllowReleasedOpsetOnly: 1
-        DoESRP: true
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+        ${{ else }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
+        AdditionalBuildFlags: ''
+        AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
+        BuildVariant: 'default'
+        is1ES: true
+
+    - template: stages/java-cuda-packaging-stage.yml
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
-        CudaVersion: ${{ parameters.CudaVersion }}
+        CudaVersion: ${{ variables.CudaVersion }}
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
         win_trt_home: ${{ variables.win_trt_home }}

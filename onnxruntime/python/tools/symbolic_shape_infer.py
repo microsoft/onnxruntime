@@ -1849,7 +1849,10 @@ class SymbolicShapeInference:
         self._fuse_tensor_type(node, 0, vi_out_seq.type, vi_tensor.type)
 
     def _infer_Shape(self, node):  # noqa: N802
-        self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)
+        # Since opset 15, start/end select a slice of the shape; Python slicing clamps them the same way.
+        start = get_attribute(node, "start", 0)
+        end = get_attribute(node, "end")
+        self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)[start:end]
 
     def _infer_Size(self, node):  # noqa: N802
         sympy_shape = self._get_sympy_shape(node, 0)
@@ -2840,6 +2843,18 @@ class SymbolicShapeInference:
         if policy_mode != "qsa":
             copy_state_output(4, 14, output_dtype)  # present_gate_buffer <- past_gate_buffer
         copy_state_output(5, 15, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
+        if policy_mode == "qsa" and len(node.output) > 6 and node.output[6]:
+            past_key_shape = self._get_sympy_shape(node, 12)
+            if past_key_shape is not None:
+                state_update_capacity = get_attribute(node, "state_update_capacity", 0)
+                vi = self.known_vi_[node.output[6]]
+                vi.CopyFrom(
+                    helper.make_tensor_value_info(
+                        node.output[6],
+                        output_dtype,
+                        get_shape_from_sympy_shape([past_key_shape[0], state_update_capacity, past_key_shape[2]]),
+                    )
+                )
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

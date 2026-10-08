@@ -19,10 +19,15 @@ namespace onnxruntime::test {
 // Node and Tensor are borrowed core objects. The provider-side accessors forward
 // their addresses back to ProviderHost; neither type crosses this link boundary.
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
+    const void* node, bool head_sink_is_constant_initializer = false,
+    int64_t max_total_sequence_length = 0);
+
 std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspaceForTest(
     const void* node, gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop, const AttentionKernelOptions& kernel_options,
-    bool head_sink_is_constant_initializer = false);
+    bool head_sink_is_constant_initializer = false,
+    int64_t max_total_sequence_length = 0);
 
 std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspaceForTest(
     const void* node, gsl::span<const WorkspaceInputShape> input_shapes,
