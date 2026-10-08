@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -53,6 +54,24 @@ def parse_args():
         action="store_true",
         help="Do not apply the tokenizer chat template.",
     )
+    parser.add_argument(
+        "--moe-cpu-offload-experts",
+        type=int,
+        default=0,
+        help="Total number of FP16/BF16 MoE experts to offload to CPU.",
+    )
+    parser.add_argument(
+        "--moe-expert-counter-alpha",
+        type=float,
+        default=0.9,
+        help="MoE expert popularity counter decay coefficient.",
+    )
+    parser.add_argument(
+        "--moe-expert-counter-beta",
+        type=float,
+        default=0.1,
+        help="MoE expert popularity counter increment.",
+    )
     return parser.parse_args()
 
 
@@ -91,7 +110,7 @@ def redirect_native_stderr(path):
             os.close(saved_stderr)
 
 
-def create_model(model_path, provider):
+def create_model(model_path, provider, cpu_offload_experts, counter_alpha, counter_beta):
     config = og.Config(str(model_path))
     if provider != "follow_config":
         config.clear_providers()
@@ -105,6 +124,9 @@ def create_model(model_path, provider):
                         "session_options": {
                             "log_severity_level": 1,
                             "session.enable_moe_expert_statistics": "1",
+                            "session.moe_cpu_offload_experts": str(cpu_offload_experts),
+                            "session.moe_expert_counter_alpha": str(counter_alpha),
+                            "session.moe_expert_counter_beta": str(counter_beta),
                         }
                     }
                 }
@@ -160,13 +182,32 @@ def main():
     args = parse_args()
     if args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
+    if args.moe_cpu_offload_experts < 0:
+        raise ValueError("--moe-cpu-offload-experts must be non-negative.")
+    if (
+        not math.isfinite(args.moe_expert_counter_alpha)
+        or args.moe_expert_counter_alpha < 0
+        or not math.isfinite(args.moe_expert_counter_beta)
+        or args.moe_expert_counter_beta < 0
+        or args.moe_expert_counter_alpha + args.moe_expert_counter_beta > 1
+    ):
+        raise ValueError(
+            "--moe-expert-counter-alpha and --moe-expert-counter-beta must be finite, "
+            "non-negative, and sum to at most 1."
+        )
     if args.output.resolve() == args.counter_log.resolve():
         raise ValueError("--output and --counter-log must refer to different files.")
     prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     with redirect_native_stderr(args.counter_log):
-        model = create_model(args.model, args.provider)
+        model = create_model(
+            args.model,
+            args.provider,
+            args.moe_cpu_offload_experts,
+            args.moe_expert_counter_alpha,
+            args.moe_expert_counter_beta,
+        )
         tokenizer = og.Tokenizer(model)
         results = []
         for prompt_index, prompt in enumerate(prompts, start=1):
