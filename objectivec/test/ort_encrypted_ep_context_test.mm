@@ -213,7 +213,7 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
     rejects(contextRecord, @"wrong-context-name", authenticationKey);
     for (NSData* record in @[ modelRecord, contextRecord ]) {
       NSMutableData* tampered = [record mutableCopy];
-      static_cast<uint8_t*>(tampered.mutableBytes)[tampered.length - 1] ^= 1;
+      static_cast<uint8_t*>(tampered.mutableBytes)[tampered.length - CC_SHA256_DIGEST_LENGTH - 1] ^= 1;
       rejects(tampered, record == modelRecord ? modelName : contextName, authenticationKey);
     }
     // The public Objective-C session API only accepts a path, not in-memory model bytes.
@@ -302,7 +302,7 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
     },
                @"authentication");
     NSMutableData* tamperedContext = [contextRecord mutableCopy];
-    static_cast<uint8_t*>(tamperedContext.mutableBytes)[tamperedContext.length - 1] ^= 1;
+    static_cast<uint8_t*>(tamperedContext.mutableBytes)[tamperedContext.length - CC_SHA256_DIGEST_LENGTH - 1] ^= 1;
     rejectLoad(^NSData*(NSString* name, NSError** callbackError) {
       return DecryptOrReport(tamperedContext, name, encryptionKey, authenticationKey, callbackError);
     },
