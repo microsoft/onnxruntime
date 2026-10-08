@@ -481,13 +481,6 @@ std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimat
   return config;
 }
 
-AttentionDispatchPolicy ParseAttentionDispatchPolicy(std::string_view value) {
-  if (value == "latency") return AttentionDispatchPolicy::Latency;
-  if (value == "memory") return AttentionDispatchPolicy::Memory;
-  if (value == "safe") return AttentionDispatchPolicy::Safe;
-  return AttentionDispatchPolicy::Auto;
-}
-
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
     gsl::span<const WorkspaceInputShape> input_shapes,
@@ -508,7 +501,7 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer,
     int64_t max_total_sequence_length,
-    AttentionDispatchPolicy dispatch_policy) {
+    KernelDispatchPolicy dispatch_policy) {
   auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
       node, head_sink_is_constant_initializer, max_total_sequence_length);
   if (!config.has_value()) return std::nullopt;

@@ -69,9 +69,8 @@ struct WorkspaceEstimatorConfig {
   std::optional<std::string> cuda_fpa_intb_profile_m;
   // Validated nonnegative int64 envelope; zero means unspecified.
   int64_t cuda_gqa_workspace_max_total_sequence_length = 0;
-  // Raw session-option value for session.attention_dispatch_policy; parsed to an intent-level
-  // dispatch policy by the CUDA EP before it reaches the GQA workspace estimator.
-  std::optional<std::string> attention_dispatch_policy;
+  // Raw session.kernel_dispatch_policy value; consumers share the framework parser.
+  std::optional<std::string> kernel_dispatch_policy;
 };
 
 using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;

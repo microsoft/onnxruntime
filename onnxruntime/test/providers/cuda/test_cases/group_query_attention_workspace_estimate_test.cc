@@ -35,7 +35,6 @@ namespace test {
 namespace {
 
 using contrib::attention::AttentionBackend;
-using contrib::cuda::AttentionDispatchPolicy;
 using contrib::cuda::EstimateGroupQueryAttentionWorkspace;
 using contrib::cuda::GetGQACompleteWorkspaceRecipe;
 using contrib::cuda::GetGQAEffectiveWorkspaceKvLength;
@@ -53,7 +52,6 @@ using contrib::cuda::GQAWorkspaceEstimateConfig;
 using contrib::cuda::GQAWorkspaceProblem;
 using contrib::cuda::GQAXqaHeadSinkStorage;
 using contrib::cuda::HasGQAReachableBackend;
-using contrib::cuda::ParseAttentionDispatchPolicy;
 using contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate;
 using contrib::cuda::SetGroupQueryAttentionWorkspaceRequirements;
 
@@ -578,41 +576,21 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPas
             without.total_workspace_bytes + expected_copy);
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyParsesTokens) {
-  struct Case {
-    const char* value;
-    AttentionDispatchPolicy expected;
-  };
-  for (const auto& test_case : {
-           Case{"", AttentionDispatchPolicy::Auto},
-           Case{"auto", AttentionDispatchPolicy::Auto},
-           Case{"latency", AttentionDispatchPolicy::Latency},
-           Case{"memory", AttentionDispatchPolicy::Memory},
-           Case{"safe", AttentionDispatchPolicy::Safe},
-           Case{"Latency", AttentionDispatchPolicy::Auto},
-           Case{" memory", AttentionDispatchPolicy::Auto},
-           Case{"memory ", AttentionDispatchPolicy::Auto},
-           Case{"unknown", AttentionDispatchPolicy::Auto}}) {
-    SCOPED_TRACE(test_case.value);
-    EXPECT_EQ(ParseAttentionDispatchPolicy(test_case.value), test_case.expected);
-  }
-  EXPECT_EQ(Config().dispatch_policy, AttentionDispatchPolicy::Auto);
-}
-
 TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyIsReaderOnlyForBothCacheModes) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
   for (bool windowed : {false, true}) {
     SCOPED_TRACE(windowed);
     auto config = Config();
+    EXPECT_EQ(config.dispatch_policy, KernelDispatchPolicy::Auto);
     config.sliding_window_cache = windowed;
     config.local_window_size = windowed ? 256 : -1;
     config.max_total_sequence_length = windowed ? 0 : 512;
     const auto baseline = EstimateGroupQueryAttentionWorkspace(
         config, SeparateShapes(), Device(), options);
     ASSERT_TRUE(baseline.has_value());
-    for (const auto policy : {AttentionDispatchPolicy::Auto, AttentionDispatchPolicy::Latency,
-                              AttentionDispatchPolicy::Memory, AttentionDispatchPolicy::Safe}) {
+    for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                              KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
       config.dispatch_policy = policy;
       const auto estimate = EstimateGroupQueryAttentionWorkspace(
           config, SeparateShapes(), Device(), options);
@@ -629,8 +607,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyDoesNotEnableUnspec
   auto config = Config();
   config.sliding_window_cache = false;
   config.local_window_size = -1;
-  for (const auto policy : {AttentionDispatchPolicy::Latency, AttentionDispatchPolicy::Memory,
-                            AttentionDispatchPolicy::Safe, AttentionDispatchPolicy::Auto}) {
+  for (const auto policy : {KernelDispatchPolicy::Latency, KernelDispatchPolicy::Memory,
+                            KernelDispatchPolicy::Safe, KernelDispatchPolicy::Auto}) {
     config.dispatch_policy = policy;
     EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
                      config, SeparateShapes(), Device(), options)

@@ -545,8 +545,8 @@ Status CreateAccountants(
   WorkspaceEstimatorConfig estimator_config{
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
-  estimator_config.attention_dispatch_policy =
-      config_options.GetConfigEntry(kOrtSessionOptionsAttentionDispatchPolicy);
+  estimator_config.kernel_dispatch_policy =
+      config_options.GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy);
   if (const auto knob =
           config_options.GetConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
       knob.has_value()) {

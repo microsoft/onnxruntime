@@ -8,6 +8,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "core/framework/node_shape_resolver.h"
 #endif
@@ -3640,16 +3641,15 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         const auto gqa_workspace_max_total_sequence_length =
             estimator_config.cuda_gqa_workspace_max_total_sequence_length;
         // Reader-only intent; no value changes route selection or sizing.
-        contrib::cuda::AttentionDispatchPolicy attention_dispatch_policy =
-            contrib::cuda::AttentionDispatchPolicy::Auto;
-        if (const auto& policy = estimator_config.attention_dispatch_policy;
+        KernelDispatchPolicy kernel_dispatch_policy = KernelDispatchPolicy::Auto;
+        if (const auto& policy = estimator_config.kernel_dispatch_policy;
             policy.has_value()) {
-          attention_dispatch_policy = contrib::cuda::ParseAttentionDispatchPolicy(*policy);
+          kernel_dispatch_policy = ParseKernelDispatchPolicy(*policy);
         }
         const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
             *GetAttentionKernelOptions(), head_sink_is_constant_initializer,
-            gqa_workspace_max_total_sequence_length, attention_dispatch_policy);
+            gqa_workspace_max_total_sequence_length, kernel_dispatch_policy);
         if (ws.has_value()) {
           Level1MemoryEstimate estimate;
           contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate(*ws, estimate);

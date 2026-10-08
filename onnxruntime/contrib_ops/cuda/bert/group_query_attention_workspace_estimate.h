@@ -8,12 +8,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string_view>
 
 #include <cuda_runtime_api.h>
 #include <gsl/span>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/framework/level1_memory_estimate.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/framework/workspace_requirement.h"
@@ -25,19 +25,6 @@ namespace onnxruntime {
 // different Node class keys; translation units must supply their own world.
 namespace contrib {
 namespace cuda {
-
-// Reader-only session.attention_dispatch_policy intent; no value changes sizing or dispatch.
-// Keep local to GQA until another operator needs the hardware-neutral enum.
-enum class AttentionDispatchPolicy {
-  Auto,
-  Latency,
-  Memory,
-  Safe,
-};
-
-// Maps a session.attention_dispatch_policy value to its policy. Unrecognized or empty values map
-// to Auto, so an unknown value never changes estimation behavior.
-AttentionDispatchPolicy ParseAttentionDispatchPolicy(std::string_view value);
 
 struct GQAWorkspaceEstimateConfig {
   size_t qkv_element_size = 0;
@@ -66,7 +53,7 @@ struct GQAWorkspaceEstimateConfig {
   // this field does not enforce a runtime input limit.
   int64_t max_total_sequence_length = 0;
   // Parsed intent only; all values currently leave sizing and dispatch unchanged.
-  AttentionDispatchPolicy dispatch_policy = AttentionDispatchPolicy::Auto;
+  KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto;
 };
 
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
@@ -87,7 +74,7 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer = false,
     int64_t max_total_sequence_length = 0,
-    AttentionDispatchPolicy dispatch_policy = AttentionDispatchPolicy::Auto);
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 void SetGroupQueryAttentionWorkspaceRequirements(
     const GQAWorkspaceAggregate& estimate,
