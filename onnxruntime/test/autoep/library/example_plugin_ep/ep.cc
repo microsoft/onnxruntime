@@ -582,6 +582,9 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
                                            /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
   try {
     assert(fused_nodes.size() == ep_context_nodes.size());
+    if (config_.test_execute_ep_context && config_.embed_ep_context_in_model) {
+      return ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Execution test requires external EPContext data.");
+    }
 
     // Helper to collect input or output names from an array of OrtValueInfo instances.
     auto collect_input_output_names = [&](gsl::span<Ort::ConstValueInfo const> value_infos,
