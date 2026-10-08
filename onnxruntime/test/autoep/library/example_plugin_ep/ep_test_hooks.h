@@ -35,6 +35,9 @@ EXPORT_SYMBOL void ExampleEpTestHooks_SetCreateDataTransferFailure(int enabled);
 // -2: CreateEp() not called since the last reset, -1: not set, 0: "0", 1: "1", 2: any other value.
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetEnableWeightlessOption();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetEnableWeightlessOption();
+// Number of constant initializers the EP copied since the last reset.
+EXPORT_SYMBOL void ExampleEpTestHooks_ResetSavedInitializerCount();
+EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSavedInitializerCount();
 }
 
 // Internal to the library; not exported.
@@ -42,3 +45,4 @@ void RecordPreallocatedOutputQueryResult(int has_preallocated_output);
 void RecordPreallocatedOutputBadIndexRejected(int rejected);
 bool ShouldFailCreateDataTransfer();
 void RecordEnableWeightlessOption(int value);
+void RecordSavedInitializer();
