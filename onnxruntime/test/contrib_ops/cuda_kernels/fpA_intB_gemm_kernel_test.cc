@@ -331,6 +331,15 @@ class KernelTestFixture : public ::testing::Test {
 
   static constexpr int WSizeInBits = cutlassTypeMapper<KT>::WSizeInBits;
   static constexpr bool kIsInt2 = (WSizeInBits == 2);
+  static constexpr bool kUseSm80Layout = kIsInt2 || QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
+
+  static constexpr int GetKernelArch([[maybe_unused]] int device_arch) {
+#if USE_COMPACT_FPA_INTB_GEMM
+    return 80;
+#else
+    return kUseSm80Layout ? 80 : device_arch;
+#endif
+  }
 
   void SetUp() override {
     int device;
@@ -430,12 +439,7 @@ class KernelTestFixture : public ::testing::Test {
       cuda_time_ms = measure_kernel_time(
           [&]() {
             const int device_arch = onnxruntime::llm::common::getSMVersion();
-#if USE_COMPACT_FPA_INTB_GEMM
-            constexpr int kernel_arch = 80;
-#else
-            // 2-bit weights only have the SM80 column-interleaved layout.
-            const int kernel_arch = kIsInt2 ? 80 : device_arch;
-#endif
+            const int kernel_arch = GetKernelArch(device_arch);
             ORT_ENFORCE(wo::is_supported(device_arch, kernel_arch, params.type));
             wo::kernel_launcher(kernel_arch, params, s_);
           },
@@ -453,12 +457,10 @@ class KernelTestFixture : public ::testing::Test {
     int const arch = onnxruntime::llm::common::getSMVersion();
     runner->setArch(arch < 80 ? arch : (arch == 89 ? 89 : 80));
 #else
-    if (kIsInt2) {
-      // 2-bit has no Hopper tactics; target the SM80 compatibility kernel and its tile configs.
-      runner->setArch(80);
-    } else if (onnxruntime::llm::common::getSMVersion() == 90) {
-      runner->setUseSm90Native(true);
-    }
+    const int device_arch = onnxruntime::llm::common::getSMVersion();
+    const int kernel_arch = GetKernelArch(device_arch);
+    runner->setArch(!kIsInt2 && device_arch < 80 ? device_arch : kernel_arch);
+    runner->setUseSm90Native(kernel_arch == 90);
 #endif
     auto& gemm_runner = *runner;
     const size_t ws_bytes = gemm_runner.getWorkspaceSize(m_, n_, k_);
@@ -702,8 +704,9 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
   }
 }
 
-// Use a scale-only fixture and reference for group-32 INT4 M=1 dispatch in both compact and full builds.
+// Keep group-32 INT4 decode and its scale-only reference in the SM80-compatible layout, including on Hopper.
 TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
+  EXPECT_EQ(GetKernelArch(90), 80);
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT4 decode requires SM " << kMinSupportedSm << " or later";
   }
@@ -714,14 +717,36 @@ TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
   }
 }
 
-// Keep the BF16 group-32 fixture and CUTLASS reference symmetric regardless of the build configuration.
+// Keep BF16 group-32 decode and its reference symmetric and SM80-compatible in both build configurations.
 TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
+  EXPECT_EQ(GetKernelArch(90), 80);
   if (onnxruntime::llm::common::getSMVersion() < 80) {
     GTEST_SKIP() << "BF16 INT4 decode requires SM 80 or later";
   }
   for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{{128, 256}, {256, 768}, {2880, 4096}}) {
     SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
     InitBuffers(1, columns, depth, 32);
+    EXPECT_TRUE(BenchmarkAndVerifyKernel());
+  }
+}
+
+// Preserve native Hopper routing for asymmetric fixtures while compact builds retain the SM80 layout.
+TEST_F(Fp16Int4GroupwiseTest, Int4GroupwiseHopperRouting) {
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXPECT_EQ(GetKernelArch(90), 80);
+#else
+  EXPECT_EQ(GetKernelArch(90), 90);
+#endif
+}
+
+// Check widths immediately below and above the narrow SM80 tile's grid.y limit.
+TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1GridLimit) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT4 decode requires SM " << kMinSupportedSm << " or later";
+  }
+  for (int columns : {524224, 524288}) {
+    SCOPED_TRACE(testing::Message() << "N=" << columns);
+    InitBuffers(1, columns, 256, 32);
     EXPECT_TRUE(BenchmarkAndVerifyKernel());
   }
 }

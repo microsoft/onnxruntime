@@ -416,6 +416,14 @@ void dispatcher(Params& params, cudaStream_t s) {
     }                                                                                               \
   } while (0);
 
+  if constexpr (NarrowInt4Decode) {
+    // CUDA limits grid.y to 65,535 blocks; retain the original tile for wider matrices.
+    if (params.m == 1 && params.n / (CtaNDecode * Details::kInterleave) > 65535) {
+      exec_kernel<Details, 1, CtaN, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                  ApplyAlphaInAdvance>(params, s);
+      return;
+    }
+  }
   DISPATCHER_FOR_M(1, 1, CtaNDecode, DecodeThreads);
   DISPATCHER_FOR_M(2, 2, CtaN, 128);
   DISPATCHER_FOR_M(3, 3, CtaN, 128);
