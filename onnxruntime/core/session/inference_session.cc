@@ -153,6 +153,39 @@ PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_op
   }
   return ToPathString(external_data_folder_path + "/virtual_model.onnx");
 }
+
+bool HasEpContextNode(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "EPContext" && node.Domain() == kMSDomain) {
+      return true;
+    }
+
+    for (const auto& subgraph_entry : node.GetAttributeNameToSubgraphMap()) {
+      if (HasEpContextNode(*subgraph_entry.second)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+bool HasEpContextNode(const Model& model) {
+  return HasEpContextNode(model.MainGraph());
+}
+
+Status SetDefaultEpContextFilePathForExternalInitializers(ConfigOptions& config_options,
+                                                          const PathString& model_uri,
+                                                          const Model& model) {
+  if (!config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "").empty() ||
+      config_options.GetConfigOrDefault(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "").empty() ||
+      !HasEpContextNode(model)) {
+    return Status::OK();
+  }
+
+  return config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
+                                       PathToUTF8String(model_uri).c_str());
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 // Parse a spin backoff max config value (exponential-backoff cap). Defaults to
@@ -1270,6 +1303,10 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
     oss << "Load model from " << ToUTF8String(model_uri) << " failed:" << st.ErrorMessage();
     return common::Status(st.Category(), st.Code(), oss.str());
   }
+
+  ORT_RETURN_IF_ERROR_SESSIONID_(
+      SetDefaultEpContextFilePathForExternalInitializers(session_options_.config_options, model_uri, *model_));
+
   return Status::OK();
 }
 
