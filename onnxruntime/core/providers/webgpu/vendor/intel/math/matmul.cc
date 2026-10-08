@@ -32,7 +32,8 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
   MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
   // generate the main function
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_, a_vec4_, b_is_fp16_));
+  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_, a_vec4_,
+                                               b_is_fp16_, use_f32_accumulation_));
   return Status::OK();
 }
 
@@ -110,6 +111,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const bool a_vec4 = is_xe_3lpg && dim_inner % 4 == 0;
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
   const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool use_f32_accumulation = a->IsDataType<MLFloat16>();
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
@@ -127,11 +129,11 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, b_components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16,
+  MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16, use_f32_accumulation,
                                 is_channels_last, elements_per_thread};
   program
       .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
-                 a_vec4, b_is_fp16, is_channels_last)
+                 a_vec4, b_is_fp16, use_f32_accumulation, is_channels_last)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})

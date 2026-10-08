@@ -164,7 +164,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return context.RunProgram(program);
   }
 
-  if (!A->IsDataType<MLFloat16>() && intel::CanApplyGemmIntel(context, M, N, K, transA_, transB_)) {
+  if (intel::CanApplyGemmIntel(context, M, N, K, transA_, transB_)) {
     return intel::ApplyGemmIntel(A, B, C, transA_, transB_, alpha_, beta_, context);
   }
 
