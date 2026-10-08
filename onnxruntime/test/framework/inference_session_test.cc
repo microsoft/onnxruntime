@@ -4925,6 +4925,7 @@ TEST(InferenceSessionTests, CompileApiExternalInitializerBufferRelativeNamesRoun
     ASSERT_STATUS_OK(ExternalDataInfo::Create(model_proto.graph().initializer(0).external_data(), external_info));
     EXPECT_EQ(external_info->GetRelPath(), ORT_TSTR("weights.bin"));
 
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
     // Also load pre-existing models that still record a current-directory prefix.
     ModelProto prefixed_proto = model_proto;
     for (auto& entry : *prefixed_proto.mutable_graph()->mutable_initializer(0)->mutable_external_data()) {
@@ -4960,6 +4961,7 @@ TEST(InferenceSessionTests, CompileApiExternalInitializerBufferRelativeNamesRoun
         }
       }
     }
+#endif
   }
 }
 
@@ -5003,6 +5005,7 @@ TEST(InferenceSessionTests, CompileApiWritesAndReloadsExternalInitializersBuffer
   }
   EXPECT_LT(external_infos[0]->GetOffset(), external_infos[1]->GetOffset());
 
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   const PathString logical_file_name = ORT_TSTR("weights.bin");
   const InlinedHashMap<PathString, std::pair<char*, size_t>> external_files{
       {logical_file_name, {static_cast<char*>(external_buffer), external_size}}};
@@ -5099,6 +5102,7 @@ TEST(InferenceSessionTests, CompileApiWritesAndReloadsExternalInitializersBuffer
     }
     run_and_verify(session);
   }
+#endif
 
   allocator.Free(external_buffer);
   allocator.Free(model_buffer);
@@ -5237,6 +5241,9 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
         ASSERT_EQ(attribute.g().initializer_size(), 1);
         EXPECT_EQ(utils::HasExternalData(attribute.g().initializer(0)), !buffer_destination);
       }
+#if defined(DISABLE_EXTERNAL_INITIALIZERS)
+      if (buffer_destination && has_main_initializer) continue;
+#endif
       {
         std::ofstream output(input_path, std::ios::binary);
         ASSERT_TRUE(compiled_proto.SerializeToOstream(&output));
@@ -5247,10 +5254,12 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
         const bool direct = mode % 2 != 0;
         SessionOptions load_options;
         load_options.graph_optimization_level = TransformerLevel::Default;
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
         if (buffer_destination && has_main_initializer) {
           load_options.external_initializer_files_mmap = {
               {external_path, {static_cast<char*>(external_buffer), external_size}}};
         }
+#endif
         ASSERT_STATUS_OK(load_options.config_options.AddConfigEntry(
             kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
         InferenceSessionWrapper session{load_options, GetEnvironment()};
@@ -5282,6 +5291,7 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
   }
 }
 
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
 TEST(InferenceSessionTests, ExternalInitializerInjectionIsMainGraphOnly) {
   const std::filesystem::path model_dir = ORT_TSTR("external_buffers_attribute_model_dir");
   std::filesystem::remove_all(model_dir);
@@ -5423,9 +5433,10 @@ TEST(InferenceSessionTests, ExternalInitializerInjectionIsMainGraphOnly) {
     }
   }
 }
+#endif
 
 struct CompileApiTrackingAllocator : OrtAllocator {
-  CompileApiTrackingAllocator() : OrtAllocator{} {
+  CompileApiTrackingAllocator() : OrtAllocator{}, memory_info(*backing.GetInfo()) {
     version = ORT_API_VERSION;
     Alloc = [](OrtAllocator* allocator, size_t size) -> void* {
       auto& self = *static_cast<CompileApiTrackingAllocator*>(allocator);
@@ -5439,15 +5450,47 @@ struct CompileApiTrackingAllocator : OrtAllocator {
       self.backing.Free(ptr);
     };
     Info = [](const OrtAllocator* allocator) -> const OrtMemoryInfo* {
-      return static_cast<const CompileApiTrackingAllocator*>(allocator)->backing.GetInfo();
+      return &static_cast<const CompileApiTrackingAllocator*>(allocator)->memory_info;
     };
   }
 
   Ort::AllocatorWithDefaultOptions backing;
+  OrtMemoryInfo memory_info;
   size_t allocations = 0;
   size_t frees = 0;
   bool fail_allocation = false;
 };
+
+TEST(InferenceSessionTests, CompileApiExternalInitializerBufferRequiresHostAccessibleAllocator) {
+  const std::array<OrtDevice, 4> devices{
+      OrtDevice{},
+      OrtDevice{OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, 0},
+      OrtDevice{OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, 0},
+      OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0}};
+  for (const auto& device : devices) {
+    SCOPED_TRACE(device.ToString());
+    CompileApiTrackingAllocator allocator;
+    allocator.memory_info = OrtMemoryInfo("CustomAllocator", OrtDeviceAllocator, device);
+    Ort::SessionOptions options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, options);
+    char sentinel;
+    void* output_buffer = &sentinel;
+    size_t output_size = 123;
+    const Ort::Status status{Ort::GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
+        compile_options, ORT_TSTR("weights.bin"), 0, &allocator, &output_buffer, &output_size)};
+    if (device.UsesCpuMemory()) {
+      EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    } else {
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("host-accessible memory"));
+    }
+    EXPECT_EQ(output_buffer, &sentinel);
+    EXPECT_EQ(output_size, 123u);
+    EXPECT_EQ(allocator.allocations, 0u);
+    EXPECT_EQ(allocator.frees, 0u);
+  }
+}
 
 TEST(InferenceSessionTests, CompileApiEmptyExternalInitializerBufferIsReloadable) {
   const PathString input_path = ORT_TSTR("compile_api_empty_initializer.onnx");

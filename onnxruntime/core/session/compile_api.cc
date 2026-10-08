@@ -201,6 +201,11 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
                     "External initializer logical file name must be a non-empty relative path");
   ORT_API_RETURN_IF(ort_allocator == nullptr, ORT_INVALID_ARGUMENT,
                     "External initializer buffer allocator is null");
+  ORT_API_RETURN_IF(ort_allocator->Info == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer buffer allocator has no memory info callback");
+  const OrtMemoryInfo* memory_info = ort_allocator->Info(ort_allocator);
+  ORT_API_RETURN_IF(memory_info == nullptr || !memory_info->device.UsesCpuMemory(), ORT_INVALID_ARGUMENT,
+                    "External initializer buffer allocator must provide host-accessible memory");
   ORT_API_RETURN_IF(output_buffer_ptr == nullptr, ORT_INVALID_ARGUMENT,
                     "External initializer output buffer pointer is null");
   ORT_API_RETURN_IF(output_buffer_size_ptr == nullptr, ORT_INVALID_ARGUMENT,

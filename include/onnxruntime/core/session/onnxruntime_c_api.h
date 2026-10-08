@@ -8597,6 +8597,8 @@ struct OrtCompileApi {
    * logical file name must be a non-empty relative path. Leading current-directory prefixes (`./` or `.\\`) are
    * removed before the name is recorded in each externalized TensorProto.
    * This setter only configures the destination; CompileModel allocates the buffer using `allocator`.
+   * The allocator must provide host-accessible memory (CPU or host-accessible/pinned device memory).
+   * Device-only allocators are rejected with ORT_INVALID_ARGUMENT.
    * On successful CompileModel completion, the caller owns the allocated buffer and must release it with `allocator`.
    * If no data is externalized, the output buffer is NULL and its size is zero.
    * Only main-graph initializers are externalized to this buffer; subgraph initializers remain embedded in the model.
@@ -8612,7 +8614,7 @@ struct OrtCompileApi {
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] logical_file_name Logical external-data file name stored in the model.
    * \param[in] external_initializers_size_threshold Initializers at least this size are externalized.
-   * \param[in] allocator Allocator used to allocate the output buffer.
+   * \param[in] allocator Allocator providing host-accessible memory for the output buffer.
    * \param[out] output_buffer_ptr Receives the allocated buffer, or NULL when no data is externalized.
    * \param[out] output_buffer_size_ptr Receives the allocated buffer size.
    * \snippet{doc} snippets.dox OrtStatus Return Value

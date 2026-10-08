@@ -1076,6 +1076,7 @@ TEST(OrtEpLibrary, PluginEp_CompileAndLoadWithoutFilesystem_ExternalInitializers
   ASSERT_TRUE(write_callback_state.write_called);
   EXPECT_FALSE(std::filesystem::exists(logical_file_name));
 
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   for (const char* use_buffers_directly : {"0", "1"}) {
     SCOPED_TRACE(use_buffers_directly);
     EpContextDataCallbackState read_callback_state;
@@ -1095,6 +1096,7 @@ TEST(OrtEpLibrary, PluginEp_CompileAndLoadWithoutFilesystem_ExternalInitializers
     EXPECT_TRUE(read_callback_state.read_called);
     EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
   }
+#endif
 }
 
 TEST(OrtEpLibrary, PluginEp_ExternalEpContextCallbacksRequireAdvertisedSupport) {
