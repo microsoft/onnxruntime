@@ -177,7 +177,7 @@ TEST(MatMulZeroKTest, GraphCaptureReplay) {
 }
 
 template <typename T>
-void RunZeroKConvTest(bool channels_last, bool initializer) {
+void RunConvMatMulTest(bool channels_last, bool initializer, bool empty_output = false) {
   ConfigOptions config;
   ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kValidationMode,
                                          webgpu::options::kValidationMode_full));
@@ -195,15 +195,17 @@ void RunZeroKConvTest(bool channels_last, bool initializer) {
     test.AddAttribute("activation", std::string{"Clip"});
     test.AddAttribute("activation_params", std::vector<float>{-0.5f, 2.0f});
   }
-  const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{2, 2, 3, 0}
-                                                         : std::vector<int64_t>{2, 0, 2, 3};
-  const std::vector<int64_t> output_shape = channels_last ? std::vector<int64_t>{2, 2, 3, 3}
-                                                          : std::vector<int64_t>{2, 3, 2, 3};
+  const int64_t batch = empty_output ? 0 : 2;
+  const int64_t channels = empty_output ? 4 : 0;
+  const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{batch, 2, 3, channels}
+                                                         : std::vector<int64_t>{batch, channels, 2, 3};
+  const std::vector<int64_t> output_shape = channels_last ? std::vector<int64_t>{batch, 2, 3, 3}
+                                                          : std::vector<int64_t>{batch, 3, 2, 3};
   test.AddInput<T>("X", input_shape, std::vector<T>{});
-  test.AddInput<T>("W", {3, 0, 1, 1}, std::vector<T>{}, initializer);
+  test.AddInput<T>("W", {3, channels, 1, 1}, std::vector<T>(3 * channels, T{1.0f}), initializer);
   test.AddInput<T>("B", {3}, std::vector<T>{T{-2.0f}, T{-0.25f}, T{3.5f}});
   std::vector<T> expected;
-  for (int64_t index = 0; index < 36; ++index) {
+  for (int64_t index = 0; index < batch * 18; ++index) {
     const int64_t channel = channels_last ? index % 3 : (index / 6) % 3;
     const float value = channel == 0 ? -2.0f : channel == 1 ? -0.25f
                                                             : 3.5f;
@@ -219,16 +221,23 @@ void RunZeroKConvTest(bool channels_last, bool initializer) {
 
 TEST(MatMulZeroKTest, ChannelsFirstConvBias) {
   for (bool initializer : {false, true}) {
-    RunZeroKConvTest<float>(false, initializer);
-    RunZeroKConvTest<MLFloat16>(false, initializer);
+    RunConvMatMulTest<float>(false, initializer);
+    RunConvMatMulTest<MLFloat16>(false, initializer);
   }
 }
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST(MatMulZeroKTest, ChannelsLastConvBiasAndActivation) {
   for (bool initializer : {false, true}) {
-    RunZeroKConvTest<float>(true, initializer);
-    RunZeroKConvTest<MLFloat16>(true, initializer);
+    RunConvMatMulTest<float>(true, initializer);
+    RunConvMatMulTest<MLFloat16>(true, initializer);
+  }
+}
+
+TEST(MatMulZeroKTest, SharedHelperEmptyOutputChannelsLastConv) {
+  for (bool initializer : {false, true}) {
+    RunConvMatMulTest<float>(true, initializer, true);
+    RunConvMatMulTest<MLFloat16>(true, initializer, true);
   }
 }
 #endif
