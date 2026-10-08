@@ -58,6 +58,15 @@ the existing WebGPU provider options:
   instance and device. Copies between different context IDs are not supported.
 - `preserveDevice`: `"1"` to retain the custom context across session releases.
 
+An `OrtMemoryInfo` with device ID `N` identifies an external memory domain; it
+does not register the matching Dawn proc table, instance, or device. The
+Env/global allocator path currently supports only context zero. Streamless
+`Env::CopyTensor` for an external context requires that context to remain
+registered by an active provider factory/session or through `preserveDevice=1`.
+Pre-session global allocation/copy for an external Dawn context requires a
+separate environment-level registration API that also exposes its memory
+device and shared allocator; a nonzero memory-device ID alone is insufficient.
+
 The device must request `ImplicitDeviceSynchronization` in
 `DeviceDescriptor.requiredFeatures`, plus the features and limits required by
 the model. Supplying a device does not let ORT change how that device was

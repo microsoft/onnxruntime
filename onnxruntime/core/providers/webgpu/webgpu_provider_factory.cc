@@ -3,7 +3,6 @@
 
 #include <charconv>
 #include <limits>
-#include <mutex>
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ortdevice.h"
@@ -428,14 +427,11 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::CreateF
   return CreateWebGpuProviderFactory(config_options, max_storage_buffer_binding_size);
 }
 
-// WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
+// WebGPU DataTransfer implementation wrapper for the C API
 struct WebGpuDataTransferImpl : OrtDataTransferImpl {
-  WebGpuDataTransferImpl(const OrtApi& ort_api_in, int context_id)
+  explicit WebGpuDataTransferImpl(const OrtApi& ort_api_in)
       : ort_api{ort_api_in},
-        ep_api{*ort_api_in.GetEpApi()},
-        context_{nullptr},
-        context_id_{context_id},
-        init_mutex_{} {
+        ep_api{*ort_api_in.GetEpApi()} {
     ort_version_supported = ORT_API_VERSION;
     CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback
     CopyTensors = CopyTensorsImpl;  // OrtDataTransferImpl::CopyTensors callback
@@ -523,31 +519,6 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       if (!CanCopyImpl(this_ptr, src_device, dst_device)) {
         return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported memory devices for WebGPU copy.");
       }
-      const int context_id = impl.ep_api.MemoryDevice_GetDeviceId(
-          impl.ep_api.MemoryDevice_GetDeviceType(src_device) == OrtMemoryInfoDeviceType_GPU ? src_device : dst_device);
-      WebGpuContext* context = nullptr;
-      if (context_id == impl.context_id_) {
-        std::lock_guard<std::mutex> lock(impl.init_mutex_);
-        if (impl.context_ == nullptr) {
-          if (context_id == 0) {
-            impl.context_ = &WebGpuContextFactory::DefaultContext();
-          } else {
-            WebGpuContextFactory::RetainContext(context_id);
-            impl.context_ = &WebGpuContextFactory::GetContext(context_id);
-          }
-        }
-        context = impl.context_;
-      } else {
-        WebGpuContextFactory::RetainContext(context_id);
-        context = &WebGpuContextFactory::GetContext(context_id);
-      }
-      auto release_context = gsl::finally([&]() {
-        if (context_id != impl.context_id_) {
-          WebGpuContextFactory::ReleaseContext(context_id);
-        }
-      });
-      CommandRecordingState recording;
-      DataTransferImpl data_transfer{context->BufferManager(), recording};
 #if defined(ORT_USE_EP_API_ADAPTERS)
       Ort::ConstValue src_value{src_tensors[idx]};
       const void* src_data = src_value.GetTensorRawData();
@@ -567,23 +538,28 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
+      common::Status status;
 #if defined(ORT_USE_EP_API_ADAPTERS)
-      const bool has_session_stream = streams != nullptr && streams[idx] != nullptr;
-      auto status = has_session_stream
-                        ? webgpu::ep::CopyTensorOnWebGpuStream(streams[idx], src_data, src_is_gpu, dst_data, dst_is_gpu, size)
-                        : data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+      if (streams != nullptr && streams[idx] != nullptr) {
+        status = webgpu::ep::CopyTensorOnWebGpuStream(streams[idx], src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+      } else
 #else
       ORT_UNUSED_PARAMETER(streams);
-      constexpr bool has_session_stream = false;
-      auto status = data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
 #endif
+      {
+        const int context_id = impl.ep_api.MemoryDevice_GetDeviceId(src_is_gpu ? src_device : dst_device);
+        WebGpuContextFactory::RetainContext(context_id);
+        auto release_context = gsl::finally([context_id]() { WebGpuContextFactory::ReleaseContext(context_id); });
+        auto& context = WebGpuContextFactory::GetContext(context_id);
+        CommandRecordingState recording;
+        DataTransferImpl data_transfer{context.BufferManager(), recording};
+        status = data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+        if (status.IsOK() && src_is_gpu && dst_is_gpu) {
+          ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), recording));
+        }
+      }
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
-      }
-      if (src_is_gpu && dst_is_gpu && !has_session_stream) {
-        // Env copies use a separate recording: a subsequent Session::Run cannot submit this copy.
-        // Flush here so later Session work on the same queue is ordered after it, without a CPU wait.
-        ORT_THROW_IF_ERROR(context->Flush(context->BufferManager(), recording));
       }
     }
     return nullptr;
@@ -591,29 +567,16 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
   static void ORT_API_CALL ReleaseImpl(
       OrtDataTransferImpl* this_ptr) noexcept {
-    auto* p_impl = static_cast<WebGpuDataTransferImpl*>(this_ptr);
-    int context_id = p_impl->context_id_;
-    bool data_transfer_initialized = false;
-    {
-      std::lock_guard<std::mutex> lock(p_impl->init_mutex_);
-      data_transfer_initialized = (p_impl->context_ != nullptr);
-    }
-    delete p_impl;
-    if (data_transfer_initialized) {
-      WebGpuContextFactory::ReleaseContext(context_id);
-    }
+    delete static_cast<WebGpuDataTransferImpl*>(this_ptr);
   }
 
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
-  WebGpuContext* context_;  // Lazily retained until ReleaseImpl.
-  int context_id_;          // Track which context we're using
-  std::mutex init_mutex_;   // Protects lazy initialization
 };
 
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer() {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id);
+  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort);
 #else
   // Validate API version is supported
   const OrtApi* api = OrtApis::GetApi(ORT_API_VERSION);
@@ -621,7 +584,7 @@ OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
     // API version not supported - return nullptr to indicate failure
     return nullptr;
   }
-  return new WebGpuDataTransferImpl(*api, context_id);
+  return new WebGpuDataTransferImpl(*api);
 #endif
 }
 
