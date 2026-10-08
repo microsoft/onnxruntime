@@ -495,9 +495,12 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
     const float* Bias
 )
 {
+    // BlkLen < 32 is not implemented here. Callers must route it to the general
+    // (block sum based) kernel instead, otherwise C would be left uninitialized.
+    assert(BlkLen >= 32);
+
     if (QuantBZeroPoint) {
-        if (BlkLen == 16) {
-        } else if (BlkLen == 32) {
+        if (BlkLen == 32) {
             MlasQ4Int8GemmM1KernelBlkLen32Avx2<true, vnni>(
                 QuantA,
                 QuantAScale,
@@ -524,8 +527,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
             );
         }
     } else {
-        if (BlkLen == 16) {
-        } else if (BlkLen == 32) {
+        if (BlkLen == 32) {
             MlasQ4Int8GemmM1KernelBlkLen32Avx2<false, vnni>(
                 QuantA,
                 QuantAScale,
