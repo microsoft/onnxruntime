@@ -636,6 +636,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
     accelerated_initializer_allocator_ =
         CreateD3D12AcceleratedWebGpuAllocator(
             context_,
+            context_id_,
             [this]() -> webgpu::CommandRecordingState& { return Recording(); },
             accelerated_initializer_state_);
   }
@@ -813,7 +814,7 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
   }
 
   return std::make_unique<webgpu::D3D12AcceleratedExternalDataLoader>(
-      context_, accelerated_initializer_state_,
+      context_, context_id_, accelerated_initializer_state_,
       weight_load_acceleration_mode_);
 }
 #endif

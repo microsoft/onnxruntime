@@ -38,6 +38,7 @@ struct D3D12AcceleratedLoadBatch;
 
 AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
     WebGpuContext& context,
+    int context_id,
     std::function<CommandRecordingState&()> recording_getter,
     std::shared_ptr<D3D12ImportedBufferRegistry>& out_buffer_registry);
 
@@ -45,6 +46,7 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
  public:
   D3D12AcceleratedExternalDataLoader(
       WebGpuContext& context,
+      int context_id,
       std::shared_ptr<D3D12ImportedBufferRegistry> buffer_registry,
       WeightLoadAccelerationMode mode);
   ~D3D12AcceleratedExternalDataLoader() override;
@@ -73,6 +75,7 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
   common::Status EnsureFileLoader() const;
 
   WebGpuContext& context_;
+  int context_id_;
   std::shared_ptr<D3D12ImportedBufferRegistry> buffer_registry_;
   WeightLoadAccelerationMode acceleration_mode_;
   mutable std::once_flag device_support_resolution_once_;

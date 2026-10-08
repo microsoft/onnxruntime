@@ -381,6 +381,7 @@ class D3D12AcceleratedWebGpuAllocator final
  public:
   D3D12AcceleratedWebGpuAllocator(
       WebGpuContext& context,
+      int context_id,
       std::function<CommandRecordingState&()>
           recording_getter,
       std::shared_ptr<D3D12ImportedBufferRegistry>
@@ -389,7 +390,7 @@ class D3D12AcceleratedWebGpuAllocator final
             OrtMemoryInfo(
                 WEBGPU_BUFFER,
                 OrtAllocatorType::OrtReadOnlyAllocator,
-                WebGpuDevice,
+                WebGpuDevice(context_id),
                 OrtMemTypeDefault)),
         context_{context},
         recording_getter_{
@@ -474,6 +475,7 @@ class D3D12AcceleratedWebGpuAllocator final
 
 AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
     WebGpuContext& context,
+    int context_id,
     std::function<CommandRecordingState&()>
         recording_getter,
     std::shared_ptr<D3D12ImportedBufferRegistry>&
@@ -483,7 +485,7 @@ AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
   auto allocator =
       std::make_shared<
           D3D12AcceleratedWebGpuAllocator>(
-          context, std::move(recording_getter), buffer_registry);
+          context, context_id, std::move(recording_getter), buffer_registry);
   buffer_registry->allocator = allocator.get();
   out_buffer_registry = buffer_registry;
   return allocator;
@@ -523,11 +525,15 @@ common::Status D3D12AcceleratedExternalDataLoader::EnsureFileLoader() const {
 D3D12AcceleratedExternalDataLoader::
     D3D12AcceleratedExternalDataLoader(
         WebGpuContext& context,
+        int context_id,
         std::shared_ptr<
             D3D12ImportedBufferRegistry>
             buffer_registry,
         WeightLoadAccelerationMode mode)
-    : context_{context}, buffer_registry_{std::move(buffer_registry)}, acceleration_mode_{mode} {
+    : context_{context},
+      context_id_{context_id},
+      buffer_registry_{std::move(buffer_registry)},
+      acceleration_mode_{mode} {
   ORT_ENFORCE(
       buffer_registry_ != nullptr,
       "D3D12 imported buffer registry is required.");
@@ -541,7 +547,7 @@ D3D12AcceleratedExternalDataLoader::
 bool D3D12AcceleratedExternalDataLoader::CanLoad(
     const OrtMemoryInfo& target_memory_info) const {
   ResolveSupport();
-  return target_memory_info.device == WebGpuDevice &&
+  return target_memory_info.device == WebGpuDevice(context_id_) &&
          target_memory_info.name == WEBGPU_BUFFER &&
          resolved_acceleration_enabled_;
 }
@@ -557,7 +563,7 @@ bool D3D12AcceleratedExternalDataLoader::
     CreatesTensorForDevice(
         const OrtDevice& target_device) const {
   ResolveSupport();
-  return target_device == WebGpuDevice &&
+  return target_device == WebGpuDevice(context_id_) &&
          (resolved_acceleration_enabled_ ||
           IsWeightLoadAccelerationRequired(acceleration_mode_));
 }

@@ -251,8 +251,6 @@ WebGpuContextConfig ParseWebGpuContextConfig(
                     config.context_id >= 0 && config.context_id <= std::numeric_limits<OrtDevice::DeviceId>::max(),
                 "Invalid deviceId value: ", context_id_str, ". Must be an integer in the range 0 to ",
                 std::numeric_limits<OrtDevice::DeviceId>::max(), ".");
-    ORT_ENFORCE(config.context_id != kDeviceFreeDefaultContextId,
-                "WebGPU device ID ", kDeviceFreeDefaultContextId, " is reserved for internal use.");
   }
 
   if (std::string adapter_index_str;
