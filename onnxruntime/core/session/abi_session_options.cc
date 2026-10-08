@@ -27,11 +27,7 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   ORT_THROW("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
-    : value(other.value),
-      custom_op_domains_(other.custom_op_domains_),
-      provider_factories(other.provider_factories),
-      weightless_source_model_data(other.weightless_source_model_data),
-      weightless_source_model_data_size(other.weightless_source_model_data_size) {
+    : value(other.value), custom_op_domains_(other.custom_op_domains_), provider_factories(other.provider_factories) {
 }
 
 const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const noexcept {

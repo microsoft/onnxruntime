@@ -2713,6 +2713,45 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Validates the "ep.enable_weightless_mode" session option before the model is partitioned. Plugin EPs check it again
+// when they are created and when they compile nodes, but those checks don't run if the session uses no plugin EP or
+// compiles no nodes.
+static Status ValidateWeightlessMode(const SessionOptions& session_options) {
+  const std::optional<std::string> weightless_mode_entry =
+      session_options.config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
+  if (!weightless_mode_entry.has_value()) {
+    return Status::OK();
+  }
+
+  // An explicitly empty value is invalid.
+  OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
+  return epctx::ParseWeightlessMode(*weightless_mode_entry, weightless_mode);
+}
+
+// Warns if a model compiled with OrtWeightlessSupport_ALL is loaded without a source model. The EP may still
+// locate the source model via the "onnx_model_filename" EPContext node attribute, so this is not an error.
+static void CheckWeightlessSourceModel(const SessionOptions& session_options, const Model& model,
+                                       const logging::Logger& logger) {
+  const auto& model_metadata = model.MetaData();
+  auto it = model_metadata.find(kOrtModelMetadata_WeightlessMode);
+  if (it == model_metadata.end() || it->second != std::to_string(static_cast<int>(OrtWeightlessSupport_ALL))) {
+    return;
+  }
+
+  const bool has_source_model_path =
+      !session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextSourceModelPath, "").empty();
+  const bool has_source_model_buffer = session_options.weightless_source_model_data != nullptr;
+  if (!has_source_model_path && !has_source_model_buffer) {
+    LOGS(logger, WARNING)
+        << "The model was compiled with weightless mode OrtWeightlessSupport_ALL, which requires the source model "
+        << "at runtime, but neither the '" << kOrtSessionOptionEpContextSourceModelPath
+        << "' session option nor a source model buffer (SessionOptionsSetWeightlessSourceModelBuffer) is set. "
+        << "The EP will try to locate the source model via the 'onnx_model_filename' EPContext node attribute.";
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::Initialize() {
   const auto start_timing = [this]() {
     TimePoint start_time{};
@@ -2765,6 +2804,10 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR(ValidateWeightlessMode(session_options_));
+    CheckWeightlessSourceModel(session_options_, *model_, *session_logger_);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;

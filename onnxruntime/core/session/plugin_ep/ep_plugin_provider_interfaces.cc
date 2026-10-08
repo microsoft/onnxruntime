@@ -143,13 +143,15 @@ Status PrepareWeightlessSessionOptions(const OrtSessionOptions& session_options,
                                        gsl::span<const OrtEpDevice* const> ep_devices, const char* ep_name,
                                        /*out*/ std::optional<OrtSessionOptions>& ep_session_options) {
   const ConfigOptions& config_options = session_options.value.config_options;
-  const std::string weightless_mode_str =
-      config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightlessMode, "");
-  if (weightless_mode_str.empty()) {
+  const std::optional<std::string> weightless_mode_entry =
+      config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
+  if (!weightless_mode_entry.has_value()) {
     // Keep the behavior of the deprecated option.
     return Status::OK();
   }
 
+  // An explicitly empty value is invalid.
+  const std::string& weightless_mode_str = *weightless_mode_entry;
   OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
   ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(weightless_mode_str, weightless_mode));
 
@@ -213,7 +215,8 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   Status status = CreatePluginExecutionProvider(session_options, session_logger, plugin_ep);
 
   if (!status.IsOK()) {
-    ORT_THROW("Error creating execution provider: ", status.ToString());
+    // Preserve the status code (e.g., ORT_INVALID_ARGUMENT or ORT_EP_FAIL) for the caller.
+    ORT_THROW_FROM_STATUS(status);
   }
 
   return plugin_ep;
@@ -340,8 +343,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
   // Record the weightless mode requested by the app. Validation is deferred to Compile().
-  weightless_mode_ =
-      session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightlessMode, "");
+  weightless_mode_ = session_options.value.config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
   legacy_weightless_requested_ =
       session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
 
@@ -747,12 +749,12 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   bool weightless_requested = false;
   std::optional<OrtWeightlessSupport> requested_mode;  // std::nullopt: any mode (deprecated option).
   std::string requested_option;
-  if (!weightless_mode_.empty()) {
+  if (weightless_mode_.has_value()) {
     OrtWeightlessSupport mode = OrtWeightlessSupport_NONE;
-    ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(weightless_mode_, mode));
+    ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(*weightless_mode_, mode));
     weightless_requested = mode != OrtWeightlessSupport_NONE;
     requested_mode = mode;
-    requested_option = std::string(kOrtSessionOptionEpEnableWeightlessMode) + "=" + weightless_mode_;
+    requested_option = std::string(kOrtSessionOptionEpEnableWeightlessMode) + "=" + *weightless_mode_;
   } else if (legacy_weightless_requested_) {
     weightless_requested = true;
     requested_option = std::string(kOrtSessionOptionEpEnableWeightless) + "=1";
