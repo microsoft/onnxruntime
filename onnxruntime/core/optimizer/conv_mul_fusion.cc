@@ -16,11 +16,12 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
 
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& mul_inputs = mul_node.InputDefs();
+  const size_t mul_const_input_idx = graph_utils::NodeArgIsConstant(graph, *mul_inputs[0]) ? 0 : 1;
 
   const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
   ORT_ENFORCE(conv_W_tensor_proto);
 
-  const auto* mul_B_tensor_proto = graph_utils::GetConstantInitializer(graph, mul_inputs[1]->Name());
+  const auto* mul_B_tensor_proto = graph_utils::GetConstantInitializer(graph, mul_inputs[mul_const_input_idx]->Name());
   ORT_ENFORCE(mul_B_tensor_proto);
 
   // Conv only supports floating point data types, so can only fuse with an initializer containing those types
@@ -126,10 +127,13 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const
     return false;
   }
 
-  // Check that the appropriate inputs to the Conv and Mul nodels are constants.
+  // Check that the appropriate inputs to the Conv and Mul nodes are constants.
+  const auto& next_inputs = next_node.InputDefs();
+  const bool mul_input0_is_constant = graph_utils::NodeArgIsConstant(graph, *next_inputs[0]);
+  const bool mul_input1_is_constant = graph_utils::NodeArgIsConstant(graph, *next_inputs[1]);
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
       (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
-      !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
+      (mul_input0_is_constant == mul_input1_is_constant)) {
     return false;
   }
 
