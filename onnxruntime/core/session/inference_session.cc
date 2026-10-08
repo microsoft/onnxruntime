@@ -68,6 +68,7 @@
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/threadpool.h"
+#include "core/platform/telemetry_strings.h"
 #ifdef _WIN32
 #include "core/platform/tracing.h"
 #include <Windows.h>
@@ -776,8 +777,11 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
   LOGS(logger, INFO) << session_options;
 
 #if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
-  std::string optimized_model_filepath = ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath);
-  std::string profile_file_prefix = ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.profile_file_prefix);
+  const std::string optimized_model_filepath =
+      ToUTF8String(telemetry_detail::BoundedTelemetryWideString(session_options.optimized_model_filepath.native()));
+  const std::string profile_file_prefix =
+      ToUTF8String(telemetry_detail::BoundedTelemetryWideString(session_options.profile_file_prefix));
+  telemetry_detail::TelemetryStrings strings;
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionOptions",
@@ -791,7 +795,7 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
                     TraceLoggingBoolean(session_options.enable_mem_reuse, "enable_mem_reuse"),
                     TraceLoggingBoolean(session_options.enable_cpu_mem_arena, "enable_cpu_mem_arena"),
                     TraceLoggingString(profile_file_prefix.c_str(), "profile_file_prefix"),
-                    TraceLoggingString(session_options.session_logid.c_str(), "session_logid"),
+                    TraceLoggingString(strings.Utf8(session_options.session_logid), "session_logid"),
                     TraceLoggingInt8(static_cast<INT8>(session_options.session_log_severity_level), "session_log_severity_level"),
                     TraceLoggingInt8(static_cast<INT8>(session_options.session_log_verbosity_level), "session_log_verbosity_level"),
                     TraceLoggingUInt32(session_options.max_num_graph_transformation_steps, "max_num_graph_transformation_steps"),
@@ -811,18 +815,21 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
       TraceLoggingBoolean(session_options.intra_op_param.allow_spinning, "allow_spinning"),
       TraceLoggingInt32(session_options.intra_op_param.dynamic_block_base_, "dynamic_block_base_"),
       TraceLoggingUInt32(session_options.intra_op_param.stack_size, "stack_size"),
-      TraceLoggingString(!session_options.intra_op_param.affinity_str.empty() ? session_options.intra_op_param.affinity_str.c_str() : "", "affinity_str"),
+      TraceLoggingString(strings.Utf8(session_options.intra_op_param.affinity_str), "affinity_str"),
       TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"),
       TraceLoggingBoolean(captureState, "isCaptureState"));
 
+  size_t config_count = 0;
   for (const auto& config_pair : session_options.config_options.configurations) {
+    if (config_count++ == telemetry_detail::kMaxTelemetryCollectionEntries) break;
+    telemetry_detail::TelemetryStrings config_strings;
     TraceLoggingWrite(
         telemetry_provider_handle,
         "SessionOptions_ConfigEntry",
         TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-        TraceLoggingString(config_pair.first.c_str(), "Key"),
-        TraceLoggingString(config_pair.second.c_str(), "Value"),
+        TraceLoggingString(config_strings.Utf8(config_pair.first), "Key"),
+        TraceLoggingString(config_strings.Utf8(config_pair.second), "Value"),
         TraceLoggingBoolean(captureState, "isCaptureState"));
   }
 #endif
@@ -1202,7 +1209,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
-    telemetry_.event_name_ = event_name;
+    telemetry_.event_name_ = telemetry_detail::BoundedTelemetryString(event_name);
     ORT_TELEMETRY_CAPTURE_STATUS_END();
   }
   ORT_CATCH(const std::exception& ex) {
@@ -1244,7 +1251,7 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
                                                 kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
-    ModelOptions model_opts(allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_);
+    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
 
     // When set, the external initializers folder overrides the model's own directory as the
     // base for resolving external data. The model bytes are still read from model_uri.
@@ -1350,8 +1357,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
-                                                 check_load_cancellation_fn_));
+                                    ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
+                                                 check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_array");
@@ -1418,8 +1425,8 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     // This call will move model_proto to the constructed model instance
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
-                                                 check_load_cancellation_fn_));
+                                    ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
+                                                 check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_proto");
@@ -1451,9 +1458,7 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    ModelOptions model_opts(allow_released_opsets_only,
-                            strict_shape_type_inference,
-                            check_load_cancellation_fn_);
+    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1496,8 +1501,7 @@ common::Status InferenceSession::Load() {
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                       ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
-                                    check_load_cancellation_fn_));
+                       ModelOptions{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_from_saved_proto");
@@ -1527,9 +1531,9 @@ common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
   std::unique_ptr<Model> tmp_model;
   ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
                                                          HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                                         ModelOptions(allow_released_opsets_only,
+                                                         ModelOptions{allow_released_opsets_only,
                                                                       strict_shape_type_inference,
-                                                                      check_load_cancellation_fn_),
+                                                                      check_load_cancellation_fn_},
                                                          *session_logger_, tmp_model));
 
   model_ = std::move(tmp_model);
@@ -2885,8 +2889,12 @@ common::Status InferenceSession::Initialize() {
     }
 
     if (!session_options_.external_initializer_files_mmap.empty()) {
+      const bool use_buffers_directly = session_options_.config_options.GetConfigOrDefault(
+                                            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
+                                        "1";
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap));
+          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap,
+                                                            use_buffers_directly));
       InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>{}.swap(
           session_options_.external_initializer_files_mmap);
     }
@@ -3969,7 +3977,12 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
       ++telemetry_.total_runs_since_last_;
       telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-      telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+      auto batch_entry = telemetry_.duration_per_batch_size_.find(batch_size);
+      if (batch_entry != telemetry_.duration_per_batch_size_.end()) {
+        batch_entry->second += TimeDiffMicroSeconds(tp);
+      } else if (telemetry_.duration_per_batch_size_.size() < telemetry_detail::kMaxTelemetryCollectionEntries) {
+        telemetry_.duration_per_batch_size_.emplace(batch_size, TimeDiffMicroSeconds(tp));
+      }
 
       // Emit RuntimePerf on scheduled interval
       if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_)) {
@@ -4629,11 +4642,16 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   // cannot disambiguate node-to-device assignment here — every device row for the
   // same EP type will carry the same total count. Downstream aggregation should
   // use MAX (not SUM) across device rows to avoid double counting.
-  std::unordered_map<std::string, int> nodes_per_ep;
+  std::unordered_map<std::string_view, int> nodes_per_ep;
   for (const auto& node : graph.Nodes()) {
-    const auto& ep = node.GetExecutionProviderType();
+    const auto ep = telemetry_detail::TelemetryStringView(std::string_view(node.GetExecutionProviderType()));
     if (!ep.empty()) {
-      nodes_per_ep[ep]++;
+      const auto entry = nodes_per_ep.find(ep);
+      if (entry != nodes_per_ep.end()) {
+        ++entry->second;
+      } else if (nodes_per_ep.size() < telemetry_detail::kMaxTelemetryCollectionEntries) {
+        nodes_per_ep.emplace(ep, 1);
+      }
     }
   }
 
@@ -4641,33 +4659,35 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   // falling back to OrtDevice for legacy EPs that were not created via the V2
   // OrtEpDevice path.
   for (const auto& provider : execution_providers_) {
+    if (telemetry_.ep_device_info_.size() == telemetry_detail::kMaxTelemetryCollectionEntries) break;
     if (!provider) {
       continue;
     }
 
-    const std::string& ep_type = provider->Type();
+    const auto ep_type = telemetry_detail::TelemetryStringView(std::string_view(provider->Type()));
     const int assigned_nodes = nodes_per_ep.count(ep_type) ? nodes_per_ep[ep_type] : 0;
     const auto& ep_devices = provider->GetEpDevices();
 
     if (!ep_devices.empty()) {
       // V2 path: full hardware metadata available via OrtEpDevice / OrtHardwareDevice.
       for (const OrtEpDevice* ep_device : ep_devices) {
+        if (telemetry_.ep_device_info_.size() == telemetry_detail::kMaxTelemetryCollectionEntries) break;
         if (!ep_device) {
           continue;
         }
 
         Telemetry::EpDeviceInfo entry;
-        entry.ep_type = ep_type;
-        entry.ep_vendor = ep_device->ep_vendor;
+        entry.ep_type = telemetry_detail::BoundedTelemetryString(ep_type);
+        entry.ep_vendor = telemetry_detail::BoundedTelemetryString(ep_device->ep_vendor);
         auto it = ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version);
         if (it != ep_device->ep_metadata.Entries().end()) {
-          entry.ep_version = it->second;
+          entry.ep_version = telemetry_detail::BoundedTelemetryString(it->second);
         }
         if (ep_device->device != nullptr) {
           entry.hardware_device_type = HardwareDeviceTypeToString(ep_device->device->type);
           entry.vendor_id = ep_device->device->vendor_id;
           entry.device_id = ep_device->device->device_id;
-          entry.vendor = ep_device->device->vendor;
+          entry.vendor = telemetry_detail::BoundedTelemetryString(ep_device->device->vendor);
         } else {
           entry.hardware_device_type = "UNKNOWN";
         }
@@ -4681,7 +4701,7 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
       // empty vendor / device_id of 0.
       const OrtDevice& device = provider->GetDevice();
       Telemetry::EpDeviceInfo entry;
-      entry.ep_type = ep_type;
+      entry.ep_type = telemetry_detail::BoundedTelemetryString(ep_type);
       entry.hardware_device_type = OrtDeviceTypeToString(device.Type());
       entry.vendor_id = device.Vendor();
       entry.device_id = 0;
@@ -4695,27 +4715,23 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   // Build the comma-separated summaries used to enrich SessionCreation. Order
   // matches execution_providers_.GetIds() iteration order so consumers can join
   // by position against the existing executionProviderIds field.
-  std::ostringstream types_oss;
-  std::ostringstream vendor_ids_oss;
-  std::ostringstream versions_oss;
   bool first = true;
   for (const auto& entry : telemetry_.ep_device_info_) {
-    if (!first) {
-      types_oss << ',';
-      vendor_ids_oss << ',';
-      versions_oss << ',';
+    // Format vendor IDs as hex for readability (PCI IDs are conventionally hex).
+    std::ostringstream vendor_id;
+    vendor_id << "0x" << std::hex << std::uppercase << std::setw(4)
+              << std::setfill('0') << entry.vendor_id
+              << std::dec << std::nouppercase << std::setfill(' ');
+    if (!telemetry_detail::AppendTelemetryRow(
+            std::array{&telemetry_.ep_device_types_summary_, &telemetry_.ep_device_vendor_ids_summary_,
+                       &telemetry_.ep_versions_summary_},
+            std::array<std::string_view, 3>{entry.hardware_device_type, vendor_id.str(),
+                                            entry.ep_type + ":" + entry.ep_version},
+            first)) {
+      break;
     }
     first = false;
-    types_oss << entry.hardware_device_type;
-    // Format vendor IDs as hex for readability (PCI IDs are conventionally hex).
-    vendor_ids_oss << "0x" << std::hex << std::uppercase << std::setw(4)
-                   << std::setfill('0') << entry.vendor_id
-                   << std::dec << std::nouppercase << std::setfill(' ');
-    versions_oss << entry.ep_type << ':' << entry.ep_version;
   }
-  telemetry_.ep_device_types_summary_ = types_oss.str();
-  telemetry_.ep_device_vendor_ids_summary_ = vendor_ids_oss.str();
-  telemetry_.ep_versions_summary_ = versions_oss.str();
 }
 
 void InferenceSession::LogSessionCreationTelemetry(const onnxruntime::Graph& graph,
@@ -4723,8 +4739,21 @@ void InferenceSession::LogSessionCreationTelemetry(const onnxruntime::Graph& gra
                                                    const std::string& model_graph_hash,
                                                    const std::string& model_weight_hash) {
   const Env& env = Env::Default();
-  std::filesystem::path model_path = graph.ModelPath();
-  std::string model_file_name = PathToUTF8String(model_path.filename().native());
+  const auto& model_path = graph.ModelPath().native();
+#ifdef _WIN32
+  const auto path_view = telemetry_detail::TelemetryWideStringView(model_path, telemetry_detail::kMaxTelemetryPathBytes);
+  const auto file_name = path_view.size() == model_path.size()
+                             ? std::filesystem::path(path_view).filename().native()
+                             : std::wstring{};
+  std::string model_file_name = ToUTF8String(telemetry_detail::BoundedTelemetryWideString(file_name));
+#else
+  const auto path_view =
+      telemetry_detail::TelemetryStringView(std::string_view(model_path), telemetry_detail::kMaxTelemetryPathBytes);
+  const auto file_name = path_view.size() == model_path.size()
+                             ? std::filesystem::path(path_view).filename().native()
+                             : std::string{};
+  std::string model_file_name = telemetry_detail::BoundedTelemetryString(file_name);
+#endif
   bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
 
   // Populate per-(EP, hardware-device) telemetry data captured once at session
