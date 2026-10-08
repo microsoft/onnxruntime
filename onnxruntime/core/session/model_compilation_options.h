@@ -13,7 +13,6 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {

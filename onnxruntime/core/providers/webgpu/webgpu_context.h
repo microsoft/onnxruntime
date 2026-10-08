@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -108,17 +109,19 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
-// State for one session's command recording timeline. WebGpuContext is shared across sessions,
-// but Dawn command encoders and deferred dispatch windows must not be.
+// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
+// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
+// releases from concurrent allocator callers separately from command recording.
 struct CommandRecordingState {
-  std::recursive_mutex mutex;
+  CommandRecordingState() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
+
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
-  // TODO: Make BufferManager defer reuse of buffers belonging to unsubmitted batches, including
-  // across Sessions, so has_unsubmitted_work and pending_buffers can be removed from this state.
-  bool has_unsubmitted_work = false;
-  std::vector<wgpu::Buffer> pending_buffers;
+  // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
+  // BufferManager clears it under its cache lock after submission or abandonment.
+  std::atomic<bool> has_unsubmitted_work{false};
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
@@ -168,6 +171,7 @@ struct WebGpuContextConfig {
   uint64_t max_storage_buffer_binding_size{0};
   // Internal test hook. Provider-option parsing never populates this field.
   uint64_t test_only_max_storage_buffer_binding_size{0};
+  uint32_t max_storage_buffers_per_shader_stage{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
   std::optional<uint32_t> adapter_index;
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
@@ -260,7 +264,7 @@ class WebGpuContext final {
   const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
     if (!recording.command_encoder) {
       recording.command_encoder = device_.CreateCommandEncoder();
-      recording.has_unsubmitted_work = true;
+      recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
     }
     return recording.command_encoder;
   }
@@ -303,6 +307,10 @@ class WebGpuContext final {
 
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
+  // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
+  // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
+  Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
@@ -339,7 +347,7 @@ class WebGpuContext final {
   //
   // This is useful only when "skip_validation" is not set.
   //
-  void PushErrorScope();
+  void PushErrorScope(wgpu::ErrorFilter filter = wgpu::ErrorFilter::Validation);
 
   //
   // Pop error scope.
@@ -384,7 +392,8 @@ class WebGpuContext final {
                 bool validation_mode_explicitly_set,
                 bool preserve_device,
                 uint64_t max_storage_buffer_binding_size,
-                uint64_t test_only_max_storage_buffer_binding_size)
+                uint64_t test_only_max_storage_buffer_binding_size,
+                uint32_t max_storage_buffers_per_shader_stage)
       : instance_{instance},
         device_{device},
         validation_mode_{validation_mode},
@@ -392,7 +401,8 @@ class WebGpuContext final {
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
         max_storage_buffer_binding_size_{ResolveMaxStorageBufferBindingSize(
-            max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)} {}
+            max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)},
+        max_storage_buffers_per_shader_stage_{max_storage_buffers_per_shader_stage} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void Initialize(const WebGpuContextConfig& config);
@@ -426,6 +436,7 @@ class WebGpuContext final {
   // Find the build owner for a cache key in the current deferred window.
   PendingPipelineBuild* FindPendingPipelineBuild(CommandRecordingState& recording, std::string_view key);
   Status WaitForDeferredPipelineBuilds(CommandRecordingState& recording);
+  Status CheckDeviceStatus() const;
 
   friend class BufferManager;
   friend class ComputeContext;
@@ -433,6 +444,11 @@ class WebGpuContext final {
 
   std::once_flag init_flag_;
 
+  struct DeviceErrorState {
+    std::mutex mutex;
+    Status status;
+  };
+  std::shared_ptr<DeviceErrorState> device_error_state_{std::make_shared<DeviceErrorState>()};
   wgpu::Instance instance_;
   wgpu::Device device_;
 
@@ -477,6 +493,11 @@ class WebGpuContext final {
   profiling::Events events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
+  uint32_t max_storage_buffers_per_shader_stage_;
+  GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
+
+  // External vector to store captured commands, owned by EP
+  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
 };
 
 #if !defined(__wasm__)

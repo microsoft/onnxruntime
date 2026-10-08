@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 31
+#define ORT_API_VERSION 32
 
 #ifdef __cplusplus
 extern "C" {
@@ -187,7 +187,8 @@ extern "C" {
  * @{
  */
 
-/** Copied from TensorProto::DataType
+/** Tensor element types used by the C API.
+ * Numeric values are ABI-stable and are not all identical to TensorProto::DataType.
  * Currently, Ort doesn't support complex64, complex128
  */
 typedef enum ONNXTensorElementDataType {
@@ -321,6 +322,7 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
+ORT_RUNTIME_CLASS(EpContextConfig);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
@@ -332,6 +334,9 @@ ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared exte
 ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
 ORT_RUNTIME_CLASS(EpAssignedSubgraph);
 ORT_RUNTIME_CLASS(EpAssignedNode);
+ORT_RUNTIME_CLASS(ModelPackageOptions);
+ORT_RUNTIME_CLASS(ModelPackageContext);
+ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -586,6 +591,61 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
 typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
                                                      _In_ const void* buffer,
                                                      _In_ size_t buffer_num_bytes);
+
+/** \brief Function called to write named binary data.
+ *
+ * Each invocation represents one complete write operation for `name`. ORT does not retain `buffer` after the callback
+ * returns and does not serialize calls made by different EP instances or worker threads.
+ *
+ * \param[in] state Application-owned state. It must remain valid while the callback may be invoked and must be
+ *                  synchronized by the application if calls can be concurrent.
+ * \param[in] name Null-terminated UTF-8 logical data identifier.
+ * \param[in] buffer Data to write. May be NULL only when `buffer_num_bytes` is zero.
+ * \param[in] buffer_num_bytes Number of bytes in `buffer`.
+ * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
+ *
+ * \since Version 1.31.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
+                                                          _In_ const char* name,
+                                                          _In_ const void* buffer,
+                                                          _In_ size_t buffer_num_bytes);
+
+/** \brief Function called to read named binary data.
+ *
+ * The callback must allocate the returned buffer with `allocator`. The consumer frees it with the same allocator.
+ * ORT does not serialize calls made by different EP instances or worker threads.
+ *
+ * \param[in] state Application-owned state. It must remain valid while the callback may be invoked and must be
+ *                  synchronized by the application if calls can be concurrent.
+ * \param[in] name Null-terminated UTF-8 logical data identifier.
+ * \param[in] allocator Allocator that must be used for the output buffer.
+ * \param[out] buffer Allocated output buffer, or NULL for an empty payload.
+ * \param[out] data_size Number of bytes in `buffer`.
+ * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
+ *
+ * \since Version 1.31.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
+                                                         _In_ const char* name,
+                                                         _In_ OrtAllocator* allocator,
+                                                         _Outptr_result_buffer_maybenull_(*data_size) void** buffer,
+                                                         _Out_ size_t* data_size);
+
+/** \brief Flags describing an execution provider's support for application-managed external EPContext data.
+ *
+ * \since Version 1.31.
+ */
+typedef enum OrtEpContextDataCallbackSupportFlags {
+  /** The EP does not support application-managed external EPContext data. */
+  OrtEpContextDataCallbackSupportFlags_NONE = 0,
+
+  /** The EP will use the read callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_READ = 1 << 0,
+
+  /** The EP will use the write callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
+} OrtEpContextDataCallbackSupportFlags;
 
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
@@ -918,6 +978,9 @@ typedef struct OrtCompileApi OrtCompileApi;
 
 struct OrtInteropApi;
 typedef struct OrtInteropApi OrtInteropApi;
+
+struct OrtModelPackageApi;
+typedef struct OrtModelPackageApi OrtModelPackageApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
@@ -2394,7 +2457,9 @@ struct OrtApi {
    *
    * If the `size` parameter is less than the actual string attribute's size and `out`
    * is not nullptr, the value of `size` is set to the true size of the string attribute
-   * and a failure status is returned.)
+   * and a failure status is returned.
+   *
+   * The true size of the string attribute includes the trailing null character.
    *
    * \param[in] info ::OrtKernelInfo instance
    * \param[in] name Null terminated string of the name of the attribute
@@ -6895,11 +6960,20 @@ struct OrtApi {
 
   /** \brief Validate a compiled model's compatibility information for one or more EP devices.
    *
-   * \param[in] ep_devices The EP devices to validate against (e.g., from GetEpDevices).
-   *                        All devices must belong to the same execution provider.
-   * \param[in] num_ep_devices The number of EP devices provided.
+   * Validates an opaque compatibility string against the ordered EP device configuration that the caller intends to
+   * use. The caller is not expected to know which devices were used to compile the model. Device order may be
+   * significant, and the EP factory interprets the configuration using the same selection, fallback, and participation
+   * rules as OrtEpFactory::CreateEp.
+   *
+   * If the model is subsequently loaded, the caller should pass the same OrtEpDevice values in the same order to
+   * SessionOptionsAppendExecutionProvider_V2. This function validates a caller-selected configuration; it does not
+   * discover or return the device configuration for which an opaque compiled model was produced.
+   *
+   * \param[in] ep_devices The ordered EP devices to validate against (e.g., from GetEpDevices).
+   *                        All devices must belong to the same execution provider factory.
+   * \param[in] num_ep_devices The number of EP devices provided. Must be greater than zero.
    * \param[in] compatibility_info The compatibility info string produced when the model was compiled.
-   * \param[out] out_status The resulting compatibility status for the EP devices.
+   * \param[out] out_status The compatibility status for the intended EP device configuration.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -7592,6 +7666,35 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
                   _Outptr_result_maybenull_ OrtValue** output);
+
+  /** \brief Register a callback that supplies external EPContext binary data during session initialization.
+   *
+   * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
+   * callback is not used for EPContext nodes whose data is embedded in the ONNX model. Passing NULL clears the
+   * callback and its state. If an external EPContext node is assigned to an EP that does not advertise READ support,
+   * session initialization fails before that EP's Compile() call.
+   *
+   * \param[in] options Session options used to create the session and execution providers.
+   * \param[in] read_func Read callback, or NULL to clear a previously registered callback.
+   * \param[in] state Application-owned state passed to `read_func`. Ignored when `read_func` is NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
+                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
+
+  /** \brief Get the stable model package API table.
+   *
+   * The returned table provides model package inspection, variant selection, and session creation APIs.
+   * The table is owned by ONNX Runtime and must not be released.
+   *
+   * \return Pointer to the ::OrtModelPackageApi table.
+   *
+   * \since Version 1.31.
+   */
+  const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
 };
 
 /*
@@ -8462,6 +8565,25 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ bool use_weightless);
+
+  /** \brief Register a callback that receives external EPContext binary data during model compilation.
+   *
+   * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
+   * callback is used only when EPContext data is not embedded in the generated ONNX model. Passing NULL clears the
+   * callback and its state. If a compiling EP does not advertise WRITE support, compilation fails before that EP's
+   * Compile() call.
+   *
+   * \param[in] model_compile_options Model compilation options.
+   * \param[in] write_func Write callback, or NULL to clear a previously registered callback.
+   * \param[in] state Application-owned state passed to `write_func`. Ignored when `write_func` is NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
 };
 
 /**
@@ -8726,6 +8848,267 @@ struct OrtInteropApi {
   ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 
   /// @}
+};
+
+/** \brief Stable API table for model package workflows.
+ *
+ * A model package contains one or more components, each with variants targeting execution providers and devices.
+ * Obtain this table from OrtApi::GetModelPackageApi().
+ *
+ * Typical usage creates model package options from session options, opens a package context, selects a component,
+ * and creates an OrtSession from the selected variant. Objects returned by this API must be released with the
+ * corresponding release function in this table.
+ *
+ * \since Version 1.31.
+ */
+struct OrtModelPackageApi {
+  /** \brief Create model package options from session options.
+   *
+   * Captures the execution provider configuration used to select a component variant.
+   *
+   * \param[in] env The ORT environment.
+   * \param[in] session_options Session options containing the execution provider configuration.
+   * \param[out] out Receives the created options. Release with ReleaseModelPackageOptions().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
+                  _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtModelPackageOptions** out);
+
+  /** \brief Release model package options.
+   *
+   * \param[in] input The options to release. May be NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(ModelPackageOptions);
+
+  /** \brief Open a model package.
+   *
+   * Parses the package manifest and metadata rooted at `package_root`.
+   *
+   * \param[in] package_root Path to the model package root directory.
+   * \param[out] out Receives the created context. Release with ReleaseModelPackageContext().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(CreateModelPackageContext,
+                  _In_ const ORTCHAR_T* package_root,
+                  _Outptr_ OrtModelPackageContext** out);
+
+  /** \brief Release a model package context.
+   *
+   * \param[in] input The context to release. May be NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(ModelPackageContext);
+
+  /** \brief Get the model package schema version.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_version Receives the schema version.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetSchemaVersion,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Out_ int64_t* out_version);
+
+  /** \brief Get the number of components in a model package.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_count Receives the component count.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetComponentCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the component names in a model package.
+   *
+   * The returned array and UTF-8 strings are owned by `ctx` and remain valid until `ctx` is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_names Receives the component name array, or NULL when the package has no components.
+   * \param[out] out_count Receives the number of names in `out_names`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetComponentNames,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the number of variants for a component.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[out] out_count Receives the variant count.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the variant names for a component.
+   *
+   * The returned array and UTF-8 strings are owned by `ctx` and remain valid until `ctx` is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[out] out_variant_names Receives the variant name array, or NULL when the component has no variants.
+   * \param[out] out_count Receives the number of names in `out_variant_names`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantNames,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get the execution provider name declared by a variant.
+   *
+   * The returned UTF-8 string is owned by `ctx` and remains valid until `ctx` is released. `out_ep` is set to NULL
+   * when the variant does not declare an execution provider.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[in] variant_name UTF-8 variant name.
+   * \param[out] out_ep Receives the execution provider name or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Outptr_result_maybenull_ const char** out_ep);
+
+  /** \brief Resolve a package path reference.
+   *
+   * Resolves content-addressed `sha256:<hex>[/path]` references and package-relative paths. When `must_exist` is
+   * nonzero, the resolved path must exist. The returned UTF-8 path is owned by `ctx` and remains valid until the next
+   * call to this function on the same context or until `ctx` is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] base_dir Base directory for relative references, or NULL to use the package root.
+   * \param[in] input UTF-8 path reference to resolve.
+   * \param[in] must_exist Nonzero to require that the resolved path exists.
+   * \param[out] out_path Receives the resolved UTF-8 path.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackage_ResolveStringRef,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_opt_ const char* base_dir,
+                  _In_ const char* input,
+                  _In_ int must_exist,
+                  _Outptr_ const char** out_path);
+
+  /** \brief Select a component and resolve its best matching variant.
+   *
+   * The returned component context is independent of `context` and must be released with
+   * ReleaseModelPackageComponentContext().
+   *
+   * \param[in] context The model package context.
+   * \param[in] component_name UTF-8 component name.
+   * \param[in] options Options that provide the execution provider configuration for variant selection.
+   * \param[out] out Receives the selected component context.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(SelectComponent,
+                  _In_ const OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_ const OrtModelPackageOptions* options,
+                  _Outptr_ OrtModelPackageComponentContext** out);
+
+  /** \brief Release a selected component context.
+   *
+   * \param[in] input The component context to release. May be NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(ModelPackageComponentContext);
+
+  /** \brief Get the selected variant name.
+   *
+   * The returned UTF-8 string is owned by `ctx` and remains valid until `ctx` is released.
+   *
+   * \param[in] ctx The selected component context.
+   * \param[out] out_name Receives the selected variant name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantName,
+                  _In_ const OrtModelPackageComponentContext* ctx,
+                  _Outptr_ const char** out_name);
+
+  /** \brief Get the selected variant directory.
+   *
+   * The returned path is owned by `ctx` and remains valid until `ctx` is released.
+   *
+   * \param[in] ctx The selected component context.
+   * \param[out] folder_path Receives the selected variant directory path.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFolderPath,
+                  _In_ const OrtModelPackageComponentContext* ctx,
+                  _Outptr_ const ORTCHAR_T** folder_path);
+
+  /** \brief Create a session for the selected component variant.
+   *
+   * When `session_options` is NULL, ONNX Runtime creates fresh session options and applies the selected variant's
+   * session and provider options. When `session_options` is non-NULL, the caller's options are used and package
+   * provider options are not applied; package path-valued session options are still added when the caller did not
+   * provide them.
+   *
+   * \param[in] env The ORT environment.
+   * \param[in] context The selected component context.
+   * \param[in] session_options Optional caller-provided session options.
+   * \param[out] session Receives the created session. Release with OrtApi::ReleaseSession().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(CreateSession,
+                  _In_ const OrtEnv* env,
+                  _In_ OrtModelPackageComponentContext* context,
+                  _In_opt_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtSession** session);
 };
 
 /*
