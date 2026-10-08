@@ -187,6 +187,12 @@ offset (64 modulo 256), segmented and shared source/capsule backing, poisoned
 tails, preservation, alias requirements and invalid metadata. GPU/CPU replay comparisons use
 absolute tolerance `1e-5` plus relative tolerance `2e-5`, not bitwise equality.
 Artificially small segmentation limits use the existing native-only test factory.
+`CapturedStateReplayMatchesIndependentPrefixes` uses the actual WebGPU producer's
+capsule, replays the original incoming state and compares with independent prefix
+runs with capture disabled. `RunCompletesBeforeReadback` checks the owning recording
+and polls queue completion with timeout zero immediately after Session::Run, before
+any tensor readback. The completion observation uses native Dawn context access and
+is not compiled for plugin EP, WASM or external-Dawn builds.
 
 ### Missing parts
 

@@ -23,6 +23,10 @@
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
+#if !defined(ORT_USE_EP_API_ADAPTERS) && !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+#include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
+#endif
 #endif
 
 namespace onnxruntime::test {
@@ -334,6 +338,37 @@ TEST_F(GatedDeltaNetStateReplayTest, QwenGeometryAndUnalignedRealCapsuleRow) {
     ASSERT_NO_FATAL_FAILURE(harness.Verify());
   }
 }
+
+#if !defined(ORT_USE_EP_API_ADAPTERS) && !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+TEST_F(GatedDeltaNetStateReplayTest, RunCompletesBeforeReadback) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  auto& ep = static_cast<WebGpuExecutionProvider&>(*provider);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(ep.GetDeviceId());
+  ReplayHarness harness;
+  ASSERT_STATUS_OK(harness.Initialize({48, 128, 128, 16, 7}, std::move(provider)));
+  for (const int64_t kept : {1, 4, 7}) {
+    SCOPED_TRACE(kept);
+    ASSERT_STATUS_OK(harness.Prepare(kept));
+    ASSERT_STATUS_OK(harness.Run());
+
+    // No readback, Flush or blocking Wait may mask the operator's completion boundary.
+    const auto& recording = ep.Recording();
+    ASSERT_TRUE(recording.deferred_dispatches.empty());
+    ASSERT_EQ(recording.command_encoder, nullptr);
+    ASSERT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+    auto result = std::make_shared<wgpu::QueueWorkDoneStatus>(wgpu::QueueWorkDoneStatus::CallbackCancelled);
+    const auto future = context.Device().GetQueue().OnSubmittedWorkDone(
+        wgpu::CallbackMode::WaitAnyOnly,
+        [result](wgpu::QueueWorkDoneStatus status, wgpu::StringView /*message*/) noexcept {
+          *result = status;
+        });
+    ASSERT_EQ(context.Instance().WaitAny(future, 0), wgpu::WaitStatus::Success);
+    ASSERT_EQ(*result, wgpu::QueueWorkDoneStatus::Success);
+    ASSERT_NO_FATAL_FAILURE(harness.Verify());
+  }
+}
+#endif
 
 TEST_F(GatedDeltaNetStateReplayTest, SegmentedBackingViews) {
   auto provider = WebGpuExecutionProviderWithTestStorageBufferBindingSize(65536);
