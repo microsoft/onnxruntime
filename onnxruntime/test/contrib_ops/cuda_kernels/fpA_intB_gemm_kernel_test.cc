@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -32,6 +33,7 @@
 #include <vector>
 
 namespace wo = onnxruntime::llm::kernels::fpA_intB_gemv;
+namespace wo_profile = onnxruntime::llm::kernels::weight_only;
 using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
 namespace {
@@ -656,6 +658,31 @@ TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
   EXPECT_TRUE(wo::is_supported(90, 90, wo::KernelType::FP16Int4Groupwise));
 #endif
 #endif
+}
+
+TEST(FpAIntBGemvTest, WaveAwareDispatchUsesSyntheticSmCount) {
+  constexpr int kRtx5090SmCount = 170;
+  constexpr int kInterleave = 4;
+  constexpr int kDefaultCtaN = 4;
+
+  for (int n : {512, 10240}) {
+    EXPECT_EQ(wo::PickGemvCtaN(true, 8, n, kInterleave, kDefaultCtaN, kRtx5090SmCount), 2);
+    EXPECT_EQ(wo::PickGemvCtaN(false, 8, n, kInterleave, kDefaultCtaN, kRtx5090SmCount), kDefaultCtaN);
+    EXPECT_EQ(wo::PickGemvCtaN(true, 7, n, kInterleave, kDefaultCtaN, kRtx5090SmCount), kDefaultCtaN);
+    EXPECT_EQ(wo::PickGemvCtaN(true, 9, n, kInterleave, kDefaultCtaN, kRtx5090SmCount), kDefaultCtaN);
+  }
+  EXPECT_EQ(wo::PickGemvCtaN(true, 8, 512, kInterleave, kDefaultCtaN, 0), kDefaultCtaN);
+}
+
+TEST(FpAIntBGemvTest, TacticCacheSeparatesWaveAwareMode) {
+  using TacticCache = std::unordered_map<wo_profile::GemmIdCore, int, wo_profile::GemmIdCoreHash>;
+  wo_profile::GemmIdCore const default_id(10240, 4096, onnxruntime::llm::nvinfer::DataType::kHALF, 80, false);
+  wo_profile::GemmIdCore const wave_aware_id(10240, 4096, onnxruntime::llm::nvinfer::DataType::kHALF, 80, true);
+  TacticCache cache{{default_id, 4}, {wave_aware_id, 2}};
+
+  ASSERT_EQ(cache.size(), 2u);
+  EXPECT_EQ(cache.at(default_id), 4);
+  EXPECT_EQ(cache.at(wave_aware_id), 2);
 }
 
 TEST_F(Fp16Int8GroupwiseTest, Fp16_Int8_Gemm_CudaKernel) {
