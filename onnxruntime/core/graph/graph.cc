@@ -3557,44 +3557,53 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-// ONNX's checker only recognizes '#'-prefixed external data locations as in-memory, so replace ORT's in-memory
-// marker in a temporary copy of a node's subgraphs. These initializers were validated when they were injected.
-static void MarkInMemoryExternalDataForOnnxCheck(ONNX_NAMESPACE::NodeProto& node_proto) {
-  auto mark_graph = [](ONNX_NAMESPACE::GraphProto& graph_proto, const auto& self) -> void {
-    for (auto& initializer : *graph_proto.mutable_initializer()) {
-      if (!utils::HasExternalDataInMemory(initializer)) {
-        continue;
-      }
-
-      for (auto& entry : *initializer.mutable_external_data()) {
-        if (entry.key() == "location") {
-          entry.set_value("#ort_in_memory");
-        }
-      }
+// ONNX's checker only recognizes '#'-prefixed external data locations as in-memory, and only when no model directory
+// is prepended. After file-buffer injection, replace the external data locations in a temporary copy of a node so it
+// can be checked with an empty model directory. ORT validates external data paths again when it loads the data.
+static void MarkExternalDataForOnnxCheck(ONNX_NAMESPACE::NodeProto& node_proto) {
+  auto mark_tensor = [](ONNX_NAMESPACE::TensorProto& tensor_proto) {
+    if (!utils::HasExternalData(tensor_proto)) {
+      return;
     }
 
-    for (auto& node : *graph_proto.mutable_node()) {
-      for (auto& attribute : *node.mutable_attribute()) {
-        if (attribute.has_g()) {
-          self(*attribute.mutable_g(), self);
-        }
-
-        for (auto& subgraph : *attribute.mutable_graphs()) {
-          self(subgraph, self);
-        }
+    for (auto& entry : *tensor_proto.mutable_external_data()) {
+      if (entry.key() == "location") {
+        entry.set_value("#ort_external_data");
       }
     }
   };
 
-  for (auto& attribute : *node_proto.mutable_attribute()) {
-    if (attribute.has_g()) {
-      mark_graph(*attribute.mutable_g(), mark_graph);
-    }
+  auto mark_node = [&](ONNX_NAMESPACE::NodeProto& node, const auto& self) -> void {
+    for (auto& attribute : *node.mutable_attribute()) {
+      if (attribute.has_t()) {
+        mark_tensor(*attribute.mutable_t());
+      }
 
-    for (auto& subgraph : *attribute.mutable_graphs()) {
-      mark_graph(subgraph, mark_graph);
+      for (auto& tensor : *attribute.mutable_tensors()) {
+        mark_tensor(tensor);
+      }
+
+      auto mark_graph = [&](ONNX_NAMESPACE::GraphProto& graph_proto) {
+        for (auto& initializer : *graph_proto.mutable_initializer()) {
+          mark_tensor(initializer);
+        }
+
+        for (auto& subgraph_node : *graph_proto.mutable_node()) {
+          self(subgraph_node, self);
+        }
+      };
+
+      if (attribute.has_g()) {
+        mark_graph(*attribute.mutable_g());
+      }
+
+      for (auto& subgraph : *attribute.mutable_graphs()) {
+        mark_graph(subgraph);
+      }
     }
-  }
+  };
+
+  mark_node(node_proto, mark_node);
 }
 
 Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
@@ -3604,9 +3613,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
   // ONNX expects a UTF-8 string here.
-  // File-buffer injection has already validated and replaced every external initializer in these graphs, so no
-  // directory is needed to resolve them during the ONNX check.
-  ctx.set_model_dir(external_initializer_files_in_memory_ ? "" : ToUTF8String(ModelPath().parent_path().native()));
+  ctx.set_model_dir(ToUTF8String(ModelPath().parent_path().native()));
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -3651,9 +3658,13 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
             NodeProto node_proto;
             node.ToProto(node_proto);
             if (external_initializer_files_in_memory_) {
-              MarkInMemoryExternalDataForOnnxCheck(node_proto);
+              MarkExternalDataForOnnxCheck(node_proto);
+              CheckerContext in_memory_ctx = ctx;
+              in_memory_ctx.set_model_dir("");
+              checker::check_node(node_proto, in_memory_ctx, lsc);
+            } else {
+              checker::check_node(node_proto, ctx, lsc);
             }
-            checker::check_node(node_proto, ctx, lsc);
           }
         }
         ORT_CATCH(const std::exception& ex) {

@@ -459,8 +459,10 @@ bool ModelCompilationOptions::GetEmbedEpContextForTelemetry() const {
 }
 
 bool ModelCompilationOptions::HasExternalInitializersFileForTelemetry() const {
-  return session_options_.value.ep_context_gen_options.TryGetExternalInitializerFileInfo() != nullptr ||
-         session_options_.value.ep_context_gen_options.TryGetInitializerHandler() != nullptr;
+  const auto& gen_options = session_options_.value.ep_context_gen_options;
+  return gen_options.TryGetExternalInitializerFileInfo() != nullptr ||
+         gen_options.TryGetExternalInitializerBufferInfo() != nullptr ||
+         gen_options.TryGetInitializerHandler() != nullptr;
 }
 
 }  // namespace onnxruntime

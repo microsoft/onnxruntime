@@ -236,9 +236,9 @@ class ModelCompilationOptions {
   bool GetEmbedEpContextForTelemetry() const;
 
   /// <summary>
-  /// Returns whether external initializers file is configured.
+  /// Returns whether external initializers are written to a file, buffer, or custom handler.
   /// </summary>
-  /// <returns>True if external initializers file is configured</returns>
+  /// <returns>True if an external initializers destination is configured</returns>
   bool HasExternalInitializersFileForTelemetry() const;
 
  private:

@@ -5161,6 +5161,126 @@ TEST(InferenceSessionTests, CompileApiExternalInitializersInSubgraphs) {
   }
 }
 
+// Subgraph initializers supplied through file buffers must not break ONNX checking of file-backed tensor attributes,
+// which are resolved relative to the model directory.
+TEST(InferenceSessionTests, ExternalInitializerBuffersWithExternalTensorAttributeInModelDirectory) {
+  const std::filesystem::path model_dir = ORT_TSTR("external_buffers_attribute_model_dir");
+  std::filesystem::remove_all(model_dir);
+  std::filesystem::create_directories(model_dir);
+  auto remove_model_dir = gsl::finally([&]() { std::filesystem::remove_all(model_dir); });
+
+  const float attribute_value = 5.f;
+  const std::vector<float> weights{1.f, 2.f, 3.f, 4.f};
+  const size_t data_size = weights.size() * sizeof(float);
+  {
+    std::ofstream attribute_file(model_dir / ORT_TSTR("attr.bin"), std::ios::binary);
+    attribute_file.write(reinterpret_cast<const char*>(&attribute_value), sizeof(attribute_value));
+    ASSERT_TRUE(attribute_file.good());
+  }
+
+  auto set_float_vector_type = [](ValueInfoProto& value_info, const char* name) {
+    value_info.set_name(name);
+    auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
+    tensor_type.set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type.mutable_shape()->add_dim()->set_dim_value(4);
+  };
+  auto set_external_float_tensor = [](TensorProto& tensor, const char* name, const PathString& file, int64_t count) {
+    tensor.set_name(name);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.add_dims(count);
+    ExternalDataInfo::SetExternalLocationToProto(file, 0, count * sizeof(float), tensor);
+  };
+
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(17);
+  GraphProto& graph = *model_proto.mutable_graph();
+  graph.set_name("external_buffers_attribute_graph");
+  set_float_vector_type(*graph.add_input(), "X");
+  auto& condition = *graph.add_input();
+  condition.set_name("condition");
+  condition.mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  condition.mutable_type()->mutable_tensor_type()->mutable_shape();
+  set_float_vector_type(*graph.add_output(), "Z");
+
+  // Unlike a Constant node's value, a ConstantOfShape value remains a node attribute and is not an initializer.
+  TensorProto& shape = *graph.add_initializer();
+  shape.set_name("shape");
+  shape.set_data_type(TensorProto_DataType_INT64);
+  shape.add_dims(1);
+  shape.add_int64_data(4);
+  NodeProto& constant = *graph.add_node();
+  constant.set_op_type("ConstantOfShape");
+  constant.add_input("shape");
+  constant.add_output("C");
+  auto& value = *constant.add_attribute();
+  value.set_name("value");
+  value.set_type(AttributeProto_AttributeType_TENSOR);
+  set_external_float_tensor(*value.mutable_t(), "C_value", ORT_TSTR("attr.bin"), 1);
+
+  NodeProto& if_node = *graph.add_node();
+  if_node.set_op_type("If");
+  if_node.add_input("condition");
+  if_node.add_output("R");
+  for (const char* branch_name : {"then_branch", "else_branch"}) {
+    auto& attribute = *if_node.add_attribute();
+    attribute.set_name(branch_name);
+    attribute.set_type(AttributeProto_AttributeType_GRAPH);
+    GraphProto& branch = *attribute.mutable_g();
+    branch.set_name(branch_name);
+    set_external_float_tensor(*branch.add_initializer(), "B", ORT_TSTR("weights.bin"), 4);
+    NodeProto& add = *branch.add_node();
+    add.set_op_type("Add");
+    add.add_input("X");
+    add.add_input("B");
+    add.add_output("branch_out");
+    set_float_vector_type(*branch.add_output(), "branch_out");
+  }
+
+  NodeProto& final_add = *graph.add_node();
+  final_add.set_op_type("Add");
+  final_add.add_input("R");
+  final_add.add_input("C");
+  final_add.add_output("Z");
+
+  const std::filesystem::path model_path = model_dir / ORT_TSTR("model.onnx");
+  {
+    std::ofstream model_file(model_path, std::ios::binary);
+    ASSERT_TRUE(model_proto.SerializeToOstream(&model_file));
+  }
+
+  for (bool direct : {false, true}) {
+    SCOPED_TRACE(direct);
+    std::vector<float> weights_copy = weights;
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    options.external_initializer_files_mmap = {
+        {ORT_TSTR("weights.bin"), {reinterpret_cast<char*>(weights_copy.data()), data_size}}};
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(std::filesystem::absolute(model_path).native()));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+    OrtValue x;
+    CreateMLValue<float>(allocator, {4}, std::vector<float>(4, 1.0f), &x);
+    for (bool take_then : {false, true}) {
+      OrtValue cond;
+      CreateMLValue<bool>(allocator, {}, {take_then}, &cond);
+      std::vector<OrtValue> outputs;
+      const NameMLValMap feeds{{"X", x}, {"condition", cond}};
+      const std::array<std::string, 1> output_names{"Z"};
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+      ASSERT_EQ(outputs.size(), 1u);
+      const float* result = outputs[0].Get<Tensor>().Data<float>();
+      for (int i = 0; i < 4; ++i) {
+        EXPECT_EQ(result[i], 1.0f + weights[i] + attribute_value);
+      }
+    }
+  }
+}
+
 struct CompileApiTrackingAllocator : OrtAllocator {
   CompileApiTrackingAllocator() : OrtAllocator{} {
     version = ORT_API_VERSION;
