@@ -1,76 +1,76 @@
 # INT3 QMoE End-to-End Delivery Plan
 
-## 摘要与文档状态
+## Summary and Document Status
 
-日期：2026-10-08。本文沿用 [ORT roadmap PR #32657](https://github.com/microsoft/onnxruntime/pull/32657) 和 [INT2 端到端交付计划](int2-qmoe-end-to-end-delivery-plan.md) 的阶段门方法，遵守 [低位宽探索文档](2bit-6bit-weight-only-quantization-exploration.md) 的 canonical bitstream / provider prepack 边界，定义均匀 INT3 QMoE 的基础版本、后续性能路径，以及准备提交 ONNX committee 讨论的可移植格式草案。
+Date: 2026-10-08. This plan follows the stage-gate approach in [ORT roadmap PR #32657](https://github.com/microsoft/onnxruntime/pull/32657) and the [INT2 end-to-end delivery plan](int2-qmoe-end-to-end-delivery-plan.md). It respects the canonical-bitstream / provider-prepack boundary in the [low-bit-width exploration document](2bit-6bit-weight-only-quantization-exploration.md) and defines a uniform INT3 QMoE baseline, subsequent performance work, and a portable-format draft for discussion with the ONNX committee.
 
-**这是设计提案，不是已经批准的 ONNX 标准，也不是现有 QMoE 已支持 INT3 的声明。** 当前 `com.microsoft::QMoE` 是 ORT contrib operator。新增位宽、标准域算子或 tensor datatype 必须分别走 schema review、版本管理和 ONNX 审议流程；本计划不自行分配 ONNX INT3 datatype 编号或标准 opset。
+**This is a design proposal, not an approved ONNX standard or a claim that existing QMoE supports INT3.** The current `com.microsoft::QMoE` is an ORT contrib operator. Additional widths, standard-domain operators, and tensor datatypes require their respective schema review, versioning, and ONNX approval processes. This plan does not assign an ONNX INT3 datatype number or standard opset.
 
-先交付可量化、可导出、可加载、可执行 decode 和 prefill 的可信基础版，再决定优化投入。基础版不承诺快于 INT2/INT4；生产性能资格必须单独验收。INT3 的价值首先是验证质量、有效模型大小和运行成本之间是否存在实用折中。
+First deliver a trustworthy baseline that can be quantized, exported, loaded, and executed for both decode and prefill; then decide where to invest in optimization. The baseline does not promise to outperform INT2/INT4. Production performance qualification requires separate acceptance. INT3's initial purpose is to establish whether it offers a useful trade-off among quality, effective model size, and execution cost.
 
 ```text
-INT3 可移植契约与参考字节向量
-  -> 独立 scalar oracle 与共享验证
-  -> 有界 CUDA 正确性 decode + prefill
+INT3 portable contract and reference byte vectors
+  -> independent scalar oracle and shared validation
+  -> bounded CUDA correctness for decode + prefill
   -> packed CUDA decode
-  -> 有界 selected-expert prefill / 原生 packed prefill
-  -> CPU reference 和跨 provider parity
-  -> Olive 量化 + Mobius fused QMoE 导出
-  -> Qwen 模型质量、容量和性能验收
-  -> ONNX committee 提案材料与互操作评审
+  -> bounded selected-expert prefill / native packed prefill
+  -> CPU reference and cross-provider parity
+  -> Olive quantization + Mobius fused QMoE export
+  -> Qwen model quality, capacity, and performance qualification
+  -> ONNX committee proposal package and interoperability review
 ```
 
-导出、CPU reference 和 CUDA 可在契约冻结后并行。已有 INT2 经验可以复用，但不能把其类型、整除公式或 runtime prepack 字节直接当作 INT3 实现。
+Export, CPU reference, and CUDA work can proceed in parallel after the contract is frozen. Existing INT2 experience is reusable, but its types, divisibility formulas, and runtime-prepack bytes cannot be treated as an INT3 implementation. The overview is not a strict dependency chain; the stage table and Delivery Sequence below define the dependencies, including the conditional native-prefill branch.
 
-## 1. 产品目标与初始范围
+## 1. Product Goals and Initial Scope
 
-初始目标为 Qwen3-30B-A3B 类模型：FC1 gate/up 使用 INT3，FC2 down 保持 INT4，敏感非专家参数使用已有较高精度方案。先构造小型确定性 fused fixture，再做完整模型，不能从全尺寸模型才开始排查字节错误。
+The initial target is a Qwen3-30B-A3B-class model with all three baseline `(FC1, FC2)` combinations: `(3,4)`, `(3,3)`, and `(4,3)`. FC1 contains gate/up and FC2 contains down; sensitive non-expert parameters retain existing higher-precision recipes. Start with small deterministic fused fixtures for every combination before a full model; byte-level debugging must not begin only at full-model scale. A `(3,4)` prototype may be the first development checkpoint, but it does not complete the baseline.
 
-| 项目 | 基础版要求 | 后续研究，不阻塞基础版 |
+| Area | Baseline requirement | Follow-up research, not a baseline blocker |
 | --- | --- | --- |
-| 位宽组合 | `(FC1, FC2)=(3,4)`，fused FC3 与 FC1 同位宽 | `(3,3)`、`(4,3)` 与其他混合策略 |
-| 激活 | FP16/BF16，FP32 accumulation，分别验证 | INT8 activation、DP4A、INT8 Tensor Core |
-| 权重量化 | 均匀、对称、按 K 分组，首个模型 block64 | 非对称、码本、额外 block size |
-| 逻辑 block size | 格式 profile 定义 32/64/128；首个优化 kernel 可只支持 64 | 根据证据扩展优化分派 |
-| 融合 | `swiglu_fusion=1`，明确 gate/up 行交错 | 非融合 FC3、concat 布局，须单独资格验证 |
-| routing | 多专家、top-k、单/多 token、专家空桶 | 并发、capture 等生产覆盖仍需阶段验收 |
-| 平台 | CUDA SM80/A100 为首次实机目标，CPU 为参考 | SM86/89、H200、Spark、其他 provider |
-| prefill | 基础版必须可运行且 scratch 有界 | 原生 packed grouped GEMM 是性能阶段 |
+| Width combinations | `(FC1, FC2)=(3,4)`, `(3,3)`, and `(4,3)`, with fused FC3 at the FC1 width | Other mixed strategies beyond these three required combinations |
+| Activations | FP16/BF16 with FP32 accumulation, validated separately | INT8 activation, DP4A, INT8 Tensor Core |
+| Weight quantization | Uniform, symmetric, grouped along K; block64 for the first model | Asymmetric quantization, codebooks, additional block sizes |
+| Logical block size | Format profile defines 32/64/128; the first optimized kernel may support only 64 | Extend optimized dispatch based on evidence |
+| Fusion | `swiglu_fusion=1`, with explicit gate/up row interleaving | Non-fused FC3 and concatenated layouts require separate qualification |
+| Routing | Multiple experts, top-k, single/multiple tokens, empty expert buckets | Production coverage for concurrency, capture, etc. still requires stage acceptance |
+| Platforms | CUDA SM80/A100 as the first hardware target; CPU as a reference | SM86/89, H200, Spark, other providers |
+| Prefill | Baseline must execute with bounded scratch | Native packed grouped GEMM belongs to the performance stage |
 
-不改变 routing、归一化、activation 参数和 FC2 的既有语义；bias 覆盖应加入正确性 fixture，不把无 bias 的优化资格误写为算子格式限制。不导入 IQ3/Q3_K 字节，不扩大为完整 dense `MatMulNBits(bits=3)` 产品承诺。
+Do not change existing routing, normalization, activation-parameter, or FC2 semantics. Include bias coverage in correctness fixtures; do not misrepresent a no-bias optimization eligibility condition as an operator-format restriction. Do not import IQ3/Q3_K bytes or expand this plan into a full dense `MatMulNBits(bits=3)` product commitment.
 
-## 2. 面向 ONNX 的 INT3 可移植格式草案
+## 2. Proposed ONNX-Facing Portable INT3 Format
 
-以下 MUST/SHOULD 描述**本提案内部**的规范要求。委员会尚未认可；在 schema 和共享向量冻结前，导出器不得将其声称为稳定通用标准。
+The MUST/SHOULD statements below are normative requirements **within this proposal**. The committee has not approved them. Exporters must not describe the format as a stable general standard before the schema and shared vectors are frozen.
 
-### 2.1 数学语义与码值
+### 2.1 Mathematical Semantics and Codes
 
-每个权重的存储 code 为无符号整数 `u in [0,7]`。首版对称 profile 的隐式 zero point 为 `z=4`，逻辑有符号值为 `q=u-4 in [-4,3]`，不是 three-bit two's-complement。
+Each stored weight code is an unsigned integer `u in [0,7]`. The initial symmetric profile has implicit zero point `z=4` and logical signed value `q=u-4 in [-4,3]`; this is not three-bit two's-complement encoding.
 
-对于逻辑权重 `W[e,n,k]`：
+For logical weight `W[e,n,k]`:
 
 ```text
 b = floor(k / block_size)
 W_dequant[e,n,k] = (u[e,n,k] - 4) * S[e,n,b]
 ```
 
-`S` MUST 为有限、非负数；`S=0` 表示该组所有解码权重为零。exporter SHOULD 将这种组的 code 置为 4，以得到确定性零组。解码语义不依赖 RTN、GPTQ 或校准方法。
+`S` MUST be finite and nonnegative. `S=0` means that every decoded weight in the group is zero. The exporter SHOULD set the codes in such groups to 4 for deterministic zero groups. Decoding semantics do not depend on RTN, GPTQ, or the calibration method.
 
-独立 RTN fixture 的默认量化规则为：
+The independent RTN fixture uses the following default quantization rule:
 
 ```text
-s = max(max(-W, 0) / 4, max(W, 0) / 3)  # 对每个实际 K block 取最大值
+s = max(max(-W, 0) / 4, max(W, 0) / 3)  # Take the maximum over each actual K block.
 q = clamp(round_to_nearest_even(W / s), -4, 3)
 u = q + 4
 ```
 
-全零组直接输出 `s=0,u=4`。fixture 先将 scale 转为最终存储 dtype，再用该已舍入 scale 生成 code，若 scale 下溢为零则按零组处理；记录误差，不默默改变 dtype。真实量化工具可采用其他 scale 优化算法，但 MUST 记录方法、舍入、clipping 和 scale dtype。量化算法不是 packed 解码标准的一部分。
+An all-zero group directly produces `s=0,u=4`. The fixture first converts the scale to its final storage dtype, then generates codes using that rounded scale. If the scale underflows to zero, treat the group as a zero group. Record the error rather than silently changing dtype. Production quantizers may use other scale-optimization algorithms, but MUST record the method, rounding, clipping, and scale dtype. The quantization algorithm is not part of the packed-decoding standard.
 
-### 2.2 唯一的模型序列化布局：逐行 LSB-first 连续位流
+### 2.2 Single Model Serialization Layout: Row-Local LSB-First Contiguous Bitstream
 
-可移植模型 MUST 使用 `uint8` tensor 容器；不要求新的 ONNX INT3 tensor datatype。每个专家的每个输出行分别打包，K 方向连续：
+Portable models MUST use a `uint8` tensor container; no new ONNX INT3 tensor datatype is required. Pack each output row of each expert independently, contiguously along K.
 
-ORT 首个 exporter MUST 显式设置 `quant_type='int'`、`weights_prepacked=0`、`block_size` 和有效 FC 位宽，不能依赖当前 provider-specific prepacked 默认行为。`H` 由 activation 的 hidden dimension 得到，`I` 由 fused FC1 的逻辑输出行数除以 2 得到；再验证 FC2 逻辑行数和 packed K 维，不能从 packed byte 数反推 I。
+The first ORT exporter MUST explicitly set `quant_type='int'`, `weights_prepacked=0`, `block_size`, and the effective FC widths; it must not rely on current provider-specific prepacked defaults. Derive `H` from the activation's hidden dimension and `I` from half the logical output-row count of fused FC1. Then validate the FC2 logical row count and packed K dimension; do not infer I from the packed byte count.
 
 ```text
 logical shape: [E, N, K]
@@ -80,11 +80,11 @@ row byte offset = (e * N + n) * R
 value k starts at bit offset 3 * k within that row
 ```
 
-每个 code 的最低有效位先写入；位流按 byte 地址递增，byte 内按 bit0 到 bit7 递增。value 可以跨字节，禁止每个 INT3 值补成 nibble。行与行、专家与专家之间不共享字节；最后一个 byte 的未使用高位 MUST 为零。
+Write each code's least significant bit first. The bitstream advances by byte address and, within each byte, from bit0 to bit7. Values may cross byte boundaries; padding every INT3 value to a nibble is prohibited. Rows and experts do not share bytes. Unused high bits of the final byte MUST be zero.
 
-block 是 scale 的逻辑分组，不在位流中插入 header 或额外 padding。对于 profile 的 block32/64/128，完整 block 自然字节对齐，但 decoder MUST 依据上述位偏移定义，而不是假设 `8 / bits` 个整数能整除一个 byte。
+A block is a logical scale group, not a header or extra padding in the bitstream. Complete blocks in the block32/64/128 profile are naturally byte-aligned, but the decoder MUST follow the bit-offset definition above rather than assume that `8 / bits` integers fit exactly in a byte.
 
-模型字节是唯一真值，不依赖 CPU 大小端。跨字节读取的参考式为：
+Model bytes are the sole source of truth and do not depend on CPU endianness. Reference extraction across byte boundaries is:
 
 ```text
 bit = 3 * k
@@ -95,21 +95,21 @@ if byte + 1 < R: word |= P[byte + 1] << 8
 u = (word >> shift) & 7
 ```
 
-读取 MUST 不越过本行末尾。所有大小、stride 和 offset 算法 MUST 做溢出检查。
+Reads MUST not cross the end of the current row. All size, stride, and offset calculations MUST check for overflow.
 
-### 2.3 逻辑尾部与物理尾位
+### 2.3 Logical Tails and Physical Padding Bits
 
-格式允许 `K` 不是 block size 或 8 的整数倍，scale block 数 `B=ceil(K/block_size)`，最后一组仅包含剩余真实元素。`K` MUST 来自逻辑 shape/算子属性，不由 packed byte 数倒推。
+The format permits `K` that is not a multiple of the block size or 8. The number of scale blocks is `B=ceil(K/block_size)`, and the final group contains only the remaining real elements. `K` MUST come from the logical shape/operator attributes, not be inferred from the packed byte count.
 
-未使用的 byte 高位是**物理 padding bits**，其零值不代表一个额外的 `q=-4` 权重。运行时若为了向量化增加 K padding，则 MUST mask 掉额外元素或使用逻辑零 code=4，并且不参与 routing、scale 分组或输出语义。不得将 runtime padding 重新序列化为原始 K。
+Unused high bits in the last byte are **physical padding bits**. Their zero value does not represent an additional `q=-4` weight. If the runtime pads K for vectorization, it MUST mask extra elements or use logical-zero code=4. Extra elements must not affect routing, scale grouping, or output semantics. Runtime padding must not be serialized back as the original K.
 
-首次 CUDA 优化可要求 `K % block_size == 0` 等对齐条件，但这些是执行资格，不是可移植格式限制。不能执行的合法模型应明确 unsupported 或选择有界 reference fallback，不能静默误读尾部。
+The first CUDA optimization may require alignment such as `K % block_size == 0`. These are execution eligibility conditions, not portable-format restrictions. A valid model that cannot execute must receive an explicit unsupported diagnostic or use a bounded reference fallback; silently misreading tails is prohibited.
 
-当前 QMoE schema 要求 H/I 整除 block size 且权重末维 byte-aligned。本提案的 ceil/tail 语义不是当前 schema 能力；P1 必须评审该扩展。首个 ORT 模型保留 H/I 整除共享 block size 的约束，若尾部扩展延期，则 portable-format fixture 可以先定义尾部，但 ORT exporter 必须拒绝未获 schema 支持的尾部模型。
+The current QMoE schema requires H/I to be divisible by the block size and the last weight dimension to be byte-aligned. This proposal's ceil/tail semantics are not current schema capabilities; P1 must review that extension. The first ORT model retains the requirement that H/I be divisible by the shared block size. If the tail extension is deferred, portable-format fixtures may define tails first, but the ORT exporter must reject tail models not supported by the approved schema.
 
-### 2.4 FC1/FC2 顺序与 scale shape
+### 2.4 FC1/FC2 Ordering and Scale Shapes
 
-对 `E` 个专家、hidden `H`、intermediate `I`，首版 fused SwiGLU 的逻辑行顺序规定为：
+For `E` experts, hidden size `H`, and intermediate size `I`, the initial fused SwiGLU profile defines the logical row order as follows:
 
 ```text
 FC1 logical: [E, 2*I, H]
@@ -117,30 +117,34 @@ FC1 row 2*j     = gate[j,:]
 FC1 row 2*j + 1 = up[j,:]
 Y[j] = activation(gate[j]) * up[j]
 FC1 INT3 bytes: [E, 2*I, ceil(3*H/8)]
+FC1 INT4 bytes: [E, 2*I, ceil(4*H/8)]
 FC1 scales:     [E, 2*I, ceil(H/block_size)]
 
-FC2 logical: [E, H, I]  # down，输出行是 hidden，K 方向是 intermediate
+FC2 logical: [E, H, I]  # down: output rows are hidden; K is intermediate.
+FC2 INT3 bytes: [E, H, ceil(3*I/8)]
 FC2 INT4 bytes: [E, H, ceil(4*I/8)]
 FC2 scales:     [E, H, ceil(I/block_size)]
 ```
 
-scale 的 expert/output-row 顺序 MUST 与权重一致。可移植格式只允许 `float32/float16/bfloat16` scale，禁止 FP8 或整数 scale。首个 ORT 执行 profile 要求 FC1/FC2 scales 同 dtype 且与 FP16/BF16 activation 相同；FP32 scale 或独立 FC scale dtype 组合由后续 schema/provider 资格评审决定，未支持组合明确拒绝而非重新解释字节。基础 profile 不加入 row-wise scale 的额外 shape 隐式解释。
+Select each FC's packed shape, decoder, zero-point semantics, and runtime prepack independently from its effective width. INT3 follows this proposal in either projection; INT4 retains its existing contract in either projection. The three required combinations share the logical ordering and scale shapes above; an INT3 FC2 must not use FC1's H-based K stride or fused gate/up layout.
 
-导出 fixture MUST 验证 gate/up 顺序和 down 的 transpose，不能只验证 packed 元素数。首个 exporter 采用 native fused QMoE 构造；从 dense 图自动识别并融合属于后续阶段。
+Scale expert/output-row ordering MUST match the weights. The portable format permits only `float32/float16/bfloat16` scales; FP8 and integer scales are prohibited. The first ORT execution profile requires FC1/FC2 scales to share a dtype matching the FP16/BF16 activation. FP32 scales or independent FC scale-dtype combinations require subsequent schema/provider qualification review. Unsupported combinations must be explicitly rejected, not reinterpreted. The baseline profile does not add implicit alternative shapes for row-wise scales.
 
-### 2.5 Zero point、混合位宽与版本
+Export fixtures MUST verify gate/up ordering and the down-projection transpose, not just packed element counts. The first exporter constructs native fused QMoE; automatic detection and fusion from a dense graph is a later stage.
 
-首版 profile 只接受省略 zero point，或显式提供全部为 4 的 INT3 zero point。若提供，按每个 `[e,n]` 的 B 个 block code 独立 LSB-first 打包：`Z shape=[E,N,ceil(3*B/8)]`，最后 byte 未用高位为零。**不是**对整个 zero-point tensor 展平成一条无行边界位流。
+### 2.5 Zero Points, Mixed Widths, and Versioning
 
-每个 `[e,n]` 是一条包含 B 个 code 的连续位流：`Z_row_bytes=ceil(3*B/8)`，行 byte offset 为 `(e*N+n)*Z_row_bytes`，block b 的起始位为 `3*b`，复用第 2.2 节的跨 byte 提取规则。省略 Z 输入时 decoder 对每个 block 使用 4；显式输入时 validator 必须检查每个逻辑 code 等于 4，并拒绝非 4 值或非零尾位。两种表示的输出完全相同；默认 exporter 省略 Z 以节省空间，显式形式用于互操作和未来扩展验证。
+The initial profile accepts only omitted zero points or explicit INT3 zero points whose logical codes are all 4. When present, independently pack the B block codes for each `[e,n]` row LSB-first: `Z shape=[E,N,ceil(3*B/8)]`, with unused high bits in the final byte zero. This is **not** a single flattened bitstream for the whole zero-point tensor without row boundaries.
 
-非对称 zero point 的一般式是 `(u-z)*S`，但任意 `z` 属后续 profile/schema 评审，不在首版暗中接受。FC2 INT4 沿用已批准的 INT4 zero-point 语义，不把 INT3 的默认值 4 用于 INT4。
+Each `[e,n]` is a contiguous bitstream of B codes: `Z_row_bytes=ceil(3*B/8)`, row byte offset `(e*N+n)*Z_row_bytes`, and starting bit `3*b` for block b. Reuse the cross-byte extraction rule in Section 2.2. With Z omitted, the decoder uses 4 for every block. With explicit Z, the validator must check that every logical code equals 4 and reject non-4 codes or nonzero tail bits. Both representations produce identical outputs. The default exporter omits Z to save space; the explicit form serves interoperability and future-extension validation.
 
-FC 位宽沿用独立 optional override 的设计：省略 `fc1/fc2/fc3_expert_weight_bits` 时继承 `expert_weight_bits`，不修改已有默认 4。fused FC3 与 FC1 相同，因为其数据位于 FC1 tensor。只在专门评审的 schema 修订后允许有效位宽 3；现有模型不得由于新增 INT3 被重新解释。
+The general asymmetric formula is `(u-z)*S`, but arbitrary `z` requires a later profile/schema review and must not be silently accepted in the initial profile. An INT4 projection, whether FC1 or FC2, retains its approved INT4 zero-point semantics; do not apply INT3's default value 4 to INT4. Apply the INT3 omitted/explicit zero-point rules independently to every INT3 projection, including FC2 in `(3,3)` and `(4,3)`.
 
-不使用 `pack_size=8/bits` 计算 INT3 shape/stride。通用规则是 `ceil(K*bits/8)`；已有 INT2/4/8 必须保持字节和数值兼容。格式改动若改变模型字节含义，MUST 有显式 schema/opset 版本或经批准的格式标识，不能仅靠 exporter 版本或 GPU 架构猜测。
+FC widths retain the independent optional-override design: omitted `fc1/fc2/fc3_expert_weight_bits` inherit `expert_weight_bits`, whose existing default remains 4. Fused FC3 has the FC1 width because its data resides in the FC1 tensor. Effective width 3 is permitted only after a dedicated schema revision is reviewed. Adding INT3 must not reinterpret existing models.
 
-### 2.6 Golden vectors 与可核验例子
+Do not use `pack_size=8/bits` to calculate INT3 shapes/strides. The general rule is `ceil(K*bits/8)`; existing INT2/4/8 must retain byte and numerical compatibility. A format change that changes the meaning of model bytes MUST have an explicit schema/opset version or an approved format identifier. Exporter version or GPU architecture alone must not determine interpretation.
+
+### 2.6 Golden Vectors and Verifiable Examples
 
 ```text
 q:     [-4,-3,-2,-1,0,1,2,3]
@@ -148,17 +152,17 @@ u:     [ 0, 1, 2, 3,4,5,6,7]
 bytes: [0x88, 0xc6, 0xfa]
 
 K=3, q=[-4,0,3], u=[0,4,7]
-bytes: [0xe0,0x01]  # 第二 byte 的 bit1..7 是零 padding
+bytes: [0xe0,0x01]  # Bits 1..7 of the second byte are zero padding.
 
-K=8 的全零逻辑权重，u 全为 4
+All-zero logical weights for K=8, with every u equal to 4
 bytes: [0x24,0x49,0x92]
 ```
 
-必须提供机器可读 fixtures：逻辑 shape、位宽、block size、code、scale、zero point、预期 raw bytes、显式反量化权重和 QMoE 输出。覆盖所有 code、跨 byte、跨 block、多个行/专家、尾部、零组和截断/非法 padding。至少两份独立 pack/unpack 实现逐字节一致；不能用同一个有 bug 的 helper 同时生成 expected 和 actual。
+Provide machine-readable fixtures containing logical shape, width, block size, codes, scales, zero points, expected raw bytes, explicit dequantized weights, and QMoE outputs. Cover every code, byte and block crossings, multiple rows/experts, tails, zero groups, truncation, and invalid padding. At least two independent pack/unpack implementations must agree byte-for-byte. Do not use the same potentially faulty helper to produce both expected and actual values.
 
-## 3. CUDA 内部布局：2+1 位平面候选
+## 3. CUDA Internal Layout: A 2+1 Bit-Plane Candidate
 
-**模型仍使用第 2 节连续位流。** CUDA 可以在 session 初始化时把它转换为低 2 位平面和高 1 位平面：
+**Models still use the contiguous bitstream in Section 2.** CUDA may convert it during session initialization into a low-two-bit plane and a high-one-bit plane:
 
 ```text
 lo2[k] = u[k] & 3
@@ -167,77 +171,175 @@ u[k] = lo2[k] | (hi1[k] << 2)
 q[k] = u[k] - 4
 ```
 
-这是借鉴 llama.cpp `Q3_K` 低位/高位分离的物理思想，不采用其 hierarchical scale、量化算法或 GGUF ABI；IQ3 码本格式更不是均匀 INT3。位平面各自可 tile、interleave、对齐并有 provider descriptor，但 descriptor 必须区分位宽、layout version、架构、逻辑形状和 padding；cache key 包括改变语义的输入及版本信息。
+This borrows the physical low/high-bit separation idea from llama.cpp `Q3_K`, not its hierarchical scales, quantization algorithm, or GGUF ABI. The IQ3 codebook format is not uniform INT3 either. Each plane may have its own tiling, interleaving, alignment, and provider descriptor, but descriptors must distinguish width, layout version, architecture, logical shape, and padding. Cache keys include inputs and version information that affect semantics.
 
-具体 tile、byte alignment、planes offset 和融合布局由 kernel 原型测量后决定；不是委员会格式契约。不得把该内部缓存作为 `weights_prepacked=0` 导出，也不在首版承诺可移植 offline prepack。显存统计必须包括 raw weights 与 prepack cache 的共存及额外 padding，不能只报三位 payload。
+Choose tile shapes, byte alignment, plane offsets, and fused layouts after kernel-prototype measurements; these are not committee-format contracts. Do not export this internal cache as `weights_prepacked=0`, or promise portable offline prepack in the initial profile. GPU-memory accounting must include coexistence of raw weights and prepack caches plus extra padding, not just the three-bit payload.
 
-优先 FP16/BF16 activation；packed decode 就地解码、恢复 scale 并 FP32 累加。DP4A/INT8 Tensor Core 需另行 activation 量化和精度验收，不应成为基础 INT3 格式依赖。A100/H200 没有这里所需的原生 packed INT3 运算；硬件 INT8 支持不等于无需解码或自动提速。
+Prioritize FP16/BF16 activation. Packed decode extracts codes in place, applies scales, and accumulates in FP32. DP4A/INT8 Tensor Core paths require separate activation quantization and accuracy qualification and must not become baseline INT3-format dependencies. A100/H200 do not provide the native packed INT3 operation needed here; hardware INT8 support does not eliminate decoding or imply automatic speedup.
 
-## 4. 工作流、PR 切分与验收门
+## 4. Workstreams, PR Boundaries, and Acceptance Gates
 
-所有阶段目前为 **Planned**。以下是依赖驱动的计划，不是已合入实现或对其他团队的交期承诺。
+All stages are currently **Planned**. This is a dependency-driven plan, not a merged implementation or a delivery-date commitment from other teams. PR labels below are proposed sequence labels, not actual GitHub PR numbers; none of these INT3 PRs is claimed to be opened or merged.
 
-| 阶段 / 候选 PR | 主要交付物 | 退出条件 |
+| Stage / proposed PR label | Main deliverables | Exit gate |
 | --- | --- | --- |
-| P0：规范和 feasibility | 审阅第 2 节；冻结 fixtures；核对 Olive 已有 INT3 checkpoint 格式与本规范的差异 | exporter/runtime owners 同意字节及数学语义；独立 pack/unpack 对所有 code、尾部、零组逐字节一致；不直接复用未知 checkpoint packing |
-| P1：QMoE 契约和共享验证 | 经评审允许 INT3；ceil-bit size/stride；shape inference；尾部和 zero-point 验证 | `(3,4)` 模型能验证；老 INT2/4/8 fixtures 完全兼容；未支持 provider 清晰拒绝 |
-| P2：独立参考与 CUDA 正确性 | scalar FP32 oracle；FP16/BF16 数值参考；有界 expert/block dequant；decode 和 prefill | synthetic/reduced Qwen 正确；无无界完整专家反量化；实际 provider target 构建测试通过 |
-| P3：packed CUDA decode | 原始位流到 versioned prepack；就地 INT3 load/decode；fused FC1；保留 FC2 INT4 | 目标 routing/shape parity、memcheck；无大反量化 buffer；记录 prepack 与重复调用成本 |
-| P4a：prefill 基础路径 | selected-expert 或 row/block tiled dequant + 现有 GEMM；明确 scratch budget | 长 prompt、partial tile、decode/prefill 转换正常；内存有界；禁止标为 native packed 性能 |
-| P4b：prefill 性能路径 | packed grouped kernel 或 measured 局部转换策略；block64 先行 | 端到端成本优于基础路径；scratch 估计/边界回归通过；没有收益则停止 native 优化 |
-| P5：Olive/Mobius | expert 分类、mixed checkpoint、packing converter、fused graph、external data、manifest | checkpoint→ONNX→ORT parity；位宽绑定和 gate/up 顺序正确；source revision/工具版本可复现 |
-| P6：CPU parity | 基于相同 raw bytes 的 CPU reference 执行和 invalid-model 校验 | CPU/CUDA 和独立 oracle 在约定容差内；CPU 不是生产吞吐承诺 |
-| P7：模型资格 | INT2/INT3/INT4 matched recipe 的质量、容量、prefill、decode | 满足预先约定的质量/容量目标；性能结论可重复；提供 fail/stop 决策 |
-| P8：委员会材料 | 独立于 CUDA 的规范、reference、互操作 fixture、schema 版本提案 | ONNX 评审决定容器/operator/版本路径；不把 ORT 合并当作 ONNX 批准 |
+| P0 / PR 0: Format and feasibility | Review Section 2; freeze fixtures; compare Olive's existing INT3 checkpoint format with this contract | Exporter/runtime owners agree on bytes and mathematical semantics; independent pack/unpack agrees for every code, tails, and zero groups; do not directly reuse unknown checkpoint packing |
+| P1 / PR 1: QMoE contract and shared validation | Reviewed INT3 allowance in either FC; ceil-bit sizes/strides; shape inference; tail and zero-point validation | All `(3,4)`, `(3,3)`, and `(4,3)` models validate; old INT2/4/8 fixtures remain fully compatible; unsupported providers reject clearly |
+| P2 / PR 2: Independent reference and CUDA correctness | Scalar FP32 oracle; FP16/BF16 numerical references; bounded expert/block dequantization; decode and prefill | Synthetic/reduced Qwen correctness; no unbounded full-expert dequantization; actual provider-target builds/tests pass |
+| P3 / PR 3: Packed CUDA decode | Raw bitstream to versioned prepack; in-place INT3 load/decode for FC1 and FC2; independent INT3/INT4 dispatch | All three baseline combinations pass target routing/shape parity and memcheck; no large dequantized buffer; record prepack and repeated-call costs |
+| P4a / PR 4a: Baseline prefill | Selected-expert or row/block-tiled dequantization + existing GEMM; explicit scratch budget | Long prompts, partial tiles, and decode/prefill transitions work; bounded memory; do not label this native packed performance |
+| P4b / PR 4b + PR 4c: Conditional prefill performance | Kernel foundation followed by QMoE integration; packed grouped kernel or measured local-conversion strategy, block64 first | End-to-end cost beats baseline; scratch estimates/bounds regressions pass; stop native optimization without a benefit |
+| Follow-up / PR 4d: Optional coverage | Additional optimized block sizes, combinations beyond the three baseline combinations, and provider qualification | Qualify each added configuration; no new mixed-width defaults or implied untested coverage; not a baseline dependency |
+| P5 / PR 5: Olive/Mobius export | Expert classification, mixed checkpoint, packing converter, fused graph, external data, manifest | Checkpoint-to-ONNX-to-ORT parity; correct width binding and gate/up order; reproducible source revisions/tool versions |
+| P6 / PR 6: CPU parity | CPU reference execution and invalid-model validation on the same raw bytes | CPU/CUDA and independent oracle agree within specified tolerances; no CPU production-throughput promise |
+| P7 / PR 7: Model qualification | Matched-recipe INT2/INT3/INT4 quality, capacity, prefill, and decode measurements | Meet pre-agreed quality/capacity targets; repeatable performance conclusions; explicit fail/stop decision |
+| P8 / PR 8: Committee package | CUDA-independent specification, reference, interoperability fixtures, schema-version proposal | ONNX review determines container/operator/version paths; ORT merge is not ONNX approval |
 
-P3/P4a 可以在 P2 后并行；P5/P6 在 P1 fixture 冻结后并行。若只有一个工程师，先 P0/P1/P2，再打通一个完整 Qwen 小模型导出，之后实现 packed decode 和基础 prefill；不要同时引入 activation INT8、INT3码本和多个 GPU 特化。
+P3/PR 3 and P4a/PR 4a may proceed in parallel after P2/PR 2. P5/PR 5 and P6/PR 6 may proceed in parallel after P1 and its shared fixtures are frozen, coordinating executable parity gates with CUDA readiness. P4b/PR 4b and PR 4c are conditional performance work, not prerequisites for a basic model. PR 4d is optional follow-up. With one engineer, start with P0/P1/P2, complete one small Qwen export loop, then implement packed decode and baseline prefill. Do not introduce INT8 activation, INT3 codebooks, and multiple GPU specializations simultaneously.
 
-### 4.1 责任与排期方法
+### 4.1 Ownership and Scheduling
 
-P0/P1 由 ORT operator owner 与 Olive/Mobius exporter owner 联合批准；P2/P3/P4 由 CUDA owner 负责；P6 由 CPU owner 负责；P7 由模型质量与 benchmark owner 复核；P8 由 ONNX proposal sponsor 协调。上述是待认领角色，不是已经指定的人或其他团队的承诺。
+P0/P1 require joint approval from the ORT operator owner and Olive/Mobius exporter owners. The CUDA owner is responsible for P2/P3/P4; the CPU owner for P6. Model-quality and benchmark owners review P7, and the ONNX proposal sponsor coordinates P8. These are roles awaiting assignment, not named individuals or commitments from other teams. PR 4d requires owners for each added provider/configuration.
 
-在 P0 结束时分别估计 schema/reference、CUDA 正确性、packed decode、基础 prefill、export、模型 qualification 的工时，再根据人员与实际 PR 审阅速度给日历日期；native prefill 和委员会审批单列，不写入基础版硬截止。每周只更新已关闭的 gate、当前阻塞及下一份可验证交付物。ONNX 标准化周期不应阻塞 ORT contrib 设计实验，也不能因 ORT 交付而被宣称完成。
+At P0 completion, estimate engineering effort separately for schema/reference, CUDA correctness, packed decode, baseline prefill, export, and model qualification. Assign calendar dates only after considering staffing and actual PR review throughput. Track native prefill and committee approval separately, outside the baseline's hard deadline. Weekly updates should report only closed gates, current blockers, and the next verifiable deliverable. ONNX standardization must not block ORT contrib design experiments, and ORT delivery must not be presented as completion of standardization.
 
-### 4.2 基础版与生产版必须分开命名
+### 4.2 Distinguish Baseline Completion from Production Qualification
 
-基础版完成：原始 checkpoint 可量化并导出、fixture/CPU/CUDA parity、模型 decode/prefill 可执行且 scratch 有界、至少一组完整质量与容量/速度基线。不能只有 kernel unit test，不能把 dequant correctness fallback 当作性能交付。
+Baseline completion requires all three combinations `(3,4)`, `(3,3)`, and `(4,3)` to support source-checkpoint quantization/export, fixture/CPU/CUDA parity, packed CUDA decode, and model prefill with bounded scratch. Record a complete quality and capacity/speed baseline for each combination on the initial target. Neither a working `(3,4)` model alone nor kernel unit tests alone are sufficient. A dequantization correctness fallback is not a performance delivery.
 
-生产资格完成：实际 deployment shape 的 packed 路径与分派被证明，prefill/decode/memory 没有未解释退化，重复测量与精度目标通过，fallback、并发、capture、scale 更新和 prepack lifetime 在目标部署方式下有验证。支持 SM80 的代码或 dispatch 条件不等于已验证所有 SM80+ 硬件。
+Production qualification means that packed paths and dispatch are demonstrated for actual deployment shapes; prefill/decode/memory have no unexplained regressions; repeated measurements and accuracy targets pass; and fallback, concurrency, capture, scale updates, and prepack lifetime are validated for the target deployment. SM80 code or dispatch conditions do not establish qualification on all SM80+ hardware. PR 4b/4c ship only if evidence supports a winning design; their absence does not prevent baseline completion, but production claims must stay within demonstrated paths and performance gates.
 
-## 5. 验证矩阵与性能方法
+## Delivery Sequence
 
-- 格式：code 0..7、跨 byte、K 尾部、block 尾部、多个专家/输出行、全零组、scale dtype、截断 external data、overflow、非法 shape/zero point/padding。
-- 算子：FP16/BF16、top-k 1/2/8、单/多 token、空专家、bias、routing permutation、SwiGLU 参数、FC2 orientation 和旧模型回归；非法输入在计算前拒绝。
-- kernel：测试 packed eligibility 和 fallback；真实 decode→prefill→decode 转换、partial row tile、cached/runtime scale、预处理复用、scratch guard、sanitizer。独立 harness 不能替代实际 legacy/plugin provider target；plugin 未测即明确标注未覆盖。
-- 工具：先确认 Olive 的 native INT3 checkpoint 能力，再资格验证 fused expert 覆盖、Mobius graph/initializer/external data 绑定；支持 native INT3 linear 不等于支持本规范的 QMoE 导出。
-- 模型：固定 checkpoint/tokenizer、tensor placement、block size 和非专家精度，对照 INT2/INT3/INT4；增加浮点质量参考。不用不同 block/不同量化层掩盖位宽效应。
-- 性能：同 GPU、同 runtime、profiling 关闭、正反/交替 A/B；分别测 load/prepack、TTFT、prefill、decode TPS、显存峰值与 scratch；记录主机 orchestration 范围。profile 单独证明实际分派，不用于报告无 profile TPS。
-- 精度：固定任务与样本、校准/评估 split 分离，报告 logits/层误差和完整任务指标；逐元素相同或 greedy token 相同都不能代替质量验收。
+Every heading in this section uses a **proposed label**, not an actual PR number. All entries are planned, not opened or merged. PR 5 may comprise coordinated PRs across repositories. Numbering identifies scope, not a mandatory serial execution order; no implementation PR URLs are assigned here.
 
-在开始全模型验收前冻结任务质量容忍值、有效大小收益和性能非退化标准；由产品与 exporter/runtime owners 共同确认，不能事后按结果移动阈值。小于测量波动的吞吐变化应报告不确定，而不是成功。
+### PR 0: Portable Format and Golden Fixtures - Proposed (P0)
 
-## 6. 有效存储成本与停止条件
+- Freeze the unsigned codes, offset-4 semantics, row-local LSB-first raw bytes, scale/zero-point rules, FC ordering, and portable tail definitions in Section 2 with exporter/runtime-owner review.
+- Add machine-readable golden fixtures and two independent pack/unpack implementations covering every code, byte/block crossings, row/expert boundaries, tails, zero groups, and malformed inputs.
+- Audit Olive's INT3 checkpoint representation and identify explicit canonical conversion requirements; unknown or Q3_K/IQ3 packing is not interchangeable with this format.
+- Exit gate: byte-for-byte agreement and agreed mathematical semantics. This establishes a proposed portable contract, not current ORT tail support, approved ONNX datatypes, or runtime execution.
 
-对每个 `[E,N,K]` INT3 tensor，权重 payload 为 `E*N*ceil(3*K/8)` 字节，scale 为 `E*N*ceil(K/block_size)*sizeof(scale)`；显式 zero point、padding、manifest、未量化参数和 external-data alignment 另外计入。
+### PR 1: INT3 QMoE Contract and Shared Validation - Proposed (P1)
 
-例如 K 对齐、FP16 scale、无显式 zero point、block64 时，权重加 scale 的有效位率为 `3 + 16/64 = 3.25 bit/weight`，而不是恰好 3。与相同 scale 策略的 INT4 比较是 4.25 bit/weight，不能把名义 payload 的 25% 节省直接写为整模型或显存节省。
+- Depends on PR 0's frozen contract/fixtures; review the schema revision permitting effective width 3 and its version/format-identifier requirements.
+- Implement shared ceil-bit shape/stride calculations with overflow checks, shape inference, raw `uint8` validation, explicit INT3 zero-point checks, and clear unsupported-provider diagnostics.
+- Preserve default `expert_weight_bits=4`, independent FC override inheritance, fused FC3/FC1 agreement, and byte/numerical compatibility for INT2/4/8.
+- Gate tail allowance through schema review; keep the first ORT model's H/I divisibility constraints and reject unapproved tail models at export. Enforce the initial matching FP16/BF16 activation/FC-scale execution profile.
+- Exit gate: valid `(3,4)`, `(3,3)`, and `(4,3)` models validate and invalid models reject before computation, with old-model regression tests. Cover width-specific FC1/FC2 shapes and zero points independently. Schema acceptance alone is not provider execution support.
 
-停止/调整条件：质量无明显优于 INT2 的价值；有效容量无足够优于 INT4 的优势；prepack/raw cache 或临时展开吃掉容量收益；packed extraction 的成本抵消带宽收益；只在微基准快而完整模型退化；或 exporter/runtime 字节解释无法互操作。没有实测收益时保留基础正确性和结果，不为展示新位宽而加入不可维护优化特判。
+### PR 2: CUDA Correctness and Bounded Fallback - Proposed (P2)
 
-## 7. ONNX committee 提交包与开放决策
+- Depends on PR 1 and shared fixtures; implement an independent scalar FP32 oracle and separate FP16/BF16 numerical references.
+- Provide bounded expert/block dequantization and CUDA correctness execution for both decode and prefill for `(3,4)`, `(3,3)`, and `(4,3)`, preserving routing, gate/up interleaving, SwiGLU, bias, and FC2 orientation. Decode INT3 or INT4 independently in each projection.
+- Test synthetic and reduced Qwen cases, invalid inputs, tails only where schema-approved, and fallback scratch bounds; prohibit unbounded full-expert dequantization.
+- Exit gate: oracle parity within agreed tolerances and builds/tests for the actual provider targets. Independent harness results do not qualify legacy/plugin integration or untested providers.
+- This is functional correctness, not a packed-performance claim, INT8-activation path, or all-GPU support claim.
 
-提交材料应包括：独立 packed-format 规范与数学语义、包含尾部/zero-point 的 golden bytes、shape inference 和错误模型定义、至少两个独立 decoder、跨 exporter/runtime 的互操作报告、标准图分解参考，以及真实性能/质量/容量证据。
+### PR 3: Packed CUDA Decode - Proposed (P3)
 
-推荐先用 `uint8` 容器明确 operator 的 opaque packed input 语义，复用现有 ONNX external data；是否新增 native INT3/UINT3 datatype 是单独决策。三位位流不能直接交给现有 `DequantizeLinear` 作为普通 uint8 元素；需要显式解码的参考分解或经批准的 packed operator。是否标准化整个 fused MoE 算子，还是先标准化通用 packed 量化表示/运算，也须单独讨论。
+- Depends on PR 2; convert canonical raw bytes to a versioned provider-private prepack, evaluating the internal 2+1 planes without changing model serialization.
+- Implement in-place INT3 extraction, scale application, and FP32 accumulation for FP16/BF16 in both fused FC1 and down-projection FC2. Reuse existing INT4 paths where applicable and dispatch each projection by its effective width for `(3,4)`, `(3,3)`, and `(4,3)`.
+- Cover routing/shapes, cached/runtime scales, cache identity and lifetime, repeated calls, memcheck, and bounded fallback; no large dequantized weight buffer.
+- Exit gate: packed decode parity and memcheck for all three combinations, with measured prepack/repeated-call costs including raw/cache coexistence and padding. A correctness-only FC2 INT3 fallback does not complete this packed-decode gate. Architecture eligibility is not qualification on every device.
+- Do not export provider caches as raw weights, promise portable offline prepack, or require INT8 activation.
 
-待审批问题：schema 升级是否需要新 contrib version；是否接受首版对称-only profile、32/64/128 block 集合和尾部规则；显式 zero-point 的扩展策略；scale dtype 的约束；规范名称/标识；参考分解与 shape 推导；旧 exporter 和不支持 provider 的诊断行为。评审解决前不宣称冻结了 ONNX 标准。
+### PR 4a: Bounded Prefill Baseline - Proposed (P4a)
 
-## 8. 首轮执行清单
+- Depends on PR 2 and may proceed alongside PR 3; implement selected-expert or row/block-tiled dequantization with existing GEMM and an explicit scratch budget.
+- Validate `(3,4)`, `(3,3)`, and `(4,3)` with long prompts, partial tiles, empty experts, FP16/BF16, and decode-to-prefill-to-decode transitions, coordinating cached-scale/prepack behavior with PR 3. INT3 FC2 execution is required here, not deferred to PR 4d.
+- Exit gate: correct model prefill, enforceable scratch bounds, scratch-guard tests, and actual provider-target coverage.
+- Required for the usable baseline, but not a native packed grouped-GEMM delivery or a promise to beat INT2/INT4. It remains the comparison/fallback path for conditional performance work.
 
-1. 审阅并冻结可移植 raw 位流、码值/scale/zero-point 语义和 FC1/FC2 golden fixtures。
-2. 核对现有 Olive INT3 checkpoint，增加到 canonical 位流的显式转换与 shared-fixture 资格测试。
-3. 在独立参考与 schema 验证通过后，实现有界 CUDA 正确性，先打通小型 `(3,4)` decode/prefill 导出闭环。
-4. 实现 FP16/BF16 激活的 packed decode 和基础 prefill，再测 Qwen INT2/3/4 的质量、容量和速度。
-5. 根据结果选择 native prefill、其他 GPU 或整数激活研究；基础版无需等待这些实验。
+### PR 4b: Native Packed Prefill Kernel Foundation - Proposed (Performance P4b)
 
-本计划是文档设计，未新运行 INT3 kernel、模型或 CI。后续每个实现 PR 必须记录实际源码版本、构建配置、provider、硬件、测试结果和未覆盖范围，不能沿用 INT2 或本地原型结果作为 INT3 资格证据。
+- Conditional on PR 0/1's frozen contract, PR 2 correctness, and PR 4a measurements supporting a viable performance design; start with block64 FP16/BF16 on the initial SM80/A100 target.
+- Prototype a packed grouped kernel and compare measured local-conversion alternatives. Decide tiles, plane layout, alignment, and bounded workspace from evidence, including INT3 use in both fused FC1 and FC2 down and compatibility with either projection's INT4 path.
+- Deliver independent kernel unit tests, scalar-oracle parity, scratch-bound regressions, sanitizer checks, and kernel benchmarks with full conversion costs disclosed.
+- Keep QMoE default dispatch unchanged. This PR is the kernel foundation only; routing, provider dispatch, lifetime integration, and model qualification belong to PR 4c and PR 7.
+- Exit gate: a correct, maintainable candidate with evidence justifying integration. Stop native optimization if no design wins; this PR is not required for a basic model and must not imply end-to-end production speedup.
+
+### PR 4c: QMoE Packed Prefill Integration - Proposed (Performance P4b)
+
+- Conditional on an accepted PR 4b candidate and PR 3/4a readiness; integrate independent FC1/FC2 INT3/INT4 dispatch for `(3,4)`, `(3,3)`, and `(4,3)`, including routing, activation/finalization, workspace, and prepack lifetime. Qualify optimized eligibility per combination and preserve PR 4a for any combination outside the winning kernel's support boundary.
+- Add actual legacy/plugin provider integration tests as applicable, including eligibility/fallback, cached/runtime scales, partial row tiles, and decode/prefill transitions. Kernel unit tests alone do not satisfy this gate.
+- Preserve packed decode and bounded fallback for unsupported configurations; enable optimized dispatch only within the validated support boundary and after the performance decision.
+- Exit gate: end-to-end cost beats PR 4a, with scratch estimates/bounds regressions passing and repeatable unprofiled measurements. Report conversion, raw/prepack memory, and host orchestration costs.
+- Do not ship or enable a losing native design merely to complete the sequence. This is conditional production-performance work, not a baseline dependency or blanket hardware/provider claim.
+
+### PR 4d: Optional Block Sizes/Width Combinations and Provider Coverage - Proposed (Follow-Up)
+
+- Follow relevant completed contract/correctness gates and, when extending native packed prefill, PR 4b/4c. This optional work must not block the block64 baseline for any of `(3,4)`, `(3,3)`, and `(4,3)`.
+- Separately qualify optimized block32/128 dispatch, combinations beyond the three required baseline combinations, additional architectures/providers, or separately reviewed fusion/dtype extensions; format definitions alone do not prove execution support. Required INT3 FC2 support belongs to PR 1/2/3/4a/5/6/7, not this optional PR.
+- Preserve existing default 4 and FC override inheritance, fused FC3/FC1 agreement, approved zero-point semantics, and explicit unsupported diagnostics. Do not assume new mixed-schema defaults or relax divisibility without approval.
+- Exit gate: correctness, actual provider builds/tests, measured performance, scratch/lifetime checks, and a support-matrix entry for each added configuration; distinguish untested plugin/device paths.
+- No INT8-activation, asymmetric-profile, portable-prepack, or every-GPU commitment follows automatically from this PR label.
+
+### PR 5: Olive/Mobius Export - Proposed (P5)
+
+- Depends on PR 1's contract and frozen fixtures; may proceed in parallel with CUDA/CPU work, with final execution parity gated on the corresponding runtime readiness. Use coordinated repository PRs if needed.
+- Olive scope: qualify native INT3 checkpoint capability, classify expert/non-expert tensors, provide recipes for `(3,4)`, `(3,3)`, and `(4,3)`, convert checkpoint packing explicitly to canonical raw bytes for either INT3 projection, and emit a reproducible manifest with quantization/rounding/clipping, scale dtype, widths, shapes, block size, and source/tool revisions.
+- Mobius scope: construct native fused QMoE graphs, bind gate/up-interleaved FC1 and correctly oriented FC2 initializers, manage external data, and explicitly emit `quant_type='int'`, `weights_prepacked=0`, block size, and effective widths.
+- Reject schema-unapproved tails/dtype combinations and validate graph/initializer/external-data bindings against shared fixtures; native INT3 linear support does not establish fused QMoE export support.
+- Exit gate: checkpoint-to-ONNX-to-ORT numerical parity and reproducibility for all three required combinations. Automatic dense-graph fusion, unknown checkpoint-byte reuse, and native packed prefill are not dependencies or implied deliverables.
+
+### PR 6: CPU Reference and Cross-Provider Parity - Proposed (P6)
+
+- Depends on PR 1's frozen contract/fixtures and may proceed alongside PR 5 and CUDA work; coordinate CPU/CUDA comparisons with executable CUDA readiness.
+- Execute the same canonical raw bytes through a CPU reference for `(3,4)`, `(3,3)`, and `(4,3)`, including independent projection decoding, routing, SwiGLU, bias, scale/zero-point rules, and schema-approved shapes.
+- Add invalid-model checks, scalar-oracle comparisons, and CPU/CUDA parity with explicitly agreed FP16/BF16 tolerances and old-width regressions.
+- Exit gate: reference and cross-provider results agree for every required combination, with tested provider scope recorded. CPU production throughput or optimized MLAS INT3 support is not promised by reference completion.
+
+### PR 7: End-to-End Model Qualification - Proposed (P7)
+
+- Depends on PR 3/4a/5/6 and their baseline gates; qualify PR 4c only if its conditional path ships. Optional PR 4d coverage is not required for initial qualification.
+- Automate full conversion and inference for `(3,4)`, `(3,3)`, and `(4,3)` with fixed checkpoints/tokenizers, placement, block sizes, non-expert precision, and matched INT2/INT3/INT4 recipes plus a floating-point quality reference. Report per-combination quality, size, decode, prefill, and memory; selecting one preferred recipe does not waive execution/export qualification for the others.
+- Freeze quality tolerances, effective-size benefits, and performance non-regression criteria before full-model acceptance; report tasks, layer/logit errors, load/prepack, TTFT, prefill, decode TPS, peak memory, and scratch.
+- Exit gate: reproducible results meeting pre-agreed quality/capacity goals, explicit performance and fail/stop decisions, and documentation/support-matrix updates. Separate functional baseline completion from production qualification under Section 4.2.
+- Do not infer quality from equal greedy tokens, performance from microbenchmarks, or deployment coverage from a dispatch condition; unqualified hardware, concurrency, capture, and lifetime cases remain explicitly uncovered.
+
+### PR 8: ONNX Committee Proposal Package - Proposed (P8)
+
+- Build on PR 0/1's reviewed format and versioning proposals, independent decoders and PR 5/6 interoperability; include actual PR 7 quality/capacity/performance evidence for submission. Drafting can proceed earlier.
+- Assemble a CUDA-independent specification, mathematical semantics, golden bytes including tails/zero points, shape inference, invalid-model definitions, at least two independent decoders, standard-graph reference decomposition, and interoperability reports.
+- Propose `uint8` packed-input container semantics with existing external data, and explicitly separate decisions on native INT3/UINT3 datatypes, a packed operator, and standardization of fused MoE.
+- Exit gate: submit a reviewable package and record the committee's container/operator/version decisions; unresolved decisions remain open. ORT contrib merges do not approve an ONNX INT3 datatype, standard QMoE, or standard opset.
+- Ownership and timing remain conditional on an assigned proposal sponsor and committee review; no approval deadline or outcome is promised.
+
+## 5. Validation Matrix and Performance Method
+
+- Format: codes 0..7, byte crossings, K tails, block tails, multiple experts/output rows, all-zero groups, scale dtypes, truncated external data, overflow, invalid shapes/zero points/padding.
+- Operator: cross all `(3,4)`, `(3,3)`, and `(4,3)` combinations with FP16/BF16, top-k 1/2/8, single/multiple tokens, empty experts, bias, routing permutations, SwiGLU parameters, FC2 orientation, and old-model regressions; reject invalid inputs before computation. Prove each FC uses its own bit width, K stride, scale indexing, zero point, and prepack layout.
+- Kernel: packed eligibility and fallback; actual decode-to-prefill-to-decode transitions, partial row tiles, cached/runtime scales, preprocessing reuse, scratch guards, and sanitizers. Independent harnesses do not replace actual legacy/plugin provider targets; explicitly mark untested plugin coverage.
+- Tools: first verify Olive's native INT3 checkpoint capability, then qualify fused-expert coverage and Mobius graph/initializer/external-data binding. Native INT3 linear support is not QMoE export support under this contract.
+- Models: fixed checkpoint/tokenizer, tensor placement, block size, and non-expert precision across INT2/INT3/INT4, plus a floating-point quality reference. Do not mask width effects with different blocks or quantized layers.
+- Performance: same GPU/runtime, profiling disabled, forward/reverse or alternating A/B runs; separately measure load/prepack, TTFT, prefill, decode TPS, peak GPU memory, and scratch. Record host-orchestration scope. Use separate profiling to prove dispatch, not to report unprofiled TPS.
+- Accuracy: fixed tasks/samples, separate calibration/evaluation splits, layer/logit errors, and full task metrics. Elementwise equality or equal greedy tokens is not a substitute for quality qualification.
+
+Before full-model acceptance, freeze task-quality tolerances, effective-size benefits, and performance non-regression criteria with product and exporter/runtime owners. Do not move thresholds after seeing results. Report throughput changes smaller than measurement variation as inconclusive, not successful.
+
+## 6. Effective Storage Cost and Stop Criteria
+
+For each `[E,N,K]` INT3 tensor, the weight payload is `E*N*ceil(3*K/8)` bytes and scales occupy `E*N*ceil(K/block_size)*sizeof(scale)`. Account separately for explicit zero points, padding, manifests, unquantized parameters, and external-data alignment.
+
+For example, with aligned K, FP16 scales, no explicit zero point, and block64, the effective weight-plus-scale rate is `3 + 16/64 = 3.25 bit/weight`, not exactly 3. The corresponding INT4 rate under the same scale policy is 4.25 bit/weight. Do not present the nominal 25% payload saving as whole-model or GPU-memory saving.
+
+Stop or adjust if quality offers no meaningful value over INT2; effective capacity offers insufficient benefit over INT4; prepack/raw caches or temporary expansion consume the capacity benefit; packed extraction offsets bandwidth gains; microbenchmarks improve while full models regress; or exporter/runtime byte interpretations cannot interoperate. Without measured benefit, retain baseline correctness and the results rather than add unmaintainable optimization special cases just to showcase a new width.
+
+## 7. ONNX Committee Submission Package and Open Decisions
+
+The package should include an independent packed-format specification and mathematical semantics, golden bytes including tails/zero points, shape inference and invalid-model definitions, at least two independent decoders, exporter/runtime interoperability reports, a standard-graph reference decomposition, and real performance/quality/capacity evidence.
+
+Prefer a `uint8` container with explicit operator semantics for opaque packed inputs and existing ONNX external data. Adding native INT3/UINT3 datatypes is a separate decision. A three-bit bitstream cannot be passed directly to existing `DequantizeLinear` as ordinary uint8 elements; it requires an explicitly decoding reference decomposition or an approved packed operator. Whether to standardize the full fused MoE operator or first a general packed quantization representation/operation is also a separate discussion.
+
+Open approval questions include whether the schema upgrade needs a new contrib version; acceptance of the initial symmetric-only profile, block32/64/128 set, and tail rules; explicit zero-point extension strategy; scale-dtype constraints; specification name/identifier; reference decomposition and shape inference; and diagnostics for older exporters and unsupported providers. Do not claim an ONNX standard is frozen before review resolves these questions.
+
+## 8. Initial Execution Checklist
+
+1. Review and freeze the portable raw bitstream, code/scale/zero-point semantics, and FC1/FC2 golden fixtures.
+2. Audit existing Olive INT3 checkpoints; add explicit canonical-bitstream conversion and shared-fixture qualification tests.
+3. After independent-reference and schema validation pass, implement bounded CUDA correctness and complete small decode/prefill export loops for `(3,4)`, `(3,3)`, and `(4,3)`; `(3,4)` may be the first checkpoint, not the baseline exit gate.
+4. Implement packed decode and baseline prefill for every required combination with FP16/BF16 activation, then measure each Qwen recipe's quality, capacity, and speed against matched INT2/INT4 references.
+5. Use the results to choose native prefill, other GPUs, or integer-activation research. The baseline need not wait for these experiments.
+
+This is a design document; no new INT3 kernel, model, or CI runs were performed for this plan. Each subsequent implementation PR must record the actual source revision, build configuration, provider, hardware, test results, and uncovered scope. INT2 or local-prototype results cannot serve as INT3 qualification evidence.
