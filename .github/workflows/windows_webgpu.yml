@@ -563,6 +563,17 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
+      - name: Run host-owned device and cache tests
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        run: |
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device
+          if ($LASTEXITCODE -ne 0) { throw "External host device/cache test failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync
+          if ($LASTEXITCODE -ne 0) { throw "Host device synchronization rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure
+          if ($LASTEXITCODE -ne 0) { throw "Host cache callback exception containment failed" }
+
       - name: Export matching Dawn package and host
         shell: pwsh
         run: |
@@ -639,6 +650,17 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}\external-dawn-inputs\host
 
+      - name: Run package-backed host-owned device and cache tests
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
+        run: |
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed host device/cache test failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed synchronization rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed cache exception containment failed" }
+
       - name: Reject invalid Dawn packages
         shell: pwsh
         run: |
@@ -689,6 +711,12 @@ jobs:
           .\onnxruntime_webgpu_external_dawn_test.exe --no_proc_table --plugin "$plugin.missing"
           if ($LASTEXITCODE -eq 0) { throw "An unrelated plugin-load error passed the missing-proc-table test" }
           $global:LASTEXITCODE = 0
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed host device/cache test failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed synchronization rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed cache exception containment failed" }
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: [

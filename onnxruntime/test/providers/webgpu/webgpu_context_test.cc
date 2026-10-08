@@ -781,6 +781,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
@@ -821,6 +822,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
                                        webgpu::BufferCacheMode::Disabled);
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false);
@@ -866,6 +868,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
+      webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
@@ -1029,6 +1032,20 @@ TEST(WebGpuContextTest, KvCacheQuantizationAcceptsSupportedBitWidths) {
 
 TEST(WebGpuContextTest, KvCacheQuantizationRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(KvCacheQuantizationOptions("3")), OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, DeviceIdRejectsInvalidValueBeforeContextCreation) {
+  for (const char* value : {"-1", "-32768", "32768", "2147483647", "2147483648", "", "1x", "0x", "x"}) {
+    SCOPED_TRACE(value);
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDeviceId, value));
+    try {
+      WebGpuProviderFactoryCreator::Create(options);
+      FAIL() << "Expected deviceId to be rejected.";
+    } catch (const OnnxRuntimeException& ex) {
+      EXPECT_NE(std::string_view{ex.what()}.find("Invalid deviceId value"), std::string_view::npos);
+    }
+  }
 }
 
 TEST(WebGpuContextTest, AdapterIndexRejectsInvalidValue) {
