@@ -64,13 +64,13 @@ struct PendingKernelInfo {
 };
 
 // State for one in-flight pipeline build. The compiled pipeline is written into
-// `callback_context->pipeline` by the async callback; only that heap-allocated callback context
-// must stay put until `future` completes, so this struct itself can be stored inline.
+// `callback_context->pipeline` by the async callback, which shares ownership of the result state
+// independently of this build's lifetime.
 struct PendingPipelineBuild {
   std::string name;
   std::vector<int> shape_uniform_ranks;
   wgpu::BindGroupLayout bind_group_layout;
-  std::unique_ptr<PipelineCallbackContext> callback_context;
+  std::shared_ptr<PipelineCallbackContext> callback_context;
   wgpu::Future future;
 };
 
