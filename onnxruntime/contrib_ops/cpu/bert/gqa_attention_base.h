@@ -11,6 +11,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_helper.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
@@ -776,7 +777,8 @@ class GQAAttentionBase {
     // ---- Phase 2: Flash Attention with quantized KV cache ----
     // Compute L2-aware block sizes (same formula as MHA flash attention)
     const auto& env = Env::Default();
-    int l2_cache_size = env.GetL2CacheSize();
+    const auto block_sizes =
+        group_query_attention_helper::GetFlashAttentionBlockSizes(env.GetL2CacheSize(), head_size);
 
     // For quantized KV: effective bytes per KV element for cache considerations
     // We dequantize V blocks to FP32, so working set per KV row = head_size * sizeof(float)
@@ -790,9 +792,8 @@ class GQAAttentionBase {
     //   Temp output: [Br, head_size] floats
     //   Total ~ (2*Br + Bc) * head_size + Br * Bc
     //   Approximation: use same formula as FP32 flash attention
-    int kv_block_size = l2_cache_size / (static_cast<int>(sizeof(float)) * 4 * (head_size + head_size));
-    kv_block_size = std::max(kv_block_size, 1);
-    int q_block_size = std::min(kv_block_size, 2 * head_size);
+    int kv_block_size = block_sizes.kv_block_size;
+    int q_block_size = block_sizes.q_block_size;
 
     // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
     // When batch items have different seqlens_k (ragged), we must fall back to per-batch
@@ -1159,11 +1160,10 @@ class GQAAttentionBase {
     // ---- Phase 2: Flash Attention with FP32 KV cache ----
     // Compute L2-aware block sizes (same formula as MHA flash attention).
     const auto& env = Env::Default();
-    int l2_cache_size = env.GetL2CacheSize();
-
-    int kv_block_size = l2_cache_size / (static_cast<int>(sizeof(float)) * 4 * (head_size + head_size));
-    kv_block_size = std::max(kv_block_size, 1);
-    int q_block_size = std::min(kv_block_size, 2 * head_size);
+    const auto block_sizes =
+        group_query_attention_helper::GetFlashAttentionBlockSizes(env.GetL2CacheSize(), head_size);
+    int kv_block_size = block_sizes.kv_block_size;
+    int q_block_size = block_sizes.q_block_size;
 
     // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
     // When batch items have different seqlens_k (ragged), fall back to per-batch invocation
