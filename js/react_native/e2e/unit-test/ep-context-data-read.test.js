@@ -73,7 +73,7 @@ test('callback checks use bindings installed after the component module was eval
   await component.runCallbackBridgeFailureCheck(12);
   await component.runCallbackBridgeCancellationCheck(13);
 
-  expect(component.state.testResults.slice(11)).toEqual([
+  expect(component.state.testResults.slice(11, 14)).toEqual([
     expect.objectContaining({ status: 'success' }),
     expect.objectContaining({ status: 'success' }),
     expect.objectContaining({ status: 'success' }),
@@ -113,4 +113,37 @@ test('cancellation checks distinguish in-flight, queued, and Env-listener teardo
   expect(workers[2].waitForDispatch.mock.invocationCallOrder[0]).toBeLessThan(
     workers[2].invalidateEnv.mock.invocationCallOrder[0],
   );
+});
+
+test('completion check validates resolve and reject publications', async () => {
+  const component = createComponent();
+  globalThis.OrtApi = createOrtApi();
+
+  await component.runWorkerCompletionCheck(14);
+
+  expect(component.state.testResults[14].status).toBe('success');
+  expect(globalThis.OrtApi.__testEpContextDataReadCallback).toHaveBeenCalledTimes(64);
+});
+
+test('completion check rejects a promise published before native completion', async () => {
+  const component = createComponent();
+  globalThis.OrtApi = {
+    __testEpContextDataReadCallback: jest.fn(() => {
+      const promise = Promise.resolve(new Uint8Array([0]));
+      promise.__testWorker = { isFinished: false };
+      return promise;
+    }),
+  };
+  const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    await component.runWorkerCompletionCheck(14);
+    expect(component.state.testResults[14]).toEqual(
+      expect.objectContaining({
+        status: 'error',
+        message: 'Promise settled before its native worker finished',
+      }),
+    );
+  } finally {
+    errorLog.mockRestore();
+  }
 });
