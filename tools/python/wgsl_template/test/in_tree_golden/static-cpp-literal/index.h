@@ -5,6 +5,22 @@
 #endif
 
 //
+// Template: math/matmul_gemv.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"math/matmul_gemv.wgsl.template"> {
+  using type = struct {
+    const ShaderVariableHelper* var_a;
+    const ShaderVariableHelper* var_b;
+    const ShaderVariableHelper* var_output;
+  };
+};
+
+template <>
+Status ApplyTemplate<"math/matmul_gemv.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/matmul_gemv.wgsl.template">::type params);
+
+//
 // Template: math/subgroup_matrix_gemm_8x16x16.wgsl.template
 //
 

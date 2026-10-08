@@ -214,8 +214,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     // reading every kernel tap one channel at a time.
     const bool is_depthwise_vec = is_channels_last && output_channels_per_group == 1 &&
                                   conv_attrs_.group == input_channels && GetMaxComponents(output_channels) > 1;
+    // General grouped-convolution vectors must not cross an output-group boundary.
     auto components = static_cast<int>(is_channels_last && (output_channels_per_group >= 4 || is_depthwise_vec)
-                                           ? GetMaxComponents(output_channels)
+                                           ? GetMaxComponents(is_depthwise_vec ? output_channels : output_channels_per_group)
                                            : 1);
     auto output_size = output_shape.Size() / components;
     GroupedConvProgram program(activation_, has_bias, is_channels_last, is_depthwise_vec);

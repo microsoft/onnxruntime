@@ -3636,9 +3636,14 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             input_defs.size() > 11 && input_defs[11] != nullptr &&
             input_defs[11]->Exists() &&
             graph.IsConstantInitializer(input_defs[11]->Name(), true);
+        // The factory validates the envelope once. It remains reader-only here.
+        const auto gqa_workspace_max_total_sequence_length =
+            resource_accountant->GetWorkspaceEstimatorConfig()
+                .cuda_gqa_workspace_max_total_sequence_length;
         const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
-            *GetAttentionKernelOptions(), head_sink_is_constant_initializer);
+            *GetAttentionKernelOptions(), head_sink_is_constant_initializer,
+            gqa_workspace_max_total_sequence_length);
         if (ws.has_value()) {
           Level1MemoryEstimate estimate;
           contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate(*ws, estimate);
