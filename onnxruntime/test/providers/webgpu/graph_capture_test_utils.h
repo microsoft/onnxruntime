@@ -27,6 +27,7 @@ class WebGpuGraphCaptureTester final : public OpTester {
   void RunWithBoundCapture(std::unique_ptr<IExecutionProvider> provider,
                            const SessionOptions& options, const TensorShape& shape,
                            gsl::span<const T> expected) {
+    SetTestFunctionCalled();
     const std::string model = BuildModel().ToProto().SerializeAsString();
     auto* capture_provider = provider.get();
     InferenceSession session(options, GetEnvironment());
