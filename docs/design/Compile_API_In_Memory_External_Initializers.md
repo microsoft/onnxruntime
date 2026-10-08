@@ -80,7 +80,9 @@ externalized, return a null buffer and size zero. Empty initializers remain embe
 
 Refactor the existing external-initializer save path so its physical destination can be either a file stream or an
 allocated memory buffer. Preserve the existing initializer traversal, threshold, external-data metadata, endian
-conversion, subgraph handling, and prepacked-weight handling.
+conversion, and prepacked-weight handling. File output retains its existing subgraph externalization behavior.
+Buffer output externalizes only main-graph initializers and keeps subgraph initializer data embedded, regardless of the
+size threshold, so the resulting model does not require subgraph file-buffer injection to load.
 
 Use a two-pass implementation:
 
@@ -100,12 +102,17 @@ called. Passing zero disables this additional policy while preserving natural al
 use only the configured alignment policy.
 
 The serialized ONNX protobuf must still be smaller than 2 GB. Externalizing initializer bytes keeps the protobuf small;
-this feature does not support graph metadata that independently exceeds protobuf's limit.
+this feature does not support graph metadata or embedded subgraph initializers that independently exceed protobuf's
+limit.
 
 ## Loading
 
 The existing `OrtApi::AddExternalInitializersFromFilesInMemory` accepts whole logical files, and one supplied file may
-contain multiple initializers. It copies initializer data during session creation by default.
+contain multiple main-graph initializers. It copies initializer data during session creation by default.
+Both `AddExternalInitializers` and `AddExternalInitializersFromFilesInMemory` apply only to the main graph; neither
+replaces initializers in subgraphs. Consistent subgraph injection support is deferred beyond this release. The WebNN
+scenario constructs models through the ModelEditor API, which does not currently support creating graph-valued node
+attributes.
 
 Add `kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly` with the config key
 `session.use_external_initializer_file_buffers_directly`. Its default is `"0"`. When set to `"1"`, buffers supplied
@@ -115,9 +122,8 @@ state that every session created from the options may outlive the options, and t
 unchanged and alive until those sessions are released. If session creation fails, the buffers may be released after the
 call returns.
 
-During model load, inject supplied subgraph initializer data before graph resolution, whose ONNX validation otherwise
-tries to open the logical filenames on disk. Main-graph injection still occurs before optimization and preserves the
-precedence of individually supplied external initializers over file buffers. Recursively match each external
+During session initialization, inject individually supplied external initializers before file buffers, preserving their
+precedence and the existing main-graph loading order. Match each main-graph external
 initializer's logical filename, validate its declared and computed size, and use checked arithmetic to validate its offset and length against the file
 buffer. When the slice is naturally aligned for the runtime storage type, create an initializer `OrtValue` over the
 validated slice with non-owning storage and retain it in the graph/session instead of copying. The borrowed `OrtValue`
@@ -169,9 +175,12 @@ A misaligned supplied buffer is valid; direct-use loading copies only slices tha
   results.
 - Verify internally that large direct-use initializer tensors point into the supplied file buffer, while required small
   or endian-converted values use owned storage.
-- Cover threshold boundaries, subgraph initializers (compiled and reloaded through both copy and direct-use paths),
-  natural and configured offset alignment, and misaligned direct buffers that fall back to per-initializer copies while
-  neighboring aligned initializers still borrow.
+- Cover threshold boundaries, natural and configured offset alignment, and misaligned direct buffers that fall back to
+  per-initializer copies while neighboring aligned initializers still borrow.
+- Verify that buffer compilation keeps subgraph initializers embedded, including models with no main-graph initializers,
+  while file output continues to externalize subgraph data. Reload each result and verify inference.
+- Verify that both injection APIs leave file-backed subgraph initializers unchanged and that named main-graph replacements
+  retain precedence over file buffers in copy and direct-use modes.
 - Verify logical filename metadata, relative-name normalization through the public compile/load APIs, offsets, lengths,
   output ownership, and direct-buffer lifetime requirements.
 - Verify that the file and buffer external-initializer destinations are mutually exclusive (last setter wins), and

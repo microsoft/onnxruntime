@@ -4142,10 +4142,11 @@ struct OrtApi {
 
   /** \brief Replace initialized Tensors with external data with the data provided in initializers.
    *
-   * The function will find the initialized TensorProtos with external data in the graph with the provided names and
+   * The function will find the initialized TensorProtos with external data in the main graph with the provided names and
    * replace them with the provided tensors. The API verifies that the TensorProto being replaced
    * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
-   * will occur before any of the optimizations take place. The data will be copied into the graph
+   * does not apply to initializers in subgraphs and will occur before any of the optimizations take place.
+   * The data will be copied into the graph
    * since TensorProto can't refer to the user provided buffers.
    *
    * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
@@ -5353,11 +5354,12 @@ struct OrtApi {
 
   /** \brief Replace initialized Tensors with external data with the provided files in memory
    *
-   * The function will find the initialized TensorProtos with external data in the graph with the provided
+   * The function will find the initialized TensorProtos with external data in the main graph with the provided
    * external file names and the file content in memory. The API gets the external file name, offset, data length
    * from TensorProto, and locate the tensor data from the file in memory buffer.
    * It creates a Tensor to replace the existing Tensor in graph. The replacement
    * will occur before any of the optimizations take place. By default, the data is copied during session creation.
+   * Initializers in subgraphs are not replaced by this API.
    *
    * If the session config `session.use_external_initializer_file_buffers_directly` is set to `"1"`, naturally aligned
    * native-endian slices may be used directly. Other slices are copied. Every session created from these options may
@@ -8570,6 +8572,7 @@ struct OrtCompileApi {
    * This setter only configures the destination; CompileModel allocates the buffer using `allocator`.
    * On successful CompileModel completion, the caller owns the allocated buffer and must release it with `allocator`.
    * If no data is externalized, the output buffer is NULL and its size is zero.
+   * Only main-graph initializers are externalized to this buffer; subgraph initializers remain embedded in the model.
    * If CompileModel fails, both outputs are unchanged and temporary allocations are freed.
    * The allocator and output pointer locations must remain valid until CompileModel returns.
    * If the model also uses an output buffer, its buffer and size output locations must each be distinct from those

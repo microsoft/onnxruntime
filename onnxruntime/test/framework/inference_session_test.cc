@@ -5120,9 +5120,11 @@ TEST(InferenceSessionTests, CompileApiWritesModelFileAndExternalInitializersBuff
   allocator.Free(external_buffer);
 }
 
-TEST(InferenceSessionTests, CompileApiExternalInitializersInSubgraphs) {
+TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmbedded) {
   const PathString input_path = ORT_TSTR("compile_api_subgraph_initializers.onnx");
+  const PathString external_path = ORT_TSTR("compile_api_subgraph_weights.bin");
   auto remove_input = gsl::finally([&]() { std::filesystem::remove(input_path); });
+  auto remove_external = gsl::finally([&]() { std::filesystem::remove(external_path); });
   CreateCompileApiAddModel(input_path, true, 64);
   ModelProto input_proto;
   {
@@ -5152,91 +5154,108 @@ TEST(InferenceSessionTests, CompileApiExternalInitializersInSubgraphs) {
     // Same initializer name in different scopes, with different data.
     for (auto& value : *branch.mutable_initializer(0)->mutable_float_data()) value += 10.0f;
   }
-  const std::string input_model = input_proto.SerializeAsString();
-  Ort::SessionOptions options;
-  Ort::ModelCompilationOptions compile_options(*ort_env, options);
-  compile_options.SetInputModelFromBuffer(input_model.data(), input_model.size());
-  compile_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* model_buffer = nullptr;
-  size_t model_size = 0;
-  void* external_buffer = nullptr;
-  size_t external_size = 0;
-  auto free_buffers = gsl::finally([&]() {
-    allocator.Free(model_buffer);
-    allocator.Free(external_buffer);
-  });
-  compile_options.SetOutputModelBuffer(allocator, &model_buffer, &model_size);
-  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("subgraph_weights.bin"), 0, allocator,
-                                                           &external_buffer, &external_size);
-  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
-  ModelProto compiled_proto;
-  ASSERT_TRUE(compiled_proto.ParseFromArray(model_buffer, static_cast<int>(model_size)));
-  ASSERT_EQ(compiled_proto.graph().node_size(), 1);
-  ASSERT_EQ(compiled_proto.graph().node(0).op_type(), "If");
-  {
-    std::ofstream output(input_path, std::ios::binary);
-    ASSERT_TRUE(compiled_proto.SerializeToOstream(&output));
-  }
-
-  for (int mode : {0, 1, 2, 3}) {
-    SCOPED_TRACE(mode);
-    const bool direct = mode % 2 != 0;
-    SessionOptions load_options;
-    load_options.graph_optimization_level = TransformerLevel::Default;
-    load_options.external_initializer_files_mmap = {
-        {ORT_TSTR("subgraph_weights.bin"), {static_cast<char*>(external_buffer), external_size}}};
-    ASSERT_STATUS_OK(load_options.config_options.AddConfigEntry(
-        kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
-    InferenceSessionWrapper session{load_options, GetEnvironment()};
-    if (mode >= 2) {
-      ASSERT_STATUS_OK(session.Load(std::filesystem::absolute(input_path).native()));
-    } else {
-      ASSERT_STATUS_OK(session.Load(model_buffer, static_cast<int>(model_size)));
+  for (bool has_main_initializer : {false, true}) {
+    SCOPED_TRACE(has_main_initializer);
+    ModelProto model_to_compile = input_proto;
+    if (has_main_initializer) {
+      auto& main_graph = *model_to_compile.mutable_graph();
+      auto& bias = *main_graph.add_initializer();
+      bias.set_name("root_bias");
+      bias.set_data_type(TensorProto_DataType_FLOAT);
+      bias.add_dims(64);
+      for (int i = 0; i < 64; ++i) bias.add_float_data(2.0f);
+      main_graph.mutable_node(0)->set_output(0, "R");
+      auto& add = *main_graph.add_node();
+      add.set_op_type("Add");
+      add.add_input("R");
+      add.add_input("root_bias");
+      add.add_output("Z");
     }
-    ASSERT_STATUS_OK(session.Initialize());
-    const auto& loaded_if = *session.GetGraph().Nodes().begin();
-    ASSERT_EQ(loaded_if.GetSubgraphs().size(), 2u);
-    for (const auto& attribute : compiled_proto.graph().node(0).attribute()) {
-      ASSERT_EQ(attribute.g().initializer_size(), 1);
-      const auto& initializer = attribute.g().initializer(0);
-      std::unique_ptr<ExternalDataInfo> info;
-      ASSERT_STATUS_OK(ExternalDataInfo::Create(initializer.external_data(), info));
-      EXPECT_EQ(info->GetRelPath(), ORT_TSTR("subgraph_weights.bin"));
-      const auto* subgraph_state = session.GetSessionState().GetSubgraphSessionState(loaded_if.Index(), attribute.name());
-      ASSERT_NE(subgraph_state, nullptr);
-      int index;
-      ASSERT_STATUS_OK(subgraph_state->GetOrtValueNameIdxMap().GetIdx(initializer.name(), index));
-      const auto* actual = subgraph_state->GetInitializedTensors().at(index).Get<Tensor>().DataRaw();
-      const auto* supplied = static_cast<char*>(external_buffer) + info->GetOffset();
-      if (direct && endian::native == endian::little) {
-        EXPECT_EQ(actual, supplied);
+    const std::string input_model = model_to_compile.SerializeAsString();
+    for (bool buffer_destination : {false, true}) {
+      SCOPED_TRACE(buffer_destination);
+      Ort::SessionOptions options;
+      Ort::ModelCompilationOptions compile_options(*ort_env, options);
+      compile_options.SetInputModelFromBuffer(input_model.data(), input_model.size());
+      compile_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+      Ort::AllocatorWithDefaultOptions allocator;
+      void* model_buffer = nullptr;
+      size_t model_size = 0;
+      void* external_buffer = nullptr;
+      size_t external_size = 0;
+      auto free_buffers = gsl::finally([&]() {
+        allocator.Free(model_buffer);
+        allocator.Free(external_buffer);
+      });
+      compile_options.SetOutputModelBuffer(allocator, &model_buffer, &model_size);
+      if (buffer_destination) {
+        compile_options.SetOutputModelExternalInitializersBuffer(external_path.c_str(), 0, allocator,
+                                                                 &external_buffer, &external_size);
       } else {
-        EXPECT_NE(actual, supplied);
+        compile_options.SetOutputModelExternalInitializersFile(external_path.c_str(), 0);
       }
-    }
+      const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+      ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+      if (buffer_destination) {
+        EXPECT_EQ(external_size, has_main_initializer ? 64 * sizeof(float) : 0u);
+        EXPECT_EQ(external_buffer == nullptr, !has_main_initializer);
+        std::filesystem::remove(external_path);
+      }
 
-    OrtValue x;
-    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {64},
-                         std::vector<float>(64, 1.0f), &x);
-    for (bool take_then : {false, true}) {
-      OrtValue cond;
-      CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {}, {take_then}, &cond);
-      std::vector<OrtValue> outputs;
-      const NameMLValMap feeds{{"X", x}, {"condition", cond}};
-      const std::array<std::string, 1> output_names{"Z"};
-      ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
-      ASSERT_EQ(outputs.size(), 1u);
-      const float* result = outputs[0].Get<Tensor>().Data<float>();
-      for (int i = 0; i < 64; ++i) EXPECT_EQ(result[i], static_cast<float>(i + (take_then ? 4 : 14)));
+      ModelProto compiled_proto;
+      ASSERT_TRUE(compiled_proto.ParseFromArray(model_buffer, static_cast<int>(model_size)));
+      ASSERT_EQ(compiled_proto.graph().initializer_size(), has_main_initializer ? 1 : 0);
+      ASSERT_EQ(compiled_proto.graph().node(0).op_type(), "If");
+      for (const auto& attribute : compiled_proto.graph().node(0).attribute()) {
+        ASSERT_EQ(attribute.g().initializer_size(), 1);
+        EXPECT_EQ(utils::HasExternalData(attribute.g().initializer(0)), !buffer_destination);
+      }
+      {
+        std::ofstream output(input_path, std::ios::binary);
+        ASSERT_TRUE(compiled_proto.SerializeToOstream(&output));
+      }
+
+      for (int mode : {0, 1, 2, 3}) {
+        SCOPED_TRACE(mode);
+        const bool direct = mode % 2 != 0;
+        SessionOptions load_options;
+        load_options.graph_optimization_level = TransformerLevel::Default;
+        if (buffer_destination && has_main_initializer) {
+          load_options.external_initializer_files_mmap = {
+              {external_path, {static_cast<char*>(external_buffer), external_size}}};
+        }
+        ASSERT_STATUS_OK(load_options.config_options.AddConfigEntry(
+            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
+        InferenceSessionWrapper session{load_options, GetEnvironment()};
+        if (mode >= 2) {
+          ASSERT_STATUS_OK(session.Load(std::filesystem::absolute(input_path).native()));
+        } else {
+          ASSERT_STATUS_OK(session.Load(model_buffer, static_cast<int>(model_size)));
+        }
+        ASSERT_STATUS_OK(session.Initialize());
+
+        OrtValue x;
+        CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {64},
+                             std::vector<float>(64, 1.0f), &x);
+        for (bool take_then : {false, true}) {
+          OrtValue cond;
+          CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {}, {take_then}, &cond);
+          std::vector<OrtValue> outputs;
+          const NameMLValMap feeds{{"X", x}, {"condition", cond}};
+          const std::array<std::string, 1> output_names{"Z"};
+          ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+          ASSERT_EQ(outputs.size(), 1u);
+          const float* result = outputs[0].Get<Tensor>().Data<float>();
+          for (int i = 0; i < 64; ++i) {
+            EXPECT_EQ(result[i], static_cast<float>(i + (take_then ? 4 : 14) + (has_main_initializer ? 2 : 0)));
+          }
+        }
+      }
     }
   }
 }
 
-// Subgraph initializers supplied through file buffers must not break ONNX checking of file-backed tensor attributes,
-// which are resolved relative to the model directory.
-TEST(InferenceSessionTests, ExternalInitializerBuffersWithExternalTensorAttributeInModelDirectory) {
+TEST(InferenceSessionTests, ExternalInitializerInjectionIsMainGraphOnly) {
   const std::filesystem::path model_dir = ORT_TSTR("external_buffers_attribute_model_dir");
   std::filesystem::remove_all(model_dir);
   std::filesystem::create_directories(model_dir);
@@ -5249,6 +5268,11 @@ TEST(InferenceSessionTests, ExternalInitializerBuffersWithExternalTensorAttribut
     std::ofstream attribute_file(model_dir / ORT_TSTR("attr.bin"), std::ios::binary);
     attribute_file.write(reinterpret_cast<const char*>(&attribute_value), sizeof(attribute_value));
     ASSERT_TRUE(attribute_file.good());
+  }
+  {
+    std::ofstream weights_file(model_dir / ORT_TSTR("weights.bin"), std::ios::binary);
+    weights_file.write(reinterpret_cast<const char*>(weights.data()), data_size);
+    ASSERT_TRUE(weights_file.good());
   }
 
   auto set_float_vector_type = [](ValueInfoProto& value_info, const char* name) {
@@ -5275,6 +5299,7 @@ TEST(InferenceSessionTests, ExternalInitializerBuffersWithExternalTensorAttribut
   condition.mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
   condition.mutable_type()->mutable_tensor_type()->mutable_shape();
   set_float_vector_type(*graph.add_output(), "Z");
+  set_external_float_tensor(*graph.add_initializer(), "B", ORT_TSTR("weights.bin"), 4);
 
   // Unlike a Constant node's value, a ConstantOfShape value remains a node attribute and is not an initializer.
   TensorProto& shape = *graph.add_initializer();
@@ -5310,9 +5335,14 @@ TEST(InferenceSessionTests, ExternalInitializerBuffersWithExternalTensorAttribut
     set_float_vector_type(*branch.add_output(), "branch_out");
   }
 
+  NodeProto& root_add = *graph.add_node();
+  root_add.set_op_type("Add");
+  root_add.add_input("R");
+  root_add.add_input("B");
+  root_add.add_output("T");
   NodeProto& final_add = *graph.add_node();
   final_add.set_op_type("Add");
-  final_add.add_input("R");
+  final_add.add_input("T");
   final_add.add_input("C");
   final_add.add_output("Z");
 
@@ -5323,32 +5353,45 @@ TEST(InferenceSessionTests, ExternalInitializerBuffersWithExternalTensorAttribut
   }
 
   for (bool direct : {false, true}) {
-    SCOPED_TRACE(direct);
-    std::vector<float> weights_copy = weights;
-    SessionOptions options;
-    options.graph_optimization_level = TransformerLevel::Default;
-    options.external_initializer_files_mmap = {
-        {ORT_TSTR("weights.bin"), {reinterpret_cast<char*>(weights_copy.data()), data_size}}};
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
-        kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
-    InferenceSessionWrapper session{options, GetEnvironment()};
-    ASSERT_STATUS_OK(session.Load(std::filesystem::absolute(model_path).native()));
-    ASSERT_STATUS_OK(session.Initialize());
+    for (bool named_override : {false, true}) {
+      SCOPED_TRACE(direct);
+      SCOPED_TRACE(named_override);
+      std::vector<float> weights_copy{10.f, 20.f, 30.f, 40.f};
+      std::vector<float> override_data{100.f, 200.f, 300.f, 400.f};
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Default;
+      options.external_initializer_files_mmap = {
+          {ORT_TSTR("weights.bin"), {reinterpret_cast<char*>(weights_copy.data()), data_size}}};
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
+      if (named_override) {
+        OrtValue replacement;
+        Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{4}, override_data.data(),
+                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), replacement);
+        const std::array<std::string, 1> names{"B"};
+        const std::array<OrtValue, 1> values{replacement};
+        ASSERT_STATUS_OK(options.AddExternalInitializers(names, values));
+      }
+      InferenceSessionWrapper session{options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(std::filesystem::absolute(model_path).native()));
+      ASSERT_STATUS_OK(session.Initialize());
 
-    auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-    OrtValue x;
-    CreateMLValue<float>(allocator, {4}, std::vector<float>(4, 1.0f), &x);
-    for (bool take_then : {false, true}) {
-      OrtValue cond;
-      CreateMLValue<bool>(allocator, {}, {take_then}, &cond);
-      std::vector<OrtValue> outputs;
-      const NameMLValMap feeds{{"X", x}, {"condition", cond}};
-      const std::array<std::string, 1> output_names{"Z"};
-      ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
-      ASSERT_EQ(outputs.size(), 1u);
-      const float* result = outputs[0].Get<Tensor>().Data<float>();
-      for (int i = 0; i < 4; ++i) {
-        EXPECT_EQ(result[i], 1.0f + weights[i] + attribute_value);
+      auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+      OrtValue x;
+      CreateMLValue<float>(allocator, {4}, std::vector<float>(4, 1.0f), &x);
+      for (bool take_then : {false, true}) {
+        OrtValue cond;
+        CreateMLValue<bool>(allocator, {}, {take_then}, &cond);
+        std::vector<OrtValue> outputs;
+        const NameMLValMap feeds{{"X", x}, {"condition", cond}};
+        const std::array<std::string, 1> output_names{"Z"};
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+        ASSERT_EQ(outputs.size(), 1u);
+        const float* result = outputs[0].Get<Tensor>().Data<float>();
+        for (int i = 0; i < 4; ++i) {
+          EXPECT_EQ(result[i], 1.0f + weights[i] +
+                                   (named_override ? override_data[i] : weights_copy[i]) + attribute_value);
+        }
       }
     }
   }

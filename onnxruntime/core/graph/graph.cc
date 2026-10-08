@@ -3557,55 +3557,6 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-// ONNX's checker only recognizes '#'-prefixed external data locations as in-memory, and only when no model directory
-// is prepended. After file-buffer injection, replace the external data locations in a temporary copy of a node so it
-// can be checked with an empty model directory. ORT validates external data paths again when it loads the data.
-static void MarkExternalDataForOnnxCheck(ONNX_NAMESPACE::NodeProto& node_proto) {
-  auto mark_tensor = [](ONNX_NAMESPACE::TensorProto& tensor_proto) {
-    if (!utils::HasExternalData(tensor_proto)) {
-      return;
-    }
-
-    for (auto& entry : *tensor_proto.mutable_external_data()) {
-      if (entry.key() == "location") {
-        entry.set_value("#ort_external_data");
-      }
-    }
-  };
-
-  auto mark_node = [&](ONNX_NAMESPACE::NodeProto& node, const auto& self) -> void {
-    for (auto& attribute : *node.mutable_attribute()) {
-      if (attribute.has_t()) {
-        mark_tensor(*attribute.mutable_t());
-      }
-
-      for (auto& tensor : *attribute.mutable_tensors()) {
-        mark_tensor(tensor);
-      }
-
-      auto mark_graph = [&](ONNX_NAMESPACE::GraphProto& graph_proto) {
-        for (auto& initializer : *graph_proto.mutable_initializer()) {
-          mark_tensor(initializer);
-        }
-
-        for (auto& subgraph_node : *graph_proto.mutable_node()) {
-          self(subgraph_node, self);
-        }
-      };
-
-      if (attribute.has_g()) {
-        mark_graph(*attribute.mutable_g());
-      }
-
-      for (auto& subgraph : *attribute.mutable_graphs()) {
-        mark_graph(subgraph);
-      }
-    }
-  };
-
-  mark_node(node_proto, mark_node);
-}
-
 Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
@@ -3657,14 +3608,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
           } else {
             NodeProto node_proto;
             node.ToProto(node_proto);
-            if (external_initializer_files_in_memory_) {
-              MarkExternalDataForOnnxCheck(node_proto);
-              CheckerContext in_memory_ctx = ctx;
-              in_memory_ctx.set_model_dir("");
-              checker::check_node(node_proto, in_memory_ctx, lsc);
-            } else {
-              checker::check_node(node_proto, ctx, lsc);
-            }
+            checker::check_node(node_proto, ctx, lsc);
           }
         }
         ORT_CATCH(const std::exception& ex) {
@@ -4447,21 +4391,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 
 Status Graph::InjectExternalInitializersFromFilesInMemory(
     const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
-    bool use_buffers_directly, bool only_subgraphs) {
-  for (auto& node : Nodes()) {
-    for (auto& subgraph : node.MutableSubgraphs()) {
-      ORT_RETURN_IF_ERROR(
-          subgraph->InjectExternalInitializersFromFilesInMemory(external_initializer_files, use_buffers_directly));
-      // The original proto still contains the subgraph's file references. Validate the updated subgraph instead.
-      node.SetOriginalNodeProto(nullptr);
-    }
-  }
-
-  if (only_subgraphs) {
-    external_initializer_files_in_memory_ = true;
-    return Status::OK();
-  }
-
+    bool use_buffers_directly) {
   for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
     if (utils::HasExternalDataInFile(*tensor_proto)) {
       std::unique_ptr<ExternalDataInfo> external_data_info;
@@ -4564,7 +4494,6 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
     }
   }
 
-  external_initializer_files_in_memory_ = true;
   return Status::OK();
 }
 
@@ -5279,6 +5208,7 @@ static Status GetSubgraphsWithMatchingGraphProtos(const GraphNodes& nodes,
       ORT_RETURN_IF_NOT(hit != graph_proto.mutable_node()->end(), "Node ", node.Name(),
                         " not found in output_graph_proto");
       auto& result_node = *hit;
+      // Standard ONNX ops use single GRAPH attributes, not multiple subgraphs in a GRAPHS attribute.
       for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
         const auto& name = e.first;
         const auto& subgraph = e.second;
@@ -5370,6 +5300,11 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
     std::vector<SubgraphWithMutableProto> subgraphs;
     ORT_RETURN_IF_ERROR(GetSubgraphsWithMatchingGraphProtos(Nodes(), output_graph_proto, subgraphs));
 
+    ModelSavingOptions subgraph_saving_options = model_saving_options;
+    if (model_saving_options.force_embed_external_ini_in_subgraphs) {
+      subgraph_saving_options.force_embed_external_ini = true;
+    }
+
     for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
       gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
       gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
@@ -5382,7 +5317,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
 
       ORT_RETURN_IF_ERROR(subgraph->AddExternalInitializersToGraphProtoImpl(
           model_path, external_file_path,
-          model_external_file_path, model_saving_options,
+          model_external_file_path, subgraph_saving_options,
           *subgraph_proto, external_stream, external_offset));
     }
   }

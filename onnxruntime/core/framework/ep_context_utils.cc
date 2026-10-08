@@ -102,6 +102,7 @@ Status SerializeExternalInitializersToBuffer(const Model& model,
                                              const ModelGenOptions& gen_options,
                                              ONNX_NAMESPACE::ModelProto& model_proto) {
   ModelSavingOptions saving_options{buffer_info.size_threshold};
+  saving_options.force_embed_external_ini_in_subgraphs = true;
   ApplyExternalInitializerAlignment(gen_options, saving_options);
   const std::filesystem::path logical_file_name{buffer_info.logical_file_name};
 
