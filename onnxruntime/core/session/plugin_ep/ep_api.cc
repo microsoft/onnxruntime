@@ -26,6 +26,7 @@
 #include "core/session/abi_ep_types.h"
 #include "core/session/abi_opschema.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ep_context_config.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_type_conversion.h"
@@ -36,13 +37,6 @@
 #include "core/session/utils.h"
 #include "core/common/profiler_common.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
-
-struct OrtEpContextConfig {
-  OrtWriteNamedBufferFunc write_func = nullptr;
-  void* write_state = nullptr;
-  OrtReadNamedBufferFunc read_func = nullptr;
-  void* read_state = nullptr;
-};
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
