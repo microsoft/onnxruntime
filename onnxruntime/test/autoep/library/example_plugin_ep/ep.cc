@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -21,6 +22,10 @@
 #include "ep_test_hooks.h"
 
 extern std::atomic<uint64_t> g_sync_count;
+
+namespace {
+constexpr std::string_view kTestMulPayload = "ort-test-mul-float32-v1";
+}
 
 const FloatInitializer* MulKernel::TryGetSavedInitializer(const std::string& name) const {
   auto iter = float_initializers.find(name);
@@ -143,7 +148,13 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
   return nullptr;
 }
 
-OrtStatus* EpContextKernel::Compute(OrtKernelContext* /*kernel_ctx*/) {
+OrtStatus* EpContextKernel::Compute(OrtKernelContext* kernel_ctx) {
+  if (restored_mul) {
+    if (Ort::KernelContext(kernel_ctx).GetInputCount() != 2) {
+      return ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Restored test Mul requires two runtime inputs.");
+    }
+    return restored_mul->Compute(kernel_ctx);
+  }
   // This example EP does not fully support EPContext inference.
   // A production EP would:
   // 1. Deserialize state from ep_cache_context attribute during Compile
@@ -462,6 +473,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
     auto fused_node_name = fused_node.GetName();
 
     if (is_ep_context_node) {
+      auto kernel = std::make_unique<EpContextKernel>(ep->ort_api, ep->logger_);
       Ort::ConstOpAttr embed_mode_attr;
       RETURN_IF_ERROR(nodes[0].GetAttributeByName("embed_mode", embed_mode_attr));
       int64_t embed_mode = 1;
@@ -482,11 +494,22 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
             ep->ort_api, ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
             ep_context_data));
+        if (ep->config_.test_execute_ep_context) {
+          if (ep_context_data.size() != kTestMulPayload.size() ||
+              std::memcmp(ep_context_data.data(), kTestMulPayload.data(), kTestMulPayload.size()) != 0) {
+            return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid compiled test Mul payload.");
+          }
+          kernel->restored_mul = std::make_unique<MulKernel>(
+              ep->ort_api, ep->logger_, kernel->restored_initializers, "", "");
+        }
+      }
+      if (ep->config_.test_execute_ep_context && !kernel->restored_mul) {
+        return ep->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Execution test requires external EPContext data.");
       }
 
       // Create EpContextKernel for EPContext nodes - clearly separates from MulKernel
       ep->ep_context_kernels_.emplace(fused_node_name,
-                                      std::make_unique<EpContextKernel>(ep->ort_api, ep->logger_));
+                                      std::move(kernel));
 
       // Use EpContextNodeComputeInfo for EPContext nodes
       auto node_compute_info = std::make_unique<EpContextNodeComputeInfo>(*ep);
@@ -553,7 +576,7 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
 
 // Creates EPContext nodes from the given fused nodes.
 // This is an example implementation that can be used to generate an EPContext model. However, this example EP
-// cannot currently run the EPContext model.
+// only runs the EPContext model when the restricted execution test option is enabled.
 OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
                                            gsl::span<const OrtNode*> fused_nodes,
                                            /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
@@ -594,7 +617,12 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
       std::array<Ort::OpAttr, 6> attributes = {};
       std::string ep_ctx = config_.embed_ep_context_in_model ? "binary_data" : fused_node_name + ".ctx";
       if (!config_.embed_ep_context_in_model) {
-        const std::string ep_context_data = "binary_data";
+        const std::string ep_context_data =
+            config_.test_execute_ep_context ? std::string(kTestMulPayload) : "binary_data";
+        if (config_.test_execute_ep_context &&
+            (input_names.size() != 2 || !Ort::ConstGraph(graph).GetInitializers().empty())) {
+          return ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Execution test requires Mul with two runtime inputs.");
+        }
         std::string fallback_ep_ctx = ep_ctx;
         const OrtGraph* fallback_graph = graph;
         if (!config_.ep_context_output_model_path.empty()) {
