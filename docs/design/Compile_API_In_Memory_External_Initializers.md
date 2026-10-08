@@ -24,7 +24,8 @@ Multiple initializers share the same logical file and buffer.
 
 Add `ModelCompilationOptions_SetOutputModelExternalInitializersBuffer` with:
 
-- a relative UTF-8 logical filename to store in each initializer's `TensorProto`;
+- a relative logical filename (`ORTCHAR_T`, as in the existing file-output API) to store in each initializer's
+  `TensorProto`;
 - the minimum initializer size to externalize;
 - an `OrtAllocator`; and
 - output pointers for the allocated buffer and its size.
@@ -39,7 +40,11 @@ ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
   size_t* output_buffer_size);
 ```
 
-Add the corresponding C++ wrapper and an `ExternalInitializerBufferHolder` alternative to
+The setter records the allocator and output pointer locations; it does not take a preallocated buffer or allocate
+immediately. `CompileModel` uses the allocator to allocate the buffer and fills both outputs on success. The allocator
+and output pointer locations must remain valid until `CompileModel` returns.
+
+Add the corresponding C++ wrapper and an `ExternalInitializerBufferInfo` alternative to
 `epctx::ModelGenOptions::initializers_location`.
 
 The external-initializer file destination (`ModelCompilationOptions_SetOutputModelExternalInitializersFile`) and the
@@ -63,9 +68,9 @@ ModelCompilationOptions_SetOutputModelExternalInitializersAlignment(
 Store the alignment settings separately from the initializer destination in `ModelGenOptions`, then apply them when
 constructing `ModelSavingOptions` for either file or buffer output. Setter call order does not matter.
 
-On failure, ORT must free any temporary allocation and leave the caller's output pointer and size unchanged. On
-success, the caller owns the buffer and releases it with the supplied allocator. If no initializer meets the threshold,
-return a null buffer and size zero.
+If `CompileModel` fails, ORT must free any temporary allocation and leave the caller's output pointer and size
+unchanged. After `CompileModel` succeeds, the caller owns the buffer and releases it with the supplied allocator. If no data is
+externalized, return a null buffer and size zero. Empty initializers remain embedded without external-file references.
 
 ## Serialization
 
@@ -83,7 +88,8 @@ Use a two-pass implementation:
 Write externalized initializers in load-ready tensor storage and align each tensor's offset to its natural alignment;
 the writer controls the layout, so this alignment is guaranteed for ORT-produced buffers. Additionally apply the
 alignment configured by `ModelCompilationOptions_SetOutputModelExternalInitializersAlignment` above its size threshold;
-the existing default policy is mmap-friendly 4 KiB alignment for data larger than 1 MiB. Prepacked blobs are opaque and
+the default policy is mmap-friendly 4 KiB alignment for data of at least 1 MiB, even when the alignment setter is not
+called. Passing zero disables this additional policy while preserving natural alignment. Prepacked blobs are opaque and
 use only the configured alignment policy.
 
 The serialized ONNX protobuf must still be smaller than 2 GB. Externalizing initializer bytes keeps the protobuf small;
@@ -102,9 +108,10 @@ state that every session created from the options may outlive the options, and t
 unchanged and alive until those sessions are released. If session creation fails, the buffers may be released after the
 call returns.
 
-During model load, recursively match each external initializer's logical filename (the existing copy path only visits
-the top-level graph's initializers, so extend the traversal into subgraphs for both the copy and direct-use paths),
-validate its declared and computed size, and use checked arithmetic to validate its offset and length against the file
+During model load, inject supplied subgraph initializer data before graph resolution, whose ONNX validation otherwise
+tries to open the logical filenames on disk. Main-graph injection still occurs before optimization and preserves the
+precedence of individually supplied external initializers over file buffers. Recursively match each external
+initializer's logical filename, validate its declared and computed size, and use checked arithmetic to validate its offset and length against the file
 buffer. When the slice is naturally aligned for the runtime storage type, create an initializer `OrtValue` over the
 validated slice with non-owning storage and retain it in the graph/session instead of copying. The borrowed `OrtValue`
 must be non-owning (wrap the slice in a `Tensor` with a plain CPU `OrtMemoryInfo` and no deleter, as the existing

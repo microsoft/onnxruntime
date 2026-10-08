@@ -769,7 +769,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    */
   common::Status InjectExternalInitializersFromFilesInMemory(
       const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
-      bool use_buffers_directly = false);
+      bool use_buffers_directly = false, bool only_subgraphs = false);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -2209,6 +2209,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   // distinguishes between graph loaded from model file and graph created from scratch
   const bool is_loaded_from_model_file_;
+  bool external_initializer_files_in_memory_ = false;
 };
 
 #if !defined(ORT_MINIMAL_BUILD)

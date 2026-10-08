@@ -41,6 +41,10 @@ struct ModelOptions {
 
   CheckLoadCancellationFn check_load_cancellation_fn;
 
+  // Borrowed only during construction, before the first graph resolve validates subgraph initializers.
+  const InlinedHashMap<PathString, std::pair<char*, size_t>>* external_initializer_files = nullptr;
+  bool use_external_initializer_buffers_directly = false;
+
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference,
                CheckLoadCancellationFn check_load_cancellation_fn)
       : allow_released_opsets_only(allow_released_opsets_only),

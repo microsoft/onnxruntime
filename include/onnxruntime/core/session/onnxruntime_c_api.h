@@ -8565,9 +8565,12 @@ struct OrtCompileApi {
   /** \brief Store external initializers for the compiled model in one caller-owned buffer.
    *
    * This destination replaces any external-initializer file or callback destination configured previously. The
-   * logical file name is recorded in each externalized TensorProto and must be a non-empty relative path. On success,
-   * the caller owns the allocated buffer and must release it with `allocator`. If no initializer meets the threshold,
-   * the output buffer is NULL and its size is zero. On failure, both outputs are unchanged.
+   * logical file name is recorded in each externalized TensorProto and must be a non-empty relative path.
+   * This setter only configures the destination; CompileModel allocates the buffer using `allocator`.
+   * On successful CompileModel completion, the caller owns the allocated buffer and must release it with `allocator`.
+   * If no data is externalized, the output buffer is NULL and its size is zero.
+   * If CompileModel fails, both outputs are unchanged and temporary allocations are freed.
+   * The allocator and output pointer locations must remain valid until CompileModel returns.
    *
    * The output model may be written to a file, buffer, or write callback. When the output model is written to a file,
    * the caller is responsible for persisting or otherwise supplying this buffer under `logical_file_name` when the
@@ -8594,6 +8597,9 @@ struct OrtCompileApi {
    *
    * Applies to file and buffer destinations for initializers at least `minimum_size` bytes. An alignment of zero
    * disables the additional policy. Otherwise, alignment must be a power of two.
+   * By default, offsets for initializers of at least 1 MiB (1048576 bytes) are aligned to 4096 bytes, even if this
+   * setter is never called. Natural alignment for each tensor's element type is always applied, including when
+   * the additional policy is disabled. These settings align offsets, not the allocator-provided buffer address.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] alignment Required byte alignment, or zero to disable.

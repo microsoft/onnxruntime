@@ -3557,6 +3557,46 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
+// ONNX's checker only recognizes '#'-prefixed external data locations as in-memory, so replace ORT's in-memory
+// marker in a temporary copy of a node's subgraphs. These initializers were validated when they were injected.
+static void MarkInMemoryExternalDataForOnnxCheck(ONNX_NAMESPACE::NodeProto& node_proto) {
+  auto mark_graph = [](ONNX_NAMESPACE::GraphProto& graph_proto, const auto& self) -> void {
+    for (auto& initializer : *graph_proto.mutable_initializer()) {
+      if (!utils::HasExternalDataInMemory(initializer)) {
+        continue;
+      }
+
+      for (auto& entry : *initializer.mutable_external_data()) {
+        if (entry.key() == "location") {
+          entry.set_value("#ort_in_memory");
+        }
+      }
+    }
+
+    for (auto& node : *graph_proto.mutable_node()) {
+      for (auto& attribute : *node.mutable_attribute()) {
+        if (attribute.has_g()) {
+          self(*attribute.mutable_g(), self);
+        }
+
+        for (auto& subgraph : *attribute.mutable_graphs()) {
+          self(subgraph, self);
+        }
+      }
+    }
+  };
+
+  for (auto& attribute : *node_proto.mutable_attribute()) {
+    if (attribute.has_g()) {
+      mark_graph(*attribute.mutable_g(), mark_graph);
+    }
+
+    for (auto& subgraph : *attribute.mutable_graphs()) {
+      mark_graph(subgraph, mark_graph);
+    }
+  }
+}
+
 Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
@@ -3564,7 +3604,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
   // ONNX expects a UTF-8 string here.
-  ctx.set_model_dir(ToUTF8String(ModelPath().parent_path().native()));
+  // File-buffer injection has already validated and replaced every external initializer in these graphs, so no
+  // directory is needed to resolve them during the ONNX check.
+  ctx.set_model_dir(external_initializer_files_in_memory_ ? "" : ToUTF8String(ModelPath().parent_path().native()));
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -3608,6 +3650,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
           } else {
             NodeProto node_proto;
             node.ToProto(node_proto);
+            if (external_initializer_files_in_memory_) {
+              MarkInMemoryExternalDataForOnnxCheck(node_proto);
+            }
             checker::check_node(node_proto, ctx, lsc);
           }
         }
@@ -3903,7 +3948,7 @@ Status Graph::ConvertInitializersIntoOrtValues() {
         if (utils::HasExternalDataInMemory(tensor_proto)) {
           // This can happen when the model is created with ModelEditor.
           // We want to guard against malicious models with arbitrary in-memory references.
-          if (OrtValue v; GetOrtValueInitializer(tensor_proto.name(), v)) {
+          if (OrtValue v; graph.GetOrtValueInitializer(tensor_proto.name(), v, false)) {
             ORT_RETURN_IF_NOT(graph_utils::CheckInMemoryDataMatch(tensor_proto, v.Get<Tensor>()),
                               "In-memory data mismatch for initializer: ", tensor_proto.name(),
                               " this is an invalid model");
@@ -4391,12 +4436,19 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 
 Status Graph::InjectExternalInitializersFromFilesInMemory(
     const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
-    bool use_buffers_directly) {
+    bool use_buffers_directly, bool only_subgraphs) {
   for (auto& node : Nodes()) {
     for (auto& subgraph : node.MutableSubgraphs()) {
       ORT_RETURN_IF_ERROR(
           subgraph->InjectExternalInitializersFromFilesInMemory(external_initializer_files, use_buffers_directly));
+      // The original proto still contains the subgraph's file references. Validate the updated subgraph instead.
+      node.SetOriginalNodeProto(nullptr);
     }
+  }
+
+  if (only_subgraphs) {
+    external_initializer_files_in_memory_ = true;
+    return Status::OK();
   }
 
   for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
@@ -4501,6 +4553,7 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
     }
   }
 
+  external_initializer_files_in_memory_ = true;
   return Status::OK();
 }
 
@@ -5370,7 +5423,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
         }
       }
 
-      if (model_saving_options.force_embed_external_ini ||
+      if (tensor_bytes_size == 0 || model_saving_options.force_embed_external_ini ||
           tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
         // Data with size above the threshold is written into the new external initializer file

@@ -311,6 +311,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  if (options.external_initializer_files && !options.external_initializer_files->empty()) {
+    // ONNX checks nested initializer storage during Resolve. Keep main-graph injection in Initialize so that
+    // individually supplied external initializers retain precedence over file buffers there.
+    ORT_THROW_IF_ERROR(graph_->InjectExternalInitializersFromFilesInMemory(
+        *options.external_initializer_files, options.use_external_initializer_buffers_directly, true));
+  }
+#endif
 }
 
 const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {

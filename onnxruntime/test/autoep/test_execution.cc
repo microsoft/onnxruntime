@@ -726,6 +726,76 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
   }
 }
 
+TEST(OrtEpLibrary, PluginEp_ExternalInitializerBufferIsPublishedOnlyAfterCompileSucceeds) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::SessionOptions session_options;
+  const std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, ep_options);
+
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(ORT_TSTR("testdata/mul_1.onnx"), model));
+  auto& graph = *model.mutable_graph();
+  ASSERT_EQ(graph.node_size(), 1);
+  const std::string output_name = graph.node(0).output(0);
+  graph.mutable_node(0)->set_output(0, "mul_intermediate");
+  auto& bias = *graph.add_initializer();
+  bias.set_name("bias");
+  bias.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  bias.add_float_data(1.0f);
+  auto& add = *graph.add_node();
+  add.set_name("cpu_add");
+  add.set_op_type("Add");
+  add.add_input("mul_intermediate");
+  add.add_input("bias");
+  add.add_output(output_name);
+  const std::string model_bytes = model.SerializeAsString();
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  char sentinel;
+  void* external_buffer = &sentinel;
+  size_t external_size = 123;
+  auto cleanup = gsl::finally([&]() {
+    if (external_buffer != &sentinel) allocator.Free(external_buffer);
+  });
+  struct WriteState {
+    std::string model_bytes;
+    bool fail = true;
+  } write_state;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+  compile_options.SetInputModelFromBuffer(model_bytes.data(), model_bytes.size());
+  compile_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  compile_options.SetEpContextEmbedMode(true);
+  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("weights.bin"), 0, allocator,
+                                                           &external_buffer, &external_size);
+  compile_options.SetOutputModelWriteFunc(
+      [](void* state, const void* buffer, size_t size) -> OrtStatus* {
+        auto& output = *static_cast<WriteState*>(state);
+        output.model_bytes.append(static_cast<const char*>(buffer), size);
+        return output.fail ? Ort::GetApi().CreateStatus(ORT_FAIL, "Intentional model write failure") : nullptr;
+      },
+      &write_state);
+  const Ort::Status failed_status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(failed_status.IsOK());
+  EXPECT_EQ(external_buffer, &sentinel);
+  EXPECT_EQ(external_size, 123u);
+  ASSERT_FALSE(write_state.model_bytes.empty());
+  ONNX_NAMESPACE::ModelProto compiled;
+  ASSERT_TRUE(compiled.ParseFromString(write_state.model_bytes));
+  ASSERT_EQ(GetEpContextNodes(compiled).size(), 1u);
+  ASSERT_EQ(compiled.graph().initializer_size(), 1);
+  EXPECT_EQ(compiled.graph().initializer(0).data_location(), ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  // Reusing the same options must not retain the failed call's temporary output locations.
+  write_state.fail = false;
+  write_state.model_bytes.clear();
+  ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  EXPECT_NE(external_buffer, &sentinel);
+  EXPECT_NE(external_buffer, nullptr);
+  EXPECT_EQ(external_size, sizeof(float));
+}
+
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
