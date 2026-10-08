@@ -25,7 +25,7 @@ void RunMerge(int64_t cached_rows, int64_t base_capacity, int64_t output_capacit
 #endif
     if (!provider) continue;
     tested = true;
-    OpTester test("SparseAttentionSelectionMerge", 1, kMSDomain);
+    OpTester test("PackedSparseAttentionIndexerMerge", 1, kMSDomain);
     test.AddAttribute("policy_mode", std::string("append_range"));
     test.AddAttribute("max_output_entries", output_capacity);
     const int64_t queries = static_cast<int64_t>(rows.size());
@@ -46,32 +46,57 @@ void RunMerge(int64_t cached_rows, int64_t base_capacity, int64_t output_capacit
 
 }  // namespace
 
-TEST(SparseAttentionSelectionMerge, StableOverlapAndSharedRows) {
+TEST(PackedSparseAttentionIndexerMerge, StableOverlapAndSharedRows) {
   RunMerge(2, 6, 7, {9, 1, 9, 3, 1, -1, 6, 6, 2, 7, -1, -1}, {5, 4},
            {1, 0, 0}, {5, 1, 10}, {8, 5, 12},
            {6, 2, 7, 5, -1, -1, -1, 9, 1, 3, 2, 4, -1, -1, 9, 1, 3, 10, 11, -1, -1},
            {4, 5, 5}, {0, 0, 0});
 }
 
-TEST(SparseAttentionSelectionMerge, InvalidMetadataAndOverflow) {
+TEST(PackedSparseAttentionIndexerMerge, InvalidMetadataAndOverflow) {
   RunMerge(2, 3, 3, {1, 2, 3, -1, 2, 3}, {3, 3},
            {-1, 2, 0, 0, 0, 1, 0}, {0, 0, -1, 5, 3, 0, 0},
            {0, 0, 1, 4, 5, 0, std::numeric_limits<int32_t>::max()},
            std::vector<int32_t>(21, -1), {0, 0, 0, 0, 0, 0, 0}, {1, 1, 1, 1, 2, 1, 2});
 }
 
-TEST(SparseAttentionSelectionMerge, InvalidCounts) {
+TEST(PackedSparseAttentionIndexerMerge, InvalidCounts) {
   RunMerge(2, 2, 3, {1, 2, 3, 4}, {-1, 3}, {0, 1}, {0, 0}, {0, 0},
            std::vector<int32_t>(6, -1), {0, 0}, {1, 1});
 }
 
-TEST(SparseAttentionSelectionMerge, EmptyBaseAndQueries) {
+TEST(PackedSparseAttentionIndexerMerge, EmptyBaseAndQueries) {
   RunMerge(1, 0, 4, {}, {0}, {0}, {2}, {5}, {2, 3, 4, -1}, {3}, {0});
   RunMerge(1, 2, 4, {1, 2}, {2}, {}, {}, {}, {}, {}, {});
   RunMerge(0, 2, 4, {}, {}, {0}, {0}, {0}, {-1, -1, -1, -1}, {0}, {1});
 }
 
-TEST(SparseAttentionSelectionMerge, QwenCapacity) {
+TEST(PackedSparseAttentionIndexerMerge, PackedName) {
+  RunMerge(1, 2, 4, {1, 2}, {2}, {0}, {2}, {4}, {1, 2, 3, -1}, {3}, {0});
+}
+
+TEST(PackedSparseAttentionIndexerMerge, AppendIndicesStableUnionAndErrors) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) GTEST_SKIP() << "Requires CUDA";
+  OpTester test("PackedSparseAttentionIndexerMerge", 1, kMSDomain);
+  test.AddAttribute("policy_mode", std::string("append_indices"));
+  test.AddAttribute("max_output_entries", int64_t{4});
+  test.AddInput<int32_t>("base", {2, 3}, {3, 1, 3, 5, 6, 7});
+  test.AddInput<int32_t>("counts", {2}, {3, 3});
+  test.AddInput<int32_t>("rows", {4}, {0, 1, 0, -1});
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("additional", {4, 3}, {1, 8, 8, 8, 9, 10, -1, 0, 0, 0, 0, 0});
+  test.AddInput<int32_t>("additional_counts", {4}, {3, 3, 1, 0});
+  test.AddOutput<int32_t>("selected", {4, 4}, {3, 1, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1});
+  test.AddOutput<int32_t>("selected_counts", {4}, {3, 0, 0, 0});
+  test.AddOutput<int32_t>("status", {4}, {0, 2, 1, 1});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(PackedSparseAttentionIndexerMerge, QwenCapacity) {
   std::vector<int32_t> base(2051);
   for (int32_t column = 0; column < 2051; ++column) base[column] = column;
   auto expected = base;
@@ -79,7 +104,7 @@ TEST(SparseAttentionSelectionMerge, QwenCapacity) {
   RunMerge(1, 2051, 2058, base, {2051}, {0}, {2051}, {2058}, expected, {2058}, {0});
 }
 
-TEST(SparseAttentionSelectionMerge, LargeCapacityFallback) {
+TEST(PackedSparseAttentionIndexerMerge, LargeCapacityFallback) {
   std::vector<int32_t> expected(4097, -1);
   expected[0] = 7;
   expected[1] = 5;
@@ -88,9 +113,9 @@ TEST(SparseAttentionSelectionMerge, LargeCapacityFallback) {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
-TEST(SparseAttentionSelectionMerge, RejectUnsupportedPolicy) {
-  OpTester test("SparseAttentionSelectionMerge", 1, kMSDomain);
-  test.AddAttribute("policy_mode", std::string("append_indices"));
+TEST(PackedSparseAttentionIndexerMerge, RejectUnsupportedPolicy) {
+  OpTester test("PackedSparseAttentionIndexerMerge", 1, kMSDomain);
+  test.AddAttribute("policy_mode", std::string("invalid_policy"));
   test.AddAttribute("max_output_entries", int64_t{1});
   test.AddInput<int32_t>("base", {1, 1}, {0});
   test.AddInput<int32_t>("counts", {1}, {1});
@@ -100,7 +125,7 @@ TEST(SparseAttentionSelectionMerge, RejectUnsupportedPolicy) {
   test.AddOutput<int32_t>("selected", {1, 1}, {0});
   test.AddOutput<int32_t>("selected_counts", {1}, {1});
   test.AddOutput<int32_t>("status", {1}, {0});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid SparseAttentionSelectionMerge policy or capacity");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid PackedSparseAttentionIndexerMerge policy or capacity");
 }
 #endif
 

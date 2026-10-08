@@ -6,13 +6,13 @@
 #include "core/framework/op_kernel.h"
 #endif
 
-namespace onnxruntime::contrib::selection_merge {
+namespace onnxruntime::contrib::indexer_merge {
 
 inline int64_t ReadCapacity(const OpKernelInfo& info) {
   std::string policy;
   int64_t capacity;
   ORT_THROW_IF_ERROR(info.GetAttr("policy_mode", &policy));
-  ORT_ENFORCE(policy == "append_range", "SparseAttentionSelectionMerge only supports append_range");
+  ORT_ENFORCE(policy == "append_range" || policy == "append_indices", "Unknown PackedSparseAttentionIndexerMerge policy");
   ORT_THROW_IF_ERROR(info.GetAttr("max_output_entries", &capacity));
   ORT_ENFORCE(capacity > 0 && capacity <= (int64_t{1} << 30),
               "max_output_entries must be in [1, 2^30]");
@@ -47,4 +47,4 @@ inline Status Validate(const Tensor* base, const Tensor* counts, const Tensor* r
   return Status::OK();
 }
 
-}  // namespace onnxruntime::contrib::selection_merge
+}  // namespace onnxruntime::contrib::indexer_merge
