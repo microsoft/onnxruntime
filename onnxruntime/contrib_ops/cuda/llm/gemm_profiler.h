@@ -97,9 +97,10 @@ class GemmIdCore {
   int k;
   nvinfer::DataType dtype;
   int sm;
+  bool wave_aware = false;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_) {
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, bool wave_aware_ = false)
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), wave_aware(wave_aware_) {
   }
 
   GemmIdCore()
@@ -115,12 +116,13 @@ class GemmIdCore {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
     out << " sm=" << id.sm;
+    out << " wave_aware=" << id.wave_aware;
     return out;
   }
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm;
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && wave_aware == id.wave_aware;
   }
 };
 
@@ -131,7 +133,8 @@ struct GemmIdCoreHash {
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
     auto h4 = std::hash<int>{}(id.sm);
-    return h1 ^ h2 ^ h3 ^ h4;
+    auto h5 = std::hash<bool>{}(id.wave_aware);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5;
   }
 };
 

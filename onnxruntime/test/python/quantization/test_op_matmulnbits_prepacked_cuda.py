@@ -317,6 +317,29 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_profile_m": "1,8,32"})
         np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
 
+    def test_wave_aware_gemv_config_key_matches_default(self):
+        for m in (7, 8, 9):
+            for n in (512, 10240):
+                with self.subTest(m=m, n=n):
+                    model, a, _, _ = self._make_int4_case(m=m, n=n)
+                    config = {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_profile_m": "8,16"}
+                    ref = self._run(model, a, config)
+                    for value in ("0", "1", "0"):
+                        out = self._run(model, a, {**config, "ep.cuda.fpa_intb_gemv_wave_aware": value})
+                        np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"value={value}")
+
+    def test_invalid_wave_aware_gemv_config_rejected(self):
+        model, a, _, _ = self._make_int4_case(m=8, weight_prepacked=1)
+        for value in ("", "-1", "2", "on"):
+            with self.subTest(value=value):
+                with self.assertRaises(Exception) as error:
+                    self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_gemv_wave_aware": value})
+                if "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON" in str(
+                    error.exception
+                ):
+                    self.skipTest("fpA_intB GEMM is not compiled in this build")
+                self.assertRegex(str(error.exception), "Invalid MatMulNBits wave-aware GEMV option")
+
     def test_session_config_overrides_env(self):
         # env var says off, session config says on -> the session config must win.
         model, a, _, _ = self._make_int4_case()
