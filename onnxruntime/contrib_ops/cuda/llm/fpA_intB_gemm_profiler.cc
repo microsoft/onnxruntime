@@ -100,6 +100,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
+    params.wave_aware = mWaveAwareGemv;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel

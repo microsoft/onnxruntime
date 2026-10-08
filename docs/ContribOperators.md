@@ -2443,7 +2443,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta_activation</tt> : string</dt>
 <dd>'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a sigmoid.</dd>
 <dt><tt>chunk_size</tt> : int</dt>
-<dd>Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; any other value lets the implementation take the widest chunk the device can hold. Default 64.</dd>
+<dd>Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow chunk and any other value lets the implementation select the widest chunk the device can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; default 64 retains recurrent execution. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
 <dd>'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes -exp(a_log) * Softplus(decay + dt_bias) in float32.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
@@ -6118,9 +6118,11 @@ This version of the operator has been available since version 1 of the 'com.micr
         A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
         [num_experts, ceil(N / block_size), ceil(K / block_size)]:
           dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
-        Partial edge blocks are allowed. No zero points or activation scales are used.
+        Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+        The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+        that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
         Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
         Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -6158,7 +6160,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
+<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>fc1_expert_weight_bits</tt> : int</dt>
@@ -8622,5 +8624,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
