@@ -64,6 +64,8 @@ def readPackageJsonField(field) {
 
 boolean ortExtensionsEnabled = readPackageJsonField('onnxruntimeExtensionsEnabled') == "true"
 boolean useQnn = readPackageJsonField('onnxruntimeUseQnn') == "true"
+def ortVersion = readPackageJsonField('onnxruntimeVersion') ?: 'latest.integration'
+def ortExtensionsVersion = readPackageJsonField('onnxruntimeExtensionsVersion') ?: 'latest.integration'
 
 def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"].execute(null, rootDir).text.trim()
 def versionParts = REACT_NATIVE_VERSION.split("\\.")
@@ -247,9 +249,9 @@ dependencies {
   implementation "junit:junit:4.12"
 
   if (useQnn) {
-    extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:latest.integration@aar"
+    extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:${ortVersion}@aar"
   } else {
-    extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+    extractLibs "com.microsoft.onnxruntime:onnxruntime-android:${ortVersion}@aar"
   }
 
   if (REACT_NATIVE_MAJOR_VERSION == 0 && REACT_NATIVE_MINOR_VERSION < 71) {
@@ -259,7 +261,7 @@ dependencies {
 
   // By default it will just include onnxruntime full aar package
   if (ortExtensionsEnabled) {
-    implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
+    implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:${ortExtensionsVersion}@aar"
   }
 }
 
