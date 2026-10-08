@@ -19,6 +19,7 @@
 #include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "mem_buffer.h"
 
 struct OrtStatus {
@@ -621,42 +622,8 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
                                          (Y*)preallocated, static_cast<size_t>(tensor_size)); \
     break;
 
-#define CASE_TYPE(X)                   \
-  case onnx::TensorProto_DataType_##X: \
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
-
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
-  switch (type) {
-    CASE_TYPE(FLOAT)
-    CASE_TYPE(UINT8)
-    CASE_TYPE(INT8)
-    CASE_TYPE(UINT16)
-    CASE_TYPE(INT16)
-    CASE_TYPE(INT32)
-    CASE_TYPE(INT64)
-    CASE_TYPE(STRING)
-    CASE_TYPE(BOOL)
-    CASE_TYPE(FLOAT16)
-    CASE_TYPE(DOUBLE)
-    CASE_TYPE(UINT32)
-    CASE_TYPE(UINT64)
-    CASE_TYPE(COMPLEX64)
-    CASE_TYPE(COMPLEX128)
-    CASE_TYPE(BFLOAT16)
-    CASE_TYPE(FLOAT8E4M3FN)
-    CASE_TYPE(FLOAT8E4M3FNUZ)
-    CASE_TYPE(FLOAT8E5M2)
-    CASE_TYPE(FLOAT8E5M2FNUZ)
-    CASE_TYPE(FLOAT4E2M1)
-    CASE_TYPE(UINT4)
-    CASE_TYPE(INT4)
-    CASE_TYPE(UINT2)
-    CASE_TYPE(INT2)
-    CASE_TYPE(FLOAT6E2M3)
-    CASE_TYPE(FLOAT6E3M2)
-    default:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  }
+  return utils::ToOrtTensorElementDataType(type);
 }
 
 ONNXTensorElementDataType GetTensorElementType(const onnx::TensorProto& tensor_proto) {
@@ -750,7 +717,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
   }
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-  value = Ort::Value::CreateTensor(&allocator, tensor_data, m.GetLen(), tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType)tensor_proto.data_type());
+  value = Ort::Value::CreateTensor(&allocator, tensor_data, m.GetLen(), tensor_shape_vec.data(), tensor_shape_vec.size(), ele_type);
   return Status::OK();
 }
 
