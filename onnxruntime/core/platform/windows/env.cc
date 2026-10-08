@@ -17,7 +17,6 @@ limitations under the License.
 #include "core/platform/windows/env.h"
 
 #include "core/platform/env_var.h"
-
 #include <iostream>
 #include <fstream>
 #include <filesystem>

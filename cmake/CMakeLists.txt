@@ -172,9 +172,44 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
-# Optional 1DS ingestion token for non-Windows telemetry. Leave empty to compile in the encoded
-# in-repo default from core/platform/posix/telemetry.cc; callers can override it at configure time.
-set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in telemetry ingestion token (non-Windows)")
+# AUTO selects 1DS on supported native platforms; TraceLogging requires an explicit Windows opt-in.
+set(onnxruntime_TELEMETRY_BACKEND "AUTO" CACHE STRING "Telemetry backend: AUTO, 1DS, or WINDOWS")
+set_property(CACHE onnxruntime_TELEMETRY_BACKEND PROPERTY STRINGS AUTO 1DS WINDOWS)
+string(TOUPPER "${onnxruntime_TELEMETRY_BACKEND}" onnxruntime_TELEMETRY_BACKEND)
+if(NOT onnxruntime_TELEMETRY_BACKEND MATCHES "^(AUTO|1DS|WINDOWS)$")
+  message(FATAL_ERROR
+    "Invalid onnxruntime_TELEMETRY_BACKEND='${onnxruntime_TELEMETRY_BACKEND}'. "
+    "Expected AUTO, 1DS, or WINDOWS.")
+endif()
+
+# Deprecated compatibility alias for callers that adopted this option before the backend selector.
+option(onnxruntime_USE_WINDOWS_TELEMETRY "Use Windows TraceLogging instead of 1DS telemetry" OFF)
+if(onnxruntime_USE_WINDOWS_TELEMETRY)
+  set(onnxruntime_TELEMETRY_BACKEND "WINDOWS")
+endif()
+
+if(onnxruntime_TELEMETRY_BACKEND STREQUAL "WINDOWS")
+  if(NOT WIN32)
+    message(FATAL_ERROR "The WINDOWS telemetry backend is only supported on Windows")
+  endif()
+  set(onnxruntime_USE_TELEMETRY ON CACHE BOOL "Build with Telemetry" FORCE)
+endif()
+
+set(onnxruntime_USE_1DS_TELEMETRY OFF)
+if(onnxruntime_USE_TELEMETRY)
+  if(onnxruntime_TELEMETRY_BACKEND STREQUAL "1DS" OR
+     onnxruntime_TELEMETRY_BACKEND STREQUAL "AUTO")
+    set(onnxruntime_USE_1DS_TELEMETRY ON)
+  endif()
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND onnxruntime_USE_1DS_TELEMETRY)
+  message(WARNING "1DS telemetry is not supported for UWP builds. Telemetry will be disabled.")
+  set(onnxruntime_USE_TELEMETRY OFF CACHE BOOL "Build with Telemetry" FORCE)
+  set(onnxruntime_USE_1DS_TELEMETRY OFF)
+endif()
+# Optional 1DS ingestion token. Leave empty to compile in the encoded
+# in-repo platform default; callers can override it at configure time.
+set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token")
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
@@ -2018,41 +2053,7 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(MSTelemetry CONFIG)\n\
-        ")
-    endif()
-    if(onnxruntime_USE_TELEMETRY AND APPLE
-       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "if(NOT TARGET MSTelemetry::sqlite_dependency)\n\
-        add_library(MSTelemetry::sqlite_dependency INTERFACE IMPORTED)\n\
-        set_property(TARGET MSTelemetry::sqlite_dependency PROPERTY INTERFACE_LINK_LIBRARIES sqlite3)\n\
-        endif()\n\
-        if(NOT TARGET MSTelemetry::zlib_dependency)\n\
-        add_library(MSTelemetry::zlib_dependency INTERFACE IMPORTED)\n\
-        set_property(TARGET MSTelemetry::zlib_dependency PROPERTY INTERFACE_LINK_LIBRARIES z)\n\
-        endif()\n\
-        ")
-    endif()
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE
-       AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
-       AND NOT onnxruntime_BUILD_SHARED_LIB)
-      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        # The embedded curl archive uses the platform Threads target for its resolver.
-        string(APPEND PROJECT_CONFIG_CONTENT
-          "find_dependency(Threads)\n\
-          ")
-      else()
-        # Preserve the legacy dependency graph for any explicitly enabled non-Linux Unix target.
-        string(APPEND PROJECT_CONFIG_CONTENT
-          "find_dependency(CURL)\n\
-          find_dependency(Threads)\n\
-          ")
-      endif()
-    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_telemetry_config.cmake")
   endif()
 
   string(APPEND PROJECT_CONFIG_CONTENT

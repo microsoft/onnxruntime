@@ -6,6 +6,7 @@
 #include <array>
 #include <string>
 
+#include "core/platform/telemetry_strings.h"
 namespace onnxruntime::telemetry_internal {
 
 // These PAL-populated fields are not needed by ORT. ext.os.locale is not populated by this SDK path.
@@ -35,7 +36,7 @@ void SuppressUnneededCommonContext(SemanticContext& context) {
 template <typename SemanticContext>
 void SetApplicationNameFromProcessName(SemanticContext& context, const std::string& process_name) {
   if (!process_name.empty()) {
-    context.SetCommonField("AppInfo.Name", process_name);
+    context.SetCommonField("AppInfo.Name", telemetry_detail::BoundedTelemetryString(process_name));
   }
 }
 
