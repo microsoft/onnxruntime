@@ -142,8 +142,8 @@ Ort::Value CreateReusedNonzeroGpuTensor(Allocator& allocator, float value) {
   {
     auto dirty_tensor = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
     dirty_buffer = dirty_tensor.GetTensorMutableRawData();
-    ThrowOnError(ort_env->CopyTensor(dirty_source, dirty_tensor, nullptr));
-    ThrowOnError(ort_env->CopyTensor(dirty_tensor, readback, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(dirty_source, dirty_tensor, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(dirty_tensor, readback, nullptr));
     if (value == 0.0f || readback_data != dirty_data) {
       throw std::runtime_error("Expected a nonzero GPU buffer before releasing it for reuse");
     }
@@ -294,13 +294,13 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     // The user input remains on CPU; the GPU scratch tensor only seeds the allocator cache.
     {
       auto scratch = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-      ThrowOnError(ort_env->CopyTensor(dirty_source, scratch, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(dirty_source, scratch, nullptr));
     }
 
     binding.BindInput("X", cpu_input);
     // No intervening allocation, copy, or synchronization may flush the deferred clear.
     session.Run(Ort::RunOptions{nullptr}, binding);
-    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
     VerifyOutput(output_data, value);
   }
 
@@ -397,7 +397,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         Ort::ThrowOnError(ort_env->CopyTensor(cpu_node_source, feeds[reverse_feeds ? 0 : 1], nullptr));
       }
       if (preallocate_gpu_input) {
-        ThrowOnError(ort_env->CopyTensor(gpu_node_source, feeds[reverse_feeds ? 1 : 0], nullptr));
+        Ort::ThrowOnError(ort_env->CopyTensor(gpu_node_source, feeds[reverse_feeds ? 1 : 0], nullptr));
       }
       if (bind_cpu_output_to_gpu) {
         for (size_t index = 0; index < feeds.size(); ++index) {
@@ -584,7 +584,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
       input_data.fill(static_cast<float>(thread_id + 1));
       auto cpu_input = Ort::Value::CreateTensor<float>(
           cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
-      ThrowOnError(ort_env->CopyTensor(cpu_input, inputs.back(), nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, inputs.back(), nullptr));
       bindings.emplace_back(session);
       bindings.back().BindInput("X", inputs.back());
       bindings.back().BindOutput("Y", outputs.back());
@@ -605,7 +605,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         std::array<float, kElements> output_data{};
         auto cpu_output = Ort::Value::CreateTensor<float>(
             cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
-        ThrowOnError(ort_env->CopyTensor(outputs[thread_id], cpu_output, nullptr));
+        Ort::ThrowOnError(ort_env->CopyTensor(outputs[thread_id], cpu_output, nullptr));
         VerifyOutput(output_data, static_cast<float>(thread_id + 1));
       }
     });
@@ -863,7 +863,7 @@ TEST_F(PluginEpWebGpuConcurrency, SerialInterleavedCpuBindInputsAcrossSessions) 
       input_data[index].fill(-values[index]);
       {
         auto scratch = Ort::Value::CreateTensor<float>(allocators[index], kShape.data(), kShape.size());
-        ThrowOnError(ort_env->CopyTensor(cpu_inputs[index], scratch, nullptr));
+        Ort::ThrowOnError(ort_env->CopyTensor(cpu_inputs[index], scratch, nullptr));
       }
       input_data[index].fill(values[index]);
     }
@@ -880,7 +880,7 @@ TEST_F(PluginEpWebGpuConcurrency, SerialInterleavedCpuBindInputsAcrossSessions) 
       auto outputs = bindings[index].GetOutputValues();
       ASSERT_EQ(outputs.size(), 1u);
       EXPECT_EQ(outputs[0].GetTensorMutableRawData(), gpu_outputs[index].GetTensorMutableRawData());
-      ThrowOnError(ort_env->CopyTensor(gpu_outputs[index], cpu_output, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(gpu_outputs[index], cpu_output, nullptr));
       VerifyOutput(output_data, values[index]);
     }
   }
@@ -903,7 +903,7 @@ TEST_F(PluginEpWebGpuConcurrency, SerialReusedNonzeroGpuInputAndPreallocatedOutp
     input_data.fill(value);
     auto gpu_output = CreateReusedNonzeroGpuTensor(allocator, -value);
     auto gpu_input = CreateReusedNonzeroGpuTensor(allocator, -100.0f - value);
-    ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
     Ort::IoBinding binding(*session);
     binding.BindInput("X", gpu_input);
     binding.BindOutput("Y", gpu_output);
@@ -912,7 +912,7 @@ TEST_F(PluginEpWebGpuConcurrency, SerialReusedNonzeroGpuInputAndPreallocatedOutp
     auto outputs = binding.GetOutputValues();
     ASSERT_EQ(outputs.size(), 1u);
     EXPECT_EQ(outputs[0].GetTensorMutableRawData(), gpu_output.GetTensorMutableRawData());
-    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
     VerifyOutput(output_data, value);
   }
 }
@@ -948,27 +948,27 @@ TEST_F(PluginEpWebGpuConcurrency, SerialSessionDestructionPreservesBoundSessionA
       env_data.fill(-value);
       binding.ClearBoundInputs();
       binding.BindInput("X", cpu_input);
-      ThrowOnError(ort_env->CopyTensor(env_input, env_source, nullptr));
-      ThrowOnError(ort_env->CopyTensor(env_source, env_destination, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(env_input, env_source, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(env_source, env_destination, nullptr));
 
       // Destroy only the idle session while another session's binding and Env copies remain live.
       retiring_session.reset();
       surviving_session->Run(Ort::RunOptions{nullptr}, binding);
-      ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
       VerifyOutput(output_data, value);
-      ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
       EXPECT_EQ(output_data, env_data);
     }
   }
 
   // The same Env allocations must remain usable after the last session is destroyed.
   output_data.fill(0.0f);
-  ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
   EXPECT_EQ(output_data, env_data);
   env_data.fill(321.0f);
-  ThrowOnError(ort_env->CopyTensor(env_input, env_source, nullptr));
-  ThrowOnError(ort_env->CopyTensor(env_source, env_destination, nullptr));
-  ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(env_input, env_source, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(env_source, env_destination, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
   EXPECT_EQ(output_data, env_data);
   CopyTensorRoundTrip(shared_allocator, -456.0f);
 }
@@ -1008,7 +1008,7 @@ TEST_F(PluginEpWebGpuConcurrency, SerialSingleSessionMultipleGraphCaptureIds) {
                                       -static_cast<float>(100 + iteration)};
     for (size_t index = 0; index < graph_ids.size(); ++index) {
       input_data.fill(values[index]);
-      ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_inputs[index], nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_inputs[index], nullptr));
     }
     // Distinct stable bindings expose replay of the wrong ID; alternate replay order as well.
     const size_t first = static_cast<size_t>(iteration % 2);
@@ -1016,7 +1016,7 @@ TEST_F(PluginEpWebGpuConcurrency, SerialSingleSessionMultipleGraphCaptureIds) {
     session->Run(run_options[1 - first], bindings[1 - first]);
     for (size_t index = 0; index < graph_ids.size(); ++index) {
       SCOPED_TRACE(graph_ids[index]);
-      ThrowOnError(ort_env->CopyTensor(gpu_outputs[index], cpu_output, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(gpu_outputs[index], cpu_output, nullptr));
       VerifyOutput(output_data, values[index]);
     }
   }
@@ -1057,7 +1057,7 @@ TEST_F(PluginEpWebGpuConcurrency, LegacyOnlyConcurrentRunsAreRejected) {
   Ort::SessionOptions options;
   options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   options.SetLogSeverityLevel(ORT_LOGGING_LEVEL_INFO);
-  ThrowOnError(Ort::GetApi().SetUserLoggingFunction(options, LogGate::Log, &gate));
+  Ort::ThrowOnError(Ort::GetApi().SetUserLoggingFunction(options, LogGate::Log, &gate));
   options.AppendExecutionProvider_V2(
       *ort_env, {Device()}, std::unordered_map<std::string, std::string>{});
   Ort::Session first_session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
@@ -1074,8 +1074,8 @@ TEST_F(PluginEpWebGpuConcurrency, LegacyOnlyConcurrentRunsAreRejected) {
   input_data.fill(2.0f);
   auto cpu_input = Ort::Value::CreateTensor<float>(
       cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
-  ThrowOnError(ort_env->CopyTensor(cpu_input, first_input, nullptr));
-  ThrowOnError(ort_env->CopyTensor(cpu_input, second_input, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, first_input, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, second_input, nullptr));
   Ort::IoBinding first_binding(first_session);
   first_binding.BindInput("X", first_input);
   first_binding.BindOutput("Y", first_output);
@@ -1130,7 +1130,7 @@ TEST_F(PluginEpWebGpuConcurrency, LegacyOnlyConcurrentRunsAreRejected) {
   std::array<float, kElements> output_data{};
   auto cpu_output = Ort::Value::CreateTensor<float>(
       cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
-  ThrowOnError(ort_env->CopyTensor(first_output, cpu_output, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(first_output, cpu_output, nullptr));
   VerifyOutput(output_data, 2.0f);
   RunAndVerify(*second_session, 3.0f);
 }
@@ -1190,18 +1190,18 @@ TEST_F(PluginEpWebGpuConcurrency, GraphCaptureReplayInterleavedWithIdleSessionCp
     idle_binding.ClearBoundInputs();
     {
       auto scratch = Ort::Value::CreateTensor<float>(idle_allocator, kShape.data(), kShape.size());
-      ThrowOnError(ort_env->CopyTensor(dirty_source, scratch, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(dirty_source, scratch, nullptr));
     }
     // BindInput must flush the idle session's reused-buffer clear without changing
     // the captured session's buffer-manager routing or retained graph resources.
     idle_binding.BindInput("X", idle_input);
-    ThrowOnError(ort_env->CopyTensor(captured_source, captured_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(captured_source, captured_input, nullptr));
     captured_session->Run(Ort::RunOptions{nullptr}, captured_binding);
-    ThrowOnError(ort_env->CopyTensor(captured_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(captured_output, cpu_output, nullptr));
     VerifyOutput(output_data, captured_value);
 
     idle_session->Run(Ort::RunOptions{nullptr}, idle_binding);
-    ThrowOnError(ort_env->CopyTensor(idle_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(idle_output, cpu_output, nullptr));
     VerifyOutput(output_data, idle_value);
     if (iteration == kIterations / 2) {
       captured_session->ReleaseCapturedGraph(0);
@@ -1337,9 +1337,9 @@ TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesDuringGrap
   binding.BindOutput("Y", gpu_output);
   const auto run_and_verify = [&](float value) {
     input_data.fill(value);
-    ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
     session->Run(Ort::RunOptions{nullptr}, binding);
-    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
     VerifyOutput(output_data, value);
   };
 
