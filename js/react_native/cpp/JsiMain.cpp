@@ -3,6 +3,7 @@
 #include "EpContextDataReadCallback.h"
 #include "JsiHelper.h"
 #include "SessionUtils.h"
+#include "EncryptedEpContextTest.h"
 #include <memory>
 
 using namespace facebook::jsi;
@@ -63,6 +64,31 @@ install(Runtime& runtime,
                   std::placeholders::_3, std::placeholders::_4));
     ortApi.setProperty(runtime, "createInferenceSession",
                        createInferenceSessionMethod);
+
+#ifdef ORT_RN_TEST_EP_CONTEXT
+    ortApi.setProperty(runtime, "__testCompileEpContextModel",
+                       Function::createFromHostFunction(runtime,
+                                                        PropNameID::forAscii(runtime, "__testCompileEpContextModel"), 4,
+                                                        [env](Runtime& rt, const Value&, const Value* args, size_t count) -> Value {
+                                                          env->initOrtEnv(ORT_LOGGING_LEVEL_WARNING, "onnxruntime-react-native-jsi");
+                                                          return compileEncryptionTestModel(rt, env->getOrtEnv(), args, count);
+                                                        }));
+    ortApi.setProperty(runtime, "__testUnregisterEpContextPlugin",
+                       Function::createFromHostFunction(runtime,
+                                                        PropNameID::forAscii(runtime, "__testUnregisterEpContextPlugin"), 1,
+                                                        [env](Runtime& rt, const Value&, const Value* args, size_t count) -> Value {
+                                                          if (count != 1 || !args[0].isString()) {
+                                                            throw JSError(rt, "Expected a test EP registration name");
+                                                          }
+                                                          try {
+                                                            env->initOrtEnv(ORT_LOGGING_LEVEL_WARNING, "onnxruntime-react-native-jsi");
+                                                            env->getOrtEnv().UnregisterExecutionProviderLibrary(args[0].asString(rt).utf8(rt).c_str());
+                                                          } catch (const std::exception& error) {
+                                                            throw JSError(rt, error.what());
+                                                          }
+                                                          return Value::undefined();
+                                                        }));
+#endif
 
     auto testEpContextDataReadCallback = Function::createFromHostFunction(
         runtime,

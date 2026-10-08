@@ -68,6 +68,39 @@ formats. Node.js execution does not establish React Native coverage: its callbac
 bridge is a separate implementation. Objective-C and React Native still require
 Apple or mobile runners for end-to-end validation.
 
+### Opt-in React Native device workflow
+
+The E2E app's **Run Encrypted EPContext Workflow** action compiles through a
+test-only native fixture, persists both assets as AES-GCM ciphertext, then loads
+model bytes and runs numerical inference through the public React Native session
+and real JSI read callback. It also rejects wrong keys, tampering, authenticated
+name mismatches, missing callbacks, and invalid compiled context payloads.
+The fixture generates a new key per compilation and uses distinct counter nonces
+for the two assets. This is not production key-management coverage.
+
+Enable `ORT_RN_TEST_EP_CONTEXT=ON` when configuring the binding's Android CMake
+target, or set `ORT_RN_TEST_EP_CONTEXT=1` while installing the iOS pod. These
+compilation/plugin-selection hooks are absent from production builds. Use matching
+ORT 1.31 headers and native libraries. Build and provision the example plugin
+and `onnxruntime/test/testdata/encrypted_ep_context_mul.onnx` for the device's
+architecture. The plugin must be loadable in the app sandbox (and signed where
+required); desktop DLLs cannot be used on mobile.
+
+Provision `ort-encryption-config.json` in `RNFS.DocumentDirectoryPath`:
+
+```json
+{"plugin": "<absolute device path to example plugin>", "sourceModel": "<absolute device path to Mul model>"}
+```
+
+Run the action manually, or set `ORT_RN_ENCRYPTION_E2E=1` in the Detox runner
+environment and run
+`npx detox test --configuration <device configuration> test/EncryptedEpContext.test.js`
+from `js/react_native/e2e`. The Detox test asserts
+the exact success result after two numerical cases and all negative controls.
+Without this opt-in, it is explicitly skipped. Host Jest crypto/configuration
+tests and native-header syntax checks do **not** establish device coverage.
+This workflow still requires an Apple/Android runner for end-to-end validation.
+
 The portable React Native C++ policy tests can run on Windows:
 
 ```powershell
