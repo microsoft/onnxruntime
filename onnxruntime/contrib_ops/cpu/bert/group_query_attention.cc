@@ -365,6 +365,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)});
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
+  ORT_RETURN_IF((present_k == nullptr) != (present_v == nullptr),
+                "present_key and present_value must both be provided or both omitted");
 
   std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};
   Tensor* output_qk = context->Output(3, output_qk_shape);
