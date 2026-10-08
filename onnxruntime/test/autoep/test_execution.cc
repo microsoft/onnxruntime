@@ -1397,10 +1397,33 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_SessionOption) {
   }
 
   // "3" (OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) is valid for EPs to report but not for apps to request.
-  for (const char* invalid_value : {"3", "4", "-1", "abc"}) {
+  // Only the exact strings are valid, so other spellings of valid values (e.g., hexadecimal) are rejected, and so is an
+  // explicitly empty value.
+  for (const char* invalid_value : {"3", "4", "-1", "abc", "0x2", "0x0", "02", " 1", "1 ", "+1", ""}) {
     auto status = compile(invalid_value);
-    ASSERT_FALSE(status.IsOK()) << invalid_value;
-    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Invalid value")) << invalid_value;
+    ASSERT_FALSE(status.IsOK()) << "'" << invalid_value << "'";
+    ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT) << "'" << invalid_value << "'";
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Invalid value")) << "'" << invalid_value << "'";
+  }
+
+  // An explicitly empty value is not treated as an absent option, so it does not fall back to the deprecated option.
+  {
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "");
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    auto status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Invalid value ''"));
   }
 
   // Clean up.
@@ -1442,6 +1465,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_EpMetadataMismatch) {
   {
     auto status = compile(OrtWeightlessSupport_ALL);
     ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
     ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not support it on this device"));
     ASSERT_THAT(status.GetErrorMessage(),
                 testing::HasSubstr("GetWeightlessSupport() returns 'external_only', which does not match the EP "
@@ -1534,27 +1558,31 @@ TEST(OrtEpLibrary, WeightlessMode_ErrorOnInvalidValueWithoutPluginEp) {
   const ORTCHAR_T* output_model_file = ORT_TSTR("cpu_only_weightless_invalid_mode_ctx.onnx");
   std::filesystem::remove(output_model_file);
 
-  Ort::SessionOptions session_options;  // CPU EP only.
-  session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "3");
+  for (const char* invalid_value : {"3", "0x2", ""}) {
+    SCOPED_TRACE(std::string("value '") + invalid_value + "'");
+    Ort::SessionOptions session_options;  // CPU EP only.
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, invalid_value);
+    const std::string expected_message = std::string("Invalid value '") + invalid_value + "'";
 
-  {
-    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
-    compile_options.SetInputModelPath(input_model_file);
-    compile_options.SetOutputModelPath(output_model_file);
+    {
+      Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+      compile_options.SetInputModelPath(input_model_file);
+      compile_options.SetOutputModelPath(output_model_file);
 
-    auto status = Ort::CompileModel(*ort_env, compile_options);
-    ASSERT_FALSE(status.IsOK());
-    ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
-    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Invalid value '3'"));
-    ASSERT_FALSE(std::filesystem::exists(output_model_file));
-  }
+      auto status = Ort::CompileModel(*ort_env, compile_options);
+      ASSERT_FALSE(status.IsOK());
+      ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+      ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr(expected_message));
+      ASSERT_FALSE(std::filesystem::exists(output_model_file));
+    }
 
-  try {
-    Ort::Session session(*ort_env, input_model_file, session_options);
-    FAIL() << "Expected an error for an invalid weightless mode";
-  } catch (const Ort::Exception& e) {
-    ASSERT_EQ(e.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
-    ASSERT_THAT(e.what(), testing::HasSubstr("Invalid value '3'"));
+    try {
+      Ort::Session session(*ort_env, input_model_file, session_options);
+      FAIL() << "Expected an error for an invalid weightless mode";
+    } catch (const Ort::Exception& e) {
+      ASSERT_EQ(e.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      ASSERT_THAT(e.what(), testing::HasSubstr(expected_message));
+    }
   }
 }
 
@@ -1847,6 +1875,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
   {
     auto status = compile(/*use_deprecated_option*/ false);
     ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
     ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Weightless mode 'external_only' requested"));
     ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("(no weightless EP metadata)"));
   }
@@ -1855,6 +1884,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
   {
     auto status = compile(/*use_deprecated_option*/ true);
     ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
     ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not implement GetWeightlessSupport"));
   }
 

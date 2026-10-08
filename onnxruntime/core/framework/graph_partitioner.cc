@@ -2035,10 +2035,10 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   // Remove any value inherited from the source model's metadata if weightless mode was not requested.
   {
     OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
-    const std::string weightless_mode_str =
-        config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightlessMode, "");
-    if (!weightless_mode_str.empty()) {
-      ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(weightless_mode_str, weightless_mode));
+    const std::optional<std::string> weightless_mode_entry =
+        config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
+    if (weightless_mode_entry.has_value()) {
+      ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(*weightless_mode_entry, weightless_mode));
     }
 
     auto& model_metadata = ep_context_model.MetaData();

@@ -191,7 +191,7 @@ When `"ep.enable_weightless_mode"` is set, ORT therefore prepares the session op
 | `"1"` (`EXTERNAL_ONLY`) | `"external_only"` or `"all_or_external_only"` | The EP sees `"ep.enable_weightless"` = `"1"`. |
 | `"2"` (`ALL`) | `"all"` or `"all_or_external_only"` | The EP sees `"ep.enable_weightless"` = `"1"`. |
 | `"1"` or `"2"` | Another value, an unrecognized value, or no entry | `ORT_EP_FAIL` before the EP is created. |
-| Any other value, including `"3"` | Any | `ORT_INVALID_ARGUMENT` when the session is initialized, before any EP is created. |
+| Any other value, including `"3"`, `"0x2"` and `""` | Any | `ORT_INVALID_ARGUMENT`. An explicitly empty value is not treated as "not set". |
 
 The EP gets a copy of the session options; the application's session options are not modified. An EP built for an
 earlier version that reports `"weightless_support"` = `"all"` therefore works with `ALL`, and is rejected with
@@ -202,7 +202,7 @@ earlier version that reports `"weightless_support"` = `"all"` therefore works wi
 | Condition | Result |
 |---|---|
 | `ModelCompilationOptions_SetWeightlessMode()` called with a value other than 0, 1 or 2 (e.g. `3`) | `ORT_INVALID_ARGUMENT`, returned immediately. |
-| `"ep.enable_weightless_mode"` set to a value other than `"0"`, `"1"` or `"2"` | `ORT_INVALID_ARGUMENT` when the session is initialized, before any EP is created. This applies even if the session uses no plugin EP or compiles no nodes. |
+| `"ep.enable_weightless_mode"` set to anything other than exactly `"0"`, `"1"` or `"2"`, including other spellings such as `"0x2"` and an explicitly empty value | `ORT_INVALID_ARGUMENT` when the session is initialized. This applies to every API (C, C++, Python) and even if the session uses no plugin EP or compiles no nodes. |
 | Mode is `NONE` | No weightless checks. |
 | The EP metadata of a device doesn't include the requested mode | `ORT_EP_FAIL` before the EP is created. |
 | EP built against API 29 or later does not implement `GetWeightlessSupport` | `ORT_NOT_IMPLEMENTED`. |

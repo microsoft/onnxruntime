@@ -2773,8 +2773,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelBuffer, _Inou
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid source model: data size is 0");
   }
 
-  options->weightless_source_model_data = source_model_data;
-  options->weightless_source_model_data_size = source_model_data_length;
+  options->value.weightless_source_model_data = source_model_data;
+  options->value.weightless_source_model_data_size = source_model_data_length;
   return nullptr;
   API_IMPL_END
 }

@@ -881,7 +881,7 @@ static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weight
 //
 // Equivalent to OrtCompileApi::ModelCompilationOptions_SetWeightlessMode.
 //
-// Option values (the base-10 string representation of a single OrtWeightlessSupport value):
+// Option values (exactly one of these strings; other spellings such as "0x2" or an empty value are invalid):
 // - "0": disable (OrtWeightlessSupport_NONE). (default)
 // - "1": weightless mode for external initializers only (OrtWeightlessSupport_EXTERNAL_ONLY).
 // - "2": weightless mode for all initializers, internal and external (OrtWeightlessSupport_ALL).
