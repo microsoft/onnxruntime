@@ -159,12 +159,25 @@ Status PackedSparseAttentionIndexerQsaUpdateProgram::GenerateShaderCode(ShaderHe
   const auto& norm = shader.AddInput("key_norm_weight", ShaderUsage::UseUniform);
   const auto& rotary_cache = shader.AddInput("rotary_cache", ShaderUsage::UseUniform);
   const auto& sequence_metadata = shader.AddInput("sequence_metadata", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* capture_count = nullptr;
+  const ShaderVariableHelper* state_update_active = nullptr;
+  if (capture_state_update_) {
+    capture_count = &shader.AddInput("state_update_capture_count", ShaderUsage::UseUniform);
+    if (has_state_update_active_) {
+      state_update_active = &shader.AddInput("state_update_active", ShaderUsage::UseUniform);
+    }
+  }
   const auto& present_key_state =
       shader.AddOutput("present_key_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& present_kv_buffer =
       shader.AddOutput("present_kv_buffer", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& present_state_lengths = shader.AddOutput("present_state_lengths", ShaderUsage::UseUniform);
   const auto& overflow_flags = shader.AddOutput("overflow_flags", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* state_update = nullptr;
+  if (capture_state_update_) {
+    state_update = &shader.AddOutput(
+        "state_update", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  }
   const ShaderVariableHelper& kv_buffer_history = present_kv_buffer;
   const ShaderVariableHelper& state_lengths_history = present_state_lengths;
 
@@ -174,7 +187,8 @@ Status PackedSparseAttentionIndexerQsaUpdateProgram::GenerateShaderCode(ShaderHe
       << "    let idx = (b * uniforms.buffer_capacity + u32(virtual_pos)) * uniforms.head_size + d;\n"
       << "    return f32(" << kv_buffer_history.GetByOffset("idx") << ");\n"
       << "  }\n"
-      << "  let idx2 = u32(req_start + virtual_pos - old_buf_len) * uniforms.head_size + d;\n"
+      << "  let idx2 = u32(req_start + virtual_pos - old_buf_len) * uniforms.key_row_stride + "
+         "uniforms.key_offset + d;\n"
       << "  return f32(" << key.GetByOffset("idx2") << ");\n"
       << "}\n"
       << "fn pooled(b: u32, k: i32, old_buf_len: i32, req_start: i32, d: u32) -> f32 {\n"
@@ -253,15 +267,54 @@ Status PackedSparseAttentionIndexerQsaUpdateProgram::GenerateShaderCode(ShaderHe
       << "  let new_block_count = full_new_block_count;\n"
       << "  let new_buf_len = pending % i32(uniforms.compress_ratio);\n"
       << "  " << present_state_lengths.SetByOffset("b * 2u", "old_key_len + new_block_count") << "\n"
-      << "  " << present_state_lengths.SetByOffset("b * 2u + 1u", "new_buf_len") << "\n"
+      << "  " << present_state_lengths.SetByOffset("b * 2u + 1u", "new_buf_len") << "\n";
+  if (capture_state_update_) {
+    shader.MainFunctionBody()
+        << "  let capture_is_active = "
+        << (has_state_update_active_ ? state_update_active->GetByOffset("0") + " != 0" : "true") << ";\n"
+        << "  let capture_tokens = select(0, min(max(" << capture_count->GetByOffset("b")
+        << ", 0), min(req_len, i32(uniforms.state_update_capacity))), capture_is_active);\n";
+  } else {
+    shader.MainFunctionBody() << "  let capture_tokens = 0;\n";
+  }
+  shader.MainFunctionBody()
       << "  for (var k = 0; k < new_block_count; k++) {\n"
       << "    let entry = u32(old_key_len + k);\n"
+      << "    let completion_token = (k + 1) * i32(uniforms.compress_ratio) - old_buf_len - 1;\n"
       << "    for (var d = 0u; d < uniforms.head_size; d++) {\n"
       << "      let value = rotated(b, k, old_buf_len, req_start, old_key_len, d);\n"
       << "      "
       << present_key_state.SetByOffset("(b * uniforms.state_capacity + entry) * uniforms.head_size + d",
                                        "present_key_state_element_t(value)")
-      << "\n"
+      << "\n";
+  if (capture_state_update_) {
+    shader.MainFunctionBody()
+        << "      if (completion_token < capture_tokens) {\n"
+        << "        "
+        << state_update->SetByOffset(
+               "(b * uniforms.state_update_capacity + u32(completion_token)) * uniforms.head_size + d",
+               "state_update_element_t(value)")
+        << "\n"
+        << "      }\n";
+  }
+  shader.MainFunctionBody()
+      << "    }\n"
+      << "  }\n"
+      << "  for (var t = 0; t < capture_tokens; t++) {\n"
+      << "    if ((old_buf_len + t + 1) % i32(uniforms.compress_ratio) != 0) {\n"
+      << "      for (var d = 0u; d < uniforms.head_size; d++) {\n";
+  if (capture_state_update_) {
+    shader.MainFunctionBody()
+        << "        let value = "
+        << key.GetByOffset("u32(req_start + t) * uniforms.key_row_stride + uniforms.key_offset + d") << ";\n"
+        << "        "
+        << state_update->SetByOffset(
+               "(b * uniforms.state_update_capacity + u32(t)) * uniforms.head_size + d",
+               "state_update_element_t(value)")
+        << "\n";
+  }
+  shader.MainFunctionBody()
+      << "      }\n"
       << "    }\n"
       << "  }\n"
       << "  for (var t = 0; t < new_buf_len; t++) {\n"
@@ -271,6 +324,60 @@ Status PackedSparseAttentionIndexerQsaUpdateProgram::GenerateShaderCode(ShaderHe
       << "      "
       << present_kv_buffer.SetByOffset("(b * uniforms.buffer_capacity + u32(t)) * uniforms.head_size + d",
                                        "present_kv_buffer_element_t(value)")
+      << "\n"
+      << "    }\n"
+      << "  }\n";
+  return Status::OK();
+}
+
+Status PackedSparseAttentionIndexerQsaCaptureProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& key = shader.AddInput("key", ShaderUsage::UseUniform);
+  const auto& cu_seqlens = shader.AddInput("cumulative_sequence_lengths", ShaderUsage::UseUniform);
+  const auto& past_seqlens = shader.AddInput("past_sequence_lengths", ShaderUsage::UseUniform);
+  const auto& capture_count = shader.AddInput("state_update_capture_count", ShaderUsage::UseUniform);
+  const auto& present_key_state =
+      shader.AddInput("present_key_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& overflow_flags = shader.AddInput("overflow_flags", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* state_update_active = nullptr;
+  if (has_state_update_active_) {
+    state_update_active = &shader.AddInput("state_update_active", ShaderUsage::UseUniform);
+  }
+  const auto& state_update =
+      shader.AddOutput("state_update", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  shader.MainFunctionBody()
+      << "  let b = workgroup_idx;\n"
+      << "  if (b >= uniforms.batch_size || local_idx != 0u || " << overflow_flags.GetByOffset("b")
+      << " != 0) { return; }\n";
+  if (has_state_update_active_) {
+    shader.MainFunctionBody()
+        << "  if (" << state_update_active->GetByOffset("0") << " == 0) { return; }\n";
+  }
+  shader.MainFunctionBody()
+      << "  let req_start = " << cu_seqlens.GetByOffset("b") << ";\n"
+      << "  let req_end = " << cu_seqlens.GetByOffset("b + 1u") << ";\n"
+      << "  let req_len = max(req_end - req_start, 0);\n"
+      << "  let past_len = max(" << past_seqlens.GetByOffset("b") << ", 0);\n"
+      << "  let old_key_len = past_len / i32(uniforms.compress_ratio);\n"
+      << "  let old_buf_len = past_len % i32(uniforms.compress_ratio);\n"
+      << "  let capture_tokens = min(max(" << capture_count.GetByOffset("b")
+      << ", 0), min(req_len, i32(uniforms.state_update_capacity)));\n"
+      << "  for (var t = 0; t < capture_tokens; t++) {\n"
+      << "    let completes_block = (old_buf_len + t + 1) % i32(uniforms.compress_ratio) == 0;\n"
+      << "    let completed_entry = old_key_len + (old_buf_len + t + 1) / i32(uniforms.compress_ratio) - 1;\n"
+      << "    for (var d = 0u; d < uniforms.head_size; d++) {\n"
+      << "      var value = f32("
+      << key.GetByOffset("u32(req_start + t) * uniforms.key_row_stride + uniforms.key_offset + d") << ");\n"
+      << "      if (completes_block && completed_entry >= 0 && completed_entry < i32(uniforms.state_capacity)) {\n"
+      << "        value = f32("
+      << present_key_state.GetByOffset(
+             "(b * uniforms.state_capacity + u32(completed_entry)) * uniforms.head_size + d")
+      << ");\n"
+      << "      }\n"
+      << "      "
+      << state_update.SetByOffset(
+             "(b * uniforms.state_update_capacity + u32(t)) * uniforms.head_size + d",
+             "state_update_element_t(value)")
       << "\n"
       << "    }\n"
       << "  }\n";
@@ -311,7 +418,7 @@ Status PackedSparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHe
       << " + (i32(token) - req_start);\n"
       << "}\n"
       << "fn normalized_query_value(token: u32, head: u32, d: u32) -> f32 {\n"
-      << "  let base = (token * uniforms.num_heads + head) * uniforms.head_size;\n"
+      << "  let base = token * uniforms.query_row_stride + head * uniforms.head_size;\n"
       << "  var square_sum = 0.0;\n"
       << "  for (var k = 0u; k < uniforms.head_size; k++) {\n"
       << "    let value = f32(" << query_metadata.GetByOffset("base + k") << ");\n"
@@ -319,11 +426,11 @@ Status PackedSparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHe
       << "  }\n"
       << "  return f32(" << query_metadata.GetByOffset("base + d")
       << ") * inverseSqrt(square_sum / f32(uniforms.head_size) + uniforms.epsilon) * f32("
-      << query_metadata.GetByOffset("uniforms.total_tokens * uniforms.num_heads * uniforms.head_size + d")
+      << query_metadata.GetByOffset("uniforms.query_norm_offset + d")
       << ");\n"
       << "}\n"
       << "fn query_value(token: u32, head: u32, d: u32, position: i32, b: u32) -> f32 {\n"
-      << "  let base = (token * uniforms.num_heads + head) * uniforms.head_size;\n"
+      << "  let base = token * uniforms.query_row_stride + head * uniforms.head_size;\n"
       << "  var value = normalized_query_value(token, head, d);\n"
       << "  if (d >= uniforms.rotary_width) { return value; }\n"
       << "  let half = uniforms.rotary_width / 2u;\n"
@@ -760,6 +867,9 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
               "no greater than INT_MAX");
   ORT_ENFORCE(info.GetAttr<int64_t>("state_capacity", &state_capacity_).IsOK() && state_capacity_ > 0,
               "PackedSparseAttentionIndexer: state_capacity must be a positive integer");
+  state_update_capacity_ = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
+  ORT_ENFORCE(state_update_capacity_ >= 0 && state_update_capacity_ <= 8,
+              "PackedSparseAttentionIndexer: state_update_capacity must be in [0, 8]");
 
   const bool has_token_budget = info.GetAttr<int64_t>("token_budget", &token_budget_).IsOK();
   const bool has_index_topk = info.GetAttr<int64_t>("index_topk", &index_topk_).IsOK();
@@ -772,6 +882,8 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
                 "PackedSparseAttentionIndexer: csa attributes must be omitted for qsa");
     index_topk_ = 0;
   } else {
+    ORT_ENFORCE(state_update_capacity_ == 0,
+                "PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
     ORT_ENFORCE(has_index_topk && index_topk_ > 0, "PackedSparseAttentionIndexer: index_topk must be > 0 for csa");
     ORT_ENFORCE(!has_token_budget, "PackedSparseAttentionIndexer: token_budget must be omitted for csa");
     token_budget_ = 0;
@@ -798,6 +910,16 @@ Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::Comput
   ORT_RETURN_IF(gate_buffer_provided != !is_qsa, "PackedSparseAttentionIndexer: past_gate_buffer ",
                 gate_buffer_provided ? "must be omitted for policy_mode 'qsa'"
                                      : "is required for policy_mode 'csa'");
+  if (!is_qsa) {
+    for (int index : {psai::kStateUpdateCaptureCount, psai::kStateUpdateActive}) {
+      ORT_RETURN_IF(index < context.InputCount() && context.Input(index) != nullptr,
+                    "PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
+    }
+    Tensor* state_update =
+        context.OutputCount() > psai::kStateUpdate ? context.Output(psai::kStateUpdate, TensorShape({0})) : nullptr;
+    ORT_RETURN_IF(state_update != nullptr,
+                  "PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
+  }
   return is_qsa ? ComputeQsa(context) : ComputeCsa(context);
 }
 
@@ -813,6 +935,14 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   const Tensor* past_key_state = context.Input(psai::kPastKeyState);
   const Tensor* past_kv_buffer = context.Input(psai::kPastKvBuffer);
   const Tensor* past_state_lengths = context.Input(psai::kPastStateLengths);
+  const Tensor* state_update_capture_count =
+      context.InputCount() > psai::kStateUpdateCaptureCount ? context.Input(psai::kStateUpdateCaptureCount) : nullptr;
+  const Tensor* state_update_active =
+      context.InputCount() > psai::kStateUpdateActive ? context.Input(psai::kStateUpdateActive) : nullptr;
+
+  ORT_RETURN_IF(state_update_capacity_ > 0 && state_update_capture_count == nullptr,
+                "PackedSparseAttentionIndexer: state_update_capture_count is required when "
+                "state_update_capacity is positive");
 
   ORT_RETURN_IF(query == nullptr, "PackedSparseAttentionIndexer: query is required");
   const auto& query_shape = query->Shape();
@@ -821,10 +951,13 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF(query_norm == nullptr, "PackedSparseAttentionIndexer: query_norm_weight is required");
   const auto& query_norm_shape = query_norm->Shape();
   ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1 && query_norm_shape[0] > 0 &&
-                        query_shape[1] % query_norm_shape[0] == 0,
+                        (query_shape[1] - (key != nullptr ? 0 : query_norm_shape[0])) > 0 &&
+                        (query_shape[1] - (key != nullptr ? 0 : query_norm_shape[0])) % query_norm_shape[0] == 0,
                     "PackedSparseAttentionIndexer: invalid flattened query dimensions");
   const int64_t head_size = query_norm_shape[0];
-  const int64_t num_heads = query_shape[1] / head_size;
+  const bool has_separate_key = key != nullptr;
+  const int64_t query_width = query_shape[1] - (has_separate_key ? 0 : head_size);
+  const int64_t num_heads = query_width / head_size;
   ORT_RETURN_IF_NOT(num_heads > 0 && head_size > 0, "PackedSparseAttentionIndexer: invalid query dimensions");
 
   ORT_RETURN_IF(cu_seqlens == nullptr, "PackedSparseAttentionIndexer: cumulative_sequence_lengths is required");
@@ -836,7 +969,9 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
                 "PackedSparseAttentionIndexer: total_tokens must be 0 when batch_size is 0");
 
   ORT_RETURN_IF_ERROR(CheckShape(past_seqlens, "past_sequence_lengths", {batch_size}));
-  ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
+  if (has_separate_key) {
+    ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
+  }
   ORT_RETURN_IF_ERROR(CheckShape(query_norm, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(norm, "key_norm_weight", {head_size}));
 
@@ -858,6 +993,12 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(CheckShape(past_kv_buffer, "past_kv_buffer", {batch_size, buffer_capacity, head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(past_state_lengths, "past_state_lengths",
                                  {batch_size, psai::kStateLengthColumns}));
+  if (state_update_capture_count != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(state_update_capture_count, "state_update_capture_count", {batch_size}));
+  }
+  if (state_update_active != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(state_update_active, "state_update_active", {1}));
+  }
 
   Tensor rotary_cache =
       context.CreateGPUTensor(cos_cache->DataType(), TensorShape({2 * cos_cache->Shape().Size()}));
@@ -875,6 +1016,13 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
       context.Output(psai::kPresentKvBuffer, TensorShape({batch_size, buffer_capacity, head_size}));
   Tensor* present_state_lengths =
       context.Output(psai::kPresentStateLengths, TensorShape({batch_size, psai::kStateLengthColumns}));
+  Tensor* state_update = context.OutputCount() > psai::kStateUpdate
+                             ? context.Output(psai::kStateUpdate,
+                                              TensorShape({batch_size, state_update_capacity_, head_size}))
+                             : nullptr;
+  if (state_update != nullptr) {
+    context.FillZero(*state_update);
+  }
   Tensor overflow_flags = context.CreateGPUTensor(DataTypeImpl::GetType<int32_t>(), TensorShape({batch_size}));
 
   if (present_key_state->DataRaw() != past_key_state->DataRaw()) {
@@ -926,32 +1074,63 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(PackTwoTensors(context, *query, *query_norm, query_metadata));
 
   if (batch_size > 0) {
+    const Tensor* key_source = has_separate_key ? key : query;
     ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
         context, "QSA update",
-        {key, norm, &rotary_cache, &sequence_metadata, present_key_state, present_kv_buffer, present_state_lengths,
-         &overflow_flags}));
-    PackedSparseAttentionIndexerQsaUpdateProgram update{rotary.batched};
-    update.CacheHint(rotary.batched)
+        {key_source, norm, &rotary_cache, &sequence_metadata, present_key_state, present_kv_buffer,
+         present_state_lengths, &overflow_flags}));
+    PackedSparseAttentionIndexerQsaUpdateProgram update{rotary.batched, false, false};
+    update.CacheHint(rotary.batched, false, false)
         .SetWorkgroupSize(kWorkgroupSize)
-        .AddInputs({{key, ProgramTensorMetadataDependency::Type},
+        .AddInputs({{key_source, ProgramTensorMetadataDependency::Type},
                     {norm, ProgramTensorMetadataDependency::Type},
                     {&rotary_cache, ProgramTensorMetadataDependency::Type},
                     {&sequence_metadata, ProgramTensorMetadataDependency::Type}});
     update.AddOutputs({{present_key_state, ProgramTensorMetadataDependency::Type},
                        {present_kv_buffer, ProgramTensorMetadataDependency::Type}})
         .AddOutput({present_state_lengths, ProgramTensorMetadataDependency::Type})
-        .AddOutput({&overflow_flags, ProgramTensorMetadataDependency::Type})
+        .AddOutput({&overflow_flags, ProgramTensorMetadataDependency::Type});
+    update
         .SetDispatchGroupSize(ToUint32(batch_size))
         .AddUniformVariables({{ToUint32(batch_size)},
                               {ToUint32(total_tokens)},
+                              {ToUint32(has_separate_key ? head_size : query_shape[1])},
+                              {ToUint32(has_separate_key ? 0 : query_width)},
                               {ToUint32(compress_ratio_)},
                               {ToUint32(state_capacity)},
                               {ToUint32(buffer_capacity)},
                               {ToUint32(head_size)},
                               {ToUint32(rotary.rotary_width)},
                               {ToUint32(rotary.max_rotary_length)},
+                              {ToUint32(state_update_capacity_)},
                               {epsilon_}});
     ORT_RETURN_IF_ERROR(context.RunProgram(update));
+
+    if (state_update != nullptr && state_update_capacity_ > 0) {
+      PackedSparseAttentionIndexerQsaCaptureProgram capture{state_update_active != nullptr};
+      capture.CacheHint(state_update_active != nullptr)
+          .SetWorkgroupSize(kWorkgroupSize)
+          .AddInputs({{key_source, ProgramTensorMetadataDependency::Type},
+                      {cu_seqlens, ProgramTensorMetadataDependency::Type},
+                      {past_seqlens, ProgramTensorMetadataDependency::Type},
+                      {state_update_capture_count, ProgramTensorMetadataDependency::Type},
+                      {present_key_state, ProgramTensorMetadataDependency::Type},
+                      {&overflow_flags, ProgramTensorMetadataDependency::Type}});
+      if (state_update_active != nullptr) {
+        capture.AddInput({state_update_active, ProgramTensorMetadataDependency::Type});
+      }
+      capture.AddOutput({state_update, ProgramTensorMetadataDependency::Type})
+          .SetDispatchGroupSize(ToUint32(batch_size))
+          .AddUniformVariables({{ToUint32(batch_size)},
+                                {ToUint32(total_tokens)},
+                                {ToUint32(has_separate_key ? head_size : query_shape[1])},
+                                {ToUint32(has_separate_key ? 0 : query_width)},
+                                {ToUint32(compress_ratio_)},
+                                {ToUint32(state_capacity)},
+                                {ToUint32(state_update_capacity_)},
+                                {ToUint32(head_size)}});
+      ORT_RETURN_IF_ERROR(context.RunProgram(capture));
+    }
   }
 
   ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
@@ -974,6 +1153,8 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
                             {ToUint32(batch_size)},
                             {ToUint32(num_heads)},
                             {ToUint32(head_size)},
+                            {ToUint32(query_shape[1])},
+                            {ToUint32(query_shape.Size())},
                             {ToUint32(rotary.rotary_width)},
                             {ToUint32(rotary.max_rotary_length)},
                             {ToUint32(compress_ratio_)},

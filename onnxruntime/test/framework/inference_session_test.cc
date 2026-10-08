@@ -1246,6 +1246,33 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 #endif
 }
 
+#ifndef __wasm__
+TEST(InferenceSessionTests, MoeExpertStatisticsLoadsStateFileWithNativePath) {
+  for (const auto* state_file : {"moe_expert_state_ascii.txt", "moe_expert_state_\xE6\xB5\x8B\xE8\xAF\x95.txt"}) {
+    SCOPED_TRACE(state_file);
+    const auto state_path = std::filesystem::path(ToPathString(state_file));
+    auto cleanup = gsl::finally([&state_path]() { std::filesystem::remove(state_path); });
+    {
+      std::ofstream output{state_path};
+      ASSERT_TRUE(output.is_open());
+      output << "moe_expert_state 1\n";
+      ASSERT_TRUE(output.good());
+    }
+
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigMoeExpertCounterStateFile, state_file));
+
+    InferenceSession session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
+  }
+}
+#endif
+
 // WebAssembly will emit profiling data into console
 // TODO(hasesh): Investigate why this test fails on Windows CUDA builds
 #if (!defined(__wasm__) && !defined(_WIN32))

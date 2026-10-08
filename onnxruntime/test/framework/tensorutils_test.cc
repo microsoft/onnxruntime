@@ -404,6 +404,69 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
   EXPECT_FALSE(status.IsOK());
 }
 
+namespace {
+TensorProto CreateStringTensorProto(std::initializer_list<size_t> payload_sizes) {
+  TensorProto tensor_proto;
+  tensor_proto.set_name("string_initializer");
+  tensor_proto.set_data_type(TensorProto_DataType_STRING);
+  tensor_proto.add_dims(static_cast<int64_t>(payload_sizes.size()));
+
+  for (size_t payload_size : payload_sizes) {
+    tensor_proto.add_string_data(std::string(payload_size, 'a'));
+  }
+
+  return tensor_proto;
+}
+}  // namespace
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoRejectsOversizedPayload) {
+  constexpr size_t kPayloadBudgetBytes = 128;
+  constexpr size_t kTestBudgetBytes = sizeof(std::string) + kPayloadBudgetBytes;
+  const TensorProto tensor_proto = CreateStringTensorProto({kPayloadBudgetBytes + 1});
+
+  const Status status = ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "string_data shape bytes + payload exceeds");
+}
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoRejectsCombinedShapeAndPayloadOverflow) {
+  constexpr size_t kFirstPayloadBytes = 64;
+  constexpr size_t kTestBudgetBytes = 2 * sizeof(std::string) + kFirstPayloadBytes;
+  const TensorProto tensor_proto = CreateStringTensorProto({kFirstPayloadBytes, 1});
+
+  // STRING tensors account for the shape-declared bytes and the aggregate payload bytes.
+  // The first payload exactly fills the remaining allowance after object storage; the second
+  // payload proves that validation uses cumulative accounting.
+  const Status status = ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "string_data shape bytes + payload exceeds");
+}
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoAcceptsExactPayloadLimit) {
+  constexpr size_t kPayloadBytes = 17;
+  constexpr size_t kTestBudgetBytes = sizeof(std::string) + kPayloadBytes;
+  const TensorProto tensor_proto = CreateStringTensorProto({kPayloadBytes});
+
+  ASSERT_STATUS_OK(ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes));
+}
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoAcceptsNormalPayload) {
+  constexpr size_t kTestBudgetBytes = 3 * sizeof(std::string) + 32;
+  const TensorProto tensor_proto = CreateStringTensorProto({7, 11, 13});
+
+  ASSERT_STATUS_OK(ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes));
+}
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoRejectsRawData) {
+  TensorProto tensor_proto = CreateStringTensorProto({1});
+  tensor_proto.set_raw_data(std::string(sizeof(std::string), '\0'));
+
+  const Status status = ValidateEmbeddedTensorProtoDataSizeAndShape(
+      tensor_proto, sizeof(std::string) + 1);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "string tensor can not have raw data");
+}
+
 // A bool initializer supplied through raw_data is copied verbatim, so its bytes are not
 // restricted to {0, 1}. UnpackTensor must normalize them so downstream consumers (which assume
 // canonical bool values) all observe the same result regardless of how they read the byte.
@@ -1702,6 +1765,77 @@ TEST(ConstantNodeProtoToTensorProtoMarkerTest, RejectsInMemoryMarkerOnDenseTenso
   ASSERT_FALSE(status.IsOK())
       << "Constant node tensor attribute with an in-memory address marker must be rejected.";
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
+// A Constant node reaches this helper from model-local function bodies and subgraphs, where the
+// output list and the attribute set are model controlled and need not match the op schema.
+TEST(ConstantNodeProtoToTensorProtoTest, RejectsUnexpectedOutputCountAndAttributeType) {
+  // No output: the tensor name is derived from output(0), which must not be indexed blindly.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("no_output_constant");
+
+    auto* attr = node.add_attribute();
+    attr->set_name("value_int");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attr->set_i(1);
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("should have 1 output"));
+  }
+
+  // More than one output.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("two_output_constant");
+    node.add_output("c0");
+    node.add_output("c1");
+
+    auto* attr = node.add_attribute();
+    attr->set_name("value_int");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attr->set_i(1);
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("should have 1 output"));
+  }
+
+  // No attributes at all.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("no_attribute_constant");
+    node.add_output("c");
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("has no data attributes"));
+  }
+
+  // An attribute whose type carries no value must produce a Status, not an exception, so that
+  // builds without exception support reject the model instead of terminating.
+  {
+    ONNX_NAMESPACE::NodeProto node;
+    node.set_op_type("Constant");
+    node.set_name("undefined_attribute_constant");
+    node.add_output("c");
+
+    auto* attr = node.add_attribute();
+    attr->set_name("value");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_UNDEFINED);
+
+    ONNX_NAMESPACE::TensorProto tensor_out;
+    Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unsupported attribute value type"));
+  }
 }
 
 // Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when

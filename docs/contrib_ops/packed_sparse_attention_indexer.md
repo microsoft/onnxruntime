@@ -10,7 +10,7 @@ Source:
 (policy enum, selected-capacity formula and CSA window-plan arithmetic, shared unmodified with
 `SparseAttentionIndexer`),
 [packed_sparse_attention_indexer_common.h](../../onnxruntime/contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h)
-(fixed 16-input / 6-output slot map),
+(fixed 18-input / 7-output slot map),
 [packed_sparse_attention_indexer.cc](../../onnxruntime/contrib_ops/cuda/sparse/packed_sparse_attention_indexer.cc) /
 [packed_sparse_attention_indexer_impl.cu](../../onnxruntime/contrib_ops/cuda/sparse/packed_sparse_attention_indexer_impl.cu)
 (CUDA),
@@ -51,16 +51,17 @@ Attributes:
 | `epsilon` | default `1e-6` | RMSNorm epsilon |
 | `scale` | default `1/sqrt(head_size)` | per-head score scale |
 | `head_weight_scale` | `csa` only, default `1/sqrt(num_heads)` | head-weight score scale |
+| `state_update_capacity` | `qsa` only, default `0`, range `[0, 8]` | maximum captured transitions per request |
 
-Inputs are **fixed at 16 indices** for both policies (unlike the dense op, which uses a different
+Inputs are **fixed at 18 indices** for both policies (unlike the dense op, which uses a different
 input/output count per policy). A slot not owned by the active policy is a *positional* optional:
 its `NodeProto` input name is empty rather than the slot being removed from the list, so every
 later slot keeps its fixed index.
 
 | # | Name | Shape | Type | Policy |
 |---|---|---|---|---|
-| 0 | `query` | `(total_tokens, num_heads*head_size)` | T | both |
-| 1 | `key` | `(total_tokens, head_size)` qsa / `(total_tokens, 2*head_size)` csa | T | both |
+| 0 | `query` | `(total_tokens, num_heads*head_size)`; when qsa omits `key`, `(total_tokens, (num_heads+1)*head_size)` containing row-wise `[query \| key]` | T | both |
+| 1 | `key` | `(total_tokens, head_size)` qsa / `(total_tokens, 2*head_size)` csa; optional for qsa when packed into `query` | T | both |
 | 2 | `query_norm_weight` | `(head_size)` | T | both |
 | 3 | `key_norm_weight` | `(head_size)` | T | both |
 | 4 | `cos_cache` | `(max_position, rotary_width)` or `(batch_size, max_position, rotary_width)` | T | both |
@@ -75,9 +76,11 @@ later slot keeps its fixed index.
 | 13 | `past_kv_buffer` | `(batch_size, 2*compress_ratio-1, width)` | T | both (generic) |
 | 14 | `past_gate_buffer` | same shape as `past_kv_buffer` | T | csa only |
 | 15 | `past_state_lengths` | `(batch_size, 2)` | int32, device-resident | both (generic) |
+| 16 | `state_update_capture_count` | `(batch_size)` | int32, device-resident | qsa capture only |
+| 17 | `state_update_active` | `(1)` | int32, device-resident | optional qsa capture gate |
 
-Outputs are **fixed at 6 indices** for both policies (`present_gate_buffer` is declared with an
-empty output name for `qsa`, the same positional-optional convention as above):
+Outputs have six fixed indices plus optional slot 6. `present_gate_buffer` is declared with an
+empty output name for `qsa`; `state_update` is declared only when QSA capture is enabled:
 
 | # | Name | Shape | Type | Policy |
 |---|---|---|---|---|
@@ -87,6 +90,7 @@ empty output name for `qsa`, the same positional-optional convention as above):
 | 3 | `present_kv_buffer` | same shape as `past_kv_buffer` | T | both |
 | 4 | `present_gate_buffer` | same shape as `past_gate_buffer` | T | csa only |
 | 5 | `present_state_lengths` | same shape as `past_state_lengths` | int32 | both |
+| 6 | `state_update` | `(batch_size, state_update_capacity, head_size)` | T | qsa capture only |
 
 `capacity` is `token_budget + compress_ratio - 1` for `qsa` and `index_topk` for `csa`, exactly the
 same formula (`SelectedCapacity`) used by `SparseAttentionIndexer`.
@@ -118,15 +122,25 @@ Both policies read and write the *same four* state slots — there is no separat
   `CsaWindowPlan`/`TryComputeCsaWindowPlan`).
 
 State never grows. `present_*` always has exactly the same shape as `past_*`; only the *contents*
-change. Input/output aliasing is supported. CUDA avoids unsafe buffer aliases; WebGPU omits an
-aliased `past_*` read-only binding and reads the prior contents through the matching read-write
-`present_*` binding. Each request is handled by one invocation, and buffer compaction reads entries
-at or above the destination index before overwriting them.
+change. CUDA supports aliasing `past_key_state` with `present_key_state` and `past_state_lengths`
+with `present_state_lengths`; it skips the baseline key-state copy when those buffers alias.
+WebGPU supports aliasing every corresponding `past_*` / `present_*` pair and reads prior contents
+through the matching read-write `present_*` binding. Each request is handled by one invocation,
+and buffer compaction reads entries at or above the destination index before overwriting them.
 
 **State overflow.** If a call would close more blocks/windows than
 `state_capacity - old_entry_count` allows, that request's step is rejected as a deterministic
 no-op: its state and state lengths remain unchanged, and its selection outputs stay empty. This
 never reads or writes outside a tensor's fixed extent and never silently truncates state.
+
+**Transactional QSA capture.** When `state_update_capacity > 0`,
+`state_update_capture_count[b]` requests capture of that request's leading transitions, clamped to
+the request length and the configured capacity. `state_update_active == 0` disables capture for the
+call. Disabled, unused, and out-of-range slots are zero. A captured token that completes a
+compression block stores the prepared block representative; other tokens store their raw key.
+After restoring a pre-call state snapshot, a runtime can replay the accepted prefix in order:
+append raw entries to the pending buffer, and replace each block-completion transition with its
+prepared representative in `key_state`.
 
 ## 4. Packed metadata and device-side safety
 
@@ -251,19 +265,22 @@ mechanics with no packed equivalent):
 `onnxruntime/test/contrib_ops/packed_sparse_attention_indexer_op_test.cc` covers:
 
 - shape inference for `qsa` and `csa` (fixed `selected_indices`/`selected_counts` shapes, fixed
-  state output shapes, the strict per-slot policy validation, and the always-6-outputs contract);
+  state output shapes, strict per-slot policy validation, and optional capture output);
 - multi-request packed batches with unequal token counts, a zero-token request row, and prefill
   followed by decode with independent per-request state (CUDA/WebGPU, skipped without the
   respective execution provider);
 - `qsa` state-capacity overflow safety;
+- active and disabled transactional QSA capture on CUDA and WebGPU;
 - FP32/FP16 (and CUDA-only BF16) numeric coverage against an in-file reference that mirrors this
   document's contract.
 
 ## 10. Known limitations and follow-ups
 
 - The reference CUDA/WebGPU kernels prioritize correctness over throughput (see the top-of-file
-  comments in the `.cu`/`.cc` implementations); they are not yet tuned for large `state_capacity`
-  or long packed batches.
+  comments in the `.cu`/`.cc` implementations). CUDA QSA fuses query rotation into scoring, uses
+  the shared-memory TopK path for up to 32 selected blocks, bounded partial TopK for 33–512 blocks,
+  and a hierarchical TopK path for common long-context Qwen shapes. Values above 512 that do not
+  match the hierarchical specialization retain the correctness-first repeated-scan fallback.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.

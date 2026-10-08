@@ -29,6 +29,7 @@
 #include "core/session/ep_context_config.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
@@ -603,7 +604,7 @@ ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_
 ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtDataType** out) {
   API_IMPL_BEGIN
-  const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type);
+  const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(elem_type));
   *out = reinterpret_cast<const OrtDataType*>(ml_type);
   return nullptr;
   API_IMPL_END
