@@ -30,6 +30,8 @@ struct PackedSparseAttentionIndexerParams {
   int buffer_capacity = 0;  // past_kv_buffer.shape[1] == 2 * compress_ratio - 1
   int capacity = 0;         // selected_indices.shape[1]
   bool has_position_ids = false;
+  int output_capacity = 0;
+  bool state_only = false;
   float epsilon = 1e-6f;
   float scale = 0.0f;
 
@@ -45,7 +47,9 @@ struct PackedSparseAttentionIndexerParams {
 // Scratch requirements, in float elements.
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
-
+Status LaunchValidatePackedIndexerReuse(cudaStream_t stream, const int32_t* cumulative_lengths,
+                                        int32_t* indices, int32_t* counts, int32_t* status,
+                                        int batch_size, int capacity, const int32_t* overflow_flags = nullptr);
 // `overflow_flags` is a caller-allocated int32 scratch buffer with at least `batch_size` elements
 // (unused when batch_size == 0). The update kernel writes, per request, whether this call's new
 // blocks/windows would exceed state_capacity; when it does, the whole step is rejected for that

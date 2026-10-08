@@ -51,7 +51,11 @@ enum InputIndex : int {
   kPastStateLengths = 15,          // generic: [batch_size, 2], int32
   kStateUpdateCaptureCount = 16,   // qsa only, optional: [batch_size], int32
   kStateUpdateActive = 17,         // qsa only, optional: [1], int32
-  kInputCount = 18,
+  kIndexShareMode = 18,
+  kMergedIndices = 19,
+  kMergedCounts = 20,
+  kMergedStatus = 21,
+  kInputCount = 22,
 };
 
 // Fixed output slots. present_gate_buffer is declared (with an empty name) but not produced for
@@ -64,7 +68,8 @@ enum OutputIndex : int {
   kPresentGateBuffer = 4,    // csa only: same shape as past_gate_buffer
   kPresentStateLengths = 5,  // [batch_size, 2], int32
   kStateUpdate = 6,          // qsa only, optional: [batch_size, state_update_capacity, head_size]
-  kOutputCount = 7,
+  kIndexShareStatus = 7,
+  kOutputCount = 8,
 };
 
 // Every PackedSparseAttentionIndexer node declares all 6 fixed outputs; present_gate_buffer is an

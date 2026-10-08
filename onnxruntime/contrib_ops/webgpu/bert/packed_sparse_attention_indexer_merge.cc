@@ -1,16 +1,16 @@
 #include <optional>
 
-#include "contrib_ops/webgpu/bert/sparse_attention_selection_merge.h"
+#include "contrib_ops/webgpu/bert/packed_sparse_attention_indexer_merge.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime::contrib::webgpu {
 
-ONNX_OPERATOR_KERNEL_EX(SparseAttentionSelectionMerge, kMSDomain, 1, kWebGpuExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(PackedSparseAttentionIndexerMerge, kMSDomain, 1, kWebGpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-                        SparseAttentionSelectionMerge);
+                        PackedSparseAttentionIndexerMerge);
 
-Status SparseAttentionSelectionMergeProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status PackedSparseAttentionIndexerMergeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& base = shader.AddInput("base", ShaderUsage::UseValueTypeAlias);
   const auto& counts = shader.AddInput("counts", ShaderUsage::UseValueTypeAlias);
   const auto& rows = shader.AddInput("rows", ShaderUsage::UseValueTypeAlias);
@@ -85,15 +85,15 @@ Status SparseAttentionSelectionMergeProgram::GenerateShaderCode(ShaderHelper& sh
   return Status::OK();
 }
 
-Status SparseAttentionSelectionMerge::ComputeInternal(ComputeContext& context) const {
+Status PackedSparseAttentionIndexerMerge::ComputeInternal(ComputeContext& context) const {
   const auto* base = context.Input(0);
   const auto* counts = context.Input(1);
   const auto* rows = context.Input(2);
   const auto* starts = context.Input(3);
   const auto* ends = context.Input(4);
   ORT_RETURN_IF(context.Input(5) || context.Input(6), "append_range does not accept additional index inputs");
-  selection_merge::Dimensions dimensions;
-  ORT_RETURN_IF_ERROR(selection_merge::Validate(base, counts, rows, starts, ends, capacity_, dimensions));
+  indexer_merge::Dimensions dimensions;
+  ORT_RETURN_IF_ERROR(indexer_merge::Validate(base, counts, rows, starts, ends, capacity_, dimensions));
   ORT_RETURN_IF(base->Shape().Size() > UINT32_MAX || static_cast<uint64_t>(dimensions.queries) * capacity_ > UINT32_MAX,
                 "WebGPU selection tensor offsets must fit uint32");
   auto* output = context.Output(0, TensorShape({dimensions.queries, capacity_}));
@@ -106,8 +106,8 @@ Status SparseAttentionSelectionMerge::ComputeInternal(ComputeContext& context) c
   }
   const auto* base_binding = base->Shape().Size() == 0 ? &empty_binding.value() : base;
   const auto* counts_binding = counts->Shape().Size() == 0 ? &empty_binding.value() : counts;
-  SparseAttentionSelectionMergeProgram program(dimensions.hash_capacity);
-  program.SetWorkgroupSize(1).SetDispatchGroupSize(dimensions.queries).CacheHint(std::to_string(dimensions.hash_capacity)).AddInputs({{base_binding, ProgramTensorMetadataDependency::None}, {counts_binding, ProgramTensorMetadataDependency::None}, {rows, ProgramTensorMetadataDependency::None}, {starts, ProgramTensorMetadataDependency::None}, {ends, ProgramTensorMetadataDependency::None}}).AddOutputs({{output, ProgramTensorMetadataDependency::None}, {output_counts, ProgramTensorMetadataDependency::None}, {status, ProgramTensorMetadataDependency::None}}).AddUniformVariables({{static_cast<uint32_t>(dimensions.rows)}, {static_cast<uint32_t>(dimensions.capacity)}, {static_cast<uint32_t>(dimensions.queries)}, {static_cast<uint32_t>(capacity_)} });
+  PackedSparseAttentionIndexerMergeProgram program(dimensions.hash_capacity);
+  program.SetWorkgroupSize(1).SetDispatchGroupSize(dimensions.queries).CacheHint(std::to_string(dimensions.hash_capacity)).AddInputs({{base_binding, ProgramTensorMetadataDependency::None}, {counts_binding, ProgramTensorMetadataDependency::None}, {rows, ProgramTensorMetadataDependency::None}, {starts, ProgramTensorMetadataDependency::None}, {ends, ProgramTensorMetadataDependency::None}}).AddOutputs({{output, ProgramTensorMetadataDependency::None}, {output_counts, ProgramTensorMetadataDependency::None}, {status, ProgramTensorMetadataDependency::None}}).AddUniformVariables({{static_cast<uint32_t>(dimensions.rows)}, {static_cast<uint32_t>(dimensions.capacity)}, {static_cast<uint32_t>(dimensions.queries)}, {static_cast<uint32_t>(capacity_)}});
   return context.RunProgram(program);
 }
 

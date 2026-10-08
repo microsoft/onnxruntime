@@ -31,6 +31,10 @@ namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
           .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())      \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
           .InputMemoryType(OrtMemTypeCPUInput, psai::kStateUpdateActive)    \
+          .InputMemoryType(OrtMemTypeCPUInput, psai::kIndexShareMode)       \
+          .MayInplace(psai::kMergedIndices, psai::kSelectedIndices)         \
+          .MayInplace(psai::kMergedCounts, psai::kSelectedCounts)           \
+          .MayInplace(psai::kMergedStatus, psai::kIndexShareStatus)         \
           .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)          \
           .MayInplace(psai::kPastStateLengths, psai::kPresentStateLengths), \
       PackedSparseAttentionIndexer<T>);
@@ -145,10 +149,54 @@ PackedSparseAttentionIndexer<T>::PackedSparseAttentionIndexer(const OpKernelInfo
   ORT_ENFORCE(epsilon_ >= 0.0f, "PackedSparseAttentionIndexer: epsilon must be >= 0, got ", epsilon_);
   has_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
   head_weight_scale_ = head_weight_scale;
+  output_capacity_ = info.GetAttrOrDefault<int64_t>("max_output_entries", 0);
+  const std::string state_policy = info.GetAttrOrDefault<std::string>("indexshare_state_policy", "default");
+  ORT_ENFORCE(state_policy == "default" || state_policy == "hold" || state_policy == "advance",
+              "indexshare_state_policy must be default, hold, or advance");
+  advance_reuse_state_ = state_policy == "advance" || (state_policy == "default" && policy_ == psai::Policy::kCsa);
+  ORT_ENFORCE(!advance_reuse_state_ || policy_ == psai::Policy::kCsa, "State-only advance requires CSA");
+  ORT_ENFORCE(output_capacity_ == 0 ||
+                  (output_capacity_ >= psai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_) &&
+                   output_capacity_ <= std::numeric_limits<int>::max()),
+              "PackedSparseAttentionIndexer: max_output_entries must cover the original selection capacity");
 }
 
 template <typename T>
 Status PackedSparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* mode = context->InputCount() > psai::kIndexShareMode
+                           ? context->Input<Tensor>(psai::kIndexShareMode)
+                           : nullptr;
+  if (mode != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(mode, "indexshare_mode", {1}));
+    ORT_RETURN_IF(output_capacity_ == 0, "IndexShare requires max_output_entries");
+    const int32_t value = mode->Data<int32_t>()[0];
+    ORT_RETURN_IF(value != 0 && value != 1, "indexshare_mode must be 0 (refresh) or 1 (reuse)");
+    for (int index : {psai::kMergedIndices, psai::kMergedCounts, psai::kMergedStatus}) {
+      ORT_RETURN_IF(index >= context->InputCount() || context->Input<Tensor>(index) == nullptr,
+                    "All IndexShare merge inputs are required");
+    }
+    const Tensor* merged_indices = context->Input<Tensor>(psai::kMergedIndices);
+    ORT_RETURN_IF(merged_indices->Shape().NumDimensions() != 2 || merged_indices->Shape()[1] != output_capacity_,
+                  "Merged indices must match max_output_entries");
+    const int64_t merged_rows = merged_indices->Shape()[0];
+    ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kMergedCounts), "merged_counts", {merged_rows}));
+    ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kMergedStatus), "merged_status", {merged_rows}));
+    if (value == 1) return ComputeReuse(context);
+    ORT_RETURN_IF(merged_rows != 0, "Refresh requires zero merge rows");
+    const Tensor* query = context->Input<Tensor>(psai::kQuery);
+    ORT_RETURN_IF(query == nullptr || query->Shape().NumDimensions() != 2, "Refresh requires rank-2 queries");
+    Tensor* status = context->Output(psai::kIndexShareStatus, TensorShape({query->Shape()[0]}));
+    ORT_RETURN_IF(status == nullptr, "IndexShare status output is required");
+    if (status->SizeInBytes() != 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(status->MutableDataRaw(), 0, status->SizeInBytes(), Stream(context)));
+    }
+  } else {
+    ORT_RETURN_IF(output_capacity_ != 0, "max_output_entries requires the IndexShare interface");
+    for (int index : {psai::kMergedIndices, psai::kMergedCounts, psai::kMergedStatus}) {
+      ORT_RETURN_IF(index < context->InputCount() && context->Input<Tensor>(index) != nullptr,
+                    "Merge inputs require indexshare_mode");
+    }
+  }
   const bool is_qsa = policy_ == psai::Policy::kQsa;
   constexpr int kCsaOnlyInputs[] = {psai::kGate, psai::kPositionBias, psai::kHeadWeights};
   for (int index : kCsaOnlyInputs) {
@@ -287,7 +335,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   ORT_RETURN_IF(present_gate_buffer != nullptr,
                 "PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
                 " must be omitted for policy_mode 'qsa'");
-  Tensor* selected_indices = context->Output(psai::kSelectedIndices, TensorShape({total_tokens, capacity}));
+  const int64_t output_capacity = output_capacity_ == 0 ? capacity : output_capacity_;
+  Tensor* selected_indices = context->Output(psai::kSelectedIndices, TensorShape({total_tokens, output_capacity}));
   Tensor* selected_counts = context->Output(psai::kSelectedCounts, TensorShape({total_tokens}));
   Tensor* present_key_state = context->Output(psai::kPresentKeyState, key_state_shape);
   Tensor* present_kv_buffer =
@@ -322,6 +371,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   params.buffer_capacity = static_cast<int>(buffer_capacity);
   params.capacity = static_cast<int>(capacity);
   params.has_position_ids = position_ids != nullptr;
+  params.output_capacity = static_cast<int>(output_capacity);
   params.epsilon = epsilon_;
   params.scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
   params.block_topk = static_cast<int>(token_budget_ / compress_ratio_);
@@ -362,7 +412,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
 }
 
 template <typename T>
-Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
+Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, const bool state_only) const {
   using CudaT = typename OrtToCudaType<T>::type;
 
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
@@ -388,7 +438,9 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
                     "PackedSparseAttentionIndexer: query must have shape (total_tokens, num_heads * head_size), "
                     "got ",
                     query_shape.ToString());
-  const int64_t total_tokens = query_shape[0];
+  ORT_RETURN_IF(state_only && (key == nullptr || key->Shape().NumDimensions() != 2),
+                "CSA state-only advance requires rank-2 keys");
+  const int64_t total_tokens = state_only ? key->Shape()[0] : query_shape[0];
   ORT_RETURN_IF(query_norm_weight == nullptr, "PackedSparseAttentionIndexer: query_norm_weight is required");
   const auto& query_norm_shape = query_norm_weight->Shape();
   ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1,
@@ -423,7 +475,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(gate, "gate", {total_tokens, width}));
   ORT_RETURN_IF_ERROR(CheckShape(position_bias, "position_bias", {compress_ratio_, width}));
-  ORT_RETURN_IF_ERROR(CheckShape(head_weights, "head_weights", {total_tokens, num_heads}));
+  ORT_RETURN_IF_ERROR(CheckShape(head_weights, "head_weights", {state_only ? 0 : total_tokens, num_heads}));
   ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {total_tokens}));
 
   RotaryCacheShape rotary;
@@ -453,7 +505,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
 
   const int64_t capacity = psai::SelectedCapacity(psai::Policy::kCsa, token_budget_, index_topk_, compress_ratio_);
 
-  Tensor* selected_indices = context->Output(psai::kSelectedIndices, TensorShape({total_tokens, capacity}));
+  const int64_t output_capacity = output_capacity_ == 0 ? capacity : output_capacity_;
+  Tensor* selected_indices = context->Output(psai::kSelectedIndices, TensorShape({total_tokens, output_capacity}));
   Tensor* selected_counts = context->Output(psai::kSelectedCounts, TensorShape({total_tokens}));
   Tensor* present_key_state = context->Output(psai::kPresentKeyState, key_state_shape);
   Tensor* present_kv_buffer =
@@ -482,17 +535,19 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
   params.buffer_capacity = static_cast<int>(buffer_capacity);
   params.capacity = static_cast<int>(capacity);
   params.has_position_ids = true;
+  params.output_capacity = static_cast<int>(output_capacity);
   params.epsilon = epsilon_;
   params.scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
   params.index_topk = static_cast<int>(index_topk_);
   params.head_weight_scale =
       has_head_weight_scale_ ? head_weight_scale_ : 1.0f / std::sqrt(static_cast<float>(num_heads));
+  params.state_only = state_only;
 
   auto float_workspace = GetScratchBuffer<float>(GetCsaPackedWorkspaceFloatCount(params), GetComputeStream(context));
   auto overflow_flags =
       GetScratchBuffer<int32_t>(static_cast<size_t>(std::max<int64_t>(batch_size, 1)), GetComputeStream(context));
 
-  return LaunchCsaPackedSparseAttentionIndexer<CudaT>(
+  ORT_RETURN_IF_ERROR(LaunchCsaPackedSparseAttentionIndexer<CudaT>(
       Stream(context), params,
       reinterpret_cast<const CudaT*>(query->Data<T>()),
       reinterpret_cast<const CudaT*>(key->Data<T>()),
@@ -517,7 +572,100 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
       reinterpret_cast<CudaT*>(present_gate_buffer->MutableData<T>()),
       present_state_lengths->MutableData<int32_t>(),
       float_workspace.get(),
-      overflow_flags.get());
+      overflow_flags.get()));
+  if (!state_only) return Status::OK();
+  const Tensor* merged_status = context->Input<Tensor>(psai::kMergedStatus);
+  Tensor* reuse_status = context->Output(psai::kIndexShareStatus, merged_status->Shape());
+  return LaunchValidatePackedIndexerReuse(Stream(context), cumulative_sequence_lengths->Data<int32_t>(),
+                                          selected_indices->MutableData<int32_t>(), selected_counts->MutableData<int32_t>(),
+                                          reuse_status->MutableData<int32_t>(), static_cast<int>(batch_size),
+                                          static_cast<int>(output_capacity), overflow_flags.get());
+}
+
+template <typename T>
+Status PackedSparseAttentionIndexer<T>::ComputeReuse(OpKernelContext* context) const {
+  const Tensor* query = context->Input<Tensor>(psai::kQuery);
+  const Tensor* lengths = context->Input<Tensor>(psai::kPastSequenceLengths);
+  const Tensor* indices = context->Input<Tensor>(psai::kMergedIndices);
+  const Tensor* counts = context->Input<Tensor>(psai::kMergedCounts);
+  const Tensor* status = context->Input<Tensor>(psai::kMergedStatus);
+  ORT_RETURN_IF(query == nullptr || query->Shape().NumDimensions() != 2 || query->Shape()[0] != 0,
+                "Reuse requires zero projected query rows");
+  ORT_RETURN_IF(lengths == nullptr || lengths->Shape().NumDimensions() != 1, "Reuse requires request lengths");
+  const int64_t batch = lengths->Shape()[0];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch));
+  ORT_RETURN_IF_ERROR(CheckShape(indices, "merged_indices", {batch, output_capacity_}));
+  ORT_RETURN_IF_ERROR(CheckShape(counts, "merged_counts", {batch}));
+  ORT_RETURN_IF_ERROR(CheckShape(status, "merged_status", {batch}));
+  ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kCumulativeSequenceLengths),
+                                 "cumulative_sequence_lengths", {batch + 1}));
+  const bool is_qsa = policy_ == psai::Policy::kQsa;
+  const bool advance = !is_qsa && advance_reuse_state_;
+  const Tensor* norm = context->Input<Tensor>(psai::kQueryNormWeight);
+  ORT_RETURN_IF(norm == nullptr || norm->Shape().NumDimensions() != 1 || norm->Shape()[0] <= 0,
+                "Reuse requires query norm weights");
+  const int64_t head_size = norm->Shape()[0];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("head_size", head_size, false));
+  ORT_RETURN_IF(!is_qsa && head_size > std::numeric_limits<int>::max() / 2, "CSA reuse width exceeds INT_MAX");
+  const Tensor* key = context->Input<Tensor>(psai::kKey);
+  const int64_t query_width = query->Shape()[1] - (is_qsa && key == nullptr ? head_size : 0);
+  ORT_RETURN_IF(query_width <= 0 || query_width % head_size != 0, "Reuse query width must contain complete heads");
+  ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kKeyNormWeight), "key_norm_weight", {head_size}));
+  const int64_t width = is_qsa ? head_size : 2 * head_size;
+  ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kPastKeyState), "past_key_state", {batch, state_capacity_, head_size}));
+  ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kPastKvBuffer), "past_kv_buffer",
+                                 {batch, psai::GenericBufferCapacity(compress_ratio_), width}));
+  ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kPastStateLengths), "past_state_lengths", {batch, 2}));
+  if (!is_qsa) {
+    ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kPastGateBuffer), "past_gate_buffer",
+                                   {batch, psai::GenericBufferCapacity(compress_ratio_), width}));
+  } else {
+    for (int index : {psai::kGate, psai::kPositionBias, psai::kHeadWeights, psai::kPastGateBuffer, psai::kPositionIds}) {
+      ORT_RETURN_IF(context->Input<Tensor>(index) != nullptr, "QSA reuse does not accept CSA-only inputs");
+    }
+    if (state_update_capacity_ > 0) {
+      ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kStateUpdateCaptureCount), "state_update_capture_count", {batch}));
+    }
+  }
+  for (int index : {psai::kKey, psai::kGate, psai::kHeadWeights}) {
+    const Tensor* input = context->Input<Tensor>(index);
+    const int64_t expected_rows = advance && index != psai::kHeadWeights ? batch : 0;
+    ORT_RETURN_IF(input != nullptr && (input->Shape().NumDimensions() != 2 || input->Shape()[0] != expected_rows),
+                  "Reuse projection rows do not match the state policy");
+  }
+  for (const auto& pair : {std::pair{psai::kMergedIndices, psai::kSelectedIndices},
+                           std::pair{psai::kMergedCounts, psai::kSelectedCounts},
+                           std::pair{psai::kMergedStatus, psai::kIndexShareStatus},
+                           std::pair{psai::kPastKeyState, psai::kPresentKeyState},
+                           std::pair{psai::kPastKvBuffer, psai::kPresentKvBuffer},
+                           std::pair{psai::kPastStateLengths, psai::kPresentStateLengths},
+                           std::pair{psai::kPastGateBuffer, psai::kPresentGateBuffer}}) {
+    if (is_qsa && pair.first == psai::kPastGateBuffer) continue;
+    if (advance && pair.first >= psai::kPastKeyState && pair.first <= psai::kPastStateLengths) continue;
+    const Tensor* input = context->Input<Tensor>(pair.first);
+    ORT_RETURN_IF(input == nullptr, "Reuse state and selection inputs are required");
+    Tensor* output = context->Output(pair.second, input->Shape());
+    ORT_RETURN_IF(output == nullptr, "Reuse state and selection outputs are required");
+    if (input->SizeInBytes() != 0 && output->MutableDataRaw() != input->DataRaw()) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output->MutableDataRaw(), input->DataRaw(), input->SizeInBytes(),
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
+    }
+  }
+  if (advance) return ComputeCsa(context, true);
+  if (is_qsa) {
+    const Tensor* norm = context->Input<Tensor>(psai::kQueryNormWeight);
+    ORT_RETURN_IF(norm == nullptr || norm->Shape().NumDimensions() != 1, "Reuse requires query norm weights");
+    Tensor* snapshot = context->Output(psai::kStateUpdate, {batch, state_update_capacity_, norm->Shape()[0]});
+    if (snapshot != nullptr && snapshot->SizeInBytes() != 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(snapshot->MutableDataRaw(), 0, snapshot->SizeInBytes(), Stream(context)));
+    }
+  }
+  return LaunchValidatePackedIndexerReuse(Stream(context),
+                                          context->Input<Tensor>(psai::kCumulativeSequenceLengths)->Data<int32_t>(),
+                                          context->Output(psai::kSelectedIndices, indices->Shape())->MutableData<int32_t>(),
+                                          context->Output(psai::kSelectedCounts, counts->Shape())->MutableData<int32_t>(),
+                                          context->Output(psai::kIndexShareStatus, status->Shape())->MutableData<int32_t>(),
+                                          static_cast<int>(batch), static_cast<int>(output_capacity_));
 }
 
 template class PackedSparseAttentionIndexer<float>;

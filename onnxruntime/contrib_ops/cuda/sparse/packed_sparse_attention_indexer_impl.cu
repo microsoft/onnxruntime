@@ -576,7 +576,7 @@ __global__ void QsaEmitHierarchicalTopKKernel(const uint64_t* tile_keys,
                                               int32_t* selected_indices, int32_t* selected_counts,
                                               PackedSparseAttentionIndexerParams params) {
   for (int token = static_cast<int>(blockIdx.x); token < params.total_tokens; token += static_cast<int>(gridDim.x)) {
-    int32_t* output = selected_indices + static_cast<int64_t>(token) * params.capacity;
+    int32_t* output = selected_indices + static_cast<int64_t>(token) * params.output_capacity;
     const int batch = PackedBatchOfToken(cumulative_sequence_lengths, params.batch_size, token);
     const int64_t abs_position =
         params.has_position_ids
@@ -602,7 +602,7 @@ __global__ void QsaEmitHierarchicalTopKKernel(const uint64_t* tile_keys,
       output[selected * params.compress_ratio + t] = static_cast<int32_t>(block_start + t);
     }
     for (int position = selected * params.compress_ratio + tail_count + threadIdx.x;
-         position < params.capacity; position += blockDim.x) {
+         position < params.output_capacity; position += blockDim.x) {
       output[position] = -1;
     }
     if (threadIdx.x == 0) {
@@ -629,8 +629,8 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* topk_i
   int* shared_index = reinterpret_cast<int*>(shared + shared_entries);
 
   for (int token = static_cast<int>(blockIdx.x); token < params.total_tokens; token += static_cast<int>(gridDim.x)) {
-    int32_t* out_row = selected_indices + static_cast<int64_t>(token) * params.capacity;
-    for (int p = static_cast<int>(threadIdx.x); p < params.capacity; p += static_cast<int>(blockDim.x)) {
+    int32_t* out_row = selected_indices + static_cast<int64_t>(token) * params.output_capacity;
+    for (int p = static_cast<int>(threadIdx.x); p < params.output_capacity; p += static_cast<int>(blockDim.x)) {
       out_row[p] = -1;
     }
     __syncthreads();
@@ -894,6 +894,7 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
         cumulative_sequence_lengths[0] != 0 ||
         cumulative_sequence_lengths[params.batch_size] != params.total_tokens ||
         req_start < 0 || req_end < req_start || req_end > params.total_tokens ||
+        (params.state_only && (req_start != b || req_end != b + 1)) ||
         past_sequence_lengths[b] < 0 || raw_key_len < 0 || raw_key_len > params.state_capacity ||
         raw_buf_len < 0 || raw_buf_len > params.buffer_capacity;
     const int req_len = invalid_metadata ? 0 : req_end - req_start;
@@ -1138,8 +1139,8 @@ __global__ void CsaSelectKernel(const float* scores, const int32_t* cumulative_s
   int* shared_index = reinterpret_cast<int*>(shared + blockDim.x);
 
   for (int token = static_cast<int>(blockIdx.x); token < params.total_tokens; token += static_cast<int>(gridDim.x)) {
-    int32_t* out_row = selected_indices + static_cast<int64_t>(token) * params.capacity;
-    for (int p = static_cast<int>(threadIdx.x); p < params.capacity; p += static_cast<int>(blockDim.x)) {
+    int32_t* out_row = selected_indices + static_cast<int64_t>(token) * params.output_capacity;
+    for (int p = static_cast<int>(threadIdx.x); p < params.output_capacity; p += static_cast<int>(blockDim.x)) {
       out_row[p] = -1;
     }
     __syncthreads();
@@ -1192,6 +1193,30 @@ __global__ void CsaSelectKernel(const float* scores, const int32_t* cumulative_s
 
 }  // namespace
 
+namespace {
+__global__ void ValidatePackedReuseKernel(const int32_t* cumulative_lengths, int32_t* indices,
+                                          int32_t* counts, int32_t* status, int capacity, const int32_t* overflow_flags) {
+  const int row = blockIdx.x;
+  if (cumulative_lengths[row] == row && cumulative_lengths[row + 1] == row + 1 &&
+      (overflow_flags == nullptr || overflow_flags[row] == 0)) return;
+  for (int column = threadIdx.x; column < capacity; column += blockDim.x) {
+    indices[static_cast<int64_t>(row) * capacity + column] = -1;
+  }
+  if (threadIdx.x == 0) {
+    counts[row] = 0;
+    if (status[row] == 0) status[row] = 1;
+  }
+}
+}  // namespace
+
+Status LaunchValidatePackedIndexerReuse(cudaStream_t stream, const int32_t* cumulative_lengths,
+                                        int32_t* indices, int32_t* counts, int32_t* status,
+                                        int batch_size, int capacity, const int32_t* overflow_flags) {
+  if (batch_size == 0) return Status::OK();
+  ValidatePackedReuseKernel<<<batch_size, kThreads, 0, stream>>>(cumulative_lengths, indices, counts, status, capacity, overflow_flags);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params) {
   const size_t rows = static_cast<size_t>(params.total_tokens);
   const size_t query_count = rows * params.num_heads * params.head_size;
@@ -1203,6 +1228,7 @@ size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams&
 }
 
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params) {
+  if (params.state_only) return 0;
   const size_t rows = static_cast<size_t>(params.total_tokens);
   return rows * params.num_heads * params.head_size + rows * static_cast<size_t>(std::max(params.state_capacity, 1));
 }
@@ -1366,7 +1392,7 @@ Status LaunchCsaPackedSparseAttentionIndexer(
       past_sequence_lengths, past_kv_buffer, past_gate_buffer, past_state_lengths, present_key_state,
       present_kv_buffer, present_gate_buffer, present_state_lengths, overflow_flags, params);
 
-  if (params.total_tokens == 0) {
+  if (params.total_tokens == 0 || params.state_only) {
     return CUDA_CALL(cudaGetLastError());
   }
 
