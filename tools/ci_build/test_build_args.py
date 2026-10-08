@@ -36,6 +36,28 @@ class BuildArgsTest(unittest.TestCase):
         args = self._parse("--no_telemetry", platform_name="linux")
         self.assertFalse(args.use_telemetry)
 
+    def test_no_exceptions_retains_telemetry_on_supported_targets(self):
+        for platform_name in ("linux", "windows", "macos"):
+            for target in ((), ("--android",)):
+                for opt_out in ((), ("--no_telemetry",)):
+                    with self.subTest(platform_name=platform_name, target=target, opt_out=opt_out):
+                        args = self._parse(
+                            "--minimal_build",
+                            "--disable_exceptions",
+                            *target,
+                            *opt_out,
+                            platform_name=platform_name,
+                        )
+                        self.assertEqual(args.use_telemetry, not opt_out)
+                        self.assertFalse(args.use_windows_telemetry)
+
+    def test_no_exceptions_supports_explicit_windows_telemetry(self):
+        args = self._parse(
+            "--minimal_build", "--disable_exceptions", "--use_windows_telemetry", platform_name="windows"
+        )
+        self.assertTrue(args.use_telemetry)
+        self.assertTrue(args.use_windows_telemetry)
+
     def test_windows_telemetry_backend_is_explicit(self):
         args = self._parse("--use_windows_telemetry", platform_name="windows")
         self.assertTrue(args.use_telemetry)
@@ -73,7 +95,6 @@ class BuildArgsTest(unittest.TestCase):
         for arguments in (
             ("--android",),
             ("--build_wasm",),
-            ("--minimal_build", "--disable_exceptions"),
         ):
             with self.subTest(arguments=arguments), self.assertRaises(SystemExit):
                 self._parse("--use_windows_telemetry", *arguments, platform_name="windows")
@@ -87,7 +108,6 @@ class BuildArgsTest(unittest.TestCase):
     def test_unsupported_targets_disable_telemetry(self):
         cases = (
             (("--build_wasm",), "linux", "x86_64"),
-            (("--minimal_build", "--disable_exceptions"), "linux", "x86_64"),
             (("--rv64",), "linux", "riscv64"),
             (("--visionos",), "macos", "arm64"),
             (("--tvos",), "macos", "arm64"),

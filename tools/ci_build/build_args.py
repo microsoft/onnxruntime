@@ -931,7 +931,6 @@ def target_supports_telemetry(args: argparse.Namespace) -> bool:
     """Returns whether the selected build target has a telemetry provider."""
     if (
         args.build_wasm
-        or getattr(args, "disable_exceptions", False)
         or getattr(args, "rv64", False)
         or getattr(args, "visionos", False)
         or getattr(args, "tvos", False)
