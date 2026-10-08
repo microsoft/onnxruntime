@@ -22,6 +22,8 @@ stages:
       hostArchitecture: Arm64
     ${{ else }}:
       name: onnxruntime-Ubuntu2404-AMD-CPU
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
       os: linux
   variables:
     ${{ if eq(parameters.arch, 'aarch64') }}:
