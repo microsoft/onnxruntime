@@ -8,12 +8,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string_view>
 
 #include <cuda_runtime_api.h>
 #include <gsl/span>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/framework/level1_memory_estimate.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/framework/workspace_requirement.h"
@@ -25,23 +25,6 @@ namespace onnxruntime {
 // different Node class keys; translation units must supply their own world.
 namespace contrib {
 namespace cuda {
-
-// Intent-level attention dispatch policy (Tier 1, session option
-// session.attention_dispatch_policy). Hardware-neutral intent that selects which route set the
-// Level-1 workspace estimate assumes: latency favors high-workspace fast routes, memory favors
-// low-workspace routes (so more nodes fit on GPU), and safe assumes the bounded fallback
-// everywhere. Auto (default) keeps the current route-aware behavior. Defined here because the CUDA
-// GQA estimator is the only consumer today; hoist to a neutral header when a second op consumes it.
-enum class AttentionDispatchPolicy {
-  Auto,
-  Latency,
-  Memory,
-  Safe,
-};
-
-// Maps a session.attention_dispatch_policy value to its policy. Unrecognized or empty values map
-// to Auto, so an unknown value never changes estimation behavior.
-AttentionDispatchPolicy ParseAttentionDispatchPolicy(std::string_view value);
 
 struct GQAWorkspaceEstimateConfig {
   size_t qkv_element_size = 0;
@@ -69,10 +52,8 @@ struct GQAWorkspaceEstimateConfig {
   // ep.cuda.gqa_workspace_max_total_sequence_length. It bounds non-windowed
   // estimation; zero means unspecified. This is not a runtime input limit.
   int64_t max_total_sequence_length = 0;
-  // Intent-level dispatch policy (session option session.attention_dispatch_policy) selecting which
-  // route set workspace estimation assumes. Plumbed reader-only; the estimator does not yet bias
-  // route selection on it, so Auto (default) and every other value currently behave identically.
-  AttentionDispatchPolicy dispatch_policy = AttentionDispatchPolicy::Auto;
+  // Parsed intent only; all values currently leave sizing and dispatch unchanged.
+  KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto;
 };
 
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
@@ -93,7 +74,7 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer = false,
     int64_t max_total_sequence_length = 0,
-    AttentionDispatchPolicy dispatch_policy = AttentionDispatchPolicy::Auto);
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 void SetGroupQueryAttentionWorkspaceRequirements(
     const GQAWorkspaceAggregate& estimate,
