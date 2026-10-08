@@ -65,11 +65,13 @@ namespace Dml
     }
 
     DescriptorRange DescriptorPool::AllocDescriptors(
-        uint32_t numDescriptors, 
+        uint32_t numDescriptors,
         GpuEvent completionEvent,
         D3D12_DESCRIPTOR_HEAP_FLAGS heapFlags
         )
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
         // Attempt to allocate from an existing heap.
         for (DescriptorHeap& heap : m_heaps)
         {
@@ -90,6 +92,8 @@ namespace Dml
 
     void DescriptorPool::Trim()
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
         // Remove any heaps that are not pending execution.
         auto it = std::remove_if(m_heaps.begin(), m_heaps.end(), [](const DescriptorHeap& heap) {
             auto completionEvent = heap.GetLastCompletionEvent();
@@ -115,6 +119,8 @@ namespace Dml
 
     uint32_t DescriptorPool::GetTotalCapacity() const
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
         uint32_t capacity = 0;
 
         for (auto& heap : m_heaps)
