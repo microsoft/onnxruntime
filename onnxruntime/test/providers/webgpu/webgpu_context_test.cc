@@ -322,6 +322,31 @@ TEST(WebGpuContextTest, CheckedCompletionDrainsAfterDeferredDispatchFailure) {
 }
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+class PipelineCallbackTestProgram final : public webgpu::Program<PipelineCallbackTestProgram> {
+ public:
+  PipelineCallbackTestProgram() : Program{"PipelineCallbackTest"} {}
+
+  Status GenerateShaderCode(webgpu::ShaderHelper&) const override {
+    return Status::OK();
+  }
+};
+
+Status StartPipelineCallbackTestBuild(webgpu::WebGpuContext& context, webgpu::PendingPipelineBuild& build,
+                                      bool invalid_shader) {
+  PipelineCallbackTestProgram program;
+  program.SetWorkgroupSize(1);
+  auto metadata = program.Metadata();
+  const webgpu::ProgramConstant invalid_constant{"invalid identifier", uint32_t{0}};
+  if (invalid_shader) {
+    metadata.constants = {&invalid_constant, 1};
+  }
+  webgpu::ProgramManager manager{context};
+  build.name = program.Name();
+  build.callback_context = std::make_shared<webgpu::PipelineCallbackContext>();
+  return manager.Build(program, metadata, {}, {}, program.Name(), 1, 1, 1,
+                       build.bind_group_layout, build.shape_uniform_ranks, build.future, build.callback_context);
+}
+
 template <typename TestBody>
 void RunWithExternalCompletionContext(TestBody test_body, bool timed_wait = true) {
   ConfigOptions options;
@@ -361,6 +386,107 @@ void RunWithExternalCompletionContext(TestBody test_body, bool timed_wait = true
   test_body(context, webgpu_ep, lost);
 }
 #endif
+
+TEST(WebGpuContextTest, SuccessfulPipelineBuildReleasesCallbackOwnership) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  RunWithExternalCompletionContext([](auto& context, auto&, const auto&) {
+    webgpu::PendingPipelineBuild build;
+    ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, false));
+    const std::weak_ptr<webgpu::PipelineCallbackContext> weak_context = build.callback_context;
+    ASSERT_STATUS_OK(context.Wait(build.future));
+    ASSERT_STATUS_OK(build.callback_context->status);
+    EXPECT_NE(build.callback_context->pipeline, nullptr);
+    EXPECT_EQ(weak_context.use_count(), 1);
+    build.callback_context.reset();
+    EXPECT_TRUE(weak_context.expired());
+  });
+#endif
+}
+
+TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackUntilDelivery) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+    // Invalid WGSL makes the pipeline event ready synchronously, but WaitAnyOnly defers delivery.
+    context.PushErrorScope();
+    webgpu::CapturedCommandInfo dispatch;
+    dispatch.program_key = "failed-wait-pipeline-callback";
+    auto& build = dispatch.pending_build.emplace();
+    ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, true));
+    const auto future = build.future;
+    const std::weak_ptr<webgpu::PipelineCallbackContext> weak_context = build.callback_context;
+    auto& recording = ep.Recording();
+    recording.deferred_dispatches.push_back(std::move(dispatch));
+
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(context.Flush(ep.BufferManager(), recording),
+                                        "Failed to wait for the operation");
+    EXPECT_TRUE(recording.deferred_dispatches.empty());
+    ASSERT_EQ(weak_context.use_count(), 1);
+
+    auto callback_context = weak_context.lock();
+    ASSERT_NE(callback_context, nullptr);
+    ASSERT_EQ(context.Instance().WaitAny(future, 0), wgpu::WaitStatus::Success);
+    EXPECT_FALSE(callback_context->status.IsOK());
+    EXPECT_THAT(callback_context->status.ErrorMessage(),
+                testing::HasSubstr("Failed to create a WebGPU compute pipeline"));
+    EXPECT_EQ(callback_context->pipeline, nullptr);
+    EXPECT_EQ(weak_context.use_count(), 1);
+    callback_context.reset();
+    EXPECT_TRUE(weak_context.expired());
+
+    auto scope_error = std::make_shared<wgpu::ErrorType>(wgpu::ErrorType::NoError);
+    const auto scope_future = context.Device().PopErrorScope(
+        wgpu::CallbackMode::WaitAnyOnly,
+        [scope_error](wgpu::PopErrorScopeStatus, wgpu::ErrorType error, wgpu::StringView) noexcept {
+          *scope_error = error;
+        });
+    ASSERT_EQ(context.Instance().WaitAny(scope_future, 0), wgpu::WaitStatus::Success);
+    EXPECT_EQ(*scope_error, wgpu::ErrorType::Validation);
+  },
+                                   false);
+#endif
+}
+
+TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackAfterContextDestruction) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  wgpu::Instance callback_instance;
+  wgpu::Future future{};
+  std::weak_ptr<webgpu::PipelineCallbackContext> weak_context;
+  RunWithExternalCompletionContext([&](auto& context, auto& ep, const auto&) {
+    context.PushErrorScope();
+    webgpu::CapturedCommandInfo dispatch;
+    dispatch.program_key = "post-context-pipeline-callback";
+    auto& build = dispatch.pending_build.emplace();
+    ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, true));
+    callback_instance = context.Instance();
+    future = build.future;
+    weak_context = build.callback_context;
+    auto& recording = ep.Recording();
+    recording.deferred_dispatches.push_back(std::move(dispatch));
+
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(context.Flush(ep.BufferManager(), recording),
+                                        "Failed to wait for the operation");
+    EXPECT_TRUE(recording.deferred_dispatches.empty());
+    EXPECT_EQ(weak_context.use_count(), 1);
+    // Leave the callback undelivered until after the ORT context and manager are destroyed.
+  },
+                                   false);
+  EXPECT_THROW(webgpu::WebGpuContextFactory::GetContext(1), OnnxRuntimeException);
+  ASSERT_EQ(weak_context.use_count(), 1);
+  auto callback_context = weak_context.lock();
+  ASSERT_NE(callback_context, nullptr);
+  EXPECT_TRUE(callback_context->status.IsOK());
+  ASSERT_EQ(callback_instance.WaitAny(future, 0), wgpu::WaitStatus::Success);
+  EXPECT_EQ(callback_context.use_count(), 1);
+  callback_context.reset();
+  EXPECT_TRUE(weak_context.expired());
+#endif
+}
 
 TEST(WebGpuContextTest, CheckedCompletionPropagatesValidationAndPreservesOuterScope) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)

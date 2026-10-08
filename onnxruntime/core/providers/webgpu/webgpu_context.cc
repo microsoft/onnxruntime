@@ -358,9 +358,8 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds(CommandRecordingState& recor
     }
 
     const ProgramArtifact* artifact = program_mgr_->Get(dispatch.program_key);
-    // Another thread may populate the cache after this dispatch starts its own build. In that case,
-    // the cached pipeline can be reused, but the pending build must still be waited on before its
-    // callback context is released.
+    // Another thread may populate the cache after this dispatch starts its own build. Still wait
+    // for our callback so its completion status is checked even when the cached pipeline is reused.
     if (artifact != nullptr && !dispatch.pending_build) {
       dispatch.compute_pipeline = artifact->compute_pipeline;
       continue;
@@ -369,15 +368,12 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds(CommandRecordingState& recor
     if (!dispatch.pending_build) {
       result = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "No cached or pending pipeline for deferred dispatch: ", dispatch.program_key);
-      // Do not return early. Later dispatches may own pending callback contexts that must remain
-      // alive until their builds complete. The caller will discard all dispatches without encoding
-      // them after this function finishes draining the window.
+      // Drain the rest of the window before discarding all dispatches without encoding them.
       continue;
     }
 
-    // With WaitAnyOnly, dropping the future does not cancel its callback; Dawn retains the callback
-    // context and may invoke it when the instance shuts down. Wait before discarding the context,
-    // even if another dispatch has populated the cache in the meantime.
+    // A failed wait does not cancel a WaitAnyOnly callback. Its captured shared ownership keeps
+    // the result state alive even if the failed dispatch is discarded.
     auto& build = *dispatch.pending_build;
     Status wait_status = Wait(build.future);
     if (!wait_status.IsOK()) {
@@ -573,13 +569,13 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     if (in_flight_build == nullptr) {
       auto& build = pending_build.emplace();
       build.name = program.Name();
-      build.callback_context = std::make_unique<PipelineCallbackContext>();
+      build.callback_context = std::make_shared<PipelineCallbackContext>();
       ORT_RETURN_IF_ERROR(program_mgr_->Build(program, metadata, inputs_segments, outputs_segments,
                                               key, x, y, z,
                                               build.bind_group_layout,
                                               build.shape_uniform_ranks,
                                               build.future,
-                                              *build.callback_context));
+                                              build.callback_context));
       in_flight_build = &*pending_build;
     }
     deferred_ranks = &in_flight_build->shape_uniform_ranks;
