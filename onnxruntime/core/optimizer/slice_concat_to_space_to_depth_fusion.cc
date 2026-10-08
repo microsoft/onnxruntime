@@ -399,6 +399,11 @@ NodeArg* CreateInt64Initializer(Graph& graph,
 }
 
 bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Logger& logger) {
+  // Fusion runs after function expansion, and SpaceToDepth-28 has no native CPU kernel.
+  if (graph.DomainToVersionMap().at(kOnnxDomain) >= 28) {
+    return false;
+  }
+
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {4, 11, 13}, kOnnxDomain) ||
       concat.InputDefs().size() != 4) {
     return false;

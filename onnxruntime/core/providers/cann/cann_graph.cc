@@ -71,7 +71,7 @@ std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer) {
 
     if (node->Domain() != kOnnxDomain || domain_version < lower_bound ||
         !cann_supported_ops.count(node->OpType()) ||
-        (node->OpType() == "Mod" && node->SinceVersion() >= 28)) {
+        ((node->OpType() == "Mod" || node->OpType() == "SpaceToDepth") && node->SinceVersion() >= 28)) {
       unsupported_nodes.push_back(index);
       continue;
     }

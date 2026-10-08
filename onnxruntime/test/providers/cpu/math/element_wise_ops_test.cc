@@ -4797,6 +4797,38 @@ TEST(BitShiftOpTest, SignedInt64Opset28) {
 }
 
 template <typename T>
+void TestBitShiftOpset28ProviderFallback(const std::vector<T>& x, const std::vector<T>& y,
+                                         const std::vector<T>& expected) {
+  const std::vector<int64_t> shape{static_cast<int64_t>(x.size())};
+  OpTester test("BitShift", 28);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<T>("X", shape, x);
+  test.AddInput<T>("Y", shape, y);
+  test.AddOutput<T>("Z", shape, expected);
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  auto provider = DefaultOpenVINOExecutionProvider();
+  if (!provider) {
+    return;
+  }
+
+  auto& model = test.BuildModel();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::None;
+  RunAndVerifyOutputsWithEP(
+      AsByteSpan(model_data.data(), model_data.size()), CurrentTestName(), std::move(provider),
+      {{"X", CreateInputOrtValueOnCPU<T>(shape, x)}, {"Y", CreateInputOrtValueOnCPU<T>(shape, y)}},
+      params);
+}
+
+TEST(BitShiftOpTest, Opset28ProviderFallback) {
+  TestBitShiftOpset28ProviderFallback<int32_t>({-8, -3, -2, -2}, {1, 2, -1, 32}, {-4, -1, -1, -1});
+  TestBitShiftOpset28ProviderFallback<uint32_t>({8, 255, 1, 42}, {1, 32, 33, 64}, {4, 0, 0, 0});
+}
+
+template <typename T>
 void TestUnsignedBitShiftRegistration(int opset) {
   OpTester test("BitShift", opset);
   test.AddAttribute("direction", "LEFT");

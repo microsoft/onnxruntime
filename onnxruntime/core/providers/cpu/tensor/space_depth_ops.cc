@@ -18,9 +18,10 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                               DataTypeImpl::GetTensorType<int8_t>()}),
     SpaceToDepth);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     SpaceToDepth,
     13,
+    27,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
