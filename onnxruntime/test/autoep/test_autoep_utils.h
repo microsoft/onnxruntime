@@ -46,6 +46,8 @@ struct Utils {
     using SetCreateDataTransferFailureFn = void (*)(int enabled);
     using ResetEnableWeightlessOptionFn = void (*)();
     using GetEnableWeightlessOptionFn = int (*)();
+    using ResetSavedInitializerCountFn = void (*)();
+    using GetSavedInitializerCountFn = uint64_t (*)();
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
@@ -55,6 +57,8 @@ struct Utils {
     SetCreateDataTransferFailureFn set_create_data_transfer_failure{};
     ResetEnableWeightlessOptionFn reset_enable_weightless_option{};
     GetEnableWeightlessOptionFn get_enable_weightless_option{};
+    ResetSavedInitializerCountFn reset_saved_initializer_count{};
+    GetSavedInitializerCountFn get_saved_initializer_count{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

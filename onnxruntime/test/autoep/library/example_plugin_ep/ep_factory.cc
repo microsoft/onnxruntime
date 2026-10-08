@@ -378,6 +378,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string test_weightless_support;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestWeightlessSupport, "",
                                                  test_weightless_support));
+  std::string weightless_mode;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessMode, "",
+                                                 weightless_mode));
 
   // Record the deprecated weightless option, which ORT sets to match "ep.enable_weightless_mode" before calling
   // CreateEp(). EPs built for earlier versions only know the deprecated option.
@@ -393,7 +396,15 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.enable_ep_context = ep_context_enable == "1";
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
-  config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
+
+  // This EP supports several weightless modes, so it honors the mode the app selects with "ep.enable_weightless_mode"
+  // (ORT has validated the value). The deprecated options request weightless mode without selecting one; this EP then
+  // uses weightless mode for all initializers, which is what it reports in the "weightless_support" EP metadata.
+  if (!weightless_mode.empty()) {
+    config.weightless_mode = static_cast<OrtWeightlessSupport>(std::stoi(weightless_mode));
+  } else if (enable_weightless == "1" || (config.enable_ep_context && weightless_ep_context_nodes_enable == "1")) {
+    config.weightless_mode = OrtWeightlessSupport_ALL;
+  }
   if (!test_weightless_support.empty()) {
     config.weightless_support = static_cast<OrtWeightlessSupport>(std::stoi(test_weightless_support));
   }

@@ -63,7 +63,8 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   struct Config {
     bool enable_ep_context = false;
     bool embed_ep_context_in_model = false;
-    bool enable_weightless_ep_context_nodes = false;
+    // Weightless mode selected by the app. Determines which constant initializers this EP copies.
+    OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
     // Modes returned by GetWeightlessSupport(). Must match the kOrtEpDevice_EpMetadataKey_WeightlessSupport EP
     // metadata reported by the factory. Tests can override it to check that ORT detects a mismatch.
     OrtWeightlessSupport weightless_support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
@@ -126,11 +127,16 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                   gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
-  // Returns true if the EP should save constant initializers so that they are available during inference.
-  bool CopiesConstantInitializers() const;
+  // Returns true if ORT should not provide constant initializers as inputs to the fused nodes, because this EP copies
+  // all of them. Used for OrtNodeFusionOptions::drop_constant_initializers.
+  bool DropsConstantInitializers() const;
 
-  // If the given `OrtValueInfo` represents a constant initializer, this function saves a copy of the initializer data
-  // within this EP instance so that it is available during inference.
+  // If the given `OrtValueInfo` represents a constant initializer that this EP copies in the selected weightless
+  // mode, this function saves a copy of the initializer data within this EP instance so that it is available during
+  // inference:
+  // - OrtWeightlessSupport_NONE: all constant initializers.
+  // - OrtWeightlessSupport_EXTERNAL_ONLY: constant initializers stored inside the ONNX model (not external data).
+  // - OrtWeightlessSupport_ALL: none.
   OrtStatus* TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer);
 
   ExampleEpFactory& factory_;
