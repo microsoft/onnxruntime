@@ -33,7 +33,8 @@ void TestBinaryFloat16(const char* op_name,
                        const std::initializer_list<float>& rhs_values,
                        const std::vector<int64_t>& out_dim,
                        const std::initializer_list<float>& out_values,
-                       bool enable_bf16 = true) {
+                       bool enable_bf16 = true,
+                       bool skip_if_no_fp16_ep = false) {
   {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_COREML
@@ -41,6 +42,10 @@ void TestBinaryFloat16(const char* op_name,
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
 #endif
+    // Mixed FP32/FP16 callers must retain their FP32 result; only standalone FP16 tests opt into skipping.
+    if (execution_providers.empty() && skip_if_no_fp16_ep) {
+      GTEST_SKIP() << "Float16 helper requires a CUDA or CoreML execution provider.";
+    }
     if (execution_providers.size() > 0) {
       OpTester tester(op_name, 14);
       tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
@@ -1499,7 +1504,18 @@ TEST(MathOpTest, Pow_double_int64) {
 TEST(MathOpTest, Pow_float16_float16) {
   std::vector<int64_t> dims{4};
   TestBinaryFloat16("Pow", dims, {2.0f, 2.0f, std::sqrt(2.0f), 1.0f}, dims, {0.0f, 8.0f, 2.0f, 9.0f},
-                    dims, {1.0f, 256.0f, 2.0f, 1.0f}, false);
+                    dims, {1.0f, 256.0f, 2.0f, 1.0f}, false, true);
+}
+
+TEST(MathOpTest, Float16SupplementPreservesFloat32Result) {
+  OpTester test("Add");
+  test.AddInput<float>("A", {1}, {1.0f});
+  test.AddInput<float>("B", {1}, {2.0f});
+  test.AddOutput<float>("C", {1}, {3.0f});
+  test.Run();
+
+  TestBinaryFloat16("Add", {1}, {1.0f}, {1}, {2.0f}, {1}, {3.0f}, false);
+  EXPECT_FALSE(::testing::Test::IsSkipped());
 }
 
 #if defined(USE_CUDA) || defined(USE_COREML)
