@@ -418,12 +418,13 @@ MlasFlashDecodingGQAThreaded(
     }
 
     for (ptrdiff_t task_index = task_start; task_index < task_end; ++task_index) {
-        // Decompose task_index into (batch_idx, head_idx, kv_chunk_idx)
+        // Vary heads fastest so nearby tasks can reuse the same KV chunk across grouped query heads.
+        // Partial-result indexing below remains independent of this scheduling order.
         ptrdiff_t tmp = task_index;
-        ptrdiff_t kv_chunk_idx = tmp % kv_chunk_count;
-        tmp /= kv_chunk_count;
         ptrdiff_t head_idx = tmp % num_heads;
-        ptrdiff_t batch_idx = tmp / num_heads;
+        tmp /= num_heads;
+        ptrdiff_t kv_chunk_idx = tmp % kv_chunk_count;
+        ptrdiff_t batch_idx = tmp / kv_chunk_count;
 
         // Per-thread scratch buffer: just scores[kv_block_size]
         char* buffer_ptr = reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread;
@@ -451,7 +452,18 @@ MlasFlashDecodingGQAThreaded(
 
         // Step 1: QK^T GEMV for this KV chunk (M = 1)
         const float* k_block = k_cache_head + static_cast<size_t>(ir) * static_cast<size_t>(head_size);
-        MlasGQADecodeQK(q_ptr, k_block, static_cast<std::ptrdiff_t>(row_size_kv), head_size, scale, scores);
+        // Clamp the window start to this chunk: skip its masked prefix, or all of a fully masked chunk.
+        // Initialize skipped scores because bias, masking, and reduction still visit the full chunk.
+        const ptrdiff_t visible_start = local_window_size >= 0
+            ? std::min(static_cast<ptrdiff_t>(row_size_kv),
+                       std::max(ptrdiff_t{0}, past_seqlen + 1 - local_window_size - ir))
+            : 0;
+        if (visible_start > 0) {
+            std::fill_n(scores, visible_start, std::numeric_limits<float>::lowest());
+        }
+        MlasGQADecodeQK(q_ptr, k_block + visible_start * head_size,
+                        static_cast<std::ptrdiff_t>(row_size_kv) - visible_start,
+                        head_size, scale, scores + visible_start);
 
         // Step 1b: Apply attention bias if present
         if (args->attention_bias != nullptr) {
@@ -532,7 +544,10 @@ MlasFlashDecodingGQAThreaded(
 
         // Step 4: S_exp * V_block -> partial_output (M = 1)
         const float* v_block = v_cache_head + static_cast<size_t>(ir) * static_cast<size_t>(head_size);
-        MlasGQADecodeSV(scores, v_block, static_cast<std::ptrdiff_t>(row_size_kv), head_size, partial_output);
+        // The masked prefix has zero weight; avoid reading its values as well as its keys.
+        MlasGQADecodeSV(scores + visible_start, v_block + visible_start * head_size,
+                static_cast<std::ptrdiff_t>(row_size_kv) - visible_start,
+                head_size, partial_output);
     }
 }
 

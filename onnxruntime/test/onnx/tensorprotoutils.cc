@@ -647,13 +647,12 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(FLOAT8E4M3FNUZ)
     CASE_TYPE(FLOAT8E5M2)
     CASE_TYPE(FLOAT8E5M2FNUZ)
+    CASE_TYPE(FLOAT8E8M0)
     CASE_TYPE(FLOAT4E2M1)
     CASE_TYPE(UINT4)
     CASE_TYPE(INT4)
     CASE_TYPE(UINT2)
     CASE_TYPE(INT2)
-    CASE_TYPE(FLOAT6E2M3)
-    CASE_TYPE(FLOAT6E3M2)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -750,7 +749,8 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
   }
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-  value = Ort::Value::CreateTensor(&allocator, tensor_data, m.GetLen(), tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType)tensor_proto.data_type());
+  value = Ort::Value::CreateTensor(&allocator, tensor_data, m.GetLen(), tensor_shape_vec.data(),
+                                   tensor_shape_vec.size(), ele_type);
   return Status::OK();
 }
 

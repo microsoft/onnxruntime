@@ -41,15 +41,18 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
   }
-  std::string data_type = "a_element_t";
+  std::string data_type = "output_element_t";
   // generate the main function
   if (is_vec4_) {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(
         shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
         /*transA = */ false, /*transB = */ false, /*alpha = */ 1.f, /*need_handle_matmul = */ true,
-        /*output_components = */ 4, /*tile_inner = */ 32, need_split_k, split_dim_inner_));
+        /*output_components = */ 4, /*tile_inner = */ 32, need_split_k, split_dim_inner_,
+        use_f32_accumulation_));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(
+        shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
+        false, false, 1.f, true, 32, need_split_k, split_dim_inner_, use_f32_accumulation_));
   }
   return Status::OK();
 }
