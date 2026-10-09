@@ -163,7 +163,34 @@ export const split = (context: ComputeContext, attributes: SplitAttributes): voi
       isUnevenSplitAllowed: updatedAttributes.isUnevenSplitAllowed,
     });
   }
-  context.compute(createSplitProgramInfo(context.inputs, updatedAttributes), { inputs: [0] });
+  const inputShape = context.inputs[0].dims;
+  const axis = ShapeUtil.normalizeAxis(updatedAttributes.axis, inputShape.length);
+  const inputSize = ShapeUtil.size(inputShape);
+  const outputIndices: number[] = [];
+  const nonEmptySplitSizes: number[] = [];
+  for (let i = 0; i < updatedAttributes.numOutputs; i++) {
+    const splitSize = updatedAttributes.splitSizes[i];
+    if (inputSize === 0 || splitSize === 0) {
+      const outputShape = inputShape.slice();
+      outputShape[axis] = splitSize;
+      context.output(i, outputShape);
+    } else {
+      outputIndices.push(i);
+      nonEmptySplitSizes.push(splitSize);
+    }
+  }
+  if (outputIndices.length === 0) {
+    return;
+  }
+  if (outputIndices.length !== updatedAttributes.numOutputs) {
+    updatedAttributes = createAttributeWithCacheKey({
+      numOutputs: outputIndices.length,
+      axis: updatedAttributes.axis,
+      splitSizes: nonEmptySplitSizes,
+      isUnevenSplitAllowed: updatedAttributes.isUnevenSplitAllowed,
+    });
+  }
+  context.compute(createSplitProgramInfo(context.inputs, updatedAttributes), { inputs: [0], outputs: outputIndices });
 };
 
 export const parseSplitAttributes = (attributes: Record<string, unknown>): SplitAttributes => {

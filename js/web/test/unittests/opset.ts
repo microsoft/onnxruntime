@@ -10,7 +10,12 @@ import { OpSet, resolveOperator } from '../../lib/onnxjs/opset';
 import { Tensor } from '../../lib/onnxjs/tensor';
 import { DataType } from '../../lib/wasm/wasm-common';
 import { TensorView } from '../../lib/wasm/jsep/tensor-view';
-import { ComputeContext, ProgramInfo, TensorInfo } from '../../lib/wasm/jsep/webgpu/types';
+import {
+  ComputeContext,
+  ComputeContextInputsOutputsMapping,
+  ProgramInfo,
+  TensorInfo,
+} from '../../lib/wasm/jsep/webgpu/types';
 import { parseSplitAttributes, split, SplitAttributes } from '../../lib/wasm/jsep/webgpu/ops/split';
 
 function createTestGraphNode(name: string, opType: string): Graph.Node {
@@ -125,11 +130,19 @@ describe('#UnitTest# - JSEP Split runtime shapes', () => {
         getBigInt64Array: () => BigInt64Array.from(splitSizes ?? []),
       } as unknown as TensorView);
     }
-    let outputs: readonly TensorInfo[] = [];
+    const outputs: TensorInfo[] = [];
     const context = {
       inputs,
-      compute: (program: ProgramInfo) => {
-        outputs = program.getRunData(inputs).outputs;
+      output: (index: number, shape: readonly number[]) => {
+        outputs[index] = { dims: shape, dataType: DataType.float };
+        return 0;
+      },
+      compute: (program: ProgramInfo, mapping: ComputeContextInputsOutputsMapping) => {
+        const programOutputs = program.getRunData(inputs).outputs;
+        programOutputs.forEach((output, index) => {
+          expect(output.dims.every((dim) => dim > 0)).to.equal(true);
+          outputs[mapping.outputs![index]] = output;
+        });
         return [];
       },
     } as unknown as ComputeContext;
@@ -185,6 +198,12 @@ describe('#UnitTest# - JSEP Split runtime shapes', () => {
 
   it('allows zero-sized outputs for an empty input', () => {
     expect(runSplit([0], attributes).map((output) => output.dims)).to.deep.equal([[0], [0]]);
+    expect(runSplit([0, 4], attributes).map((output) => output.dims)).to.deep.equal([[0, 4], [0, 4]]);
+  });
+
+  it('preserves output positions when explicit split sizes include empty outputs', () => {
+    const explicitSizes = parseSplitAttributes({ axis: 0, numOutputs: 3, splitSizes: [0, 2, 0] });
+    expect(runSplit([2], explicitSizes).map((output) => output.dims)).to.deep.equal([[0], [2], [0]]);
   });
 
   it('rejects invalid output counts', () => {
