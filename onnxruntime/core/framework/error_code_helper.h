@@ -22,6 +22,7 @@ _Ret_maybenull_ OrtStatus* CreateUnknownExceptionStatus(const char* function_nam
 
 #ifndef ORT_NO_EXCEPTIONS
 #define API_IMPL_BEGIN try {
+// In lambdas, __func__ identifies operator() rather than the enclosing C-API entry point.
 #define API_IMPL_END                                                               \
   }                                                                                \
   catch (const onnxruntime::OnnxRuntimeException& ex) {                            \
