@@ -115,8 +115,10 @@ Status ApplyGemmIntel(const Tensor* a,
                             {beta},
                             {M}, /* dim_a_outer */
                             {N}, /* dim_b_outer */
-                            {K}} /*dim_inner */
-      );
+                            {K}, /* dim_inner */
+                            {dispatch_x},
+                            {dispatch_y},
+                            {1U}});
 
   return context.RunProgram(program);
 }

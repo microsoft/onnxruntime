@@ -76,7 +76,7 @@ class Memcpy final : public OpKernel {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
     const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    DataTransfer transfer(ep.BufferManager(), ep.Recording());
+    DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
     return transfer.CopyTensor(*X, *Y);
   }
 };
@@ -611,7 +611,7 @@ using namespace webgpu;
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
                                                  WebGpuContext& context,
                                                  WebGpuExecutionProviderConfig&& config)
-    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice},
+    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice(context_id)},
       context_id_{context_id},
       context_{context},
       preferred_data_layout_{config.data_layout},
@@ -628,6 +628,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 #endif
                                            std::make_shared<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
+          context_id,
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
@@ -652,11 +653,13 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   return {
       // allocator for initializers
       CreateWebGpuAllocator(
+          context_id_,
           device_free,
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
       // default allocator
       CreateWebGpuAllocator(
+          context_id_,
           device_free,
           [this]() -> const webgpu::BufferManager& { return BufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); },
@@ -769,7 +772,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording());
+  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording(), context_id_);
 }
 
 #if defined(__wasm__)

@@ -220,6 +220,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // Legacy Run allocations share the recording and can defer clears. Modern Alloc keeps its
   // default immediate-submission policy because a subsequent copy may use a different recording.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
+      context_id,
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
@@ -231,6 +232,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
       webgpu::CreateWebGpuAllocator(
+          context_id,
           device_free,
           [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
             return webgpu_ep_ptr->InitializerBufferManager();
@@ -273,12 +275,14 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
           // Legacy Env copies share this context-owned recording. Ordinary allocations still submit clears.
           auto recording = context->LegacyRecording();
           return std::make_shared<GpuBufferAllocator>(
+              0,
               [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
               [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
               false,
               []() { return true; });
         }
         return std::make_shared<GpuBufferAllocator>(
+            0,
             [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
             std::function<CommandRecordingState&()>{},
             false);

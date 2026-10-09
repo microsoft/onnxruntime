@@ -16,6 +16,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 GpuBufferAllocator::GpuBufferAllocator(
+    int context_id,
     std::function<const BufferManager&()> buffer_manager_getter,
     std::function<CommandRecordingState&()> recording_getter,
     bool is_read_only_allocator,
@@ -24,7 +25,7 @@ GpuBufferAllocator::GpuBufferAllocator(
           OrtMemoryInfo(WEBGPU_BUFFER,
                         is_read_only_allocator ? OrtAllocatorType::OrtReadOnlyAllocator
                                                : OrtAllocatorType::OrtDeviceAllocator,
-                        WebGpuDevice,
+                        WebGpuDevice(context_id),
                         OrtMemTypeDefault)),
       buffer_manager_getter_{std::move(buffer_manager_getter)},
       recording_getter_{std::move(recording_getter)},
@@ -80,12 +81,12 @@ void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
   stats->num_allocs = num_allocs_.load(std::memory_order_relaxed);
 }
 
-WebGpuNoOpAllocator::WebGpuNoOpAllocator(bool is_read_only_allocator)
+WebGpuNoOpAllocator::WebGpuNoOpAllocator(int context_id, bool is_read_only_allocator)
     : IAllocator(
           OrtMemoryInfo(WEBGPU_BUFFER,
                         is_read_only_allocator ? OrtAllocatorType::OrtReadOnlyAllocator
                                                : OrtAllocatorType::OrtDeviceAllocator,
-                        WebGpuDevice,
+                        WebGpuDevice(context_id),
                         OrtMemTypeDefault)) {
 }
 
@@ -96,15 +97,16 @@ void* WebGpuNoOpAllocator::Alloc(size_t /*size*/) {
 void WebGpuNoOpAllocator::Free(void* /*p*/) {
 }
 
-AllocatorPtr CreateWebGpuAllocator(bool device_free,
+AllocatorPtr CreateWebGpuAllocator(int context_id,
+                                   bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
                                    std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
                                    std::function<bool()> should_submit_zero_initialize) {
   if (device_free) {
-    return std::make_shared<WebGpuNoOpAllocator>(is_read_only_allocator);
+    return std::make_shared<WebGpuNoOpAllocator>(context_id, is_read_only_allocator);
   }
-  return std::make_shared<GpuBufferAllocator>(std::move(buffer_manager_getter), std::move(recording_getter),
+  return std::make_shared<GpuBufferAllocator>(context_id, std::move(buffer_manager_getter), std::move(recording_getter),
                                               is_read_only_allocator,
                                               std::move(should_submit_zero_initialize));
 }

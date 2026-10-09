@@ -6,6 +6,7 @@
 #include <atomic>
 #include <functional>
 
+#include "core/common/narrow.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
 
@@ -15,10 +16,10 @@ namespace webgpu {
 class BufferManager;
 struct CommandRecordingState;
 
-inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
-                                        OrtDevice::MemType::DEFAULT,
-                                        OrtDevice::VendorIds::NONE,
-                                        0};
+inline OrtDevice WebGpuDevice(int context_id) {
+  return OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
+                   narrow<OrtDevice::DeviceId>(context_id)};
+}
 
 // Shared allocation implementation for native and plugin builds. Session getters borrow the EP;
 // plugin Env allocators have no Session recording. The returned objects
@@ -36,7 +37,8 @@ class GpuBufferAllocator : public IAllocator {
   // Modern plugin Alloc submits independent clears; a matching AllocOnStream defers them on the Session stream.
   // Only the modern plugin Env allocator omits recording_getter, as it never uses a Session stream.
   // Legacy allocators share a context recording; an omitted submission policy defaults to false.
-  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
+  GpuBufferAllocator(int context_id,
+                     std::function<const BufferManager&()> buffer_manager_getter,
                      std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
                      std::function<bool()> should_submit_zero_initialize = {});
@@ -69,7 +71,7 @@ class GpuBufferAllocator : public IAllocator {
 // but Alloc/Free are never expected to be called.
 class WebGpuNoOpAllocator : public IAllocator {
  public:
-  explicit WebGpuNoOpAllocator(bool is_read_only_allocator);
+  WebGpuNoOpAllocator(int context_id, bool is_read_only_allocator);
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
@@ -78,7 +80,8 @@ class WebGpuNoOpAllocator : public IAllocator {
 // Creates the WebGPU device allocator: a real GpuBufferAllocator when the context has a device, or a
 // no-op WebGpuNoOpAllocator for a device-free context, where a real one can't be constructed and no
 // allocation ever happens.
-AllocatorPtr CreateWebGpuAllocator(bool device_free,
+AllocatorPtr CreateWebGpuAllocator(int context_id,
+                                   bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
                                    std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,

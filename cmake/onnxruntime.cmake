@@ -161,6 +161,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
   endif()
 
   add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_property(TARGET onnxruntime APPEND PROPERTY LINK_DEPENDS "${SYMBOL_FILE}")
   target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
 
