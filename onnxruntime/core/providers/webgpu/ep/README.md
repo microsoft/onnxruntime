@@ -120,6 +120,18 @@ non-success work-done callback injection is not available here; those branches
 are checked but lack injected end-to-end coverage. Device loss injection is
 native-Dawn-only.
 
+Deferred pipeline results are shared by the pending build and Dawn's one-shot
+callback. A failed pipeline wait still returns failure and discards the deferred
+dispatch window without encoding it; the callback retains its result state until
+delivery or instance-shutdown cancellation. It does not retain the ORT context or
+recording. Callback completion releases that ownership, so abandoned builds need
+no permanent retention list. Native context tests force a failed timed wait with
+an undelivered callback and verify cleanup after explicit delivery, including
+delivery after ORT context destruction, as well as normal successful pipeline
+completion. Native instance-shutdown cancellation is not injected: pending Dawn
+events can retain the native instance, so the teardown test retains it explicitly
+and delivers the callback after the ORT context is gone.
+
 The implementation requires an ORT build with stream support. CPU I/O, graph-internal CPU/GPU
 copies, mixed feed copies, CPU outputs bound to GPU, concurrent independent Sessions, serialized
 same-Session Runs, same-Session and dedicated-Session allocator concurrency, and shared Env allocation/transfers
