@@ -181,7 +181,13 @@ TEST(MatMulZeroKTest, VectorAndScalarOutputs) {
 
 TEST(MatMulZeroKTest, EmptyOutput) {
   RunZeroKTest<float>({0, 0}, {0, 3});
+  RunZeroKTest<float>({1, 3, 0}, {0, 0, 5});
+  RunZeroKTest<float>({2, 1, 3, 0}, {1, 0, 0, 5});
+  RunZeroKTest<float>({0, 1, 3, 0}, {1, 2, 0, 5});
   RunZeroKTest<MLFloat16>({0, 0}, {0, 3});
+  RunZeroKTest<MLFloat16>({1, 3, 0}, {0, 0, 5});
+  RunZeroKTest<MLFloat16>({2, 1, 3, 0}, {1, 0, 0, 5});
+  RunZeroKTest<MLFloat16>({0, 1, 3, 0}, {1, 2, 0, 5});
 }
 
 TEST(MatMulZeroKTest, GraphCaptureReplay) {
