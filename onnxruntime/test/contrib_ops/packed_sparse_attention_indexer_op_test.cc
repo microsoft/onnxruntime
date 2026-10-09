@@ -1150,6 +1150,52 @@ TEST(PackedSparseAttentionIndexerTest, QsaMalformedStateLengthsAreClamped) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
 }
 
+TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTileBoundariesPreserveStableTies) {
+  for (int live_blocks : {0, 31, 32, 33, 511, 512, 513, 1023, 1024, 1025, 2048}) {
+    SCOPED_TRACE(live_blocks);
+    QsaPackedProblem problem;
+    problem.batch_size = 2;
+    problem.cumulative_sequence_lengths = {0, 1, 2};
+    problem.past_sequence_lengths = {live_blocks * 4, std::max(0, live_blocks - 1) * 4};
+    problem.head_size = 128;
+    problem.num_heads = 4;
+    problem.rotary_width = 64;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem.state_capacity = 2051;
+    problem.max_position = std::max(32, live_blocks * 4 + 2);
+    problem = MakeQsaPackedProblem(std::move(problem));
+    std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+    std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+    std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+    RunQsaPackedTest<MLFloat16>(2.0e-3f, problem);
+    RunQsaPackedTest<BFloat16>(2.0e-2f, std::move(problem));
+  }
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPackedRowsWithLargeCapacity) {
+  for (int tokens : {2, 8, 64}) {
+    SCOPED_TRACE(tokens);
+    QsaPackedProblem problem;
+    problem.batch_size = 1;
+    problem.cumulative_sequence_lengths = {0, tokens};
+    problem.past_sequence_lengths = {4097 * 4 + 3};
+    problem.head_size = 128;
+    problem.num_heads = 4;
+    problem.rotary_width = 64;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem.state_capacity = 65536;
+    problem.max_position = problem.past_sequence_lengths[0] + tokens + 1;
+    problem = MakeQsaPackedProblem(std::move(problem));
+    std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+    std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+    std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+    RunQsaPackedTest<MLFloat16>(2.0e-3f, problem, ProviderKind::Cuda);
+    RunQsaPackedTest<BFloat16>(2.0e-2f, std::move(problem), ProviderKind::Cuda);
+  }
+}
+
 #ifdef USE_WEBGPU
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu);

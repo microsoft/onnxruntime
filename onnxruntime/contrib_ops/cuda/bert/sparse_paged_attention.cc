@@ -293,9 +293,12 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
   const int64_t max_candidate_entries =
       std::min<int64_t>(static_cast<int64_t>(max_selected_entries) + max_local_entries,
                         std::numeric_limits<int>::max());
+  const int heads_per_block = SparsePagedAttentionHeadsPerBlock(
+      parameters, attention_mode_, selected_kv_source_, std::is_same<T, TCACHE>::value,
+      device_prop.sharedMemPerBlock);
   const int num_splits = ComputeSparsePagedAttentionSplits(
       parameters.token_count, parameters.num_heads, static_cast<int>(max_candidate_entries),
-      device_prop.multiProcessorCount);
+      device_prop.multiProcessorCount, heads_per_block);
   const size_t partial_rows = num_splits > 1
                                   ? static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads
                                   : 0;

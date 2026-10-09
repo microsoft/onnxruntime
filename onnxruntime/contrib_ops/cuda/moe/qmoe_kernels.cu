@@ -1027,26 +1027,16 @@ __device__ __forceinline__ float DecodeUE8M0(uint8_t code) {
 }
 
 __device__ __forceinline__ float DecodeFloat8E4M3FN(uint8_t code) {
-  // ONNX float8e4m3fn has no infinities. The only NaN payloads are 0x7F/0xFF;
-  // finite values, including the max finite code 0x7E, use the normal E4M3 formula.
-  const int sign = code & 0x80;
-  const int exponent = (code >> 3) & 0x0F;
-  const int mantissa = code & 0x07;
-
-  if ((code & 0x7F) == 0) {
-    return sign ? -0.0f : 0.0f;
-  }
-  if (exponent == 0x0F && mantissa == 0x07) {
+  const uint32_t sign = static_cast<uint32_t>(code & 0x80) << 24;
+  const uint32_t magnitude = code & 0x7F;
+  if (magnitude == 0x7F) {
     return __int_as_float(0x7fffffff);
   }
-
-  float value = 0.0f;
-  if (exponent == 0) {
-    value = ldexpf(static_cast<float>(mantissa), -9);
-  } else {
-    value = ldexpf(1.0f + static_cast<float>(mantissa) * 0.125f, exponent - 7);
+  if (magnitude < 8) {
+    return __uint_as_float(sign | __float_as_uint(static_cast<float>(magnitude) * (1.0f / 512.0f)));
   }
-  return sign ? -value : value;
+  // Every normal E4M3FN value has an exact FP32 exponent/mantissa representation.
+  return __uint_as_float(sign | (((magnitude >> 3) + 120) << 23) | ((magnitude & 7) << 20));
 }
 
 // Tile shape for QMoEDequantizeFp4WeightsVecKernel. kTileN = 64 rows is exactly 32 packed bytes,
@@ -1901,6 +1891,44 @@ __global__ void QMoEDequantizeNvfp4WeightsKernel(
 }
 
 template <typename T>
+__global__ void QMoEDequantizeNvfp4RowMajorWeightsVecKernel(
+    const uint8_t* __restrict__ packed_weights,
+    const uint8_t* __restrict__ block_scales,
+    const float* __restrict__ global_scales,
+    T* __restrict__ output,
+    int n, int k, const int* compact_to_expert,
+    const T* bias, T* output_bias) {
+  constexpr int kVecK = kQMoEDequantizeFp4VecK;
+  const int row = blockIdx.x;
+  const int k_base = (static_cast<int>(blockIdx.y) * blockDim.x + threadIdx.x) * kVecK;
+  if (k_base >= k) {
+    return;
+  }
+  const int output_expert = blockIdx.z;
+  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
+  if (expert < 0) {
+    return;
+  }
+  const int64_t source_row = static_cast<int64_t>(expert) * n + row;
+  const uint32_t packed = *reinterpret_cast<const uint32_t*>(packed_weights + source_row * (k / 2) + k_base / 2);
+  const float block_scale = DecodeFloat8E4M3FN(block_scales[source_row * (k / 16) + k_base / 16]);
+  const float global_scale = global_scales[expert];
+  uint4 staged;
+  T* values = reinterpret_cast<T*>(&staged);
+  static_assert(kVecK * sizeof(T) == sizeof(uint4));
+#pragma unroll
+  for (int j = 0; j < kVecK; ++j) {
+    // Keep the scalar path's multiplication order and final FP16/BF16 rounding.
+    values[j] = static_cast<T>(DecodeFp4E2M1(static_cast<uint8_t>((packed >> (4 * j)) & 0x0F)) *
+                               block_scale * global_scale);
+  }
+  *reinterpret_cast<uint4*>(output + (static_cast<int64_t>(output_expert) * n + row) * k + k_base) = staged;
+  if (bias && k_base == 0) {
+    output_bias[static_cast<int64_t>(output_expert) * n + row] = bias[source_row];
+  }
+}
+
+template <typename T>
 void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const uint8_t* packed_weights,
     const uint8_t* block_scales,
@@ -1916,6 +1944,13 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     bool weights_row_major) {
   ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE NVFP4 bias gathering requires an output buffer.");
   constexpr int block = 256;
+  if (weights_row_major && k % 16 == 0) {
+    const dim3 grid(n, (k + block * kQMoEDequantizeFp4VecK - 1) / (block * kQMoEDequantizeFp4VecK), num_experts);
+    QMoEDequantizeNvfp4RowMajorWeightsVecKernel<T><<<grid, block, 0, stream>>>(
+        packed_weights, block_scales, global_scales, output, n, k, compact_to_expert, bias, output_bias);
+    CUDA_CALL_THROW(cudaGetLastError());
+    return;
+  }
   if (!weights_row_major && !compact_to_expert && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
     const dim3 tile_block(kQMoEDequantizeFp4TileK / kQMoEDequantizeFp4VecK, kQMoEDequantizeFp4TileN);
     const dim3 tile_grid((n + kQMoEDequantizeFp4TileN - 1) / kQMoEDequantizeFp4TileN,

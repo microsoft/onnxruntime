@@ -660,6 +660,207 @@ TEST(SparsePagedAttention, Cuda_MergesMultipleSelectedMainSplits) {
   RunCuda(tester);
 }
 
+void RunSparsePagedAttentionMultiTileReference(int token_count, int num_heads = 8, int past_length = 257,
+                                               int reference_head_size = 0) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  const int selected_count = past_length + 2;
+  const int num_blocks = (past_length + token_count + kBlockSize - 1) / kBlockSize;
+  for (int head_size : {8, 128, 192, 256, 384}) {
+    if (reference_head_size != 0 && head_size != reference_head_size) continue;
+    SCOPED_TRACE(head_size);
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+    auto query = HalfVector(0.0f, token_count * num_heads * head_size);
+    auto key_cache = HalfVector(0.0f, num_blocks * kBlockSize * head_size);
+    auto value_cache = key_cache;
+    for (size_t i = 0; i < query.size(); ++i) {
+      query[i] = MLFloat16(static_cast<float>(static_cast<int>(i % 23) - 11) / 16.0f);
+    }
+    for (size_t i = 0; i < key_cache.size(); ++i) {
+      key_cache[i] = MLFloat16(static_cast<float>(static_cast<int>(i % 31) - 15) / 16.0f);
+      value_cache[i] = MLFloat16(static_cast<float>(static_cast<int>(i % 19) - 9) / 8.0f);
+    }
+    std::vector<int32_t> selected(token_count * selected_count);
+    for (int token = 0; token < token_count; ++token) {
+      std::iota(selected.begin() + token * selected_count,
+                selected.begin() + token * selected_count + past_length, 0);
+      selected[token * selected_count + past_length] = -1;
+      selected[token * selected_count + past_length + 1] = past_length + token_count;
+    }
+    std::vector<int32_t> blocks(num_blocks);
+    std::iota(blocks.begin(), blocks.end(), 0);
+    std::vector<int32_t> slots(token_count);
+    std::iota(slots.begin(), slots.end(), past_length);
+    auto expected = HalfVector(0.0f, static_cast<int>(query.size()));
+    for (int token_head = 0; token_head < token_count * num_heads; ++token_head) {
+      std::vector<float> logits(past_length);
+      float maximum = -std::numeric_limits<float>::infinity();
+      for (int position = 0; position < past_length; ++position) {
+        float dot = 0.0f;
+        for (int c = 0; c < head_size; ++c) {
+          dot += query[token_head * head_size + c].ToFloat() * key_cache[position * head_size + c].ToFloat();
+        }
+        logits[position] = dot * scale;
+        maximum = std::max(maximum, logits[position]);
+      }
+      float sum = 0.0f;
+      for (float& logit : logits) {
+        logit = std::exp(logit - maximum);
+        sum += logit;
+      }
+      for (int c = 0; c < head_size; ++c) {
+        float value = 0.0f;
+        for (int position = 0; position < past_length; ++position) {
+          value += logits[position] * value_cache[position * head_size + c].ToFloat();
+        }
+        expected[token_head * head_size + c] = MLFloat16(value / sum);
+      }
+    }
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", num_heads);
+    tester.AddAttribute<int64_t>("kv_num_heads", 1);
+    tester.AddInput<MLFloat16>("query", {token_count, num_heads * head_size}, query);
+    tester.AddInput<MLFloat16>("key", {token_count, head_size}, HalfVector(0.0f, token_count * head_size));
+    tester.AddInput<MLFloat16>("value", {token_count, head_size}, HalfVector(0.0f, token_count * head_size));
+    tester.AddInput<MLFloat16>("key_cache", {num_blocks, kBlockSize, 1, head_size}, key_cache);
+    tester.AddInput<MLFloat16>("value_cache", {num_blocks, kBlockSize, 1, head_size}, value_cache);
+    tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, token_count});
+    tester.AddInput<int32_t>("past_seqlens", {1}, {past_length});
+    tester.AddInput<int32_t>("block_table", {1, num_blocks}, blocks);
+    tester.AddInput<int32_t>("slot_mapping", {token_count}, slots);
+    tester.AddInput<int32_t>("selected_indices", {token_count, selected_count}, selected);
+    tester.AddInput<int32_t>("selected_counts", {token_count}, std::vector<int32_t>(token_count, selected_count));
+    tester.AddOutput<MLFloat16>("output", {token_count, num_heads * head_size}, expected, false, 0.002f, 0.002f);
+    RunCuda(tester);
+  }
+}
+
+TEST(SparsePagedAttention, Cuda_MultiTileSoftmaxWithLargeHeadsMatchesReference) {
+  RunSparsePagedAttentionMultiTileReference(40);
+}
+
+TEST(SparsePagedAttention, Cuda_MultiSplitDecodeWithLargeHeadsMatchesReference) {
+  RunSparsePagedAttentionMultiTileReference(1);
+}
+
+TEST(SparsePagedAttention, Cuda_ShortVerificationQueriesWithLargeSelectionsMatchReference) {
+  for (int token_count : {2, 4, 8}) {
+    SCOPED_TRACE(token_count);
+    RunSparsePagedAttentionMultiTileReference(token_count, 24, 2048);
+  }
+}
+
+TEST(SparsePagedAttention, Cuda_TwelveHeadGroupedPrefillMatchesReference) {
+  for (int past_length : {254, 255, 256, 257}) {
+    SCOPED_TRACE(past_length);
+    RunSparsePagedAttentionMultiTileReference(129, 24, past_length, 256);
+  }
+}
+
+TEST(SparsePagedAttention, Cuda_GqaTiledPrefillHandlesMixedSourcesAndMasks) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  constexpr int token_count = 40;
+  constexpr int num_heads = 8;
+  constexpr int kv_heads = 2;
+  constexpr int head_size = 256;
+  constexpr int past_length = 257;
+  constexpr int main_length = past_length + token_count;
+  constexpr int selected_width = main_length + 2;
+  constexpr int num_blocks = (main_length + kBlockSize - 1) / kBlockSize;
+  constexpr float scale = 0.0625f;
+  constexpr float softcap = 1.7f;
+  auto query = HalfVector(0.0f, token_count * num_heads * head_size);
+  auto key = HalfVector(0.0f, token_count * kv_heads * head_size);
+  auto value = key;
+  auto key_cache = HalfVector(0.0f, num_blocks * kBlockSize * kv_heads * head_size);
+  auto value_cache = key_cache;
+  auto sink = HalfVector(0.3f, num_heads);
+  std::vector<int32_t> blocks(num_blocks);
+  std::iota(blocks.begin(), blocks.end(), 0);
+  blocks[2] = -1;
+  std::vector<int32_t> slots(token_count);
+  std::iota(slots.begin(), slots.end(), past_length);
+  slots[5] = -1;
+  std::vector<int32_t> selected(token_count * selected_width);
+  std::vector<int32_t> counts(token_count);
+  for (int token = 0; token < token_count; ++token) {
+    std::iota(selected.begin() + token * selected_width,
+              selected.begin() + (token + 1) * selected_width, 0);
+    selected[token * selected_width + main_length] = -1;
+    counts[token] = token == 0 ? 0 : (token % 3 == 0 ? 64 : (token % 3 == 1 ? 65 : selected_width));
+    if (token == 1) {
+      std::fill_n(selected.begin() + token * selected_width, selected_width, -1);
+    }
+    for (int head = 0; head < num_heads; ++head) {
+      std::fill_n(query.begin() + (token * num_heads + head) * head_size,
+                  head_size, MLFloat16(static_cast<float>(head + 1) / 32.0f));
+    }
+  }
+  for (int position = 0; position < num_blocks * kBlockSize; ++position) {
+    for (int head = 0; head < kv_heads; ++head) {
+      const auto key_element = MLFloat16(static_cast<float>((position + head) % 17 - 8) / 32.0f);
+      const auto value_element = MLFloat16(static_cast<float>((position + 3 * head) % 23 - 11) / 16.0f);
+      std::fill_n(key_cache.begin() + (position * kv_heads + head) * head_size, head_size, key_element);
+      std::fill_n(value_cache.begin() + (position * kv_heads + head) * head_size, head_size, value_element);
+      if (position >= past_length && position < main_length) {
+        const int offset = ((position - past_length) * kv_heads + head) * head_size;
+        std::fill_n(key.begin() + offset, head_size, key_element);
+        std::fill_n(value.begin() + offset, head_size, value_element);
+      }
+    }
+  }
+  auto expected = HalfVector(0.0f, static_cast<int>(query.size()));
+  for (int token = 0; token < token_count; ++token) {
+    for (int head = 0; head < num_heads; ++head) {
+      const int kv_head = head / (num_heads / kv_heads);
+      float denominator = std::exp(sink[head].ToFloat());
+      float numerator = 0.0f;
+      for (int index = 0; index < counts[token]; ++index) {
+        const int position = selected[token * selected_width + index];
+        if (position < 0 || position > past_length + token || blocks[position / kBlockSize] < 0 ||
+            (position >= past_length && slots[position - past_length] < 0)) {
+          continue;
+        }
+        const int offset = (position * kv_heads + kv_head) * head_size;
+        const float dot = head_size * query[(token * num_heads + head) * head_size].ToFloat() *
+                          key_cache[offset].ToFloat() * scale;
+        const float weight = std::exp(std::tanh(dot / softcap) * softcap);
+        denominator += weight;
+        numerator += weight * value_cache[offset].ToFloat();
+      }
+      std::fill_n(expected.begin() + (token * num_heads + head) * head_size,
+                  head_size, MLFloat16(numerator / denominator));
+    }
+  }
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_heads);
+  tester.AddAttribute<float>("scale", scale);
+  tester.AddAttribute<float>("softcap", softcap);
+  tester.AddInput<MLFloat16>("query", {token_count, num_heads * head_size}, query);
+  tester.AddInput<MLFloat16>("key", {token_count, kv_heads * head_size}, key);
+  tester.AddInput<MLFloat16>("value", {token_count, kv_heads * head_size}, value);
+  tester.AddInput<MLFloat16>("key_cache", {num_blocks, kBlockSize, kv_heads, head_size}, key_cache);
+  tester.AddInput<MLFloat16>("value_cache", {num_blocks, kBlockSize, kv_heads, head_size}, value_cache);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, token_count});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {past_length});
+  tester.AddInput<int32_t>("block_table", {1, num_blocks}, blocks);
+  tester.AddInput<int32_t>("slot_mapping", {token_count}, slots);
+  tester.AddInput<int32_t>("selected_indices", {token_count, selected_width}, selected);
+  tester.AddInput<int32_t>("selected_counts", {token_count}, counts);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<MLFloat16>("head_sink", {num_heads}, sink);
+  tester.AddOutput<MLFloat16>("output", {token_count, num_heads * head_size}, expected, false, 0.002f, 0.002f);
+  RunCuda(tester);
+}
+
 class SparsePagedAttentionInt8Test : public ::testing::TestWithParam<std::pair<std::string, std::string>> {};
 
 TEST_P(SparsePagedAttentionInt8Test, Cuda_QuantizedMainCache) {
