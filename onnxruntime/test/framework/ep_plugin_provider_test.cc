@@ -26,9 +26,11 @@
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/session/abi_devices.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/plugin_ep/ep_allocator_utils.h"
+#include "test/capturing_sink.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
@@ -1060,6 +1062,91 @@ TEST(PluginExecutionProviderTest, KernelDefCxxApis) {
                                     .SetSinceVersion(3, 3)  // start == end (only one version supported)
                                     .Build();
     EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def.GetConst()));
+  }
+}
+
+// Test that Compile() logs a warning when the value returned by GetWeightlessSupport() does not match the weightless EP
+// metadata, and only fails if the EP does not support the requested mode.
+TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadata) {
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+  ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes, "all_or_external_only");
+  const std::vector<const OrtEpDevice*> ep_devices{ep_device.get()};
+
+  using GetWeightlessSupportFn = OrtStatus*(ORT_API_CALL*)(const OrtEp*, OrtWeightlessSupport*) noexcept;
+  GetWeightlessSupportFn external_only = [](const OrtEp*, OrtWeightlessSupport* support) noexcept -> ::OrtStatus* {
+    *support = OrtWeightlessSupport_EXTERNAL_ONLY;
+    return nullptr;
+  };
+  GetWeightlessSupportFn all_or_external_only = [](const OrtEp*,
+                                                   OrtWeightlessSupport* support) noexcept -> ::OrtStatus* {
+    *support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
+    return nullptr;
+  };
+
+  // Calls Compile() without fused nodes, which still validates the weightless mode, and returns the logged messages.
+  auto compile = [&ep_devices](const char* weightless_mode, GetWeightlessSupportFn get_weightless_support,
+                               std::vector<std::string>& messages) -> Status {
+    auto capturing_sink = std::make_unique<CapturingSink>();
+    CapturingSink* sink = capturing_sink.get();
+    logging::LoggingManager logging_manager(std::move(capturing_sink), logging::Severity::kWARNING, false,
+                                            logging::LoggingManager::InstanceType::Temporal);
+    std::unique_ptr<logging::Logger> logger = logging_manager.CreateLogger("WeightlessTest");
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, weightless_mode);
+
+    auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+    ort_ep->GetWeightlessSupport = get_weightless_support;
+    ort_ep->Compile = [](OrtEp*, const OrtGraph**, const OrtNode**, size_t, OrtNodeComputeInfo**,
+                         OrtNode**) noexcept -> ::OrtStatus* { return nullptr; };
+    ort_ep->ReleaseNodeComputeInfos = [](OrtEp*, OrtNodeComputeInfo**, size_t) noexcept {};
+
+    Status status;
+    {
+      PluginExecutionProvider ep(UniqueOrtEp(ort_ep.release(), OrtEpDeleter{test_plugin_ep::g_test_ort_ep_factory}),
+                                 *static_cast<const OrtSessionOptions*>(session_options),
+                                 test_plugin_ep::g_test_ort_ep_factory, ep_devices, /*kernel_registry*/ nullptr,
+                                 *logger);
+      std::vector<NodeComputeInfo> node_compute_infos;
+      status = ep.Compile({}, node_compute_infos);
+    }
+
+    messages = sink->Messages();
+    return status;
+  };
+
+  const std::string mismatch =
+      "GetWeightlessSupport() returns 'external_only', which does not match the EP metadata: "
+      "EP metadata 'weightless_supported_modes' = 'all_or_external_only'";
+  auto has_mismatch_warning = [&mismatch](const std::vector<std::string>& messages) {
+    return std::any_of(messages.begin(), messages.end(), [&mismatch](const std::string& message) {
+      return message.find("[W:") != std::string::npos && message.find(mismatch) != std::string::npos;
+    });
+  };
+
+  // The requested mode is supported by both, so the mismatch is only a warning.
+  {
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile("1", external_only, messages));
+    EXPECT_TRUE(has_mismatch_warning(messages));
+  }
+
+  // The requested mode is not supported by GetWeightlessSupport(): the error includes the mismatch.
+  {
+    std::vector<std::string> messages;
+    Status status = compile("2", external_only, messages);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.Code(), common::EP_FAIL);
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr(mismatch));
+    EXPECT_TRUE(has_mismatch_warning(messages));
+  }
+
+  // GetWeightlessSupport() matches the EP metadata: no warning.
+  {
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile("1", all_or_external_only, messages));
+    EXPECT_FALSE(has_mismatch_warning(messages));
   }
 }
 
