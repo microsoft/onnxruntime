@@ -8,11 +8,13 @@
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/util/include/temp_dir.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
 #include <thread>
 #include <filesystem>
+#include <fstream>
 #include <chrono>
 
 using namespace std;
@@ -145,15 +147,32 @@ bool HasCacheFileWithPrefix(const std::string& prefix, std::string file_dir = ""
     target_dir = std::filesystem::path(file_dir);
   }
 
+  const auto native_prefix = std::filesystem::path(prefix).native();
   for (const auto& entry : std::filesystem::directory_iterator(target_dir)) {
     if (entry.is_regular_file()) {
-      std::string filename = entry.path().filename().string();
-      if (filename.rfind(prefix, 0) == 0) {
+      const auto filename = entry.path().filename().native();
+      if (filename.rfind(native_prefix, 0) == 0) {
         return true;
       }
     }
   }
   return false;
+}
+
+TEST(TensorrtExecutionProviderTest, CachePrefixLookupIgnoresUnrelatedUnicodeFiles) {
+  const std::string directory_name = "trt_cache_prefix_unicode_test";
+  TemporaryDirectory directory(ORT_TSTR("trt_cache_prefix_unicode_test"), false);
+  const std::filesystem::path path(directory.Path());
+  {
+    std::ofstream file(path / ORT_TSTR("\u6d4b\u8bd5.txt"), std::ios::binary);
+    ASSERT_TRUE(file.is_open());
+  }
+  EXPECT_FALSE(HasCacheFileWithPrefix("TRTEP_Cache_Test", directory_name));
+  {
+    std::ofstream file(path / "TRTEP_Cache_Test.engine", std::ios::binary);
+    ASSERT_TRUE(file.is_open());
+  }
+  EXPECT_TRUE(HasCacheFileWithPrefix("TRTEP_Cache_Test", directory_name));
 }
 
 void RunSession(InferenceSession& session_object,
