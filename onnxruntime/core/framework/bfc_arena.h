@@ -44,6 +44,47 @@ namespace onnxruntime {
 #endif
 
 class StreamAwareBFCArena;
+#if !defined(ORT_MINIMAL_BUILD)
+class BFCArena;
+
+// Retains a partition's temporary allocations and reproduces their addresses during capture.
+// The scope is thread-local: CUDA kernels must allocate/free their scratch on the calling thread.
+class ArenaAllocationCapture {
+ public:
+  explicit ArenaAllocationCapture(gsl::span<const AllocatorPtr> allocators);
+  ~ArenaAllocationCapture();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ArenaAllocationCapture);
+
+  Status Begin(bool replay);
+  Status End();
+  void Cancel();
+
+ private:
+  friend class BFCArena;
+  friend class IArenaImplWrappingOrtAllocator;
+  struct Allocation {
+    IAllocator* arena;
+    void* pointer;
+    size_t size;
+    Stream* stream;
+    bool reserve;
+    bool owned{false};
+    bool freed{false};
+  };
+
+  bool Handles(const IAllocator* arena) const;
+  void* Allocate(IAllocator& arena, size_t size, Stream* stream, bool reserve);
+  bool Free(IAllocator& arena, void* pointer);
+
+  static thread_local ArenaAllocationCapture* current_;
+  InlinedVector<AllocatorPtr> allocators_;
+  InlinedVector<Allocation> allocations_;
+  size_t cursor_{0};
+  bool replay_{false};
+  bool recorded_{false};
+};
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
 // malloc (dlmalloc).

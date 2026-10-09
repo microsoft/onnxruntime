@@ -524,31 +524,17 @@ class KernelScope {
 #endif
 };
 
-onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
-                                  NodeIndex idx,
-                                  size_t stream_idx,
-                                  const bool& terminate_flag,
-                                  SessionScope& session_scope) {
-  auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
-  if (p_kernel->KernelDef().OpName() == "YieldOp") {
-    // Do not execute YieldOp (it is an no-op anyways).
-    // Decrement the reference count of tensors that are not needed beyond this point.
-    // REVIEW(codemzs): The current model assumes the intermediate tensors that are exported
-    // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
-    // memory lingers while the tensor is used downstream after the export.
-    ctx.RecycleNodeInputs(idx);
-    return Status::OK();
-  }
-  // TODO: set terminate flag from run_option
-  OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
-                                     ctx.GetExecutionFrame(),
-                                     *p_kernel,
-                                     ctx.GetLogger(),
-                                     terminate_flag,
-                                     ctx.GetDeviceStream(stream_idx),
-                                     session_scope.GetRunProfiler());
+static Status ExecuteKernelImpl(const SessionState& session_state, ExecutionFrame& frame,
+                                const OpKernel* p_kernel, OpKernelContextInternal& kernel_ctx,
+                                const logging::Logger& logger, SessionScope& session_scope
+#ifdef ENABLE_TRAINING
+                                ,
+                                const OrtValueCachePtr& cache
+#endif
+) {
+  ORT_UNUSED_PARAMETER(session_state);
+  ORT_UNUSED_PARAMETER(frame);
   onnxruntime::Status status;
-  auto& logger = ctx.GetLogger();
   if (p_kernel->IsAsync()) {
     ORT_THROW("Async Kernel Support is not implemented yet.");
   } else {
@@ -568,7 +554,6 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       // if the current node has one output.
       bool reuse_cached_value = false;
       std::string cached_arg_name;
-      auto& cache = ctx.GetOrtValueCache();
       if (cache != nullptr) {
         if (p_kernel->Node().OutputDefs().size() == 1) {
           cached_arg_name = p_kernel->Node().OutputDefs()[0]->Name();
@@ -587,7 +572,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       status = p_kernel->Compute(&kernel_ctx);
 
 #if !defined(ORT_MINIMAL_BUILD)
-      auto* node_stats_recorder = ctx.GetSessionState().GetNodeStatsRecorder();
+      auto* node_stats_recorder = session_state.GetNodeStatsRecorder();
       if (node_stats_recorder != nullptr) {
         const auto& node = p_kernel->Node();
         const OpKernelInfo& op_kernel_info = p_kernel->Info();
@@ -616,12 +601,11 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
         // Get outputs and see if anything were allocated dynamically
         const auto output_defs = node.OutputDefs();
         SafeInt<size_t> total_dynamic_sizes = 0;
-        const auto& exec_frame = ctx.GetExecutionFrame();
         for (int i = 0, lim = kernel_ctx.OutputCount(); i < lim; ++i) {
           const OrtValue* p_output = kernel_ctx.GetOutputMLValue(i);
           if (p_output != nullptr && p_output->IsAllocated() && p_output->IsTensor()) {
             int ort_value_index = kernel_ctx.GetOrtValueIndexForOutput(i);
-            auto maybe_val = exec_frame.GetOrtValueDynamicAllocation(ort_value_index);
+            auto maybe_val = frame.GetOrtValueDynamicAllocation(ort_value_index);
             if (maybe_val.has_value() && node_stats_recorder->ShouldAccountFor(output_defs[i]->Name())) {
               total_dynamic_sizes += *maybe_val;
             }
@@ -669,19 +653,83 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
        << "' Status Message: " << status.ErrorMessage();
     // If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    ctx.GetSessionState().GetMemoryProfiler()->CreateEvents(
-        "dynamic activations_" + std::to_string(ctx.GetSessionState().GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-        ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+    session_state.GetMemoryProfiler()->CreateEvents(
+        "dynamic activations_" + std::to_string(session_state.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+        session_state.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
 #endif
     const auto msg_string = ss.str();
     LOGS(logger, ERROR) << msg_string;
     return Status(status.Category(), status.Code(), msg_string);
   }
 
-  ctx.RecycleNodeInputs(idx);
-  VLOGS(logger, 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
 }
+
+onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
+                                  NodeIndex idx,
+                                  size_t stream_idx,
+                                  const bool& terminate_flag,
+                                  SessionScope& session_scope) {
+  auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
+  if (p_kernel->KernelDef().OpName() == "YieldOp") {
+    // Do not execute YieldOp (it is an no-op anyways).
+    // Decrement the reference count of tensors that are not needed beyond this point.
+    // REVIEW(codemzs): The current model assumes the intermediate tensors that are exported
+    // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
+    // memory lingers while the tensor is used downstream after the export.
+    ctx.RecycleNodeInputs(idx);
+    return Status::OK();
+  }
+  OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
+                                     ctx.GetExecutionFrame(),
+                                     *p_kernel,
+                                     ctx.GetLogger(),
+                                     terminate_flag,
+                                     ctx.GetDeviceStream(stream_idx),
+                                     session_scope.GetRunProfiler());
+  const auto status = ExecuteKernelImpl(ctx.GetSessionState(), ctx.GetExecutionFrame(), p_kernel,
+                                        kernel_ctx, ctx.GetLogger(), session_scope
+#ifdef ENABLE_TRAINING
+                                        ,
+                                        ctx.GetOrtValueCache()
+#endif
+  );
+  ORT_RETURN_IF_ERROR(status);
+  ctx.RecycleNodeInputs(idx);
+  VLOGS(ctx.GetLogger(), 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  return Status::OK();
+}
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_STREAM)
+Status ExecuteNodesWithRetainedValues(const SessionState& session_state, ExecutionFrame& frame,
+                                      gsl::span<const NodeIndex> nodes, const DeviceStreamCollection& streams,
+                                      const bool& terminate_flag, bool synchronize_providers,
+                                      const logging::Logger& logger, profiling::Profiler* run_profiler) {
+  SessionScope session_scope(session_state, frame, run_profiler);
+  const auto& plan = *session_state.GetExecutionPlan();
+  for (NodeIndex index : nodes) {
+    ORT_RETURN_IF(terminate_flag, "Partitioned CUDA graph execution was terminated.");
+    auto* kernel = session_state.GetKernel(index);
+    ORT_RETURN_IF(kernel->IsAsync(), "Partitioned CUDA capture does not support asynchronous host kernels.");
+    OpKernelContextInternal kernel_ctx(session_state, frame, *kernel, logger, terminate_flag,
+                                       streams.GetStream(plan.node_stream_map_[index]), run_profiler);
+    const auto status = ExecuteKernelImpl(session_state, frame, kernel, kernel_ctx, logger, session_scope
+#ifdef ENABLE_TRAINING
+                                          ,
+                                          nullptr
+#endif
+    );
+    ORT_RETURN_IF_ERROR(status);
+    if (synchronize_providers) {
+      // Eager device work must complete before a CPU consumer reads its host outputs or reuses copy sources.
+      const auto* provider = session_state.GetExecutionProviders().Get(kernel->Node().GetExecutionProviderType());
+      ORT_ENFORCE(provider != nullptr);
+      ORT_RETURN_IF_ERROR(provider->Sync());
+    }
+  }
+  return Status::OK();
+}
+#endif
 
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
