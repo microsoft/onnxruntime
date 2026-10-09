@@ -68,6 +68,19 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
   }
 }
 
+TEST(ThreadPoolTest, WorkerThreadCountExcludesCallerAndHybridGranularity) {
+  for (bool mock_hybrid : {false, true}) {
+    for (int degree_of_parallelism : {0, 1, 4}) {
+      CreateThreadPoolAndTest(
+          "WorkerThreadCount", degree_of_parallelism,
+          [&](ThreadPool* tp) {
+            EXPECT_EQ(ThreadPool::WorkerThreadCount(tp), std::max(0, degree_of_parallelism - 1));
+          },
+          0, mock_hybrid);
+    }
+  }
+}
+
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
   auto test_data = CreateTestData(num_tasks);
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
