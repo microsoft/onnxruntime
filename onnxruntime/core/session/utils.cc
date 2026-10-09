@@ -318,7 +318,10 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       for (auto domain : domains) {
-        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+        // Multiple EP devices can expose the same custom-op domain. Keep one copy
+        // in this session's collection before its custom registry is created.
+        if (ShouldAddDomain(domain, options->custom_op_domains_) &&
+            !DoesDomainWithNameExist(domain->domain_, all_ep_custom_op_domains)) {
           all_ep_custom_op_domains.push_back(domain);
         }
       }
@@ -431,7 +434,10 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       for (auto domain : domains) {
-        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+        // Multiple EP devices can expose the same custom-op domain. Keep one copy
+        // in this session's collection before its custom registry is created.
+        if (ShouldAddDomain(domain, options->custom_op_domains_) &&
+            !DoesDomainWithNameExist(domain->domain_, all_ep_custom_op_domains)) {
           all_ep_custom_op_domains.push_back(domain);
         }
       }
@@ -610,8 +616,36 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
 
   const Telemetry& telemetry_provider = Env::Default().GetTelemetryProvider();
 
+  OrtSessionOptions staged_session_options = model_compile_options.GetSessionOptions();
+  auto& gen_options = staged_session_options.value.ep_context_gen_options;
+  const auto* external_output =
+      model_compile_options.GetSessionOptions().value.ep_context_gen_options.TryGetExternalInitializerBufferInfo();
+  const auto* model_output =
+      model_compile_options.GetSessionOptions().value.ep_context_gen_options.TryGetOutputModelBuffer();
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  void* model_buffer = nullptr;
+  size_t model_size = 0;
+  auto free_pending_buffers = gsl::finally([&]() {
+    if (external_buffer) external_output->buffer_allocator->Free(external_buffer);
+    if (model_buffer) model_output->buffer_allocator->Free(model_buffer);
+  });
+
+  // Saving the model and subsequent session validation can fail after initializers have been serialized.
+  // Stage both allocations until the entire CompileModel call succeeds, including for EPContext models.
+  if (external_output) {
+    auto& staged_output = std::get<epctx::ExternalInitializerBufferInfo>(gen_options.initializers_location);
+    staged_output.buffer_ptr = &external_buffer;
+    staged_output.buffer_size_ptr = &external_size;
+  }
+  if (model_output) {
+    auto& staged_output = std::get<epctx::BufferHolder>(gen_options.output_model_location);
+    staged_output.buffer_ptr = &model_buffer;
+    staged_output.buffer_size_ptr = &model_size;
+  }
+
   std::unique_ptr<onnxruntime::InferenceSession> session;
-  const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
+  const OrtSessionOptions* session_options = &staged_session_options;
 
   Status status;
 
@@ -662,6 +696,17 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
       status.IsOK() ? 0 : static_cast<uint32_t>(status.Code()),
       status.IsOK() ? 0 : static_cast<uint32_t>(status.Category()),
       status.IsOK() ? "" : status.ErrorMessage());
+
+  if (status.IsOK()) {
+    if (external_output) {
+      *external_output->buffer_ptr = std::exchange(external_buffer, nullptr);
+      *external_output->buffer_size_ptr = external_size;
+    }
+    if (model_output) {
+      *model_output->buffer_ptr = std::exchange(model_buffer, nullptr);
+      *model_output->buffer_size_ptr = model_size;
+    }
+  }
 
   return status;
 }

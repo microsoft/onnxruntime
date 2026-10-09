@@ -1768,6 +1768,61 @@ TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConsta
                                         pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeSmallOutputs) {
+  for (const auto& dimensions : {std::vector<int64_t>{}, std::vector<int64_t>{0}, std::vector<int64_t>{2, 3}}) {
+    auto build_model = [&dimensions](ModelTestBuilder& builder) {
+      auto* shape = builder.Make1DInitializer<int64_t>(dimensions);
+      builder.AddNode("ConstantOfShape", {shape}, {builder.MakeOutput()});
+    };
+
+    auto post_graph_checker = [&dimensions](Graph& graph) -> Status {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ConstantOfShape"] == 0);
+      const auto* output = graph.GetConstantInitializer(graph.GetOutputs()[0]->Name(), false);
+      TEST_RETURN_IF_NOT(output != nullptr);
+      TEST_RETURN_IF_NOT(std::vector<int64_t>(output->dims().begin(), output->dims().end()) == dimensions);
+      return Status::OK();
+    };
+
+    CPUExecutionProvider cpu_ep{CPUExecutionProviderInfo()};
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1024"));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                          std::make_unique<ConstantFolding>(cpu_ep, false, config_options),
+                                          TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingSkipsOverflowingConstantOfShape) {
+  auto build_model = [](ModelTestBuilder& builder) {
+    auto* shape = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), 2});
+    builder.AddNode("ConstantOfShape", {shape}, {builder.MakeOutput()});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    ONNX_NAMESPACE::TensorShapeProto stale_shape;
+    stale_shape.add_dim()->set_dim_value(1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ConstantOfShape") {
+        node.MutableOutputDefs()[0]->SetShape(stale_shape);
+        return Status::OK();
+      }
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ConstantOfShape node not found");
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  CPUExecutionProvider cpu_ep{CPUExecutionProviderInfo()};
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1024"));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(cpu_ep, false, config_options),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
 // Verify that ConstantOfShape output size is estimated directly from the input shape
 // initializer (and not just from shape inference) so that excessive constant-folded
 // allocations are blocked before kernel execution. The 'value' attribute uses int64
@@ -2079,6 +2134,167 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
           << "fusion should produce the same output name as the last node";
     }
   }
+}
+
+static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group, bool add_epsilon = true) {
+  const int64_t input_channels_per_group = 2;
+  const int64_t input_channels = input_channels_per_group * group;
+  const int64_t output_channels_per_group = 3;
+  const int64_t output_channels = output_channels_per_group * group;
+  const int64_t input_h = 4;
+  const int64_t input_w = 4;
+  const int64_t kernel_h = 3;
+  const int64_t kernel_w = 3;
+  const int64_t output_h = input_h + kernel_h - 1;
+  const int64_t output_w = input_w + kernel_w - 1;
+
+  auto make_values = [](size_t size, float scale, float offset) {
+    std::vector<float> values(size);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = offset + scale * static_cast<float>(static_cast<int64_t>(i % 17) - 8);
+    }
+
+    return values;
+  };
+
+  const auto weight_data = make_values(static_cast<size_t>(input_channels) *
+                                           static_cast<size_t>(output_channels_per_group) *
+                                           static_cast<size_t>(kernel_h) *
+                                           static_cast<size_t>(kernel_w),
+                                       0.02f,
+                                       0.01f);
+  const auto conv_bias_data = make_values(static_cast<size_t>(output_channels), 0.03f, -0.02f);
+  const auto bn_scale_data = make_values(static_cast<size_t>(output_channels), 0.04f, 0.9f);
+  const auto bn_bias_data = make_values(static_cast<size_t>(output_channels), 0.05f, -0.1f);
+  const auto bn_mean_data = make_values(static_cast<size_t>(output_channels), 0.02f, 0.12f);
+  std::vector<float> bn_var_data(static_cast<size_t>(output_channels));
+  for (size_t i = 0; i < bn_var_data.size(); ++i) {
+    bn_var_data[i] = 0.7f + 0.05f * static_cast<float>(i);
+  }
+
+  std::string bn_output_name;
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{1, input_channels, input_h, input_w}, -1.0f, 1.0f);
+    auto* weight = builder.MakeInitializer<float>({input_channels, output_channels_per_group, kernel_h, kernel_w},
+                                                  weight_data);
+
+    std::vector<NodeArg*> conv_inputs{input, weight};
+    if (add_conv_bias) {
+      conv_inputs.push_back(builder.MakeInitializer<float>({output_channels}, conv_bias_data));
+    }
+
+    auto* conv_output =
+        builder.MakeIntermediate<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+    auto& conv_transpose = builder.AddNode("ConvTranspose", conv_inputs, {conv_output});
+    if (group != 1) {
+      conv_transpose.AddAttribute("group", group);
+    }
+
+    auto* bn_scale = builder.MakeInitializer<float>({output_channels}, bn_scale_data);
+    auto* bn_bias = builder.MakeInitializer<float>({output_channels}, bn_bias_data);
+    auto* bn_mean = builder.MakeInitializer<float>({output_channels}, bn_mean_data);
+    auto* bn_var = builder.MakeInitializer<float>({output_channels}, bn_var_data);
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+    bn_output_name = output->Name();
+
+    auto& batch_norm = builder.AddNode("BatchNormalization", {conv_output, bn_scale, bn_bias, bn_mean, bn_var}, {output});
+    if (add_epsilon) {
+      batch_norm.AddAttribute("epsilon", 1e-5f);
+    }
+  };
+
+  auto check_transformed_graph = [&bn_output_name](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+    ASSERT_EQ(op_to_count["ConvTranspose"], 1);
+
+    bool found_conv_transpose = false;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "ConvTranspose") {
+        found_conv_transpose = true;
+        ASSERT_EQ(node.InputDefs().size(), 3U);
+        ASSERT_EQ(node.OutputDefs()[0]->Name(), bn_output_name)
+            << "fusion should produce the same output name as the last node";
+      }
+    }
+    ASSERT_TRUE(found_conv_transpose);
+  };
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvBNFusion>()));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    14,
+                    1e-4,
+                    1e-4,
+                    std::move(rule_transformer_L1));
+}
+
+TEST_F(GraphTransformationTests, FuseConvTransposeBNNoBias) {
+  RunConvTransposeBNFusionTest(false, 1);
+}
+
+TEST_F(GraphTransformationTests, FuseConvTransposeBNWithDefaultEpsilon) {
+  RunConvTransposeBNFusionTest(false, 1, false);
+}
+
+TEST_F(GraphTransformationTests, FuseConvTransposeBNWithBias) {
+  RunConvTransposeBNFusionTest(true, 1);
+}
+
+TEST_F(GraphTransformationTests, FuseGroupedConvTransposeBN) {
+  RunConvTransposeBNFusionTest(true, 2);
+}
+
+TEST_F(GraphTransformationTests, DontFuseConvTransposeWithBNWithNonConstantWeight) {
+  const int64_t input_channels = 2;
+  const int64_t output_channels = 3;
+  const int64_t kernel_h = 3;
+  const int64_t kernel_w = 3;
+  const int64_t output_h = 6;
+  const int64_t output_w = 6;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{1, input_channels, 4, 4}, -1.0f, 1.0f);
+    auto* weight =
+        builder.MakeInput<float>(std::vector<int64_t>{input_channels, output_channels, kernel_h, kernel_w},
+                                 -0.2f,
+                                 0.2f);
+
+    auto* conv_output =
+        builder.MakeIntermediate<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+    builder.AddNode("ConvTranspose", {input, weight}, {conv_output});
+
+    auto* bn_scale = builder.MakeInitializer<float>({output_channels}, {0.8f, 0.9f, 1.0f});
+    auto* bn_bias = builder.MakeInitializer<float>({output_channels}, {-0.1f, 0.0f, 0.1f});
+    auto* bn_mean = builder.MakeInitializer<float>({output_channels}, {0.2f, 0.3f, 0.4f});
+    auto* bn_var = builder.MakeInitializer<float>({output_channels}, {0.7f, 0.8f, 0.9f});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+
+    builder.AddNode("BatchNormalization", {conv_output, bn_scale, bn_bias, bn_mean, bn_var}, {output})
+        .AddAttribute("epsilon", 1e-5f);
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+    ASSERT_EQ(op_to_count["ConvTranspose"], 1);
+  };
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvBNFusion>()));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    14,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_L1));
 }
 
 TEST_F(GraphTransformationTests, FusePadWithConv) {
@@ -2970,6 +3186,44 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
   // Compare results
   auto ret = CompareOrtValue(optimized_fetches[0], unoptimized_fetches[0], 0.0, 0.0, false);
   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+}
+
+TEST_F(GraphTransformationTests, LabelEncoderFusionIgnoresMismatchedEmptyAttribute) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/label_encoder.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* target = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() != "LabelEncoder" || node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+
+    auto& next_node = *node.OutputNodesBegin();
+    const auto& node_attributes = node.GetAttributes();
+    const auto& next_attributes = next_node.GetAttributes();
+    if (next_node.OpType() == "LabelEncoder" &&
+        node_attributes.find("values_strings") != node_attributes.end() &&
+        next_attributes.find("keys_strings") != next_attributes.end() &&
+        next_attributes.find("values_int64s") != next_attributes.end() &&
+        next_attributes.find("values_strings") == next_attributes.end()) {
+      target = graph.GetNode(next_node.Index());
+      break;
+    }
+  }
+
+  ASSERT_NE(target, nullptr);
+  target->AddAttribute("values_strings", std::vector<std::string>{});
+
+  GraphTransformerManager transformer_manager{5};
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("LabelEncoderFusionTest");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<LabelEncoderFusion>()));
+  ASSERT_STATUS_OK(transformer_manager.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.at("ai.onnx.ml.LabelEncoder"), 7);
 }
 
 TEST_F(GraphTransformationTests, NotWhereFusion) {
@@ -6827,6 +7081,189 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithZeroDimExecu
   EXPECT_EQ(output_shape[2], 4);
 }
 
+// Two chained Reshapes where the first Reshape's shape input is computed by a Where node.
+// The fusion collapses them into a single Reshape with the constant shape {6} and deletes
+// the Where, whose only consumer is the removed shape input.
+// See https://github.com/microsoft/onnxruntime/issues/32837.
+TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithNodeProducedShape) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3}});
+    auto* cond_arg = builder.MakeInputBool({2});
+    auto* target_shape = builder.MakeInitializer<int64_t>({2}, {2, 3});
+    auto* final_shape = builder.MakeInitializer<int64_t>({1}, {6});
+    auto* where_out = builder.MakeIntermediate();
+    auto* reshape_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("Where", {cond_arg, target_shape, target_shape}, {where_out});
+    builder.AddNode("Reshape", {input_arg, where_out}, {reshape_out});
+    builder.AddNode("Reshape", {reshape_out, final_shape}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 2);
+    TEST_RETURN_IF_NOT(op_to_count["Where"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 1);
+    // The Where's only consumer is the removed shape input, so the fusion deletes it.
+    TEST_RETURN_IF_NOT(op_to_count["Where"] == 0);
+
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() != "Reshape") {
+        continue;
+      }
+      // The remaining Reshape takes the model input as data and the initializer {6} as shape.
+      const auto* shape_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      TEST_RETURN_IF_NOT(shape_proto != nullptr);
+      const int64_t fused_first_dim = *Initializer(*shape_proto, graph.ModelPath()).data<int64_t>();
+      TEST_RETURN_IF_NOT(shape_proto->dims_size() == 1 && fused_first_dim == 6);
+    }
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+// The Where's output feeds both the first Reshape's shape input and an Identity node; the
+// fusion keeps the Where because the Identity still consumes it.
+// See https://github.com/microsoft/onnxruntime/issues/32837.
+TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithSharedShapeProducer) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3}});
+    auto* cond_arg = builder.MakeInputBool({2});
+    auto* target_shape = builder.MakeInitializer<int64_t>({2}, {2, 3});
+    auto* final_shape = builder.MakeInitializer<int64_t>({1}, {6});
+    auto* where_out = builder.MakeIntermediate();
+    auto* reshape_out = builder.MakeIntermediate();
+    auto* shape_output_arg = builder.MakeOutput();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("Where", {cond_arg, target_shape, target_shape}, {where_out});
+    builder.AddNode("Identity", {where_out}, {shape_output_arg});
+    builder.AddNode("Reshape", {input_arg, where_out}, {reshape_out});
+    builder.AddNode("Reshape", {reshape_out, final_shape}, {output_arg});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 1);  // chain fused
+    TEST_RETURN_IF_NOT(op_to_count["Where"] == 1);    // shared producer kept
+    TEST_RETURN_IF_NOT(op_to_count["Identity"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
+}
+
+// Full-session test of a Reshape chain whose first shape input is produced by a Where node.
+// Initialization applies the Level1 optimizers (including ReshapeFusion); Run() returns the
+// input tensor reshaped to [6].
+// Where(cond, target_shape, target_shape) -> Reshape(X, shape1) -> Reshape(r1, shape2) -> Y
+// See https://github.com/microsoft/onnxruntime/issues/32837.
+TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithNodeProducedShapeExecution) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 18;
+  Model model("ReshapeFusionContiguousReshapesWithNodeProducedShapeExecution", false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), *logger_);
+  auto& graph = model.MainGraph();
+
+  // X: float[2, 3]
+  TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // cond: bool[2]
+  TypeProto cond_type;
+  cond_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  cond_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  TypeProto float_unshaped;  // float with unknown shape (r1, Y)
+  float_unshaped.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto int64_unshaped;  // int64 with unknown shape (shape1)
+  int64_unshaped.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+
+  auto& X = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& cond = graph.GetOrCreateNodeArg("cond", &cond_type);
+  auto& shape1 = graph.GetOrCreateNodeArg("shape1", &int64_unshaped);
+  auto& r1 = graph.GetOrCreateNodeArg("r1", &float_unshaped);
+  auto& Y = graph.GetOrCreateNodeArg("Y", &float_unshaped);
+
+  // target_shape = [2, 3]; shape2 = [6]
+  ONNX_NAMESPACE::TensorProto target_shape_proto;
+  target_shape_proto.set_name("target_shape");
+  target_shape_proto.set_data_type(TensorProto_DataType_INT64);
+  target_shape_proto.add_dims(2);
+  for (int64_t v : {2, 3}) {
+    target_shape_proto.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(target_shape_proto);
+
+  ONNX_NAMESPACE::TensorProto shape2_proto;
+  shape2_proto.set_name("shape2");
+  shape2_proto.set_data_type(TensorProto_DataType_INT64);
+  shape2_proto.add_dims(1);
+  shape2_proto.add_int64_data(6);
+  graph.AddInitializedTensor(shape2_proto);
+
+  auto& target_shape = graph.GetOrCreateNodeArg("target_shape", nullptr);
+  auto& shape2 = graph.GetOrCreateNodeArg("shape2", nullptr);
+
+  graph.AddNode("shape_producer", "Where", "dynamic shape producer",
+                {&cond, &target_shape, &target_shape}, {&shape1});
+  graph.AddNode("reshape_dynamic", "Reshape", "first reshape", {&X, &shape1}, {&r1});
+  graph.AddNode("reshape_static", "Reshape", "second reshape", {&r1, &shape2}, {&Y});
+
+  graph.SetInputs({&X, &cond});
+  graph.SetOutputs({&Y});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Serialize and run through a real InferenceSession to cover the full optimization and
+  // execution path.
+  auto model_proto = model.ToProto();
+  std::string serialized_model;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  std::stringstream model_stream(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(model_stream));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::vector<int64_t> x_dims = {2, 3};
+  OrtValue x_val;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       x_dims, std::vector<float>{0.f, 1.f, 2.f, 3.f, 4.f, 5.f}, &x_val);
+  std::vector<int64_t> cond_dims = {2};
+  OrtValue cond_val;
+  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                      cond_dims, std::vector<bool>{true, false}, &cond_val);
+
+  NameMLValMap feeds = {{"X", x_val}, {"cond", cond_val}};
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  ASSERT_EQ(fetches.size(), 1U);
+  const auto& output_tensor = fetches[0].Get<Tensor>();
+  const TensorShape& output_shape = output_tensor.Shape();
+  ASSERT_EQ(output_shape.NumDimensions(), 1U);
+  EXPECT_EQ(output_shape[0], 6);
+  const float* output_data = output_tensor.Data<float>();
+  for (int64_t i = 0; i < 6; ++i) {
+    EXPECT_EQ(output_data[i], static_cast<float>(i)) << "Element order must be preserved";
+  }
+}
+
 TEST_F(GraphTransformationTests, ReshapeFusionWithSlice1) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/reshape_fusion_with_slice1.onnx";
   std::shared_ptr<Model> p_model;
@@ -8460,6 +8897,64 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaInvalidQkvWeightSha
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionUnfusedMatMulGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaOverflowingQkvShapeTest) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  const auto* capturing_sink_raw = capturing_sink.get();
+  logging::LoggingManager logging_manager(std::move(capturing_sink), logging::Severity::kVERBOSE, false,
+                                          logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("MobileClipOverflowTest");
+
+  for (const auto& [num_heads, head_size] :
+       {std::pair{std::numeric_limits<int64_t>::max(), int64_t{2}},
+        std::pair{std::numeric_limits<int64_t>::max() / 3 + 1, int64_t{1}}}) {
+    auto build_test_case = [](ModelTestBuilder& builder) {
+      BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+    };
+
+    auto replace_qkv_shape = [num_heads, head_size](Graph& graph) -> Status {
+      for (const Node& node : graph.Nodes()) {
+        if (node.OpType() != "Reshape" || node.InputDefs().size() < 2) {
+          continue;
+        }
+
+        const auto& shape_name = node.InputDefs()[1]->Name();
+        const ONNX_NAMESPACE::TensorProto* shape = nullptr;
+        if (!graph.GetInitializedTensor(shape_name, shape) ||
+            shape->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+          continue;
+        }
+
+        Initializer shape_data{graph, *shape, graph.ModelPath()};
+        const auto dimensions = shape_data.DataAsSpan<int64_t>();
+        if (dimensions.size() != 5 || dimensions[2] != 3) {
+          continue;
+        }
+
+        ONNX_NAMESPACE::TensorProto overflow_shape(*shape);
+        overflow_shape.clear_raw_data();
+        for (int64_t dimension : dimensions) {
+          overflow_shape.add_int64_data(dimension);
+        }
+        overflow_shape.set_int64_data(3, num_heads);
+        overflow_shape.set_int64_data(4, head_size);
+        graph.RemoveInitializedTensor(shape_name);
+        graph.AddInitializedTensor(overflow_shape);
+        return Status::OK();
+      }
+
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QKV reshape initializer not found");
+    };
+
+    const size_t previous_message_count = capturing_sink_raw->Messages().size();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::make_unique<AttentionFusion>(),
+                                          TransformerLevel::Level2, 1, replace_qkv_shape,
+                                          CheckMobileClipAttentionUnfusedMatMulGraph));
+    const auto& messages = capturing_sink_raw->Messages();
+    EXPECT_THAT(std::vector<std::string>(messages.begin() + previous_message_count, messages.end()),
+                testing::Contains(testing::HasSubstr("unable to derive num_heads/head_size from qkv reshape initializer")));
+  }
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmNonDefaultAttributesTest) {
@@ -12847,13 +13342,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
     bool add_produces_graph_output{false};
     bool use_cuda_ep{false};
     bool use_gpt_oss_router_shape{false};
+    int64_t weight_prepacked{0};
   };
 
   auto run_test = [&logger = *logger_](const TestOptions& opts) {
     SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
                             ", add_produces_graph_output:", opts.add_produces_graph_output,
                             ", use_cuda_ep:", opts.use_cuda_ep,
-                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape));
+                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape,
+                            ", weight_prepacked:", opts.weight_prepacked));
 
     auto build_test_case = [&](ModelTestBuilder& builder) {
       constexpr size_t qbits = 4;
@@ -12894,6 +13391,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       matmul.AddAttribute("K", K);
       matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
       matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
+      if (opts.weight_prepacked != 0) {
+        matmul.AddAttribute("weight_prepacked", opts.weight_prepacked);
+      }
       if (opts.use_cuda_ep) {
         matmul.SetExecutionProviderType(kCudaExecutionProvider);
       }
@@ -12928,9 +13428,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       return Status::OK();
     };
 
-    auto post_graph_checker = [](Graph& graph) {
+    auto post_graph_checker = [&opts](Graph& graph) {
       auto op_count = CountOpsInGraph(graph);
-      EXPECT_EQ(op_count["Add"], 0);
+      EXPECT_EQ(op_count["Add"], opts.weight_prepacked == 0 ? 0 : 1);
       return Status::OK();
     };
 
@@ -12953,6 +13453,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       opts.use_gpt_oss_router_shape = true;
       run_test(opts);
     }
+  }
+
+  for (int64_t weight_prepacked : {int64_t{1}, int64_t{2}}) {
+    TestOptions opts{};
+    opts.weight_prepacked = weight_prepacked;
+    run_test(opts);
+
+    opts.use_cuda_ep = true;
+    run_test(opts);
   }
 }
 
@@ -13291,6 +13800,30 @@ TEST_F(GraphTransformationTests, STFTDecomposition_NoWindowInput) {
   // Valid windowless STFT should be successfully decomposed
   op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["STFT"], 0);
+}
+
+TEST_F(GraphTransformationTests, FusionPreservesPublicAndSharedValues) {
+  const std::vector<std::pair<std::basic_string<ORTCHAR_T>, bool>> models = {
+      {ORT_TSTR("fusion/matmul_transpose_public_cast.onnx"), false},
+      {ORT_TSTR("fusion/gather_to_slice_public_range.onnx"), false},
+      {ORT_TSTR("fusion/fast_gelu_public_entry.onnx"), false},
+      {ORT_TSTR("fusion/attention_public_past_key_transpose.onnx"), false},
+      {ORT_TSTR("fusion/attention_public_qk_intermediate.onnx"), false},
+      {ORT_TSTR("fusion/qdq_public_first_node.onnx"), true},
+      {ORT_TSTR("fusion/qdq_shared_source_value.onnx"), true},
+  };
+
+  for (const auto& [model, enable_qdq_cleanup] : models) {
+    SessionOptions so;
+    so.graph_optimization_level = TransformerLevel::MaxLevel;
+    if (enable_qdq_cleanup) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    }
+
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(PathString(MODEL_FOLDER) + model));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
 }
 
 }  // namespace test

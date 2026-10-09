@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/math/gemm_utils.h"
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
 
@@ -190,13 +191,12 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
   shader.AdditionalImplementation()
       << "var<workgroup> mm_Bsub: array<array<array<b_value_t, " << (is_vec4 ? tile_b_outer / elements_per_thread_x : tile_b_outer) << ">, 32>, " << num_b_buffers << ">;\n";
 
+  InitializeLogicalWorkgroupIDAndGlobalID(shader);
+
   shader.MainFunctionBody()
-      << "  let workgroupIdXStride = (uniforms.dim_b_outer - 1) / " << tile_b_outer << " + 1;\n"
-      << "  let workgroupIdYStride = (uniforms.dim_a_outer - 1) / " << tile_a_outer << " + 1;\n"
-      << "  let batch = i32(workgroup_idx / (workgroupIdXStride * workgroupIdYStride));\n"
-      << "  let workgroupIdXY = workgroup_idx % (workgroupIdXStride * workgroupIdYStride);\n"
-      << "  let workgroupIdX = workgroupIdXY % workgroupIdXStride;\n"
-      << "  let workgroupIdY = workgroupIdXY / workgroupIdXStride;\n"
+      << "  let batch = i32(logical_workgroup_id.z);\n"
+      << "  let workgroupIdX = logical_workgroup_id.x;\n"
+      << "  let workgroupIdY = logical_workgroup_id.y;\n"
       << "  let tileRow = i32(local_id.x / " << kSubgroupLogicalWorkGroupSizeX << ") * " << elements_per_thread_y << ";\n"
       << "  let tileCol = i32(local_id.x % " << kSubgroupLogicalWorkGroupSizeX << ");\n"
       << "  let localRow = i32(local_id.x / " << kSubgroupLogicalWorkGroupSizeX << ");\n"

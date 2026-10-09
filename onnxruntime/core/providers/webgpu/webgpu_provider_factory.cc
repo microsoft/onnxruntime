@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <limits>
 #include <mutex>
 
 #include "core/framework/error_code_helper.h"
+#include "core/framework/ortdevice.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
@@ -16,6 +18,10 @@
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/data_transfer.h"
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/sync_stream.h"
+#endif
+
 using namespace onnxruntime::webgpu;
 using namespace onnxruntime::webgpu::options;
 
@@ -25,8 +31,12 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
       : context_id_{context_id}, context_{context}, config_{std::move(webgpu_ep_config)} {
   }
 
+  ~WebGpuProviderFactory() override {
+    WebGpuContextFactory::ReleaseContext(context_id_);
+  }
+
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    return std::make_unique<WebGpuExecutionProvider>(context_id_, context_, std::move(config_));
+    return std::make_unique<WebGpuExecutionProvider>(context_id_, context_, WebGpuExecutionProviderConfig{config_});
   }
 
  private:
@@ -171,9 +181,30 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
-    ORT_ENFORCE(std::errc{} ==
-                std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(), config.context_id).ec);
+    const auto result = std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(),
+                                        config.context_id);
+    ORT_ENFORCE(result.ec == std::errc{} && result.ptr == context_id_str.data() + context_id_str.size() &&
+                    config.context_id >= 0 && config.context_id <= std::numeric_limits<OrtDevice::DeviceId>::max(),
+                "Invalid deviceId value: ", context_id_str, ". Must be an integer in the range 0 to ",
+                std::numeric_limits<OrtDevice::DeviceId>::max(), ".");
   }
+
+  if (std::string adapter_index_str;
+      config_options.TryGetConfigEntry(kAdapterIndex, adapter_index_str)) {
+    uint32_t adapter_index = 0;
+    const auto result = std::from_chars(adapter_index_str.data(),
+                                        adapter_index_str.data() + adapter_index_str.size(),
+                                        adapter_index);
+    ORT_ENFORCE(result.ec == std::errc{} && result.ptr == adapter_index_str.data() + adapter_index_str.size(),
+                "Invalid adapterIndex value: ", adapter_index_str,
+                ". Must be a non-negative integer.");
+    config.adapter_index = adapter_index;
+  }
+
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  ORT_ENFORCE(!config.adapter_index,
+              "adapterIndex requires a native Dawn build with adapter enumeration support.");
+#endif
 
   if (std::string webgpu_instance_str;
       config_options.TryGetConfigEntry(kWebGpuInstance, webgpu_instance_str)) {
@@ -256,6 +287,21 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
         "Invalid maxStorageBufferBindingSize value: ", max_storage_buffer_binding_size_str);
   }
 
+  std::string max_storage_buffers_per_shader_stage_str;
+  if (config_options.TryGetConfigEntry(kMaxStorageBuffersPerShaderStage,
+                                       max_storage_buffers_per_shader_stage_str)) {
+    ORT_ENFORCE(
+        std::errc{} == std::from_chars(
+                           max_storage_buffers_per_shader_stage_str.data(),
+                           max_storage_buffers_per_shader_stage_str.data() +
+                               max_storage_buffers_per_shader_stage_str.size(),
+                           config.max_storage_buffers_per_shader_stage)
+                           .ec,
+        "Invalid maxStorageBuffersPerShaderStage value: ", max_storage_buffers_per_shader_stage_str);
+    ORT_ENFORCE(config.max_storage_buffers_per_shader_stage > 0,
+                "maxStorageBuffersPerShaderStage must be greater than 0");
+  }
+
   std::string max_num_pending_dispatches_str;
   if (config_options.TryGetConfigEntry(
           kMaxNumPendingDispatches,
@@ -281,6 +327,8 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   }
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << config.context_id;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP adapter index: "
+                        << (config.adapter_index ? std::to_string(*config.adapter_index) : "automatic");
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << reinterpret_cast<size_t>(config.instance);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << reinterpret_cast<size_t>(config.device);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
@@ -289,6 +337,8 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP CompileOnly: " << config.compile_only;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffers per shader stage: "
+                        << config.max_storage_buffers_per_shader_stage;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max pending dispatches: " << config.max_num_pending_dispatches;
 
   // buffer cache modes
@@ -383,7 +433,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
   WebGpuDataTransferImpl(const OrtApi& ort_api_in, int context_id)
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
-        data_transfer_{nullptr},
+        context_{nullptr},
         context_id_{context_id},
         init_mutex_{} {
     ort_version_supported = ORT_API_VERSION;
@@ -426,7 +476,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     if (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) {
       int src_device_id = impl.ep_api.MemoryDevice_GetDeviceId(src_memory_device);
       int dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_memory_device);
-      if (src_device_id != impl.context_id_ || dst_device_id != impl.context_id_) {
+      if (src_device_id != dst_device_id) {
         return false;  // Cannot copy between different devices
       }
     }
@@ -455,7 +505,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       OrtDataTransferImpl* this_ptr,
       const OrtValue** src_tensors,
       OrtValue** dst_tensors,
-      OrtSyncStream** /*streams*/,
+      OrtSyncStream** streams,
       size_t num_tensors) {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
@@ -463,27 +513,41 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       return nullptr;
     }
 
-    // Lazy initialization: Use double-checked locking to avoid unnecessary lock operations
-    if (impl.data_transfer_ == nullptr) {
-      std::lock_guard<std::mutex> lock(impl.init_mutex_);
-      if (impl.data_transfer_ == nullptr) {
-        // Always create a new context with context_id 0
-        if (impl.context_id_ != 0) {
-          return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Shared data transfer can only be created for the default device (0).");
-        }
-
-        auto& context = WebGpuContextFactory::DefaultContext();
-
-        // Create the DataTransferImpl instance
-        // Note: The DataTransferImpl holds a const reference to BufferManager. The BufferManager's lifecycle
-        // is managed by the WebGpuContext, which is stored in a static WebGpuContextFactory and persists
-        // for the lifetime of the application, ensuring the reference remains valid.
-        impl.data_transfer_ = std::make_unique<DataTransferImpl>(context.BufferManager());
-      }
-    }
-
-    // Now perform the actual tensor copy
     for (size_t idx = 0; idx < num_tensors; ++idx) {
+      const OrtMemoryInfo* src_memory_info = nullptr;
+      const OrtMemoryInfo* dst_memory_info = nullptr;
+      ORT_THROW_IF_ERROR(ToStatusAndRelease(impl.ort_api.GetTensorMemoryInfo(src_tensors[idx], &src_memory_info)));
+      ORT_THROW_IF_ERROR(ToStatusAndRelease(impl.ort_api.GetTensorMemoryInfo(dst_tensors[idx], &dst_memory_info)));
+      const auto* src_device = impl.ep_api.MemoryInfo_GetMemoryDevice(src_memory_info);
+      const auto* dst_device = impl.ep_api.MemoryInfo_GetMemoryDevice(dst_memory_info);
+      if (!CanCopyImpl(this_ptr, src_device, dst_device)) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported memory devices for WebGPU copy.");
+      }
+      const int context_id = impl.ep_api.MemoryDevice_GetDeviceId(
+          impl.ep_api.MemoryDevice_GetDeviceType(src_device) == OrtMemoryInfoDeviceType_GPU ? src_device : dst_device);
+      WebGpuContext* context = nullptr;
+      if (context_id == impl.context_id_) {
+        std::lock_guard<std::mutex> lock(impl.init_mutex_);
+        if (impl.context_ == nullptr) {
+          if (context_id == 0) {
+            impl.context_ = &WebGpuContextFactory::DefaultContext();
+          } else {
+            WebGpuContextFactory::RetainContext(context_id);
+            impl.context_ = &WebGpuContextFactory::GetContext(context_id);
+          }
+        }
+        context = impl.context_;
+      } else {
+        WebGpuContextFactory::RetainContext(context_id);
+        context = &WebGpuContextFactory::GetContext(context_id);
+      }
+      auto release_context = gsl::finally([&]() {
+        if (context_id != impl.context_id_) {
+          WebGpuContextFactory::ReleaseContext(context_id);
+        }
+      });
+      CommandRecordingState recording;
+      DataTransferImpl data_transfer{context->BufferManager(), recording};
 #if defined(ORT_USE_EP_API_ADAPTERS)
       Ort::ConstValue src_value{src_tensors[idx]};
       const void* src_data = src_value.GetTensorRawData();
@@ -503,13 +567,23 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
-      auto status = impl.data_transfer_->CopyTensor(src_data,
-                                                    src_is_gpu,
-                                                    dst_data,
-                                                    dst_is_gpu,
-                                                    size);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+      const bool has_session_stream = streams != nullptr && streams[idx] != nullptr;
+      auto status = has_session_stream
+                        ? webgpu::ep::CopyTensorOnWebGpuStream(streams[idx], src_data, src_is_gpu, dst_data, dst_is_gpu, size)
+                        : data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+#else
+      ORT_UNUSED_PARAMETER(streams);
+      constexpr bool has_session_stream = false;
+      auto status = data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+#endif
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
+      }
+      if (src_is_gpu && dst_is_gpu && !has_session_stream) {
+        // Env copies use a separate recording: a subsequent Session::Run cannot submit this copy.
+        // Flush here so later Session work on the same queue is ordered after it, without a CPU wait.
+        ORT_THROW_IF_ERROR(context->Flush(context->BufferManager(), recording));
       }
     }
     return nullptr;
@@ -522,7 +596,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     bool data_transfer_initialized = false;
     {
       std::lock_guard<std::mutex> lock(p_impl->init_mutex_);
-      data_transfer_initialized = (p_impl->data_transfer_ != nullptr);
+      data_transfer_initialized = (p_impl->context_ != nullptr);
     }
     delete p_impl;
     if (data_transfer_initialized) {
@@ -532,9 +606,9 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
-  std::unique_ptr<DataTransferImpl> data_transfer_;  // Lazy-initialized
-  int context_id_;                                   // Track which context we're using
-  std::mutex init_mutex_;                            // Protects lazy initialization
+  WebGpuContext* context_;  // Lazily retained until ReleaseImpl.
+  int context_id_;          // Track which context we're using
+  std::mutex init_mutex_;   // Protects lazy initialization
 };
 
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {

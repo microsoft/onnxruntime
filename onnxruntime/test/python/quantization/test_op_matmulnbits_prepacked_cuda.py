@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import unittest
 from contextlib import contextmanager
 
@@ -236,7 +238,13 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
 
     def setUp(self):
         # Make sure no env override leaks in from the process / other tests.
-        for name in ("ORT_FPA_INTB_GEMM", "ORT_FPA_INTB_PROFILE_M"):
+        for name in (
+            "ORT_FPA_INTB_GEMM",
+            "ORT_FPA_INTB_PROFILE_M",
+            "ORT_MATMULNBITS_M_CHUNK_SIZE",
+            "ORT_MATMULNBITS_FORCE_CHUNKED",
+            "ORT_FPA_INTB_GEMV_PAIRED_K",
+        ):
             os.environ.pop(name, None)
 
     def _quantize_weight(self, weight: np.ndarray, bits: int, block_size: int):
@@ -280,18 +288,50 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
 
     def _run(self, model: ModelProto, a: np.ndarray, config: dict[str, str] | None = None) -> np.ndarray:
         so = ort.SessionOptions()
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         for key, value in (config or {}).items():
             so.add_session_config_entry(key, value)
         sess = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
         return sess.run(None, {"A": a})[0]
 
-    def _make_int4_case(self, m=32, k=256, n=512, block_size=32):
+    def _make_int4_case(self, m=32, k=256, n=512, block_size=32, weight_prepacked=0):
         rng = np.random.default_rng(2024)
         a = rng.normal(0.0, 0.25, size=(m, k)).astype(np.float16)
         weight = rng.normal(0.0, 0.25, size=(k, n)).astype(np.float16)
         q_weight, scales = self._quantize_weight(weight, 4, block_size)
-        model = self._make_model(m, k, n, q_weight, scales, 4, block_size)
+        model = self._make_model(m, k, n, q_weight, scales, 4, block_size, weight_prepacked=weight_prepacked)
         return model, a, q_weight, scales
+
+    def _require_fpa_intb(self):
+        # Constant zero coefficients are invariant under the prepacked weight permutation.
+        model = self._make_model(
+            1, 64, 64, np.full((64, 2, 16), 0x88, dtype=np.uint8), np.ones((64, 2), dtype=np.float16), 4, 32, 1
+        )
+        try:
+            self._run(model, np.ones((1, 64), dtype=np.float16), {"ep.cuda.fpa_intb_profile_m": "1"})
+        except Exception as exc:
+            if any(
+                message in str(exc)
+                for message in (
+                    "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON",
+                    "This compact fpA_intB build supports prepacked weights for",
+                    "weight_prepacked requires the fpA_intB path, but it is unsupported for this node",
+                )
+            ):
+                self.skipTest(f"fpA_intB GEMM is unavailable on this build/device: {exc}")
+            raise
+
+    def _make_paired_k_case(self, m, k, n=512):
+        row = np.arange(k)[:, None]
+        col = np.arange(n)[None, :]
+        coefficients = ((row + row // 32 + 3 * col) % 15 - 7).astype(np.int8)
+        unsigned = (coefficients + 8).astype(np.uint8).T
+        q_weight = (unsigned[:, 0::2] | (unsigned[:, 1::2] << 4)).reshape(n, k // 32, 16)
+        scales = ((1 + (np.arange(n)[:, None] + np.arange(k // 32)[None, :]) % 4) / 256).astype(np.float16)
+        a = ((1 + (np.arange(m)[:, None] + np.arange(k)[None, :]) % 3) / 4).astype(np.float16)
+        weight = coefficients.astype(np.float32) * np.repeat(scales.T.astype(np.float32), 32, axis=0)
+        expected = (a.astype(np.float32) @ weight).astype(np.float16)
+        return self._make_model(m, k, n, q_weight, scales, 4, 32), a, expected
 
     def test_config_key_enables_fpa_intb(self):
         # On fpA_intB-capable hardware (compute capability >= 7.5) the baseline (no config) runs the
@@ -312,6 +352,140 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_profile_m": "1,8,32"})
         np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
 
+    def test_gemv_paired_k_config_key(self):
+        self._require_fpa_intb()
+        for m in (4, 5, 6, 7, 8, 9):
+            model, a, _, _ = self._make_int4_case(m=m, k=1024, n=2048)
+            ref = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
+            for value in ("0", "off", "1", "force"):
+                out = self._run(
+                    model,
+                    a,
+                    {
+                        "ep.cuda.fpa_intb_gemm": "1",
+                        "ep.cuda.fpa_intb_profile_m": str(m),
+                        "ep.cuda.fpa_intb_gemv_paired_k": value,
+                    },
+                )
+                np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"m={m} value={value}")
+
+    def test_gemv_paired_k_multi_pass(self):
+        self._require_fpa_intb()
+        for m in (5, 6, 7, 8):
+            for k in (1024, 2048, 4096):
+                with self.subTest(m=m, k=k):
+                    model, a, expected = self._make_paired_k_case(m, k)
+                    out = self._run(
+                        model,
+                        a,
+                        {
+                            "ep.cuda.fpa_intb_gemm": "1",
+                            "ep.cuda.fpa_intb_profile_m": str(m),
+                            "ep.cuda.fpa_intb_gemv_paired_k": "force",
+                        },
+                    )
+                    np.testing.assert_allclose(out, expected, rtol=1e-3, atol=1e-3)
+
+    def test_gemv_paired_k_known_overflow_limit(self):
+        self._require_fpa_intb()
+        m, k, n = 8, 1024, 512
+        alternating_a = np.tile(np.array([40000, -40000], dtype=np.float16), (m, k // 2))
+        for name, packed_byte, scale, a in (
+            ("activation_cancellation", 0x99, 1, alternating_a),
+            ("weight_cancellation", 0x1F, 2048, np.ones((m, k), dtype=np.float16)),
+        ):
+            with self.subTest(case=name):
+                model = self._make_model(
+                    m,
+                    k,
+                    n,
+                    np.full((n, k // 32, 16), packed_byte, dtype=np.uint8),
+                    np.full((n, k // 32), scale, dtype=np.float16),
+                    4,
+                    32,
+                )
+                config = {
+                    "ep.cuda.fpa_intb_gemm": "1",
+                    "ep.cuda.fpa_intb_profile_m": str(m),
+                    "ep.cuda.fpa_intb_gemv_paired_k": "0",
+                }
+                baseline = self._run(model, a, config)
+                np.testing.assert_array_equal(baseline, np.zeros((m, n), dtype=np.float16))
+                out = self._run(
+                    model,
+                    a,
+                    {**config, "ep.cuda.fpa_intb_gemv_paired_k": "force"},
+                )
+                # Document the experimental FP16-lane limit, not a safe-inference guarantee.
+                self.assertTrue(np.isnan(out).all())
+
+    def test_gemv_paired_k_tactic_selection(self):
+        self._require_fpa_intb()
+        # The native debug flag is cached on first use, so set it in a fresh process.
+        script = """
+import runpy
+import sys
+
+case = runpy.run_path(sys.argv[1])["TestFpAIntBConfigKeys"]()
+for m in (4, 5, 6, 7, 8, 9):
+    model, a, _, _ = case._make_int4_case(m=m, k=1024, n=2048)
+    for value in ("0", "off", "1", "force", "0", "force"):
+        print(f"paired_k_test M={m} value={value}", flush=True)
+        case._run(model, a, {
+            "ep.cuda.fpa_intb_gemm": "1",
+            "ep.cuda.fpa_intb_profile_m": str(m),
+            "ep.cuda.fpa_intb_gemv_paired_k": value,
+            "ep.cuda.matmul_nbits_m_chunk_size": "0",
+        })
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script, os.path.abspath(__file__)],
+            env={**os.environ, "ORT_FPA_INTB_DEBUG": "1"},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("[fpA_intB_debug]", result.stdout)
+        dispatches = result.stdout.split("paired_k_test ")[1:]
+        self.assertEqual(len(dispatches), 36, result.stdout)
+        for dispatch in dispatches:
+            header = dispatch.splitlines()[0]
+            m = int(header.split()[0].split("=")[1])
+            value = header.split()[1].split("=")[1]
+            with self.subTest(m=m, value=value):
+                if value == "force" and 5 <= m <= 8:
+                    self.assertIn("kernel=GEMV(cuda)", dispatch)
+                    self.assertIn("cuda kernel variant: 1", dispatch)
+                    self.assertIn("GEMV launch: paired_k=1", dispatch)
+                elif value in ("0", "off") or m not in (5, 6, 7, 8):
+                    self.assertIn("cuda kernel variant: 0", dispatch)
+                    self.assertNotIn("GEMV launch: paired_k=1", dispatch)
+
+    def test_wave_aware_gemv_config_key_matches_default(self):
+        for m in (7, 8, 9):
+            for n in (512, 10240):
+                with self.subTest(m=m, n=n):
+                    model, a, _, _ = self._make_int4_case(m=m, n=n)
+                    config = {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_profile_m": "8,16"}
+                    ref = self._run(model, a, config)
+                    for value in ("0", "1", "0"):
+                        out = self._run(model, a, {**config, "ep.cuda.fpa_intb_gemv_wave_aware": value})
+                        np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"value={value}")
+
+    def test_invalid_wave_aware_gemv_config_rejected(self):
+        model, a, _, _ = self._make_int4_case(m=8, weight_prepacked=1)
+        for value in ("", "-1", "2", "on"):
+            with self.subTest(value=value):
+                with self.assertRaises(Exception) as error:
+                    self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_gemv_wave_aware": value})
+                if "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON" in str(
+                    error.exception
+                ):
+                    self.skipTest("fpA_intB GEMM is not compiled in this build")
+                self.assertRegex(str(error.exception), "Invalid MatMulNBits wave-aware GEMV option")
+
     def test_session_config_overrides_env(self):
         # env var says off, session config says on -> the session config must win.
         model, a, _, _ = self._make_int4_case()
@@ -328,6 +502,44 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
             with set_env("ORT_FPA_INTB_GEMM", value):
                 out = self._run(model, a)
             np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"env={value}")
+
+    def test_m_chunk_size_matches_unchunked(self):
+        # M=100 with chunk 32 runs three CUTLASS chunks plus a 4-row trailing chunk on the GEMV;
+        # chunk 8 runs GEMV-only chunks; chunk >= M is a single launch. The shape is below the
+        # chunking size gate, so ORT_MATMULNBITS_FORCE_CHUNKED bypasses it.
+        model, a, _, _ = self._make_int4_case(m=100)
+        ref = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
+        with set_env("ORT_MATMULNBITS_FORCE_CHUNKED", "1"):
+            for chunk in ("8", "32", "64", "100", "256", "0"):
+                out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.matmul_nbits_m_chunk_size": chunk})
+                np.testing.assert_allclose(out, ref, rtol=1e-2, atol=1e-2, err_msg=f"chunk={chunk}")
+
+            with set_env("ORT_MATMULNBITS_M_CHUNK_SIZE", "16"):
+                out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
+            np.testing.assert_allclose(out, ref, rtol=1e-2, atol=1e-2, err_msg="env chunk=16")
+
+    def test_empty_input_returns_empty_output(self):
+        model, a, _, _ = self._make_int4_case(m=0)
+        for config in (
+            {},
+            {"ep.cuda.fpa_intb_gemm": "1"},
+            {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.matmul_nbits_m_chunk_size": "32"},
+        ):
+            out = self._run(model, a, config)
+            self.assertEqual(out.shape, (0, 512), msg=f"config={config}")
+
+    def test_invalid_m_chunk_size_rejected(self):
+        # Prepacked weights require fpA_intB support. Invalid config is rejected before the weight
+        # data is interpreted, so this test does not need the optional offline weight packer.
+        model, a, _, _ = self._make_int4_case(weight_prepacked=1)
+        for chunk in ("-1", "abc"):
+            with self.assertRaises(Exception) as error:
+                self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.matmul_nbits_m_chunk_size": chunk})
+            if "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON" in str(
+                error.exception
+            ):
+                self.skipTest("fpA_intB GEMM is not compiled in this build")
+            self.assertRegex(str(error.exception), "Invalid MatMulNBits M chunk size")
 
 
 if __name__ == "__main__":

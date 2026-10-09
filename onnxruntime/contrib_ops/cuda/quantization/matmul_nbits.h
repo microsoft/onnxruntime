@@ -7,11 +7,13 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
+#include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/level1_memory_estimate.h"
@@ -48,6 +50,12 @@ using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutla
 // Environment variable to enable/disable the fpA_intB path: unset/0/off to disable, other value to enable.
 // This only affects nodes whose weights are NOT prepacked (see the constructor).
 constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
+constexpr const char* kFpAIntBGemvPairedKOption = "ORT_FPA_INTB_GEMV_PAIRED_K";
+
+// Env fallback for kOrtSessionOptionsCudaMatMulNBitsMChunkSize (max rows of A per fpA_intB launch).
+constexpr const char* kMChunkSizeEnvVar = "ORT_MATMULNBITS_M_CHUNK_SIZE";
+// M chunking applies only when the M x (N + K) profiler buffers (A and C) would exceed this size.
+constexpr int64_t kMChunkMinBytes = 256 * 1024 * 1024;
 
 constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
@@ -112,6 +120,35 @@ inline bool ParseFpAIntBEnabled(const std::string& value) {
   return true;
 }
 
+// Parses the fpA_intB M chunk size. Empty -> 0 (chunking disabled); otherwise a non-negative integer.
+inline int ParseMatMulNBitsMChunkSize(const std::string& value) {
+  const std::string trimmed = onnxruntime::utils::TrimString(value);
+  if (trimmed.empty()) {
+    return 0;
+  }
+  int chunk_size = 0;
+  ORT_ENFORCE(TryParseStringWithClassicLocale(trimmed, chunk_size) && chunk_size >= 0,
+              "Invalid MatMulNBits M chunk size '", value, "': expected a non-negative integer.");
+  return chunk_size;
+}
+
+// The tactic profiler rounds M up to a power-of-two bucket, capped at kMaxProfileM. Keep limits below
+// that cap on a bucket boundary so initial and lazy profiling cannot allocate scratch above the limit.
+inline int64_t FpAIntBProfileSafeMCap(int64_t max_m) {
+  if (max_m <= 0) {
+    return 0;
+  }
+  constexpr int64_t kMaxProfileM = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+  if (max_m >= kMaxProfileM) {
+    return max_m;
+  }
+  int64_t profile_m = 1;
+  while (profile_m <= max_m / 2) {
+    profile_m *= 2;
+  }
+  return profile_m;
+}
+
 // Architecture selector for fpA_intB packing and workspace sizing. Native SM90 weights need the
 // Hopper layout and workspace formula; all non-Hopper kernels share the SM80 layout and workspace
 // formula, including compact runners targeting SM75 or SM89.
@@ -144,33 +181,22 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
     ORT_ENFORCE(block_size_ > 0, "block_size must be greater than zero");
+    // The op schema and matmul_nbits_helper::CheckInputs accept bits in {2, 4, 8}. Keep this in
+    // lockstep with the widths the CUDA kernels actually implement: without it a node with an
+    // unimplemented width is accepted and then read with the wrong stride, silently producing
+    // garbage instead of failing.
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
+                "MatMulNBits on the CUDA execution provider supports bits = 2, 4 or 8, but got bits = ", nbits_);
 
     constexpr int kInputIndexScale = 2;
     constexpr int kInputIndexZeroPoints = 3;
     constexpr int kInputIndexGroupIndex = 4;
     constexpr int kInputIndexBias = 5;
 
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-    // PLUGIN BUILD ADAPTATION: The adapter Node does not expose InputDefs(),
-    // so we cannot check whether optional inputs (zero_points, g_idx, bias)
-    // truly exist at construction time. Instead, we check input count here
-    // and verify actual tensor presence in ComputeInternal.
-    ORT_UNUSED_PARAMETER(kInputIndexScale);  // only used in non-plugin path for type checking
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints;
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex;
-    has_bias_ = info.GetInputCount() > kInputIndexBias;
-    // is_zero_points_scale_same_type_ defaults to false; checked at runtime in plugin path.
-#else
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
-    has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
-
-    if (has_zero_points_) {
-      int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
-      int32_t scale_type = info.node().InputDefs()[kInputIndexScale]->TypeAsProto()->tensor_type().elem_type();
-      is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
-    }
-#endif
+    has_zero_points_ = InputExists(info, kInputIndexZeroPoints);
+    has_g_idx_ = InputExists(info, kInputIndexGroupIndex);
+    has_bias_ = InputExists(info, kInputIndexBias);
+    is_zero_points_scale_same_type_ = has_zero_points_ && GetInputElementType(info, kInputIndexZeroPoints) == GetInputElementType(info, kInputIndexScale);
 
     const Tensor* group_index_initializer = nullptr;
     group_index_is_initializer_ = has_g_idx_ &&
@@ -190,6 +216,20 @@ class MatMulNBits final : public CudaKernel {
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
                 "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
+    const std::string wave_aware = info.GetConfigOptions()
+                                       .GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemvWaveAware)
+                                       .value_or("0");
+    ORT_ENFORCE(wave_aware == "0" || wave_aware == "1",
+                "Invalid MatMulNBits wave-aware GEMV option '", wave_aware, "': expected 0 or 1.");
+    wave_aware_gemv_ = wave_aware == "1" && std::is_same_v<T, MLFloat16> && sm_ / 10 == 12 &&
+                       nbits_ == 4 && !has_zero_points_ && FpAIntBPackingSmForKernel() == 80;
+    m_chunk_size_ = ParseMatMulNBitsMChunkSize(ResolveFpAIntBConfigOrEnv(
+        info, kOrtSessionOptionsCudaMatMulNBitsMChunkSize, kMChunkSizeEnvVar));
+    m_chunk_size_ = static_cast<int>(FpAIntBProfileSafeMCap(m_chunk_size_));
+    const int64_t profile_elements_per_row = SafeInt<int64_t>(N_) + SafeInt<int64_t>(K_);
+    const int64_t scratch_elements_limit = kMChunkMinBytes / static_cast<int64_t>(sizeof(T));
+    const int64_t memory_gate_rows = scratch_elements_limit / std::max<int64_t>(1, profile_elements_per_row);
+    m_chunk_min_rows_ = FpAIntBProfileSafeMCap(memory_gate_rows);
     if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
       // See matmul_nbits_sm90_validation.h / matmul_nbits.cc for the validation logic (extracted
       // into a pure function of (sm, block_size) so it can be unit-tested without a Hopper GPU).
@@ -219,9 +259,13 @@ class MatMulNBits final : public CudaKernel {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type;
         if constexpr (std::is_same<T, MLFloat16>::value) {
-          cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          cuda_kernel_type = (nbits_ == 8)   ? KernelType::FP16Int8Groupwise
+                             : (nbits_ == 4) ? KernelType::FP16Int4Groupwise
+                                             : KernelType::FP16Int2Groupwise;
         } else if constexpr (std::is_same<T, BFloat16>::value) {
-          cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+          cuda_kernel_type = (nbits_ == 8)   ? KernelType::BF16Int8Groupwise
+                             : (nbits_ == 4) ? KernelType::BF16Int4Groupwise
+                                             : KernelType::BF16Int2Groupwise;
         }
         if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
                 sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
@@ -229,6 +273,21 @@ class MatMulNBits final : public CudaKernel {
         }
 
         InitGemmProfiler(FpAIntBPackingSmForKernel());
+
+        // Opt-in: let the tactic profiler also try the paired-K fp16 int4 GEMV for M = 5..8 ("1"), or use
+        // only it ("force", for testing). Only the SM80-interleaved layout has this kernel.
+        if constexpr (std::is_same<T, MLFloat16>::value) {
+          const int packing_sm = FpAIntBPackingSmForKernel();
+          const std::string paired_option = ResolveFpAIntBConfigOrEnv(
+              info, kOrtSessionOptionsCudaFpAIntBGemvPairedK, kFpAIntBGemvPairedKOption);
+          const bool paired_eligible = has_fpA_intB_gemv_ && nbits_ == 4 && block_size_ == 32 &&
+                                       !has_zero_points_ && !has_bias_ && !(packing_sm >= 90 && packing_sm < 100);
+          if (paired_eligible && ParseFpAIntBEnabled(paired_option)) {
+            paired_gemv_mode_ =
+                onnxruntime::utils::GetLowercaseString(onnxruntime::utils::TrimString(paired_option)) == "force" ? 2 : 1;
+          }
+          gemmProfiler_->setPairedGemvMode(paired_gemv_mode_);
+        }
 
         // Initial profile M buckets from session config (ep.cuda.fpa_intb_profile_m) with
         // ORT_FPA_INTB_PROFILE_M env fallback; empty -> profiler uses its default bucket set.
@@ -239,6 +298,12 @@ class MatMulNBits final : public CudaKernel {
 
         int max_m = profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
                                       : profile_m.back();
+        // Unchunked launches never exceed this many rows, so larger buckets are never looked up.
+        if (m_chunk_size_ > 0) {
+          const int64_t max_unchunked_m =
+              force_chunked_ ? m_chunk_size_ : std::max<int64_t>(m_chunk_size_, m_chunk_min_rows_);
+          max_m = static_cast<int>(std::min<int64_t>(max_m, max_unchunked_m));
+        }
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
@@ -246,9 +311,11 @@ class MatMulNBits final : public CudaKernel {
       if (prepacked) {
 #if USE_COMPACT_FPA_INTB_GEMM
         ORT_ENFORCE(has_fpA_intB_gemm_,
-                    "This compact fpA_intB build supports prepacked weights only for FP16 activations, "
-                    "INT4 or INT8 weights, block_size=32, scale-only quantization without zero points, bias, or g_idx, "
-                    "the SM80 weight layout (weight_prepacked=1), and compute capability 7.5 or later. Got bits=",
+                    "This compact fpA_intB build supports prepacked weights for FP16/BF16 activations with "
+                    "INT2 (block_size=64), INT4 or INT8 (block_size=32) weights; it requires scale-only "
+                    "quantization without zero points, bias, or g_idx, the SM80 weight layout "
+                    "(weight_prepacked=1), and compute capability "
+                    "7.5 or later for FP16 (8.0 or later for BF16). Got bits=",
                     nbits_, ", block_size=", block_size_, ", N=", N_, ", K=", K_,
                     ", weight_prepacked=", weight_prepacked_, ", zero_points=", has_zero_points_,
                     ", g_idx=", has_g_idx_, ", bias=", has_bias_, ", sm=", sm_);
@@ -312,6 +379,11 @@ class MatMulNBits final : public CudaKernel {
   int FpAIntBPackingSmForKernel() const;
   int64_t RequiredWeightPrepackedFormat() const;
 
+  int64_t FpAIntBRowsPerLaunch(int64_t m) const {
+    const bool chunk = m_chunk_size_ > 0 && m > m_chunk_size_ && (force_chunked_ || m > m_chunk_min_rows_);
+    return chunk ? m_chunk_size_ : m;
+  }
+
   void InitGemmProfiler(int sm);
   void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
 
@@ -339,8 +411,15 @@ class MatMulNBits final : public CudaKernel {
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
+  // 0 = off, 1 = paired-K GEMV is an extra profiler tactic, 2 = it is the only GEMV/GEMM tactic for M = 8.
+  int paired_gemv_mode_{0};
   bool has_fpA_intB_gemm_{false};
+  bool wave_aware_gemv_{false};
   int64_t weight_prepacked_{kMatMulNBitsWeightNotPrepacked};
+  // Max rows of A per fpA_intB launch; 0 disables M chunking.
+  int m_chunk_size_{0};
+  // M above this is large enough for chunking to pay off (see kMChunkMinBytes).
+  int64_t m_chunk_min_rows_{0};
 
   bool is_prepacked_weight_{false};
   bool is_prepacked_scale_{false};

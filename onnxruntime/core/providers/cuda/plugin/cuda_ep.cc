@@ -217,6 +217,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
   adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
+  adapter_config.enable_cuda_graph = config_.enable_cuda_graph;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
 

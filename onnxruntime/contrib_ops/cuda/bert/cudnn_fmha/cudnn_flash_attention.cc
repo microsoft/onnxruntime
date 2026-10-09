@@ -61,7 +61,6 @@ bool is_supported_paged(const cudaDeviceProp& /*dprops*/,
                         int /*head_size_qk*/,
                         int /*head_size_v*/,
                         int /*sequence_length_q*/,
-                        int /*max_sequence_length_kv*/,
                         int /*block_size*/) {
   return false;
 }
@@ -101,7 +100,9 @@ bool run_paged(
     bool /*is_bf16*/,
     cudnnHandle_t /*handle*/,
     Stream* /*stream*/,
-    AllocatorPtr /*allocator*/) {
+    AllocatorPtr /*allocator*/,
+    bool* cache_hit) {
+  *cache_hit = false;
   return false;
 }
 
@@ -546,7 +547,6 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
                         int head_size_qk,
                         int head_size_v,
                         int sequence_length_q,
-                        int max_sequence_length_kv,
                         int block_size) {
   // Feature envelope from cuDNN release notes (paged SDPA landed in 9.5.0). Keep this in sync with
   // is_stable() so the paged tier is gated to versions we have actually validated.
@@ -573,7 +573,7 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
     return false;
   }
 
-  if (block_size <= 0 || max_sequence_length_kv <= 0) {
+  if (block_size <= 0) {
     return false;
   }
 
@@ -759,6 +759,8 @@ thread_local std::unordered_map<PagedGraphParams,
                                 std::shared_ptr<fe::graph::Graph>,
                                 BytesHash<PagedGraphParams> >
     paged_mha_graph_cache;
+// TODO(tianleiwu): Bound this cache. Continuous batching can produce many combinations of
+// batch_size, cache_num_blocks, and max_num_blocks_per_seq over a process lifetime.
 
 // Fill a PagedGraphParams for both the probe and the run. Byte-zeros first so BytesHash covers
 // the padding bytes deterministically; without this, the padding bytes are indeterminate and
@@ -858,7 +860,8 @@ bool run_paged(
     bool is_bf16,
     cudnnHandle_t handle,
     Stream* stream,
-    AllocatorPtr allocator) {
+    AllocatorPtr allocator,
+    bool* cache_hit) {
   PagedGraphParams params;
   FillPagedGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
                        cache_num_blocks, block_size, max_num_blocks_per_seq,
@@ -867,8 +870,10 @@ bool run_paged(
   std::shared_ptr<fe::graph::Graph> mha_graph;
   auto it = paged_mha_graph_cache.find(params);
   if (it != paged_mha_graph_cache.end()) {
+    *cache_hit = true;
     mha_graph = it->second;
   } else {
+    *cache_hit = false;
     // Cache miss. cuDNN graph build is not capturable, and PagedAttention's cascade issues a
     // probe (try_build_paged_graph) on the first non-capturing Compute for this node so a
     // captured graph should never see a miss here. If it happens anyway, return false rather
