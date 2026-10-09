@@ -14,7 +14,8 @@ namespace intel {
 class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
  public:
   GemmSubgroupProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul,
-                      bool c_is_scalar, bool is_vec4, bool a_vec4, bool b_is_fp16, const gsl::span<int64_t>& elements_per_thread)
+                      bool c_is_scalar, bool is_vec4, bool a_vec4, bool b_is_fp16, bool use_f32_accumulation,
+                      const gsl::span<int64_t>& elements_per_thread)
       : Program{"GemmSubgroup"},
         transA_{transA},
         transB_{transB},
@@ -25,6 +26,7 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
         is_vec4_(is_vec4),
         a_vec4_(a_vec4),
         b_is_fp16_(b_is_fp16),
+        use_f32_accumulation_(use_f32_accumulation),
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -34,7 +36,10 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
       {"beta", ProgramUniformVariableDataType::Float32},
       {"dim_a_outer", ProgramUniformVariableDataType::Uint32},
       {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-      {"dim_inner", ProgramUniformVariableDataType::Uint32});
+      {"dim_inner", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool transA_;
@@ -46,6 +51,7 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
   bool is_vec4_ = false;
   bool a_vec4_ = false;
   bool b_is_fp16_ = false;
+  bool use_f32_accumulation_ = false;
   const InlinedVector<int64_t> elements_per_thread_;
 };
 

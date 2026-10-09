@@ -1379,7 +1379,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS onnxruntime_provider_bridge_valid_fixture onnxruntime_provider_bridge_missing_export_fixture)
     set_target_properties(${bridge_test_target} PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${bridge_test_target}/$<CONFIG>")
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${bridge_test_target}")
     target_compile_definitions(${bridge_test_target} PRIVATE
       ORT_PROVIDER_BRIDGE_VALID_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_valid_fixture>"
       ORT_PROVIDER_BRIDGE_MISSING_EXPORT_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_missing_export_fixture>")
@@ -1430,7 +1430,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       DEPENDS onnxruntime_optional_probe_shared_fixture onnxruntime_optional_probe_valid_fixture
               onnxruntime_optional_probe_missing_export_fixture)
     set_target_properties(${probe_target} PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${probe_target}/$<CONFIG>")
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${probe_target}")
     foreach(fixture IN ITEMS shared valid missing_export)
       target_compile_definitions(${probe_target} PRIVATE
         ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_optional_probe_${fixture}_fixture>")
@@ -1658,6 +1658,11 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+
+  # Match the non-plugin WebGPU test-source selection above.
+  if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+    target_include_directories(${onnxruntime_provider_test_target} PRIVATE ${WGSL_GENERATED_ROOT})
+  endif()
 
   if (NOT onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
     # Keep the public build target responsible for both runtime artifacts without

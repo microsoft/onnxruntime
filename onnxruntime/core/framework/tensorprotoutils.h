@@ -334,12 +334,20 @@ common::Status GetExtDataFromTensorProto(const Env& env, const onnxruntime::Mode
 common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const onnxruntime::ModelPath& model_path,
                                                   const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                   const IExternalDataLoader& ext_data_loader,
+                                                  const AllocatorPtr& allocator,
                                                   Tensor& tensor);
 
 // Load any saved pre-packed blobs referenced by an external TensorProto without loading its tensor data.
 common::Status LoadPrepackedWeightsFromExternalData(const Env& env, const onnxruntime::ModelPath& model_path,
                                                     const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                     PrepackedWeightsForGraph& prepacked_info);
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+common::Status RegisterExternalDataLoadCandidateFromTensorProto(
+    const Env& env, const onnxruntime::ModelPath& model_path,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    const IExternalDataLoader& ext_data_loader);
+#endif
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the

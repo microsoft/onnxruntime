@@ -263,6 +263,47 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ASSERT_EQ(final_offset, external_offset);
 }
 
+TEST(TensorProtoUtilsTest, PrepackedExternalDataHasDeterministicAlignedLayout) {
+  PrepackedKeyToBlobMap key_to_blob;
+  PrepackedWeightsForGraph prepacked_for_graph{key_to_blob, true};
+  std::array<std::string, 3> data{"aaa", "bbbbbbbbb", "ccccc"};
+  const std::array<std::string, 3> keys{"a", "b", "c"};
+  for (size_t i = 0; i < keys.size(); ++i) {
+    PrePackedWeights weights;
+    weights.buffers_.push_back(BufferUniquePtr(data[i].data(), BufferDeleter(nullptr)));
+    weights.buffer_sizes_.push_back(data[i].size());
+    prepacked_for_graph.WritePackedMaybeForSave("weight", keys[i], std::move(weights));
+  }
+
+  const std::string expected_bytes =
+      std::string(3, '\0') + data[0] + std::string(2, '\0') + data[1] + std::string(7, '\0') + data[2];
+  const std::array<std::string, 3> expected_entries{"a|3;3;0", "b|8;9;0", "c|24;5;0"};
+  for (bool reverse : {false, true}) {
+    for (size_t capacity : {3u, 32u}) {
+      SCOPED_TRACE(reverse);
+      SCOPED_TRACE(capacity);
+      InlinedHashSet<std::string> blob_keys;
+      blob_keys.reserve(capacity);
+      for (size_t i = 0; i < keys.size(); ++i) {
+        blob_keys.insert(keys[reverse ? keys.size() - 1 - i : i]);
+      }
+      std::stringstream stream;
+      stream << std::string(3, '\0');
+      int64_t offset = 3;
+      TensorProto tensor_proto;
+      ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(
+          prepacked_for_graph, blob_keys, true, 4, 8, stream, offset, tensor_proto));
+      EXPECT_EQ(offset, 29);
+      EXPECT_EQ(stream.str(), expected_bytes);
+      ASSERT_EQ(tensor_proto.external_data_size(), 3);
+      for (size_t i = 0; i < keys.size(); ++i) {
+        EXPECT_EQ(tensor_proto.external_data(static_cast<int>(i)).key(), "prepacked_" + std::to_string(i));
+        EXPECT_EQ(tensor_proto.external_data(static_cast<int>(i)).value(), expected_entries[i]);
+      }
+    }
+  }
+}
+
 TEST(PrepackedWeightsForGraphTest, DiscardReferencesProvidedWeightWhenSaving) {
   constexpr const char* weight_name = "weight";
   constexpr const char* key = "key";
@@ -2867,6 +2908,31 @@ class FileOnlyExternalLoader final : public IExternalDataLoader {
     return file.Read(offset, gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), length));
   }
 };
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+TEST_F(ExternalDataFileTest, ExternalLoaderCandidateAcceptsModelPath) {
+  class CandidateLoader final : public IExternalDataLoader {
+   public:
+    mutable std::filesystem::path candidate_path;
+    mutable size_t candidate_length{0};
+
+    bool CanLoad(const OrtMemoryInfo&) const override { return true; }
+    Status RegisterLoadCandidate(const Env&, const std::filesystem::path& path,
+                                 std::string_view, FileOffsetType offset, SafeInt<size_t> length) const override {
+      EXPECT_EQ(offset, 0);
+      candidate_path = path;
+      candidate_length = length;
+      return Status::OK();
+    }
+  } loader;
+
+  const ModelPath model_path{model_dir_ / "model.onnx"};
+  ASSERT_STATUS_OK(utils::RegisterExternalDataLoadCandidateFromTensorProto(
+      Env::Default(), model_path, MakeTensor(), loader));
+  EXPECT_EQ(loader.candidate_path, model_dir_ / "data.bin");
+  EXPECT_EQ(loader.candidate_length, contents_.size());
+}
+#endif
 
 TEST_F(ExternalDataFileTest, NativeLoaderReceivesTheOpenedFile) {
   ExternalFileTestEnv env;

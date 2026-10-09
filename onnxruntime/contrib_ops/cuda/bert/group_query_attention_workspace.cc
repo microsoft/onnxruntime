@@ -206,15 +206,9 @@ GQAWorkspaceStatus ValidateProblem(const GQAWorkspaceProblem& problem,
       return Invalid("Quantized GQA XQA preprocessing is incompatible with QK-Norm.");
     }
 
-    if (!IsSupportedGQAXqaHeadSize(problem.head_size)) {
-      return Invalid("GQA XQA preprocessing requires head size 64, 128, or 256.");
-    }
-
     const int64_t group_size = problem.num_heads / problem.kv_num_heads;
-    if (!IsSupportedGQAXqaGroupSize(group_size, k_is_quantized)) {
-      return Invalid(
-          "GQA XQA preprocessing requires group size 1, 2, 4, 5, 8, 16, or 32 "
-          "(4, 8, 16, or 32 when quantized).");
+    if (!IsSupportedGQAXqaGeometry(problem.head_size, group_size, k_is_quantized)) {
+      return Invalid("GQA XQA preprocessing does not support this head size and query-to-KV head group.");
     }
   }
 

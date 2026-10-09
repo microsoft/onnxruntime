@@ -1906,7 +1906,12 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
 Status LoadExtDataToTensorFromTensorProto(const Env& env, const onnxruntime::ModelPath& model_path,
                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                           const IExternalDataLoader& ext_data_loader,
+                                          const AllocatorPtr& allocator,
                                           Tensor& tensor) {
+#if !defined(ENABLE_D3D12_FILE_LOADING)
+  ORT_UNUSED_PARAMETER(allocator);
+#endif
+
   ORT_ENFORCE(HasExternalData(tensor_proto));
   // Defense-in-depth path validation for callers reaching this function outside Graph::Resolve.
   // In-memory markers are passed through; rejected explicitly below as unsupported for this path.
@@ -1928,6 +1933,13 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const onnxruntime::Mod
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  if (ext_data_loader.CreatesTensorForDevice(tensor.Location().device)) {
+    return ext_data_loader.LoadTensor(env, external_data_file_path, tensor_proto.name(), file_offset,
+                                      raw_data_safe_len, allocator, tensor);
+  }
+#endif
+
 #if defined(__wasm__)
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 #else
@@ -1937,6 +1949,41 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const onnxruntime::Mod
   return ext_data_loader.LoadTensor(*file, file_offset, raw_data_safe_len, tensor);
 #endif
 }
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+Status RegisterExternalDataLoadCandidateFromTensorProto(
+    const Env& env, const onnxruntime::ModelPath& model_path,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    const IExternalDataLoader& ext_data_loader) {
+  ORT_ENFORCE(HasExternalData(tensor_proto));
+
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path.Path(), tensor_proto_dir));
+  }
+
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
+
+  size_t tensor_byte_size = 0;
+  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor_byte_size,
+                "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                " does not match the tensor size: ", tensor_byte_size);
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag ||
+                    external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
+                "Memory address tag is not supported by custom external data loader.");
+
+  return ext_data_loader.RegisterLoadCandidate(
+      env, external_data_file_path, tensor_proto.name(), file_offset,
+      raw_data_safe_len);
+}
+#endif
 
 #define CASE_PROTO(X, Y)                                                                                            \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                              \

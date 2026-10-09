@@ -1248,7 +1248,7 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    ModelOptions model_opts(true, strict_shape_type_inference, check_load_cancellation_fn_);
+    ModelOptions model_opts{true, strict_shape_type_inference, check_load_cancellation_fn_};
 
     // When set, the external initializers folder overrides the model's own directory as the
     // base for resolving external data. The model bytes are still read from model_uri.
@@ -1358,8 +1358,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     return onnxruntime::Model::Load(std::move(model_proto), model_path, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference,
-                                                 check_load_cancellation_fn_));
+                                    ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_array");
@@ -1428,8 +1427,7 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     // This call will move model_proto to the constructed model instance
     return onnxruntime::Model::Load(std::move(model_proto), model_path, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference,
-                                                 check_load_cancellation_fn_));
+                                    ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_proto");
@@ -1461,9 +1459,7 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    ModelOptions model_opts(allow_released_opsets_only,
-                            strict_shape_type_inference,
-                            check_load_cancellation_fn_);
+    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
 
     ModelPath external_data_model_path;
     ORT_RETURN_IF_ERROR(
@@ -1514,8 +1510,7 @@ common::Status InferenceSession::Load() {
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_path, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                       ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
-                                    check_load_cancellation_fn_));
+                       ModelOptions{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_from_saved_proto");
@@ -1543,8 +1538,8 @@ common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
   std::unique_ptr<Model> tmp_model;
   ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
                                                          HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                                         ModelOptions(true, strict_shape_type_inference,
-                                                                      check_load_cancellation_fn_),
+                                                         ModelOptions{true, strict_shape_type_inference,
+                                                                      check_load_cancellation_fn_},
                                                          *session_logger_, tmp_model));
 
   model_ = std::move(tmp_model);
@@ -2900,8 +2895,12 @@ common::Status InferenceSession::Initialize() {
     }
 
     if (!session_options_.external_initializer_files_mmap.empty()) {
+      const bool use_buffers_directly = session_options_.config_options.GetConfigOrDefault(
+                                            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
+                                        "1";
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap));
+          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap,
+                                                            use_buffers_directly));
       InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>{}.swap(
           session_options_.external_initializer_files_mmap);
     }
