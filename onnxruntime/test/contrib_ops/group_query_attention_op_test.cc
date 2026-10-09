@@ -51,6 +51,7 @@ namespace test {
 // Restrict native H512 GQA to supported GPUs and compatible, unquantized grouped-head caches.
 TEST(GroupQueryAttentionTest, NativeH512FallbackEligibility) {
   contrib::GroupQueryAttentionParameters parameters{};
+  parameters.sequence_length = 1;
   parameters.num_heads = 8;
   parameters.kv_num_heads = 1;
   parameters.head_size = 512;
@@ -58,6 +59,11 @@ TEST(GroupQueryAttentionTest, NativeH512FallbackEligibility) {
   for (int device_major : {5, 6, 7, 8, 9, 10, 12}) {
     EXPECT_EQ(contrib::cuda::PreferNativeGqa(parameters, device_major, false, false), device_major >= 8);
   }
+  for (int sequence_length : {0, 2, 8192, 16384}) {
+    parameters.sequence_length = sequence_length;
+    EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, false));
+  }
+  parameters.sequence_length = 1;
   EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, true, false));
   EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, true));
   parameters.use_smooth_softmax = true;
@@ -3995,6 +4001,84 @@ TEST(GroupQueryAttentionTest, CudaAttentionBiasParityVsCpu) {
 }
 
 #ifdef USE_CUDA
+template <typename T>
+static void RunGQAH512PrefillMemoryEfficientTest() {
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  if (!HasCudaEnvironment(900)) {
+    GTEST_SKIP() << "H512 MEA numerical regression requires SM90+ shared-memory capacity";
+  }
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{{
+      {"ORT_ENABLE_XQA", "0"},
+      {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+      {"ORT_DISABLE_FLASH_ATTENTION", "1"},
+      {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "0"},
+      {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
+  }};
+  constexpr int sequence_length = 32;
+  constexpr int num_heads = 32;
+  constexpr int kv_num_heads = 8;
+  constexpr int head_size = 512;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  std::vector<T> value(sequence_length * kv_hidden_size);
+  std::vector<T> present_value(sequence_length * kv_hidden_size);
+  std::vector<T> expected(sequence_length * hidden_size);
+  for (int token = 0; token < sequence_length; ++token) {
+    for (int head = 0; head < kv_num_heads; ++head) {
+      std::fill_n(value.begin() + token * kv_hidden_size + head * head_size, head_size,
+                  T(static_cast<float>(token + 1) / 32.0f + static_cast<float>(head) / 8.0f));
+      std::fill_n(present_value.begin() + (head * sequence_length + token) * head_size, head_size,
+                  T(static_cast<float>(token + 1) / 32.0f + static_cast<float>(head) / 8.0f));
+    }
+    for (int head = 0; head < num_heads; ++head) {
+      const int kv_head = head / (num_heads / kv_num_heads);
+      std::fill_n(expected.begin() + token * hidden_size + head * head_size, head_size,
+                  T(static_cast<float>(token + 2) / 64.0f + static_cast<float>(kv_head) / 8.0f));
+    }
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<T>("query", {1, sequence_length, hidden_size},
+                     std::vector<T>(sequence_length * hidden_size, T(0.0f)));
+  tester.AddInput<T>("key", {1, sequence_length, kv_hidden_size},
+                     std::vector<T>(sequence_length * kv_hidden_size, T(0.0f)));
+  tester.AddInput<T>("value", {1, sequence_length, kv_hidden_size}, value);
+  tester.AddOptionalInputEdge<T>();
+  tester.AddOptionalInputEdge<T>();
+  tester.AddInput<int32_t>("seqlens_k", {1}, {sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length}, true);
+  tester.AddOutput<T>("output", {1, sequence_length, hidden_size}, expected);
+  tester.AddOutput<T>("present_key", {1, kv_num_heads, sequence_length, head_size},
+                      std::vector<T>(sequence_length * kv_hidden_size, T(0.0f)));
+  tester.AddOutput<T>("present_value", {1, kv_num_heads, sequence_length, head_size}, present_value);
+  tester.SetOutputTolerance(0.005f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  testing::internal::CaptureStdout();
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  const std::string kernel_log = testing::internal::GetCapturedStdout();
+  EXPECT_NE(kernel_log.find("SdpaKernel=EFFICIENT_ATTENTION"), std::string::npos) << kernel_log;
+#else
+  GTEST_SKIP() << "Memory Efficient Attention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaH512PrefillMemoryEfficientFp16) {
+  RunGQAH512PrefillMemoryEfficientTest<MLFloat16>();
+}
+
+TEST(GroupQueryAttentionTest, CudaH512PrefillMemoryEfficientBf16) {
+  RunGQAH512PrefillMemoryEfficientTest<BFloat16>();
+}
+
 static void RunGQACudaCacheAliasingTest(
     bool use_flash,
     bool sliding_window_cache = false,

@@ -894,19 +894,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention) {
     // Fall back to memory efficient attention.
     int sm = (device_prop.major * 10) + device_prop.minor;
-    const bool prefer_native_gqa = PreferNativeGqa(parameters, device_prop.major, is_inputs_quantized,
-                                                   head_sink != nullptr);
     // With attention_bias, MEA is skipped: the cutlass wrapper computes the bias row stride from
     // kv_sequence_length, which GQA sets to the KV-cache capacity (seqlen_present_kv_cache), not
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
-        !prefer_native_gqa &&
-        IsGQAMemoryEfficientEligibleSeqFree<T>(sm,
-                                               disable_memory_efficient_attention_,
-                                               is_inputs_quantized,
-                                               has_attention_bias,
-                                               parameters.head_size);
+        IsGQAMemoryEfficientEligible<T>(parameters, sm, disable_memory_efficient_attention_,
+                                        is_inputs_quantized, has_attention_bias, head_sink != nullptr);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
     // Head-expansion (K/V) and FP32 FMHA-accumulator scratch sizes come from the shared

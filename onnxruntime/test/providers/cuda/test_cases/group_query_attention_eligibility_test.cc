@@ -258,6 +258,66 @@ TYPED_TEST(GroupQueryAttentionFp16Bf16EligibilityTest, FlashChecksEachGate) {
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
+TYPED_TEST(GroupQueryAttentionFp16Bf16EligibilityTest, H512PrefillSelectsMemoryEfficientWorkspace) {
+  contrib::GroupQueryAttentionParameters parameters{};
+  parameters.num_heads = 32;
+  parameters.kv_num_heads = 8;
+  parameters.head_size = 512;
+  parameters.past_kv_format = contrib::AttentionQkvFormat::Q_K_V_BNSH;
+  parameters.sequence_length = 1;
+  EXPECT_FALSE(contrib::cuda::IsGQAMemoryEfficientEligible<TypeParam>(
+      parameters, 80, false, false, false, false));
+
+  for (int sequence_length : {8192, 16384}) {
+    SCOPED_TRACE(sequence_length);
+    parameters.sequence_length = sequence_length;
+    parameters.total_sequence_length = sequence_length;
+    const bool use_memory_efficient_attention = contrib::cuda::IsGQAMemoryEfficientEligible<TypeParam>(
+        parameters, 80, false, false, false, false);
+    ASSERT_TRUE(use_memory_efficient_attention);
+    EXPECT_FALSE(contrib::cuda::IsGQAMemoryEfficientEligible<TypeParam>(
+        parameters, 80, true, false, false, false));
+    EXPECT_FALSE(contrib::cuda::IsGQAMemoryEfficientEligible<TypeParam>(
+        parameters, 80, false, false, true, false));
+
+    contrib::cuda::GQAWorkspaceProblem problem;
+    problem.qkv_element_size = sizeof(TypeParam);
+    problem.cache_element_size = sizeof(TypeParam);
+    problem.batch_size = 1;
+    problem.sequence_length = sequence_length;
+    problem.num_heads = parameters.num_heads;
+    problem.kv_num_heads = parameters.kv_num_heads;
+    problem.head_size = parameters.head_size;
+    problem.present_kv_cache_capacity = sequence_length;
+    problem.is_first_prompt = true;
+
+    contrib::cuda::GQAConcreteRoute route;
+    route.backend = use_memory_efficient_attention ? contrib::cuda::GQABackend::MemoryEfficient
+                                                   : contrib::cuda::GQABackend::Unfused;
+    route.preparation.preprocess_mode = use_memory_efficient_attention
+                                            ? contrib::cuda::GQAPreprocessMode::MemoryEfficient
+                                            : contrib::cuda::GQAPreprocessMode::Unfused;
+    route.unfused.total_sequence_length = sequence_length;
+    const auto selected = contrib::cuda::GetGQACompleteWorkspaceRecipe(problem, route);
+    ASSERT_TRUE(selected.status.IsOK()) << selected.status.message;
+    EXPECT_EQ(selected.recipe.backend, contrib::cuda::GQABackend::MemoryEfficient);
+    const size_t linear_bytes = static_cast<size_t>(sequence_length) * 32 * 512;
+    EXPECT_EQ(selected.recipe.memory_efficient.expanded_key_bytes, linear_bytes * sizeof(TypeParam));
+    EXPECT_EQ(selected.recipe.memory_efficient.expanded_value_bytes, linear_bytes * sizeof(TypeParam));
+    EXPECT_EQ(selected.recipe.memory_efficient.output_accumulator_bytes, linear_bytes * sizeof(float));
+    EXPECT_EQ(selected.recipe.backend_bytes, linear_bytes * 8);
+    EXPECT_EQ(selected.recipe.unfused.qk_bytes, 0U);
+    EXPECT_EQ(selected.recipe.unfused.softmax_bytes, 0U);
+
+    const auto unfused = contrib::cuda::GetGQAUnfusedWorkspaceRecipe(problem, sequence_length);
+    ASSERT_TRUE(unfused.status.IsOK()) << unfused.status.message;
+    const size_t quadratic_bytes = static_cast<size_t>(sequence_length) * sequence_length * 32 * 8;
+    EXPECT_EQ(unfused.recipe.qk_bytes + unfused.recipe.softmax_bytes, quadratic_bytes);
+    EXPECT_EQ(unfused.recipe.total_backend_bytes, quadratic_bytes + linear_bytes * 4);
+    EXPECT_LT(selected.recipe.total_workspace_bytes, unfused.recipe.total_backend_bytes);
+  }
+}
+
 TYPED_TEST(GroupQueryAttentionFp16Bf16EligibilityTest, MemoryEfficientChecksEachGate) {
   constexpr bool is_half = std::is_same_v<TypeParam, MLFloat16>;
   const struct {
