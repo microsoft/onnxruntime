@@ -10,6 +10,7 @@
 #include "core/graph/constants.h"
 
 #include <algorithm>
+#include <functional>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
@@ -216,24 +217,16 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   // These implementations belong to this Session, not the Env shared allocator below.
-  AllocatorPtr device_alloc;
-  if (UseLegacyRecording()) {
-    // Legacy callers serialize all operations; internal Run allocations can defer their clears.
-    device_alloc = webgpu::CreateWebGpuAllocator(
-        device_free,
-        [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
-        [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-        false,
-        [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
-  } else {
-    // Plain writable Alloc must submit cached clears even during Run: a subsequent copy may
-    // use a different recording. Only a matching AllocOnStream may defer those clears.
-    device_alloc = webgpu::CreateWebGpuAllocator(
-        device_free,
-        [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
-        [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-        false);
-  }
+  // Legacy Run allocations share the recording and can defer clears. Modern Alloc keeps its
+  // default immediate-submission policy because a subsequent copy may use a different recording.
+  auto device_alloc = webgpu::CreateWebGpuAllocator(
+      device_free,
+      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
+      [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
+      false,
+      UseLegacyRecording()
+          ? std::function<bool()>{[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); }}
+          : std::function<bool()>{});
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
