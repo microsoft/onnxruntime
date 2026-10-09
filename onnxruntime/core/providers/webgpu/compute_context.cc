@@ -6,7 +6,6 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-#include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/ep/sync_stream.h"
 #endif
 
@@ -43,13 +42,7 @@ Tensor ComputeContext::CreateGPUTensor(MLDataType data_type, const TensorShape& 
   ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
 #if defined(ORT_USE_EP_API_ADAPTERS)
   if (ep::UseSingleThreadMode()) {
-    // Old hosts lack KernelContext_GetSyncStream; scratch still uses the owning Session's recording.
-    const size_t bytes = Tensor::CalculateTensorStorageSize(data_type, shape);
-    auto* gpu_allocator = static_cast<GpuBufferAllocator*>(allocator.get());
-    IAllocatorUniquePtr<void> buffer{gpu_allocator->AllocForKernel(bytes), [allocator](void* p) { allocator->Free(p); }};
-    Tensor tensor(data_type, shape, buffer.get(), allocator);
-    buffer.release();
-    return tensor;
+    return {data_type, shape, allocator};
   }
   const size_t bytes = Tensor::CalculateTensorStorageSize(data_type, shape);
   // For performance, use the kernel's stream: plain Alloc during Run immediately flushes cached-buffer

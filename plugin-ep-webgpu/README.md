@@ -68,10 +68,12 @@ Sessions. The existing override name is retained for compatibility. This process
 cannot enable concurrency on unsupported hosts.
 
 Both paths retain cached-buffer clearing and dispatch batching. The serial path does not submit
-after every kernel. Public Session/Env ordinary allocations submit cached-buffer clears before
-returning, including during Run. Kernels reuse the Session allocator for temporary space;
-concurrent-mode scratch uses an explicit stream, and single-thread scratch explicitly defers
-clears on its owning Session's recording without requiring the host's kernel stream API.
+after every kernel. Single-thread Session ordinary allocations submit cached-buffer clears outside
+Run and defer them during Run using `!IsRunActive()`. Kernels use ordinary Tensor allocation
+through that same Session allocator for temporary space, without requiring the host's kernel stream API.
+Under the serialized, non-reentrant calling contract, public allocations occur outside Run.
+Env allocations and concurrent-mode ordinary allocations continue to submit independent clears,
+including during Run; concurrent-mode scratch uses an explicit stream.
 Streamless copies in single-thread mode submit the active Session's pending work before
 using their own independent recording.
 See the [execution design](../onnxruntime/core/providers/webgpu/ep/README.md)

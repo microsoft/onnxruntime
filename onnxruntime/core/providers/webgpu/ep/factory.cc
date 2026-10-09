@@ -217,12 +217,16 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   // These implementations belong to this Session, not the Env shared allocator below.
+  // Single-thread callers serialize all operations; internal Run allocations can defer their clears.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       context_id,
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-      false);
+      false,
+      UseSingleThreadMode()
+          ? std::function<bool()>{[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); }}
+          : std::function<bool()>{});
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator

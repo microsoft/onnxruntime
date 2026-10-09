@@ -37,12 +37,16 @@ execution. Multiple Sessions may be used sequentially; overlapping Runs are reje
 a restriction to one fixed CPU thread, but operations must not overlap or reenter from callbacks.
 The plugin's same-Session Run concurrency flag alone cannot serialize separate Sessions or Env calls.
 
-In both plugin modes, Session and Env ordinary `Alloc` submit cached-buffer clears on an independent
-recording before returning, including during Run. This is submission, not a wait for GPU completion.
-In single-thread mode, `AllocOnStream` uses the same immediate-submission policy after validating
-the stream's Session. Kernel scratch instead uses `AllocForKernel` to defer clears on its owning
-Session's recording without `KernelContext_GetSyncStream`, which is unavailable on 1.24.
-The built-in allocation submission-policy callback is not used by either plugin mode.
+In single-thread mode, Session ordinary `Alloc` uses its owning Session's recording and a
+`!IsRunActive()` submission-policy callback: submit cached-buffer clears outside Run, defer them
+during Run. `AllocOnStream` uses the same policy after validating the stream's Session.
+Kernel scratch uses ordinary Tensor allocation through that same allocator, without
+`KernelContext_GetSyncStream`, which is unavailable on 1.24. Under the required serial,
+non-reentrant calling contract, application allocations occur outside Run and submit before
+returning. Run cleanup resets the active flag on success and failure.
+Env allocations and concurrent-mode ordinary allocations continue to submit independent clears,
+including during Run. Submission does not wait for GPU completion. Other plugin allocators
+without this explicit submission callback retain the independent-clear policy.
 
 The context tracks a non-owning pointer to the active Session's recording during a single-thread
 Run or replay. Framework copies with a stream use that stream's Session recording. If an old host

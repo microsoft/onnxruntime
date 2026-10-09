@@ -8,6 +8,10 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/sync_stream.h"
+#endif
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -31,11 +35,14 @@ GpuBufferAllocator::GpuBufferAllocator(
 }
 
 // Streamless allocation, e.g., application CreateTensor/Alloc APIs using a Session allocator,
-// or framework allocations without a stream, including during Run. The plugin's writable device
-// allocator submits cached clears before returning: the consumer may use a different recording.
-// Built-in callers can supply a different submission policy.
+// or framework allocations without a stream, including during Run. Single-thread Session allocators
+// defer clears during Run, where streamless copies flush the active Session before using another recording.
+// Other plugin allocations submit independent clears. Built-in callers can supply a different policy.
 void* GpuBufferAllocator::Alloc(size_t size) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  if (ep::UseSingleThreadMode() && recording_getter_ && should_submit_zero_initialize_) {
+    return Allocate(size, recording_getter_(), should_submit_zero_initialize_());
+  }
   // Streamless clears are independent of Run and must not read its capture state.
   CommandRecordingState recording;
   return Allocate(size, recording, true);

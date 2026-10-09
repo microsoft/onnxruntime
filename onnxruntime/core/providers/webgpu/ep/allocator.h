@@ -37,10 +37,11 @@ namespace ep {
 // Alloc vs AllocOnStream is a stream-based distinction, not an external-vs-internal API distinction:
 // BindInput can allocate on a Session stream before Run; streamless allocation during Run uses Alloc.
 // Read-only initializers and writable prepacked weights use separate GpuBufferAllocator instances
-// with InitializerBufferManager(). Read-only initializers skip clears. Plugin plain Alloc always
-// submits cached clears independently; built-in WebGPU uses the submission-policy callback.
-// Both plugin modes use Session-owned recordings. In single-thread mode, AllocOnStream uses
-// plain Alloc's immediate-submission policy; kernel scratch uses AllocForKernel to defer clears.
+// with InitializerBufferManager(). Read-only initializers skip clears.
+// The table describes concurrent mode. Both plugin modes use Session-owned recordings.
+// In single-thread mode, Session Alloc and AllocOnStream use a submission-policy callback:
+// submit clears outside Run and defer them during Run. Kernel scratch uses the same ordinary Alloc.
+// Env Alloc and concurrent-mode plain Alloc submit clears independently.
 // Single-thread callers must serialize all operations and must not reenter from callbacks.
 
 OrtAllocator* CreateWebGpuSessionAllocator(AllocatorPtr allocator);
