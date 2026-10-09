@@ -152,9 +152,9 @@ class ConcatBase {
       int64_t concat_axis_size = 0;
       for (size_t index = 0; index < input_count; index++) {
         const auto& input_shape = input_tensors[index]->Shape();
-        ORT_RETURN_IF_NOT(p.axis < input_shape.NumDimensions(),
-                          "Input rank must be greater than the concat axis: ",
-                          p.axis, " >= ", input_shape.NumDimensions());
+        ORT_RETURN_IF_NOT(input_shape.NumDimensions() >= reference_rank,
+                          "Input rank must be at least the reference input rank: ",
+                          input_shape.NumDimensions(), " < ", reference_rank);
 
         const int64_t input_axis_size = input_shape[onnxruntime::narrow<size_t>(p.axis)];
         ORT_RETURN_IF_NOT(input_axis_size <= std::numeric_limits<int64_t>::max() - concat_axis_size,
