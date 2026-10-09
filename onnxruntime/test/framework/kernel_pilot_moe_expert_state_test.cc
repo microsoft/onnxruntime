@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -75,6 +76,45 @@ class KernelPilotMoeExpertStateTest : public testing::Test {
   }
 };
 
+class FakeMoeExpertCache final : public IKernelPilotMoeExpertCache {
+ public:
+  explicit FakeMoeExpertCache(int device_id = 0) : device_id_(device_id) {}
+
+  int DeviceId() const noexcept override { return device_id_; }
+  bool HasPendingSwap() const noexcept override { return pending_; }
+  Status ReclaimCompletedSwap() override {
+    if (completed_) {
+      pending_ = false;
+      completed_ = false;
+    }
+    return Status::OK();
+  }
+  Status StartSwap(int cuda_expert_id, int cpu_expert_id) override {
+    ORT_RETURN_IF(pending_, "Test cache already has a pending swap.");
+    pending_ = true;
+    swaps_.emplace_back(cuda_expert_id, cpu_expert_id);
+    return Status::OK();
+  }
+
+  void Complete() noexcept { completed_ = true; }
+  const InlinedVector<std::pair<int, int>>& Swaps() const noexcept { return swaps_; }
+
+ private:
+  int device_id_;
+  bool pending_{false};
+  bool completed_{false};
+  InlinedVector<std::pair<int, int>> swaps_;
+};
+
+void MakeEligibleForCudaFp16MoePlacement(const OpKernel* kernel) {
+  auto& node = const_cast<Node&>(kernel->Node());
+  const_cast<std::string&>(node.OpType()) = "MoE";
+  const_cast<std::string&>(node.Domain()) = kMSDomain;
+  node.SetExecutionProviderType(kCudaExecutionProvider);
+  auto* input_type = const_cast<ONNX_NAMESPACE::TypeProto*>(node.InputDefs()[0]->TypeAsProto());
+  input_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
@@ -135,8 +175,17 @@ TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSub
 
 TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
   KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(2));
+  MakeEligibleForCudaFp16MoePlacement(kernels_[0]);
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 7, "MoE", 3));
   ASSERT_STATUS_OK(state.FinalizeInitialization());
+  FakeMoeExpertCache cache;
+  auto* pilot = state.GetKernelPilot(kernels_[0]);
+  ASSERT_NE(pilot, nullptr);
+  ASSERT_STATUS_OK(pilot->AttachMoeExpertCache(&cache));
+  ASSERT_STATUS_OK(pilot->PublishMoeExpertSwap(0, 2));
+  const int initially_selected[] = {2};
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], initially_selected));
 
   auto capturing_sink = std::make_unique<CapturingSink>();
   auto* capturing_sink_ptr = capturing_sink.get();
@@ -146,7 +195,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
   auto logger = logging_manager.CreateLogger("moe_counter_update");
   ASSERT_STATUS_OK(state.BeginRun("request \"one\"", logger.get()));
 
-  const int selected[] = {2, 0, 2};
+  const int selected[] = {2, 0, 1, 2};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   ASSERT_STATUS_OK(state.EndRun());
 
@@ -159,9 +208,37 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
   EXPECT_EQ(event["request_id"], "request \"one\"");
   EXPECT_EQ(event["graph_scope"], "main");
   EXPECT_EQ(event["node_index"], 7);
-  EXPECT_EQ(event["node_type"], "Identity");
-  EXPECT_EQ(event["selected_experts"], nlohmann::json({2, 0}));
-  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.0, 0.1}));
+  EXPECT_EQ(event["node_type"], "MoE");
+  EXPECT_EQ(event["moe_count"], 1);
+  EXPECT_EQ(event["total_expert_count"], 3);
+  EXPECT_EQ(event["selected_experts"],
+            nlohmann::json({
+                {
+                    {"expert_id", 2},
+                    {"score", 0.1},
+                    {"selected_rank", 0},
+                    {"node_rank", 0},
+                    {"global_position", 0},
+                    {"device", "CUDA"},
+                },
+                {
+                    {"expert_id", 0},
+                    {"score", 0.0},
+                    {"selected_rank", 1},
+                    {"node_rank", 1},
+                    {"global_position", 1},
+                    {"device", "CPU"},
+                },
+                {
+                    {"expert_id", 1},
+                    {"score", 0.0},
+                    {"selected_rank", 2},
+                    {"node_rank", 2},
+                    {"global_position", 2},
+                    {"device", "CPU"},
+                },
+            }));
+  EXPECT_FALSE(event.contains("counters"));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, LogsGraphScopeForSubgraphNode) {
@@ -189,6 +266,39 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsGraphScopeForSubgraphNode) {
   const auto event = nlohmann::json::parse(message.substr(marker_position + marker.size()));
   EXPECT_EQ(event["graph_scope"], "main/4/11:then_branch");
   EXPECT_EQ(event["node_index"], 0);
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, GlobalPositionUsesPreUpdateScoresAndGlobalIdTies) {
+  KernelPilotMoeExpertState state;
+  for (size_t node_index = 0; node_index < 3; ++node_index) {
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[node_index], "main", node_index, "MoE", 2));
+  }
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  const int selected[] = {0};
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_counter_update");
+  ASSERT_STATUS_OK(state.BeginRun("", logger.get()));
+  for (const auto* kernel : kernels_) {
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
+  }
+  ASSERT_STATUS_OK(state.EndRun());
+
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 3U);
+  constexpr std::string_view marker{"moe_expert_counters "};
+  const std::string& message = capturing_sink_ptr->Messages().back();
+  const size_t marker_position = message.find(marker);
+  ASSERT_NE(marker_position, std::string::npos);
+  const auto event = nlohmann::json::parse(message.substr(marker_position + marker.size()));
+  EXPECT_EQ(event["moe_count"], 3);
+  EXPECT_EQ(event["total_expert_count"], 6);
+  ASSERT_EQ(event["selected_experts"].size(), 1U);
+  EXPECT_EQ(event["selected_experts"][0]["global_position"], 4);
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, LimitsLogsWithoutLimitingCountersAndResetsBudgetPerRun) {
@@ -324,6 +434,64 @@ TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.6875, 0.25, 0.3125}));
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapUsesStrictEpsilonAndDeterministicTies) {
+  for (double epsilon : {1.0, 0.99}) {
+    SCOPED_TRACE(epsilon);
+    KernelPilotMoeExpertState state;
+    ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 0.5));
+    ASSERT_STATUS_OK(state.SetSwapEpsilon(epsilon));
+    ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(2));
+    MakeEligibleForCudaFp16MoePlacement(kernels_[0]);
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 4));
+    ASSERT_STATUS_OK(state.FinalizeInitialization());
+    FakeMoeExpertCache cache;
+    auto* pilot = state.GetKernelPilot(kernels_[0]);
+    ASSERT_NE(pilot, nullptr);
+    ASSERT_STATUS_OK(pilot->AttachMoeExpertCache(&cache));
+
+    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+    const int cuda_selected[] = {0, 1};
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], cuda_selected));
+    ASSERT_STATUS_OK(state.EndRun());
+    EXPECT_TRUE(cache.Swaps().empty());
+
+    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+    const int cpu_selected[] = {2, 3};
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], cpu_selected));
+    ASSERT_STATUS_OK(state.EndRun());
+    if (epsilon == 1.0) {
+      EXPECT_TRUE(cache.Swaps().empty());
+    } else {
+      EXPECT_EQ(cache.Swaps(), (InlinedVector<std::pair<int, int>>{{0, 2}}));
+    }
+  }
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapAllowsMoreThanTwoPerDevice) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterParameters(0, 1));
+  ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(3));
+  for (size_t i = 0; i < 3; ++i) {
+    MakeEligibleForCudaFp16MoePlacement(kernels_[i]);
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", i, "MoE", 2));
+  }
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  std::array<FakeMoeExpertCache, 3> caches;
+  for (size_t i = 0; i < caches.size(); ++i) {
+    ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[i])->AttachMoeExpertCache(&caches[i]));
+  }
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const int selected[] = {1};
+  for (const auto* kernel : kernels_) {
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
+  }
+  ASSERT_STATUS_OK(state.EndRun());
+  EXPECT_EQ(caches[0].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
+  EXPECT_EQ(caches[1].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
+  EXPECT_EQ(caches[2].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {
   for (const auto& [alpha, beta] : {
            std::pair{-0.1, 1.0},
@@ -350,6 +518,19 @@ TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
   EXPECT_FALSE(state.SetCounterParameters(0.5, 0.25).IsOK());
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, ValidatesSwapEpsilon) {
+  for (double epsilon : {-0.1, std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+    KernelPilotMoeExpertState state;
+    EXPECT_FALSE(state.SetSwapEpsilon(epsilon).IsOK());
+  }
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetSwapEpsilon(0));
+  ASSERT_STATUS_OK(state.SetSwapEpsilon(1.5));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
+  EXPECT_FALSE(state.SetSwapEpsilon(0.5).IsOK());
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {

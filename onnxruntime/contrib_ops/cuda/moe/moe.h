@@ -6,6 +6,7 @@
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "core/common/common.h"
+#include "core/framework/kernel_pilot_moe_expert_cache.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 #include <array>
@@ -18,8 +19,15 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
+// The plugin EP C API does not expose KernelPilot initialization/context or the cache callbacks needed to coordinate
+// swaps between the session-owned placement policy and a provider-owned kernel.
 template <typename T>
-class MoE final : public CudaKernel, public MoEBase {
+class MoE final : public CudaKernel, public MoEBase
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    ,
+                  public IKernelPilotMoeExpertCache
+#endif
+{
  public:
   explicit MoE(const OpKernelInfo& op_kernel_info);
   ~MoE() override;
@@ -41,11 +49,24 @@ class MoE final : public CudaKernel, public MoEBase {
     std::vector<float> cpu_gemm_float_data;
     IAllocatorUniquePtr<void> cuda_data;
     size_t bytes{0};
+    size_t expert_bytes{0};
+    size_t swap_offset{0};
+    size_t gemm_input_size{0};
+    size_t gemm_output_size{0};
     bool present{false};
   };
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   Status InitializeCudaExpertWeights(gsl::span<const int> cuda_experts);
+  Status PrepareExpertSwapForInvocation(cudaStream_t stream, KernelPilot* pilot) const;
+  void ReleaseSwapResources() noexcept;
+  void PrepareIncomingExpert() noexcept;
+  static void CUDART_CB PrepareIncomingExpertCallback(void* context);
+
+  int DeviceId() const noexcept override { return device_id_; }
+  bool HasPendingSwap() const noexcept override;
+  Status ReclaimCompletedSwap() override;
+  Status StartSwap(int cuda_expert_id, int cpu_expert_id) override;
 #endif
 
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
@@ -53,11 +74,30 @@ class MoE final : public CudaKernel, public MoEBase {
   bool cpu_offload_enabled_{false};
   AllocatorPtr cuda_allocator_;
   std::array<PackedTensor, 8> packed_inputs_;
-  InlinedVector<int> cuda_experts_;
-  InlinedVector<int> expert_map_;
+  mutable InlinedVector<int> cuda_experts_;
+  mutable InlinedVector<int> expert_map_;
   IAllocatorUniquePtr<void> device_expert_map_;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   cudaStream_t input_copy_stream_{nullptr};
+  cudaStream_t swap_d2h_stream_{nullptr};
+  cudaStream_t swap_h2d_stream_{nullptr};
+  cudaEvent_t last_expert_use_event_{nullptr};
+  cudaEvent_t swap_cpu_ready_event_{nullptr};
+  cudaEvent_t swap_transfer_complete_event_{nullptr};
+  cudaEvent_t swap_publication_complete_event_{nullptr};
+  enum class SwapPhase {
+    Idle,
+    TransferInFlight,
+    PublicationInFlight,
+  };
+  mutable SwapPhase swap_phase_{SwapPhase::Idle};
+  mutable int swap_cuda_expert_{-1};
+  mutable int swap_cpu_expert_{-1};
+  mutable size_t swap_cuda_slot_{0};
+  size_t swap_staging_bytes_{0};
+  int device_id_{0};
+  mutable IAllocatorUniquePtr<void> swap_pinned_buffer_;
+  mutable IAllocatorUniquePtr<void> swap_cuda_staging_;
   mutable std::mutex input_copy_mutex_;
 #endif
 };

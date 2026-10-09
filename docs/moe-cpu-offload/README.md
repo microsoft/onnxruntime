@@ -28,6 +28,10 @@ Training, router changes, expert-weight quantization, and multiple CUDA devices 
 - [#32738](https://github.com/microsoft/onnxruntime/pull/32738) added the session-global expert state, CPU and CUDA
   expert-selection collection, and exponentially decayed counters. It does not implement placement, CPU offload,
   swaps, or redistribution.
+- [#33039](https://github.com/microsoft/onnxruntime/pull/33039) added static FP16/BF16 CUDA `MoE` placement, hybrid
+  CPU/CUDA execution, and compact CUDA expert storage.
+- The adaptive-swap implementation exchanges hot CPU experts with cold CUDA experts asynchronously while preserving
+  each node's CUDA slot count. Global slot redistribution across nodes remains future work.
 
 ## Exploratory routing analysis
 
@@ -61,7 +65,7 @@ The four numerical policy parameters are exposed as session configuration entrie
 | `session.moe_cpu_offload_experts` | Offload count | Global number of experts to execute from CPU (`>= 0`); default `0`. |
 | `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and `>= 0`; default `0.9`. |
 | `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`; default `0.1`. |
-| `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`. |
+| `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`; default `0`. |
 
 The optional `session.moe_expert_counter_state_file` path is configured separately from these four numerical parameters.
 
@@ -99,6 +103,27 @@ by the larger of their initial value and `1`. Their defaults and constraints are
 
 Expert identity is `(graph_scope, node_index, node_type, expert_id)`. Ranking is by descending counter. Ties are resolved
 by `expert_id`, then graph scope and node index, so placement is deterministic.
+
+When counter logging is enabled, each event reports only the experts selected by that invocation. Each selected-expert
+record contains the local `expert_id`, its pre-update `score`, its zero-based `selected_rank` among the selected
+experts, its zero-based `node_rank` among every expert in the node, its zero-based `global_position` among every
+expert in the model, and its current `device` (`CPU` or `CUDA`). Ranks use descending score. Local ties are broken by
+expert ID, while global ties are broken by the fixed model-wide expert index. The device reflects the currently
+published placement; an asynchronous swap is not visible until the kernel publishes it. Each event also reports
+`moe_count` and `total_expert_count`.
+
+```json
+"selected_experts": [
+  {
+    "expert_id": 7,
+    "score": 0.1,
+    "selected_rank": 0,
+    "node_rank": 3,
+    "global_position": 1024,
+    "device": "CUDA"
+  }
+]
+```
 
 ## Initial counter state
 
@@ -175,14 +200,14 @@ inference t+1, node L
 ```
 
 CUDA devices expose their copy-engine count, but that value does not provide a portable expert-level concurrency
-guarantee. The initial implementation therefore permits at most two in-flight expert exchanges per CUDA device. Two
-independent pinned buffers, two extra CUDA staging slots, and separate device-to-host and host-to-device streams form a
-bidirectional pipeline. After exchange A finishes its device-to-host transfer, its host-to-device transfer may overlap
-the device-to-host transfer of exchange B. Events preserve the CPU-first ordering within each exchange; buffers and
+guarantee. The initial implementation therefore permits at most four in-flight expert exchanges per CUDA device.
+Independent pinned buffers, CUDA staging slots, and device-to-host and host-to-device streams form a bidirectional
+pipeline. After exchange A finishes its device-to-host transfer, its host-to-device transfer may overlap the
+device-to-host transfer of another exchange. Events preserve the CPU-first ordering within each exchange; buffers and
 CUDA slots are never shared by transfers that overlap. Hardware with one copy engine serializes the transfers without
 changing correctness. Additional exchanges remain queued for a later completion or inference boundary. For the
-measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this limit requires about 3.4 MiB of pinned staging
-memory and 3.4 MiB of temporary CUDA storage.
+measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this limit requires about 6.8 MiB of pinned staging
+memory and 6.8 MiB of temporary CUDA storage.
 
 ## End-of-inference redistribution
 
@@ -198,7 +223,7 @@ The allocation objective is lexicographic:
 Within each node, keep the experts with the highest counters. Redistribution may transfer slot ownership between
 nodes, whereas a per-node exchange changes the expert stored in a slot without changing that node's slot count.
 
-Redistribution never drains or waits for pending exchanges. It schedules up to the available two-exchange concurrency
+Redistribution never drains or waits for pending exchanges. It schedules up to the available four-exchange concurrency
 limit and leaves additional non-conflicting exchanges queued. A node with an incomplete exchange continues using its
 published pre-exchange placement. Slot metadata changes only after both transfer directions complete.
 
@@ -240,11 +265,11 @@ counter-update logic. These are internal C++ calls, not a public C API.
 Expert identity includes graph scope as well as node and expert IDs, so nodes in different
 subgraphs cannot collide. The state persists across `Run()` calls and is isolated from other sessions.
 
-The CUDA cache manager owns device-specific resources and execution state:
+Each CUDA kernel cache owns device-specific resources and execution state:
 
-- CUDA slots, two extra staging slots, and current immutable mappings;
-- two reusable pinned host staging buffers;
-- pending exchanges and redistribution transfers;
+- CUDA slots, one reusable staging slot, and the current immutable mapping;
+- one reusable pinned host staging buffer;
+- at most one pending exchange;
 - CUDA completion events.
 
 Initialization builds an immutable dictionary from `(OpKernel pointer, local expert ID)` to a global expert index.
@@ -289,20 +314,28 @@ must also be constant.
 
 ### Step 2: adaptive expert swaps
 
+Implemented in the adaptive-swap change:
+
 - Use the session-global counters and optional initial counter state to rank experts.
 - Apply the strict `cpu_max > (1 + epsilon) * cuda_min` rule and let the pilot schedule exchanges after inference.
-- Move the CUDA expert to CPU before moving its replacement to CUDA.
-- Manage CUDA slots, two staging slots, two pinned buffers, dedicated device-to-host and host-to-device streams,
-  completion events, immutable per-invocation mappings, and atomic publication of completed swaps.
-- Permit at most two in-flight exchanges per CUDA device and queue the rest.
-- Pipeline the host-to-device transfer of one exchange with the device-to-host transfer of the other when the hardware
-  exposes bidirectional copy engines.
-- Never wait for an incomplete exchange when a `MoE` starts; use the pre-exchange placement for that invocation.
-- Redistribute the global CUDA expert budget after inference without draining pending exchanges, while maximizing the
-  number of completely CUDA-resident nodes.
-- Test the epsilon boundary, transfer ordering, two-exchange concurrency, queued exchanges, nonblocking use of the old
-  mapping, asynchronous publication, global budget preservation, counter-based placement, and explicit transfer
-  failures.
+- Move the CUDA expert to pinned CPU staging before moving its replacement to the extra CUDA slot.
+- Use dedicated device-to-host and host-to-device streams, events, and separate staging allocations for each active
+  exchange.
+- Permit at most four in-flight exchanges per CUDA device; additional eligible nodes are reconsidered at the next
+  inference boundary.
+- Pipeline the host-to-device transfer of one exchange with the device-to-host transfer of another when the hardware
+  supports bidirectional copies.
+- Never wait for an incomplete exchange when a `MoE` starts. The old placement remains published until transfer
+  completion; publication copies the staged expert into the persistent slot on that invocation's compute stream.
+- Preserve each node's CUDA slot count and therefore the session-global CUDA expert budget.
+- Test the strict epsilon boundary, deterministic tie-breaking, multi-exchange concurrency, delayed
+  publication, and numerical parity before and after a swap.
+
+Still planned:
+
+- Redistribute CUDA slot ownership across nodes without draining pending exchanges, while maximizing the number of
+  completely CUDA-resident nodes.
+- Add end-to-end throughput and memory measurements for representative Qwen models.
 
 After these two implementation steps, the remaining work is end-to-end measurement. Run reproducible CPU-only,
 CUDA-only, and hybrid evaluations with identical models, prompts, and generation settings; sweep offload targets and

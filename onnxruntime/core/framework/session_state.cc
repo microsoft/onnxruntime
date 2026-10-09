@@ -1704,16 +1704,23 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   if (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload) {
     double alpha = 0.0;
     double beta = 0.0;
+    double swap_epsilon = 0.0;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
     const auto alpha_value =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
     const auto beta_value =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterBeta, "0.1");
+    const auto swap_epsilon_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0");
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(swap_epsilon_value, swap_epsilon),
+                      "Invalid ", kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
+                      " value: ", swap_epsilon_value);
     ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
+    ORT_RETURN_IF_ERROR(state->SetSwapEpsilon(swap_epsilon));
     if (enable_moe_cpu_offload) {
       ORT_RETURN_IF_ERROR(
           state->SetCpuOffloadExpertCount(static_cast<size_t>(cpu_offload_expert_count)));

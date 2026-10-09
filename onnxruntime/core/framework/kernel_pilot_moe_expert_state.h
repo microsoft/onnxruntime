@@ -22,7 +22,7 @@ namespace logging {
 class Logger;
 }
 
-// Host-side state only. CUDA allocations and placement policy do not belong here.
+// Session-global host policy and counters. CUDA allocations and transfer mechanics stay provider-side.
 class KernelPilotMoeExpertState {
  public:
   // Counter-update logging
@@ -38,7 +38,7 @@ class KernelPilotMoeExpertState {
   Status BeginRun(std::string request_id, const logging::Logger* logger);
 
   // Releases the active Run and its optional logging state.
-  Status EndRun();
+  Status EndRun(bool run_succeeded = true);
 
   // Expert counters
   // ---------------
@@ -51,6 +51,10 @@ class KernelPilotMoeExpertState {
   // Enables static CUDA placement and sets the global number of experts offloaded to CPU.
   // Must be called before FinalizeInitialization().
   Status SetCpuOffloadExpertCount(size_t cpu_offload_expert_count);
+
+  // Sets the relative margin required before replacing a CUDA-resident expert.
+  // Must be called before registering any MoE kernels.
+  Status SetSwapEpsilon(double epsilon);
 
   // Registers one resolved MoE kernel and allocates its contiguous counter range and
   // provider-independent KernelPilot. Registration closes after initialization.
@@ -107,6 +111,7 @@ class KernelPilotMoeExpertState {
  private:
   friend class KernelPilot;
   Status RecordUsage(const OpKernel* kernel);
+  Status ScheduleSwaps();
 
   using Key = std::pair<std::string, size_t>;
   struct ExpertRange {
@@ -124,6 +129,7 @@ class KernelPilotMoeExpertState {
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;
+  std::mutex counter_logging_mutex_;
   mutable std::mutex run_mutex_;
   bool run_active_{false};
   std::string logging_request_id_;
@@ -132,6 +138,7 @@ class KernelPilotMoeExpertState {
   double alpha_{0.9};
   double beta_{0.1};
   size_t cpu_offload_expert_count_{0};
+  double swap_epsilon_{0.0};
   bool cpu_offload_enabled_{false};
   bool initialized_{false};
 };

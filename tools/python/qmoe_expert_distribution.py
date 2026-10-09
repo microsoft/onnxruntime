@@ -3,13 +3,10 @@ import argparse
 import csv
 import json
 import math
-import os
 import re
-import stat
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-
-import onnx
 
 COUNTER_MARKER = "moe_expert_counters "
 COUNTER_COMPLETE_MARKER = "moe_expert_counters_complete "
@@ -17,69 +14,43 @@ COUNTER_TRUNCATED_MARKER = "moe_expert_counters_truncated "
 PROMPT_START = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
 PROMPT_END = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_end$")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
-QMOE_EXPERT_WEIGHT_INPUT_INDICES = (2, 5)
-MAX_PLOTTED_LAYERS = 9
-MAX_EXTERNAL_DATA_VALUE = (1 << 63) - 1
+SELECTED_EXPERT_COUNT = 8
+GLOBAL_POSITION_THRESHOLDS = (5120, 8000)
+CUMULATIVE_GLOBAL_POSITION_THRESHOLDS = (5120, 6000, 7000, 8000, 9000, 10000)
+
+
+@dataclass(frozen=True)
+class TraceSummary:
+    prompts: int
+    counter_records: int
+
+
+@dataclass(frozen=True)
+class TimelineRow:
+    prompt_index: int
+    time_index: int
+    qmoe_time_index: int
+    identity: tuple[str, int, str, str]
+    minimum_score: float
+    global_position: int
+    expert_counts_by_global_position_threshold: tuple[int, ...]
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Compute per-invocation expert participation distributions from ORT QMoE counter-update logs. "
-            "Each selected expert is counted at most once per kernel invocation."
+            "Plot the minimum score and maximum global position among the eight selected experts over time from "
+            "an ORT MoE counter trace. Scores and positions are captured before the counter update. Global positions "
+            "rank all model experts by score, with ties ordered by their fixed KernelPilot global expert index."
         )
     )
     parser.add_argument("log", type=Path, help="Log containing 'moe_expert_counters' JSON records.")
     parser.add_argument(
-        "--benchmark-json",
-        type=Path,
-        help="locodellm JSON used to label prompts (defaults to the log path with .json).",
-    )
-    parser.add_argument(
         "--output-prefix",
         type=Path,
-        help="Output prefix (defaults to <log stem>-expert-distribution).",
-    )
-    parser.add_argument(
-        "--model",
-        type=Path,
-        help="ONNX model used to calculate QMoE expert sizes (auto-detected by default).",
+        help="Output prefix (defaults to <log stem>-expert-timeline).",
     )
     return parser.parse_args()
-
-
-def load_prompt_labels(path):
-    if not path.is_file():
-        raise FileNotFoundError(f"Benchmark JSON not found: {path}")
-    with path.open(encoding="utf-8") as stream:
-        benchmark = json.load(stream)
-    if not isinstance(benchmark, list) or not benchmark:
-        raise ValueError(f"Benchmark JSON must contain a non-empty list: {path}")
-
-    prompt_labels = {}
-    for index, case in enumerate(benchmark, start=1):
-        if not isinstance(case, dict) or case.get("prompt_index") != index or not isinstance(case.get("prompt"), str):
-            raise ValueError(f"Benchmark JSON entry {index} has an invalid prompt index or prompt.")
-        prompt_labels[index] = case["prompt"]
-    return prompt_labels
-
-
-def resolve_model_path(log_path, model_path):
-    if model_path:
-        candidate = model_path / "model.onnx" if model_path.is_dir() else model_path
-        if not candidate.is_file():
-            raise FileNotFoundError(f"ONNX model not found: {candidate}")
-        return candidate
-
-    model_root = log_path.parent.parent / "models" / "qwen"
-    candidates = [
-        directory / "model.onnx"
-        for directory in model_root.iterdir()
-        if directory.is_dir() and log_path.stem.startswith(directory.name) and (directory / "model.onnx").is_file()
-    ]
-    if not candidates:
-        raise FileNotFoundError("Could not auto-detect model.onnx; specify it with --model.")
-    return max(candidates, key=lambda path: len(path.parent.name))
 
 
 def layer_sort_key(node_name):
@@ -94,10 +65,6 @@ def node_identity(event):
 def node_sort_key(identity):
     graph_scope, node_index, node_type, node_name = identity
     return (graph_scope, *layer_sort_key(node_name), node_index, node_type)
-
-
-def node_csv_fields(identity):
-    return identity
 
 
 def node_display_name(identity):
@@ -118,28 +85,55 @@ def _validate_counter_event(event, line_number):
         raise ValueError(f"Line {line_number}: node_type must be a non-empty string.")
     if not isinstance(event.get("node_name"), str):
         raise ValueError(f"Line {line_number}: node_name must be a string.")
+    for count_name in ("moe_count", "total_expert_count"):
+        count = event.get(count_name)
+        if count is not None and (not isinstance(count, int) or isinstance(count, bool) or count <= 0):
+            raise ValueError(f"Line {line_number}: {count_name} must be a positive integer.")
     selected_experts = event.get("selected_experts")
     if not isinstance(selected_experts, list) or not selected_experts:
         raise ValueError(f"Line {line_number}: selected_experts must be a non-empty list.")
-    if any(not isinstance(expert_id, int) or isinstance(expert_id, bool) for expert_id in selected_experts):
-        raise ValueError(f"Line {line_number}: selected_experts must contain integers.")
-    if len(selected_experts) != len(set(selected_experts)):
+    for selected_expert in selected_experts:
+        if not isinstance(selected_expert, dict):
+            raise ValueError(f"Line {line_number}: selected_experts must contain objects.")
+        expert_id = selected_expert.get("expert_id")
+        if not isinstance(expert_id, int) or isinstance(expert_id, bool) or expert_id < 0:
+            raise ValueError(f"Line {line_number}: selected expert IDs must be non-negative integers.")
+        score = selected_expert.get("score")
+        if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(score) or score < 0:
+            raise ValueError(f"Line {line_number}: selected expert scores must be finite non-negative numbers.")
+        for rank_name in ("selected_rank", "node_rank", "global_position"):
+            rank = selected_expert.get(rank_name)
+            if not isinstance(rank, int) or isinstance(rank, bool) or rank < 0:
+                raise ValueError(f"Line {line_number}: {rank_name} must be a non-negative integer.")
+        if selected_expert.get("device") not in ("CPU", "CUDA"):
+            raise ValueError(f"Line {line_number}: selected expert device must be 'CPU' or 'CUDA'.")
+
+    expert_ids = [selected_expert["expert_id"] for selected_expert in selected_experts]
+    if len(expert_ids) != len(set(expert_ids)):
         raise ValueError(f"Line {line_number}: selected_experts must not contain duplicates.")
-    counters = event.get("counters")
-    if not isinstance(counters, list) or not counters:
-        raise ValueError(f"Line {line_number}: counters must be a non-empty list.")
-    if any(
-        not isinstance(counter, (int, float)) or isinstance(counter, bool) or not math.isfinite(counter) or counter < 0
-        for counter in counters
-    ):
-        raise ValueError(f"Line {line_number}: counters must contain finite non-negative numbers.")
+    global_positions = [selected_expert["global_position"] for selected_expert in selected_experts]
+    if len(global_positions) != len(set(global_positions)):
+        raise ValueError(f"Line {line_number}: selected expert global_position values must be unique.")
+    selected_ranks = [selected_expert["selected_rank"] for selected_expert in selected_experts]
+    if sorted(selected_ranks) != list(range(len(selected_experts))):
+        raise ValueError(f"Line {line_number}: selected_rank values must be consecutive from zero.")
+    expected_order = sorted(
+        selected_experts,
+        key=lambda selected_expert: (-selected_expert["score"], selected_expert["expert_id"]),
+    )
+    if [selected_expert["expert_id"] for selected_expert in expected_order] != [
+        selected_expert["expert_id"]
+        for selected_expert in sorted(selected_experts, key=lambda item: item["selected_rank"])
+    ]:
+        raise ValueError(
+            f"Line {line_number}: selected_rank must rank scores by decreasing value and expert ID for ties."
+        )
 
 
 def parse_counter_trace(log_path, on_event=None):
     active_prompt = None
     completed_prompts = 0
     expected_prompts = None
-    counter_events = [] if on_event is None else None
     counter_event_count = 0
     completion = None
 
@@ -147,6 +141,7 @@ def parse_counter_trace(log_path, on_event=None):
         for line_number, line in enumerate(stream, start=1):
             if COUNTER_TRUNCATED_MARKER in line:
                 raise ValueError(f"Incomplete counter trace: counter logging was truncated at line {line_number}.")
+
             stripped_line = line.strip()
             prompt_start = PROMPT_START.fullmatch(stripped_line)
             if prompt_start:
@@ -195,16 +190,12 @@ def parse_counter_trace(log_path, on_event=None):
                 raise ValueError(f"Counter event at line {line_number} is outside an active prompt.")
             if completion is not None:
                 raise ValueError(f"Counter event follows the completion footer at line {line_number}.")
-
-            payload = line[marker_position + len(COUNTER_MARKER) :].strip()
             try:
-                event = json.loads(payload)
+                event = json.loads(line[marker_position + len(COUNTER_MARKER) :])
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Invalid counter JSON at line {line_number}: {exc}") from exc
             _validate_counter_event(event, line_number)
-            if on_event is None:
-                counter_events.append((active_prompt, event))
-            else:
+            if on_event is not None:
                 on_event(active_prompt, event)
             counter_event_count += 1
 
@@ -216,12 +207,6 @@ def parse_counter_trace(log_path, on_event=None):
         raise ValueError(f"Incomplete counter trace: completed {completed_prompts} of {expected_prompts} prompts.")
     if not isinstance(completion, dict):
         raise ValueError("Incomplete counter trace: missing moe_expert_counters_complete footer.")
-    if any(
-        not isinstance(completion.get(field), int) or isinstance(completion[field], bool)
-        for field in ("prompts", "prompt_runs", "counter_records")
-    ):
-        raise ValueError("Counter completion footer counts must be integers.")
-
     expected_completion = {
         "prompts": expected_prompts,
         "prompt_runs": completed_prompts,
@@ -229,531 +214,390 @@ def parse_counter_trace(log_path, on_event=None):
     }
     if completion != expected_completion:
         raise ValueError(f"Counter completion footer mismatch: expected {expected_completion}, got {completion}.")
-    return counter_events, completion
+    return TraceSummary(expected_prompts, counter_event_count)
 
 
-def iter_counter_events(log_path):
-    counter_events, _ = parse_counter_trace(log_path)
-    yield from counter_events
+def inspect_trace(log_path):
+    identities = set()
+    selection_counts = Counter()
+    moe_counts = set()
+    total_expert_counts = set()
+    maximum_global_position = -1
 
+    def inspect_event(_, event):
+        nonlocal maximum_global_position
+        identities.add(node_identity(event))
+        selection_counts[len(event["selected_experts"])] += 1
+        if "moe_count" in event:
+            moe_counts.add(event["moe_count"])
+        if "total_expert_count" in event:
+            total_expert_counts.add(event["total_expert_count"])
+        maximum_global_position = max(
+            maximum_global_position,
+            *(selected_expert["global_position"] for selected_expert in event["selected_experts"]),
+        )
 
-def analyze_counter_trace(log_path, num_experts):
-    by_prompt_qmoe = defaultdict(Counter)
-    by_qmoe = defaultdict(Counter)
-    global_counts = Counter()
-    event_count = 0
-
-    def update_distributions(prompt_index, event):
-        nonlocal event_count
-        identity = node_identity(event)
-        expert_ids = event["selected_experts"]
-        if len(event["counters"]) != num_experts:
-            raise ValueError(
-                f"Trace contains {len(event['counters'])} counters, but the model has {num_experts} experts."
-            )
-        for expert_id in expert_ids:
-            if not 0 <= expert_id < num_experts:
-                raise ValueError(f"Trace contains expert ID {expert_id}, but the model has {num_experts} experts.")
-        counts = Counter(expert_ids)
-        by_prompt_qmoe[(prompt_index, identity)].update(counts)
-        by_qmoe[identity].update(counts)
-        global_counts.update(counts)
-        event_count += 1
-
-    _, completion = parse_counter_trace(log_path, update_distributions)
-    if event_count == 0:
+    summary = parse_counter_trace(log_path, inspect_event)
+    if not identities:
         raise ValueError(f"No '{COUNTER_MARKER.strip()}' records found in {log_path}.")
-
-    return by_prompt_qmoe, by_qmoe, global_counts, event_count, completion
-
-
-def read_distributions(log_path, num_experts):
-    return analyze_counter_trace(log_path, num_experts)[:4]
-
-
-def distribution_rows(counts, num_experts):
-    total = counts.total()
-    for expert_id in range(num_experts):
-        count = counts[expert_id]
-        yield expert_id, count, count / total if total else 0.0
-
-
-def write_prompt_qmoe_csv(path, distributions, prompt_labels, num_experts):
-    with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            [
-                "prompt_index",
-                "prompt",
-                "graph_scope",
-                "node_index",
-                "node_type",
-                "node_name",
-                "expert_id",
-                "count",
-                "selection_share",
-            ]
-        )
-        keys = sorted(distributions, key=lambda key: (key[0], node_sort_key(key[1])))
-        for prompt_index, identity in keys:
-            for expert_id, count, share in distribution_rows(distributions[(prompt_index, identity)], num_experts):
-                writer.writerow(
-                    [
-                        prompt_index,
-                        prompt_labels.get(prompt_index, ""),
-                        *node_csv_fields(identity),
-                        expert_id,
-                        count,
-                        share,
-                    ]
-                )
-
-
-def write_qmoe_csv(path, distributions, num_experts):
-    with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            ["graph_scope", "node_index", "node_type", "node_name", "expert_id", "count", "selection_share"]
-        )
-        for identity in sorted(distributions, key=node_sort_key):
-            for expert_id, count, share in distribution_rows(distributions[identity], num_experts):
-                writer.writerow([*node_csv_fields(identity), expert_id, count, share])
-
-
-def write_qmoe_pivot_csv(path, distributions, num_experts):
-    with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(["graph_scope", "node_index", "node_type", "node_name", *range(num_experts)])
-        for identity in sorted(distributions, key=node_sort_key):
-            writer.writerow(
-                [*node_csv_fields(identity), *(distributions[identity][expert_id] for expert_id in range(num_experts))]
-            )
-
-
-def rank_experts_by_frequency(distributions, num_experts):
-    return {
-        identity: sorted(
-            range(num_experts),
-            key=lambda expert_id: (-counts[expert_id], expert_id),
-        )
-        for identity, counts in distributions.items()
-    }
-
-
-def expert_rank_positions(expert_ids, ranked_expert_ids):
-    rank_by_expert_id = {expert_id: rank for rank, expert_id in enumerate(ranked_expert_ids)}
-    return [rank_by_expert_id[expert_id] for expert_id in expert_ids]
-
-
-def selected_expert_ids(event):
-    return event["selected_experts"]
-
-
-def expert_rank_threshold_counts(positions, num_experts):
-    return [sum(position >= threshold for position in positions) for threshold in range(num_experts)]
-
-
-def write_qmoe_ranked_experts_csv(path, rankings):
-    with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(["graph_scope", "node_index", "node_type", "node_name", "expert_ids_by_decreasing_frequency"])
-        for identity in sorted(rankings, key=node_sort_key):
-            writer.writerow([*node_csv_fields(identity), json.dumps(rankings[identity], separators=(",", ":"))])
-
-
-def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, num_experts):
-    inference_indexes = Counter()
-    with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            [
-                "prompt_index",
-                "prompt",
-                "inference_index",
-                "graph_scope",
-                "node_index",
-                "node_type",
-                "node_name",
-                "selected_expert_ids",
-                "expert_rank_positions_0_based",
-                "max_expert_rank_position",
-                *(f"experts_rank_ge_{threshold}" for threshold in range(num_experts)),
-            ]
-        )
-        for prompt_index, event in iter_counter_events(log_path):
-            identity = node_identity(event)
-            key = (prompt_index, identity)
-            inference_indexes[key] += 1
-            expert_ids = selected_expert_ids(event)
-            positions = expert_rank_positions(expert_ids, rankings[identity])
-            threshold_counts = expert_rank_threshold_counts(positions, num_experts)
-            writer.writerow(
-                [
-                    prompt_index,
-                    prompt_labels.get(prompt_index, ""),
-                    inference_indexes[key],
-                    *node_csv_fields(identity),
-                    json.dumps(expert_ids, separators=(",", ":")),
-                    json.dumps(positions, separators=(",", ":")),
-                    max(positions),
-                    *threshold_counts,
-                ]
-            )
-
-
-def aggregate_rank_thresholds_by_qmoe(log_path, rankings, num_experts):
-    inference_counts = Counter()
-    threshold_totals = defaultdict(lambda: [0] * num_experts)
-    for _, event in iter_counter_events(log_path):
-        identity = node_identity(event)
-        expert_ids = selected_expert_ids(event)
-        positions = expert_rank_positions(expert_ids, rankings[identity])
-        inference_counts[identity] += 1
-        for index, count in enumerate(expert_rank_threshold_counts(positions, num_experts)):
-            threshold_totals[identity][index] += count
-    return inference_counts, threshold_totals
-
-
-def load_qmoe_model_metadata(model_path):
-    model = onnx.load(model_path, load_external_data=False)
-    initializers = {initializer.name: initializer for initializer in model.graph.initializer}
-    qmoe_nodes = {
-        (node_index, node.op_type, node.name): node
-        for node_index, node in enumerate(model.graph.node)
-        if node.op_type == "QMoE"
-    }
-    expert_counts = {
-        initializer.dims[0]
-        for node in qmoe_nodes.values()
-        for input_index in QMOE_EXPERT_WEIGHT_INPUT_INDICES
-        if input_index < len(node.input)
-        for input_name in (node.input[input_index],)
-        if (initializer := initializers.get(input_name)) is not None and initializer.dims
-    }
-    if len(expert_counts) != 1:
-        raise ValueError(f"Expected one QMoE expert count in the model, got {sorted(expert_counts)}.")
-    return initializers, qmoe_nodes, expert_counts.pop()
-
-
-def _external_data_integer(external_data, key, initializer_name):
-    raw_value = external_data.get(key)
-    if raw_value is None:
-        return 0
-    try:
-        value = int(raw_value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid external_data.{key} for initializer {initializer_name}: {raw_value!r}.") from exc
-    if value < 0 or value > MAX_EXTERNAL_DATA_VALUE:
-        raise ValueError(f"Invalid external_data.{key} for initializer {initializer_name}: {raw_value!r}.")
-    return value
-
-
-def _external_data_file_size(external_path, initializer_name):
-    try:
-        with external_path.open("rb") as stream:
-            file_info = os.fstat(stream.fileno())
-    except OSError as exc:
-        raise ValueError(
-            f"External data file for initializer {initializer_name} is not a readable regular file: {external_path}."
-        ) from exc
-    if not stat.S_ISREG(file_info.st_mode):
-        raise ValueError(
-            f"External data file for initializer {initializer_name} is not a readable regular file: {external_path}."
-        )
-    return file_info.st_size
-
-
-def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_identities, num_experts, model_path=None):
-    expert_bytes = {}
-    for identity in node_identities:
-        if len(identity) == 4 and identity[0] != "main":
-            raise ValueError(
-                f"QMoE expert-size analysis only supports nodes in the main graph: {node_display_name(identity)}"
-            )
-        model_identity = identity[1:] if len(identity) == 4 and identity[0] == "main" else identity
-        node = qmoe_nodes.get(model_identity)
-        if node is None:
-            raise ValueError(f"QMoE node from log not found in model: {node_display_name(identity)}")
-
-        total_bytes = 0
-        for input_name in node.input:
-            initializer = initializers.get(input_name)
-            if initializer is None or not initializer.dims:
-                continue
-            if initializer.dims[0] != num_experts:
-                continue
-            external_data = {entry.key: entry.value for entry in initializer.external_data}
-            expected_tensor_bytes = initializer_byte_count(initializer)
-            declared_length = _external_data_integer(external_data, "length", input_name)
-            if declared_length and declared_length != expected_tensor_bytes:
-                raise ValueError(
-                    f"External data length for initializer {input_name} is {declared_length}, "
-                    f"expected {expected_tensor_bytes}."
-                )
-            tensor_bytes = declared_length or expected_tensor_bytes
-
-            location = external_data.get("location")
-            if initializer.data_location == onnx.TensorProto.EXTERNAL:
-                if not location:
-                    raise ValueError(f"External initializer {input_name} has no non-empty location.")
-                if model_path is None:
-                    raise ValueError(f"Model path is required to validate external initializer {input_name}.")
-                external_path = Path(model_path).parent / location
-                file_size = _external_data_file_size(external_path, input_name)
-                offset = _external_data_integer(external_data, "offset", input_name)
-                if offset + tensor_bytes > file_size:
-                    raise ValueError(
-                        f"External data range for initializer {input_name} exceeds {external_path}: "
-                        f"offset {offset}, length {tensor_bytes}, file size {file_size}."
-                    )
-            if tensor_bytes % num_experts:
-                raise ValueError(f"Initializer size is not divisible by {num_experts}: {input_name}")
-            total_bytes += tensor_bytes // num_experts
-        if total_bytes == 0:
-            raise ValueError(f"No expert initializers found for QMoE node: {node_display_name(identity)}")
-        expert_bytes[identity] = total_bytes
-    return expert_bytes
-
-
-def initializer_byte_count(initializer):
-    packed_types = {
-        onnx.TensorProto.INT4,
-        onnx.TensorProto.UINT4,
-        onnx.TensorProto.FLOAT4E2M1,
-    }
-    element_count = math.prod(initializer.dims)
-    if initializer.data_type in packed_types:
-        return (element_count + 1) // 2
-    return element_count * onnx.helper.tensor_dtype_to_np_dtype(initializer.data_type).itemsize
-
-
-def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_totals, expert_bytes, num_experts):
-    total_inferences = sum(inference_counts.values())
-    column_totals = [sum(counts[threshold] for counts in threshold_totals.values()) for threshold in range(num_experts)]
-    total_values = [total_inferences, *column_totals]
-    maximum = max(total_values)
-
-    with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            [
-                "graph_scope",
-                "node_index",
-                "node_type",
-                "node_name",
-                "inference_count",
-                *(f"experts_rank_ge_{threshold}" for threshold in range(num_experts)),
-            ]
-        )
-        for identity in sorted(threshold_totals, key=node_sort_key):
-            writer.writerow(
-                [
-                    *node_csv_fields(identity),
-                    inference_counts[identity],
-                    *threshold_totals[identity],
-                ]
-            )
-        writer.writerow(["", "", "", "TOTAL", *total_values])
-        writer.writerow(
-            [
-                "",
-                "",
-                "",
-                "TOTAL_NORMALIZED",
-                *(value / maximum for value in total_values),
-            ]
-        )
-        bytes_per_rank = sum(expert_bytes.values())
-        writer.writerow(
-            [
-                "",
-                "",
-                "",
-                "QMOE_EXPERT_BYTES",
-                0,
-                *(rank * bytes_per_rank for rank in range(num_experts)),
-            ]
-        )
-        maximum_expert_bytes = num_experts * bytes_per_rank
-        writer.writerow(
-            [
-                "",
-                "",
-                "",
-                "QMOE_EXPERT_BYTES_COMPLEMENT",
-                0,
-                *((num_experts - rank) * bytes_per_rank for rank in range(num_experts)),
-            ]
-        )
-        writer.writerow(
-            [
-                "",
-                "",
-                "",
-                "QMOE_EXPERT_BYTES_COMPLEMENT_NORMALIZED",
-                0.0,
-                *(
-                    ((num_experts - rank) * bytes_per_rank) / maximum_expert_bytes if maximum_expert_bytes else 0.0
-                    for rank in range(num_experts)
-                ),
-            ]
-        )
+    if len(moe_counts) > 1 or len(total_expert_counts) > 1:
+        raise ValueError("Trace contains inconsistent MoE or total expert counts.")
+    moe_count = moe_counts.pop() if moe_counts else len(identities)
+    total_expert_count = total_expert_counts.pop() if total_expert_counts else maximum_global_position + 1
     return (
-        [value / maximum for value in column_totals],
-        [
-            ((num_experts - rank) * bytes_per_rank) / maximum_expert_bytes if maximum_expert_bytes else 0.0
-            for rank in range(num_experts)
-        ],
+        summary,
+        sorted(identities, key=node_sort_key),
+        selection_counts,
+        moe_count,
+        total_expert_count,
     )
 
 
-def write_normalized_comparison_plot(path, total_normalized, expert_bytes_complement_normalized):
-    import matplotlib.pyplot as plt  # noqa: PLC0415 - Only plotting requires matplotlib.
+def build_timeline(
+    log_path,
+    summary,
+    selected_expert_count=SELECTED_EXPERT_COUNT,
+):
+    qmoe_time_indexes = Counter()
+    rows = []
+    time_index = 0
 
-    ranks = range(len(total_normalized))
-    figure, axes = plt.subplots(figsize=(10, 6))
-    total_line = axes.plot(ranks, total_normalized, label="TOTAL_NORMALIZED", linewidth=2)[0]
-    bytes_line = axes.plot(
-        ranks,
-        expert_bytes_complement_normalized,
-        label="QMOE_EXPERT_BYTES_COMPLEMENT_NORMALIZED",
-        linewidth=2,
-    )[0]
-    for rank in (rank for rank in (64, 128, 192) if rank < len(total_normalized)):
-        for values, line, offset in (
-            (total_normalized, total_line, (8, 10)),
-            (expert_bytes_complement_normalized, bytes_line, (8, -18)),
-        ):
-            value = values[rank]
-            axes.scatter(rank, value, color=line.get_color(), zorder=3)
-            axes.annotate(
-                f"({rank}, {value:.3f})",
-                (rank, value),
-                xytext=offset,
-                textcoords="offset points",
-                color=line.get_color(),
-                fontsize=9,
-            )
-    axes.set_xlabel("Expert rank threshold (0-based)")
-    axes.set_ylabel("Normalized value")
-    axes.set_xlim(0, len(total_normalized) - 1)
-    axes.set_ylim(0, 1.02)
-    axes.grid(True, alpha=0.3)
-    axes.legend()
-    figure.tight_layout()
-    figure.savefig(path, dpi=180)
-    plt.close(figure)
-
-
-def write_selected_layers_rank_plot(path, threshold_totals):
-    import matplotlib.pyplot as plt  # noqa: PLC0415 - Only plotting requires matplotlib.
-
-    identities = sorted(threshold_totals, key=node_sort_key)
-    if len(identities) > MAX_PLOTTED_LAYERS:
-        identities = [
-            identities[round(index * (len(identities) - 1) / (MAX_PLOTTED_LAYERS - 1))]
-            for index in range(MAX_PLOTTED_LAYERS)
-        ]
-
-    figure, axes = plt.subplots(figsize=(10, 6))
-    for identity in identities:
-        values = threshold_totals[identity]
-        maximum = max(values)
-        normalized = [value / maximum for value in values]
-        node_name = node_display_name(identity)
-        match = LAYER_NUMBER.search(node_name)
-        label = f"Layer {match.group(1)}" if match else node_name
-        axes.plot(
-            range(len(values)),
-            normalized,
-            label=label,
-            linewidth=1.8,
+    def append_row(prompt_index, event):
+        nonlocal time_index
+        identity = node_identity(event)
+        selected_experts = event["selected_experts"]
+        if len(selected_experts) != selected_expert_count:
+            return
+        minimum_score = min(selected_expert["score"] for selected_expert in selected_experts)
+        global_position = max(selected_expert["global_position"] for selected_expert in selected_experts)
+        expert_counts_by_global_position_threshold = tuple(
+            sum(selected_expert["global_position"] >= threshold for selected_expert in selected_experts)
+            for threshold in CUMULATIVE_GLOBAL_POSITION_THRESHOLDS
         )
+        qmoe_time_indexes[identity] += 1
+        rows.append(
+            TimelineRow(
+                prompt_index=prompt_index,
+                time_index=time_index,
+                qmoe_time_index=qmoe_time_indexes[identity],
+                identity=identity,
+                minimum_score=minimum_score,
+                global_position=global_position,
+                expert_counts_by_global_position_threshold=expert_counts_by_global_position_threshold,
+            )
+        )
+        time_index += 1
 
-    axes.set_xlabel("Expert rank threshold (0-based)")
-    axes.set_ylabel("Normalized experts with rank >= threshold")
-    axes.set_xlim(0, len(next(iter(threshold_totals.values()))) - 1)
-    axes.set_ylim(0, 1.02)
-    axes.grid(True, alpha=0.3)
-    axes.legend(ncol=3)
-    figure.tight_layout()
-    figure.savefig(path, dpi=180)
-    plt.close(figure)
+    parsed_summary = parse_counter_trace(log_path, append_row)
+    if parsed_summary != summary:
+        raise ValueError("Trace changed while it was being analyzed.")
+    return rows
 
 
-def write_global_csv(path, counts, num_experts):
+def write_timeline_csv(path, rows):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["expert_id", "count", "selection_share"])
-        writer.writerows(distribution_rows(counts, num_experts))
+        writer.writerow(
+            [
+                "prompt_index",
+                "time_index",
+                "qmoe_time_index",
+                "graph_scope",
+                "node_index",
+                "node_type",
+                "node_name",
+                "minimum_score",
+                "global_position_0_based",
+                *(f"experts_global_position_ge_{threshold}" for threshold in GLOBAL_POSITION_THRESHOLDS),
+            ]
+        )
+        for row in rows:
+            writer.writerow(
+                [
+                    row.prompt_index,
+                    row.time_index,
+                    row.qmoe_time_index,
+                    *row.identity,
+                    row.minimum_score,
+                    row.global_position,
+                    *(
+                        row.expert_counts_by_global_position_threshold[
+                            CUMULATIVE_GLOBAL_POSITION_THRESHOLDS.index(threshold)
+                        ]
+                        for threshold in GLOBAL_POSITION_THRESHOLDS
+                    ),
+                ]
+            )
+
+
+def aggregate_threshold_counts(rows, thresholds=GLOBAL_POSITION_THRESHOLDS):
+    totals = {threshold: Counter() for threshold in thresholds}
+    for row in rows:
+        for threshold, count in zip(
+            CUMULATIVE_GLOBAL_POSITION_THRESHOLDS,
+            row.expert_counts_by_global_position_threshold,
+            strict=True,
+        ):
+            if threshold in totals:
+                totals[threshold][row.qmoe_time_index] += count
+    return {threshold: sorted(counts.items()) for threshold, counts in totals.items()}
+
+
+def cumulative_threshold_counts(rows):
+    aggregates = aggregate_threshold_counts(rows, CUMULATIVE_GLOBAL_POSITION_THRESHOLDS)
+    cumulative = {}
+    for threshold, values in aggregates.items():
+        running_total = 0
+        cumulative_values = []
+        for iteration, count in values:
+            running_total += count
+            cumulative_values.append((iteration, running_total))
+        cumulative[threshold] = cumulative_values
+    return cumulative
+
+
+def cumulative_threshold_fractions(rows):
+    cumulative = cumulative_threshold_counts(rows)
+    selected_experts_by_iteration = Counter()
+    for row in rows:
+        selected_experts_by_iteration[row.qmoe_time_index] += SELECTED_EXPERT_COUNT
+
+    cumulative_selected_experts = {}
+    running_total = 0
+    for iteration, count in sorted(selected_experts_by_iteration.items()):
+        running_total += count
+        cumulative_selected_experts[iteration] = running_total
+
+    return {
+        threshold: [(iteration, count / cumulative_selected_experts[iteration]) for iteration, count in values]
+        for threshold, values in cumulative.items()
+    }
+
+
+def write_timeline_plots(path, rows, identities, moe_count, total_expert_count):
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+    from matplotlib.backends.backend_pdf import PdfPages  # noqa: PLC0415
+    from matplotlib.ticker import PercentFormatter  # noqa: PLC0415
+
+    rows_by_identity = defaultdict(list)
+    for row in rows:
+        rows_by_identity[row.identity].append(row)
+
+    with PdfPages(path) as pdf:
+        for identity in identities:
+            node_rows = rows_by_identity[identity]
+            if not node_rows:
+                continue
+            x = [row.qmoe_time_index for row in node_rows]
+            figure, axes = plt.subplots(3, 1, figsize=(13, 9), sharex=True)
+            axes[0].plot(
+                x,
+                [row.minimum_score for row in node_rows],
+                color="black",
+                linewidth=1,
+            )
+            axes[0].set_ylabel("Minimum score")
+            axes[1].plot(x, [row.global_position for row in node_rows], linewidth=0.9)
+            axes[1].set_ylabel("Global position before update")
+            axes[2].plot(
+                x,
+                [
+                    row.expert_counts_by_global_position_threshold[
+                        CUMULATIVE_GLOBAL_POSITION_THRESHOLDS.index(GLOBAL_POSITION_THRESHOLDS[0])
+                    ]
+                    for row in node_rows
+                ],
+                linewidth=0.9,
+            )
+            axes[2].set_ylabel(f"Experts with position >= {GLOBAL_POSITION_THRESHOLDS[0]}")
+            axes[2].set_ylim(-0.25, SELECTED_EXPERT_COUNT + 0.25)
+            axes[2].set_xlabel("Decode invocation")
+            for axis in axes:
+                axis.grid(True, alpha=0.3)
+
+            previous_prompt = node_rows[0].prompt_index
+            for row in node_rows[1:]:
+                if row.prompt_index != previous_prompt:
+                    for axis in axes:
+                        axis.axvline(row.qmoe_time_index, color="gray", linewidth=0.6, alpha=0.5)
+                    previous_prompt = row.prompt_index
+            figure.suptitle(node_display_name(identity))
+            figure.tight_layout()
+            pdf.savefig(figure)
+            plt.close(figure)
+
+        aggregate = aggregate_threshold_counts(rows)
+        prompt_starts = {}
+        for row in rows:
+            prompt_starts[row.prompt_index] = min(
+                row.qmoe_time_index,
+                prompt_starts.get(row.prompt_index, row.qmoe_time_index),
+            )
+        for logarithmic in (False, True):
+            figure, axis = plt.subplots(figsize=(13, 5))
+            for threshold, values in aggregate.items():
+                axis.plot(
+                    [iteration for iteration, _ in values],
+                    [total for _, total in values],
+                    linewidth=1,
+                    label=f"position >= {threshold}",
+                )
+            axis.set_xlabel("Decode iteration")
+            axis.set_ylabel("Selected expert count across all MoE nodes")
+            scale = "logarithmic" if logarithmic else "linear"
+            axis.set_title(f"{moe_count} MoE nodes, {total_expert_count} experts total — {scale} scale")
+            if logarithmic:
+                axis.set_yscale("log", nonpositive="clip")
+            axis.grid(True, alpha=0.3)
+            axis.legend()
+            for prompt_index, iteration in sorted(prompt_starts.items())[1:]:
+                axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
+                axis.text(
+                    iteration,
+                    1,
+                    f"Prompt {prompt_index}",
+                    rotation=90,
+                    verticalalignment="top",
+                    horizontalalignment="right",
+                    transform=axis.get_xaxis_transform(),
+                    fontsize=8,
+                    color="gray",
+                )
+            figure.tight_layout()
+            pdf.savefig(figure)
+            plt.close(figure)
+
+        cumulative = cumulative_threshold_counts(rows)
+        for logarithmic in (False, True):
+            figure, axis = plt.subplots(figsize=(13, 5))
+            for threshold, values in cumulative.items():
+                axis.plot(
+                    [iteration for iteration, _ in values],
+                    [total for _, total in values],
+                    linewidth=1,
+                    label=f"position >= {threshold}",
+                )
+            axis.set_xlabel("Decode iteration")
+            axis.set_ylabel("Cumulative selected expert count")
+            scale = "logarithmic" if logarithmic else "linear"
+            axis.set_title(f"{moe_count} MoE nodes, {total_expert_count} experts total — cumulative, {scale} scale")
+            if logarithmic:
+                axis.set_yscale("log", nonpositive="clip")
+            axis.grid(True, alpha=0.3)
+            axis.legend()
+            for prompt_index, iteration in sorted(prompt_starts.items())[1:]:
+                axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
+                axis.text(
+                    iteration,
+                    1,
+                    f"Prompt {prompt_index}",
+                    rotation=90,
+                    verticalalignment="top",
+                    horizontalalignment="right",
+                    transform=axis.get_xaxis_transform(),
+                    fontsize=8,
+                    color="gray",
+                )
+            figure.tight_layout()
+            pdf.savefig(figure)
+            plt.close(figure)
+
+        cumulative_fractions = cumulative_threshold_fractions(rows)
+        for logarithmic in (False, True):
+            figure, axis = plt.subplots(figsize=(13, 5))
+            for threshold, values in cumulative_fractions.items():
+                axis.plot(
+                    [iteration for iteration, _ in values],
+                    [fraction for _, fraction in values],
+                    linewidth=1,
+                    label=f"position >= {threshold}",
+                )
+            axis.set_xlabel("Decode iteration")
+            axis.set_ylabel("Cumulative share of selected experts")
+            axis.yaxis.set_major_formatter(PercentFormatter(xmax=1))
+            scale = "logarithmic" if logarithmic else "linear"
+            axis.set_title(
+                f"{moe_count} MoE nodes, {total_expert_count} experts total — cumulative share, {scale} scale"
+            )
+            if logarithmic:
+                axis.set_yscale("log", nonpositive="clip")
+            else:
+                axis.set_ylim(bottom=0)
+            axis.grid(True, alpha=0.3)
+            axis.legend()
+            for prompt_index, iteration in sorted(prompt_starts.items())[1:]:
+                axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
+                axis.text(
+                    iteration,
+                    1,
+                    f"Prompt {prompt_index}",
+                    rotation=90,
+                    verticalalignment="top",
+                    horizontalalignment="right",
+                    transform=axis.get_xaxis_transform(),
+                    fontsize=8,
+                    color="gray",
+                )
+            figure.tight_layout()
+            pdf.savefig(figure)
+            plt.close(figure)
+
+        first_prompt_indexes = sorted(prompt_starts)[:2]
+        first_prompt_rows = [row for row in rows if row.prompt_index in first_prompt_indexes]
+        first_prompt_aggregate = aggregate_threshold_counts(first_prompt_rows)
+        figure, axis = plt.subplots(figsize=(13, 5))
+        for threshold, values in first_prompt_aggregate.items():
+            axis.plot(
+                [iteration for iteration, _ in values],
+                [total for _, total in values],
+                linewidth=1,
+                label=f"position >= {threshold}",
+            )
+        axis.set_xlabel("Decode iteration")
+        axis.set_ylabel("Selected expert count across all MoE nodes")
+        axis.set_title(
+            f"{moe_count} MoE nodes, {total_expert_count} experts total — first 2 prompts, logarithmic scale"
+        )
+        axis.set_yscale("log", nonpositive="clip")
+        axis.grid(True, alpha=0.3)
+        axis.legend()
+        for prompt_index in first_prompt_indexes[1:]:
+            iteration = prompt_starts[prompt_index]
+            axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
+            axis.text(
+                iteration,
+                1,
+                f"Prompt {prompt_index}",
+                rotation=90,
+                verticalalignment="top",
+                horizontalalignment="right",
+                transform=axis.get_xaxis_transform(),
+                fontsize=8,
+                color="gray",
+            )
+        figure.tight_layout()
+        pdf.savefig(figure)
+        plt.close(figure)
 
 
 def main():
     args = parse_args()
-    benchmark_json = args.benchmark_json or args.log.with_suffix(".json")
-    output_prefix = args.output_prefix or args.log.with_name(f"{args.log.stem}-expert-distribution")
+    output_prefix = args.output_prefix or args.log.with_name(f"{args.log.stem}-expert-timeline")
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
+    summary, identities, selection_counts, moe_count, total_expert_count = inspect_trace(args.log)
+    rows = build_timeline(args.log, summary)
+    timeline_path = Path(f"{output_prefix}.csv")
+    plot_path = Path(f"{output_prefix}.pdf")
+    write_timeline_csv(timeline_path, rows)
+    write_timeline_plots(plot_path, rows, identities, moe_count, total_expert_count)
 
-    prompt_labels = load_prompt_labels(benchmark_json)
-    model_path = resolve_model_path(args.log, args.model)
-    initializers, qmoe_nodes, num_experts = load_qmoe_model_metadata(model_path)
-    by_prompt_qmoe, by_qmoe, global_counts, event_count, completion = analyze_counter_trace(args.log, num_experts)
-    if len(prompt_labels) != completion["prompts"]:
-        raise ValueError(
-            f"Benchmark JSON contains {len(prompt_labels)} prompts, "
-            f"but the counter trace completed {completion['prompts']} prompts."
-        )
-    expert_bytes = calculate_qmoe_expert_bytes(
-        initializers, qmoe_nodes, by_qmoe.keys(), num_experts, model_path=model_path
-    )
-
-    prompt_qmoe_path = Path(f"{output_prefix}-by-prompt-qmoe.csv")
-    qmoe_path = Path(f"{output_prefix}-by-qmoe.csv")
-    qmoe_pivot_path = Path(f"{output_prefix}-by-qmoe-pivot.csv")
-    qmoe_ranked_path = Path(f"{output_prefix}-by-qmoe-ranked-experts.csv")
-    inference_ranks_path = Path(f"{output_prefix}-by-inference-qmoe-expert-ranks.csv")
-    qmoe_rank_thresholds_path = Path(f"{output_prefix}-by-qmoe-rank-threshold-totals.csv")
-    normalized_plot_path = Path(f"{output_prefix}-normalized-total-vs-expert-bytes.png")
-    selected_layers_plot_path = Path(f"{output_prefix}-selected-layers-expert-ranks.png")
-    global_path = Path(f"{output_prefix}-global.csv")
-    rankings = rank_experts_by_frequency(by_qmoe, num_experts)
-    write_prompt_qmoe_csv(prompt_qmoe_path, by_prompt_qmoe, prompt_labels, num_experts)
-    write_qmoe_csv(qmoe_path, by_qmoe, num_experts)
-    write_qmoe_pivot_csv(qmoe_pivot_path, by_qmoe, num_experts)
-    write_qmoe_ranked_experts_csv(qmoe_ranked_path, rankings)
-    write_inference_expert_ranks_csv(inference_ranks_path, args.log, rankings, prompt_labels, num_experts)
-    inference_counts, threshold_totals = aggregate_rank_thresholds_by_qmoe(args.log, rankings, num_experts)
-    total_normalized, expert_bytes_complement_normalized = write_qmoe_rank_threshold_totals_csv(
-        qmoe_rank_thresholds_path,
-        inference_counts,
-        threshold_totals,
-        expert_bytes,
-        num_experts,
-    )
-    write_normalized_comparison_plot(
-        normalized_plot_path,
-        total_normalized,
-        expert_bytes_complement_normalized,
-    )
-    write_selected_layers_rank_plot(selected_layers_plot_path, threshold_totals)
-    write_global_csv(global_path, global_counts, num_experts)
-
-    print(f"counter events: {event_count}")
-    print(f"prompts: {len({key[0] for key in by_prompt_qmoe})}")
-    print(f"QMoE nodes: {len(by_qmoe)}")
-    print(f"experts: {num_experts}")
-    print(f"expert selections: {global_counts.total()}")
-    print(f"model: {model_path}")
-    print(f"QMoE bytes per expert rank: {sum(expert_bytes.values())}")
-    print(prompt_qmoe_path)
-    print(qmoe_path)
-    print(qmoe_pivot_path)
-    print(qmoe_ranked_path)
-    print(inference_ranks_path)
-    print(qmoe_rank_thresholds_path)
-    print(normalized_plot_path)
-    print(selected_layers_plot_path)
-    print(global_path)
+    print(f"counter events: {summary.counter_records}")
+    print(f"prompts: {summary.prompts}")
+    print(f"MoE nodes: {moe_count}")
+    print(f"selected experts per event: {dict(sorted(selection_counts.items()))}")
+    print(f"timeline rows ({SELECTED_EXPERT_COUNT} selected experts): {len(rows)}")
+    print(timeline_path)
+    print(plot_path)
 
 
 if __name__ == "__main__":

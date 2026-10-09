@@ -4118,6 +4118,24 @@ static std::vector<nlohmann::json> ParseMoeCounterLogs(const std::string& logs) 
   return events;
 }
 
+static nlohmann::json ExpectedSelectedExperts(
+    gsl::span<const int> expert_ids, gsl::span<const std::string_view> devices) {
+  ORT_ENFORCE(expert_ids.size() == devices.size());
+  auto result = nlohmann::json::array();
+  for (size_t index = 0; index < expert_ids.size(); ++index) {
+    const int expert_id = expert_ids[index];
+    result.push_back({
+        {"expert_id", expert_id},
+        {"score", 0.0},
+        {"selected_rank", expert_id},
+        {"node_rank", expert_id},
+        {"global_position", expert_id},
+        {"device", devices[index]},
+    });
+  }
+  return result;
+}
+
 static std::vector<nlohmann::json> RunMoECpuLoggingTest(
     bool enable_moe_statistics,
     const std::vector<int64_t>& input_shape,
@@ -4181,8 +4199,10 @@ TEST(MoETest, MoECpuLogHasCounterUpdateSchema) {
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "{routing \"request\"}");
-  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
-  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
+  const int expert_ids[] = {0, 1};
+  const std::string_view devices[] = {"CPU", "CPU"};
+  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
+  EXPECT_FALSE(event.contains("counters"));
   EXPECT_TRUE(event.contains("node_index"));
   EXPECT_TRUE(event.contains("node_name"));
   EXPECT_EQ(event["node_type"], "MoE");
@@ -4252,8 +4272,10 @@ TEST(MoETest, QMoECpuLogHasCounterUpdateSchema) {
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cpu qmoe request");
-  EXPECT_EQ(event["selected_experts"], nlohmann::json({1, 0}));
-  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
+  const int expert_ids[] = {1, 0};
+  const std::string_view devices[] = {"CPU", "CPU"};
+  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
+  EXPECT_FALSE(event.contains("counters"));
   EXPECT_EQ(event["node_type"], "QMoE");
 }
 #endif
@@ -4315,8 +4337,10 @@ TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cuda request");
-  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
-  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
+  const int expert_ids[] = {0, 1};
+  const std::string_view devices[] = {"CUDA", "CUDA"};
+  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
+  EXPECT_FALSE(event.contains("counters"));
   EXPECT_EQ(event["node_type"], "MoE");
 }
 
@@ -4416,8 +4440,17 @@ void RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage()
                &run_options, &execution_providers);
     const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
     ASSERT_EQ(routing_events.size(), 1U);
-    EXPECT_EQ(routing_events[0]["selected_experts"], nlohmann::json({0, 1}));
-    EXPECT_EQ(routing_events[0]["counters"], nlohmann::json({0.1, 0.1}));
+    const int expert_ids[] = {0, 1};
+    const std::string_view all_cuda[] = {"CUDA", "CUDA"};
+    const std::string_view mixed[] = {"CUDA", "CPU"};
+    const std::string_view all_cpu[] = {"CPU", "CPU"};
+    const gsl::span<const std::string_view> devices =
+        cpu_offload_expert_count <= 0 ? gsl::make_span(all_cuda)
+        : cpu_offload_expert_count == 1
+            ? gsl::make_span(mixed)
+            : gsl::make_span(all_cpu);
+    EXPECT_EQ(routing_events[0]["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
+    EXPECT_FALSE(routing_events[0].contains("counters"));
   }
 }
 
@@ -5020,8 +5053,10 @@ TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "qmoe tiled request");
-  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
-  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
+  const int expert_ids[] = {0, 1};
+  const std::string_view devices[] = {"CUDA", "CUDA"};
+  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
+  EXPECT_FALSE(event.contains("counters"));
   EXPECT_EQ(event["node_type"], "QMoE");
 }
 

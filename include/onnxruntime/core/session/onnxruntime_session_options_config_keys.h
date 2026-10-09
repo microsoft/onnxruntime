@@ -49,6 +49,11 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
 static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
     "session.moe_cpu_offload_experts";
 
+// Relative margin required before an adaptive MoE swap replaces a CUDA-resident expert.
+// The value must be finite and non-negative. The default is 0.
+static const char* const kOrtSessionOptionsConfigMoeExpertSwapEpsilon =
+    "session.moe_expert_swap_epsilon";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";

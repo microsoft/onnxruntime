@@ -22,6 +22,7 @@ Status KernelPilot::RecordUsage() {
 }
 
 void KernelPilot::FinishRegistration() noexcept {
+  moe_expert_count_ = moe_.ExpertCount();
   moe_.FinishInvocation();
 }
 

@@ -22,6 +22,10 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
 
+#if defined(USE_CUDA)
+#include <cuda_runtime_api.h>
+#endif
+
 namespace onnxruntime::test {
 #if !defined(DISABLE_CONTRIB_OPS) && !defined(ORT_MINIMAL_BUILD)
 namespace {
@@ -159,19 +163,20 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
   return model.SerializeAsString();
 }
 
-NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true, int64_t rows = 3,
-                           int64_t width = kWidth) {
+template <typename T>
+NameMLValMap CountingFeedsTyped(bool subgraphs = false, bool condition = true, int64_t rows = 3,
+                                int64_t width = kWidth) {
   ORT_ENFORCE(rows == 1 || rows == 3);
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   OrtValue input, router, cond;
-  const std::vector<MLFloat16> values(rows * width, MLFloat16(1.0f));
-  CreateMLValue<MLFloat16>(allocator, {rows, width}, values, &input);
-  const std::vector<MLFloat16> routing{
-      MLFloat16(9.f), MLFloat16(1.f), MLFloat16(0.f), MLFloat16(0.f),
-      MLFloat16(8.f), MLFloat16(1.f), MLFloat16(0.f), MLFloat16(0.f),
-      MLFloat16(0.f), MLFloat16(1.f), MLFloat16(9.f), MLFloat16(0.f)};
-  CreateMLValue<MLFloat16>(allocator, {rows, kExperts},
-                           gsl::make_span(routing).first(static_cast<size_t>(rows * kExperts)), &router);
+  const std::vector<T> values(rows * width, T(1.0f));
+  CreateMLValue<T>(allocator, {rows, width}, values, &input);
+  const std::vector<T> routing{
+      T(9.f), T(1.f), T(0.f), T(0.f),
+      T(8.f), T(1.f), T(0.f), T(0.f),
+      T(0.f), T(1.f), T(9.f), T(0.f)};
+  CreateMLValue<T>(allocator, {rows, kExperts},
+                   gsl::make_span(routing).first(static_cast<size_t>(rows * kExperts)), &router);
   NameMLValMap feeds{{"input", input}, {"router", router}};
   if (subgraphs) {
     CreateMLValue<bool>(allocator, {}, {condition}, &cond);
@@ -180,11 +185,23 @@ NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true, int64_
   return feeds;
 }
 
+NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true, int64_t rows = 3,
+                           int64_t width = kWidth) {
+  return CountingFeedsTyped<MLFloat16>(subgraphs, condition, rows, width);
+}
+
+template <typename T>
+Status ExecuteCountingModelTyped(InferenceSession& session, std::vector<OrtValue>& outputs,
+                                 bool subgraphs = false, bool condition = true, int64_t rows = 3,
+                                 int64_t width = kWidth) {
+  const std::array<std::string, 1> output_names{"output"};
+  return session.Run(RunOptions{}, CountingFeedsTyped<T>(subgraphs, condition, rows, width), output_names, &outputs);
+}
+
 Status ExecuteCountingModel(InferenceSession& session, std::vector<OrtValue>& outputs,
                             bool subgraphs = false, bool condition = true, int64_t rows = 3,
                             int64_t width = kWidth) {
-  const std::array<std::string, 1> output_names{"output"};
-  return session.Run(RunOptions{}, CountingFeeds(subgraphs, condition, rows, width), output_names, &outputs);
+  return ExecuteCountingModelTyped<MLFloat16>(session, outputs, subgraphs, condition, rows, width);
 }
 
 void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true, int64_t rows = 3,
@@ -1002,6 +1019,97 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
   }
 }
 
+template <typename T>
+void RunAdaptiveCpuOffloadPublishesCompletedSwapsAtNextInvocation() {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "4"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  ModelProto numerical_model;
+  ASSERT_TRUE(numerical_model.ParseFromString(MakeCountingModel(false, true)));
+  constexpr int tensor_type = std::is_same_v<T, BFloat16>
+                                  ? TensorProto_DataType_BFLOAT16
+                                  : TensorProto_DataType_FLOAT16;
+  auto& graph = *numerical_model.mutable_graph();
+  for (auto* values : {graph.mutable_input(), graph.mutable_output(), graph.mutable_value_info()}) {
+    for (auto& value : *values) {
+      auto* type = value.mutable_type()->mutable_tensor_type();
+      if (type->elem_type() == TensorProto_DataType_FLOAT16) {
+        type->set_elem_type(tensor_type);
+      }
+    }
+  }
+  for (auto& tensor : *graph.mutable_initializer()) {
+    tensor.set_data_type(tensor_type);
+    std::vector<T> weights(static_cast<size_t>(kExperts * kWidth * kWidth), T(0.0f));
+    for (int64_t expert = 0; expert < kExperts; ++expert) {
+      for (int64_t column = 0; column < kWidth; ++column) {
+        weights[static_cast<size_t>(expert * kWidth * kWidth + column * kWidth + column)] =
+            T(tensor.name() == "w1" ? 1.0f : static_cast<float>(expert + 1));
+      }
+    }
+    tensor.set_raw_data(weights.data(), weights.size() * sizeof(T));
+  }
+  for (auto& node : *numerical_model.mutable_graph()->mutable_node()) {
+    auto* attribute = node.add_attribute();
+    attribute->set_name("normalize_routing_weights");
+    attribute->set_type(AttributeProto_AttributeType_INT);
+    attribute->set_i(1);
+  }
+  const auto model = numerical_model.SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto* state = session.GetSessionState().GetMoeExpertState();
+  ASSERT_NE(state, nullptr);
+  const auto* first_kernel = session.GetSessionState().GetKernel(0);
+  const auto* second_kernel = session.GetSessionState().GetKernel(1);
+  ASSERT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 1}));
+  ASSERT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 1}));
+
+  const auto run_and_validate = [&]() {
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(ExecuteCountingModelTyped<T>(session, outputs));
+    ASSERT_EQ(outputs.size(), 1U);
+    const auto values = outputs[0].Get<Tensor>().DataAsSpan<T>();
+    const std::array<float, 3> expected{1.0f, 1.0f, 9.0f};
+    constexpr float tolerance = std::is_same_v<T, BFloat16> ? 0.02f : 0.01f;
+    for (size_t row = 0; row < expected.size(); ++row) {
+      for (size_t column = 0; column < static_cast<size_t>(kWidth); ++column) {
+        EXPECT_NEAR(values[row * static_cast<size_t>(kWidth) + column].ToFloat(), expected[row], tolerance);
+      }
+    }
+  };
+
+  run_and_validate();
+  EXPECT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 1}));
+  EXPECT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 1}));
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  EXPECT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 1}));
+  EXPECT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 1}));
+
+  run_and_validate();
+  EXPECT_EQ(CudaExperts(*state, first_kernel), (InlinedVector<int>{0, 2}));
+  EXPECT_EQ(CudaExperts(*state, second_kernel), (InlinedVector<int>{0, 2}));
+}
+
+TEST(MoeExpertCountingTest, AdaptiveCpuOffloadPublishesCompletedFp16SwapsAtNextInvocation) {
+  RunAdaptiveCpuOffloadPublishesCompletedSwapsAtNextInvocation<MLFloat16>();
+}
+
+TEST(MoeExpertCountingTest, AdaptiveCpuOffloadPublishesCompletedBf16SwapsAtNextInvocation) {
+  RunAdaptiveCpuOffloadPublishesCompletedSwapsAtNextInvocation<BFloat16>();
+}
+
 TEST(MoeExpertCountingTest, StaticCpuOffloadPreservesAliasedInputDuringHostCopy) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
@@ -1155,6 +1263,7 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0.1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "-1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "invalid"}}) {
     SessionOptions options;
