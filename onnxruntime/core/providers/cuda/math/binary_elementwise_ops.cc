@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <vector>
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/common.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
@@ -473,6 +476,69 @@ ONNX_OPERATOR_KERNEL_EX(Mod, kOnnxDomain, 13, kCudaExecutionProvider,
                                                                            double, MLFloat16, BFloat16>()),
                         Mod);
 
+namespace {
+
+// Scans a constant divisor initializer for zeros. The initializer may live in CPU or device memory
+// (CUDA EP copies initializers to the device), so device-resident data is copied to host first.
+// Returns a non-OK status only if the data could not be inspected.
+template <typename T>
+Status ConstantDivisorHasZero(const Tensor& divisor, bool& has_zero) {
+  has_zero = false;
+  const size_t count = SafeInt<size_t>(divisor.Shape().Size());
+  if (count == 0) {
+    return Status::OK();
+  }
+
+  const T* data = divisor.Data<T>();
+  std::vector<T> host_copy;
+  if (divisor.Location().device.Type() != OrtDevice::CPU) {
+    host_copy.resize(count);
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(host_copy.data(), data, SafeInt<size_t>(count) * sizeof(T), cudaMemcpyDefault));
+    data = host_copy.data();
+  }
+
+  has_zero = std::any_of(data, data + count, [](T v) { return v == T{0}; });
+  return Status::OK();
+}
+
+}  // namespace
+
+Mod::Mod(const OpKernelInfo& info) : BinaryElementwise(info) {
+  int64_t fmod = info.GetAttrOrDefault<int64_t>("fmod", 0LL);
+  fmod_ = fmod != 0;
+
+  // If the divisor is a constant integer initializer, validate it once here instead of synchronizing
+  // the stream on every Compute call (which would also break CUDA graph capture).
+  const Tensor* constant_divisor = nullptr;
+  if (info.TryGetConstantInput(1, &constant_divisor)) {
+    namespace on = ONNX_NAMESPACE;
+    bool has_zero = false;
+    Status status = Status::OK();
+    bool is_integer = true;
+    switch (constant_divisor->GetElementType()) {
+      case on::TensorProto_DataType_INT32:
+        status = ConstantDivisorHasZero<int32_t>(*constant_divisor, has_zero);
+        break;
+      case on::TensorProto_DataType_INT64:
+        status = ConstantDivisorHasZero<int64_t>(*constant_divisor, has_zero);
+        break;
+      case on::TensorProto_DataType_UINT32:
+        status = ConstantDivisorHasZero<uint32_t>(*constant_divisor, has_zero);
+        break;
+      case on::TensorProto_DataType_UINT64:
+        status = ConstantDivisorHasZero<uint64_t>(*constant_divisor, has_zero);
+        break;
+      default:
+        is_integer = false;  // floating point divisors need no zero check
+        break;
+    }
+
+    ORT_ENFORCE(!has_zero, "Integer modulo by zero");
+    // If the constant could not be inspected, fall back to the runtime check in ComputeInternal.
+    divisor_is_validated_constant_ = is_integer && status.IsOK();
+  }
+}
+
 Status Mod::ComputeInternal(OpKernelContext* context) const {
   namespace on = ONNX_NAMESPACE;
   BinaryElementwisePreparation prepare;
@@ -482,6 +548,43 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
                   element_type == on::TensorProto_DataType_INT64 || element_type == on::TensorProto_DataType_UINT32 ||
                   element_type == on::TensorProto_DataType_UINT64,
               "Non-fmod can support integer types only.");
+  if (element_type == on::TensorProto_DataType_INT32 || element_type == on::TensorProto_DataType_INT64 ||
+      element_type == on::TensorProto_DataType_UINT32 || element_type == on::TensorProto_DataType_UINT64) {
+    const size_t divisor_count = prepare.rhs_tensor->Shape().Size();
+    if (!divisor_is_validated_constant_ && divisor_count > 0) {
+      // The runtime check below requires a device-to-host copy and stream synchronization,
+      // which is illegal while a CUDA graph is being captured.
+      cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+      CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(context), &capture_status));
+      ORT_RETURN_IF(capture_status != cudaStreamCaptureStatusNone,
+                    "CUDA Mod with an integer divisor that is not a constant initializer cannot be used during "
+                    "CUDA Graph capture because the divisor must be checked for zero at runtime. "
+                    "Make the divisor a constant initializer or disable CUDA Graph for this model.");
+      auto has_zero_buffer = GetScratchBuffer<int>(1, GetComputeStream(context));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(has_zero_buffer.get(), 0, sizeof(int), Stream(context)));
+      switch (element_type) {
+        case on::TensorProto_DataType_INT32:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<int32_t>(), divisor_count, has_zero_buffer.get());
+          break;
+        case on::TensorProto_DataType_INT64:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<int64_t>(), divisor_count, has_zero_buffer.get());
+          break;
+        case on::TensorProto_DataType_UINT32:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<uint32_t>(), divisor_count, has_zero_buffer.get());
+          break;
+        case on::TensorProto_DataType_UINT64:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<uint64_t>(), divisor_count, has_zero_buffer.get());
+          break;
+      }
+
+      auto has_zero = AllocateBufferOnCPUPinned<int>(1);
+      CUDA_RETURN_IF_ERROR(
+          cudaMemcpyAsync(has_zero.get(), has_zero_buffer.get(), sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
+      ORT_RETURN_IF(*has_zero != 0, "Integer modulo by zero");
+    }
+  }
+
 #define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
   case onnx_type: {                                                                                                 \
     Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \

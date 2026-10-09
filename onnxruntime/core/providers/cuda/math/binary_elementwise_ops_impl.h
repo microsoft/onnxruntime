@@ -8,6 +8,9 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
+void CheckZeroDivisor(cudaStream_t stream, const T* divisor_data, size_t count, int* has_zero);
+
 // These macros simplifies coding. To add a new op with following steps:
 // 1. Add a new entry in BINARY_OPS() list
 // 2. (optional) Define templated single element operator in binary_elementwise_ops_impl.cu
