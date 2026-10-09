@@ -8,7 +8,8 @@
 
 namespace onnxruntime::contrib::indexer_merge {
 
-inline int64_t ReadCapacity(const OpKernelInfo& info) {
+template <typename KernelInfo>
+inline int64_t ReadCapacity(const KernelInfo& info) {
   std::string policy;
   int64_t capacity;
   ORT_THROW_IF_ERROR(info.GetAttr("policy_mode", &policy));

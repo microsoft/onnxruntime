@@ -658,9 +658,9 @@ Status PackedSparseAttentionIndexer<T>::ComputeReuse(OpKernelContext* context) c
   }
   if (advance) return ComputeCsa(context, true);
   if (is_qsa) {
-    const Tensor* norm = context->Input<Tensor>(psai::kQueryNormWeight);
-    ORT_RETURN_IF(norm == nullptr || norm->Shape().NumDimensions() != 1, "Reuse requires query norm weights");
-    Tensor* snapshot = context->Output(psai::kStateUpdate, {batch, state_update_capacity_, norm->Shape()[0]});
+    const Tensor* qsa_norm = context->Input<Tensor>(psai::kQueryNormWeight);
+    ORT_RETURN_IF(qsa_norm == nullptr || qsa_norm->Shape().NumDimensions() != 1, "Reuse requires query norm weights");
+    Tensor* snapshot = context->Output(psai::kStateUpdate, {batch, state_update_capacity_, qsa_norm->Shape()[0]});
     if (snapshot != nullptr && snapshot->SizeInBytes() != 0) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(snapshot->MutableDataRaw(), 0, snapshot->SizeInBytes(), Stream(context)));
     }

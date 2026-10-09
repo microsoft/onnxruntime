@@ -84,6 +84,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.PackedMultiHeadAttention">com.microsoft.PackedMultiHeadAttention</a>
   * <a href="#com.microsoft.PackedSparseAttentionIndexer">com.microsoft.PackedSparseAttentionIndexer</a>
+  * <a href="#com.microsoft.PackedSparseAttentionIndexerMerge">com.microsoft.PackedSparseAttentionIndexerMerge</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.PagedAttention">com.microsoft.PagedAttention</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
@@ -5106,6 +5107,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
 <dt><tt>index_topk</tt> : int</dt>
 <dd>Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. Must be omitted when policy_mode is 'qsa'.</dd>
+<dt><tt>indexshare_state_policy</tt> : string</dt>
+<dd>Reuse state policy: default holds QSA and advances CSA; hold or advance overrides it.</dd>
+<dt><tt>max_output_entries</tt> : int</dt>
+<dd>Fixed padded output width for the optional IndexShare interface.</dd>
 <dt><tt>policy_mode</tt> : string (required)</dt>
 <dd>Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -5118,7 +5123,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (16 - 18)
+#### Inputs (16 - 22)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -5157,9 +5162,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': number of leading token transitions to capture for each request, with shape (batch_size). Values are clamped to the request length and state_update_capacity. Required when state_update_capacity is positive.</dd>
 <dt><tt>state_update_active</tt> (optional) : M</dt>
 <dd>Only for policy_mode 'qsa': optional capture gate with shape (1). A zero value disables capture.</dd>
+<dt><tt>indexshare_mode</tt> (optional) : M</dt>
+<dd>CPU scalar [1]: 0 refresh, 1 reuse.</dd>
+<dt><tt>merged_indices</tt> (optional) : M</dt>
+<dd>Packed merged selection [N,max_output_entries].</dd>
+<dt><tt>merged_counts</tt> (optional) : M</dt>
+<dd>Merged counts [N].</dd>
+<dt><tt>merged_status</tt> (optional) : M</dt>
+<dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (6 - 7)
+#### Outputs (6 - 8)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5176,6 +5189,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Updated generic per-request state length, with the same fixed shape as past_state_lengths.</dd>
 <dt><tt>state_update</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'qsa': compact transition payloads with shape (batch_size, state_update_capacity, head_size). A token that completes a compression block stores the prepared block representative; any other captured token stores its raw key. Inactive and unused slots are zero.</dd>
+<dt><tt>indexshare_status</tt> (optional) : M</dt>
+<dd>Selection status [N], forwarded on reuse and zero on refresh.</dd>
 </dl>
 
 #### Type Constraints
@@ -5187,6 +5202,61 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain position ids to 64-bit integer tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain packed metadata, generic state lengths and selected indices/counts to 32-bit integer tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.PackedSparseAttentionIndexerMerge"></a><a name="com.microsoft.packedsparseattentionindexermerge">**com.microsoft.PackedSparseAttentionIndexerMerge**</a>
+
+  Stable union of a mapped base selection and [range_start, range_end). Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid device metadata, or 2 for capacity overflow; failures return count 0 and all -1. The caller supplies a common index namespace and guarantees causal visibility.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_output_entries</tt> : int (required)</dt>
+<dd>Fixed output width, in [1, 2^30].</dd>
+<dt><tt>policy_mode</tt> : string (required)</dt>
+<dd>append_range or append_indices.</dd>
+</dl>
+
+#### Inputs (3 - 7)
+
+<dl>
+<dt><tt>base_indices</tt> : T</dt>
+<dd>Cached selections, shape (R, C).</dd>
+<dt><tt>base_counts</tt> : T</dt>
+<dd>Valid base-prefix lengths, shape (R).</dd>
+<dt><tt>base_row_indices</tt> : T</dt>
+<dd>Output-query to cached-row mapping, shape (N).</dd>
+<dt><tt>range_starts</tt> (optional) : T</dt>
+<dd>Inclusive nonnegative starts, shape (N).</dd>
+<dt><tt>range_ends</tt> (optional) : T</dt>
+<dd>Exclusive ends not less than starts, shape (N).</dd>
+<dt><tt>additional_indices</tt> (optional) : T</dt>
+<dd>Reserved; must be absent for append_range.</dd>
+<dt><tt>additional_counts</tt> (optional) : T</dt>
+<dd>Reserved; must be absent for append_range.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>selected_indices</tt> : T</dt>
+<dd>Merged indices, shape (N, max_output_entries).</dd>
+<dt><tt>selected_counts</tt> : T</dt>
+<dd>Merged prefix lengths, shape (N).</dd>
+<dt><tt>status</tt> : T</dt>
+<dd>Per-query device validation status, shape (N).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int32)</dt>
+<dd>Integer selection tensors.</dd>
 </dl>
 
 
