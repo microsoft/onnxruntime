@@ -46,7 +46,7 @@
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-#include "core/providers/webgpu/ep/sync_stream.h"
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
 #endif
 
 namespace onnxruntime {
@@ -824,8 +824,8 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
   prepack_allocator_.reset();
   session_buffer_pool_.reset();
-  if (context_.ActiveSingleThreadRecording() == recording_.get()) {
-    context_.SetActiveSingleThreadRecording(nullptr);
+  if (context_.ActiveSerializedRecording() == recording_.get()) {
+    context_.SetActiveSerializedRecording(nullptr);
   }
   if (context_.Device()) {
     // A failed Run may leave an unsubmitted recording in the context-shared pools.
@@ -853,15 +853,15 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  const bool single_thread = webgpu::ep::UseSingleThreadMode();
-  if (single_thread) {
-    context_.SetActiveSingleThreadRecording(recording_.get());
+  const bool serialized = webgpu::ep::UseSerializedExecutionMode();
+  if (serialized) {
+    context_.SetActiveSerializedRecording(recording_.get());
   }
   bool started = false;
   auto release_on_error = gsl::finally([&] {
-    if (single_thread && !started) {
+    if (serialized && !started) {
       graph_buffer_mgr_active_ = false;
-      context_.SetActiveSingleThreadRecording(nullptr);
+      context_.SetActiveSerializedRecording(nullptr);
     }
   });
 #endif
@@ -902,7 +902,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
         }
       }
 #if defined(ORT_USE_EP_API_ADAPTERS)
-      if (single_thread) {
+      if (serialized) {
         ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
       }
 #endif
@@ -927,8 +927,8 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     graph_buffer_mgr_active_ = false;
     run_active_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
-    if (webgpu::ep::UseSingleThreadMode()) {
-      context_.SetActiveSingleThreadRecording(nullptr);
+    if (webgpu::ep::UseSerializedExecutionMode()) {
+      context_.SetActiveSerializedRecording(nullptr);
     }
 #endif
   });
@@ -998,20 +998,20 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  const bool single_thread_replay = webgpu::ep::UseSingleThreadMode() && !IsRunActive();
-  if (single_thread_replay) {
-    context_.SetActiveSingleThreadRecording(recording_.get());
+  const bool serialized_replay = webgpu::ep::UseSerializedExecutionMode() && !IsRunActive();
+  if (serialized_replay) {
+    context_.SetActiveSerializedRecording(recording_.get());
   }
-  auto release_single_thread_run = gsl::finally([&] {
-    if (single_thread_replay) {
-      context_.SetActiveSingleThreadRecording(nullptr);
+  auto release_serialized_run = gsl::finally([&] {
+    if (serialized_replay) {
+      context_.SetActiveSerializedRecording(nullptr);
     }
   });
 #endif
   // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  if (single_thread_replay) {
+  if (serialized_replay) {
     ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
   }
 #endif

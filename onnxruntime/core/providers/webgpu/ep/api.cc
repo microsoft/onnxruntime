@@ -10,7 +10,7 @@
 
 #include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
-#include "core/providers/webgpu/ep/sync_stream.h"
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
 // When this EP is statically linked into the host binary instead of being built as a separate shared library, the
@@ -113,8 +113,8 @@ EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(CreateEpFactories)(
   // Initialize the global default logger
   ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(default_logger);
 
-  if (onnxruntime::webgpu::ep::UseSingleThreadMode()) {
-    LOGS_DEFAULT(INFO) << "WebGPU EP uses single-thread compatibility mode. Serialize all WebGPU operations on the same device. "
+  if (onnxruntime::webgpu::ep::UseSerializedExecutionMode()) {
+    LOGS_DEFAULT(INFO) << "WebGPU EP uses serialized compatibility mode. Serialize all WebGPU operations on the same device. "
                           "Upgrade to the latest ONNX Runtime for concurrent Session execution.";
   }
 

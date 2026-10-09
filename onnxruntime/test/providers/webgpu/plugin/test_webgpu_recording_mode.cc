@@ -5,16 +5,16 @@
 
 #include <gtest/gtest.h>
 
-#include "core/providers/webgpu/ep/sync_stream.h"
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
 
 namespace onnxruntime {
 namespace test {
 
-TEST(WebGpuPluginRecordingModeTest, VersionBoundariesAndSingleThreadOverride) {
+TEST(WebGpuPluginRecordingModeTest, VersionBoundariesAndSerializedOverride) {
   struct TestCase {
     uint32_t api_version;
     uint32_t patch_version;
-    bool single_thread;
+    bool serialized_execution;
   };
   constexpr TestCase cases[] = {
       {24, 4, true},
@@ -40,9 +40,9 @@ TEST(WebGpuPluginRecordingModeTest, VersionBoundariesAndSingleThreadOverride) {
 
   for (const auto& test_case : cases) {
     SCOPED_TRACE(::testing::Message() << "1." << test_case.api_version << "." << test_case.patch_version);
-    EXPECT_EQ(webgpu::ep::ShouldUseSingleThreadMode(test_case.api_version, test_case.patch_version, false),
-              test_case.single_thread);
-    EXPECT_TRUE(webgpu::ep::ShouldUseSingleThreadMode(test_case.api_version, test_case.patch_version, true));
+    EXPECT_EQ(webgpu::ep::ShouldUseSerializedExecutionMode(test_case.api_version, test_case.patch_version, false),
+              test_case.serialized_execution);
+    EXPECT_TRUE(webgpu::ep::ShouldUseSerializedExecutionMode(test_case.api_version, test_case.patch_version, true));
   }
 }
 

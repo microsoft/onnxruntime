@@ -3,7 +3,6 @@
 
 #include "sync_stream.h"
 
-#include "core/platform/env_var.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -75,18 +74,6 @@ OrtStatus* ORT_API_CALL WebGpuSyncStream::CreateNotificationImpl(
 
 OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep) {
   return new WebGpuSyncStream(ep);
-}
-
-bool UseSingleThreadMode() {
-  static const bool single_thread = [] {
-    // Retain the existing override name for compatibility with callers and CI.
-    const auto force_single_thread = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY");
-    ORT_ENFORCE(force_single_thread.empty() || force_single_thread == "0" || force_single_thread == "1",
-                "ORT_WEBGPU_EP_FORCE_LEGACY must be 0 or 1.");
-    return ShouldUseSingleThreadMode(onnxruntime::ep::CurrentOrtApiVersion(),
-                                     onnxruntime::ep::CurrentOrtPatchVersion(), force_single_thread == "1");
-  }();
-  return single_thread;
 }
 
 CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream) {

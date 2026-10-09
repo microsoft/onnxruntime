@@ -27,18 +27,19 @@ To ensure both static library and dynamic library builds work, we need to make a
 The plugin supports ORT 1.24.4 and later. Both execution modes use Session-owned recordings.
 Concurrent independent Sessions are enabled on 1.28.x starting at 1.28.3, on 1.30.x starting
 at 1.30.1, and on 1.31 and later. Other supported versions, including all 1.29.x hosts, use
-single-thread compatibility mode, selected by `UseSingleThreadMode()`. There is no shared
+serialized compatibility mode, selected by `UseSerializedExecutionMode()` in
+`runtime_compatibility.h` and `runtime_compatibility.cc`. There is no shared
 legacy recording. Cached-buffer clearing remains enabled, and kernels still batch their
 dispatches; there is no per-kernel submission and no traversal of other Sessions.
 
-Single-thread callers must serialize **all WebGPU operations on the same device**, including Session
+Serialized-mode callers must serialize **all WebGPU operations on the same device**, including Session
 creation/destruction, Run, I/O binding, allocator use, and Env transfers. Use sequential graph
 execution. Multiple Sessions may be used sequentially; overlapping operations are unsupported and
 are not detected or serialized by the plugin. This is not a restriction to one fixed CPU thread,
 but operations must not overlap or reenter from callbacks.
 The plugin's same-Session Run concurrency flag alone cannot serialize separate Sessions or Env calls.
 
-In single-thread mode, Session ordinary `Alloc` uses its owning Session's recording and a
+In serialized mode, Session ordinary `Alloc` uses its owning Session's recording and a
 `!IsRunActive()` submission-policy callback: submit cached-buffer clears outside Run, defer them
 during Run. `AllocOnStream` uses the same policy after validating the stream's Session.
 Kernel scratch uses ordinary Tensor allocation through that same allocator, without
@@ -49,7 +50,7 @@ Env allocations and concurrent-mode ordinary allocations continue to submit inde
 including during Run. Submission does not wait for GPU completion. Other plugin allocators
 without this explicit submission callback retain the independent-clear policy.
 
-The context tracks a non-owning pointer to the active Session's recording during a single-thread
+The context tracks a non-owning pointer to the active Session's recording during a serialized
 Run or replay. Framework copies with a stream use that stream's Session recording. If an old host
 drops the stream, the copy first flushes the active Session's recording, then uses a local recording.
 This preserves `clear -> upload -> compute -> readback` ordering without sharing command state.
@@ -64,7 +65,7 @@ Run/capture state, and complete recovery from host-side or partially recorded re
 is not guaranteed.
 
 The execution mode is selected once at plugin registration using the host's minor and patch
-versions. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` **before loading the plugin** to exercise single-thread
+versions. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` **before loading the plugin** to exercise serialized
 mode on a host that supports concurrent Sessions. The existing override name is retained for
 compatibility; it does not enable a legacy recording. The setting is process-wide and only forces
 the safe compatibility direction; it cannot enable concurrency on an unsupported host.
@@ -194,7 +195,7 @@ device-mismatched stream override does not block subsequent serial Runs on eithe
 Session or another Session on the same device. Run serial tests with
 `ORT_WEBGPU_EP_FORCE_LEGACY=1`; the concurrent-success tests apply only to modern mode.
 The `onnxruntime_webgpu_legacy_test` CTest entry sets this environment variable before loading
-the plugin and runs a single-thread-safe allowlist in normal PR CI. The existing CTest name is retained.
+the plugin and runs a serial-safe allowlist in normal PR CI. The existing CTest name is retained.
 Public allocation tests verify dirty-buffer reuse and read the raw buffer with an independent
 Dawn command encoder, so ORT's readback path cannot hide an unsubmitted clear. Submission counts
 are also checked before that external readback, including after a cancelled Run.

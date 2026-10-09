@@ -6,7 +6,7 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-#include "core/providers/webgpu/ep/sync_stream.h"
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
 #endif
 
 namespace onnxruntime {
@@ -41,7 +41,7 @@ Tensor ComputeContext::CreateGPUTensor(MLDataType data_type, const TensorShape& 
   AllocatorPtr allocator;
   ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  if (ep::UseSingleThreadMode()) {
+  if (ep::UseSerializedExecutionMode()) {
     return {data_type, shape, allocator};
   }
   const size_t bytes = Tensor::CalculateTensorStorageSize(data_type, shape);
