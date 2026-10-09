@@ -99,10 +99,18 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
   const auto device = memory_info.device;
 
-  if (utils::HasExternalData(tensor_proto) &&
-      !utils::HasExternalDataInMemory(tensor_proto)) {
+  if (utils::HasExternalData(tensor_proto)) {
     auto external_data_loader =
         external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
+#if defined(ENABLE_D3D12_FILE_LOADING)
+    // Tensor-creating file loaders cannot consume memory-backed external data.
+    // Other loaders, including WebAssembly loaders, must still receive it.
+    if (utils::HasExternalDataInMemory(tensor_proto) &&
+        external_data_loader != nullptr &&
+        external_data_loader->CreatesTensorForDevice(device)) {
+      external_data_loader = nullptr;
+    }
+#endif
     if (external_data_loader) {
 #if defined(ENABLE_D3D12_FILE_LOADING)
       if (external_data_loader->CreatesTensorForDevice(device)) {
