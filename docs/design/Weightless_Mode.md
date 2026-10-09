@@ -32,7 +32,7 @@ device.
 | Application request | Exactly **one** mode, via `OrtCompileApi::ModelCompilationOptions_SetWeightlessMode()` or the `"ep.enable_weightless_mode"` session option (`kOrtSessionOptionEpEnableWeightlessMode`). |
 | Validation | When the session is initialized, ORT rejects unknown values. Before creating each plugin EP, ORT checks the requested mode against the EP metadata and sets the deprecated `"ep.enable_weightless"` option to match. During `Compile()`, ORT checks the mode against `GetWeightlessSupport()`. |
 | Compiled model | ORT records the mode in the compiled model's metadata under `"weightless_mode"` (`kOrtModelMetadata_WeightlessMode`). |
-| Deprecated | `ModelCompilationOptions_SetWeightlessEnabled(bool)`, `"ep.enable_weightless"` (since 1.31) and `"ep.enable_weightless_ep_context_nodes"` (since 1.29). |
+| Deprecated | `ModelCompilationOptions_SetWeightlessEnabled(bool)`, `"ep.enable_weightless"` (since 1.32) and `"ep.enable_weightless_ep_context_nodes"` (since 1.29). |
 
 ### Modes
 
@@ -57,7 +57,7 @@ example when older hardware or drivers only support `EXTERNAL_ONLY`.
 
 | Key | Since | Values |
 |---|---|---|
-| `"weightless_supported_modes"` | 1.31 | `"none"`, `"external_only"`, `"all"`, `"all_or_external_only"`, and values added later. |
+| `"weightless_supported_modes"` | 1.32 | `"none"`, `"external_only"`, `"all"`, `"all_or_external_only"`, and values added later. |
 | `"weightless_support"` | 1.29 | `"none"`, `"external_only"`, `"all"`. |
 
 An EP reports `"weightless_supported_modes"` and keeps reporting `"weightless_support"` with the value it reported
@@ -82,13 +82,13 @@ OrtStatus* ORT_API_CALL MyEp::GetWeightlessSupportImpl(const OrtEp* this_ptr, Or
 }
 ```
 
-The callback signature is unchanged since 1.29. ORT versions before 1.31 only check that the value isn't
+The callback signature is unchanged since 1.29. ORT versions before 1.32 only check that the value isn't
 `OrtWeightlessSupport_NONE`, so an EP can report `OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY` to them as well.
 
 **1.3 How the EP gets the weights.** The EP reads the mode the application chose from the
 `"ep.enable_weightless_mode"` session config entry (`OrtEpApi::GetSessionConfigEntry`). An EP that supports
 several modes must honor that entry. When it isn't set but the deprecated `"ep.enable_weightless"` entry is `"1"`,
-the EP keeps the behavior it had before 1.31. When the EP later creates a session from the compiled model, it can
+the EP keeps the behavior it had before 1.32. When the EP later creates a session from the compiled model, it can
 read the recorded mode from the model metadata (`OrtApi::Graph_GetModelMetadata()`, key `"weightless_mode"`).
 
 Weightless mode does not prescribe how the EP obtains the initializer data. There are two strategies, and an EP may
@@ -180,7 +180,7 @@ model needs at runtime.
 
 ### Compatibility with EPs built for earlier versions
 
-EPs built for 1.29 or 1.30 don't know `"ep.enable_weightless_mode"`; they only read `"ep.enable_weightless"`.
+EPs built for 1.29 to 1.31 don't know `"ep.enable_weightless_mode"`; they only read `"ep.enable_weightless"`.
 When `"ep.enable_weightless_mode"` is set, ORT therefore prepares the session options each plugin EP receives in
 `OrtEpFactory::CreateEp()`:
 

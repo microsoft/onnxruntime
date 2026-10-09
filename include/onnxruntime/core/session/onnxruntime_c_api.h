@@ -8293,7 +8293,7 @@ typedef enum OrtWeightlessSupport {
 
   /** EP capability only: the EP supports both OrtWeightlessSupport_EXTERNAL_ONLY and OrtWeightlessSupport_ALL.
    *  Applications can't request it.
-   *  \since Version 1.31. */
+   *  \since Version 1.32. */
   OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY = 3,
 } OrtWeightlessSupport;
 
@@ -8604,7 +8604,7 @@ struct OrtCompileApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \deprecated Since version 1.31. Use ModelCompilationOptions_SetWeightlessMode instead, which selects a
+   * \deprecated Since version 1.32. Use ModelCompilationOptions_SetWeightlessMode instead, which selects a
    *             specific OrtWeightlessSupport mode.
    *
    * \since Version 1.29.
@@ -8612,54 +8612,6 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ bool use_weightless);
-
-  /** \brief Register a callback that receives external EPContext binary data during model compilation.
-   *
-   * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
-   * callback is used only when EPContext data is not embedded in the generated ONNX model. Passing NULL clears the
-   * callback and its state. If a compiling EP does not advertise WRITE support, compilation fails before that EP's
-   * Compile() call.
-   *
-   * \param[in] model_compile_options Model compilation options.
-   * \param[in] write_func Write callback, or NULL to clear a previously registered callback.
-   * \param[in] state Application-owned state passed to `write_func`. Ignored when `write_func` is NULL.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.31.
-   */
-  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
-                  _In_ OrtModelCompilationOptions* model_compile_options,
-                  _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
-
-  /** \brief Select the weightless mode for model compilation.
-   *
-   * When a mode other than OrtWeightlessSupport_NONE is selected, the compiled EPContext model will not embed the
-   * constant initializer data covered by that mode in the EP's compiled binary. Instead, the initializer data must be
-   * provided when creating a session from the compiled model.
-   *
-   * Applications can inspect the "weightless_supported_modes" EP metadata entry
-   * (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) of each OrtEpDevice to discover the modes supported by an EP
-   * and choose the one that best fits the use case.
-   *
-   * This is equivalent to setting the "ep.enable_weightless_mode" session option
-   * (kOrtSessionOptionEpEnableWeightlessMode) to the given value. Refer to that option for the checks ORT performs.
-   *
-   * ORT verifies that the target EP supports the selected mode during CompileModel() by calling
-   * OrtEp::GetWeightlessSupport(). If the EP does not support it, CompileModel() returns an error.
-   *
-   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] weightless_mode A single OrtWeightlessSupport value. OrtWeightlessSupport_NONE disables weightless
-   *                            mode (default behavior). Combined values such as
-   *                            OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY are not allowed.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.31.
-   */
-  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessMode,
-                  _In_ OrtModelCompilationOptions* model_compile_options,
-                  _In_ OrtWeightlessSupport weightless_mode);
 
   /** \brief Register a callback that receives external EPContext binary data during model compilation.
    *
@@ -8735,6 +8687,35 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t alignment,
                   size_t minimum_size);
+
+  /** \brief Select the weightless mode for model compilation.
+   *
+   * When a mode other than OrtWeightlessSupport_NONE is selected, the compiled EPContext model will not embed the
+   * constant initializer data covered by that mode in the EP's compiled binary. Instead, the initializer data must be
+   * provided when creating a session from the compiled model.
+   *
+   * Applications can inspect the "weightless_supported_modes" EP metadata entry
+   * (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) of each OrtEpDevice to discover the modes supported by an EP
+   * and choose the one that best fits the use case.
+   *
+   * This is equivalent to setting the "ep.enable_weightless_mode" session option
+   * (kOrtSessionOptionEpEnableWeightlessMode) to the given value. Refer to that option for the checks ORT performs.
+   *
+   * ORT verifies that the target EP supports the selected mode during CompileModel() by calling
+   * OrtEp::GetWeightlessSupport(). If the EP does not support it, CompileModel() returns an error.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] weightless_mode A single OrtWeightlessSupport value. OrtWeightlessSupport_NONE disables weightless
+   *                            mode (default behavior). Combined values such as
+   *                            OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY are not allowed.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessMode,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtWeightlessSupport weightless_mode);
 };
 
 /**

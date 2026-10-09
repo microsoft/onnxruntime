@@ -839,7 +839,7 @@ static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_l
 // - "0": disable. (default)
 // - "1": enable.
 //
-// \deprecated Since version 1.31. Use "ep.enable_weightless_mode" instead, which selects a specific
+// \deprecated Since version 1.32. Use "ep.enable_weightless_mode" instead, which selects a specific
 // OrtWeightlessSupport mode. If "ep.enable_weightless_mode" is set, ORT overrides this option to match it
 // ("0" for OrtWeightlessSupport_NONE, "1" otherwise) before creating the EP.
 //
@@ -886,7 +886,7 @@ static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weight
 // - "1": weightless mode for external initializers only (OrtWeightlessSupport_EXTERNAL_ONLY).
 // - "2": weightless mode for all initializers, internal and external (OrtWeightlessSupport_ALL).
 //
-// \since Version 1.31.
+// \since Version 1.32.
 static const char* const kOrtSessionOptionEpEnableWeightlessMode = "ep.enable_weightless_mode";
 
 // Specifies the file path to the original (source) ONNX model when creating a session with a weightless
