@@ -143,6 +143,10 @@ class ComputeContextBase {
     return webgpu_context_.Run(*this, program);
   }
 
+  inline Status FlushAndWaitChecked() {
+    return webgpu_context_.FlushAndWaitChecked(ep_.BufferManager(), ep_.Recording());
+  }
+
  protected:
   WebGpuContext& webgpu_context_;
   const WebGpuExecutionProvider& ep_;

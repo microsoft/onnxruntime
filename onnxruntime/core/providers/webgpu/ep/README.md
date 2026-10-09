@@ -143,6 +143,69 @@ preallocated bindings; they do not cover external Session allocator calls overla
 Concurrent profiling, cross-device transfer, and arbitrary foreign stream overrides are not
 established by these tests. Performance must be measured separately.
 
+### GatedDeltaNet state replay
+
+`com.microsoft::GatedDeltaNetStateReplay` version 1 is a WebGPU-only, FP32
+operator for one request and one recurrent-state descriptor. Inputs 0-2 are
+full, rank-1 source-state, compact-capsule and inactive destination backing
+tensors. Input 3 is CPU `int64[11]`, in this order:
+`source_offset, destination_offset, decay_offset, key_offset, delta_offset,
+Hv, Dv, Dk, Hk, capacity, kept_count`. Offsets count FP32 elements.
+Dimensions and capacity must be positive, and `1 <= kept_count <= capacity`.
+The caller must provide valid captured transitions for the entire kept prefix.
+
+The `source_state` selected by `source_offset` must be the state snapshot from
+immediately before the captured GatedDeltaNet transitions began. Using the
+producer's final state or another same-shaped snapshot is invalid because
+captured delta is state-dependent. Capsule geometry (`Hv, Dv, Dk, Hk`) and
+capacity must match the producer that generated the capsule. `capacity` is
+the original capsule capture/layout capacity. `kept_count` only selects the
+leading transitions to replay; `kept_count` must NOT be substituted for
+`capacity` when deriving the decay/key/delta section offsets.
+
+The output must be explicitly I/O-bound to the same allocation as the
+destination input; `.MayInplace` alone does not guarantee aliasing of a graph
+input. Writable destination backing must not alias source or capsule backing.
+Only the selected destination row is written. Source, capsule and neighboring
+destination slots are preserved, including unused capsule tails.
+
+State layout is `[Hv,Dv,Dk]`; capsule views are `[capacity,Hv]` decay,
+`[capacity,Hk,Dk]` key and `[capacity,Hv,Dv]` delta. Each invocation owns one
+state element, maps `hk = floor(h*Hk/Hv)`, and applies the captured factors in
+token order: `s *= decay[t,h]; s += key[t,hk,i] * delta[t,h,v]`.
+Workgroups contain 128 invocations; large dispatches use a flattened 2D grid.
+`BufferView` accessors add element-offset uniforms while binding the backing
+allocation (or its aligned framework segments), so a logical capsule row does
+not require a storage-binding-aligned offset. Source and capsule may share
+read-only backing. Storage binding counts use `ProgramBase::InputBufferOwner` and
+`OutputBufferOwner`, counting each owner's full backing segments once, plus
+one uniform binding. Distinct Tensor wrappers are not deduplicated merely
+because their raw buffer handles match. Extents, uint32 indexing and device
+binding limits are checked before dispatch.
+
+The kernel enqueues one program, then calls
+`ComputeContextBase::FlushAndWaitChecked()` on the owning EP recording. The
+enqueue helper is separate from this fence so future internal callers can
+enqueue multiple descriptors and check completion once. A failing completion
+returns failure rather than publishing success; destination contents on
+failure are unspecified and must not be committed. As with the context
+helper, externally supplied devices retain responsibility for earlier
+encoding errors captured by their own scopes/callbacks.
+
+This milestone has no graph-capture support, convolution replay, batching,
+or external session integration. Tests cover all kept prefixes at capacities
+1, 4, 7 and 8, non-divisible head mappings, Qwen's 230,720-byte capsule-row
+offset (64 modulo 256), segmented and shared source/capsule backing, poisoned
+tails, preservation, alias requirements and invalid metadata. GPU/CPU replay comparisons use
+absolute tolerance `1e-5` plus relative tolerance `2e-5`, not bitwise equality.
+Artificially small segmentation limits use the existing native-only test factory.
+`CapturedStateReplayMatchesIndependentPrefixes` uses the actual WebGPU producer's
+capsule, replays the original incoming state and compares with independent prefix
+runs with capture disabled. `RunCompletesBeforeReadback` checks the owning recording
+and polls queue completion with timeout zero immediately after Session::Run, before
+any tensor readback. The completion observation uses native Dawn context access and
+is not compiled for plugin EP, WASM or external-Dawn builds.
+
 ### Missing parts
 
 This section describes what is missing.
