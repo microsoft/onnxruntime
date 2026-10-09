@@ -48,6 +48,12 @@ def parse_args():
         choices=("cuda", "cpu", "follow_config"),
         default="cuda",
     )
+    parser.add_argument(
+        "--cuda-sdpa-kernel",
+        type=int,
+        default=1,
+        help="CUDA attention backend bitmask. Defaults to Flash Attention to keep MoE benchmarks independent of cuDNN.",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument(
         "--raw-prompts",
@@ -146,12 +152,17 @@ def select_first_free_gpu():
     return gpu_index
 
 
-def create_model(genai, model_path, provider, cpu_offload_experts, counter_alpha, counter_beta):
-    config = genai.Config(str(model_path))
+def configure_provider(config, provider, cuda_sdpa_kernel):
     if provider != "follow_config":
         config.clear_providers()
         if provider != "cpu":
             config.append_provider(provider)
+            config.set_provider_option(provider, "sdpa_kernel", str(cuda_sdpa_kernel))
+
+
+def create_model(genai, model_path, provider, cuda_sdpa_kernel, cpu_offload_experts, counter_alpha, counter_beta):
+    config = genai.Config(str(model_path))
+    configure_provider(config, provider, cuda_sdpa_kernel)
     config.overlay(
         json.dumps(
             {
@@ -218,6 +229,8 @@ def main():
     args = parse_args()
     if args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
+    if args.cuda_sdpa_kernel < 0:
+        raise ValueError("--cuda-sdpa-kernel must be non-negative.")
     if args.moe_cpu_offload_experts < 0:
         raise ValueError("--moe-cpu-offload-experts must be non-negative.")
     if (
@@ -246,6 +259,7 @@ def main():
             genai,
             args.model,
             args.provider,
+            args.cuda_sdpa_kernel,
             args.moe_cpu_offload_experts,
             args.moe_expert_counter_alpha,
             args.moe_expert_counter_beta,
