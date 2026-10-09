@@ -602,6 +602,7 @@ The **OpSet Version** column uses the following notation:
 |Inverse|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 |LinearAttention|*in* query:**T**<br> *in* key:**T**<br> *in* value:**T**<br> *in* past_state:**S**<br> *in* decay:**T**<br> *in* beta:**T**<br> *out* output:**T**<br> *out* present_state:**S**|1+|**T** = tensor(float)|
 |LinearAttentionGate|*in* a:**T**<br> *in* dt_bias:**TF**<br> *in* decay_scale:**TF**<br> *in* b:**T**<br> *out* decay:**T**<br> *out* beta:**T**|1+|**T** = tensor(float), tensor(float16)<br/> **TF** = tensor(float)|
+|LoraMulAdd|*in* base:**T**<br> *in* X:**T**<br> *in* Q_A:**tensor(int8)**<br> *in* Q_B:**tensor(int8)**<br> *in* S_A:**tensor(float)**<br> *in* S_B:**tensor(float)**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |MRotaryEmbedding|*in* input:**T**<br> *in* position_ids:**M**<br> *in* cos_cache:**T**<br> *in* sin_cache:**T**<br> *out* output:**T**|1+|**M** = tensor(int64)<br/> **T** = tensor(float), tensor(float16)|
 |MatMulBnb4|*in* A:**T1**<br> *in* B:**T2**<br> *in* absmax:**T1**<br> *out* Y:**T1**|1+|**T1** = tensor(float)<br/> **T2** = tensor(uint8)|
 |MatMulFpQ4|*in* A:**T1**<br> *in* B:**T2**<br> *in* B_shape:**T3**<br> *out* Y:**T1**|1+|**T1** = tensor(float)<br/> **T2** = tensor(uint8)<br/> **T3** = tensor(int64)|

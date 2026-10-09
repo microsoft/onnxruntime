@@ -19,6 +19,7 @@
 #include "core/providers/common.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
+#include "contrib_ops/cpu/quantization/lora_mul_add_helper.h"
 #include "core/platform/threadpool.h"
 #include "core/util/thread_utils.h"
 
@@ -1600,6 +1601,100 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
 
 REGISTER_MatMulNBits(float);
 REGISTER_MatMulNBits(MLFloat16);
+
+class LoraMulAdd final : public OpKernel {
+ public:
+  explicit LoraMulAdd(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("block_size", kLoraBlockSize) == kLoraBlockSize,
+                "LoraMulAdd supports only block_size=32.");
+    SetupMlasBackendKernelSelectorFromConfigOptions(config_, info.GetConfigOptions());
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoraMulAdd);
+
+  Status Compute(OpKernelContext* ctx) const override {
+    const Tensor* base = ctx->Input<Tensor>(0);
+    const Tensor* input = ctx->Input<Tensor>(1);
+    const Tensor* lora_a = ctx->Input<Tensor>(2);
+    const Tensor* lora_b = ctx->Input<Tensor>(3);
+    const Tensor* scale_a = ctx->Input<Tensor>(4);
+    const Tensor* scale_b = ctx->Input<Tensor>(5);
+    ORT_RETURN_IF_ERROR(CheckLoraMulAddInputs(base, input, lora_a, lora_b, scale_a, scale_b));
+    Tensor* output = ctx->Output(0, base->Shape());
+    if (output->Shape().Size() == 0) {
+      return Status::OK();
+    }
+    const int64_t rank = lora_a->Shape()[1];
+    LOGS(ctx->Logger(), VERBOSE) << "LoraMulAdd rank=" << rank
+                                 << " base_buffer_reused=" << (output->DataRaw() == base->DataRaw());
+    if (rank == 0) {
+      if (output->DataRaw() != base->DataRaw()) {
+        std::memcpy(output->MutableDataRaw(), base->DataRaw(), base->SizeInBytes());
+      }
+      return Status::OK();
+    }
+    const size_t width = narrow<size_t>(lora_a->Shape()[0]);
+    const size_t columns = narrow<size_t>(lora_b->Shape()[1]);
+    const size_t rows = narrow<size_t>(input->Shape().Size()) / width;
+    const size_t rank_size = narrow<size_t>(rank);
+    AllocatorPtr allocator;
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+    auto a = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(width) * rank_size, true);
+    auto b = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(rank_size) * columns, true);
+    const auto dequantize = [](const Tensor& quantized, const Tensor& scales, float* values) {
+      const size_t cols = narrow<size_t>(quantized.Shape()[1]);
+      const size_t count = narrow<size_t>(quantized.Shape().Size());
+      for (size_t index = 0; index < count; ++index) {
+        const size_t scale_index = (index / cols / kLoraBlockSize) * cols + index % cols;
+        values[index] = static_cast<float>(quantized.Data<int8_t>()[index]) * scales.Data<float>()[scale_index];
+      }
+    };
+    dequantize(*lora_a, *scale_a, a.get());
+    dequantize(*lora_b, *scale_b, b.get());
+    auto low_rank = IAllocator::MakeUniquePtr<float>(
+        allocator, SafeInt<size_t>(rows) * rank_size, true);
+    auto delta = IAllocator::MakeUniquePtr<float>(
+        allocator, SafeInt<size_t>(rows) * columns, true);
+    MLAS_SGEMM_DATA_PARAMS first{};
+    first.A = input->Data<float>();
+    first.lda = width;
+    first.B = a.get();
+    first.ldb = rank_size;
+    first.C = low_rank.get();
+    first.ldc = rank_size;
+    first.alpha = 1.0f;
+    first.beta = 0.0f;
+    MlasGemmBatch(CblasNoTrans, CblasNoTrans, rows, rank_size, width,
+                  &first, 1, ctx->GetOperatorThreadPool(), &config_);
+    MLAS_SGEMM_DATA_PARAMS second{};
+    second.A = low_rank.get();
+    second.lda = rank_size;
+    second.B = b.get();
+    second.ldb = columns;
+    second.C = delta.get();
+    second.ldc = columns;
+    second.alpha = 1.0f;
+    second.beta = 0.0f;
+    MlasGemmBatch(CblasNoTrans, CblasNoTrans, rows, columns, rank_size,
+                  &second, 1, ctx->GetOperatorThreadPool(), &config_);
+    float* values = output->MutableData<float>();
+    const size_t count = narrow<size_t>(output->Shape().Size());
+    for (size_t index = 0; index < count; ++index) {
+      values[index] = base->Data<float>()[index] + delta.get()[index];
+    }
+    return Status::OK();
+  }
+
+ private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config_{};
+};
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    LoraMulAdd, kMSDomain, 1, float, kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .MayInplace(0, 0),
+    LoraMulAdd);
 
 }  // namespace contrib
 }  // namespace onnxruntime

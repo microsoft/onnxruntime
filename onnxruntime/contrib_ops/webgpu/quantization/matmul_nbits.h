@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
+#include "core/providers/webgpu/math/matmul.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -93,6 +94,22 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t block_size_;
   int64_t accuracy_level_;
   int64_t bits_;
+};
+
+class LoraMulAdd final : public WebGpuKernel {
+ public:
+  explicit LoraMulAdd(const OpKernelInfo& info) : WebGpuKernel(info) {
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("block_size", 32) == 32,
+                "LoraMulAdd supports only block_size=32.");
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoraMulAdd);
+
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
+
+ private:
+  mutable MatMulOptImplCache lora_a_cache_;
+  mutable MatMulOptImplCache lora_b_cache_;
 };
 
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
