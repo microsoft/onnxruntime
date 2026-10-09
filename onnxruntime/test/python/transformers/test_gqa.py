@@ -40,7 +40,7 @@ from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_build_info
+from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers, get_build_info
 from onnxruntime import __version__ as ort_version
 
 # Set seed for reproducibility
@@ -72,6 +72,159 @@ enable_deterministic_check = True
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
+
+
+class TestBorrowedKVCache(unittest.TestCase):
+    @parameterized.expand(
+        [
+            (provider, device, dtype, tensor_type, head_size, query_length, with_past)
+            for provider, device, dtype, tensor_type in (
+                ("CPUExecutionProvider", "cpu", numpy.float32, TensorProto.FLOAT),
+                ("CUDAExecutionProvider", "cuda", numpy.float16, TensorProto.FLOAT16),
+            )
+            for head_size in (64, 512)
+            for query_length, with_past in ((1, True), (7, False), (7, True))
+        ]
+    )
+    def test_cache_inputs_remain_unchanged(
+        self, provider, device, dtype, tensor_type, head_size, query_length, with_past
+    ):
+        """Omitted present outputs must preserve borrowed caches across repeated runs."""
+        if provider not in get_available_providers():
+            self.skipTest(f"{provider} unavailable")
+        self.check_borrowed_cache(provider, device, dtype, tensor_type, head_size, query_length, with_past)
+
+    @parameterized.expand([(head_size, query_length) for head_size in (16, 64) for query_length in (1, 7)])
+    def test_cpu_fp16_generic_reference(self, head_size, query_length):
+        """Check generic CPU FP16 attention with padded caches and multiple KV heads."""
+        self.check_borrowed_cache(
+            "CPUExecutionProvider", "cpu", numpy.float16, TensorProto.FLOAT16, head_size, query_length, True
+        )
+
+    @parameterized.expand(
+        [
+            (head_size, query_length, window)
+            for head_size in (64, 128, 256)
+            for query_length in (1, 7)
+            for window in (1, 16, 32)
+        ]
+    )
+    def test_unfused_sliding_window_reference(self, head_size, query_length, window):
+        """Force unfused CUDA attention and verify that the window includes the current token."""
+        if "CUDAExecutionProvider" not in get_available_providers():
+            self.skipTest("CUDAExecutionProvider unavailable")
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"),
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            kernel = get_sdpa_kernel_from_debug_info(
+                lambda: self.check_borrowed_cache(
+                    "CUDAExecutionProvider",
+                    "cuda",
+                    numpy.float16,
+                    TensorProto.FLOAT16,
+                    head_size,
+                    query_length,
+                    True,
+                    window,
+                )
+            )
+            self.assertEqual(kernel, "MATH")
+
+    def check_borrowed_cache(
+        self, provider, device, dtype, tensor_type, head_size, query_length, with_past, local_window_size=16
+    ):
+        random = numpy.random.default_rng(42)
+        batch_size = 1 if query_length > 1 and with_past else 2
+        shapes = {
+            "query": [batch_size, query_length, 8 * head_size],
+            "key": [batch_size, 0, 2 * head_size],
+            "value": [batch_size, 0, 2 * head_size],
+            "past_key": [batch_size, 2, 64, head_size],
+            "past_value": [batch_size, 2, 64, head_size],
+        }
+        feeds = {name: random.uniform(-1, 1, shape).astype(dtype) for name, shape in shapes.items()}
+        lengths = [32, 28] if query_length == 1 else ([38] if with_past else [6, 4])
+        feeds["seqlens_k"] = numpy.asarray(lengths, dtype=numpy.int32)
+        feeds["total_sequence_length"] = numpy.asarray([max(lengths) + 1], dtype=numpy.int32)
+        inputs = [helper.make_tensor_value_info(name, tensor_type, shape) for name, shape in shapes.items()]
+        inputs += [helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size])]
+        inputs += [helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1])]
+        options = SessionOptions()
+        options.intra_op_num_threads = 12
+        if device == "cuda":
+            options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+
+        def make_session(omit_outputs):
+            outputs = [helper.make_tensor_value_info("output", tensor_type, shapes["query"])]
+            if not omit_outputs:
+                outputs += [
+                    helper.make_tensor_value_info("present_key", tensor_type, shapes["past_key"]),
+                    helper.make_tensor_value_info("present_value", tensor_type, shapes["past_value"]),
+                ]
+            node = helper.make_node(
+                "GroupQueryAttention",
+                list(feeds),
+                [output.name for output in outputs],
+                domain="com.microsoft",
+                num_heads=8,
+                kv_num_heads=2,
+                local_window_size=local_window_size,
+            )
+            model = helper.make_model(
+                helper.make_graph([node], "borrowed-cache", inputs, outputs),
+                opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                ir_version=10,
+            )
+            return InferenceSession(model.SerializeToString(), options, providers=[provider])
+
+        expected_session = make_session(False)
+        borrowed_session = make_session(True)
+        caches = {name: OrtValue.ortvalue_from_numpy(feeds[name], device, 0) for name in ("past_key", "past_value")}
+        originals = {name: feeds[name].copy() for name in caches}
+        for _ in range(2):
+            expected = expected_session.run(["output"], feeds)[0]
+            binding = borrowed_session.io_binding()
+            for name, values in feeds.items():
+                if name in caches:
+                    binding.bind_ortvalue_input(name, caches[name])
+                else:
+                    binding.bind_cpu_input(name, values)
+            binding.bind_output("output", device)
+            borrowed_session.run_with_iobinding(binding)
+            actual = binding.copy_outputs_to_cpu()[0]
+            self.assertTrue(numpy.isfinite(actual).all())
+            tolerance = 2e-3 if dtype == numpy.float16 else 2e-5
+            numpy.testing.assert_allclose(actual, expected, rtol=tolerance, atol=2e-5)
+            if with_past:
+                reference = numpy.empty((batch_size, query_length, 8, head_size), dtype=numpy.float64)
+                queries = feeds["query"].reshape(reference.shape).astype(numpy.float64)
+                for batch_index, last_position in enumerate(feeds["seqlens_k"]):
+                    for query_index in range(query_length):
+                        end = int(last_position) + 2 - query_length + query_index
+                        start = max(0, end - local_window_size)
+                        for head_index in range(8):
+                            keys = originals["past_key"][batch_index, head_index // 4, start:end].astype(numpy.float64)
+                            values = originals["past_value"][batch_index, head_index // 4, start:end].astype(
+                                numpy.float64
+                            )
+                            scores = keys @ queries[batch_index, query_index, head_index] / math.sqrt(head_size)
+                            weights = numpy.exp(scores - scores.max())
+                            reference[batch_index, query_index, head_index] = (weights / weights.sum()) @ values
+                numpy.testing.assert_allclose(
+                    actual,
+                    reference.reshape(actual.shape),
+                    rtol=tolerance,
+                    atol=tolerance,
+                )
+                feeds["seqlens_k"] -= 3
+                feeds["total_sequence_length"] -= 3
+            for name, cache in caches.items():
+                numpy.testing.assert_array_equal(cache.numpy(), originals[name])
+            feeds["query"] = random.uniform(-1, 1, shapes["query"]).astype(dtype)
 
 
 class CaptureStdout:

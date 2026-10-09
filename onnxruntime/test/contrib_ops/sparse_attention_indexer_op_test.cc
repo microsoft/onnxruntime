@@ -30,6 +30,7 @@
 #include "contrib_ops/cpu/sparse/sparse_attention_indexer_common.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -95,7 +96,9 @@ struct QsaGraphOptions {
   bool add_index_topk = false;
   bool add_csa_inputs = false;
   bool share_cache = false;
+  bool shared_rotary_cache = false;
   bool packed_qk = false;
+  bool add_mask = true;
   std::string policy_mode = sai::kPolicyModeQsa;
 };
 
@@ -117,9 +120,15 @@ void AddQsaNode(ModelTestBuilder& builder, const QsaGraphOptions& options) {
                 std::vector<int64_t>{options.batch_size, options.sequence_length, options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
-      builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{total, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{total, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
+      options.add_mask
+          ? builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total})
+          : &empty,
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, cache_capacity, options.head_size}),
   };
   if (options.add_csa_inputs) {
@@ -159,6 +168,7 @@ struct CsaGraphOptions {
   int64_t output_count = sai::kCsaOutputCount;
   bool add_token_budget = false;
   bool share_cache = false;
+  bool shared_rotary_cache = false;
 };
 
 void AddCsaNode(ModelTestBuilder& builder, const CsaGraphOptions& options) {
@@ -170,8 +180,12 @@ void AddCsaNode(ModelTestBuilder& builder, const CsaGraphOptions& options) {
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{64, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{64, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
       &empty,
       builder.MakeInput<float>(
           std::vector<int64_t>{options.batch_size,
@@ -306,6 +320,7 @@ struct QsaProblem {
   int token_budget = 4;
   float epsilon = 1.0e-6f;
   std::optional<float> scale;
+  bool shared_rotary_cache = false;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -352,10 +367,11 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
 
   selected.assign(static_cast<size_t>(problem.batch_size) * problem.sequence_length * capacity, -1);
   for (int b = 0; b < problem.batch_size; ++b) {
-    const float* cos_base = problem.cos_cache.data() +
-                            static_cast<size_t>(b) * problem.MaxRotaryLength() * problem.rotary_width;
-    const float* sin_base = problem.sin_cache.data() +
-                            static_cast<size_t>(b) * problem.MaxRotaryLength() * problem.rotary_width;
+    const size_t cache_batch = problem.shared_rotary_cache ? 0 : static_cast<size_t>(b);
+    const float* cos_base =
+        problem.cos_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
+    const float* sin_base =
+        problem.sin_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
     for (int s = 0; s < problem.sequence_length; ++s) {
       const size_t row = static_cast<size_t>(b) * problem.sequence_length + s;
 
@@ -439,6 +455,7 @@ struct CsaProblem {
   float epsilon = 1.0e-6f;
   std::optional<float> scale;
   std::optional<float> head_weight_scale;
+  bool shared_rotary_cache = false;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -505,10 +522,11 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
       }
     }
 
+    const size_t cache_batch = problem.shared_rotary_cache ? 0 : static_cast<size_t>(b);
     const float* cos_base =
-        problem.cos_cache.data() + static_cast<size_t>(b) * problem.max_rotary_length * problem.rotary_width;
+        problem.cos_cache.data() + cache_batch * problem.max_rotary_length * problem.rotary_width;
     const float* sin_base =
-        problem.sin_cache.data() + static_cast<size_t>(b) * problem.max_rotary_length * problem.rotary_width;
+        problem.sin_cache.data() + cache_batch * problem.max_rotary_length * problem.rotary_width;
 
     for (int window = 0; window < plan.new_window_count; ++window) {
       const bool has_previous = window >= 1 || plan.overlap_length >= problem.compress_ratio;
@@ -625,12 +643,29 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
 // Numeric runners
 // ---------------------------------------------------------------------------------------------
 
-bool HasCudaProvider() { return DefaultCudaExecutionProvider() != nullptr; }
+enum class ProviderKind {
+  Cuda,
+  WebGpu,
+};
 
-void RunOnCuda(OpTester& test) {
+std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind) {
+  if (provider_kind == ProviderKind::Cuda) {
+    return DefaultCudaExecutionProvider();
+  }
+#ifdef USE_WEBGPU
+  return DefaultWebGpuExecutionProvider();
+#else
+  return nullptr;
+#endif
+}
+
+void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  providers.push_back(std::move(provider));
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Run(std::move(session_options), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
@@ -642,12 +677,12 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
                          1.10f, 0.29f);
   problem.query_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 1.20f, 0.23f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.70f, 0.17f);
-  problem.cos_cache = MakeWave(static_cast<size_t>(problem.batch_size) * total * problem.rotary_width, 0.20f, 0.13f);
-  problem.sin_cache = MakeWave(static_cast<size_t>(problem.batch_size) * total * problem.rotary_width, 0.90f, 0.19f);
+  const size_t cache_batches = problem.shared_rotary_cache ? 1 : static_cast<size_t>(problem.batch_size);
+  problem.cos_cache = MakeWave(cache_batches * total * problem.rotary_width, 0.20f, 0.13f);
+  problem.sin_cache = MakeWave(cache_batches * total * problem.rotary_width, 0.90f, 0.19f);
   problem.past_key = MakeWave(
       static_cast<size_t>(problem.batch_size) * problem.PastKeyCapacity() * problem.head_size, 0.05f, 0.23f);
 
-  // Row 0 sees four tokens (two complete blocks, no tail); row 1 sees five (two blocks plus a tail).
   problem.mask.assign(static_cast<size_t>(problem.batch_size) * total, 1);
   for (int b = 0; b < problem.batch_size; ++b) {
     for (int t = 0; t <= b && t < problem.past_sequence_length; ++t) {
@@ -658,9 +693,13 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
 }
 
 template <typename T>
-void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(), bool packed_qk = false) {
-  if (!HasCudaProvider()) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
+void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
+                ProviderKind provider_kind = ProviderKind::Cuda, bool packed_qk = false,
+                bool omit_mask = false) {
+  auto provider = CreateProvider(provider_kind);
+  if (provider == nullptr) {
+    GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
+                 << " execution provider is not available";
   }
 
   problem.query = RoundTrip<T>(problem.query);
@@ -708,9 +747,16 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(), bool pac
   }
   test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
-  test.AddInput<T>("cos_cache", {batch_size, total, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
-  test.AddInput<T>("sin_cache", {batch_size, total, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
-  test.AddInput<int64_t>("mask", {batch_size, total}, problem.mask);
+  const std::vector<int64_t> rotary_cache_shape = problem.shared_rotary_cache
+                                                      ? std::vector<int64_t>{total, problem.rotary_width}
+                                                      : std::vector<int64_t>{batch_size, total, problem.rotary_width};
+  test.AddInput<T>("cos_cache", rotary_cache_shape, ToElementType<T>(problem.cos_cache));
+  test.AddInput<T>("sin_cache", rotary_cache_shape, ToElementType<T>(problem.sin_cache));
+  if (omit_mask) {
+    test.AddOptionalInputEdge<int64_t>();
+  } else {
+    test.AddInput<int64_t>("mask", {batch_size, total}, problem.mask);
+  }
   test.AddInput<T>("past_key", {batch_size, problem.PastKeyCapacity(), head_size},
                    ToElementType<T>(problem.past_key));
   for (int slot = sai::kGate; slot < sai::kPastSequenceLength; ++slot) {
@@ -722,7 +768,7 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(), bool pac
   test.AddOutput<int32_t>("selected_indices", {batch_size, sequence_length, problem.Capacity()}, selected);
   test.AddOutput<T>("present_key", {batch_size, problem.PresentKeyCapacity(), head_size},
                     ToElementType<T>(present_key), false, 0.0f, tolerance);
-  RunOnCuda(test);
+  RunOnProvider(test, std::move(provider));
 }
 
 CsaProblem MakeCsaProblem(CsaProblem problem = {}) {
@@ -733,12 +779,11 @@ CsaProblem MakeCsaProblem(CsaProblem problem = {}) {
   problem.key = MakeWave(static_cast<size_t>(problem.batch_size) * problem.sequence_length * width, 0.60f, 0.21f);
   problem.query_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 1.10f, 0.19f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.45f, 0.31f);
+  const size_t cache_batches = problem.shared_rotary_cache ? 1 : static_cast<size_t>(problem.batch_size);
   problem.cos_cache =
-      MakeWave(static_cast<size_t>(problem.batch_size) * problem.max_rotary_length * problem.rotary_width, 0.15f,
-               0.27f);
+      MakeWave(cache_batches * problem.max_rotary_length * problem.rotary_width, 0.15f, 0.27f);
   problem.sin_cache =
-      MakeWave(static_cast<size_t>(problem.batch_size) * problem.max_rotary_length * problem.rotary_width, 1.05f,
-               0.33f);
+      MakeWave(cache_batches * problem.max_rotary_length * problem.rotary_width, 1.05f, 0.33f);
   problem.gate = MakeWave(static_cast<size_t>(problem.batch_size) * problem.sequence_length * width, 0.80f, 0.24f);
   problem.position_bias = MakeWave(static_cast<size_t>(problem.compress_ratio) * width, 0.33f, 0.11f);
   problem.head_weights = MakeWave(
@@ -760,9 +805,12 @@ CsaProblem MakeCsaProblem(CsaProblem problem = {}) {
 }
 
 template <typename T>
-void RunCsaTest(const CsaProblem& base, float tolerance) {
-  if (!HasCudaProvider()) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
+void RunCsaTest(const CsaProblem& base, float tolerance,
+                ProviderKind provider_kind = ProviderKind::Cuda) {
+  auto provider = CreateProvider(provider_kind);
+  if (provider == nullptr) {
+    GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
+                 << " execution provider is not available";
   }
 
   CsaProblem problem = base;
@@ -810,10 +858,12 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
   test.AddInput<T>("key", {batch_size, sequence_length, width}, ToElementType<T>(problem.key));
   test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
-  test.AddInput<T>("cos_cache", {batch_size, problem.max_rotary_length, problem.rotary_width},
-                   ToElementType<T>(problem.cos_cache));
-  test.AddInput<T>("sin_cache", {batch_size, problem.max_rotary_length, problem.rotary_width},
-                   ToElementType<T>(problem.sin_cache));
+  const std::vector<int64_t> rotary_cache_shape =
+      problem.shared_rotary_cache
+          ? std::vector<int64_t>{problem.max_rotary_length, problem.rotary_width}
+          : std::vector<int64_t>{batch_size, problem.max_rotary_length, problem.rotary_width};
+  test.AddInput<T>("cos_cache", rotary_cache_shape, ToElementType<T>(problem.cos_cache));
+  test.AddInput<T>("sin_cache", rotary_cache_shape, ToElementType<T>(problem.sin_cache));
   test.AddOptionalInputEdge<int64_t>();
   test.AddInput<T>("past_key", {batch_size, problem.PastCompressedCapacity(), head_size},
                    ToElementType<T>(problem.past_compressed_key));
@@ -840,7 +890,7 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
   present_kv_buffer.insert(present_kv_buffer.end(), present_gate_buffer.begin(), present_gate_buffer.end());
   test.AddOutput<T>("present_proj_buffer", {2, batch_size, plan.present_buffer_length, width},
                     ToElementType<T>(present_kv_buffer), false, 0.0f, tolerance);
-  RunOnCuda(test);
+  RunOnProvider(test, std::move(provider));
 }
 
 // A call whose tokens do not close a window: the buffer only grows and the compressed state is
@@ -870,6 +920,14 @@ CsaProblem MakeCsaBufferOnlyProblem() {
   problem.past_kv_buffer = MakeWave(static_cast<size_t>(problem.past_buffer_length) * width, 0.97f, 0.20f);
   problem.past_gate_buffer = MakeWave(static_cast<size_t>(problem.past_buffer_length) * width, 1.48f, 0.24f);
   problem.position_ids = {8};
+  return problem;
+}
+
+CsaProblem MakeCsaNoCompressedEntryProblem() {
+  CsaProblem problem = MakeCsaBufferOnlyProblem();
+  problem.past_compressed_length = 0;
+  problem.past_compressed_key.clear();
+  problem.position_ids = {0};
   return problem;
 }
 
@@ -903,6 +961,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, QsaAcceptsPackedQk) {
               {options.batch_size, options.sequence_length, options.token_budget + options.compress_ratio - 1});
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, QsaAcceptsOmittedMask) {
+  QsaGraphOptions options;
+  options.add_mask = false;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&](ModelTestBuilder& builder) { AddQsaNode(builder, options); }, model));
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, QsaSharedCacheKeepsCapacity) {
   QsaGraphOptions options;
   options.share_cache = true;
@@ -914,6 +979,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, QsaSharedCacheKeepsCapacity) {
   const Node& node = *graph.Nodes().begin();
   ExpectShape(graph, node.OutputDefs()[sai::kPresentKey]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.key_cache_capacity, options.head_size});
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, QsaAcceptsSharedRotaryCache) {
+  QsaGraphOptions options;
+  options.shared_rotary_cache = true;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); }, model));
 }
 
 TEST(SparseAttentionIndexerShapeInferenceTest, CsaInfersCompressedStateShapes) {
@@ -952,6 +1024,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, CsaSharedCacheKeepsCapacity) {
   ExpectShape(graph, node.OutputDefs()[sai::kPresentKey]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.compressed_cache_capacity, options.head_size});
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, CsaAcceptsSharedRotaryCache) {
+  CsaGraphOptions options;
+  options.shared_rotary_cache = true;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); }, model));
 }
 
 #ifndef ORT_NO_EXCEPTIONS
@@ -1096,7 +1175,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedCsaBuffer) {
 TEST(SparseAttentionIndexerTest, QsaFloat) { RunQsaTest<float>(1.0e-5f); }
 
 TEST(SparseAttentionIndexerTest, QsaPackedQkFloat) {
-  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), true);
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::Cuda, true);
+}
+
+TEST(SparseAttentionIndexerTest, QsaMasklessPrefixCausal) {
+  QsaProblem problem = MakeQsaProblem();
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
 }
 
 TEST(SparseAttentionIndexerTest, QsaFloat16) { RunQsaTest<MLFloat16>(2.0e-3f); }
@@ -1112,6 +1197,155 @@ TEST(SparseAttentionIndexerTest, QsaMultiTileAndStridedChannels) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
+TEST(SparseAttentionIndexerTest, QsaNonPrefixMask) {
+  QsaProblem problem = MakeQsaProblem();
+  const int total = problem.TotalSequenceLength();
+  problem.mask[1] = 0;
+  problem.mask[total - 1] = 1;
+  RunQsaTest<float>(1.0e-5f, std::move(problem));
+}
+
+TEST(SparseAttentionIndexerTest, QsaMultiTileNonPrefixMask) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 299;
+  problem.token_budget = 64;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 0);
+  std::fill_n(problem.mask.begin(), 127, 1);
+  problem.mask[128] = 1;
+  problem.mask[200] = 1;
+  RunQsaTest<float>(1.0e-5f, std::move(problem));
+}
+
+TEST(SparseAttentionIndexerTest, QsaSinglePassTopKLimit) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 300;
+  problem.token_budget = 64;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
+
+TEST(SparseAttentionIndexerTest, QsaRepeatedScanTopKFallback) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 300;
+  problem.token_budget = 66;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
+
+TEST(SparseAttentionIndexerTest, QsaLongContextBoundedTopKParity) {
+  for (const int context_length : {8192, 32768, 65536, 131072, 262144}) {
+    SCOPED_TRACE("context_length=" + std::to_string(context_length));
+    QsaProblem problem;
+    problem.batch_size = 1;
+    problem.sequence_length = 1;
+    problem.past_sequence_length = context_length - 1;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem = MakeQsaProblem(std::move(problem));
+
+    std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+    for (int head = 0; head < problem.num_heads; ++head) {
+      problem.query[static_cast<size_t>(head) * problem.head_size] = 1.0f;
+    }
+    std::fill(problem.key_norm_weight.begin(), problem.key_norm_weight.end(), 1.0f);
+    std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+    std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+    std::fill(problem.past_key.begin(), problem.past_key.end(), 0.0f);
+    std::fill(problem.key.begin(), problem.key.end(), 0.0f);
+
+    const int block_count = context_length / problem.compress_ratio;
+    for (int position = 0; position < context_length; ++position) {
+      const float rank = static_cast<float>(position / problem.compress_ratio + 1) /
+                         static_cast<float>(block_count);
+      std::vector<float>& cache = position < problem.past_sequence_length ? problem.past_key : problem.key;
+      const int cache_position = position < problem.past_sequence_length ? position : 0;
+      const size_t offset = static_cast<size_t>(cache_position) * problem.head_size;
+      cache[offset] = rank;
+      cache[offset + 1] = 1.0f;
+    }
+
+    RunQsaTest<float>(1.0e-5f, std::move(problem));
+  }
+}
+
+TEST(SparseAttentionIndexerTest, QsaLongContextBoundedTopKTies) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 8191;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem.scale = 0.0f;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
+
+template <typename T>
+void RunQsaQwenSpecializedScoreAndPartialTopK(float tolerance) {
+  QsaProblem problem;
+  problem.batch_size = 2;
+  problem.sequence_length = 2;
+  problem.num_heads = 4;
+  problem.head_size = 128;
+  problem.past_sequence_length = 4094;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<T>(tolerance, std::move(problem), ProviderKind::Cuda, false, true);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKFloat) {
+  RunQsaQwenSpecializedScoreAndPartialTopK<float>(1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKFloat16) {
+  RunQsaQwenSpecializedScoreAndPartialTopK<MLFloat16>(2.0e-3f);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKBFloat16) {
+  RunQsaQwenSpecializedScoreAndPartialTopK<BFloat16>(2.0e-2f);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenFixedCapacityRawCacheDistributedTopK) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 4;
+  problem.head_size = 128;
+  problem.past_sequence_length = 8191;
+  problem.key_cache_capacity = 8192;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenDistributedPartialTopKTies) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 4;
+  problem.head_size = 128;
+  problem.past_sequence_length = 65535;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+  std::fill(problem.past_key.begin(), problem.past_key.end(), 0.0f);
+  std::fill(problem.key.begin(), problem.key.end(), 0.0f);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
+}
+
 TEST(SparseAttentionIndexerTest, QsaExplicitZeroScale) {
   QsaProblem problem = MakeQsaProblem();
   problem.scale = 0.0f;
@@ -1121,6 +1355,12 @@ TEST(SparseAttentionIndexerTest, QsaExplicitZeroScale) {
 TEST(SparseAttentionIndexerTest, QsaSharedCacheCapacity) {
   QsaProblem problem;
   problem.key_cache_capacity = 16;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
+
+TEST(SparseAttentionIndexerTest, QsaSharedRotaryCache) {
+  QsaProblem problem;
+  problem.shared_rotary_cache = true;
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
@@ -1183,9 +1423,19 @@ TEST(SparseAttentionIndexerTest, CsaFloat16ScoresNewKeysBeforeCacheRounding) {
 
 TEST(SparseAttentionIndexerTest, CsaBufferOnlyStep) { RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f); }
 
+TEST(SparseAttentionIndexerTest, CsaNoCompressedEntry) {
+  RunCsaTest<float>(MakeCsaNoCompressedEntryProblem(), 1.0e-5f);
+}
+
 TEST(SparseAttentionIndexerTest, CsaSharedCacheCapacity) {
   CsaProblem problem;
   problem.compressed_cache_capacity = 16;
+  RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerTest, CsaSharedRotaryCache) {
+  CsaProblem problem;
+  problem.shared_rotary_cache = true;
   RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f);
 }
 
@@ -1211,5 +1461,223 @@ TEST(SparseAttentionIndexerTest, CsaEmptyBatch) {
   RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f);
 }
 
+#ifdef USE_WEBGPU
+TEST(SparseAttentionIndexerWebGpuTest, QsaFloat) {
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaPackedQkFloat) {
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu, true);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaMasklessPrefixCausal) {
+  QsaProblem problem = MakeQsaProblem();
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu, false, true);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaFloat16) {
+  RunQsaTest<MLFloat16>(4.0e-3f, MakeQsaProblem(), ProviderKind::WebGpu);
+}
+
+template <typename T>
+void RunQsaCachedScoresWithMaskHoles(float tolerance) {
+  QsaProblem problem;
+  problem.past_sequence_length = 17;
+  problem.compress_ratio = 4;
+  problem.token_budget = 16;
+  problem = MakeQsaProblem(std::move(problem));
+  const int total = problem.TotalSequenceLength();
+  problem.mask[4] = 0;
+  problem.mask[11] = 0;
+  problem.mask[total + 5] = 0;
+  problem.mask[total + 13] = 0;
+  RunQsaTest<T>(tolerance, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaCachedScoresWithMaskHoles) {
+  RunQsaCachedScoresWithMaskHoles<float>(1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaCachedScoresWithMaskHolesFloat16) {
+  RunQsaCachedScoresWithMaskHoles<MLFloat16>(4.0e-3f);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaScoreCacheBoundary) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 768;
+  problem.num_heads = 1;
+  problem.compress_ratio = 1;
+  problem.token_budget = 4;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  ASSERT_GT(problem.TotalSequenceLength() / problem.compress_ratio, 768);
+  ASSERT_LE(problem.TotalSequenceLength(), 3072);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaVisibilityCacheBoundaryWithMaskHoles) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 3079;
+  problem.num_heads = 1;
+  problem.compress_ratio = 32;
+  problem.token_budget = 32;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  for (int token : {8, 53, 2050, 3011}) {
+    problem.mask[token] = 0;
+  }
+  const int visible_count = problem.TotalSequenceLength() - 4;
+  ASSERT_GT(visible_count, 3072);
+  ASSERT_LE(visible_count / problem.compress_ratio, 768);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaExplicitZeroScale) {
+  QsaProblem problem = MakeQsaProblem();
+  problem.scale = 0.0f;
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaSharedRotaryCache) {
+  QsaProblem problem;
+  problem.shared_rotary_cache = true;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaInt64HighWordMask) {
+  QsaProblem problem = MakeQsaProblem();
+  for (int64_t& mask_value : problem.mask) {
+    if (mask_value != 0) {
+      mask_value = int64_t{1} << 32;
+    }
+  }
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat) {
+  RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16) {
+  RunCsaTest<MLFloat16>(MakeCsaProblem(), 6.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaSharedRotaryCache) {
+  CsaProblem problem;
+  problem.shared_rotary_cache = true;
+  RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16ScoresNewKeysBeforeCacheRounding) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 1;
+  problem.index_topk = 2;
+  problem.past_compressed_length = 1;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 4;
+  problem.query = {1.0f, 3.0e-4f};
+  problem.key = {0.0f, 0.0f, 1.0f, 3.0e-4f};
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache.assign(4, 1.0f);
+  problem.sin_cache.assign(4, 0.0f);
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(4, 0.0f);
+  problem.head_weights = {1.0f};
+  problem.position_ids = {2};
+  problem.past_compressed_key =
+      RoundTrip<MLFloat16>(RmsNormalize({1.0f, 3.0e-4f}, problem.key_norm_weight, problem.epsilon));
+  RunCsaTest<MLFloat16>(problem, 2.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaBufferOnlyStep) {
+  RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaNoCompressedEntry) {
+  RunCsaTest<float>(MakeCsaNoCompressedEntryProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaExplicitZeroScales) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.scale = 0.0f;
+  problem.head_weight_scale = 0.0f;
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaInt64MaxPosition) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.position_ids[0] = std::numeric_limits<int64_t>::max();
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaInt64PositionVisibilityBoundary) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 2;
+  problem.index_topk = 1;
+  problem.past_compressed_length = 2;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 1;
+  problem.query = {1.0f, 0.0f};
+  problem.key.assign(4, 0.0f);
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache = {1.0f};
+  problem.sin_cache = {0.0f};
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(static_cast<size_t>(problem.compress_ratio) * 4, 0.0f);
+  problem.head_weights = {1.0f};
+  problem.position_ids = {int64_t{1} << 32};
+  problem.past_compressed_key = {1.0f, 0.0f, 2.0f, 0.0f};
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaMaskedCandidatesDoNotOutrankNegativeInfinity) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 1;
+  problem.index_topk = 1;
+  problem.past_compressed_length = 2;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 1;
+  problem.query = {1.0f, 0.0f};
+  problem.key.assign(4, 0.0f);
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache = {1.0f};
+  problem.sin_cache = {0.0f};
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(4, 0.0f);
+  problem.head_weights = {-std::numeric_limits<float>::infinity()};
+  problem.position_ids = {0};
+  problem.past_compressed_key = {1.0f, 0.0f, 2.0f, 0.0f};
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaNegativePosition) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.position_ids[0] = -1;
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

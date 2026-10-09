@@ -110,6 +110,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
   bool enable_kernel_debug_info_ = false;
   bool enable_int2_gemv_ = false;
+  bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
 
@@ -152,7 +153,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fp4_fc2_block_scales_;
 
   // Fused MXFP4 GEMV (W4A16) decode path. Default-on (opt-out via ORT_ENABLE_FP4_GEMV=0) on
-  // the SM<120 dequant-fallback regime. When enabled, PrePack additionally lays out the MXFP4
+  // the dequant-fallback regime. When enabled, PrePack additionally lays out the MXFP4
   // weights in the GEMV-consumed [E, n, k/2] row-major layout and combines the e8m0 block
   // scales with the per-expert global scale into the
   // [E, k/32, n] activation-dtype scale layout. ComputeInternal routes small-decode shapes

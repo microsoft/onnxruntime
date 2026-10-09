@@ -10,6 +10,7 @@
 #include <cstring>
 #include <new>
 #include <string>
+#include <system_error>
 
 #include "asset_hasher.h"
 #include "manifest_parser.h"
@@ -188,10 +189,9 @@ void ModelPackageStatus_Release(ModelPackageStatus* s) {
 
 ModelPackageStatus* ModelPackage_Open(const char* package_root,
                                       const ModelPackageOpenOptions* opts,
-                                      ModelPackage** out) {
+                                      ModelPackage** out) try {
   if (!package_root) return NullArg("package_root");
   if (!out) return NullArg("out");
-  *out = nullptr;
 
   ModelPackageOpenOptions effective{};
   effective.allow_external_paths = false;
@@ -204,11 +204,13 @@ ModelPackageStatus* ModelPackage_Open(const char* package_root,
   }
 
   auto pkg = std::make_unique<ModelPackage>();
-  if (auto* s = mp::ParsePackage(std::filesystem::path(package_root), effective, pkg.get())) {
+  if (auto* s = mp::ParsePackage(std::filesystem::u8path(package_root), effective, pkg.get())) {
     return s;
   }
   *out = pkg.release();
   return nullptr;
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 void ModelPackage_Close(ModelPackage* pkg) {
@@ -270,7 +272,6 @@ ModelPackageStatus* ModelPackage_ResolveAssetUri(const ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!uri) return NullArg("uri");
   if (!out_path) return NullArg("out_path");
-  *out_path = nullptr;
   auto it = pkg->shared_asset_index_by_uri.find(uri);
   if (it == pkg->shared_asset_index_by_uri.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_ASSET_MISSING,
@@ -284,11 +285,10 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
                                                   const char* base_dir,
                                                   const char* input,
                                                   bool must_exist,
-                                                  const char** out_path) {
+                                                  const char** out_path) try {
   if (!pkg) return NullArg("pkg");
   if (!input) return NullArg("input");
   if (!out_path) return NullArg("out_path");
-  *out_path = nullptr;
   static thread_local std::string slot;
 
   std::string uri_part, tail_part;
@@ -298,36 +298,33 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
       return MakeStatus(MODEL_PACKAGE_ERR_ASSET_MISSING,
                         std::string("Asset URI not declared in this package: '") + uri_part + "'.");
     }
-    const std::string& asset_folder = pkg->shared_assets[asset_it->second]->resolved_path_cache;
-    if (tail_part.empty()) {
-      slot = asset_folder;
-      *out_path = slot.c_str();
-      return nullptr;
-    }
+    const auto& asset_path = pkg->shared_assets[asset_it->second]->resolved_path;
     // Tail is resolved with portable confinement under the asset folder:
     // no absolute, no `..`. follow_symlinks mirrors the package setting.
     mp::PathResolverOptions tail_opts;
     tail_opts.allow_external_paths = false;
     tail_opts.follow_symlinks = pkg->follow_symlinks;
     std::filesystem::path resolved;
-    if (auto* s = mp::ResolvePath(asset_folder, asset_folder, tail_part, tail_opts,
+    if (auto* s = mp::ResolvePath(asset_path, asset_path, tail_part.empty() ? "." : tail_part, tail_opts,
                                   must_exist, &resolved)) {
       return s;
     }
-    slot = resolved.string();
+    slot = resolved.u8string();
     *out_path = slot.c_str();
     return nullptr;
   }
 
-  std::filesystem::path base = base_dir ? std::filesystem::path(base_dir) : pkg->package_root;
+  std::filesystem::path base = base_dir ? std::filesystem::u8path(base_dir) : pkg->package_root;
   std::filesystem::path resolved;
   if (auto* s = mp::ResolvePath(base, pkg->package_root, std::string(input),
                                 mp::PathOptionsFor(pkg), must_exist, &resolved)) {
     return s;
   }
-  slot = resolved.string();
+  slot = resolved.u8string();
   *out_path = slot.c_str();
   return nullptr;
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -340,7 +337,6 @@ ModelPackageStatus* ModelPackage_GetComponentJson(const ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!component_name) return NullArg("component_name");
   if (!out_json) return NullArg("out_json");
-  *out_json = nullptr;
   auto it = pkg->component_index_by_name.find(component_name);
   if (it == pkg->component_index_by_name.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
@@ -362,7 +358,6 @@ ModelPackageStatus* ModelPackage_GetVariantJson(const ModelPackage* pkg,
   if (!component_name) return NullArg("component_name");
   if (!variant_name) return NullArg("variant_name");
   if (!out_json) return NullArg("out_json");
-  *out_json = nullptr;
   auto it = pkg->component_index_by_name.find(component_name);
   if (it == pkg->component_index_by_name.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
@@ -388,16 +383,17 @@ ModelPackageStatus* ModelPackage_GetVariantJson(const ModelPackage* pkg,
 // ─────────────────────────────────────────────────────────────────────────────
 
 ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
-                                                      const char** out_uri) {
+                                                      const char** out_uri) try {
   if (!source_dir) return NullArg("source_dir");
   if (!out_uri) return NullArg("out_uri");
-  *out_uri = nullptr;
   static thread_local std::string slot;
-  if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::path(source_dir), &slot)) {
+  if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::u8path(source_dir), &slot)) {
     return s;
   }
   *out_uri = slot.c_str();
   return nullptr;
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 }  // extern "C"
