@@ -24,44 +24,43 @@ To ensure both static library and dynamic library builds work, we need to make a
 
 ### Runtime compatibility
 
-The plugin supports ORT 1.24.4 and later. Session-owned recording is enabled on 1.28.x starting
-at 1.28.3, on 1.30.x starting at 1.30.1, and on 1.31 and later. Other supported versions,
-including all 1.29.x hosts, use a serial compatibility path:
-Session kernels, allocators, and framework/Env copies share a context-owned recording. This
-preserves `clear -> upload -> compute -> readback` ordering even when the host drops the stream
-on a single-tensor copy. Cached-buffer clearing remains enabled, and kernels still batch their
+The plugin supports ORT 1.24.4 and later. Both execution modes use Session-owned recordings.
+Concurrent independent Sessions are enabled on 1.28.x starting at 1.28.3, on 1.30.x starting
+at 1.30.1, and on 1.31 and later. Other supported versions, including all 1.29.x hosts, use
+single-thread compatibility mode, selected by `UseSingleThreadMode()`. There is no shared
+legacy recording. Cached-buffer clearing remains enabled, and kernels still batch their
 dispatches; there is no per-kernel submission and no traversal of other Sessions.
 
-Legacy callers must serialize **all WebGPU operations on the same device**, including Session
+Single-thread callers must serialize **all WebGPU operations on the same device**, including Session
 creation/destruction, Run, I/O binding, allocator use, and Env transfers. Use sequential graph
 execution. Multiple Sessions may be used sequentially; overlapping Runs are rejected. This is not
 a restriction to one fixed CPU thread, but operations must not overlap or reenter from callbacks.
 The plugin's same-Session Run concurrency flag alone cannot serialize separate Sessions or Env calls.
 
-Legacy Session ordinary `Alloc` submits cached-buffer clears outside Run and defers them while
-`IsRunActive()` is true. The same allocator supplies kernel temp space, avoiding per-scratch
-submissions without `KernelContext_GetSyncStream`, which is unavailable on 1.24. Env ordinary
-`Alloc` always submits. Under the required serial, non-reentrant calling contract, application
-allocations occur outside Run and therefore submit before returning. This is submission, not a wait
-for GPU completion. A matching `AllocOnStream` continues to defer clears. Run-end cleanup resets the
-active flag on success and failure; a copy or the existing dispatch/Run boundary submits pending work.
-An omitted allocation submission policy defaults to no immediate submission, as in built-in WebGPU.
-Session and Env allocators set explicit policies; the default does not change their behavior.
-Framework/Env copies and Env allocations use the default context buffer manager. Graph execution
-keeps its per-graph buffer manager, while sharing the same legacy recording with those copies.
-Capture/replay boundaries drain pending shared work. Run-end flushing refreshes the graph and
-default managers before capture ends, even if a framework copy already submitted the recording.
-BufferManager tracks deferred releases by recording. Destroying one legacy Session must not
-discard the context-owned recording's pending entries, which may still belong to other Sessions
-or Env allocations. Modern Session-owned recordings are discarded on Session teardown.
-Run/replay guards release the legacy Run gate; Run cleanup also resets the Session's graph-manager selection.
+In both plugin modes, Session and Env ordinary `Alloc` submit cached-buffer clears on an independent
+recording before returning, including during Run. This is submission, not a wait for GPU completion.
+In single-thread mode, `AllocOnStream` uses the same immediate-submission policy after validating
+the stream's Session. Kernel scratch instead uses `AllocForKernel` to defer clears on its owning
+Session's recording without `KernelContext_GetSyncStream`, which is unavailable on 1.24.
+The built-in allocation submission-policy callback is not used by either plugin mode.
+
+The context tracks a non-owning pointer to the active Session's recording during a single-thread
+Run or replay. Framework copies with a stream use that stream's Session recording. If an old host
+drops the stream, the copy first flushes the active Session's recording, then uses a local recording.
+This preserves `clear -> upload -> compute -> readback` ordering without sharing command state.
+Framework/Env copies and Env allocations use the default context buffer manager; graph execution
+keeps its per-graph buffer manager. Capture/replay boundaries drain pending Session work.
+BufferManager tracks deferred releases by recording, and Session teardown discards only that
+Session's pending entries. Env allocations retain no Session recording and can survive Session teardown.
+Run/replay guards clear the active pointer and release the single-thread Run gate on success and failure;
+Run cleanup also resets the Session's graph-manager selection.
 They do not abandon a partially recorded replay; recovery after replay failure is not guaranteed.
 
-The recording mode is selected once at plugin registration using the host's minor and patch
-versions. The Session-owned recording path is described below. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`
-**before loading the plugin** to exercise the serial path on a host that supports Session-owned
-recording. The setting is process-wide and only forces the safe compatibility direction; it
-cannot enable the modern path on an unsupported host.
+The execution mode is selected once at plugin registration using the host's minor and patch
+versions. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` **before loading the plugin** to exercise single-thread
+mode on a host that supports concurrent Sessions. The existing override name is retained for
+compatibility; it does not enable a legacy recording. The setting is process-wide and only forces
+the safe compatibility direction; it cannot enable concurrency on an unsupported host.
 
 ### Session streams
 
@@ -81,7 +80,7 @@ internally created devices; callers supplying an external device must include it
 `DeviceDescriptor.requiredFeatures` when creating that device. Initialization rejects native
 devices without this feature, even for serial use. This requirement does not apply to WASM.
 
-Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
+In concurrent mode, Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
 that the stream belongs to the same Session. Allocations with a matching stream defer cached-buffer
 clears. Plugin kernel scratch tensors created through `CreateGPUTensor` use the kernel's explicit
 sync stream, so cached-buffer clears stay ordered with kernel work without submitting each scratch
@@ -183,11 +182,11 @@ Run calls for different graph IDs within one Session, serialized by ORT. Initial
 preallocated bindings; they do not cover external Session allocator calls overlapping capture.
 The compatibility regressions additionally exercise single-input CPU BindInput with dirty-buffer
 reuse, interleaved bindings across serialized Sessions, Env tensors surviving Session destruction,
-and serial graph capture/replay with multiple graph IDs. A legacy-only test verifies that a second
+and serial graph capture/replay with multiple graph IDs. A single-thread-only test verifies that a second
 Run is rejected while another Session is executing. Run serial tests with
 `ORT_WEBGPU_EP_FORCE_LEGACY=1`; the concurrent-success tests apply only to modern mode.
 The `onnxruntime_webgpu_legacy_test` CTest entry sets this environment variable before loading
-the plugin and runs a legacy-safe allowlist in normal PR CI.
+the plugin and runs a single-thread-safe allowlist in normal PR CI. The existing CTest name is retained.
 Public allocation tests verify dirty-buffer reuse and read the raw buffer with an independent
 Dawn command encoder, so ORT's readback path cannot hide an unsubmitted clear. Submission counts
 are also checked before that external readback, including after a cancelled Run.

@@ -50,26 +50,30 @@ The minimum runtime is ORT 1.24.4. The default execution path depends on the hos
 
 | ORT version | Execution path |
 | --- | --- |
-| 1.28.x starting at 1.28.3 | Session-owned recording |
-| 1.30.x starting at 1.30.1 | Session-owned recording |
-| 1.31 and later | Session-owned recording |
-| Other supported versions, including 1.29.x | Serial compatibility |
+| 1.28.x starting at 1.28.3 | Concurrent independent Sessions |
+| 1.30.x starting at 1.30.1 | Concurrent independent Sessions |
+| 1.31 and later | Concurrent independent Sessions |
+| Other supported versions, including 1.29.x | Single-thread compatibility |
 
-The serial compatibility path requires serializing all WebGPU operations on the same device,
+Both paths use Session-owned command recordings; there is no context-owned legacy recording.
+The single-thread compatibility path requires serializing all WebGPU operations on the same device,
 including operations on different Sessions, I/O binding, Env copies, allocation, and Session
 creation/destruction. Use sequential graph execution. Multiple Sessions can be used in sequence;
 overlapping Runs are rejected.
 
-Session-owned command recordings support independent Sessions running concurrently. This does not
+The concurrent path supports independent Sessions running concurrently. This does not
 permit overlapping I/O binding and Run on the same Session. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`
-before registering the plugin to test the serial path on a host that supports Session-owned
-recording. This process-wide override cannot enable concurrency on unsupported hosts.
+before registering the plugin to test the single-thread path on a host that supports concurrent
+Sessions. The existing override name is retained for compatibility. This process-wide override
+cannot enable concurrency on unsupported hosts.
 
 Both paths retain cached-buffer clearing and dispatch batching. The serial path does not submit
 after every kernel. Public Session/Env ordinary allocations submit cached-buffer clears before
-returning under the serial calling contract: legacy Session allocations defer only during Run,
-and Env allocations always submit. Kernels reuse the Session allocator for temporary space;
-modern scratch uses an explicit stream, and legacy scratch uses Run-state-based deferral.
+returning, including during Run. Kernels reuse the Session allocator for temporary space;
+concurrent-mode scratch uses an explicit stream, and single-thread scratch explicitly defers
+clears on its owning Session's recording without requiring the host's kernel stream API.
+Streamless copies in single-thread mode submit the active Session's pending work before
+using their own independent recording.
 See the [execution design](../onnxruntime/core/providers/webgpu/ep/README.md)
 for the stream and allocator contracts.
 

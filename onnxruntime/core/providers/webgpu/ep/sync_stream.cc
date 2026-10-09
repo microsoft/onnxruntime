@@ -77,15 +77,16 @@ OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep) {
   return new WebGpuSyncStream(ep);
 }
 
-bool UseLegacyRecording() {
-  static const bool legacy = [] {
-    const auto force_legacy = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY");
-    ORT_ENFORCE(force_legacy.empty() || force_legacy == "0" || force_legacy == "1",
+bool UseSingleThreadMode() {
+  static const bool single_thread = [] {
+    // Retain the existing override name for compatibility with callers and CI.
+    const auto force_single_thread = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY");
+    ORT_ENFORCE(force_single_thread.empty() || force_single_thread == "0" || force_single_thread == "1",
                 "ORT_WEBGPU_EP_FORCE_LEGACY must be 0 or 1.");
-    return ShouldUseLegacyRecording(onnxruntime::ep::CurrentOrtApiVersion(),
-                                    onnxruntime::ep::CurrentOrtPatchVersion(), force_legacy == "1");
+    return ShouldUseSingleThreadMode(onnxruntime::ep::CurrentOrtApiVersion(),
+                                     onnxruntime::ep::CurrentOrtPatchVersion(), force_single_thread == "1");
   }();
-  return legacy;
+  return single_thread;
 }
 
 CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream) {

@@ -547,14 +547,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         }
       });
       CommandRecordingState local_recording;
-#if defined(ORT_USE_EP_API_ADAPTERS)
-      // Legacy copies follow clears and kernels on the selected context's shared timeline,
-      // even if the host dropped the stream.
-      const bool legacy = webgpu::ep::UseLegacyRecording();
-      auto& recording = legacy ? *context->LegacyRecording() : local_recording;
-#else
       auto& recording = local_recording;
-#endif
       DataTransferImpl data_transfer{context->BufferManager(), recording};
 #if defined(ORT_USE_EP_API_ADAPTERS)
       Ort::ConstValue src_value{src_tensors[idx]};
@@ -577,7 +570,13 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 #endif
 #if defined(ORT_USE_EP_API_ADAPTERS)
       const bool has_session_stream = streams != nullptr && streams[idx] != nullptr;
-      auto status = !legacy && has_session_stream
+      if (webgpu::ep::UseSingleThreadMode() && !has_session_stream) {
+        // Old hosts can drop the stream on framework copies. Submit the active Session first.
+        if (auto* active_recording = context->ActiveSingleThreadRecording()) {
+          ORT_THROW_IF_ERROR(context->Flush(context->BufferManager(), *active_recording));
+        }
+      }
+      auto status = has_session_stream
                         ? webgpu::ep::CopyTensorOnWebGpuStream(streams[idx], src_data, src_is_gpu, dst_data, dst_is_gpu, size)
                         : data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
 #else

@@ -10,11 +10,11 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(WebGpuPluginRecordingModeTest, VersionBoundariesAndLegacyOverride) {
+TEST(WebGpuPluginRecordingModeTest, VersionBoundariesAndSingleThreadOverride) {
   struct TestCase {
     uint32_t api_version;
     uint32_t patch_version;
-    bool legacy;
+    bool single_thread;
   };
   constexpr TestCase cases[] = {
       {24, 4, true},
@@ -40,9 +40,9 @@ TEST(WebGpuPluginRecordingModeTest, VersionBoundariesAndLegacyOverride) {
 
   for (const auto& test_case : cases) {
     SCOPED_TRACE(::testing::Message() << "1." << test_case.api_version << "." << test_case.patch_version);
-    EXPECT_EQ(webgpu::ep::ShouldUseLegacyRecording(test_case.api_version, test_case.patch_version, false),
-              test_case.legacy);
-    EXPECT_TRUE(webgpu::ep::ShouldUseLegacyRecording(test_case.api_version, test_case.patch_version, true));
+    EXPECT_EQ(webgpu::ep::ShouldUseSingleThreadMode(test_case.api_version, test_case.patch_version, false),
+              test_case.single_thread);
+    EXPECT_TRUE(webgpu::ep::ShouldUseSingleThreadMode(test_case.api_version, test_case.patch_version, true));
   }
 }
 

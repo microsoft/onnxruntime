@@ -622,11 +622,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
-      recording_{
-#if defined(ORT_USE_EP_API_ADAPTERS)
-          webgpu::ep::UseLegacyRecording() ? context.LegacyRecording() :
-#endif
-                                           std::make_shared<webgpu::CommandRecordingState>()},
+      recording_{std::make_shared<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
           context_id,
           /*device_free=*/!context.HasDevice(),
@@ -828,8 +824,10 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
   prepack_allocator_.reset();
   session_buffer_pool_.reset();
-  // Legacy recording belongs to the context and may still hold work from other Sessions or Env.
-  if (context_.Device() && recording_ != context_.LegacyRecording()) {
+  if (context_.ActiveSingleThreadRecording() == recording_.get()) {
+    context_.EndSingleThreadRun();
+  }
+  if (context_.Device()) {
     // A failed Run may leave an unsubmitted recording in the context-shared pools.
     context_.BufferManager().DiscardPendingBuffers(*recording_);
     context_.InitializerBufferManager().DiscardPendingBuffers(*recording_);
@@ -855,15 +853,15 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  const bool legacy = webgpu::ep::UseLegacyRecording();
-  ORT_RETURN_IF(legacy && !context_.TryBeginLegacyRun(),
+  const bool single_thread = webgpu::ep::UseSingleThreadMode();
+  ORT_RETURN_IF(single_thread && !context_.TryBeginSingleThreadRun(*recording_),
                 "This WebGPU configuration requires Sessions on the same device to run sequentially. "
                 "To run Sessions concurrently, upgrade to the latest ONNX Runtime.");
   bool started = false;
   auto release_on_error = gsl::finally([&] {
-    if (legacy && !started) {
+    if (single_thread && !started) {
       graph_buffer_mgr_active_ = false;
-      context_.EndLegacyRun();
+      context_.EndSingleThreadRun();
     }
   });
 #endif
@@ -904,7 +902,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
         }
       }
 #if defined(ORT_USE_EP_API_ADAPTERS)
-      if (legacy) {
+      if (single_thread) {
         ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
       }
 #endif
@@ -929,8 +927,8 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     graph_buffer_mgr_active_ = false;
     run_active_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
-    if (webgpu::ep::UseLegacyRecording()) {
-      context_.EndLegacyRun();
+    if (webgpu::ep::UseSingleThreadMode()) {
+      context_.EndSingleThreadRun();
     }
 #endif
   });
@@ -1000,20 +998,20 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  const bool legacy_replay = webgpu::ep::UseLegacyRecording() && !IsRunActive();
-  ORT_RETURN_IF(legacy_replay && !context_.TryBeginLegacyRun(),
+  const bool single_thread_replay = webgpu::ep::UseSingleThreadMode() && !IsRunActive();
+  ORT_RETURN_IF(single_thread_replay && !context_.TryBeginSingleThreadRun(*recording_),
                 "This WebGPU configuration requires Sessions on the same device to run sequentially. "
                 "To run Sessions concurrently, upgrade to the latest ONNX Runtime.");
-  auto release_legacy_run = gsl::finally([&] {
-    if (legacy_replay) {
-      context_.EndLegacyRun();
+  auto release_single_thread_run = gsl::finally([&] {
+    if (single_thread_replay) {
+      context_.EndSingleThreadRun();
     }
   });
 #endif
   // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  if (legacy_replay) {
+  if (single_thread_replay) {
     ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
   }
 #endif

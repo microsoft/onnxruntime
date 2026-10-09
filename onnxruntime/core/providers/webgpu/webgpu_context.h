@@ -315,9 +315,18 @@ class WebGpuContext final {
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
-  const std::shared_ptr<CommandRecordingState>& LegacyRecording() const { return legacy_recording_; }
-  bool TryBeginLegacyRun() { return !legacy_run_active_.exchange(true); }
-  void EndLegacyRun() { legacy_run_active_.store(false); }
+  CommandRecordingState* ActiveSingleThreadRecording() const { return single_thread_active_recording_; }
+  bool TryBeginSingleThreadRun(CommandRecordingState& recording) {
+    if (single_thread_run_active_.exchange(true)) {
+      return false;
+    }
+    single_thread_active_recording_ = &recording;
+    return true;
+  }
+  void EndSingleThreadRun() {
+    single_thread_active_recording_ = nullptr;
+    single_thread_run_active_.store(false);
+  }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -475,8 +484,8 @@ class WebGpuContext final {
 
   // Old plugin hosts cannot reliably associate framework copies with a Session.
   // All operations on this timeline must be serialized, including across Sessions.
-  std::shared_ptr<CommandRecordingState> legacy_recording_{std::make_shared<CommandRecordingState>()};
-  std::atomic<bool> legacy_run_active_{false};
+  CommandRecordingState* single_thread_active_recording_ = nullptr;
+  std::atomic<bool> single_thread_run_active_{false};
 
   uint32_t max_num_pending_dispatches_ = 16;
 

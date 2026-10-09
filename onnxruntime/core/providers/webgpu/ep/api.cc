@@ -113,9 +113,9 @@ EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(CreateEpFactories)(
   // Initialize the global default logger
   ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(default_logger);
 
-  if (onnxruntime::webgpu::ep::UseLegacyRecording()) {
-    LOGS_DEFAULT(INFO) << "WebGPU EP uses serial compatibility mode. Serialize all WebGPU operations on the same device. "
-                          "Upgrade to the latest ONNX Runtime for per-Session recording and concurrent Session execution.";
+  if (onnxruntime::webgpu::ep::UseSingleThreadMode()) {
+    LOGS_DEFAULT(INFO) << "WebGPU EP uses single-thread compatibility mode. Serialize all WebGPU operations on the same device. "
+                          "Upgrade to the latest ONNX Runtime for concurrent Session execution.";
   }
 
   if (factory_config.allow_software_adapter) {

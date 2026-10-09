@@ -161,7 +161,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
   // Command recording is per session and is passed separately from the context-level BufferManagers.
-  // Legacy plugin mode shares the context's serial recording instead.
   std::shared_ptr<webgpu::CommandRecordingState> recording_;
 
   // Per-graph buffer managers keyed by annotation ID.

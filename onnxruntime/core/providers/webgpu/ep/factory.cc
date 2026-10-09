@@ -217,17 +217,12 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   // These implementations belong to this Session, not the Env shared allocator below.
-  // Legacy Run allocations share the recording and can defer clears. Modern Alloc keeps its
-  // default immediate-submission policy because a subsequent copy may use a different recording.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       context_id,
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-      false,
-      UseLegacyRecording()
-          ? std::function<bool()>{[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); }}
-          : std::function<bool()>{});
+      false);
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
@@ -271,16 +266,6 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
         auto context = std::shared_ptr<WebGpuContext>(
             &WebGpuContextFactory::DefaultContext(),
             [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
-        if (UseLegacyRecording()) {
-          // Legacy Env copies share this context-owned recording. Ordinary allocations still submit clears.
-          auto recording = context->LegacyRecording();
-          return std::make_shared<GpuBufferAllocator>(
-              0,
-              [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
-              [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
-              false,
-              []() { return true; });
-        }
         return std::make_shared<GpuBufferAllocator>(
             0,
             [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },

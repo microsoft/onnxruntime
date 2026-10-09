@@ -8,10 +8,6 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-#include "core/providers/webgpu/ep/sync_stream.h"
-#endif
-
 namespace onnxruntime {
 namespace webgpu {
 
@@ -40,12 +36,6 @@ GpuBufferAllocator::GpuBufferAllocator(
 // Built-in callers can supply a different submission policy.
 void* GpuBufferAllocator::Alloc(size_t size) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  if (ep::UseLegacyRecording() && recording_getter_) {
-    // Legacy uses the shared recording. The Session policy defers during Run; Env always submits.
-    // An omitted policy does not request submission, matching the built-in path.
-    return Allocate(size, recording_getter_(),
-                    should_submit_zero_initialize_ && should_submit_zero_initialize_());
-  }
   // Streamless clears are independent of Run and must not read its capture state.
   CommandRecordingState recording;
   return Allocate(size, recording, true);
