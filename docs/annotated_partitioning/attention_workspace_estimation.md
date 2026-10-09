@@ -240,24 +240,28 @@ Neither adapter changes runtime
 `GetScratchBuffer()` calls or allocation topology.
 
 The CPU `total_sequence_length` scalar and past/present aliasing are not
-available through `WorkspaceInputShape`. For non-windowed GQA, the scalar can
-exceed the past-cache sequence dimension and directly scale Flash, MEA, and
-unfused workspace. Non-windowed execution can also preserve one full past
-tensor when exactly one past/present pair aliases. The current adapter therefore
-reports non-windowed GQA as unavailable rather than treating the past shape as
-a total-KV bound or omitting alias-preservation scratch.
+available through `WorkspaceInputShape`. For non-windowed GQA, the positive
+caller-declared `ep.cuda.gqa_workspace_max_total_sequence_length` value supplies
+the missing total-KV bound. The estimator requires that envelope to cover the
+query-length bound and sizes cache-dependent work at the greater of the
+allocated past-cache capacity and the envelope. Because graph analysis cannot
+prove aliasing, the aggregate also includes the worst-case full-past
+preservation scratch. The declaration is an estimation contract, not a
+runtime-enforced input limit or a no-OOM guarantee.
 
-Successful estimates are currently limited to sliding-window cache nodes.
-Their final cache capacity remains `C`, while a multi-token step uses a
-transient staged/effective attention extent of `C + S`; a single-token step
-uses `C`. This shape-only bound remains sound even when the scalar
-`total_sequence_length` is much larger. Runtime requires both past/present
-pairs to alias before staging or compaction, excluding the partial-alias
-preservation path. Sliding-window attention bias remains
-unsupported by runtime and is also unavailable to the estimator. If cuDNN can
-be reached anywhere in a graph-free bounded domain, aggregation remains
-unavailable because cuDNN's allocator-based workspace has no sound graph-free
-oracle. Level 1 then uses the generic fallback and Level 2 emits no requirement.
+Successful estimates can cover both sliding-window nodes and positive-envelope
+non-windowed nodes. Sliding-window cache capacity remains `C`, while a
+multi-token step uses a transient staged/effective attention extent of `C + S`;
+a single-token step uses `C`. Runtime requires both past/present pairs to alias
+before sliding-window staging or compaction, excluding the partial-alias
+preservation path. Estimation remains unavailable for missing or invalid shape
+facts, an unset or undersized non-windowed envelope, cache capacity outside the
+runtime int32 ABI, attention bias, or any reachable cuDNN route because cuDNN's
+allocator-based workspace has no sound graph-free oracle. Under capacity-aware
+CUDA placement, unavailable GQA proof declines CUDA assignment; generic
+fallback remains available to unrelated operators, and profile data cannot
+substitute for the missing GQA proof. Level 2 emits no requirement when its
+estimate is unavailable.
 
 Unlike the log-only PA/PMHA Level-1 probe, a successful GQA Level-1 estimate is
 passed to the #31962 resource accountant as `runtime_workspace_bytes` and can

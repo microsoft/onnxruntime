@@ -199,14 +199,17 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
 
   // WorkspaceInputShape exposes the total_sequence_length scalar's shape, not
   // its value. For a non-windowed cache that value can exceed past dim 2 and
-  // directly scales backend workspace. Non-windowed execution can also copy a
-  // full past tensor when only one past/present pair aliases, but alias state is
-  // unavailable here. Windowed execution is bounded by the cache shape and the
-  // runtime requires both past/present pairs to alias before allocating scratch.
-  // config.max_total_sequence_length carries the externally declared KV-length envelope
-  // (session option ep.cuda.gqa_workspace_max_total_sequence_length) intended to bound this
-  // non-windowed path; it is plumbed but not yet consumed here, so behavior is unchanged.
-  if (!config.sliding_window_cache) return std::nullopt;
+  // directly scales backend workspace, so a sound bound needs the KV-length
+  // envelope config.max_total_sequence_length (session option
+  // ep.cuda.gqa_workspace_max_total_sequence_length). Without it there is no
+  // sound non-windowed bound, so decline -- this preserves the prior behavior
+  // whenever the envelope is unset. Windowed execution is bounded by the cache
+  // shape. The other non-windowed concern -- a full past-tensor copy when only
+  // one past/present pair aliases -- is charged separately as preservation
+  // scratch via bounds.account_partial_alias_preservation below; windowed
+  // execution requires both pairs to alias, so it never incurs that copy.
+  const bool windowed = config.sliding_window_cache;
+  if (!windowed && config.max_total_sequence_length <= 0) return std::nullopt;
 
   const bool packed = !Present(shapes, kKey);
   const TensorShape* query = Shape(shapes, kQuery);
@@ -235,9 +238,8 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   }
   if (head_bound < 8 || batch_bound <= 0 || sequence_bound <= 0) return std::nullopt;
 
-  // Cache capacity is the only sound bound for total KV length available at
-  // this API. Without past tensors, the CPU scalar value is unavailable and a
-  // single-token invocation can name an arbitrarily larger total length.
+  // Past tensors are required for both cache kinds: they carry the kv-head and
+  // per-head cache geometry and allocated capacity validated below.
   if (!Present(shapes, kPastKey)) return std::nullopt;
   const auto* past_key = Shape(shapes, kPastKey);
   const auto* past_value = Shape(shapes, kPastValue);
@@ -251,7 +253,11 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
     return std::nullopt;
   }
   if ((*past_key)[2] != (*past_value)[2]) return std::nullopt;
-  const int64_t capacity_bound = (*past_key)[2];
+  // A non-windowed static cache can exceed the active total KV length. MEA
+  // expands the present capacity, and partial aliasing preserves the full past
+  // allocation, so bound both the allocated cache and the declared KV length.
+  const int64_t capacity_bound =
+      windowed ? (*past_key)[2] : std::max((*past_key)[2], config.max_total_sequence_length);
   int64_t cache_head_bound = std::min((*past_key)[3], (*past_value)[3]);
   if (config.kv_cache_bit_width == 4) {
     if (cache_head_bound > std::numeric_limits<int64_t>::max() / 2) return std::nullopt;
@@ -259,13 +265,17 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   }
   head_bound = std::min(head_bound, cache_head_bound);
   if (batch_bound <= 0 || capacity_bound <= 0 || head_bound < 8 ||
-      capacity_bound != config.local_window_size ||
+      (windowed && capacity_bound != config.local_window_size) ||
+      (!windowed && (config.max_total_sequence_length < sequence_bound ||
+                     capacity_bound > std::numeric_limits<int32_t>::max())) ||
       !ValidateAuxiliaryShapes(config, shapes, batch_bound, sequence_bound,
                                head_bound, capacity_bound)) {
     return std::nullopt;
   }
 
-  // Runtime rejects attention bias for sliding-window GQA.
+  // Attention bias is declined for both cache kinds here: sliding-window GQA
+  // rejects it at runtime, and the non-windowed estimate does not yet model the
+  // bias-only unfused route. Declining keeps the estimate a sound upper bound.
   if (Present(shapes, kAttentionBias)) return std::nullopt;
 
   const bool k_quantized = config.k_quantization != GQAKvQuantizationType::None;
@@ -298,6 +308,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   bounds.k_quantization = config.k_quantization;
   bounds.v_quantization = config.v_quantization;
   bounds.is_windowed_kv_cache = config.sliding_window_cache;
+  bounds.account_partial_alias_preservation = !windowed;
   bounds.do_rotary = config.do_rotary;
   bounds.is_packed_qkv = packed;
   bounds.use_qk_norm = Present(shapes, kQNorm);
