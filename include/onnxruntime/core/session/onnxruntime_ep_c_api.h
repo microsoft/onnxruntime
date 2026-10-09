@@ -2730,13 +2730,13 @@ struct OrtEp {
    * support weightless mode at all. ORT returns an error if the mode requested by the application is not among the
    * supported modes.
    *
-   * \note ORT versions before 1.31 only check that the returned value is not OrtWeightlessSupport_NONE, so an EP can
+   * \note ORT versions before 1.32 only check that the returned value is not OrtWeightlessSupport_NONE, so an EP can
    *       return OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY to them as well.
    *
    * The EP reads the mode requested by the application from the "ep.enable_weightless_mode"
    * (kOrtSessionOptionEpEnableWeightlessMode) session config entry. An EP that supports several modes (e.g., reports
    * OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) must honor that entry. When it is not set but the deprecated
-   * "ep.enable_weightless" entry is "1", the EP keeps the behavior it had before version 1.31.
+   * "ep.enable_weightless" entry is "1", the EP keeps the behavior it had before version 1.32.
    *
    * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
    * support weightless mode for all initializers on newer hardware but only for external initializers on
