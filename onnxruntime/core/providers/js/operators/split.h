@@ -13,6 +13,7 @@ namespace js {
 class Split : public JsKernel, public SplitBase {
  public:
   Split(const OpKernelInfo& info, uint32_t opset) : JsKernel(info), SplitBase(info, opset) {
+    const bool is_uneven_split_allowed = num_outputs_ >= 0;
     std::vector<int32_t> split_sizes;
     if (split_sizes_.size() > 0) {
       ORT_ENFORCE(split_sizes_.size() == info.node().OutputDefs().size(),
@@ -25,11 +26,7 @@ class Split : public JsKernel, public SplitBase {
       if (num_outputs_ < 0) {
         num_outputs_ = split_sizes.size();
       }
-    } else if (split_sizes_.size() == 0 && info.GetInputCount() < 2) {
-      // Compute split_sizes from input shape and num_outputs.
-      // TODO: Shape might not be known at this point, better to handle this in javascript
-      auto total_split_size = info.node().InputDefs()[0]->Shape()->dim(gsl::narrow_cast<int32_t>(axis_)).dim_value();
-      int64_t split_size_sum = 0;
+    } else {
       if (num_outputs_ < 0) {
         num_outputs_ = info.node().OutputDefs().size();
       } else {
@@ -37,23 +34,17 @@ class Split : public JsKernel, public SplitBase {
                     "Number of outputs (", info.node().OutputDefs().size(), ") does not match num_outputs (",
                     num_outputs_, ")");
       }
-      for (auto output : info.node().OutputDefs()) {
-        auto split_size = output->Shape()->dim(gsl::narrow_cast<int32_t>(axis_)).dim_value();
-        split_sizes.push_back(gsl::narrow_cast<int32_t>(split_size));
-        split_size_sum += split_size;
-      }
-      ORT_ENFORCE(split_size_sum == total_split_size,
-                  "Sum of split sizes (", split_size_sum, ") does not match input size (", total_split_size, ")");
     }
-    // else: let javascript handle all other cases, ie. split_sizes come as input[1]
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : $1,
                                         "numOutputs" : $2,
-                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray(Number($3), Number($4))) : []}),
+                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray(Number($3), Number($4))) : [],
+                                        "isUnevenSplitAllowed" : !!$5}),
                                static_cast<int32_t>(axis_),
                                static_cast<int32_t>(num_outputs_),
                                JSEP_HEAP32_INDEX_START(split_sizes),
-                               JSEP_HEAP32_INDEX_END(split_sizes));
+                               JSEP_HEAP32_INDEX_END(split_sizes),
+                               static_cast<int32_t>(is_uneven_split_allowed));
   }
 };
 
