@@ -57,6 +57,7 @@ using contrib::cuda::SetGroupQueryAttentionWorkspaceRequirements;
 
 constexpr int kMath = static_cast<int>(AttentionBackend::MATH);
 constexpr int kFlash = static_cast<int>(AttentionBackend::FLASH_ATTENTION);
+constexpr int kCudnn = static_cast<int>(AttentionBackend::CUDNN_FLASH_ATTENTION);
 
 WorkspaceInputShape Known(std::initializer_list<int64_t> dims) {
   return WorkspaceInputShape::PresentWithShape(TensorShape{TensorShapeVector{dims}});
@@ -174,7 +175,8 @@ void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
   }
 }
 
-std::string BuildGroupQueryAttentionKernelModel() {
+std::string BuildGroupQueryAttentionKernelModel(bool sliding_window_cache = true,
+                                                bool include_head_sink = true) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* onnx_opset = model.add_opset_import();
@@ -192,9 +194,10 @@ std::string BuildGroupQueryAttentionKernelModel() {
   node->set_op_type("GroupQueryAttention");
   for (const char* input_name :
        {"query", "key", "value", "past_key", "past_value", "seqlens_k",
-        "total_sequence_length", "", "", "", "", "head_sink"}) {
+        "total_sequence_length", "", "", "", ""}) {
     node->add_input(input_name);
   }
+  node->add_input(include_head_sink ? "head_sink" : "");
   node->add_output("output");
   node->add_output("present_key");
   node->add_output("present_value");
@@ -207,8 +210,10 @@ std::string BuildGroupQueryAttentionKernelModel() {
   };
   add_int_attribute("num_heads", 8);
   add_int_attribute("kv_num_heads", 2);
-  add_int_attribute("local_window_size", 256);
-  add_int_attribute("sliding_window_cache", 1);
+  if (sliding_window_cache) {
+    add_int_attribute("local_window_size", 256);
+    add_int_attribute("sliding_window_cache", 1);
+  }
 
   constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
@@ -223,11 +228,13 @@ std::string BuildGroupQueryAttentionKernelModel() {
   SetValueInfo(*graph->add_output(), "present_key", kFloat16, {2, 2, 256, 64});
   SetValueInfo(*graph->add_output(), "present_value", kFloat16, {2, 2, 256, 64});
 
-  auto* head_sink = graph->add_initializer();
-  head_sink->set_name("head_sink");
-  head_sink->set_data_type(kFloat16);
-  head_sink->add_dims(8);
-  head_sink->mutable_raw_data()->assign(8 * sizeof(uint16_t), '\0');
+  if (include_head_sink) {
+    auto* head_sink = graph->add_initializer();
+    head_sink->set_name("head_sink");
+    head_sink->set_data_type(kFloat16);
+    head_sink->add_dims(8);
+    head_sink->mutable_raw_data()->assign(8 * sizeof(uint16_t), '\0');
+  }
 
   std::string bytes;
   model.SerializeToString(&bytes);
@@ -536,6 +543,52 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
     ASSERT_NE(node, nullptr);
     EXPECT_NE(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, CapacityAwarePartitioningRequiresProvenEstimate) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required for the budget integration test.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "0"}}};
+  const std::string model_bytes = BuildGroupQueryAttentionKernelModel(
+      /*sliding_window_cache=*/false, /*include_head_sink=*/false);
+
+  struct Case {
+    int kernel_selection;
+    const char* envelope;
+    bool expect_cuda;
+  };
+  for (const auto& test_case : {
+           Case{kMath, nullptr, false},
+           Case{kCudnn, "512", false},
+           Case{kMath, "512", true},
+       }) {
+    SCOPED_TRACE(testing::Message()
+                 << "kernel=" << test_case.kernel_selection
+                 << " envelope=" << (test_case.envelope == nullptr ? "<unset>" : test_case.envelope));
+    SessionOptions session_options;
+    session_options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+    if (test_case.envelope != nullptr) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, test_case.envelope));
+    }
+
+    CUDAExecutionProviderInfo provider_info;
+    provider_info.sdpa_kernel = test_case.kernel_selection;
+    InferenceSessionWrapper session(session_options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(provider_info)));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+    ASSERT_NE(node, nullptr);
+    EXPECT_EQ(node->GetExecutionProviderType() == kCudaExecutionProvider,
+              test_case.expect_cuda);
   }
 }
 

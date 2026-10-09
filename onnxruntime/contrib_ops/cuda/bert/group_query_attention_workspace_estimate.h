@@ -47,9 +47,9 @@ struct GQAWorkspaceEstimateConfig {
   bool head_sink_is_prepacked = false;
   // Level-1 possibility; true charges persistent and initialization lifetimes.
   bool head_sink_may_be_prepacked = false;
-  // Reserved, currently unconsumed total KV-length envelope from session option
-  // ep.cuda.gqa_workspace_max_total_sequence_length. Zero means unspecified;
-  // this field does not enforce a runtime input limit.
+  // Caller-declared total KV-length envelope from session option
+  // ep.cuda.gqa_workspace_max_total_sequence_length. It bounds non-windowed
+  // estimation; zero means unspecified. This is not a runtime input limit.
   int64_t max_total_sequence_length = 0;
 };
 
