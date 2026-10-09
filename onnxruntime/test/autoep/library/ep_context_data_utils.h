@@ -191,6 +191,7 @@ inline OrtStatus* EnsureRegularFileForRead(const OrtApi& api, const std::filesys
 // link with its target before this runs, so containment is what constrains those writes. This check is what covers
 // the dangling case, and trusted (graph == nullptr) paths, which skip resolution altogether.
 inline OrtStatus* EnsureRegularFileForWrite(const OrtApi& api, const std::filesystem::path& data_path) {
+  // MSVC reports missing targets through error_code. Allow new-file writes here and let open report other failures.
   std::error_code symlink_ec;
   const std::filesystem::file_status link_status = std::filesystem::symlink_status(data_path, symlink_ec);
   if (!symlink_ec && std::filesystem::is_symlink(link_status)) {
@@ -387,7 +388,8 @@ inline OrtStatus* ReadEpContextDataFromFileWithAllocator(const OrtApi& api, cons
     return api.CreateStatus(ORT_FAIL, message.c_str());
   }
 
-  const std::streampos end_pos = input_stream.tellg();
+  // tellg() reports failure as pos_type(-1); hold it as a streamoff so that is a plain integral comparison.
+  const std::streamoff end_pos = input_stream.tellg();
   if (end_pos < 0) {
     const std::string message = "Failed to determine EPContext data file size: " +
                                 PathToUtf8StringForMessage(data_path);
