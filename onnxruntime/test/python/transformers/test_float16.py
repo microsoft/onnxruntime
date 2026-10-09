@@ -20,7 +20,7 @@ else:
     from onnxruntime.transformers.float16 import convert_float_to_float16
 
 
-def _make_resize_model_opset11(num_resize_nodes=2, use_empty_names=True):
+def _make_resize_model_opset11(num_resize_nodes=2, use_empty_names=True, share_scales=False):
     """Create a minimal ONNX model with multiple Resize nodes (opset 11+).
 
     Resize opset 11+: inputs are [X, roi, scales, sizes].
@@ -33,7 +33,7 @@ def _make_resize_model_opset11(num_resize_nodes=2, use_empty_names=True):
     prev_output = "input"
     for idx in range(num_resize_nodes):
         roi_name = f"roi_{idx}"
-        scales_name = f"scales_{idx}"
+        scales_name = "scales" if share_scales else f"scales_{idx}"
         output_name = f"resize_out_{idx}" if idx < num_resize_nodes - 1 else "output"
 
         node = helper.make_node(
@@ -49,10 +49,17 @@ def _make_resize_model_opset11(num_resize_nodes=2, use_empty_names=True):
     initializers = []
     for idx in range(num_resize_nodes):
         roi = numpy_helper.from_array(np.array([], dtype=np.float32), name=f"roi_{idx}")
-        scales = numpy_helper.from_array(np.array([1.0, 1.0, 2.0, 2.0], dtype=np.float32), name=f"scales_{idx}")
-        initializers.extend([roi, scales])
+        initializers.append(roi)
+        if not share_scales or idx == 0:
+            scales = numpy_helper.from_array(
+                np.array([1.0, 1.0, 2.0, 2.0], dtype=np.float32), name="scales" if share_scales else f"scales_{idx}"
+            )
+            initializers.append(scales)
 
-    graph = helper.make_graph(nodes, "resize_test", [graph_input], [graph_output], initializer=initializers)
+    value_info = [helper.make_tensor_value_info("scales", TensorProto.FLOAT, [4])] if share_scales else None
+    graph = helper.make_graph(
+        nodes, "resize_test", [graph_input], [graph_output], initializer=initializers, value_info=value_info
+    )
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
     model = onnx.shape_inference.infer_shapes(model)
     return model
@@ -128,6 +135,27 @@ def _make_blocked_node_model(num_nodes=2, use_empty_names=True):
     return model
 
 
+def _make_mixed_float_bfloat16_model():
+    """Create a model where one value feeds both a FLOAT and a BFLOAT16 cast."""
+    data_input = helper.make_tensor_value_info("data", TensorProto.FLOAT, [1, 1, 2, 2])
+    shared_input = helper.make_tensor_value_info("shared", TensorProto.FLOAT, [4])
+    resize_output = helper.make_tensor_value_info("resize_output", TensorProto.FLOAT, [1, 1, 4, 4])
+    upsample_output = helper.make_tensor_value_info("upsample_output", TensorProto.FLOAT, [1, 1, 4, 4])
+    nodes = [
+        helper.make_node("Resize", ["data", "roi", "shared"], ["resize_output"], mode="nearest"),
+        helper.make_node("Upsample", ["data", "shared"], ["upsample_output"], mode="nearest"),
+    ]
+    roi = numpy_helper.from_array(np.array([], dtype=np.float32), name="roi")
+    graph = helper.make_graph(
+        nodes,
+        "mixed_float_bfloat16_test",
+        [data_input, shared_input],
+        [resize_output, upsample_output],
+        initializer=[roi],
+    )
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
+
+
 def _make_constant_of_shape_model():
     """Create a model with a ConstantOfShape node that omits its optional value attribute."""
     graph_input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 4])
@@ -177,6 +205,17 @@ class TestFloat16Conversion(unittest.TestCase):
         self.assertEqual(
             len(cast_outputs), len(set(cast_outputs)), f"Duplicate Cast output names found: {cast_outputs}"
         )
+
+    def test_resize_opset11_shared_scales_reuses_cast(self):
+        """A shared Resize scales input should use one Cast node for all consumers."""
+        model = _make_resize_model_opset11(num_resize_nodes=2, use_empty_names=False, share_scales=True)
+        converted = convert_float_to_float16(model, keep_io_types=True)
+
+        scales_casts = [n for n in converted.graph.node if n.op_type == "Cast" and n.input[0] == "scales"]
+        self.assertEqual(len(scales_casts), 1)
+
+        resize_nodes = [n for n in converted.graph.node if n.op_type == "Resize"]
+        self.assertEqual([n.input[2] for n in resize_nodes], [scales_casts[0].output[0]] * len(resize_nodes))
 
     def test_resize_opset11_scales_initializer_stays_fp32(self):
         """Resize scales initializer (input index 2) should stay float32 after conversion.
@@ -248,6 +287,19 @@ class TestFloat16Conversion(unittest.TestCase):
         self.assertEqual(
             len(cast_outputs), len(set(cast_outputs)), f"Duplicate Cast output names found: {cast_outputs}"
         )
+
+    def test_mixed_float_bfloat16_cast_naming_unique(self):
+        """A shared input for FLOAT and BFLOAT16 consumers should get distinct Cast names."""
+        model = _make_mixed_float_bfloat16_model()
+        converted = convert_float_to_float16(
+            model, keep_io_types=False, use_bfloat16_as_blocked_nodes_dtype=True, disable_shape_infer=True
+        )
+
+        shared_casts = [n for n in converted.graph.node if n.op_type == "Cast" and n.input[0] == "shared"]
+        cast_types = {next(a.i for a in n.attribute if a.name == "to") for n in shared_casts}
+        self.assertEqual(cast_types, {TensorProto.FLOAT, TensorProto.BFLOAT16})
+        self.assertEqual(len({n.name for n in shared_casts}), 2)
+        self.assertEqual(len({n.output[0] for n in shared_casts}), 2)
 
     def test_resize_with_op_block_list(self):
         """When Resize is in op_block_list, Cast nodes should have unique names."""
