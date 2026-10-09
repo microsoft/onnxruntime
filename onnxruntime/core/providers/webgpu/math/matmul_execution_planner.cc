@@ -31,7 +31,7 @@ bool IsMatMulPackedConfigurationValid(
   if (is_vec4) {
     const uint32_t a_vector_width = configuration.tile_inner / configuration.workgroup_size[0];
     if (configuration.elements_per_thread[0] != 4 ||
-        (a_vector_width != 3 && a_vector_width != 4)) {
+        a_vector_width != 4) {
       return false;
     }
   }

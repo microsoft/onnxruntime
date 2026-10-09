@@ -322,6 +322,11 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedPackedSplitK) {
   RunTestTyped<float>({1, 1024}, {1024, 16}, false, webgpu::MatMulAlgorithm::PackedSplitK);
 }
 
+TEST(WebGpuMatMulAlgorithmTest, ForcedPackedSplitKHandlesBatchedPartialSplit) {
+  RunTestTyped<float>({2, 1, 1028}, {2, 1028, 16}, false,
+                      webgpu::MatMulAlgorithm::PackedSplitK);
+}
+
 TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrix) {
   RunTestTyped<MLFloat16>({32, 16}, {16, 32}, false, webgpu::MatMulAlgorithm::SubgroupMatrix);
 }

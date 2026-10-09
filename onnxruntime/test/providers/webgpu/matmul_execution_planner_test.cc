@@ -283,8 +283,8 @@ TEST(MatMulAlgorithmConfigurationTest, PackedVec4RequiresSupportedCooperativeLoa
                                                 /*use_split_k=*/false));
 
   configuration.tile_inner = 48;
-  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
-                                               /*use_split_k=*/false));
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                                /*use_split_k=*/false));
 
   configuration.tile_inner = 60;
   EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
