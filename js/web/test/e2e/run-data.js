@@ -70,6 +70,8 @@ const BROWSER_TEST_CASES = [
   [true, true, './browser-test-webgpu-external-data.js', 'ort.webgpu.min.js'], // external data
   [true, true, './browser-test-webgpu-external-data-blob.js', 'ort.webgpu.min.js'], // external data as Blob (fallback)
   [true, true, './browser-test-webgpu-external-data-blob.js', 'ort.jspi.min.js'], // external data as Blob (on-demand)
+  [true, true, './browser-test-webgpu-cpu-output-upload.js', 'ort.min.js'], // CPU EP output read by WebGPU (JSEP)
+  [true, true, './browser-test-webgpu-cpu-output-upload.js', 'ort.webgpu.min.js'], // CPU EP output read by WebGPU EP
 ];
 
 // [bundle_path, format]
