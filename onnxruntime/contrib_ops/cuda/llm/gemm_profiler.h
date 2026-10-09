@@ -357,7 +357,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
                        : RoundUpProfileM(static_cast<int>(dims.maxM), max_profile_m);
 
   size_t workspace_bytes = 0;
-  for (int profile_m : getProfileMBuckets(dims.minM, maxM, hasWeightOnlyCudaKernel)) {
+  for (int profile_m : getProfileMBuckets(static_cast<int>(dims.minM), maxM, hasWeightOnlyCudaKernel)) {
     workspace_bytes = std::max(workspace_bytes, computeTmpSize(profile_m, dims.n, dims.k));
   }
 
