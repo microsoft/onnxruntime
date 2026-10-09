@@ -489,8 +489,20 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
-  data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
-  data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
+  // Borrow only a non-quantized cache with no KV append and neither present output requested.
+  // Aliasing past/present suppresses the copy; the zero-KV preparation path processes Q only.
+  const bool read_only_cache = std::is_same<T, U>::value && parameters.kv_sequence_length == 0 &&
+                               data.past_key != nullptr && data.past_value != nullptr &&
+                               present_key_output == nullptr && present_value_output == nullptr;
+  ORT_RETURN_IF(!read_only_cache && (present_key_output == nullptr || present_value_output == nullptr),
+                "present_key and present_value are required unless borrowing a non-quantized KV cache");
+  ORT_RETURN_IF(read_only_cache && parameters.total_sequence_length > parameters.seqlen_past_kv_cache,
+                "total_sequence_length exceeds the borrowed KV cache capacity");
+  // The kernel interface uses mutable present pointers, but this borrowed-cache path must not write them.
+  data.present_key = read_only_cache ? const_cast<CudaU*>(data.past_key)
+                                     : reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
+  data.present_value = read_only_cache ? const_cast<CudaU*>(data.past_value)
+                                       : reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   bool past_key_shared = (data.past_key != nullptr && data.past_key == data.present_key);
   bool past_value_shared = (data.past_value != nullptr && data.past_value == data.present_value);
@@ -887,11 +899,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
-        IsGQAMemoryEfficientEligibleSeqFree<T>(sm,
-                                               disable_memory_efficient_attention_,
-                                               is_inputs_quantized,
-                                               has_attention_bias,
-                                               parameters.head_size);
+        IsGQAMemoryEfficientEligible<T>(parameters, sm, disable_memory_efficient_attention_,
+                                        is_inputs_quantized, has_attention_bias, head_sink != nullptr);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
     // Head-expansion (K/V) and FP32 FMHA-accumulator scratch sizes come from the shared
