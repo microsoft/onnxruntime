@@ -6,10 +6,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/framework/provider_options.h"
@@ -785,6 +787,71 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiExternalDataUsesCallbacks) 
   EXPECT_TRUE(callback_state.read_called);
   EXPECT_FALSE(std::filesystem::exists(substring_model.parent_path() / substring_name));
 
+  const auto valid_payload = callback_state.payload;
+  const auto expect_invalid_payload = [&](const std::vector<char>& payload, const char* error) {
+    callback_state.payload = payload;
+    callback_state.max_data_size = payload.size();
+    try {
+      Ort::Session invalid_session(*ort_env, substring_model.c_str(), session_options);
+      ADD_FAILURE() << "Expected malformed callback payload rejection";
+    } catch (const Ort::Exception& ex) {
+      EXPECT_THAT(ex.what(), testing::HasSubstr(error));
+      EXPECT_THAT(ex.what(), testing::Not(testing::HasSubstr("bad_alloc")));
+    }
+  };
+  std::array<uint64_t, 5> malformed_header{};
+  ASSERT_GE(valid_payload.size(), sizeof(malformed_header));
+  std::memcpy(malformed_header.data(), valid_payload.data(), sizeof(malformed_header));
+  for (const size_t field : {size_t{3}, size_t{4}}) {
+    auto header = malformed_header;
+    header[field] = std::numeric_limits<uint64_t>::max();
+    auto payload = valid_payload;
+    std::memcpy(payload.data(), header.data(), sizeof(header));
+    expect_invalid_payload(payload, "Binary data range exceeds stream size");
+  }
+  expect_invalid_payload(std::vector<char>(valid_payload.begin(), valid_payload.begin() + 1),
+                         "Binary data range exceeds stream size");
+  for (const auto& [offset, size] : std::array<std::pair<int64_t, int64_t>, 4>{{
+           {0, std::numeric_limits<int64_t>::max()},
+           {std::numeric_limits<int64_t>::max(), 1},
+           {-1, 1},
+           {0, -1},
+       }}) {
+    const nlohmann::json metadata = {
+        {"version", "1.0.0"},
+        {"blob_metadata_map", {{"blob", {{"data_offset", offset}, {"size", size}}}}}};
+    const auto bson = nlohmann::json::to_bson(metadata);
+    auto header = malformed_header;
+    header[3] = sizeof(header);
+    header[4] = bson.size();
+    std::vector<char> payload(sizeof(header) + bson.size());
+    std::memcpy(payload.data(), header.data(), sizeof(header));
+    std::memcpy(payload.data() + sizeof(header), bson.data(), bson.size());
+    expect_invalid_payload(payload, offset < 0 || size < 0 ? "non-negative integers"
+                                                           : "Binary data range exceeds stream size");
+  }
+  {
+    nlohmann::json metadata = {
+        {"version", "1.0.0"},
+        {"blob_metadata_map", {
+                                  {"first", {{"data_offset", 0}, {"size", 1}}},
+                                  {"second", {{"data_offset", 0}, {"size", 1}}},
+                              }}};
+    const auto payload_size = sizeof(malformed_header) + nlohmann::json::to_bson(metadata).size();
+    for (auto& blob : metadata["blob_metadata_map"]) {
+      blob["size"] = payload_size;
+    }
+    const auto bson = nlohmann::json::to_bson(metadata);
+    auto header = malformed_header;
+    header[3] = sizeof(header);
+    header[4] = bson.size();
+    std::vector<char> payload(sizeof(header) + bson.size());
+    std::memcpy(payload.data(), header.data(), sizeof(header));
+    std::memcpy(payload.data() + sizeof(header), bson.data(), bson.size());
+    expect_invalid_payload(payload, "Total blob data size exceeds stream size");
+  }
+  callback_state.payload = valid_payload;
+
   // Keep the native-format header but supply shared-weight metadata without enabling session sharing.
   std::array<uint64_t, 5> header{};
   ASSERT_GE(callback_state.payload.size(), sizeof(header));
@@ -813,52 +880,143 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiExternalDataUsesCallbacks) 
   EXPECT_FALSE(std::filesystem::exists(out_dir / "missing_shared_weights.bin"));
 }
 
-TEST_F(OVEPOVIRModelsExportEPContextTests, ReadCallbackUsesDistinctExternalNames) {
+TEST_F(OVEPOVIRModelsExportEPContextTests, ReadCallbackDeduplicatesNamesWithinOneSession) {
   const std::filesystem::path out_dir = std::filesystem::path("testdata") / "ovir_epctx_distinct_callbacks";
   std::filesystem::remove_all(out_dir);
   std::filesystem::create_directories(out_dir);
   auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(out_dir); });
 
-  const std::array<std::filesystem::path, 2> epctx_models = {
-      out_dir / "first_epctx.onnx",
-      out_dir / "second_epctx.onnx",
-  };
-  std::array<OpenVINOEpContextCallbackState, 2> write_states;
-  for (size_t i = 0; i < epctx_models.size(); ++i) {
-    Ort::SessionOptions session_options;
-    std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
-    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
-
-    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
-    compile_options.SetInputModelPath(kOvirModelPath);
-    compile_options.SetOutputModelPath(epctx_models[i].c_str());
-    compile_options.SetEpContextEmbedMode(false);
-    compile_options.SetEpContextDataWriteFunc(StoreOpenVINOEpContextData, &write_states[i]);
-    Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
-    ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
-  }
-  ASSERT_NE(write_states[0].name, write_states[1].name);
-
-  OpenVINOEpContextCallbackState read_state;
-  for (const auto& write_state : write_states) {
-    ASSERT_EQ(write_state.write_count, 1u);
-    ASSERT_FALSE(write_state.name.empty());
-    ASSERT_FALSE(write_state.payload.empty());
-    read_state.payloads_by_name.emplace(write_state.name, write_state.payload);
-  }
-
+  ONNX_NAMESPACE::ModelProto source_model;
+  ASSERT_STATUS_OK(Model::Load(kOvirModelPath, source_model));
+  auto combined_model = source_model;
+  auto* combined_graph = combined_model.mutable_graph();
+  combined_graph->clear_node();
+  combined_graph->clear_input();
+  combined_graph->clear_output();
+  combined_graph->clear_value_info();
+  std::ifstream xml_stream(std::filesystem::path(kOvirModelPath).replace_extension(".xml"));
+  ASSERT_TRUE(xml_stream);
+  const std::string source_xml{std::istreambuf_iterator<char>(xml_stream), std::istreambuf_iterator<char>()};
+  std::array<uint64_t, 5> combined_header{};
+  std::vector<char> combined_payload(sizeof(combined_header));
+  nlohmann::json combined_metadata = {{"version", "1.0.0"}, {"blob_metadata_map", nlohmann::json::object()}};
   Ort::SessionOptions session_options;
-  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &read_state);
   std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
-
-  for (const auto& epctx_model : epctx_models) {
-    ASSERT_NO_THROW((Ort::Session(*ort_env, epctx_model.c_str(), session_options)));
+  // Rename the OVIR tensor names as well: native imports retain their compiled input/output bindings.
+  for (size_t i = 0; i < 3; ++i) {
+    auto branch_model = source_model;
+    auto* branch_graph = branch_model.mutable_graph();
+    const auto prefix = "branch_" + std::to_string(i) + "_";
+    auto xml = source_xml;
+    for (const auto& name : {"X", "Y"}) {
+      const auto old_name = "\"" + std::string(name) + "\"";
+      const auto new_name = "\"" + prefix + name + "\"";
+      size_t position = 0;
+      while ((position = xml.find(old_name, position)) != std::string::npos) {
+        xml.replace(position, old_name.size(), new_name);
+        position += new_name.size();
+      }
+    }
+    const auto xml_path = out_dir / (prefix + "model.xml");
+    std::ofstream renamed_xml(xml_path);
+    ASSERT_TRUE(renamed_xml);
+    renamed_xml << xml;
+    renamed_xml.close();
+    std::filesystem::copy_file(std::filesystem::path(kOvirModelPath).replace_extension(".bin"),
+                               out_dir / (prefix + "model.bin"));
+    for (auto& branch_node : *branch_graph->mutable_node()) {
+      auto* node = &branch_node;
+      node->set_name(prefix + node->name());
+      for (auto& input : *node->mutable_input()) {
+        if (!input.empty()) input = prefix + input;
+      }
+      for (auto& output : *node->mutable_output()) {
+        if (!output.empty()) output = prefix + output;
+      }
+      for (auto& attribute : *node->mutable_attribute()) {
+        if (attribute.name() == "ep_cache_context") attribute.set_s(xml_path.filename().string());
+      }
+    }
+    for (auto& input : *branch_graph->mutable_input()) {
+      input.set_name(prefix + input.name());
+    }
+    for (auto& output : *branch_graph->mutable_output()) {
+      output.set_name(prefix + output.name());
+    }
+    const auto source_path = out_dir / (prefix + "model.onnx");
+    {
+      std::ofstream model_stream(source_path, std::ios::binary);
+      ASSERT_TRUE(branch_model.SerializeToOstream(&model_stream));
+    }
+    const auto native_path = out_dir / (prefix + "native.onnx");
+    OpenVINOEpContextCallbackState write_state;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(source_path.c_str());
+    compile_options.SetOutputModelPath(native_path.c_str());
+    compile_options.SetEpContextEmbedMode(false);
+    compile_options.SetEpContextDataWriteFunc(StoreOpenVINOEpContextData, &write_state);
+    Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
+    ASSERT_EQ(write_state.write_count, 1u);
+    const auto& payload = write_state.payload;
+    ASSERT_GE(payload.size(), sizeof(combined_header));
+    std::array<uint64_t, 5> header{};
+    std::memcpy(header.data(), payload.data(), sizeof(header));
+    const auto metadata = nlohmann::json::from_bson(payload.begin() + header[3],
+                                                    payload.begin() + header[3] + header[4]);
+    for (const auto& [name, entry] : metadata.at("blob_metadata_map").items()) {
+      const auto offset = entry.at("data_offset").get<size_t>();
+      const auto size = entry.at("size").get<size_t>();
+      ASSERT_LE(offset, payload.size());
+      ASSERT_LE(size, payload.size() - offset);
+      combined_metadata["blob_metadata_map"][prefix + name] =
+          {{"data_offset", combined_payload.size()}, {"size", size}};
+      combined_payload.insert(combined_payload.end(), payload.begin() + offset, payload.begin() + offset + size);
+    }
+    combined_header = header;
+    ONNX_NAMESPACE::ModelProto native_model;
+    ASSERT_STATUS_OK(Model::Load(native_path, native_model));
+    for (const auto& source_node : native_model.graph().node()) {
+      auto* node = combined_graph->add_node();
+      *node = source_node;
+      node->set_name(prefix + node->name());
+      for (auto& attribute : *node->mutable_attribute()) {
+        if (attribute.name() == "partition_name") attribute.set_s(prefix + attribute.s());
+        if (attribute.name() == "ep_cache_context") attribute.set_s("first_native.bin");
+      }
+    }
+    for (const auto& input : native_model.graph().input()) *combined_graph->add_input() = input;
+    for (const auto& output : native_model.graph().output()) *combined_graph->add_output() = output;
   }
-
+  combined_header[3] = combined_payload.size();
+  const auto bson = nlohmann::json::to_bson(combined_metadata);
+  combined_header[4] = bson.size();
+  combined_payload.insert(combined_payload.end(), bson.begin(), bson.end());
+  std::memcpy(combined_payload.data(), combined_header.data(), sizeof(combined_header));
+  ASSERT_EQ(combined_graph->node_size(), 3);
+  const std::string second_name = "second_native.bin";
+  bool updated_name = false;
+  for (auto& attribute : *combined_graph->mutable_node(2)->mutable_attribute()) {
+    if (attribute.name() == "ep_cache_context") {
+      attribute.set_s(second_name);
+      updated_name = true;
+    }
+  }
+  ASSERT_TRUE(updated_name);
+  const auto combined_path = out_dir / "combined_epctx.onnx";
+  {
+    std::ofstream model_stream(combined_path, std::ios::binary);
+    ASSERT_TRUE(combined_model.SerializeToOstream(&model_stream));
+  }
+  OpenVINOEpContextCallbackState read_state;
+  read_state.payloads_by_name.emplace("first_native.bin", combined_payload);
+  read_state.payloads_by_name.emplace(second_name, combined_payload);
+  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &read_state);
+  ASSERT_NO_THROW((Ort::Session(*ort_env, combined_path.c_str(), session_options)));
   EXPECT_EQ(read_state.read_count, 2u);
   EXPECT_THAT(read_state.read_names,
-              testing::UnorderedElementsAre(write_states[0].name, write_states[1].name));
+              testing::UnorderedElementsAre("first_native.bin", second_name));
 }
 
 TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiWriteCallbackErrorDoesNotFallbackToDisk) {

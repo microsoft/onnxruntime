@@ -20,21 +20,21 @@ constexpr const char* kPathResolutionGuidance =
     ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
     "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.";
 
-Status ValidateEpContextDataPath(const std::filesystem::path& model_path,
-                                 const std::filesystem::path& data_path) {
+onnxruntime::Status ValidateEpContextDataPath(const std::filesystem::path& model_path,
+                                              const std::filesystem::path& data_path) {
   const auto status = onnxruntime::utils::ValidateExternalDataPath(model_path, data_path);
   if (!status.IsOK()) {
-    return Status(status.Category(), status.Code(), status.ErrorMessage() + kPathResolutionGuidance);
+    return onnxruntime::Status(status.Category(), status.Code(), status.ErrorMessage() + kPathResolutionGuidance);
   }
-  return Status::OK();
+  return onnxruntime::Status::OK();
 }
 
 using onnxruntime::openvino_ep::CallbackBufferIStream;
 using onnxruntime::openvino_ep::OrtAllocatorDeleter;
 
-Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
-                         const std::string& name,
-                         std::unique_ptr<CallbackBufferIStream>& stream) {
+onnxruntime::Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
+                                      const std::string& name,
+                                      std::unique_ptr<CallbackBufferIStream>& stream) {
   OrtAllocator* allocator = nullptr;
   ORT_RETURN_IF_ERROR(onnxruntime::openvino_ep::ConvertAndReleaseCallbackStatus(
       Ort::GetApi().GetAllocatorWithDefaultOptions(&allocator)));
@@ -54,7 +54,7 @@ Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
   ORT_RETURN_IF(buffer == nullptr,
                 "EPContext read callback returned a null buffer for non-empty OpenVINO context data.");
   stream = std::make_unique<CallbackBufferIStream>(std::move(buffer_guard), buffer_size);
-  return Status::OK();
+  return onnxruntime::Status::OK();
 }
 
 }  // namespace
