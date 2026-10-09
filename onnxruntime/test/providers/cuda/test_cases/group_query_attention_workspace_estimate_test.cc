@@ -1199,6 +1199,83 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
   EXPECT_TRUE(requirements.empty());
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclarationMatchesBoundedNonWindowedLevel1) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "0"}}};
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "512"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  const std::string model_bytes =
+      BuildGroupQueryAttentionKernelModel(/*sliding_window_cache=*/false,
+                                          /*include_head_sink=*/false);
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const OpKernel* kernel = session.GetSessionState().GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+
+  const auto shapes = SeparateShapes();
+  auto expected_config = Config();
+  expected_config.sliding_window_cache = false;
+  expected_config.local_window_size = -1;
+  expected_config.max_total_sequence_length = 512;
+  expected_config.enable_xqa = false;
+  const auto expected = EstimateGroupQueryAttentionWorkspace(
+      expected_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+      *cuda_ep->GetAttentionKernelOptions());
+  ASSERT_TRUE(expected.has_value());
+
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapes), requirements));
+  ASSERT_EQ(requirements.size(), 1U);
+  EXPECT_EQ(requirements[0].slot_id, 0);
+  EXPECT_EQ(requirements[0].size_bytes, expected->total_workspace_bytes);
+  EXPECT_EQ(requirements[0].alignment_bytes, 256U);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, StrictVerificationAcceptsBoundedNonWindowedAgreement) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required for the strict verification integration test.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "0"}}};
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "512"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_shared<CUDAExecutionProvider>(provider_info)));
+  const std::string model_bytes =
+      BuildGroupQueryAttentionKernelModel(/*sliding_window_cache=*/false,
+                                          /*include_head_sink=*/false);
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+  ASSERT_NE(node, nullptr);
+  EXPECT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+}
+
 TEST(GroupQueryAttentionWorkspaceBoundsTest, CheckedOverflowIsUnavailable) {
   auto bounds = Bounds();
   bounds.batch_size_bound = std::numeric_limits<int32_t>::max();
