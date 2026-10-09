@@ -32,7 +32,7 @@ class ConvTranspose final : public WebGpuKernel {
     ONNX,    // Unpacked weights: [C_in, C_out/group, spatial kernel dimensions...].
     HWIO1D,  // Prepacked 1D weights: [1, kW, C_in, C_out/group].
     HWIO,    // Prepacked 2D weights: [kH, kW, C_in, C_out/group].
-    DHWOI,   // Prepacked weights: [kD, kH, kW, C_out/group, C_in].
+    DHWOI,   // Prepacked 3D weights: [kD, kH, kW, C_out/group, C_in].
   };
 
   std::unique_ptr<Tensor> prepacked_filter_;
