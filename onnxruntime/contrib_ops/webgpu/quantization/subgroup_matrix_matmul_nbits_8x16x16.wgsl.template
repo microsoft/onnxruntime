@@ -28,15 +28,18 @@
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
-const kQuantizationBlockSize : u32 = 32;
-const kValuesPerPack : u32 = 8;  // K-values dequantized per pack, both n_bits
-const kU32sPerBPack : u32 = 4;   // Packs per quantization block, both n_bits
-
+// A pack is the load/dequantization unit for eight consecutive K-elements of one B row.
+// It is stored as a u32 for 4-bit weights or a vec2<u32> for 8-bit weights.
+// Four packs form a 32-element quantization block and share its scale and zero point.
 #if n_bits == 4
-alias BPackT = u32;          // one pack = one nibble-packed u32 word (8 values)
+alias PackT = u32;          // one pack = one nibble-packed u32 word (8 values)
 #elif n_bits == 8
-alias BPackT = vec2<u32>;    // one pack = one byte-packed vec2<u32> (8 values)
+alias PackT = vec2<u32>;    // one pack = one byte-packed vec2<u32> (8 values)
 #endif
+
+const kQuantizationBlockSize : u32 = 32;
+const kPacksPerBlock : u32 = 4;   // Packs per quantization block, both n_bits
+const kElementsPerPack : u32 = 8; // K-elements dequantized per pack, both n_bits
 
 const kTileM : u32 = u32(tile_m);                // Tile size along M (output rows per workgroup)
 const kTileN : u32 = u32(tile_n);                // Tile size along N (output columns per workgroup)
@@ -63,19 +66,9 @@ var<workgroup> tile_b : array<f16, kTileN * kChunkSizeK>;
 var<workgroup> scratch : array<f16, kTileM * kTileN>;
 #endif
 
-// --- Offset Helpers ---
-
-fn get_weight_offset(actual_weight_idx : u32) -> u32 {
-  return actual_weight_idx * uniforms.K * uniforms.N;
-}
-
-fn get_scale_offset(actual_weight_idx : u32) -> u32 {
-  return actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
-}
-
 // --- Data Loading Functions ---
 
-// scale_offset is resolved once per workgroup (see get_scale_offset), not recomputed per thread.
+// scale_offset is resolved before the K loop, not recomputed for each load.
 // Note: the scales buffer is strided by blocks-per-row (K / kQuantizationBlockSize), which is
 // NOT the same as uniforms.zero_blocks_per_col (that's padded to a zero-point byte boundary).
 fn load_scale(row : u32, block_idx : u32, scale_offset : u32) -> output_element_t {
@@ -88,10 +81,10 @@ fn load_scale(row : u32, block_idx : u32, scale_offset : u32) -> output_element_
 // vec2<u32> for n_bits=8), addressed by its flat pack index within the row
 // (row * packs_per_row + pack_idx), offset by weight_offset (in block units,
 // scaled up to pack units here).
-fn load_b(row : u32, pack_idx : u32, weight_offset : u32) -> BPackT {
+fn load_b(row : u32, pack_idx : u32, weight_offset : u32) -> PackT {
   let k_of_b = uniforms.K / kQuantizationBlockSize;
-  let packs_per_row = k_of_b * kU32sPerBPack;
-  let offset = row * packs_per_row + pack_idx + weight_offset * kU32sPerBPack;
+  let packs_per_row = k_of_b * kPacksPerBlock;
+  let offset = row * packs_per_row + pack_idx + weight_offset * kPacksPerBlock;
   return input_b.getByOffset(offset);
 }
 
@@ -106,10 +99,9 @@ $MAIN {
 #else
   let actual_weight_idx = 0u;
 #endif
-  let scale_offset = get_scale_offset(actual_weight_idx);
-  // In block units; load_b scales this up to pack units (kU32sPerBPack is the
-  // same pack-per-block count for both n_bits).
-  let weight_offset = get_weight_offset(actual_weight_idx) / 32u;
+  let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
+  // One scale per block; load_b converts the shared block offset to pack units.
+  let weight_offset = scale_offset;
 
   let m_tile = (workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile;
 
@@ -122,14 +114,14 @@ $MAIN {
   var sg_mat_acc : array<SgMatResult, kSgMatCountN>;
   for (var k_idx : u32 = 0; k_idx < uniforms.K; k_idx += kChunkSizeK) {
     let k_block_idx = k_idx / kQuantizationBlockSize;
-    for (var load_unit = local_idx; load_unit < kTileN * kU32sPerBPack; load_unit += workgroup_size_x) {
-      let n_idx = load_unit / kU32sPerBPack;
-      let pack_idx = load_unit % kU32sPerBPack;
+    for (var load_unit = local_idx; load_unit < kTileN * kPacksPerBlock; load_unit += workgroup_size_x) {
+      let n_idx = load_unit / kPacksPerBlock;
+      let pack_idx = load_unit % kPacksPerBlock;
       let global_n = global_base_n + n_idx;
-      let tile_b_offset = n_idx * kChunkSizeK + pack_idx * kValuesPerPack;
+      let tile_b_offset = n_idx * kChunkSizeK + pack_idx * kElementsPerPack;
 
       if (global_n < uniforms.N) {
-        let packed = load_b(global_n, k_block_idx * kU32sPerBPack + pack_idx, weight_offset);
+        let packed = load_b(global_n, k_block_idx * kPacksPerBlock + pack_idx, weight_offset);
         let scale = load_scale(global_n, k_block_idx, scale_offset);
         let zero_point = mm_read_zero(actual_weight_idx, global_n, k_block_idx,
                                       uniforms.N, uniforms.zero_blocks_per_col);
