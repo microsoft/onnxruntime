@@ -5,8 +5,10 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import tempfile
 import unittest
 import warnings
+from pathlib import Path
 
 import numpy as np
 import onnx
@@ -22,11 +24,74 @@ from op_test_utils import (
     onnx_recent_enough,
 )
 
-from onnxruntime import InferenceSession
+from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import NotImplemented as OrtNotImplemented
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpGemm(unittest.TestCase):
+    def test_quantize_gemm_float16_bias_scale_underflow(self):
+        for per_channel in (False, True):
+            for magnitude in (2**-11, 0.005):
+                with (
+                    self.subTest(per_channel=per_channel, magnitude=magnitude),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    weights = np.array([[-magnitude, -magnitude / 2], [magnitude, magnitude / 2]], dtype=np.float16)
+                    bias = np.array([1, 2], dtype=np.float16)
+                    inputs = {"input": np.eye(2, dtype=np.float16)}
+                    model = helper.make_model(
+                        helper.make_graph(
+                            [helper.make_node("Gemm", ["input", "weight", "bias"], ["output"])],
+                            "float16_bias_scale_underflow",
+                            [helper.make_tensor_value_info("input", TensorProto.FLOAT16, [2, 2])],
+                            [helper.make_tensor_value_info("output", TensorProto.FLOAT16, [2, 2])],
+                            [
+                                onnx.numpy_helper.from_array(weights, "weight"),
+                                onnx.numpy_helper.from_array(bias, "bias"),
+                            ],
+                        ),
+                        opset_imports=[helper.make_opsetid("", 21)],
+                        ir_version=10,
+                    )
+                    try:
+                        InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+                    except OrtNotImplemented as e:
+                        if "Could not find an implementation for Gemm" in str(e):
+                            self.skipTest("CPU FP16 Gemm kernel is unavailable.")
+                        raise
+                    output_path = Path(directory) / "quantized.onnx"
+                    quantize_static(
+                        model,
+                        output_path,
+                        TestDataFeeds([inputs]),
+                        quant_format=QuantFormat.QDQ,
+                        activation_type=QuantType.QUInt8,
+                        weight_type=QuantType.QInt8,
+                        per_channel=per_channel,
+                        extra_options={"WeightSymmetric": True},
+                    )
+                    quantized = onnx.load(output_path)
+                    onnx.checker.check_model(quantized)
+                    initializers = {t.name: onnx.numpy_helper.to_array(t) for t in quantized.graph.initializer}
+                    scales = initializers["bias_quantized_scale"]
+                    self.assertEqual(scales.dtype, np.float32 if magnitude == 2**-11 else np.float16)
+                    self.assertTrue((scales > 0).all())
+                    dequantized = initializers["bias_quantized"].astype(np.float32) * scales
+                    np.testing.assert_allclose(dequantized, bias, rtol=1e-5)
+                    self.assertTrue((initializers["weight_scale"] < np.finfo(np.float16).tiny).all())
+                    self.assertTrue((initializers["weight_quantized"] != 0).all())
+                    for level in (GraphOptimizationLevel.ORT_DISABLE_ALL, GraphOptimizationLevel.ORT_ENABLE_ALL):
+                        options = SessionOptions()
+                        options.graph_optimization_level = level
+                        options.intra_op_num_threads = 1
+                        result = InferenceSession(str(output_path), options, providers=["CPUExecutionProvider"]).run(
+                            None, inputs
+                        )[0]
+                        np.testing.assert_allclose(
+                            result.astype(np.float32), weights.astype(np.float32) + bias, rtol=0.01
+                        )
+
     def input_feeds(self, n, name2shape):
         input_data_list = []
         for _i in range(n):

@@ -1138,6 +1138,18 @@ class QDQQuantizer(BaseQuantizer):
                     )
             else:
                 raise RuntimeError(f"Unexpected operator type {quant_value.node_type!r}.")
+            if (
+                dequant_node.op_type == "DequantizeLinear"
+                and init.data_type == onnx.TensorProto.FLOAT16
+                and self.model.get_initializer(quant_value.scale_name).data_type == onnx.TensorProto.FLOAT
+            ):
+                dequant_output = add_dequant_output_suffix(bias_name)
+                dequant_node.output[0] = dequant_output
+                self.model.add_node(
+                    onnx.helper.make_node(
+                        "Cast", [dequant_output], [bias_name], name=bias_name + "_Cast", to=init.data_type
+                    )
+                )
             self.model.add_node(dequant_node)
 
     def is_tensor_quantized(self, tensor_name: str):
@@ -1241,6 +1253,18 @@ class QDQQuantizer(BaseQuantizer):
                 f"when quantizing bias '{bias_name}' to int32."
             )
 
+        bias_initializer = find_by_name(bias_name, self.model.initializer())
+        bias_scale_dtype = None
+        if (
+            self.weight_qType != onnx.TensorProto.FLOAT8E4M3FN
+            and bias_initializer.data_type == onnx.TensorProto.FLOAT16
+            and np.any(np.asarray(input_scale * weight_scale * bias_info.beta, dtype=np.float16) == 0)
+        ):
+            # Dequantize the bias in FP32, then cast back to FP16 without losing a subnormal scale product.
+            input_scale = input_scale.astype(np.float32)
+            weight_scale = weight_scale.astype(np.float32)
+            bias_scale_dtype = np.float32
+
         (
             quantized_bias_name,
             quantized_bias_scale_name,
@@ -1248,7 +1272,9 @@ class QDQQuantizer(BaseQuantizer):
             bias_scale_data,
             node_type,
             node_qtype,
-        ) = self.quantize_bias_static_impl(bias_name, input_scale, weight_scale, bias_info.beta)
+        ) = self.quantize_bias_static_impl(
+            bias_name, input_scale, weight_scale, bias_info.beta, bias_scale_dtype=bias_scale_dtype
+        )
 
         quantized_value = QuantizedValue(
             bias_name,
