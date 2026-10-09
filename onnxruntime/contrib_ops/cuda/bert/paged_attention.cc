@@ -308,8 +308,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   const auto bind_scale_cache = [&](const Tensor* input, int output_index) -> Status {
     if (input == nullptr) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+      const bool output_exists = Node().OutputExists(static_cast<size_t>(output_index));
+#else
       const auto& outputs = Node().OutputDefs();
-      ORT_RETURN_IF_NOT(static_cast<size_t>(output_index) >= outputs.size() || !outputs[output_index]->Exists(),
+      const bool output_exists =
+          static_cast<size_t>(output_index) < outputs.size() && outputs[output_index]->Exists();
+#endif
+      ORT_RETURN_IF_NOT(!output_exists,
                         "Scale cache output requires its corresponding scale cache input.");
       return Status::OK();
     }

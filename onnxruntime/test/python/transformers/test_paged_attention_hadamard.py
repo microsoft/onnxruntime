@@ -7,8 +7,7 @@ from unittest.mock import patch
 
 import ml_dtypes
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
+from onnx import ModelProto, TensorProto, helper, save
 from test_paged_attention_int4 import has_sm80_cuda, run_with_kernel
 
 import onnxruntime as ort
@@ -261,7 +260,7 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
     if runner:
         with tempfile.TemporaryDirectory() as temporary:
             directory = pathlib.Path(temporary)
-            onnx.save(model, directory / "model.onnx")
+            save(model, directory / "model.onnx")
             for name, values in feeds.items():
                 values.tofile(directory / f"{name}.bin")
             for step, values in updates.items():
@@ -681,7 +680,7 @@ class TestPagedAttentionHadamard(unittest.TestCase):
                 model.graph.node[0].output[output_index] = ""
                 del model.graph.output[output_index]
                 actual = run_case(model, feeds)[0]
-                reference_model = onnx.ModelProto.FromString(model.SerializeToString())
+                reference_model = ModelProto.FromString(model.SerializeToString())
                 del reference_model.graph.node[0].output[3:]
                 del reference_model.graph.output[3:]
                 reference = run_case(reference_model, feeds)[0]
@@ -883,7 +882,7 @@ class TestPagedAttentionHadamard(unittest.TestCase):
                         model, feeds, _ = make_case(
                             width=128, lengths=lengths, int4=False, qk_rotation=rotated, v_rotation=rotated
                         )
-                        reference_model = onnx.ModelProto.FromString(model.SerializeToString())
+                        reference_model = ModelProto.FromString(model.SerializeToString())
                         reference_feeds = {name: array.copy() for name, array in feeds.items()}
                         reference_feeds["slot_mapping"][:] = -1
                         expected_cache = {}
