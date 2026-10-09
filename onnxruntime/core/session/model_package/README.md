@@ -13,10 +13,8 @@ adds three things on top**:
    variant body).
 2. The variant selection algorithm, which queries each execution provider
    factory and picks the highest-scoring variant.
-3. The experimental `OrtModelPackageApi_*` C functions that wrap the library
-   and expose session creation. They are registered in
-   `include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc` and
-   resolved by name through `OrtApi::GetExperimentalFunction`.
+3. The stable `OrtModelPackageApi` C API table that wraps the library and
+   exposes session creation through `OrtApi::GetModelPackageApi`.
 
 ORT links the `model_package` library as a static archive; the library
 itself never links against ORT.
@@ -28,12 +26,12 @@ itself never links against ORT.
 | File                                  | Responsibility |
 | ------------------------------------- | -------------- |
 | `model_package_context.h/.cc`         | Translates the `model_package` library's C info tree into ORT-internal C++ structs (`ModelPackageInfo`, `ComponentInfo`, `VariantInfo`, `VariantModelInfo`). Parses the `executor_info["ort"]` payload. Owns `ModelPackageContext` (package-level) and `ModelPackageComponentContext` (per-component, with selected variant and captured provider factory). |
-| `model_package_options.h/.cc`         | `ModelPackageOptions` snapshots EP intent (factories, devices, EP-name list) from an `OrtSessionOptions` at the moment `OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28` is called. Drives variant selection and provider construction. |
+| `model_package_options.h/.cc`         | `ModelPackageOptions` snapshots EP intent (factories, devices, EP-name list) from an `OrtSessionOptions` when `OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions` is called. Drives variant selection and provider construction. |
 | `model_package_variant_selector.h/.cc`| `VariantSelector::SelectVariant` picks the best variant from a component given the EP list. Uses `OrtEpFactory::ValidateCompiledModelCompatibilityInfo`. |
 
 The C entry points themselves live in
 `onnxruntime/core/session/model_package_api.cc` under
-`namespace OrtExperimentalApis`.
+`namespace OrtModelPackageAPI`.
 
 ---
 
@@ -123,7 +121,7 @@ string internally; ORT only round-trips it through the EP callback.
 
 ## Session creation contract
 
-`OrtModelPackageApi_CreateSession_SinceV28(env, component_ctx, session_options, &session)`.
+`OrtModelPackageApi::CreateSession(env, component_ctx, session_options, &session)`.
 
 The `component_ctx` already knows which variant won selection and which
 EP was selected. Two paths:
@@ -170,25 +168,13 @@ by) the package.
 
 ## C API surface
 
-The model package API is exposed via ONNX Runtime's
-[experimental C API](../../../../docs/design/Experimental_C_API.md). Each
-function is registered as a separate entry in
-`include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc` with
-prefix `OrtModelPackageApi_` and a version suffix. Consumers look
-the functions up by name through `OrtApi::GetExperimentalFunction`, either
-directly or via the typed C++ accessors in `Ort::Experimental::*` generated
-from `onnxruntime_experimental_cxx_api.h`.
+The model package API is a stable companion table returned by
+`OrtApi::GetModelPackageApi`. Its opaque handles
+(`OrtModelPackageOptions`, `OrtModelPackageContext`, and
+`OrtModelPackageComponentContext`) and function table are declared in
+`onnxruntime_c_api.h`. `onnxruntime_cxx_api.h` provides RAII wrappers.
 
-`ModelPackage_GetSchemaVersion_SinceV31` returns separate `int64_t` major and
-minor outputs. It replaces the single-output `_SinceV28` entry, which is no
-longer registered. Consumers must update their lookup and function signature.
-The other model package entries retain `_SinceV28`.
-
-The opaque handle types (`OrtModelPackageOptions`, `OrtModelPackageContext`,
-`OrtModelPackageComponentContext`) are forward-declared at the top of
-`onnxruntime_experimental_c_api.h`.
-
-Registered entries:
+API entries:
 
 | Function                                              | Notes |
 | ----------------------------------------------------- | ----- |
@@ -196,7 +182,7 @@ Registered entries:
 | `ReleaseModelPackageOptions`                          |       |
 | `CreateModelPackageContext`                           | Parses the manifest. |
 | `ReleaseModelPackageContext`                          |       |
-| `ModelPackage_GetSchemaVersion`                       | `_SinceV31`; returns major and minor. |
+| `ModelPackage_GetSchemaVersion`                       | Returns the schema major version. |
 | `ModelPackage_GetComponentCount`                      |       |
 | `ModelPackage_GetComponentNames`                      |       |
 | `ModelPackage_GetVariantCount`                        |       |
@@ -209,53 +195,34 @@ Registered entries:
 | `ModelPackageComponent_GetSelectedVariantFolderPath`  |       |
 | `CreateSession`                                       |       |
 
-> Experimental functions are not part of the stable ABI. Names, signatures
-> and behaviour may change between releases until the surface is promoted
-> to the stable `OrtApi`. Callers should null-check every lookup.
-
 Typical flow:
 
 ```cpp
 #include "onnxruntime_c_api.h"
-#include "onnxruntime_experimental_cxx_api.h"
 
 const OrtApi* ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
-auto fn_create_opts =
-    Ort::Experimental::Get_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_Fn(ort);
-auto fn_release_opts =
-    Ort::Experimental::Get_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_Fn(ort);
-auto fn_create_ctx =
-    Ort::Experimental::Get_OrtModelPackageApi_CreateModelPackageContext_SinceV28_Fn(ort);
-auto fn_release_ctx =
-    Ort::Experimental::Get_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_Fn(ort);
-auto fn_select =
-    Ort::Experimental::Get_OrtModelPackageApi_SelectComponent_SinceV28_Fn(ort);
-auto fn_release_comp =
-    Ort::Experimental::Get_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_Fn(ort);
-auto fn_create_session =
-    Ort::Experimental::Get_OrtModelPackageApi_CreateSession_SinceV28_Fn(ort);
+const OrtModelPackageApi* package_api = ort->GetModelPackageApi();
 
 OrtSessionOptions* so = nullptr;
 ort->CreateSessionOptions(&so);
 ort->SessionOptionsAppendExecutionProvider(so, "CUDAExecutionProvider", nullptr, nullptr, 0);
 
 OrtModelPackageOptions* mp_opts = nullptr;
-fn_create_opts(env, so, &mp_opts);
+package_api->CreateModelPackageOptionsFromSessionOptions(env, so, &mp_opts);
 
 OrtModelPackageContext* ctx = nullptr;
-fn_create_ctx(ORT_TSTR("/path/to/pkg"), &ctx);
+package_api->CreateModelPackageContext(ORT_TSTR("/path/to/pkg"), &ctx);
 
 OrtModelPackageComponentContext* comp_ctx = nullptr;
-fn_select(ctx, "decoder", mp_opts, &comp_ctx);
+package_api->SelectComponent(ctx, "decoder", mp_opts, &comp_ctx);
 
 OrtSession* session = nullptr;
-fn_create_session(env, comp_ctx, nullptr, &session);
+package_api->CreateSession(env, comp_ctx, nullptr, &session);
 
 ort->ReleaseSession(session);
-fn_release_comp(comp_ctx);
-fn_release_ctx(ctx);
-fn_release_opts(mp_opts);
+package_api->ReleaseModelPackageComponentContext(comp_ctx);
+package_api->ReleaseModelPackageContext(ctx);
+package_api->ReleaseModelPackageOptions(mp_opts);
 ort->ReleaseSessionOptions(so);
 ```
 
@@ -282,8 +249,5 @@ Calls sharing a package or component context require external synchronization.
 - [`model_package/README.md`](../../../../model_package/README.md): package
   format, manifest/component schema, shared assets, path resolution, the
   authoring C API, and the `executor_info` extension point.
-- [`docs/design/Experimental_C_API.md`](../../../../docs/design/Experimental_C_API.md):
-  design and lifecycle rules for the experimental C API mechanism that
-  hosts these entries.
-- `include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc`:
-  the canonical list of `OrtModelPackageApi_*` entries.
+- `include/onnxruntime/core/session/onnxruntime_c_api.h`: the stable
+  `OrtModelPackageApi` declaration.

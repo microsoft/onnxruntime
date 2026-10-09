@@ -1572,7 +1572,7 @@ Status UnfusedGqaAttention(
   p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
   p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
   p.is_causal = parameters.is_unidirectional;
-  p.local_window_size = parameters.local_window_size;  // -1 disables
+  p.local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
   p.scale = scale;
   p.softcap = parameters.softcap;

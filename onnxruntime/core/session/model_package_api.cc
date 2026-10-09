@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_experimental_c_api.h"
+#include "core/session/model_package_api.h"
 
 #include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
@@ -22,9 +22,9 @@ using namespace onnxruntime;
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, \
                                "Model package API is not supported in this build")
 
-namespace OrtExperimentalApis {
+namespace OrtModelPackageAPI {
 
-ORT_API(void, OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28,
+ORT_API(void, ReleaseModelPackageOptions,
         _Frees_ptr_opt_ OrtModelPackageOptions* options) {
 #if !defined(ORT_MINIMAL_BUILD)
   delete reinterpret_cast<onnxruntime::ModelPackageOptions*>(options);
@@ -33,7 +33,7 @@ ORT_API(void, OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28,
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28,
+ORT_API_STATUS_IMPL(CreateModelPackageOptionsFromSessionOptions,
                     _In_ const OrtEnv* env,
                     _In_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtModelPackageOptions** out) {
@@ -55,7 +55,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptio
   API_IMPL_END
 }
 
-ORT_API(void, OrtModelPackageApi_ReleaseModelPackageContext_SinceV28,
+ORT_API(void, ReleaseModelPackageContext,
         _Frees_ptr_opt_ OrtModelPackageContext* ctx) {
 #if !defined(ORT_MINIMAL_BUILD)
   delete reinterpret_cast<onnxruntime::ModelPackageContext*>(ctx);
@@ -64,7 +64,7 @@ ORT_API(void, OrtModelPackageApi_ReleaseModelPackageContext_SinceV28,
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateModelPackageContext_SinceV28,
+ORT_API_STATUS_IMPL(CreateModelPackageContext,
                     _In_ const ORTCHAR_T* package_root,
                     _Outptr_ OrtModelPackageContext** out) {
   API_IMPL_BEGIN
@@ -90,7 +90,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateModelPackageContext_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackage_GetComponentCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _Out_ size_t* out_count) {
   API_IMPL_BEGIN
@@ -108,7 +108,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackage_GetComponentNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                     _Out_ size_t* out_count) {
@@ -137,7 +137,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Out_ size_t* out_count) {
@@ -147,8 +147,10 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, component_name, and out_count must be non-null");
   }
 
+  size_t count = 0;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantCount(component_name, *out_count));
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantCount(component_name, count));
+  *out_count = count;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
@@ -159,7 +161,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
@@ -188,7 +190,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_SelectComponent_SinceV28,
+ORT_API_STATUS_IMPL(SelectComponent,
                     _In_ const OrtModelPackageContext* context,
                     _In_ const char* component_name,
                     _In_ const OrtModelPackageOptions* options,
@@ -233,7 +235,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_SelectComponent_SinceV28,
   API_IMPL_END
 }
 
-ORT_API(void, OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28,
+ORT_API(void, ReleaseModelPackageComponentContext,
         _Frees_ptr_opt_ OrtModelPackageComponentContext* cix) {
 #if !defined(ORT_MINIMAL_BUILD)
   delete reinterpret_cast<onnxruntime::ModelPackageComponentContext*>(cix);
@@ -242,7 +244,7 @@ ORT_API(void, OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28,
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFolderPath,
                     _In_ const OrtModelPackageComponentContext* ctx,
                     _Outptr_ const ORTCHAR_T** folder_path) {
   API_IMPL_BEGIN
@@ -267,7 +269,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantF
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateSession_SinceV28,
+ORT_API_STATUS_IMPL(CreateSession,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageComponentContext* ctx,
                     _In_opt_ const OrtSessionOptions* session_options,
@@ -405,16 +407,16 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateSession_SinceV28,
 
 // ---------- API table ------------------------------------------------------
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpName,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _In_ const char* variant_name,
-                    _Out_opt_ const char** out_ep) {
+                    _Outptr_result_maybenull_ const char** out_ep) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr) {
+  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr || out_ep == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "ctx, component_name, and variant_name must be non-null");
+                                 "ctx, component_name, variant_name, and out_ep must be non-null");
   }
 
   const onnxruntime::VariantEpCompatibilityInfo* info = nullptr;
@@ -424,9 +426,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
     return onnxruntime::ToOrtStatus(status);
   }
 
-  if (out_ep != nullptr) {
-    *out_ep = (info != nullptr && info->ep.has_value()) ? info->ep->c_str() : nullptr;
-  }
+  *out_ep = (info != nullptr && info->ep.has_value()) ? info->ep->c_str() : nullptr;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
@@ -438,7 +438,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackage_ResolveStringRef,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_opt_ const char* base_dir,
                     _In_ const char* input,
@@ -449,6 +449,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28,
   if (ctx == nullptr || input == nullptr || out_path == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, input, and out_path must be non-null");
   }
+
   const char* resolved = nullptr;
   auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->ResolveStringRef(
       base_dir != nullptr ? std::string(base_dir) : std::string{}, std::string(input),
@@ -469,30 +470,27 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV31,
+ORT_API_STATUS_IMPL(ModelPackage_GetSchemaVersion,
                     _In_ const OrtModelPackageContext* ctx,
-                    _Out_ int64_t* out_major,
-                    _Out_ int64_t* out_minor) {
+                    _Out_ int64_t* out_version) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || out_major == nullptr || out_minor == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, out_major and out_minor must be non-null");
+  if (ctx == nullptr || out_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_version must be non-null");
   }
 
   const auto& package_info = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetModelPackageInfo();
-  *out_major = package_info.schema_version_major;
-  *out_minor = package_info.schema_version_minor;
+  *out_version = package_info.schema_version_major;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(out_major);
-  ORT_UNUSED_PARAMETER(out_minor);
+  ORT_UNUSED_PARAMETER(out_version);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28,
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantName,
                     _In_ const OrtModelPackageComponentContext* ctx,
                     _Outptr_ const char** out_name) {
   API_IMPL_BEGIN
@@ -516,4 +514,27 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantN
   API_IMPL_END
 }
 
-}  // namespace OrtExperimentalApis
+static constexpr OrtModelPackageApi ort_model_package_api = {
+    &CreateModelPackageOptionsFromSessionOptions,
+    &ReleaseModelPackageOptions,
+    &CreateModelPackageContext,
+    &ReleaseModelPackageContext,
+    &ModelPackage_GetSchemaVersion,
+    &ModelPackage_GetComponentCount,
+    &ModelPackage_GetComponentNames,
+    &ModelPackage_GetVariantCount,
+    &ModelPackage_GetVariantNames,
+    &ModelPackage_GetVariantEpName,
+    &ModelPackage_ResolveStringRef,
+    &SelectComponent,
+    &ReleaseModelPackageComponentContext,
+    &ModelPackageComponent_GetSelectedVariantName,
+    &ModelPackageComponent_GetSelectedVariantFolderPath,
+    &CreateSession,
+};
+
+ORT_API(const OrtModelPackageApi*, GetModelPackageApi) {
+  return &ort_model_package_api;
+}
+
+}  // namespace OrtModelPackageAPI
