@@ -189,7 +189,7 @@ class BaseQuantizer:
 
         return True
 
-    def quantize_bias_static_impl(self, bias_name, input_scale, weight_scale, beta=1.0):
+    def quantize_bias_static_impl(self, bias_name, input_scale, weight_scale, beta=1.0, bias_scale_dtype=None):
         """
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         """
@@ -218,6 +218,12 @@ class BaseQuantizer:
             # calculate scale for bias
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
             bias_scale = input_scale * weight_scale * beta
+            if bias_scale_dtype is not None:
+                # A separate FP32 DQ permits a sufficient bias scale even when weight adjustment is skipped.
+                min_bias_scale = np.abs(np.asarray(bias_data, dtype=np.float64)) / np.iinfo(np.int32).max
+                if bias_scale.size == 1:
+                    min_bias_scale = min_bias_scale.max()
+                bias_scale = np.maximum(bias_scale, min_bias_scale * 1.0001).astype(bias_scale_dtype)
 
             # Quantize by dividing by bias_scale
             quantized_data = np.asarray(bias_data, dtype=np.float64) / np.asarray(bias_scale, dtype=np.float64)
@@ -238,8 +244,10 @@ class BaseQuantizer:
             packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
             self.model.initializer_extend([packed_bias_initializer])
 
-            # Bias's scale dtype should match the original bias data's unquantized type (float32 or float16).
-            bias_scale_data = np.asarray(bias_scale, dtype=bias_data.dtype).reshape(-1)
+            # Bias scales normally match the bias dtype; QDQ can use FP32 to avoid FP16 underflow.
+            bias_scale_data = np.asarray(
+                bias_scale, dtype=bias_data.dtype if bias_scale_dtype is None else bias_scale_dtype
+            ).reshape(-1)
             node_type = "DequantizeLinear"
             node_qtype = self.weight_qType
 
