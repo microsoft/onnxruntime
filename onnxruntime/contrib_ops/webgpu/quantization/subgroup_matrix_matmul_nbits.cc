@@ -53,7 +53,7 @@ constexpr SubgroupMatrixMatMulNBitsTiling GetSubgroupMatrixMatMulNBitsTiling(
   }
   if (config.Is(16, 16, 16)) {
     // TODO: Relax N alignment for full no-bias tiles.
-    return {128, 128, 128, 1, has_bias ? 1 : 64, 32};
+    return {128, 128, 128, 1, has_bias ? 1u : 64u, 32};
   }
   if (config.Is(8, 8, 8)) {
     return {32, 64, 128, 1, 64, 32};
