@@ -100,6 +100,8 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
+    params.paired_k = tactic.cudaKernelVariant == 1;
+    params.wave_aware = mWaveAwareGemv;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
@@ -128,8 +130,22 @@ size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, s
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
-    int /*m*/, int /*n*/, int /*k*/) const {
-  return mRunner->getConfigs();
+    int m, int /*n*/, int /*k*/) const {
+  auto tactics = mRunner->getConfigs();
+  if (mPairedGemvMode != 0 && m >= 5 && m <= 8) {
+    for (auto const& tactic : tactics) {
+      if (tactic.enableCudaKernel) {
+        auto paired = tactic;
+        paired.cudaKernelVariant = 1;
+        if (mPairedGemvMode == 2) {
+          return {paired};
+        }
+        tactics.push_back(paired);
+        break;
+      }
+    }
+  }
+  return tactics;
 }
 
 std::optional<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config>
@@ -153,9 +169,29 @@ WeightOnlyGroupwiseQuantGemmPluginProfiler::getDeterministicConfig(int m) const 
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
   // stop to profile Cuda kernel for m >= 16
   if (tactic.enableCudaKernel) {
-    return m < 16;
+    return m < 16 && (tactic.cudaKernelVariant == 0 || (m >= 5 && m <= 8));
   }
   return true;
+}
+
+float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
+                                     bool is_cuda_kernel, float time) {
+  // The profiler replays one synthetic weight matrix back to back, so a matrix that fits in L2 is
+  // timed L2-resident. In decode every weight matrix streams from DRAM once per step, where the CUDA
+  // GEMV (a pure weight stream) keeps its measured speed but the CUTLASS kernels lose much of their
+  // L2 advantage. A matrix larger than L2 is already timed from DRAM, so no bias is applied.
+  constexpr float kCutlassPenaltyWhenGemvEligible = 1.1f;
+  if (!is_cuda_kernel && m < 16 && weight_bytes <= l2_cache_bytes) {
+    return time * kCutlassPenaltyWhenGemvEligible;
+  }
+  return time;
+}
+
+float WeightOnlyGroupwiseQuantGemmPluginProfiler::getSelectionTime(int m, int n, int k, Config const& tactic,
+                                                                   float time) const {
+  // n counts the 16-bit elements of one packed weight row (see runTactic).
+  const size_t weight_bytes = SafeInt<size_t>(n) * k * sizeof(half);
+  return GetWeightOnlyGemmSelectionTime(m, weight_bytes, mL2CacheBytes, tactic.enableCudaKernel, time);
 }
 
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(const std::string& value) {

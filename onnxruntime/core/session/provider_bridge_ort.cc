@@ -28,6 +28,7 @@
 #include "core/framework/provider_options.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/framework/random_generator.h"
+#include "core/framework/run_instrumentation.h"
 #include "core/framework/run_options.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -874,6 +875,11 @@ struct ProviderHostImpl : ProviderHost {
   const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
   const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
+  void SessionOptions__GetEpContextDataCallbacks(const OrtSessionOptions* p,
+                                                 OrtReadNamedBufferFunc* read_func, void** read_state,
+                                                 OrtWriteNamedBufferFunc* write_func, void** write_state) override {
+    p->GetEpContextDataCallbacks(read_func, read_state, write_func, write_state);
+  }
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
@@ -1618,47 +1624,45 @@ struct ProviderHostImpl : ProviderHost {
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
   Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) override { return p->GetComputeStream(); }
   const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
-      const OpKernelContext* p) override {
-    return p->GetRunInstrumentationContext();
+      const OpKernelContext*) override {
+    return nullptr;
   }
-  const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) override {
-    return p->RequestId();
+  const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext*) override {
+    static const std::string empty;
+    return empty;
   }
-  TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) override {
-    return p->StartProfiling();
+  TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext*) override {
+    return {};
   }
-  uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) override {
-    return p->ProfilerStartTimeNs();
+  uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext*) override {
+    return 0;
   }
   void RunInstrumentationContext__AddDeferredRecord(
-      const RunInstrumentationContext* p,
-      std::unique_ptr<DeferredRunInstrumentationRecord> record) override {
-    p->AddDeferredRecord(std::move(record));
+      const RunInstrumentationContext*,
+      std::unique_ptr<DeferredRunInstrumentationRecord>) override {
   }
   bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
-      const RunInstrumentationContext* p, size_t element_count) override {
-    return p->TryReserveMoeRoutingRecord(element_count);
+      const RunInstrumentationContext*, size_t) override {
+    return false;
   }
   void RunInstrumentationContext__RecordMoeRoutingEvent(
-      const RunInstrumentationContext* p,
-      const TimePoint& start_time,
-      const TimePoint& end_time,
-      const std::string& node_name,
-      NodeIndex node_index,
-      const std::string& node_type,
-      std::string expert_ids_json,
-      std::string router_weights_json,
-      int64_t num_rows,
-      int64_t top_k,
-      int execution_device_id,
-      int64_t completion_ns,
-      const std::string& completion_timestamp_source) override {
-    p->RecordMoeRoutingEvent(
-        start_time, end_time, node_name, node_index, node_type,
-        std::move(expert_ids_json), std::move(router_weights_json),
-        num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
+      const RunInstrumentationContext*,
+      const TimePoint&,
+      const TimePoint&,
+      const std::string&,
+      NodeIndex,
+      const std::string&,
+      std::string,
+      std::string,
+      int64_t,
+      int64_t,
+      int,
+      int64_t,
+      const std::string&) override {
   }
-
+  KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
+    return p->GetKernelPilot();
+  }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
@@ -1941,7 +1945,12 @@ struct ProviderSharedLibrary {
     ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
+    auto status = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    if (!status.IsOK()) {
+      LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
+      Unload();
+      return status;
+    }
 
     PProvider_SetHost(&g_provider_host);
 
@@ -1973,8 +1982,7 @@ static ProviderSharedLibrary s_library_shared;
 
 bool InitProvidersSharedLibrary() {
   ORT_TRY {
-    ORT_THROW_IF_ERROR(s_library_shared.Initialize());
-    return true;
+    return s_library_shared.Initialize().IsOK();
   }
   ORT_CATCH(const std::exception&) {
   }
@@ -2404,6 +2412,12 @@ std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create
 
 ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() {
   ORT_TRY {
+    auto status = s_library_openvino.Load();
+    if (!status.IsOK()) {
+      LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
+      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      return nullptr;
+    }
     return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
   }
   ORT_CATCH_LOG_RETURN_NULLPTR;

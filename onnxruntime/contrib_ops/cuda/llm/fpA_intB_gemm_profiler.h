@@ -56,6 +56,12 @@ constexpr int kDefaultProfileMaxM = 2048;
 // `packed_n` is the number of 16-bit elements that hold one packed weight row.
 // This pure-math helper is shared by the runtime profiler and partition-time
 // memory estimation so their allocation formulas cannot drift.
+// Maps a measured tactic time to the value compared during tactic selection. For small M, CUTLASS
+// must beat the CUDA GEMV by 10% when the weight fits in L2, because the profiler then times it
+// L2-resident while decode streams it from DRAM.
+float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
+                                     bool is_cuda_kernel, float time);
+
 std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,
     size_t group_size, size_t runner_workspace_bytes);
@@ -98,6 +104,21 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mArch = arch;
   }
 
+  void setL2CacheBytes(size_t l2CacheBytes) {
+    mL2CacheBytes = l2CacheBytes;
+  }
+
+  // Paired-K fp16 int4 GEMV tactic for the M = 8 bucket (M = 5..8 at run time). Mode 1 adds it as an extra
+  // candidate, so it is kept only where it beats the default GEMV and the CUTLASS kernels; mode 2 offers
+  // only that tactic (testing and benchmarking); mode 0 disables it.
+  void setPairedGemvMode(int mode) {
+    mPairedGemvMode = mode;
+  }
+
+  void setWaveAwareGemv(bool enabled) {
+    mWaveAwareGemv = enabled;
+  }
+
  protected:
   void runTactic(int m, int n, int k, Config const& tactic,
                  char* workspace, cudaStream_t const& stream) override;
@@ -108,15 +129,20 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   bool checkTactic(int m, int n, int k, Config const& tactic) const override;
 
+  float getSelectionTime(int m, int n, int k, Config const& tactic, float time) const override;
+
   std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const override;
 
  private:
   bool mHasBiases;
+  int mPairedGemvMode = 0;
   bool mHasZeros;
   int mQuantBits;
   int mGroupSize;
   KernelType mCudaKernelType;
   int mArch;
+  size_t mL2CacheBytes = 0;
+  bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
 };
 
