@@ -52,6 +52,7 @@ namespace test {
 TEST(GroupQueryAttentionTest, NativeH512FallbackEligibility) {
   contrib::GroupQueryAttentionParameters parameters{};
   parameters.sequence_length = 1;
+  parameters.is_first_prompt = false;
   parameters.num_heads = 8;
   parameters.kv_num_heads = 1;
   parameters.head_size = 512;
@@ -59,6 +60,9 @@ TEST(GroupQueryAttentionTest, NativeH512FallbackEligibility) {
   for (int device_major : {5, 6, 7, 8, 9, 10, 12}) {
     EXPECT_EQ(contrib::cuda::PreferNativeGqa(parameters, device_major, false, false), device_major >= 8);
   }
+  parameters.is_first_prompt = true;
+  EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, false));
+  parameters.is_first_prompt = false;
   for (int sequence_length : {0, 2, 8192, 16384}) {
     parameters.sequence_length = sequence_length;
     EXPECT_FALSE(contrib::cuda::PreferNativeGqa(parameters, 8, false, false));
@@ -4001,7 +4005,7 @@ TEST(GroupQueryAttentionTest, CudaAttentionBiasParityVsCpu) {
 }
 
 #ifdef USE_CUDA
-template <typename T>
+template <typename T, int SequenceLength = 32>
 static void RunGQAH512PrefillMemoryEfficientTest() {
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (!HasCudaEnvironment(900)) {
@@ -4018,7 +4022,7 @@ static void RunGQAH512PrefillMemoryEfficientTest() {
       {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "0"},
       {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
   }};
-  constexpr int sequence_length = 32;
+  constexpr int sequence_length = SequenceLength;
   constexpr int num_heads = 32;
   constexpr int kv_num_heads = 8;
   constexpr int head_size = 512;
@@ -4072,10 +4076,12 @@ static void RunGQAH512PrefillMemoryEfficientTest() {
 }
 
 TEST(GroupQueryAttentionTest, CudaH512PrefillMemoryEfficientFp16) {
+  RunGQAH512PrefillMemoryEfficientTest<MLFloat16, 1>();
   RunGQAH512PrefillMemoryEfficientTest<MLFloat16>();
 }
 
 TEST(GroupQueryAttentionTest, CudaH512PrefillMemoryEfficientBf16) {
+  RunGQAH512PrefillMemoryEfficientTest<BFloat16, 1>();
   RunGQAH512PrefillMemoryEfficientTest<BFloat16>();
 }
 

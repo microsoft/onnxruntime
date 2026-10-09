@@ -265,7 +265,13 @@ TYPED_TEST(GroupQueryAttentionFp16Bf16EligibilityTest, H512PrefillSelectsMemoryE
   parameters.head_size = 512;
   parameters.past_kv_format = contrib::AttentionQkvFormat::Q_K_V_BNSH;
   parameters.sequence_length = 1;
+  parameters.total_sequence_length = 2;
+  parameters.is_first_prompt = false;
   EXPECT_FALSE(contrib::cuda::IsGQAMemoryEfficientEligible<TypeParam>(
+      parameters, 80, false, false, false, false));
+  parameters.total_sequence_length = 1;
+  parameters.is_first_prompt = true;
+  EXPECT_TRUE(contrib::cuda::IsGQAMemoryEfficientEligible<TypeParam>(
       parameters, 80, false, false, false, false));
 
   for (int sequence_length : {8192, 16384}) {

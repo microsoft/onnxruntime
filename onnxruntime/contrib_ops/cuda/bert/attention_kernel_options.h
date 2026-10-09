@@ -13,7 +13,7 @@ namespace cuda {
 // Prefer native H512 decode over MEA; prefills retain MEA's bounded workspace.
 inline bool PreferNativeGqa(const GroupQueryAttentionParameters& parameters,
                             int device_major, bool is_inputs_quantized, bool has_head_sink) {
-  return parameters.sequence_length == 1 && device_major >= 8 &&
+  return !parameters.is_first_prompt && parameters.sequence_length == 1 && device_major >= 8 &&
          parameters.num_heads != parameters.kv_num_heads &&
          parameters.head_size == 512 && !is_inputs_quantized &&
          !parameters.use_smooth_softmax && !has_head_sink &&

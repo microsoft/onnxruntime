@@ -336,7 +336,8 @@ Fallback when XQA, cuDNN SDPA, and Flash are all ineligible:
 - `has_memory_efficient_attention(sm, is_fp16, is_bf16, head_size)` is true — FP16/FP32 broadly,
   BF16 on SM80+;
 - native H512 decode is not preferred: on SM80+, non-quantized BNSH grouped-head caches with
-  `head_size == 512`, `sequence_length == 1`, no smooth softmax, and no `head_sink` skip MEA.
+  `head_size == 512`, `sequence_length == 1`, `is_first_prompt == false`, no smooth softmax,
+  and no `head_sink` skip MEA.
 
 When the query/KV head counts differ, the KV heads are expanded to `num_heads` into a scratch buffer.
 Multi-token H512 prefill retains eligible MEA rather than forcing the unfused route. MEA's expanded
@@ -356,8 +357,9 @@ It supports any `head_size` (FP32 QK accumulation), GQA, sliding window, and sof
 `head_size > 256` with past KV. The unfused (math) path can never be turned off and is always
 available as a fallback.
 
-The native H512 preference above applies only to single-token queries after XQA, cuDNN, and Flash
-are ineligible. It does not suppress MEA for multi-token prefill.
+The native H512 preference above applies only to single-token decode after XQA, cuDNN, and Flash
+are ineligible. It does not suppress MEA for first prompts (including one-token prompts) or
+multi-token prefill.
 
 ## 7. XQA Decode Path
 
