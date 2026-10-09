@@ -4331,8 +4331,11 @@ std::vector<T> ToMoeCpuOffloadType(const std::vector<float>& values) {
 
 template <typename T>
 void RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage() {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  constexpr int min_cuda_arch = std::is_same_v<T, BFloat16> ? 800 : 700;
+  if (!HasCudaEnvironment(min_cuda_arch)) {
+    GTEST_SKIP() << "CUDA device with compute capability "
+                 << (min_cuda_arch / 100) << "." << ((min_cuda_arch % 100) / 10)
+                 << " or newer is required.";
   }
   auto execution_provider_probe = DefaultCudaExecutionProvider();
   ASSERT_NE(execution_provider_probe, nullptr);

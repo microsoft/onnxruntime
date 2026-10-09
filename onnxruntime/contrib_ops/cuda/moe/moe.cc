@@ -243,7 +243,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
           }
         }
       }
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
+    } else {
       packed.cpu_gemm_float_data.resize(packed.cpu_data.size());
       for (size_t expert = 0; expert < num_experts; ++expert) {
         const T* source = packed.cpu_data.data() + expert * expert_element_count;
