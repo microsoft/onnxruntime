@@ -928,7 +928,7 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
                                                  bool is_bf16,
                                                  const cudaDeviceProp& device_prop,
                                                  cudaStream_t stream,
-                                                 bool enable_gb10_ksplit32) {
+                                                 bool enable_device_qualification) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   if (m <= 0 || n <= 0 || k <= 0) {
     return Status::OK();
@@ -971,13 +971,14 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     const int windows = k / 64;
     // Preserve the generic schedule for recursive tiles from requests above the qualified M range.
     const int selected_k_split =
-        enable_gb10_ksplit32 && Fp8MmaGb10TuningEnabled()
+        enable_device_qualification && Fp8MmaGb10TuningEnabled()
             ? PickFp8MmaKSplit(n, m, windows, device_prop.multiProcessorCount,
                                device_prop.major, device_prop.minor)
-            : PickGenericFp8MmaKSplit(n, windows);
+            : PickGenericFp8MmaKSplit(n, m, windows, device_prop.multiProcessorCount,
+                                      device_prop.major, device_prop.minor, enable_device_qualification);
     const int k_split = ApplyFp8MmaKSplitOverride(selected_k_split, m, n, k);
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
-    const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
+    const dim3 mma_blocks{static_cast<unsigned int>(Fp8MmaOutputBlocks(n))};
     const bool pin_residency = Fp8MmaGemvPinsResidency(
         n, k_split, mtiles, device_prop.multiProcessorCount, device_prop.major, device_prop.minor);
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
@@ -1108,7 +1109,7 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
   ORT_UNUSED_PARAMETER(is_bf16);
   ORT_UNUSED_PARAMETER(device_prop);
   ORT_UNUSED_PARAMETER(stream);
-  ORT_UNUSED_PARAMETER(enable_gb10_ksplit32);
+  ORT_UNUSED_PARAMETER(enable_device_qualification);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp8Weight requires CUDA 11.8 or later.");
 #endif
 }
