@@ -1565,7 +1565,9 @@ TEST_F(GraphTransformationTests, QDQFusionPreservesSharedZeroPoint) {
 }
 
 TEST_F(GraphTransformationTests, QDQFusionRequiresMatchingQuantizationParameters) {
-  enum class Mismatch { Scale, ZeroPoint, Axis };
+  enum class Mismatch { Scale,
+                        ZeroPoint,
+                        Axis };
 
   auto check_not_fused = [](Graph& graph) {
     const auto op_count = CountOpsInGraph(graph);
