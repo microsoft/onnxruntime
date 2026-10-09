@@ -7,6 +7,7 @@
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/session/environment.h"
 #include "core/session/ort_env.h"
 #include "core/session/inference_session.h"
@@ -35,9 +36,12 @@ OrtEnv* GetOrtEnv() {
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
+  lm_info.sink_factory = CreatePythonCallbackSink;
   Status status;
+
   ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr).release();
   if (!status.IsOK()) return status;
+
   // Keep the ort_env alive, don't free it. It's ok to leak the memory.
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
