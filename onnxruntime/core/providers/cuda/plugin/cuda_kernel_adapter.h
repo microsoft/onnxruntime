@@ -537,6 +537,7 @@ struct CudaKernelAdapterRuntimeConfig {
   int sdpa_kernel = 0;
   int device_id = 0;
   bool do_copy_in_default_stream = true;
+  bool enable_cuda_graph = false;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
   std::mutex captured_host_buffers_mutex;
@@ -571,18 +572,6 @@ struct SizeOf<void> {
 
   bytes = count_or_bytes * element_size;
   return true;
-}
-
-template <typename T>
-IConstantBuffer<T>* GetConstOnesBufferForDevice(int device_id) {
-  static std::mutex mutex;
-  static std::unordered_map<int, std::unique_ptr<IConstantBuffer<T>>> buffers;
-  std::lock_guard<std::mutex> lock(mutex);
-  auto& buffer = buffers[device_id];
-  if (!buffer) {
-    buffer = CreateConstantOnes<T>();
-  }
-  return buffer.get();
 }
 
 struct DefaultCudaHandles {
@@ -772,6 +761,7 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   config->sdpa_kernel = init_config.sdpa_kernel;
   config->device_id = init_config.device_id;
   config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
+  config->enable_cuda_graph = init_config.enable_cuda_graph;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
 }
 
@@ -855,6 +845,20 @@ struct _IsInf<nv_bfloat16, detect_positive, detect_negative> {
     } else {
       return false;
     }
+  }
+};
+
+// cuda_utils.h only specializes NumericLimits for onnxruntime::BFloat16. Without this the plugin's
+// nv_bfloat16 mapping falls back to std::numeric_limits, whose primary template returns 0, so
+// kernels that pad with Lowest() (TopK, reductions) rank the padding above every negative input.
+template <>
+struct NumericLimits<nv_bfloat16> {
+  __inline__ __host__ __device__ static nv_bfloat16 Lowest() {
+    return __nv_bfloat16_raw{0xFF7FU};  // -3.38953139e38
+  }
+
+  __inline__ __host__ __device__ static nv_bfloat16 Max() {
+    return __nv_bfloat16_raw{0x7F7FU};  // 3.38953139e38
   }
 };
 #endif
@@ -1175,14 +1179,6 @@ class CudaKernel : public OpKernel {
   PluginTuningContextStub* GetTuningContext() const {
     static PluginTuningContextStub stub;
     return &stub;
-  }
-
-  // GetConstOnes: returns a device buffer of constant ones.
-  // Delegates to IConstantBuffer from cuda_utils.h (compiled in cuda_utils.cu).
-  template <typename T>
-  const T* GetConstOnes(size_t count, cudaStream_t stream) const {
-    auto* buf = detail::GetConstOnesBufferForDevice<T>(device_id_);
-    return buf->GetBuffer(stream, count);
   }
 
   template <typename T>

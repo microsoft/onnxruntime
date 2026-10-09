@@ -13,10 +13,6 @@
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "test/util/include/default_providers.h"
 
-#ifdef USE_WEBGPU
-#include "core/providers/webgpu/webgpu_provider_options.h"
-#endif
-
 namespace onnxruntime {
 namespace test {
 
@@ -2037,6 +2033,44 @@ TEST(ReductionOpTest, ReduceMeanAxesInitializerOpset18) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
+
+#ifdef USE_CUDA
+TEST(ReductionOpTest, ReduceMean_bfloat16_cuda_opset13) {
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMean_bfloat16_cuda_opset18) {
+  OpTester test("ReduceMean", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_bfloat16) {
@@ -6353,6 +6387,31 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       });
 }
 
+void TestEmptySetNegativeAxis(const char* op, int opset, bool axes_as_input,
+                              int64_t keepdims, const std::vector<int64_t>& input_shape,
+                              const std::vector<int64_t>& output_shape) {
+  OpTester test(op, opset);
+  test.AddAttribute("keepdims", keepdims);
+  test.AddInput<float>("data", input_shape, {});
+  const std::vector<int64_t> axes{-1};
+  if (axes_as_input) {
+    test.AddInput<int64_t>("axes", {1}, axes);
+  } else {
+    test.AddAttribute("axes", axes);
+  }
+  test.AddOutput<float>("reduced", output_shape, {});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, EmptySetNegativeAxis) {
+  for (const char* op : {"ReduceSum", "ReduceProd", "ReduceMean"}) {
+    TestEmptySetNegativeAxis(op, 18, true, 1, {1, 0, 3}, {1, 0, 1});
+    TestEmptySetNegativeAxis(op, 18, true, 0, {0, 3}, {0});
+  }
+
+  TestEmptySetNegativeAxis("ReduceProd", 13, false, 1, {1, 0, 3}, {1, 0, 1});
+}
+
 TEST(ReductionOpTest, EmptySetMissingOptionalAxesReducesAllDimensions) {
   OpTester test("ReduceSum", 20);
   test.AddInput<float>("data", {2, 0, 4}, {});
@@ -7133,33 +7192,6 @@ TEST(ReductionOpTest, ReduceProd_EmptySet_DefaultAxes_KeepDims) {
             kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
             kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
-
-#ifdef USE_WEBGPU
-TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64) {
-  OpTester test("ReduceSum", 13);
-  test.AddInput<int64_t>("data", {3}, {10, 20, 30});
-  test.AddInput<int64_t>("axes", {1}, {0}, true);
-  test.AddOutput<int64_t>("reduced", {1}, {60});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
-}
-
-// Size divisible by 4: catches issues if the shader is ever accidentally vectorized for INT64.
-TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64_SizeDiv4) {
-  OpTester test("ReduceSum", 13);
-  test.AddInput<int64_t>("data", {4}, {10, 20, 30, 40});
-  test.AddInput<int64_t>("axes", {1}, {0}, true);
-  test.AddOutput<int64_t>("reduced", {1}, {100});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
-}
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include "core/providers/webgpu/d3d12_external_data_loader.h"
+#endif
 
 #include <mutex>
 #include <string_view>
@@ -46,6 +49,16 @@
 
 namespace onnxruntime {
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+onnxruntime::ep::adapter::Logger& WebGpuExecutionProvider::GetEpLogger() const {
+  return *ep_logger_;
+}
+
+void WebGpuExecutionProvider::SetEpLogger(const OrtLogger* logger) {
+  ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
+}
+#endif
+
 namespace webgpu {
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -60,7 +73,9 @@ class Memcpy final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    return Info().GetDataTransferManager().CopyTensor(*X, *Y);
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
+    return transfer.CopyTensor(*X, *Y);
   }
 };
 
@@ -594,7 +609,7 @@ using namespace webgpu;
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
                                                  WebGpuContext& context,
                                                  WebGpuExecutionProviderConfig&& config)
-    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice},
+    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice(context_id)},
       context_id_{context_id},
       context_{context},
       preferred_data_layout_{config.data_layout},
@@ -604,9 +619,41 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
+      enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
+#endif
+      recording_{std::make_unique<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
+          context_id,
           /*device_free=*/!context.HasDevice(),
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
+          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+          [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode) &&
+      context_.HasDevice()) {
+    accelerated_initializer_allocator_ =
+        CreateD3D12AcceleratedWebGpuAllocator(
+            context_,
+            context_id_,
+            [this]() -> webgpu::CommandRecordingState& { return Recording(); },
+            accelerated_initializer_state_);
+  }
+#else
+  if (webgpu::IsWeightLoadAccelerationRequired(
+          config.weight_load_acceleration_mode)) {
+    ORT_THROW(
+        "The requested weightLoadAcceleration mode requires a supported "
+        "disk-to-GPU weight loading implementation.");
+  }
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode)) {
+    LOGS_DEFAULT(WARNING)
+        << "Accelerated weight loading is unavailable in this build; using "
+           "the ordinary WebGPU initializer loading path.";
+  }
+#endif
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -619,19 +666,32 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
     ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
   }
+
+  WebGpuContextFactory::RetainContext(context_id_);
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = !context_.HasDevice();
   return {
-      // allocator for initializers
-      CreateWebGpuAllocator(
-          device_free,
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
+  // allocator for initializers
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      context_.HasDevice() &&
+              accelerated_initializer_allocator_ != nullptr
+          ? accelerated_initializer_allocator_
+          :
+#endif
+          CreateWebGpuAllocator(
+              context_id_,
+              device_free,
+              [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+              [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
       // default allocator
       CreateWebGpuAllocator(
+          context_id_,
           device_free,
-          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false,
+          [this]() -> const webgpu::BufferManager& { return BufferManager(); },
+          [this]() -> webgpu::CommandRecordingState& { return Recording(); },
+          false,
           [this]() { return !IsRunActive(); }),
   };
 }
@@ -751,12 +811,22 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager());
+  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording(), context_id_);
 }
 
 #if defined(__wasm__)
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<webgpu::ExternalDataLoader>();
+}
+#elif defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
+  if (accelerated_initializer_state_ == nullptr) {
+    return nullptr;
+  }
+
+  return std::make_unique<webgpu::D3D12AcceleratedExternalDataLoader>(
+      context_, context_id_, accelerated_initializer_state_,
+      weight_load_acceleration_mode_);
 }
 #endif
 
@@ -804,6 +874,18 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
   if (session_buffer_pool_) {
     session_buffer_pool_->Clear();
   }
+
+  prepack_allocator_.reset();
+  session_buffer_pool_.reset();
+  if (context_.Device()) {
+    // A failed Run may leave an unsubmitted recording in the context-shared pools.
+    context_.BufferManager().DiscardPendingBuffers(*recording_);
+    context_.InitializerBufferManager().DiscardPendingBuffers(*recording_);
+  }
+  recording_.reset();
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  pix_frame_generator_.reset();
+#endif
 
   WebGpuContextFactory::ReleaseContext(context_id_);
 }
@@ -860,7 +942,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 
       if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
         auto& commands = captured_graphs_[graph_annotation_id];
-        context_.CaptureBegin(&commands, *it->second);
+        context_.CaptureBegin(&commands, *it->second, *recording_);
       }
     }
   }
@@ -870,15 +952,13 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  run_active_.store(false);
-
   // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
-  Status flush_status = context_.Flush(BufferManager());
+  Status flush_status = context_.Flush(BufferManager(), *recording_);
 
   if (!flush_status.IsOK()) {
     if (IsGraphCaptureEnabled()) {
-      context_.CaptureEnd();
+      context_.CaptureEnd(*recording_);
       auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
       if (commands_it != captured_graphs_.end()) {
         context_.ReleaseGraphResources(commands_it->second);
@@ -889,12 +969,13 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     if (context_.ValidationMode() >= ValidationMode::Basic) {
       static_cast<void>(context_.PopErrorScope());
     }
+    run_active_.store(false);
     return flush_status;
   }
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
     if (current_graph_annotation_id_ != -1 && IsGraphCaptureAllowed()) {
-      context_.CaptureEnd();
+      context_.CaptureEnd(*recording_);
       captured_graph_ids_.insert(current_graph_annotation_id_);
       ORT_RETURN_IF_ERROR(ReplayGraph(current_graph_annotation_id_));
     } else {
@@ -918,6 +999,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   // Reset buffer manager routing after run completes
   graph_buffer_mgr_active_ = false;
+  run_active_.store(false);
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();
@@ -941,7 +1023,9 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
   if (session_profiler_ && session_profiler_->Enabled()) {
     context_.StartProfiling();
   }
-  context_.Replay(captured_graphs_.at(graph_annotation_id), *per_graph_buffer_mgrs_.at(graph_annotation_id));
+  context_.Replay(captured_graphs_.at(graph_annotation_id),
+                  *per_graph_buffer_mgrs_.at(graph_annotation_id),
+                  *recording_);
   if (session_profiler_ && session_profiler_->Enabled()) {
     // Session-level profiling: collect into profiler's own events storage.
     context_.CollectProfilingData(session_profiler_->GpuEvents());
@@ -978,13 +1062,17 @@ Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
 }
 
 webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
-  if (graph_buffer_mgr_active_) {
+  if (IsGraphCaptureEnabled() && graph_buffer_mgr_active_) {
     auto it = per_graph_buffer_mgrs_.find(current_graph_annotation_id_);
     if (it != per_graph_buffer_mgrs_.end()) {
       return *it->second;
     }
   }
   return context_.BufferManager();
+}
+
+webgpu::BufferManager& WebGpuExecutionProvider::InitializerBufferManager() const {
+  return context_.InitializerBufferManager();
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {

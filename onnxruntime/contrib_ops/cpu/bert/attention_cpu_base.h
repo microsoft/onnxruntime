@@ -54,7 +54,7 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     Tensor* present = nullptr;
-    if (past_sequence_length == 0) {
+    if (past_sequence_length == 0 && !past_present_share_buffer) {
       if (present_key == nullptr && present_value == nullptr) {
         present = GetPresent(context, past, batch_size, v_head_size, kv_sequence_length, past_sequence_length);
       } else if (past_key != nullptr && past_value != nullptr) {

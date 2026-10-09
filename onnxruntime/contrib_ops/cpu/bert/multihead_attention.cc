@@ -155,6 +155,13 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_value = context->Output(2, present_value_shape);
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
+  if (parameters.past_present_share_buffer &&
+      (present_key == nullptr || present_value == nullptr)) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Shared past/present buffer requires both present_key and present_value outputs.");
+  }
+
   bool use_decoder_masked_multihead_attention = false;
   if (cache_indirection != nullptr) {
     // Grouped query attention with cache indirection is rejected above, so kv_num_heads == num_heads here.
@@ -283,7 +290,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   if (parameters.past_present_share_buffer) {
     // No production use-case will incur this copy cost as the implementation of
-    // MultiHeadAttention expects the past and present buffers to be shared.
+    // shared-buffer attention requires the past and present buffers to be bound to the same memory.
     // This is just to circumvent the OpTester's limitation of not being able to bind a specific
     // buffer to inputs/outputs.
     auto* past_key_data = (past_key == nullptr) ? nullptr : past_key->Data<T>();
