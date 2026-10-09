@@ -184,6 +184,9 @@ For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage 
 dimension is `(head_size + 1) / 2`, not `head_size`. Scale tensors are paged with the same slot map
 and block table as the payload. Copying or evicting a block must include its scale tensors.
 
+For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage and their last
+dimension is `(head_size + 1) / 2`, not `head_size`.
+
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
 
@@ -244,6 +247,7 @@ ops without translation.
 | `kv_num_heads` | INT | required | existing |
 | `scale` | FLOAT | `1/sqrt(head_size)` | existing — mandatory in `LATENT` (§12.6) |
 | `softcap` | FLOAT | `0.0` | existing |
+| `is_causal` | INT | `1` | `0` removes the right-hand causal bound on all CUDA backends |
 | `local_window_size` | INT | `-1` | existing — §9 |
 | `do_rotary` | INT | `0` | existing |
 | `rotary_interleaved` | INT | `0` | existing |
@@ -654,8 +658,9 @@ if (needs_prologue) {
 Store the block cache in INT8, FP8 E4M3, or packed INT4 while `query` remains FP16/BF16, halving (or better) the
 dominant memory consumer in a serving deployment and proportionally reducing HBM traffic on the
 decode path. Static `PER_TENSOR` / `PER_CHANNEL` and dynamic `PER_TOKEN` scales are supported.
-INT4 and per-token scales use the portable decode and gather paths, not XQA. Performance and
-model-quality evaluation are separate gates; reduced cache storage alone does not establish either.
+Per-token scales use the portable decode and gather paths. Static PER_CHANNEL INT4 additionally
+supports XQA decode and speculative decode. Performance and model-quality evaluation are separate
+gates; reduced cache storage alone does not establish either.
 
 ### 8.2 Schema
 
@@ -702,6 +707,15 @@ Symmetric quantization, same formulas as GQA:
 INT4 uses round-to-nearest-even and stores `q + 8`, with the even channel in the low nibble.
 Zero-filled logical padding is `0x88`, not `0x00`. The caller initializes unwritten slots;
 the operator preserves every slot not selected by the write map.
+
+Scale values must be finite FP32 values. Signed scales are supported: negative values use the
+same division and multiplication formulas. A zero scale writes a zero logical code and dequantizes
+to zero; all-zero and mixed-zero tables are supported. Subnormal scales are supported by the
+portable CUDA path, which divides directly rather than forming a potentially infinite reciprocal.
+NaN and infinity are outside the input contract; their numerical outputs are unspecified. Scale
+values live on the device and are not validated by a synchronizing host readback. Producers must
+validate them before use. FP32 intermediate products, attention logits, and the final activation
+must still fit their respective types; finite scales alone do not guarantee finite arithmetic.
 
 #### 8.3.1 Zero point: always 0, and why the vocabulary is signed-only
 
@@ -765,8 +779,11 @@ buffer. INT4 does not reduce that prefill staging allocation.
 
 ### 8.6 Build gating
 
-Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_KV_CACHE`
-(default OFF). INT8 always built.
+Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` and `onnxruntime_USE_INT4_KV_CACHE` both default to
+`ON`. CUDA builds include the INT4 kernels by default; set
+`--cmake_extra_defines onnxruntime_USE_INT4_KV_CACHE=OFF` to omit them. Existing CMake build
+directories retain their cached option value, so pass `onnxruntime_USE_INT4_KV_CACHE=ON` explicitly
+when reusing a directory configured with the feature disabled. INT8 kernels are always built.
 
 ### 8.7 Validation
 
@@ -801,14 +818,22 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > - **Both §8.5 read paths are implemented.** Multi-token steps normally use
 >   `GatherAndExpandPagedKVCache` to dequantize while gathering, and the Flash varlen path uses the
 >   gathered grouped layout. A metadata-bounded speculative step of 2–8 query tokens uses paged XQA
->   directly for matching native FP16/BF16 query and cache types, or FP16 query/output with an
->   INT8/FP8 cache, when `head_size = 256` and `group_size = 6`. Single-token decode reads and
+>   directly at `group_size = 6`: H256 supports causal and non-causal attention with matching native
+>   FP16/BF16 query and cache types, FP16 query/output with an INT8/FP8 cache, or FP16 query/output
+>   with a `PER_CHANNEL` INT4 cache; causal H128 supports FP16 query/output with an INT8 cache.
+>   Quantized `PER_CHANNEL` K scales reach XQA when scale folding is enabled. INT4 with `PER_TENSOR`
+>   scales, BF16-query INT4, and disabled per-channel folding use portable paged decode for
+>   metadata-bounded speculative steps. Non-causal H128 multi-token steps use a portable or gathered
+>   backend. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
-> - **INT4 extension:** `uint8` packed caches and per-token scales are implemented on the portable
->   decode/gather paths. XQA remains limited to its existing native/INT8/FP8 formats and static scales.
+> - **INT4 extension:** `uint8` packed caches are read in place by the portable decode/gather paths
+>   and, with `PER_CHANNEL` scales at `head_size = 256` and `group_size = 6`, by dedicated FP16 INT4
+>   XQA decode and speculative-decode kernels. `PER_TENSOR` scales and BF16 activations use the
+>   portable paths. Per-token scales also use the portable paths and are never passed as XQA's
+>   static scale or K-fold normalizer.
 > - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
@@ -818,10 +843,13 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 
 > **Paged decode kernels.** Quantized decode uses XQA directly on the paged cache when the query has
 > one token per sequence, `head_size ∈ {64, 128, 256}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap,
-> and a block size divisible by 128. Separate speculative XQA specializations cover matching native
-> FP16/BF16 query and cache types, and FP16 query/output with an INT8/FP8 cache, when
-> `attention_metadata` bounds the longest query to 2–8 tokens, `head_size = 256`, and
-> `group_size = 6`; these kernels write packed token-major output and support ragged batches. A
+> a block size divisible by 128, and an INT8/FP8 cache with `PER_TENSOR` or `PER_CHANNEL` K scales.
+> Separate speculative XQA specializations cover matching native FP16/BF16 query and cache
+> types, FP16 query/output with an INT8/FP8 cache, and FP16 query/output with a `PER_CHANNEL` INT4
+> cache when scale folding is enabled. These H256 paths require `attention_metadata` to bound the
+> longest query to 2–8 tokens and `group_size = 6`. An additional H128 specialization covers FP16
+> query/output with an INT8 cache at `group_size = 6` for causal attention. These kernels write
+> packed token-major output and support ragged batches. A
 > native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
 > Qwen3.8 full-attention geometry, when `attention_metadata` proves one-token-per-sequence decode
 > without a host readback. The CUDA image selected at runtime must contain compatible XQA device code
@@ -832,9 +860,11 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > Attention for a native FP16/BF16 cache when a ragged step is not one-token-per-sequence, the selected
 > image has no compatible XQA kernel, or its dynamic shared-memory requirement exceeds the device
 > limit. Other quantized configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
-> `paged_attention_impl.cu`.
+> `paged_attention_impl.cu`. Their grid-Y dimension is the aggregate query-token count, so paged
+> decode is eligible only when that count fits the device's grid-Y limit (65,535). Larger batches
+> use a gather-based backend when available, including metadata-bounded INT4 speculative steps.
 >
-> - **Static scale foldings.** K folds into Q at load time
+> - **Portable scale folding uses FP32 intermediates and is granularity-agnostic.** K folds into Q at load time
 >   (`q_sh[c] = float(q[c]) * GetCacheScale(k_scale, kv_head * head_size + c, k_per_channel)`), so
 >   `PER_TENSOR` is just the `per_channel == false` branch of the same expression rather than a
 >   separate "fold into the softmax scale" path. V folds into the epilogue: `v_scale_c` does not
@@ -842,6 +872,23 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   softmax denominator.
 > - The kernel reads pages in place at their stored width, so a decode step touches the KV cache once
 >   at `int8`/`fp8` bandwidth instead of gathering and dequantizing the whole live context.
+> - **`PER_CHANNEL` K scales are folded into Q for XQA, normalized by a power of two.** XQA takes a
+>   single scalar K scale, so the channel scale is folded into the query. Storing that product in
+>   fp16 would saturate on a large scale, and a zero cache code would then turn the infinity into a
+>   `NaN`. `PagedScaleNormalizerKernel` reduces the table to the power of two just above
+>   `max|k_scale|`; the fold divides by it and XQA multiplies it back into `qkScale` once per CTA,
+>   outside the K/V loop. A power of two is used rather than `max|k_scale|` itself so that both the
+>   division and the reapplication are exact, and every normalized scale lands in `(0, 1]` so the
+>   fold cannot overflow for any finite table. The reduction is a single block on the compute
+>   stream, so the path stays CUDA-graph capturable and re-reads the table on every replay.
+> - **Limit of the fold, and how to opt out.** fp16 spans about 40 binades, and an overflow-free
+>   normalizer must be at least `max|k_scale|`, so channels more than **24 binades** below the
+>   largest flush to zero in the folded query. Calibrated tables sit far inside that budget — across
+>   the 128 per-(head, side) tables of a Qwen3.8-27B INT4 export the widest spans 4.9 binades — and
+>   MMLU-Pro over 800 questions puts the INT4 per-channel cache within noise of an INT8 cache. A
+>   table that does span more than the fold can hold should set `ORT_ENABLE_XQA_PER_CHANNEL_KV=0`,
+>   which routes `PER_CHANNEL` K decode and metadata-bounded speculative decode to the portable FP32
+>   kernel at the cost of XQA's tensor-core acceleration. `PER_TENSOR` K is unaffected either way.
 > - `softcap` matches FlashAttention bit-for-bit: `softcap * tanh(qk_raw * scale / softcap)`, which is
 >   what `flash_api.cc` produces from `params.softcap = softmax_scale / softcap` and
 >   `params.scale_softmax = softcap`.
@@ -860,13 +907,15 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   in-sequence position from `cumulative_seqlens_q` on device, and masks against
 >   `past_seqlens[b] + q_index + 1`, so the kernel is correct for arbitrary ragged input (including
 >   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
-> - **Multi-token XQA gating.** The speculative H256/group-6 XQA specialization is gated on the
->   `attention_metadata` query bound being in `[2, 8]`, *not* on `token_count <= batch_size`: a
->   zero-heavy ragged step can satisfy the aggregate test while still carrying a multi-token
+> - **Multi-token XQA gating.** The speculative H256/group-6 XQA specializations, plus the causal
+>   FP16-query/INT8-cache H128/group-6 specialization, are gated on the `attention_metadata` query
+>   bound being in `[2, 8]`, *not* on `token_count <= batch_size`: a zero-heavy ragged step can
+>   satisfy the aggregate test while still carrying a multi-token
 >   sequence, and a step with more tokens than sequences is equally valid. Nothing about the gate is
 >   specific to speculative verification -- any short multi-token query shape (a prefill chunk tail,
->   for instance) takes the same path, with the packed lower-triangular mask supplying bottom-right
->   causality. Query bounds of 1 keep the single-token kernel and bounds above 8 fall back to the
+>   for instance) takes the same path. The packed mask supplies bottom-right causality for causal
+>   attention and a rectangular span for non-causal H256 attention. Query bounds of 1 keep the
+>   single-token kernel and bounds above 8 fall back to the
 >   ragged backends. Local windows and attention sinks are supported on this path: rows are
 >   flattened `(query token, query head)` pairs, so the window is derived from each row's own query
 >   position and the sink from its own head.
@@ -897,11 +946,23 @@ arithmetic: `(QH)(KH)^T = QK^T` and `(softmax(scores) VH) H = softmax(scores) V`
 Tests isolate this property with an unquantized cache before checking INT4 error. Rotation is
 CUDA-only; WebGPU rejects it rather than silently ignoring the attributes.
 
-Operator tests are in `onnxruntime/test/python/transformers/test_paged_attention_int4.py`, covering
+Hadamard and per-token tests are in `onnxruntime/test/python/transformers/test_paged_attention_hadamard.py`, covering
 FP16/BF16, packed/derived writes, skipped slots, exact nibble encoding, zero padding, scale-cache
 outputs, prefill/decode/speculative attention, norm/RoPE ordering, negative contracts, and CUDA
 graph replay with changed input amplitudes. Static/per-token INT8 and FP8 regression cases and
 extreme scale saturation are also covered. They skip when INT4 CUDA kernels are not built.
+### 8.9 Packed INT4 tests
+
+Operator tests are in `onnxruntime/test/python/transformers/test_paged_attention_int4.py`, covering
+FP16/BF16, packed/derived writes, skipped slots, exact nibble encoding, zero padding,
+prefill/decode/speculative attention, a 65,536-token batch exceeding the portable grid-Y limit,
+INT4 norm/RoPE cache-write ordering, and negative contracts.
+XQA decode, speculative decode, and CUDA-graph replay tests assert native dispatch telemetry as
+well as numerical parity, so a portable fallback cannot silently pass as XQA coverage. INT8 and
+FP8 regression cases and extreme scale saturation are also covered. GPU operator tests skip when
+INT4 CUDA kernels are not built; XQA-specific tests additionally require an SM80-or-newer GPU and
+a compatible XQA image with sufficient shared memory. CPU-only helper tests verify telemetry
+capture and rejection of silent fallback independently of CUDA availability.
 
 ## 9. Feature: Sliding Window Attention
 
@@ -1318,6 +1379,7 @@ Target dispatch order once all phases land, first eligible wins:
 |---|---|---|
 | 0 | **MLA backend** (new, §12.7) | `kv_cache_layout == "LATENT"` — FlashMLA / FlashInfer MLA / TRT-LLM MLA where available, unfused MLA reference otherwise |
 | 1 | **Paged decode kernel** (new, Phase 4) | Decode-shaped batch per the static shape test in §4.7 (`token_count <= batch_size`); non-quantized or `PER_TENSOR`/`PER_CHANNEL` INT8/FP8; sliding window and `head_sink` supported |
+| 1.5 | **cuDNN paged SDPA** (new) | Decode-shaped (`max_query_len_bound == 1` **and** `token_count == batch_size`); FP16/BF16; non-quantized cache; `is_causal`; no softcap / sliding window / smooth softmax (QK-Norm rides the shared prologue — §7); `sm >= 90` and cuDNN `>= 9.5`; `is_supported_paged` shape gate accepts `(num_heads, kv_num_heads, head_size, block_size)`. Selected ahead of FlashAttention/MEA when eligible and XQA is not the winner. Reports `SdpaKernel=CUDNN_FLASH_ATTENTION`. Kill switch: `ORT_ENABLE_CUDNN_FLASH_ATTENTION=0` and the `sdpa_kernel` bit both disable it (they share the state with the CUDA EP's other cuDNN attention paths). Also gated by a per-Run buildability probe: `try_build_paged_graph` is called before each `Compute` with the same `PagedGraphParams` key `run_paged` uses, backed by a `thread_local` graph cache keyed on `(batch_size, num_heads, kv_num_heads, head_size, num_blocks, block_size, max_num_blocks_per_seq, scale, dtype, cudnnHandle_t)`. Steady state is one hash lookup; the first Run per unique shape on each thread pays the cuDNN planner build cost. A planner rejection (or a CUDA graph capture cache miss) suppresses cuDNN paged for that Run only — the cascade falls back to FlashAttention / MEA — and the same key is re-probed on the next Run without being memoized as a negative result. During CUDA graph capture the probe short-circuits to `false` before touching cuDNN, so run at least one warm-up `Compute` before capture to seed the cache. **Short-context regression**: the planner requires `max_seq_len_kv == max_num_blocks_per_seq * block_size`, so `run_paged` aligns the metadata bound up to a page multiple when the caller over-allocates the page table (e.g. `past+1` reported but reserving an extra page). |
 | 2 | **FlashAttention varlen** | FP16/BF16, SM80+, non-quantized cache (or quantized via dequant-gather); supports sliding window, softcap, packed QKV, `head_sink` via LSE epilogue |
 | 3 | **Memory-Efficient Attention (CUTLASS fMHA)** | Fallback for supported combinations and pre-SM80 |
 | 4 | **Unfused** | Last resort — arbitrary `head_size`, `attention_bias`, `output_qk` |
@@ -1373,10 +1435,12 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > inside this backend keeps a stricter gate — it needs `token_count == batch_size` *and*
 > `max_query_len == 1` because its output layout is one row per batch index rather than per query
 > token. Quantized-cache XQA may obtain the latter from `attention_metadata` or, failing that, from
-> the readback. A separate token-major speculative XQA path uses replay-safe metadata bounds instead
-> of an aggregate token-count heuristic: it admits `max_query_len` 2–8 when the H256/group-6
+> the readback. A separate token-major speculative XQA path uses replay-safe metadata bounds
+> instead of an aggregate token-count heuristic: it admits `max_query_len` 2–8 when the H256/group-6
 > specialization is eligible for matching native FP16/BF16 query and cache types or FP16 query with
-> an INT8/FP8 cache, including batches with inactive zero-query requests. Native-cache XQA requires
+> an INT8/FP8 cache or a `PER_CHANNEL` INT4 cache, or when the H128/group-6
+> causal FP16-query/INT8-cache specialization is eligible, including batches with inactive zero-query
+> requests. Native-cache XQA requires
 > metadata and otherwise remains on Flash when eligible or uses the portable paged decoder. The
 > single-token native specialization remains FP16-only. `ORT_DISABLE_DECODER_ATTENTION=1` disables
 > both paged XQA and the portable paged-decode backend.
@@ -1627,6 +1691,19 @@ These block the feature work and should land ahead of it.
    > falls back to the memory-efficient backend, which gathers pages into a dense buffer first and
    > therefore accepts any block size. The op only errors when neither backend is eligible.
    > Lifting this properly requires teaching the Flash paged loader to split a tile across pages.
+   >
+   > **Non-causal attention.** `is_causal=0` works with all CUDA backends: FlashAttention,
+   > memory-efficient attention, paged decode (including XQA), and latent attention. In particular,
+   > a native cache with `head_size=128` and 16-, 32-, or 64-token pages uses MEA for prefill/multi-token
+   > drafting and paged decode for decode-shaped batches, without requiring Flash-compatible pages.
+   > Each query can attend through the sequence's full live KV length (`past_seqlens + query_length`).
+   > A positive `local_window_size` still bounds the left side at `query_position - window_size + 1`;
+   > the right side remains unbounded. H256 speculative XQA uses a lower-triangular mask for causal
+   > attention and a rectangular mask for non-causal attention. The H128 specialization is currently
+   > causal-only; non-causal H128 multi-token steps use FlashAttention, memory-efficient attention,
+   > or the portable paged decoder. XQA's single-token kernel needs no different mask. Other backend
+   > eligibility constraints, including XQA's page alignment and MEA's lack of attention-sink support,
+   > are unchanged.
 2. **Out-of-bounds binary search.** The binary search over `cumulative_seqlens_q` in
    `ReshapeAndCache` and `GatherAndExpandPagedKVCache` can yield `batch_id == batch_size` when
    `token_id >= cumulative_seqlens_q[batch_size]`, producing OOB reads of `past_seqlens` and
@@ -1658,7 +1735,7 @@ These block the feature work and should land ahead of it.
 | **P4 — MLA (correctness)** | `kv_cache_layout="LATENT"`, `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `kv_cache_layout`, `v_head_size`, `rotary_offset`; input 4 optional |
 | **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; **remove the D→H sync and make the op CUDA-graph-capturable (§4.7)**; optional `attention_metadata` replay-wide bounds | input 16 |
 | **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | proposed inputs 19–20, output 5, attr `qk_output` |
-| **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
+| **Later** | MLA quantized latent cache tuning; non-CUDA EPs | — |
 
 Status: P0–P4 are implemented, except the `.Alias` registration. P5 is partially
 implemented — the paged decode kernel with in-kernel dequantization (including `softcap`, sliding
@@ -1754,8 +1831,8 @@ The complete deferred list:
 - one required functional `kv_cache_out` instead of two optional aliasing outputs;
 - removal of `kv_num_heads` in favor of `kv_cache.shape[2]`;
 - quantization granularity inferred from scale shape, and zero points (§21.3);
-- sub-byte logical types other than INT4 stored in `uint8` tensors; INT4 is implemented by the
-  portable decode and gather paths without reinterpreting existing tensor types (§21.4);
+- sub-byte logical types other than INT4 stored in `uint8` tensors; INT4 is implemented without
+  reinterpreting existing tensor types (§21.4);
 - inline scales or zero points packed into cache rows (§21.3, note);
 - a physical `HND` cache layout (§21.6);
 - renaming `local_window_size` to `window_size_left` / `window_size_right`, and the
@@ -1851,7 +1928,9 @@ introduces correction terms in both the QK and PV products.
 ### 21.4 `k_cache_dtype` / `v_cache_dtype` for sub-byte caches
 
 **The attributes and the `"int4"` value are implemented in §4.5 and §8.** Portable paged decode and
-gather can read packed INT4 caches; XQA cannot. Other sub-byte values remain deferred.
+gather read packed INT4 caches. The H256/group-6 single-token and speculative XQA specializations
+also read them for FP16 queries when K and V use `PER_CHANNEL` scales and scale folding is enabled;
+other INT4 configurations use the portable paths. Other sub-byte values remain deferred.
 A `k_cache_bit_width` / `v_cache_bit_width` pair would be redundant against the cache tensor's
 element type for native formats and could not distinguish INT4 from FP4.
 

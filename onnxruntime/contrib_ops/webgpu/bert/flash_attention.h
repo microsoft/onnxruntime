@@ -58,6 +58,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"copy_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -82,7 +83,8 @@ class PrepareIndirectDispatchProgram final : public Program<PrepareIndirectDispa
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32});
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32});
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
@@ -230,7 +232,8 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
-                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -259,6 +262,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
                                           {"batch_heads", ProgramUniformVariableDataType::Uint32},
                                           {"new_sequence_length", ProgramUniformVariableDataType::Uint32},

@@ -8,10 +8,9 @@
 #include <string>
 #include <string_view>
 
-namespace onnxruntime {
+#include "core/platform/telemetry_strings.h"
 
-// Maximum transmitted telemetry-string length, applied after scrubbing to bound telemetry payload size.
-inline constexpr size_t kMaxTelemetryStringLength = 40'960;
+namespace onnxruntime {
 
 namespace telemetry_detail {
 
@@ -90,18 +89,6 @@ inline size_t FindPathAnchor(std::string_view s) {
   return std::string_view::npos;
 }
 
-inline void TruncateUtf8AtBoundary(std::string& s, size_t max_length) {
-  if (s.size() <= max_length) {
-    return;
-  }
-
-  size_t end = max_length;
-  while (end > 0 && (static_cast<unsigned char>(s[end]) & 0xC0) == 0x80) {
-    --end;
-  }
-  s.resize(end);
-}
-
 }  // namespace telemetry_detail
 
 // Scrub filesystem paths out of a free-text telemetry string before transmission and cap its length.
@@ -110,19 +97,31 @@ inline void TruncateUtf8AtBoundary(std::string& s, size_t max_length) {
 // frequently contain spaces, a per-token classifier is bypassable; instead everything from the first
 // path anchor to the end of the message is replaced with a single "[path]" placeholder, so no portion
 // of the path -- including a space-separated user name -- can survive.
-inline std::string ScrubStringForTelemetry(std::string_view msg) {
-  const size_t anchor = telemetry_detail::FindPathAnchor(msg);
-  std::string out;
+inline std::string ScrubStringForTelemetry(std::string_view msg, bool input_truncated = false) {
+  const bool truncated = input_truncated || msg.size() > telemetry_detail::kMaxTelemetryProbeBytes;
+  msg = msg.substr(0, telemetry_detail::kMaxTelemetryProbeBytes);
+  size_t anchor = telemetry_detail::FindPathAnchor(msg);
+  if (truncated) {
+    // An unseen suffix can complete a path anchor or an unfinished first path segment.
+    size_t uncertain = msg.find_first_of("/\\");
+    if (uncertain == std::string_view::npos) uncertain = msg.size();
+    while (uncertain > 0 && !std::isspace(static_cast<unsigned char>(msg[uncertain - 1])) &&
+           msg[uncertain - 1] != '"' && msg[uncertain - 1] != '\'') {
+      --uncertain;
+    }
+    anchor = (std::min)(anchor, uncertain);
+  }
   if (anchor == std::string_view::npos) {
-    out.assign(msg);
-  } else {
-    out.assign(msg.substr(0, anchor));
-    out += "[path]";
+    return telemetry_detail::BoundedTelemetryString(msg);
   }
-  if (out.size() > kMaxTelemetryStringLength) {
-    telemetry_detail::TruncateUtf8AtBoundary(out, kMaxTelemetryStringLength);
-  }
+  std::string out = telemetry_detail::BoundedTelemetryString(msg.substr(0, anchor));
+  telemetry_detail::AppendTelemetryString(out, "[path]");
   return out;
+}
+
+inline std::string ScrubStringForTelemetry(const char* msg) {
+  return ScrubStringForTelemetry(
+      telemetry_detail::TelemetryCStringView(msg, telemetry_detail::kMaxTelemetryProbeBytes));
 }
 
 }  // namespace onnxruntime

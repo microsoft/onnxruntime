@@ -5,6 +5,22 @@
 #endif
 
 //
+// Template: math/matmul_gemv.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"math/matmul_gemv.wgsl.template"> {
+  using type = struct {
+    const ShaderVariableHelper* var_a;
+    const ShaderVariableHelper* var_b;
+    const ShaderVariableHelper* var_output;
+  };
+};
+
+template <>
+Status ApplyTemplate<"math/matmul_gemv.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/matmul_gemv.wgsl.template">::type params);
+
+//
 // Template: math/subgroup_matrix_gemm_8x16x16.wgsl.template
 //
 
@@ -70,6 +86,7 @@ struct TemplateParameter<"nn/im2col_matmul.wgsl.template"> {
   using type = struct {
     int param_activation_kind;
     int param_has_bias;
+    int param_quick_gelu_unit_alpha;
     int param_tile_m;
     int param_tile_n;
     int param_use_subgroup;
@@ -114,3 +131,24 @@ struct TemplateParameter<"tensor/pad.wgsl.template"> {
 
 template <>
 Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"tensor/pad.wgsl.template">::type params);
+
+//
+// Template: nn/conv_transpose3d.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"nn/conv_transpose3d.wgsl.template"> {
+  using type = struct {
+    int param_components;
+    int param_has_bias;
+    int param_is_channels_last;
+    int param_is_prepacked;
+    const ShaderVariableHelper* var_bias;
+    const ShaderVariableHelper* var_output;
+    const ShaderVariableHelper* var_w;
+    const ShaderVariableHelper* var_x;
+  };
+};
+
+template <>
+Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/conv_transpose3d.wgsl.template">::type params);

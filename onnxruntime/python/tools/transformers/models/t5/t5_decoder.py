@@ -100,7 +100,7 @@ class T5Decoder(torch.nn.Module):
         past_key_values = PastKeyValuesHelper.group_by_layer(past, num_decoder_layers)
 
         # This is a hack since only the third dimension of encoder_hidden_states is used here
-        dummy_encoder_hidden_states = encoder_attention_mask.unsqueeze(2)
+        dummy_encoder_hidden_states = encoder_attention_mask.unsqueeze(2).to(self.lm_head.weight.dtype)
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
             past_key_values=past_key_values,

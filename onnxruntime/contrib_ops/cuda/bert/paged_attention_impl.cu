@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/paged_attention_hadamard.cuh"
 #include "contrib_ops/cuda/bert/group_query_attention_qdq.cuh"
@@ -87,13 +88,12 @@ __device__ __forceinline__ float GetCacheScale(const float* __restrict__ scale, 
 template <typename T, typename TCACHE>
 __device__ __forceinline__ TCACHE QuantizeToCache(const T value, const float scale) {
   if constexpr (std::is_same<TCACHE, int8_t>::value) {
-    const float inv_scale = (scale == 0.0f) ? 0.0f : (1.0f / scale);
-    const int32_t q = static_cast<int32_t>(rintf(static_cast<float>(value) * inv_scale));
-    return static_cast<int8_t>(max(kPagedInt8Min, min(kPagedInt8Max, q)));
+    const float scaled = scale == 0.0f ? 0.0f : static_cast<float>(value) / scale;
+    const float clamped = fminf(static_cast<float>(kPagedInt8Max), fmaxf(static_cast<float>(kPagedInt8Min), scaled));
+    return static_cast<int8_t>(__float2int_rn(clamped));
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
   } else if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
-    const float inv_scale = (scale == 0.0f) ? 0.0f : (1.0f / scale);
-    const float v = static_cast<float>(value) * inv_scale;
+    const float v = scale == 0.0f ? 0.0f : static_cast<float>(value) / scale;
     return Float8E4M3FN(fmaxf(-kPagedFp8E4M3Max, fminf(kPagedFp8E4M3Max, v)));
 #endif
   } else {
@@ -399,6 +399,32 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
   constexpr int kThreads = 256;
   GetCumulativeSeqlensKV<kThreads><<<1, kThreads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q,
                                                                past_seqlens, batch_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// Fills seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i])
+// for the cuDNN paged SDPA graph's per-batch KV padding-mask input. Deriving the query count from
+// cumulative_seqlens_q rather than hard-coding +1 avoids baking the "decode-only" invariant into
+// the kernel: on every currently reachable call the difference is 1 (the cuDNN paged tier is
+// gated to max_query_len_bound == 1), and any future extension to multi-token steps stays
+// numerically correct here without a second edit.
+__global__ void GetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                             const int32_t* cumulative_seqlens_q,
+                             const int batch_size) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < batch_size) {
+    const int q_len = cumulative_seqlens_q[i + 1] - cumulative_seqlens_q[i];
+    seqlens_kv[i] = past_seqlens[i] + q_len;
+  }
+}
+
+Status LaunchGetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                          const int32_t* cumulative_seqlens_q,
+                          const int batch_size, cudaStream_t stream) {
+  constexpr int kThreads = 128;
+  const int blocks = (batch_size + kThreads - 1) / kThreads;
+  GetSeqlensKV<<<blocks, kThreads, 0, stream>>>(seqlens_kv, past_seqlens, cumulative_seqlens_q,
+                                                batch_size);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -841,6 +867,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                    const float scale,
                                    const float softcap,
                                    const int local_window_size,
+                                   const bool is_causal,
                                    const bool k_per_channel,
                                    PagedScaleCache key_scale_cache, PagedScaleCache value_scale_cache) {
   extern __shared__ float paged_decode_smem[];
@@ -883,22 +910,20 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
   const int64_t partial_head_index =
       (static_cast<int64_t>(split_id) * token_count + token_id) * num_heads + head_id;
 
-  // Causality is resolved per query token instead of assuming one new token per sequence:
-  // kv_len - q_len is past_seqlens[batch_id], so the token at offset q_index inside its sequence
-  // attends to cached positions [0, past + q_index]. For the decode case (q_len == 1) this reduces
-  // to the whole live context, as before.
+  // Resolve the query position even for non-causal attention: the left window stays anchored
+  // there, while the right bound expands to the full live context.
   const int q_index = token_id - cumulative_seqlens_q[batch_id];
   const int q_len = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
   const int seq_kv_len = cumulative_seqlens_kv[batch_id + 1] - cumulative_seqlens_kv[batch_id];
-  const int kv_len = seq_kv_len - q_len + q_index + 1;
+  const int query_end = seq_kv_len - q_len + q_index + 1;
+  const int kv_len = is_causal ? query_end : seq_kv_len;
 
-  // Sliding window matches FlashAttention's window_size_left = local_window_size - 1 convention at
-  // query position kv_len - 1, i.e. positions in [kv_len - local_window_size, kv_len).
+  // Sliding window matches FlashAttention's window_size_left = local_window_size - 1.
   const int tokens_per_split = (kv_len + num_splits - 1) / num_splits;
   int kv_begin = split_id * tokens_per_split;
   const int kv_end = min(kv_len, kv_begin + tokens_per_split);
   if (local_window_size > 0) {
-    kv_begin = max(kv_begin, kv_len - local_window_size);
+    kv_begin = max(kv_begin, query_end - local_window_size);
   }
 
   if (kv_begin >= kv_end) {
@@ -946,7 +971,8 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
       float dot = 0.0f;
       if (block_id >= 0) {
         const int64_t key_offset =
-            (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page + head_offset_in_page;
+            (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+            head_offset_in_page;
         for (int c = lane_id; c < head_size; c += 32) {
           dot += q_sh[c] * ReadPagedCache(key_cache, key_offset + c);
         }
@@ -1025,9 +1051,10 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
             continue;
           }
           const int pos = tile_begin + t;
-            const int64_t value_offset =
-              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page + head_offset_in_page;
-            acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
+          const int64_t value_offset =
+              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+              head_offset_in_page;
+          acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
         }
         acc_sh[c] = acc;
       }
@@ -1042,7 +1069,8 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
         }
         const int pos = tile_begin + t;
         const int64_t value_offset =
-          (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page + head_offset_in_page;
+            (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+            head_offset_in_page;
         acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
       }
       acc_sh[tid] = acc;
@@ -1172,7 +1200,7 @@ Status LaunchPagedDecodeAttention(const T* query, const TCACHE* key_cache, const
                                   const int batch_size, const int num_heads, const int kv_num_heads,
                                   const int head_size, const int block_size, const int max_num_blocks_per_seq,
                                   const int token_count, const int num_splits, const float scale,
-                                  const float softcap, const int local_window_size,
+                                  const float softcap, const int local_window_size, const bool is_causal,
                                   const bool use_smooth_softmax, cudaStream_t stream,
                                   PagedScaleCache key_scale_cache, PagedScaleCache value_scale_cache) {
   const size_t smem_bytes = GetPagedDecodeSharedMemoryBytes(head_size);
@@ -1180,7 +1208,7 @@ Status LaunchPagedDecodeAttention(const T* query, const TCACHE* key_cache, const
   PagedDecodeSplitKV<T, TCACHE><<<grid, kPagedDecodeThreads, smem_bytes, stream>>>(
       query, key_cache, value_cache, k_scale, cumulative_seqlens_q, cumulative_seqlens_kv, block_table,
       partial_out, partial_max, partial_sum, batch_size, num_heads, kv_num_heads, head_size, block_size,
-      max_num_blocks_per_seq, token_count, num_splits, scale, softcap, local_window_size, k_per_channel,
+      max_num_blocks_per_seq, token_count, num_splits, scale, softcap, local_window_size, is_causal, k_per_channel,
       key_scale_cache, value_scale_cache);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
@@ -1241,6 +1269,7 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
                                            const float scale,
                                            const float softcap,
                                            const int local_window_size,
+                                           const bool is_causal,
                                            const bool k_per_channel,
                                            const bool v_per_channel) {
   extern __shared__ float paged_latent_smem[];
@@ -1270,14 +1299,13 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
   const int batch_id = left;
   const int s = token_id - cumulative_seqlens_q[batch_id];
 
-  // Causality: this token's logical position is past_seqlens[b] + s, and it attends every cached
-  // position up to and including its own. That is exactly FlashAttention's bottom-right-aligned
-  // causal convention for seqlen_k = past + seqlen_q.
-  const int kv_end = past_seqlens[batch_id] + s + 1;
+  const int query_end = past_seqlens[batch_id] + s + 1;
+  const int q_len = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
+  const int kv_end = is_causal ? query_end : past_seqlens[batch_id] + q_len;
   int kv_begin = 0;
   if (local_window_size > 0) {
     // local_window_size counts the current token, matching mha_varlen_fwd's window_size_left = W-1.
-    kv_begin = max(0, kv_end - local_window_size);
+    kv_begin = max(0, query_end - local_window_size);
   }
 
   const int kv_head_id = head_id / (num_heads / kv_num_heads);
@@ -1416,13 +1444,14 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
                                   const int batch_size, const int num_heads, const int kv_num_heads,
                                   const int head_size, const int v_head_size, const int block_size,
                                   const int max_num_blocks_per_seq, const int token_count, const float scale,
-                                  const float softcap, const int local_window_size, cudaStream_t stream) {
+                                  const float softcap, const int local_window_size, const bool is_causal,
+                                  cudaStream_t stream) {
   const size_t smem_bytes = GetPagedLatentSharedMemoryBytes(head_size, v_head_size);
   const dim3 grid(token_count, num_heads);
   PagedLatentAttentionKernel<T, TCACHE><<<grid, kLatentThreads, smem_bytes, stream>>>(
       query, key_cache, value_cache, k_scale, v_scale, cumulative_seqlens_q, past_seqlens, block_table, output,
       batch_size, num_heads, kv_num_heads, head_size, v_head_size, block_size, max_num_blocks_per_seq, scale,
-      softcap, local_window_size, k_per_channel, v_per_channel);
+      softcap, local_window_size, is_causal, k_per_channel, v_per_channel);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1435,7 +1464,8 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
 template <typename T, typename TCACHE>
 Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParameters& parameters,
                             PagedAttentionData<T, TCACHE>& data, const int max_threads_per_block,
-                            T** query_out) {
+                            T** query_out, T** key_out = nullptr, T** value_out = nullptr,
+                            int* key_stride_out = nullptr, int* value_stride_out = nullptr) {
   const int batch_size = parameters.batch_size;
   const int token_count = parameters.token_count;
   const int q_hidden_size = parameters.hidden_size;
@@ -1501,18 +1531,24 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
                                            key_stride, value_stride, stream));
     } else {
       DerivedSlotResolver resolver{data.block_table, past_seqlens, cumulative_seqlens_q, batch_size,
-                                    parameters.max_num_blocks_per_seq, parameters.block_size};
+                                   parameters.max_num_blocks_per_seq, parameters.block_size};
       ORT_RETURN_IF_ERROR(LaunchCacheHeads(key, value, data, parameters, resolver, key_stride, value_stride, stream));
     }
   } else {
     ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
-      key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
-      const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
-      parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
-      parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
+        key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
+        const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
+        parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
+        parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
   }
 
   *query_out = query;
+  if (key_out != nullptr) {
+    *key_out = key;
+    *value_out = value;
+    *key_stride_out = key_stride;
+    *value_stride_out = value_stride;
+  }
   return Status::OK();
 }
 
@@ -1539,7 +1575,7 @@ Status LatentAttention(
       data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.output,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.v_head_size, parameters.block_size, parameters.max_num_blocks_per_seq,
-      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, stream)));
+      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, parameters.is_causal, stream)));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("latent (MLA) paged attention output", data.output, parameters.token_count, parameters.num_heads,
@@ -1567,7 +1603,8 @@ Status PagedDecodeAttention(
       data.decode_partial_out, data.decode_partial_max, data.decode_partial_sum,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.block_size, parameters.max_num_blocks_per_seq, parameters.token_count, data.num_splits,
-      scale, parameters.softcap, parameters.local_window_size, parameters.use_smooth_softmax, stream,
+      scale, parameters.softcap, parameters.local_window_size, parameters.is_causal,
+      parameters.use_smooth_softmax, stream,
       PagedScaleCache{data.key_scale_cache, data.scale_cache_is_fp16},
       PagedScaleCache{data.value_scale_cache, data.scale_cache_is_fp16})));
 
@@ -1598,7 +1635,9 @@ Status PagedDecodeAttention(
 //     scale is folded out exactly the same way GroupQueryAttention does it (see the derivation
 //     next to LaunchScaleHeadsByChannelScale in group_query_attention_qdq.cuh): k_scale into Q
 //     (it multiplies the QK contraction dim) and v_scale into the attention output (it is a free
-//     dim of the PV accumulation, so it never touches the softmax denominator).
+//     dim of the PV accumulation, so it never touches the softmax denominator). The K fold is
+//     normalized by a power of two so the fp16 copy of Q cannot overflow; see
+//     PagedScaleNormalizerKernel.
 //  3. Attention sinks. XQA consumes them as fp32, laid out [kv_head][group] -- which is ORT's
 //     [num_heads] order -- so only a dtype conversion is needed.
 
@@ -1623,10 +1662,13 @@ __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
 // Multiply every head vector by a PER_CHANNEL scale indexed [kv_head, channel]. Used to fold
 // k_scale into Q before XQA and v_scale into XQA's output afterwards. dst may alias src (the
 // output scaling is done in place), so neither pointer is marked __restrict__.
+// When scale_norm is set, the scale is divided by it first; XQA multiplies the same value back
+// into qkScale, which keeps the folded product inside T's range without changing the result.
 template <typename T>
 __global__ void PagedFoldChannelScaleKernel(T* dst,
                                             const T* src,
                                             const float* __restrict__ channel_scale,
+                                            const float* __restrict__ scale_norm,
                                             const int num_heads, const int head_size,
                                             const int group_size, const int64_t total_elements) {
   const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1635,7 +1677,59 @@ __global__ void PagedFoldChannelScaleKernel(T* dst,
   }
   const int h = static_cast<int>(i / head_size) % num_heads;
   const int c = static_cast<int>(i % head_size);
-  dst[i] = static_cast<T>(static_cast<float>(src[i]) * channel_scale[(h / group_size) * head_size + c]);
+  const float scale = channel_scale[(h / group_size) * head_size + c];
+  const float normalized_scale = (scale_norm == nullptr) ? scale : (scale / scale_norm[0]);
+  dst[i] = static_cast<T>(static_cast<float>(src[i]) * normalized_scale);
+}
+
+// Normalizer for the PER_CHANNEL K fold, computed in one block so the XQA path stays capturable.
+//
+// The fold stores Q * k_scale in T, so a large scale saturates fp16 and a zero cache code then
+// turns that infinity into a NaN. Dividing the scale table by this normalizer and handing the
+// normalizer to XQA as its scalar K scale keeps the product in range: XQA folds it back into
+// qkScale once per CTA, outside the K/V loop, so the result is unchanged.
+//
+// The normalizer is the power of two just above max|k_scale| rather than max|k_scale| itself:
+// dividing by it is exact, so the fold adds no rounding of its own; qkScale * norm is an exponent
+// adjustment in fp32, so reapplying it is exact too; and every normalized scale then lies in
+// (0, 1], so |Q * s| <= |Q| and the fp16 store cannot overflow for any finite table. The exponent
+// is bounded so both the normalizer and attention_scale * normalizer stay in fp32's normal range.
+//
+// Channels more than 24 binades below the largest flush to zero in fp16. Calibrated tables sit far
+// inside that budget (the widest we have measured spans 4.9 binades), but a table that does not can
+// be routed to the portable FP32 kernel with ORT_ENABLE_XQA_PER_CHANNEL_KV=0.
+__global__ void PagedScaleNormalizerKernel(float* __restrict__ out, const float* __restrict__ scale,
+                                           const int count, const float attention_scale) {
+  constexpr int kWarpSize = 32;
+  __shared__ float warp_max[kWarpSize];
+  float local = 0.0f;
+  for (int i = threadIdx.x; i < count; i += blockDim.x) {
+    const float s = fabsf(scale[i]);
+    local = fmaxf(local, isfinite(s) ? s : 0.0f);
+  }
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    local = fmaxf(local, __shfl_down_sync(0xffffffffu, local, offset));
+  }
+  const int lane = threadIdx.x % kWarpSize;
+  const int warp = threadIdx.x / kWarpSize;
+  if (lane == 0) {
+    warp_max[warp] = local;
+  }
+  __syncthreads();
+  if (warp == 0) {
+    const int num_warps = (blockDim.x + kWarpSize - 1) / kWarpSize;
+    local = lane < num_warps ? warp_max[lane] : 0.0f;
+    for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+      local = fmaxf(local, __shfl_down_sync(0xffffffffu, local, offset));
+    }
+    if (lane == 0) {
+      // An all-zero (or non-finite) table would make the normalized fold 0/0, so it reports 1.
+      // 126 - ilogb(attention_scale) keeps attention_scale * 2^e below 2^127.
+      const int headroom = 126 - ilogbf(fmaxf(attention_scale, 1.0f));
+      const int exponent = max(min(ilogbf(local) + 1, headroom), -126);
+      out[0] = local > 0.0f ? ldexpf(1.0f, exponent) : 1.0f;
+    }
+  }
 }
 
 template <typename T>
@@ -1647,13 +1741,14 @@ __global__ void PagedConvertHeadSinkToFloatKernel(float* __restrict__ dst, const
   }
 }
 
-// Lower-triangular packed mask for the speculative XQA kernel: row = query token (global, packed
-// token-major), bit p of word w = "may attend to draft token w*32+p".
-__global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
-                                                const int* __restrict__ cumulative_seqlens_q,
-                                                const int batch_size,
-                                                const int token_count,
-                                                const int words_per_row) {
+// Packed mask for the speculative XQA kernel: row = query token (global, packed token-major),
+// bit p of word w = "may attend to draft token w*32+p".
+__global__ void PagedXqaSpecDecMaskKernel(uint32_t* __restrict__ mask,
+                                          const int* __restrict__ cumulative_seqlens_q,
+                                          const int batch_size,
+                                          const int token_count,
+                                          const int words_per_row,
+                                          const bool is_causal) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= token_count * words_per_row) {
     return;
@@ -1673,7 +1768,8 @@ __global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
   }
 
   const int local_row = token_id - cumulative_seqlens_q[lo];
-  const int allowed_bits = local_row + 1 - word * 32;
+  const int q_len = cumulative_seqlens_q[lo + 1] - cumulative_seqlens_q[lo];
+  const int allowed_bits = (is_causal ? local_row + 1 : q_len) - word * 32;
   // Do NOT write this as `clamped == 32`. ptxas (CUDA 13.0.48) folds min/max into VIMNMX.RELU and
   // then reuses that instruction's clamp predicate for an equality test against the clamp bound
   // with inverted polarity, so `max(0, min(32, x)) == 32` is true for every x. That silently made
@@ -1726,9 +1822,15 @@ Status PagedXqaDecodeAttention(
   if (k_per_channel) {
     // Q may point straight at the (const) graph input when there is no packed-QKV / rotary
     // prologue, so the scaled copy always goes to a dedicated scratch buffer.
+    ORT_RETURN_IF_NOT(data.xqa_k_scale_norm, "XQA k_scale normalizer scratch was not allocated.");
+    ORT_RETURN_IF_NOT(data.xqa_query, "XQA folded-query scratch was not allocated.");
+    PagedScaleNormalizerKernel<<<1, 256, 0, stream>>>(data.xqa_k_scale_norm, data.k_scale,
+                                                      kv_num_heads * head_size, scale);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
     PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
-        data.xqa_query, query, data.k_scale, num_heads, head_size, num_heads / kv_num_heads, q_elements);
+        data.xqa_query, query, data.k_scale, data.xqa_k_scale_norm, num_heads, head_size,
+        num_heads / kv_num_heads, q_elements);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
     query = data.xqa_query;
   }
@@ -1754,22 +1856,19 @@ Status PagedXqaDecodeAttention(
       kIsInt4Cache  ? XqaQuantType::kInt4
       : kIsFp8Cache ? XqaQuantType::kFp8
                     : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
-  // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so XQA
-  // receives a null scalar scale (which means one).
-  const float* xqa_k_scale = k_per_channel  ? nullptr
-                             : kIsInt4Cache ? reinterpret_cast<const float*>(data.key_scale_cache)
-                                            : data.k_scale;
-  const float* xqa_v_scale = v_per_channel  ? nullptr
-                             : kIsInt4Cache ? reinterpret_cast<const float*>(data.value_scale_cache)
-                                            : data.v_scale;
+  // A PER_CHANNEL K scale is folded into Q up to a power-of-two normalizer, which XQA reapplies as
+  // its scalar scale; a PER_CHANNEL V scale is applied to the output below, so XQA sees a null
+  // scale (one).
+  const float* xqa_k_scale = k_per_channel ? data.xqa_k_scale_norm : data.k_scale;
+  const float* xqa_v_scale = v_per_channel ? nullptr : data.v_scale;
   if (data.use_xqa_spec_dec) {
     ORT_RETURN_IF_NOT(data.xqa_spec_dec_mask, "Speculative XQA mask scratch was not allocated.");
     const int words_per_row = (data.max_query_len + 31) / 32;
     const int mask_words = parameters.token_count * words_per_row;
     const int blocks = (mask_words + max_threads_per_block - 1) / max_threads_per_block;
-    PagedXqaSpecDecCausalMaskKernel<<<blocks, max_threads_per_block, 0, stream>>>(
+    PagedXqaSpecDecMaskKernel<<<blocks, max_threads_per_block, 0, stream>>>(
         data.xqa_spec_dec_mask, data.cumulative_seqlens_q, batch_size,
-        parameters.token_count, words_per_row);
+        parameters.token_count, words_per_row, parameters.is_causal);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     ORT_RETURN_IF_ERROR(LaunchXQAPagedSpecDecKernel(
@@ -1800,7 +1899,8 @@ Status PagedXqaDecodeAttention(
   if (v_per_channel) {
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
     PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
-        data.output, data.output, data.v_scale, num_heads, head_size, num_heads / kv_num_heads, q_elements);
+        data.output, data.output, data.v_scale, /*scale_norm*/ nullptr, num_heads, head_size,
+        num_heads / kv_num_heads, q_elements);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
@@ -1808,6 +1908,77 @@ Status PagedXqaDecodeAttention(
   DUMP_TENSOR("paged xqa decode attention output", data.output, parameters.token_count, parameters.num_heads,
               parameters.head_size);
 
+  return Status::OK();
+}
+
+// cuDNN paged SDPA decode kernel. Opt-in on H100+ for one-token-per-sequence decode when the cache
+// is unquantized and none of the fused options are requested. Runs the shared rotary / QK-Norm /
+// ReshapeAndCache prologue (so cache and Q are up to date), derives per-batch KV lengths for the
+// padding mask, then hands off to the cudnn-frontend graph in cudnn_flash_attention.cc.
+template <typename T, typename TCACHE>
+Status CudnnPagedAttention(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data) {
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+
+  T* query = nullptr;
+  // Apply rotary / QK-Norm to Q, unpack packed_qkv Q into workspace, insert K/V into the paged
+  // cache. Every case cuDNN paged serves has token_count == batch_size and max_query_len == 1, so
+  // the packed decode Q layout (one token per sequence) survives the prologue verbatim.
+  ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data,
+                                                       max_threads_per_block, &query)));
+
+  // Per-batch KV lengths for the padding-mask input. Derived from cumulative_seqlens_q so this
+  // stays correct if the cuDNN paged tier is ever relaxed beyond decode-only.
+  ORT_RETURN_IF_ERROR(LaunchGetSeqlensKV(
+      data.cudnn_seqlens_kv, data.past_seqlens, data.cumulative_seqlens_q,
+      parameters.batch_size, stream));
+
+  cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
+  bool cache_hit = false;
+  const bool ok = onnxruntime::cudnn_sdpa::run_paged(
+      /*output=*/reinterpret_cast<void*>(data.output),
+      /*q=*/reinterpret_cast<void*>(query),
+      /*k_cache=*/reinterpret_cast<void*>(data.key_cache),
+      /*v_cache=*/reinterpret_cast<void*>(data.value_cache),
+      /*block_table=*/const_cast<int*>(data.block_table),
+      /*mask_sequence_lengths_kv=*/data.cudnn_seqlens_kv,
+      parameters.batch_size,
+      parameters.num_heads,
+      parameters.kv_num_heads,
+      parameters.head_size,
+      parameters.head_size,  // head_size_v == head_size in every SEPARATE-mode configuration
+      parameters.num_blocks,
+      parameters.block_size,
+      parameters.max_num_blocks_per_seq,
+      data.cudnn_scale,
+      std::is_same<T, BFloat16>::value,
+      cudnn_handle,
+      ort_stream,
+      data.cudnn_allocator,
+      &cache_hit);
+  if (data.cudnn_debug_info) {
+    printf("Operator=PagedAttention CudnnPagedGraphCacheHit=%d\n", cache_hit ? 1 : 0);
+  }
+  if (!ok) {
+    // The cuDNN paged graph was not available at dispatch time. PagedAttention runs a
+    // try_build_paged_graph probe before selecting this backend, so a false here means either the
+    // node's first Compute was under CUDA graph capture (probe deferred, cache miss disallowed) or
+    // the shape signature has genuinely changed since the probe. Either way, surface a clear
+    // Status rather than silently mis-executing.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "PagedAttention: cuDNN paged SDPA graph unavailable at dispatch "
+                           "(build failed or attempted during CUDA graph capture). Run at least "
+                           "one Compute step outside capture to warm the graph cache, or set "
+                           "ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 to disable this backend.");
+  }
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("cudnn paged sdpa output", data.output, parameters.token_count, parameters.num_heads,
+              parameters.head_size);
   return Status::OK();
 }
 
@@ -1913,7 +2084,7 @@ Status EfficientAttention(
     float scale) {
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
-  const int token_count = parameters.token_count;
+  [[maybe_unused]] const int token_count = parameters.token_count;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
@@ -1958,7 +2129,7 @@ Status EfficientAttention(
   p.max_sequence_length = total_kv_tokens;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
-  p.causal = true;
+  p.causal = parameters.is_causal;
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.local_window_size = local_window_size;
@@ -1986,6 +2157,22 @@ Status EfficientAttention(
 #endif
 
 ////////// API Functions
+
+template <typename T, typename TCACHE>
+Status PreparePagedAttentionQueryAndCache(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    T** query,
+    T** key,
+    T** value,
+    int* key_stride,
+    int* value_stride) {
+  return PrepareQueryAndCache<T, TCACHE>(
+      static_cast<cudaStream_t>(ort_stream->GetHandle()), parameters, data,
+      device_prop.maxThreadsPerBlock, query, key, value, key_stride, value_stride);
+}
 
 template <typename T, typename TCACHE>
 Status QkvToContext(
@@ -2019,6 +2206,10 @@ Status QkvToContext(
     return finish_output(PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale));
   }
 
+  if (data.use_cudnn_paged) {
+    return CudnnPagedAttention(device_prop, ort_stream, parameters, data);
+  }
+
   if (data.use_paged_decode) {
     return finish_output(PagedDecodeAttention(device_prop, stream, parameters, data, scale));
   }
@@ -2038,13 +2229,18 @@ Status QkvToContext(
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
 }
 
-#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)       \
-  template struct PagedAttentionData<T, TCACHE>;     \
-  template Status QkvToContext<T, TCACHE>(           \
-      const cudaDeviceProp& device_prop,             \
-      cublasHandle_t& cublas,                        \
-      Stream* ort_stream,                            \
-      contrib::PagedAttentionParameters& parameters, \
+#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)                   \
+  template struct PagedAttentionData<T, TCACHE>;                 \
+  template Status PreparePagedAttentionQueryAndCache<T, TCACHE>( \
+      const cudaDeviceProp& device_prop, Stream* stream,         \
+      contrib::PagedAttentionParameters& parameters,             \
+      PagedAttentionData<T, TCACHE>& data, T** query, T** key,   \
+      T** value, int* key_stride, int* value_stride);            \
+  template Status QkvToContext<T, TCACHE>(                       \
+      const cudaDeviceProp& device_prop,                         \
+      cublasHandle_t& cublas,                                    \
+      Stream* ort_stream,                                        \
+      contrib::PagedAttentionParameters& parameters,             \
       PagedAttentionData<T, TCACHE>& data);
 
 INSTANTIATE_PAGED_ATTENTION(half, half)
