@@ -169,8 +169,11 @@ Status PrepareWeightlessSessionOptions(const OrtSessionOptions& session_options,
     }
   }
 
+  // The EP sees the deprecated option set explicitly, also if the app didn't set it.
   const char* deprecated_option_value = weightless_mode != OrtWeightlessSupport_NONE ? "1" : "0";
-  if (config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != deprecated_option_value) {
+  const std::optional<std::string> deprecated_option =
+      config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightless);
+  if (!deprecated_option.has_value() || *deprecated_option != deprecated_option_value) {
     ep_session_options.emplace(session_options);
     // Set the entry directly to avoid the warning ConfigOptions::AddConfigEntry() logs when overwriting an entry.
     ep_session_options->value.config_options.configurations[kOrtSessionOptionEpEnableWeightless] =

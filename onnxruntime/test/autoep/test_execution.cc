@@ -1508,6 +1508,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_SetsDeprecatedOptionBeforeCreateEp) {
       {"1", nullptr, 1},       // OrtWeightlessSupport_EXTERNAL_ONLY enables the deprecated option.
       {"2", "0", 1},           // OrtWeightlessSupport_ALL overrides a disabled deprecated option.
       {"0", "1", 0},           // OrtWeightlessSupport_NONE overrides an enabled deprecated option.
+      {"0", nullptr, 0},       // OrtWeightlessSupport_NONE sets the deprecated option if not set.
       {nullptr, "1", 1},       // Without "ep.enable_weightless_mode", the deprecated option is unchanged.
       {nullptr, nullptr, -1},  // Neither option is set.
   };
@@ -1808,6 +1809,58 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_InitializerHandling) {
   std::filesystem::remove(external_data_file);
   std::filesystem::remove(mixed_model_file);
   std::filesystem::remove(mixed_data_file);
+}
+
+// Test that the weightless source model buffer is kept in copies of the session options: when the app clones them, and
+// when ORT gives a plugin EP a copy (to set the deprecated "ep.enable_weightless" option).
+TEST(OrtEpLibrary, PluginEp_WeightlessSourceModelBuffer_KeptInSessionOptionsCopies) {
+  const char source_model[] = "source model bytes";
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+
+  // Cloned by the app.
+  {
+    Ort::SessionOptions session_options;
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsSetWeightlessSourceModelBuffer(session_options, source_model,
+                                                                                   sizeof(source_model)));
+    Ort::SessionOptions cloned_session_options = session_options.Clone();
+
+    const void* data = nullptr;
+    size_t length = 0;
+    ASSERT_ORTSTATUS_OK(ep_api.SessionOptionsGetWeightlessSourceModelBuffer(cloned_session_options, &data, &length));
+    EXPECT_EQ(data, static_cast<const void*>(source_model));
+    EXPECT_EQ(length, sizeof(source_model));
+  }
+
+  // Copied by ORT for the plugin EP.
+  {
+    RegisteredEpDeviceUniquePtr example_ep;
+    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+    Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+    Utils::LoadExampleEpHooksPtr hooks;
+    ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+    ASSERT_NE(hooks->reset_weightless_source_model_buffer, nullptr);
+    ASSERT_NE(hooks->get_weightless_source_model_buffer, nullptr);
+    ASSERT_NE(hooks->get_enable_weightless_option, nullptr);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsSetWeightlessSourceModelBuffer(session_options, source_model,
+                                                                                   sizeof(source_model)));
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    hooks->reset_weightless_source_model_buffer();
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+    // The EP got a copy, since the deprecated option was set for it, and the copy has the buffer.
+    ASSERT_EQ(hooks->get_enable_weightless_option(), 1);
+    const void* data = nullptr;
+    size_t length = 0;
+    hooks->get_weightless_source_model_buffer(&data, &length);
+    EXPECT_EQ(data, static_cast<const void*>(source_model));
+    EXPECT_EQ(length, sizeof(source_model));
+  }
 }
 
 // Test SessionOptionsSetWeightlessSourceModelBuffer with valid and invalid inputs.

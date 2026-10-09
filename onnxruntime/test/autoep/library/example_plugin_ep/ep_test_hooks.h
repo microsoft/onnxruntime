@@ -38,6 +38,9 @@ EXPORT_SYMBOL int ExampleEpTestHooks_GetEnableWeightlessOption();
 // Number of constant initializers the EP copied since the last reset.
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetSavedInitializerCount();
 EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSavedInitializerCount();
+// Weightless source model buffer seen by the last CreateEp() call (nullptr and 0 if not set or after a reset).
+EXPORT_SYMBOL void ExampleEpTestHooks_ResetWeightlessSourceModelBuffer();
+EXPORT_SYMBOL void ExampleEpTestHooks_GetWeightlessSourceModelBuffer(const void** data, size_t* length);
 }
 
 // Internal to the library; not exported.
@@ -46,3 +49,4 @@ void RecordPreallocatedOutputBadIndexRejected(int rejected);
 bool ShouldFailCreateDataTransfer();
 void RecordEnableWeightlessOption(int value);
 void RecordSavedInitializer();
+void RecordWeightlessSourceModelBuffer(const void* data, size_t length);
