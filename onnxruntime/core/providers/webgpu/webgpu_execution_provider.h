@@ -18,6 +18,7 @@
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/session_buffer_pool.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -40,6 +41,9 @@ KernelCreateInfo BuildKernelCreateInfo();
 class WebGpuContext;
 class WebGpuProfiler;
 class GpuBufferAllocator;
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+class D3D12ImportedBufferRegistry;
+#endif
 
 // Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
 struct CapturedCommandInfo;
@@ -49,8 +53,10 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
-  DataLayout data_layout{DataLayout::NHWC};      // preferred layout is NHWC by default
-  bool enable_graph_capture{false};              // graph capture feature is disabled by default
+  DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
+  bool enable_graph_capture{false};          // graph capture feature is disabled by default
+  webgpu::WeightLoadAccelerationMode weight_load_acceleration_mode{
+      webgpu::WeightLoadAccelerationMode::Off};
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
@@ -59,7 +65,7 @@ struct WebGpuExecutionProviderConfig {
   // generator's worth of intermediate buffers.
   size_t session_buffer_pool_generations{1};
   uint32_t kv_cache_quantization_bits{0};  // KV cache quantization bits (0 = off, 4 = 4-bit)
-  // Accumulate MatMulNBits dot products in f32 rather than in the output element type.
+  // Accumulate MatMul, Gemm and MatMulNBits dot products in f32 rather than in the output element type.
   // This is the single line that decides the shipped default for the
   // "enableMatmulFp32Accumulation" provider option.
   bool enable_matmul_fp32_accumulation{false};
@@ -87,7 +93,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   }
 #endif
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
-#if defined(__wasm__)
+#if defined(__wasm__) || (defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING))
   std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
 #endif
 
@@ -151,6 +157,12 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
   bool enable_matmul_fp32_accumulation_ = false;
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  webgpu::WeightLoadAccelerationMode weight_load_acceleration_mode_{
+      webgpu::WeightLoadAccelerationMode::Off};
+  std::shared_ptr<webgpu::D3D12ImportedBufferRegistry> accelerated_initializer_state_;
+  AllocatorPtr accelerated_initializer_allocator_;
+#endif
   std::unordered_map<int, int> graph_id_to_run_count_;
   // Required regular runs before graph capture for any necessary allocations.
   const int min_num_runs_before_graph_capture_ = 0;
