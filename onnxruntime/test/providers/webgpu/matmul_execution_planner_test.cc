@@ -61,7 +61,7 @@ class TunedPackedVendorPlanner final : public MatMulExecutionPlanner {
     MatMulPackedConfiguration configuration{};
     configuration.workgroup_size = {16, 4, 1};
     configuration.elements_per_thread = {4, 2, 1};
-    configuration.tile_inner = 16;
+    configuration.tile_inner = 64;
     configuration.split_dim_inner = 128;
     return configuration;
   }
@@ -185,7 +185,7 @@ TEST(MatMulExecutionPlannerTest, VendorCanTuneForcedAlgorithmConfiguration) {
             (std::array<uint32_t, 3>{16, 4, 1}));
   EXPECT_EQ(configuration.elements_per_thread,
             (std::array<uint32_t, 3>{4, 2, 1}));
-  EXPECT_EQ(configuration.tile_inner, 16u);
+  EXPECT_EQ(configuration.tile_inner, 64u);
   EXPECT_EQ(configuration.split_dim_inner, 128u);
 }
 
@@ -254,14 +254,41 @@ TEST(MatMulExecutionPlannerTest, CommonPackedConfigurationPreservesCurrentTuning
 
 TEST(MatMulAlgorithmConfigurationTest, PackedConfigurationKeepsBatchAxesUntiled) {
   MatMulPackedConfiguration configuration{};
-  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/false));
+  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/false,
+                                               /*use_split_k=*/false));
+  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                               /*use_split_k=*/false));
 
   configuration.workgroup_size[2] = 2;
-  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/false));
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/false,
+                                                /*use_split_k=*/false));
 
   configuration.workgroup_size[2] = 1;
   configuration.elements_per_thread[2] = 2;
-  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/false));
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/false,
+                                                /*use_split_k=*/false));
+}
+
+TEST(MatMulAlgorithmConfigurationTest, PackedVec4RequiresSupportedCooperativeLoads) {
+  MatMulPackedConfiguration configuration{};
+
+  configuration.elements_per_thread[0] = 8;
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                                /*use_split_k=*/false));
+
+  configuration.elements_per_thread[0] = 4;
+  configuration.workgroup_size = {16, 4, 1};
+  configuration.tile_inner = 16;
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                                /*use_split_k=*/false));
+
+  configuration.tile_inner = 48;
+  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                               /*use_split_k=*/false));
+
+  configuration.tile_inner = 60;
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                                /*use_split_k=*/false));
 }
 
 TEST(MatMulAlgorithmConfigurationTest, SubgroupConfigurationCarriesSelectedSize) {
@@ -290,10 +317,12 @@ TEST(MatMulAlgorithmConfigurationTest, SplitKConfigurationRequiresTileAlignedSpl
   MatMulPackedConfiguration configuration{};
   configuration.tile_inner = 32;
   configuration.split_dim_inner = 64;
-  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/true));
+  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                               /*use_split_k=*/true));
 
   configuration.split_dim_inner = 48;
-  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/true));
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*is_vec4=*/true,
+                                                /*use_split_k=*/true));
 }
 
 TEST(MatMulAlgorithmConfigurationTest, PackedDispatchArithmeticIsOverflowSafe) {

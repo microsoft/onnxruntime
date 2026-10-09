@@ -308,7 +308,7 @@ static Status ApplyMatMulPacked(ComputeContext& context,
   const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
-  ORT_RETURN_IF_NOT(IsMatMulPackedConfigurationValid(configuration, use_split_k),
+  ORT_RETURN_IF_NOT(IsMatMulPackedConfigurationValid(configuration, is_vec4, use_split_k),
                     "MatMul packed configuration is invalid for ",
                     use_split_k ? "Split-K." : "the packed algorithm.");
   InlinedVector<int64_t> elements_per_thread{

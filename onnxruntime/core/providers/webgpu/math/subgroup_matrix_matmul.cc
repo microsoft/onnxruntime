@@ -150,9 +150,8 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
                  const Activation& activation,
                  bool is_channels_last,
                  bool b_is_constant) override {
-    ORT_RETURN_IF_NOT(CanApply(context, inputs, is_channels_last, b_is_constant),
-                      "MatMul algorithm subgroup_matrix does not support these inputs or this device.");
-
+    ORT_RETURN_IF_NOT(inputs.size() >= 2,
+                      "MatMul algorithm subgroup_matrix requires two inputs.");
     const auto* a = inputs[0];
     const auto* b = inputs[1];
     const auto& a_shape = a->Shape();
@@ -160,7 +159,12 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
     const bool has_bias = inputs.size() > 2;
     const size_t a_rank = a_shape.NumDimensions();
     const size_t b_rank = b_shape.NumDimensions();
+    ORT_RETURN_IF_NOT((is_channels_last || !has_bias) && a_rank >= 2 && b_rank >= 2 &&
+                          a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>(),
+                      "MatMul algorithm subgroup_matrix does not support these inputs.");
     const uint32_t K = narrow<uint32_t>(a_shape[a_rank - 1]);
+    ORT_RETURN_IF_NOT(K != 0,
+                      "MatMul algorithm subgroup_matrix requires a nonzero contraction dimension.");
 
     uint32_t M = 0;
     uint32_t N = 0;
@@ -181,16 +185,20 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
       }
       batch = narrow<uint32_t>(a_shape.SizeToDimension(a_rank - 2));
     }
+    ORT_RETURN_IF_NOT(M != 0 && N != 0,
+                      "MatMul algorithm subgroup_matrix requires nonzero output dimensions.");
 
     const std::optional<SubgroupMatrixTiling> tiling = tiling_selector_(context, M, N, K, batch);
-    ORT_ENFORCE(tiling.has_value());
+    ORT_RETURN_IF_NOT(tiling.has_value(),
+                      "MatMul algorithm subgroup_matrix has no tiling for these inputs.");
 
     const auto& config = config_;
     const bool needs_padded_b = N % 2 != 0;
     // Require whole subgroup-matrix K blocks. An odd-width B must be constant
     // because its padded copy is cached by this implementation.
-    ORT_ENFORCE(config.K != 0 && K % config.K == 0 &&
-                (!needs_padded_b || b_is_constant));
+    ORT_RETURN_IF_NOT(config.K != 0 && K % config.K == 0 &&
+                          (!needs_padded_b || b_is_constant),
+                      "MatMul algorithm subgroup_matrix requires aligned K and a constant odd-N weight.");
 
     // N_b is just N rounded up to even - compute it before doing any padding work so
     // the tile-fit check below can bail out without a wasted pad dispatch.

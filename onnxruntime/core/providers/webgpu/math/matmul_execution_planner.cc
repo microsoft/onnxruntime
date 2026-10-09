@@ -11,6 +11,7 @@ namespace webgpu {
 
 bool IsMatMulPackedConfigurationValid(
     const MatMulPackedConfiguration& configuration,
+    bool is_vec4,
     bool use_split_k) {
   if (configuration.workgroup_size[0] == 0 ||
       configuration.workgroup_size[1] == 0 ||
@@ -20,6 +21,19 @@ bool IsMatMulPackedConfigurationValid(
       configuration.elements_per_thread[2] != 1 ||
       configuration.tile_inner == 0) {
     return false;
+  }
+
+  if (configuration.tile_inner % configuration.workgroup_size[0] != 0 ||
+      configuration.tile_inner % configuration.workgroup_size[1] != 0) {
+    return false;
+  }
+
+  if (is_vec4) {
+    const uint32_t a_vector_width = configuration.tile_inner / configuration.workgroup_size[0];
+    if (configuration.elements_per_thread[0] != 4 ||
+        (a_vector_width != 3 && a_vector_width != 4)) {
+      return false;
+    }
   }
 
   return !use_split_k ||

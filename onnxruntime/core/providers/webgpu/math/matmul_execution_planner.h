@@ -55,6 +55,7 @@ struct MatMulPackedConfiguration {
 
 bool IsMatMulPackedConfigurationValid(
     const MatMulPackedConfiguration& configuration,
+    bool is_vec4,
     bool use_split_k);
 
 std::optional<uint32_t> TryGetMatMulPackedDispatchGroupCount(
