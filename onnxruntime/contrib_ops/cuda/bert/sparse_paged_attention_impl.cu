@@ -4,10 +4,14 @@
 #include "contrib_ops/cuda/bert/sparse_paged_attention_impl.h"
 
 #include <cfloat>
+#include <cuda_bf16.h>
+#include <mma.h>
 #include <type_traits>
 
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
+#include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
 #include "core/framework/stream_handles.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
@@ -34,11 +38,60 @@ constexpr int kSparsePagedAttentionTile = 128;
 constexpr int kSparsePagedAttentionMaxSplits = 32;
 constexpr int64_t kSparsePagedAttentionDirectCandidate = int64_t{1} << 62;
 
+__device__ __forceinline__ int64_t SparsePagedAttentionResolveMainCandidate(
+    int logical_position, int batch_id, int query_position, int main_length, int past_length,
+    const int* cumulative_seqlens_q, const int* block_table, const int* slot_mapping,
+    int block_size, int num_blocks, int max_num_blocks_per_seq, bool is_causal) {
+  if (logical_position < 0 || logical_position >= main_length ||
+      (is_causal && logical_position > query_position)) {
+    return -1;
+  }
+  const int logical_block = logical_position / block_size;
+  const int physical_block = logical_block < max_num_blocks_per_seq
+                                 ? block_table[static_cast<int64_t>(batch_id) * max_num_blocks_per_seq + logical_block]
+                                 : -1;
+  if (physical_block < 0 || physical_block >= num_blocks) {
+    return -1;
+  }
+  if (logical_position >= past_length) {
+    const int current_token = cumulative_seqlens_q[batch_id] + logical_position - past_length;
+    const int slot = slot_mapping == nullptr
+                         ? physical_block * block_size + logical_position % block_size
+                         : slot_mapping[current_token];
+    return slot >= 0 && slot < num_blocks * block_size
+               ? kSparsePagedAttentionDirectCandidate + current_token
+               : -1;
+  }
+  return static_cast<int64_t>(physical_block) * block_size + logical_position % block_size;
+}
+
 __host__ __device__ __forceinline__ int SparsePagedAttentionChannelGroups(const int head_size) {
   return head_size >= kSparsePagedAttentionThreads ? 1 : (kSparsePagedAttentionThreads / head_size);
 }
 
-template <typename T, typename TCACHE>
+template <bool IsMax>
+__device__ __forceinline__ float SparsePagedAttentionBlockReduce(float value, float* scratch) {
+  static_assert(kSparsePagedAttentionThreads == 128);
+  scratch[threadIdx.x] = value;
+  __syncthreads();
+  const int lane = threadIdx.x % 32;
+  // Preserve the shared-memory tree's 64, 32, 16, ... reduction order.
+  const float first = IsMax ? fmaxf(scratch[lane], scratch[lane + 64])
+                           : scratch[lane] + scratch[lane + 64];
+  const float second = IsMax ? fmaxf(scratch[lane + 32], scratch[lane + 96])
+                            : scratch[lane + 32] + scratch[lane + 96];
+  value = IsMax ? fmaxf(first, second) : first + second;
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    const float other = __shfl_xor_sync(0xFFFFFFFFU, value, offset);
+    value = IsMax ? fmaxf(value, other) : value + other;
+  }
+  value = __shfl_sync(0xFFFFFFFFU, value, 0);
+  __syncthreads();
+  return value;
+}
+
+template <typename T, typename TCACHE, int StaticHeadSize = 0>
 __global__ void SparsePagedAttentionSplitKernel(
     const T* query, const T* current_key, const T* current_value,
     const TCACHE* key_cache, const TCACHE* value_cache,
@@ -47,7 +100,7 @@ __global__ void SparsePagedAttentionSplitKernel(
     const int* selected_counts, const T* auxiliary_key, const T* auxiliary_value,
     const int* auxiliary_lengths, float* partial_out, float* partial_max,
     float* partial_sum, T* output, const T* head_sink, int batch_size,
-    int token_count, int num_heads, int kv_num_heads, int head_size, int block_size,
+    int token_count, int num_heads, int kv_num_heads, int runtime_head_size, int block_size,
     int num_blocks, int max_num_blocks_per_seq, int max_selected_entries,
     int auxiliary_capacity, int auxiliary_num_heads, int current_key_stride,
     int current_value_stride, float scale, float softcap,
@@ -58,6 +111,7 @@ __global__ void SparsePagedAttentionSplitKernel(
   const int token_id = blockIdx.y;
   const int split_id = blockIdx.z;
   const int tid = threadIdx.x;
+  const int head_size = StaticHeadSize == 0 ? runtime_head_size : StaticHeadSize;
 
   int batch_id = 0;
   while (batch_id + 1 < batch_size && token_id >= cumulative_seqlens_q[batch_id + 1]) {
@@ -146,33 +200,11 @@ __global__ void SparsePagedAttentionSplitKernel(
               logical_position < auxiliary_capacity) {
             candidate_ref = -static_cast<int64_t>(logical_position) - 2;
           }
-        } else if (logical_position < main_length && (!is_causal || logical_position <= query_position)) {
-          if (logical_position >= past_seqlens[batch_id]) {
-            const int current_token = cumulative_seqlens_q[batch_id] + logical_position - past_seqlens[batch_id];
-            const int logical_block = logical_position / block_size;
-            const int physical_block = logical_block < max_num_blocks_per_seq
-                                           ? block_table[static_cast<int64_t>(batch_id) * max_num_blocks_per_seq +
-                                                         logical_block]
-                                           : -1;
-            const int slot = slot_mapping == nullptr
-                                 ? (physical_block >= 0
-                                        ? physical_block * block_size + logical_position % block_size
-                                        : -1)
-                                 : slot_mapping[current_token];
-            if (physical_block >= 0 && physical_block < num_blocks &&
-                slot >= 0 && slot < num_blocks * block_size) {
-              candidate_ref = kSparsePagedAttentionDirectCandidate + current_token;
-            }
-          } else {
-            const int logical_block = logical_position / block_size;
-            if (logical_block < max_num_blocks_per_seq) {
-              const int physical_block =
-                  block_table[static_cast<int64_t>(batch_id) * max_num_blocks_per_seq + logical_block];
-              if (physical_block >= 0 && physical_block < num_blocks) {
-                candidate_ref = static_cast<int64_t>(physical_block) * block_size + logical_position % block_size;
-              }
-            }
-          }
+        } else {
+          candidate_ref = SparsePagedAttentionResolveMainCandidate(
+              logical_position, batch_id, query_position, main_length, past_seqlens[batch_id],
+              cumulative_seqlens_q, block_table, slot_mapping, block_size, num_blocks,
+              max_num_blocks_per_seq, is_causal);
         }
       }
 
@@ -228,16 +260,7 @@ __global__ void SparsePagedAttentionSplitKernel(
     for (int index = tid; index < tile_length; index += kSparsePagedAttentionThreads) {
       tile_max = fmaxf(tile_max, logits[index]);
     }
-    reduction[tid] = tile_max;
-    __syncthreads();
-    for (int stride = kSparsePagedAttentionThreads / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        reduction[tid] = fmaxf(reduction[tid], reduction[tid + stride]);
-      }
-      __syncthreads();
-    }
-    tile_max = reduction[0];
-    __syncthreads();
+    tile_max = SparsePagedAttentionBlockReduce<true>(tile_max, reduction);
     if (tile_max == -FLT_MAX) {
       continue;
     }
@@ -250,21 +273,17 @@ __global__ void SparsePagedAttentionSplitKernel(
       logits[index] = weight;
       local_sum += weight;
     }
-    reduction[tid] = local_sum;
-    __syncthreads();
-    for (int stride = kSparsePagedAttentionThreads / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        reduction[tid] += reduction[tid + stride];
-      }
-      __syncthreads();
-    }
-    running_sum = running_sum * old_weight + reduction[0];
+    const float tile_sum = SparsePagedAttentionBlockReduce<false>(local_sum, reduction);
+    running_sum = running_sum * old_weight + tile_sum;
     running_max = new_max;
     __syncthreads();
 
     if (channel_groups == 1) {
-      for (int c = tid; c < head_size; c += kSparsePagedAttentionThreads) {
+      for (int c = tid; c < head_size; c += 2 * kSparsePagedAttentionThreads) {
+        const int second_c = c + kSparsePagedAttentionThreads;
+        const bool has_second_channel = second_c < head_size;
         float value_sum = accumulator[c] * old_weight;
+        float second_value_sum = has_second_channel ? accumulator[second_c] * old_weight : 0.0f;
         for (int index = 0; index < tile_length; ++index) {
           const int64_t candidate_ref = candidate_refs[index];
           if (candidate_ref == -1) {
@@ -287,17 +306,30 @@ __global__ void SparsePagedAttentionSplitKernel(
             const T* auxiliary_row = auxiliary_kv_shared ? auxiliary_key + auxiliary_base
                                                          : auxiliary_value + auxiliary_base;
             value_sum += logits[index] * SparseActivationValue(auxiliary_row[c]);
+            if (has_second_channel) {
+              second_value_sum += logits[index] * SparseActivationValue(auxiliary_row[second_c]);
+            }
           } else if (candidate_is_direct) {
             const int64_t current_base = candidate_location * current_value_stride + kv_head_id * head_size;
             value_sum += logits[index] * SparseActivationValue(current_value[current_base + c]);
+            if (has_second_channel) {
+              second_value_sum += logits[index] * SparseActivationValue(current_value[current_base + second_c]);
+            }
           } else {
             const int64_t cache_base =
                 (candidate_location * kv_num_heads + kv_head_id) * head_size;
             value_sum += logits[index] * SparseCacheValue(value_cache[cache_base + c], v_scale,
                                                           kv_head_id * head_size + c, v_per_channel);
+            if (has_second_channel) {
+              second_value_sum += logits[index] * SparseCacheValue(value_cache[cache_base + second_c], v_scale,
+                                                                   kv_head_id * head_size + second_c, v_per_channel);
+            }
           }
         }
         accumulator[c] = value_sum;
+        if (has_second_channel) {
+          accumulator[second_c] = second_value_sum;
+        }
       }
     } else if (tid < accumulator_elements) {
       const int group = tid / head_size;
@@ -367,6 +399,367 @@ __global__ void SparsePagedAttentionSplitKernel(
   }
 }
 
+constexpr int kSparsePagedAttentionGqaHeads = 4;
+constexpr int kSparsePagedAttentionGqaTile = 64;
+constexpr int kSparsePagedAttentionGqaHeadSize = 256;
+
+template <typename T, int SharedStride>
+__device__ __forceinline__ void SparsePagedAttentionStageKv(
+    T* tile, const T* current, const T* cache, const int64_t* candidate_refs,
+    int tile_length, int load_rows, int kv_head, int kv_heads, int current_stride) {
+  static_assert(sizeof(T) == 2 && SharedStride % 8 == 0);
+  for (int i = threadIdx.x; i < load_rows * 32; i += blockDim.x) {
+    const int row = i / 32;
+    const int c = (i % 32) * 8;
+    const int64_t ref = row < tile_length ? candidate_refs[row] : -1;
+    const T* source = nullptr;
+    if (ref >= kSparsePagedAttentionDirectCandidate) {
+      source = current + (ref - kSparsePagedAttentionDirectCandidate) * current_stride +
+               kv_head * kSparsePagedAttentionGqaHeadSize + c;
+    } else if (ref >= 0) {
+      source = cache + (ref * kv_heads + kv_head) * kSparsePagedAttentionGqaHeadSize + c;
+    }
+    T* destination = tile + row * SharedStride + c;
+    if (source == nullptr) {
+      *reinterpret_cast<uint4*>(destination) = uint4{};
+    } else if (reinterpret_cast<uintptr_t>(source) % sizeof(uint4) == 0) {
+      *reinterpret_cast<uint4*>(destination) = *reinterpret_cast<const uint4*>(source);
+    } else {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        destination[j] = source[j];
+      }
+    }
+  }
+}
+
+template <typename T, int HeadsPerBlock = kSparsePagedAttentionGqaHeads, int DotRows = 1,
+          bool TensorCoreQk = false, bool TensorCorePv = false>
+__global__ void SparsePagedAttentionGqaTiledKernel(
+    const T* query, const T* current_key, const T* current_value,
+    const T* key_cache, const T* value_cache, const int* cumulative_seqlens_q,
+    const int* past_seqlens, const int* block_table, const int* slot_mapping,
+    const int* selected_indices, const int* selected_counts, T* output, const T* head_sink,
+    float* partial_out, float* partial_max, float* partial_sum,
+    int batch_size, int token_count, int num_heads, int kv_num_heads, int block_size,
+    int num_blocks, int max_num_blocks_per_seq, int max_selected_entries,
+    int current_key_stride, int current_value_stride, float scale, float softcap, bool is_causal, int num_splits) {
+  constexpr int head_size = kSparsePagedAttentionGqaHeadSize;
+  constexpr int tile_size = kSparsePagedAttentionGqaTile;
+  constexpr int channels_per_lane = head_size / 32;
+  constexpr int heads_per_warp = TensorCorePv ? 3 : 1;
+  constexpr int head_stride = TensorCorePv ? 4 : 1;
+  constexpr int shared_head_stride = head_size + (TensorCoreQk ? 8 : 0);
+  constexpr int shared_logit_stride = tile_size + (TensorCoreQk ? 4 : 0);
+  __shared__ __align__(32) T kv_tile[tile_size * shared_head_stride];
+  __shared__ int64_t candidate_refs[tile_size];
+  __shared__ __align__(32) float logits[TensorCoreQk ? 16 : HeadsPerBlock][shared_logit_stride];
+  __shared__ __align__(32) T query_tile[TensorCoreQk ? 16 * shared_head_stride : 1];
+  T* probabilities = query_tile;
+  __shared__ float rescale[TensorCorePv ? 16 : 1];
+  const int tid = threadIdx.x;
+  const int warp = tid / 32;
+  const int lane = tid % 32;
+#if __CUDA_ARCH__ >= 800
+  namespace wmma = nvcuda::wmma;
+  using MmaT = std::conditional_t<std::is_same<T, half>::value, half, __nv_bfloat16>;
+#endif
+  float pv[TensorCorePv ? 8 : 1][4] = {};
+  static_assert(!TensorCorePv || (TensorCoreQk && std::is_same<T, half>::value));
+  const int head_id = blockIdx.x * HeadsPerBlock + warp;
+  const int token_id = blockIdx.y;
+  const int kv_head_id = head_id / (num_heads / kv_num_heads);
+  int batch_id = 0;
+  while (batch_id + 1 < batch_size && token_id >= cumulative_seqlens_q[batch_id + 1]) {
+    ++batch_id;
+  }
+  const int query_index = token_id - cumulative_seqlens_q[batch_id];
+  const int query_length = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
+  const int query_position = past_seqlens[batch_id] + query_index;
+  const int main_length = past_seqlens[batch_id] + query_length;
+  const int selected_count = min(max(selected_counts[token_id], 0), max_selected_entries);
+  const int candidates_per_split = (selected_count + num_splits - 1) / num_splits;
+  const int candidate_begin = blockIdx.z * candidates_per_split;
+  const int candidate_end = min(selected_count, candidate_begin + candidates_per_split);
+  const int64_t partial_head_index =
+      (static_cast<int64_t>(blockIdx.z) * token_count + token_id) * num_heads + head_id;
+  const int64_t query_base = (static_cast<int64_t>(token_id) * num_heads + head_id) * head_size;
+  float query_values[channels_per_lane];
+  float accumulator[channels_per_lane] = {};
+#pragma unroll
+  for (int i = 0; i < channels_per_lane; ++i) {
+    query_values[i] = SparseActivationValue(query[query_base + lane + i * 32]);
+  }
+  float running_max[heads_per_warp];
+  float running_sum[heads_per_warp] = {};
+#pragma unroll
+  for (int i = 0; i < heads_per_warp; ++i) {
+    running_max[i] = -FLT_MAX;
+  }
+
+  for (int tile_begin = candidate_begin; tile_begin < candidate_end; tile_begin += tile_size) {
+    const int tile_length = min(tile_size, candidate_end - tile_begin);
+    if constexpr (TensorCoreQk) {
+      static_assert(HeadsPerBlock == 12);
+      for (int i = tid; i < 16 * head_size; i += blockDim.x) {
+        const int h = i / head_size;
+        const int c = i % head_size;
+        query_tile[h * shared_head_stride + c] =
+            h < HeadsPerBlock
+                ? query[(static_cast<int64_t>(token_id) * num_heads + blockIdx.x * HeadsPerBlock + h) * head_size + c]
+                : static_cast<T>(0.0f);
+      }
+    }
+    if (tid < tile_length) {
+      const int logical_position =
+          selected_indices[static_cast<int64_t>(token_id) * max_selected_entries + tile_begin + tid];
+      candidate_refs[tid] = SparsePagedAttentionResolveMainCandidate(
+          logical_position, batch_id, query_position, main_length, past_seqlens[batch_id],
+          cumulative_seqlens_q, block_table, slot_mapping, block_size, num_blocks,
+          max_num_blocks_per_seq, is_causal);
+    }
+    __syncthreads();
+    // Each K/V row is fetched once for query heads sharing the same KV head.
+    if constexpr (HeadsPerBlock == 12) {
+      SparsePagedAttentionStageKv<T, shared_head_stride>(
+          kv_tile, current_key, key_cache, candidate_refs, tile_length, TensorCoreQk ? tile_size : tile_length,
+          kv_head_id, kv_num_heads, current_key_stride);
+    } else {
+      for (int i = tid; i < (TensorCoreQk ? tile_size : tile_length) * head_size; i += blockDim.x) {
+        const int row = i / head_size;
+        const int c = i % head_size;
+        const int64_t ref = row < tile_length ? candidate_refs[row] : -1;
+        T value = static_cast<T>(0.0f);
+        if (ref >= kSparsePagedAttentionDirectCandidate) {
+          value = current_key[(ref - kSparsePagedAttentionDirectCandidate) * current_key_stride +
+                              kv_head_id * head_size + c];
+        } else if (ref >= 0) {
+          value = key_cache[(ref * kv_num_heads + kv_head_id) * head_size + c];
+        }
+        kv_tile[row * shared_head_stride + c] = value;
+      }
+    }
+    __syncthreads();
+#if __CUDA_ARCH__ >= 800
+    if constexpr (TensorCoreQk) {
+      namespace wmma = nvcuda::wmma;
+      using MmaT = std::conditional_t<std::is_same<T, half>::value, half, __nv_bfloat16>;
+      static_assert(sizeof(MmaT) == sizeof(T));
+      if (warp < 4) {
+        wmma::fragment<wmma::accumulator, 16, 16, 16, float> dots;
+        wmma::fill_fragment(dots, 0.0f);
+        for (int k = 0; k < head_size; k += 16) {
+          wmma::fragment<wmma::matrix_a, 16, 16, 16, MmaT, wmma::row_major> q;
+          wmma::fragment<wmma::matrix_b, 16, 16, 16, MmaT, wmma::col_major> key;
+          wmma::load_matrix_sync(q, reinterpret_cast<const MmaT*>(query_tile + k), shared_head_stride);
+          wmma::load_matrix_sync(key, reinterpret_cast<const MmaT*>(kv_tile + warp * 16 * shared_head_stride + k), shared_head_stride);
+          wmma::mma_sync(dots, q, key, dots);
+        }
+        wmma::store_matrix_sync(&logits[0][warp * 16], dots, shared_logit_stride, wmma::mem_row_major);
+      }
+      __syncthreads();
+      for (int slot = 0; slot < heads_per_warp; ++slot) {
+        const int h = warp + slot * head_stride;
+        for (int row = lane; row < tile_length; row += 32) {
+          const float scaled_dot = logits[h][row] * scale;
+          logits[h][row] = candidate_refs[row] == -1
+                               ? -FLT_MAX
+                               : (softcap > 0.0f ? tanhf(scaled_dot / softcap) * softcap : scaled_dot);
+        }
+      }
+    } else
+#endif
+    {
+      // Interleave independent rows without changing each dot product's reduction order.
+      for (int row_begin = 0; row_begin < tile_length; row_begin += DotRows) {
+        float dots[DotRows] = {};
+#pragma unroll
+        for (int i = 0; i < channels_per_lane; ++i) {
+#pragma unroll
+          for (int r = 0; r < DotRows; ++r) {
+            if (row_begin + r < tile_length) {
+              dots[r] += query_values[i] * SparseActivationValue(kv_tile[(row_begin + r) * shared_head_stride + lane + i * 32]);
+            }
+          }
+        }
+#pragma unroll
+        for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+          for (int r = 0; r < DotRows; ++r) {
+            dots[r] += __shfl_xor_sync(0xFFFFFFFFU, dots[r], offset);
+          }
+        }
+        if (lane == 0) {
+#pragma unroll
+          for (int r = 0; r < DotRows; ++r) {
+            const int row = row_begin + r;
+            if (row < tile_length) {
+              const float scaled_dot = dots[r] * scale;
+              logits[warp][row] = candidate_refs[row] == -1
+                                      ? -FLT_MAX
+                                      : (softcap > 0.0f ? tanhf(scaled_dot / softcap) * softcap : scaled_dot);
+            }
+          }
+        }
+      }
+    }
+    __syncwarp();
+    float old_weight[heads_per_warp];
+    for (int slot = 0; slot < heads_per_warp; ++slot) {
+      const int h = warp + slot * head_stride;
+      float tile_max = -FLT_MAX;
+      for (int row = lane; row < tile_length; row += 32) {
+        tile_max = fmaxf(tile_max, logits[h][row]);
+      }
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        tile_max = fmaxf(tile_max, __shfl_xor_sync(0xFFFFFFFFU, tile_max, offset));
+      }
+      const float new_max = fmaxf(running_max[slot], tile_max);
+      old_weight[slot] = __expf(running_max[slot] - new_max);
+      float tile_sum = 0.0f;
+      for (int row = lane; row < tile_length; row += 32) {
+        const float weight = candidate_refs[row] == -1 ? 0.0f : __expf(logits[h][row] - new_max);
+        logits[h][row] = weight;
+        tile_sum += weight;
+      }
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        tile_sum += __shfl_xor_sync(0xFFFFFFFFU, tile_sum, offset);
+      }
+      running_sum[slot] = running_sum[slot] * old_weight[slot] + tile_sum;
+      running_max[slot] = new_max;
+      if constexpr (TensorCorePv) {
+        if (lane == 0) {
+          rescale[h] = old_weight[slot];
+        }
+      }
+    }
+    __syncthreads();
+    if constexpr (TensorCorePv) {
+      if (tid >= HeadsPerBlock && tid < 16) {
+        rescale[tid] = 1.0f;
+      }
+      for (int i = tid; i < 16 * tile_size; i += blockDim.x) {
+        const int h = i / tile_size;
+        const int row = i % tile_size;
+        probabilities[i] = h < HeadsPerBlock && row < tile_length
+                               ? static_cast<T>(logits[h][row])
+                               : static_cast<T>(0.0f);
+      }
+    }
+    // Reuse the key tile's storage after all warps have finished their dot products.
+    if constexpr (HeadsPerBlock == 12) {
+      SparsePagedAttentionStageKv<T, shared_head_stride>(
+          kv_tile, current_value, value_cache, candidate_refs, tile_length, TensorCorePv ? tile_size : tile_length,
+          kv_head_id, kv_num_heads, current_value_stride);
+    } else {
+      for (int i = tid; i < (TensorCorePv ? tile_size : tile_length) * head_size; i += blockDim.x) {
+        const int row = i / head_size;
+        const int c = i % head_size;
+        const int64_t ref = row < tile_length ? candidate_refs[row] : -1;
+        T value = static_cast<T>(0.0f);
+        if (ref >= kSparsePagedAttentionDirectCandidate) {
+          value = current_value[(ref - kSparsePagedAttentionDirectCandidate) * current_value_stride +
+                                kv_head_id * head_size + c];
+        } else if (ref >= 0) {
+          value = value_cache[(ref * kv_num_heads + kv_head_id) * head_size + c];
+        }
+        kv_tile[row * shared_head_stride + c] = value;
+      }
+    }
+    __syncthreads();
+#if __CUDA_ARCH__ >= 800
+    if constexpr (TensorCorePv) {
+      const int h = lane / 4;
+#pragma unroll
+      for (int n = 0; n < 8; ++n) {
+        pv[n][0] *= rescale[h];
+        pv[n][1] *= rescale[h];
+        pv[n][2] *= rescale[h + 8];
+        pv[n][3] *= rescale[h + 8];
+      }
+      for (int k = 0; k < tile_size; k += 16) {
+        uint32_t p[4];
+        gated_delta_net::LoadFragA<false>(p, probabilities, tile_size, 0, k, lane);
+#pragma unroll
+        for (int n = 0; n < 8; ++n) {
+          uint32_t value[2];
+          gated_delta_net::LoadFragB<false>(value, kv_tile, shared_head_stride, k, warp * 64 + n * 8, lane);
+          gated_delta_net::MmaM16N8K16(pv[n], p, value);
+        }
+      }
+    } else
+#endif
+    {
+#pragma unroll
+      for (int i = 0; i < channels_per_lane; ++i) {
+        accumulator[i] *= old_weight[0];
+      }
+      for (int row = 0; row < tile_length; ++row) {
+        const float weight = logits[warp][row];
+#pragma unroll
+        for (int i = 0; i < channels_per_lane; ++i) {
+          accumulator[i] += weight * SparseActivationValue(kv_tile[row * shared_head_stride + lane + i * 32]);
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  float inverse_sum[heads_per_warp];
+  for (int slot = 0; slot < heads_per_warp; ++slot) {
+    inverse_sum[slot] = 1.0f;
+    const int h = head_id + slot * head_stride;
+    if (num_splits == 1) {
+      const float final_max = head_sink == nullptr
+                                  ? running_max[slot]
+                                  : fmaxf(running_max[slot], SparseActivationValue(head_sink[h]));
+      const float final_sum = running_sum[slot] * __expf(running_max[slot] - final_max) +
+                              (head_sink == nullptr ? 0.0f : __expf(SparseActivationValue(head_sink[h]) - final_max));
+      inverse_sum[slot] = final_sum > 0.0f ? __expf(running_max[slot] - final_max) / final_sum : 0.0f;
+    }
+  }
+#if __CUDA_ARCH__ >= 800
+  if constexpr (TensorCorePv) {
+    if (lane == 0) {
+      for (int slot = 0; slot < heads_per_warp; ++slot) {
+        rescale[warp + slot * head_stride] = inverse_sum[slot];
+      }
+    }
+    __syncthreads();
+    const int h = lane / 4;
+#pragma unroll
+    for (int n = 0; n < 8; ++n) {
+      const int c = warp * 64 + n * 8 + (lane % 4) * 2;
+#pragma unroll
+      for (int row = 0; row < 2; ++row) {
+        const int head = h + row * 8;
+        if (head < HeadsPerBlock) {
+          const int64_t base = (static_cast<int64_t>(token_id) * num_heads + blockIdx.x * HeadsPerBlock + head) * head_size;
+          output[base + c] = static_cast<T>(pv[n][row * 2] * rescale[head]);
+          output[base + c + 1] = static_cast<T>(pv[n][row * 2 + 1] * rescale[head]);
+        }
+      }
+    }
+  } else
+#endif
+  {
+#pragma unroll
+    for (int i = 0; i < channels_per_lane; ++i) {
+      if (num_splits == 1) {
+        output[query_base + lane + i * 32] = static_cast<T>(accumulator[i] * inverse_sum[0]);
+      } else {
+        partial_out[partial_head_index * head_size + lane + i * 32] = accumulator[i];
+      }
+    }
+    if (num_splits > 1 && lane == 0) {
+      partial_max[partial_head_index] = running_max[0];
+      partial_sum[partial_head_index] = running_sum[0];
+    }
+  }
+}
+
 template <typename T>
 __global__ void SparsePagedAttentionReduceKernel(
     T* output, const float* partial_out, const float* partial_max,
@@ -418,15 +811,37 @@ __global__ void SparsePagedAttentionReduceKernel(
   }
 }
 
+int SparsePagedAttentionHeadsPerBlock(
+    const contrib::PagedAttentionParameters& parameters,
+    SparseAttentionMode attention_mode, SelectedKvSource selected_kv_source,
+    bool matching_cache_type, size_t shared_memory_per_block) {
+  constexpr size_t tiled_shared_bytes =
+      kSparsePagedAttentionGqaTile * kSparsePagedAttentionGqaHeadSize * sizeof(half) +
+      kSparsePagedAttentionGqaTile * sizeof(int64_t) +
+      kSparsePagedAttentionGqaHeads * kSparsePagedAttentionGqaTile * sizeof(float);
+  return matching_cache_type && parameters.head_size == kSparsePagedAttentionGqaHeadSize &&
+                 (parameters.num_heads / parameters.kv_num_heads) % kSparsePagedAttentionGqaHeads == 0 &&
+                 attention_mode == SparseAttentionMode::kSelectedOnly && selected_kv_source == SelectedKvSource::kMain &&
+                 tiled_shared_bytes <= shared_memory_per_block
+             ? kSparsePagedAttentionGqaHeads
+             : 1;
+}
+
 int ComputeSparsePagedAttentionSplits(
     const int token_count, const int num_heads, const int max_candidate_count,
-    const int multi_processor_count) {
-  const int64_t base_blocks = static_cast<int64_t>(token_count) * num_heads;
+    const int multi_processor_count, const int heads_per_block) {
+  const int64_t base_blocks = static_cast<int64_t>(token_count) * (num_heads / heads_per_block);
   if (base_blocks <= 0 || base_blocks >= 2 * multi_processor_count) {
     return 1;
   }
-  const int by_occupancy = static_cast<int>((2 * multi_processor_count + base_blocks - 1) / base_blocks);
-  const int by_length = (max_candidate_count + kSparsePagedAttentionTile - 1) / kSparsePagedAttentionTile;
+  const int target_waves =
+      heads_per_block == kSparsePagedAttentionGqaHeads && token_count <= 8 ? 4 : 2;
+  const int by_occupancy =
+      static_cast<int>((target_waves * multi_processor_count + base_blocks - 1) / base_blocks);
+  const int tile_size = heads_per_block == kSparsePagedAttentionGqaHeads
+                            ? kSparsePagedAttentionGqaTile
+                            : kSparsePagedAttentionTile;
+  const int by_length = (max_candidate_count + tile_size - 1) / tile_size;
   return max(1, min(min(by_occupancy, by_length), kSparsePagedAttentionMaxSplits));
 }
 
@@ -468,8 +883,79 @@ Status SparseQkvToContext(
   const float attention_scale =
       parameters.scale == 0.0f ? 1.0f / sqrtf(static_cast<float>(parameters.head_size))
                                : parameters.scale;
-  SparsePagedAttentionSplitKernel<T, TCACHE><<<grid, kSparsePagedAttentionThreads, shared_memory_bytes,
-                                               static_cast<cudaStream_t>(stream->GetHandle())>>>(
+  if constexpr (std::is_same<T, TCACHE>::value) {
+    if (SparsePagedAttentionHeadsPerBlock(parameters, attention_mode, selected_kv_source, true,
+                                          device_prop.sharedMemPerBlock) == kSparsePagedAttentionGqaHeads) {
+      constexpr size_t twelve_head_shared_bytes =
+          kSparsePagedAttentionGqaTile * kSparsePagedAttentionGqaHeadSize * sizeof(T) +
+          kSparsePagedAttentionGqaTile * sizeof(int64_t) +
+          12 * kSparsePagedAttentionGqaTile * sizeof(float);
+      constexpr size_t six_head_shared_bytes =
+          kSparsePagedAttentionGqaTile * kSparsePagedAttentionGqaHeadSize * sizeof(T) +
+          kSparsePagedAttentionGqaTile * sizeof(int64_t) +
+          6 * kSparsePagedAttentionGqaTile * sizeof(float);
+      const bool use_twelve_heads = parameters.token_count > 64 && num_splits == 1 &&
+                                    (parameters.num_heads / parameters.kv_num_heads) % 12 == 0 &&
+                                    twelve_head_shared_bytes <= device_prop.sharedMemPerBlock;
+      const bool use_six_heads = parameters.token_count > 64 && num_splits == 1 &&
+                                 (parameters.num_heads / parameters.kv_num_heads) % 6 == 0 &&
+                                 six_head_shared_bytes <= device_prop.sharedMemPerBlock;
+      const int heads_per_block = use_twelve_heads ? 12 : (use_six_heads ? 6 : kSparsePagedAttentionGqaHeads);
+      const dim3 tiled_grid(parameters.num_heads / heads_per_block, parameters.token_count, num_splits);
+      static const bool enable_tensor_core_qk =
+          ParseEnvironmentVariableWithDefault<bool>("ORT_SPARSE_PREFILL_TENSOR_CORE_QK", false);
+      static const bool enable_tensor_core_pv =
+          ParseEnvironmentVariableWithDefault<bool>("ORT_SPARSE_PREFILL_TENSOR_CORE_PV", false);
+      const auto tensor_core_pv_kernel = [] {
+        if constexpr (std::is_same<T, half>::value) {
+          return SparsePagedAttentionGqaTiledKernel<T, 12, 4, true, true>;
+        } else {
+          return SparsePagedAttentionGqaTiledKernel<T, 12, 4, true>;
+        }
+      }();
+      bool use_tensor_core_qk = false;
+      bool use_tensor_core_pv = false;
+      if (enable_tensor_core_qk && use_twelve_heads && device_prop.major >= 8) {
+        cudaFuncAttributes attributes{};
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaFuncGetAttributes(&attributes, SparsePagedAttentionGqaTiledKernel<T, 12, 4, true>)));
+        use_tensor_core_qk = attributes.ptxVersion >= 80 &&
+                             attributes.sharedSizeBytes <= device_prop.sharedMemPerBlock;
+        if (use_tensor_core_qk && enable_tensor_core_pv && std::is_same<T, half>::value) {
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaFuncGetAttributes(&attributes, tensor_core_pv_kernel)));
+          use_tensor_core_pv = attributes.sharedSizeBytes <= device_prop.sharedMemPerBlock;
+        }
+      }
+      const auto tiled_kernel = use_twelve_heads
+                                    ? (use_tensor_core_pv   ? tensor_core_pv_kernel
+                                       : use_tensor_core_qk ? SparsePagedAttentionGqaTiledKernel<T, 12, 4, true>
+                                                            : SparsePagedAttentionGqaTiledKernel<T, 12, 4>)
+                                    : (use_six_heads ? SparsePagedAttentionGqaTiledKernel<T, 6>
+                                                     : SparsePagedAttentionGqaTiledKernel<T>);
+      tiled_kernel<<<tiled_grid, (use_tensor_core_pv ? 4 : heads_per_block) * 32, 0,
+                     static_cast<cudaStream_t>(stream->GetHandle())>>>(
+          prepared_query, prepared_key, prepared_value, data.key_cache, data.value_cache,
+          data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.slot_mapping,
+          selected_indices, selected_counts, data.output, data.head_sink,
+          partial_out, partial_max, partial_sum,
+          parameters.batch_size, parameters.token_count, parameters.num_heads, parameters.kv_num_heads, parameters.block_size,
+          parameters.num_blocks, parameters.max_num_blocks_per_seq, max_selected_entries,
+          prepared_key_stride, prepared_value_stride, attention_scale, parameters.softcap, parameters.is_causal, num_splits);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+      if (num_splits > 1) {
+        const dim3 reduce_grid(parameters.num_heads, parameters.token_count);
+        SparsePagedAttentionReduceKernel<T><<<reduce_grid, kSparsePagedAttentionThreads, 0,
+                                              static_cast<cudaStream_t>(stream->GetHandle())>>>(
+            data.output, partial_out, partial_max, partial_sum, data.head_sink,
+            parameters.token_count, parameters.num_heads, parameters.head_size, num_splits);
+      }
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
+  const auto kernel = parameters.head_size == 256
+                          ? SparsePagedAttentionSplitKernel<T, TCACHE, 256>
+                          : SparsePagedAttentionSplitKernel<T, TCACHE>;
+  kernel<<<grid, kSparsePagedAttentionThreads, shared_memory_bytes,
+           static_cast<cudaStream_t>(stream->GetHandle())>>>(
       prepared_query, prepared_key, prepared_value, data.key_cache, data.value_cache, data.k_scale, data.v_scale,
       data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.slot_mapping, selected_indices,
       selected_counts, auxiliary_key, auxiliary_value, auxiliary_lengths, partial_out,
