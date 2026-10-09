@@ -103,6 +103,9 @@ stages:
           dpkg -l msopenjdk-17
 
       - bash: |
+          nvidia-smi
+
+      - bash: |
           echo "Downloading and installing Maven $(mavenVersion) for Linux..."
           MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
           # Download Maven binary
