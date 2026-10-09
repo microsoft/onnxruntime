@@ -26,41 +26,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// The specialized router GEMV kernel only handles M=1, or batch size 1.
-constexpr int kRouterM = 1;
-
-// MoE router shape (N = number of experts, K = hidden size). The specialization is exact-shape
-// gated to the GPT-OSS-20B router projection to keep the dispatch change conservative.
-constexpr int kGptOssRouterN = 32;
-constexpr int kGptOssRouterK = 2880;
-
-static bool IsRouterGemvSpecializationDisabled() {
-  // Use ORT's cross-platform env var helper instead of std::getenv, which is unsafe on Windows.
+static bool IsSingleRowGemvSpecializationDisabled() {
+  // Keep the existing cross-platform control for both MoE router and language-model projections.
   return ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", false);
 }
 
-// The router GEMV kernel handles any symmetric (no zero point) M=1 shape with an int4 group size of
-// 32 or 64 (whichever quantizes best) and N divisible by kColsPerThreadBlock. We gate on the exact
-// GPT-OSS-20B router shape to avoid changing the dispatch for general MatMulNBits cases. K must be a
-// multiple of the group size (always true for a router) and N a multiple of kColsPerThreadBlock
-// (checked in TryMatMul4Bits). Note kPerIter (256) is divisible by both 32 and 64, so the scale
-// stride is exact.
-static bool IsSupportedRouterGemvShape(const uint8_t* zero_points, int m, int n, int k, int block_size) {
-  if (zero_points != nullptr || m != kRouterM || (block_size != 32 && block_size != 64)) {
-    return false;
-  }
-  if (k % block_size != 0) {
-    return false;
-  }
-  return (n == kGptOssRouterN && k == kGptOssRouterK) ||
-         (n == 248320 && k == 2560 && block_size == 32);
-}
-
 // Reduces kUnroll groups of kPerIter elements per step, advancing the packed-weight pointer, scale
-// index and k position in lockstep. Factored out of MatMulFloatInt4RouterKernel so the three unroll
+// index and k position in lockstep. Factored out of MatMulFloatInt4SingleRowKernel so the three unroll
 // factors (16, 4, 1) share one implementation instead of a macro.
 template <class T, int BlockSize, int kUnroll>
-__device__ __forceinline__ void RouterUnrollReduction(
+__device__ __forceinline__ void SingleRowUnrollReduction(
     const uint8_t*& b_data_quant,
     const T* scales_data,
     const T* a_data,
@@ -83,14 +58,15 @@ __device__ __forceinline__ void RouterUnrollReduction(
   }
 }
 
-// GEMV specialization for MoE routers: output(1, N) = a(1, K) x dequant(B(N, K)) [+ bias(N)].
+// Single-row projection GEMV: output(1, N) = a(1, K) x dequant(B(N, K)) [+ bias(N)].
 // B is 4-bit block-quantized (symmetric, no zero point) with group size BlockSize (32 or 64). One warp
-// computes one expert column; the thread block holds kColsPerThreadBlock warps. N is passed via the
-// grid and K at runtime, so a single instantiation per (T, BlockSize) serves every router shape.
+// computes one output column; the thread block holds kColsPerThreadBlock warps. Dispatch is exact-shape
+// gated to the GPT-OSS-20B router (N=32, K=2880, groups 32/64) and Qwen draft head
+// (N=248320, K=2560, group 32). A single instantiation per (T, BlockSize) serves both workloads.
 // Requirements (satisfied by the dispatch in TryMatMul4Bits): N % kColsPerThreadBlock == 0,
 // K % BlockSize == 0, and kPerIter % BlockSize == 0 so the per-iteration scale stride is exact.
 template <class T, int BlockSize>
-__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4RouterKernel(
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4SingleRowKernel(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -114,9 +90,9 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   int k_id = 0;
   int scale_id = lane_id * 8 / BlockSize;
 
-  RouterUnrollReduction<T, BlockSize, 16>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
-  RouterUnrollReduction<T, BlockSize, 4>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
-  RouterUnrollReduction<T, BlockSize, 1>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
+  SingleRowUnrollReduction<T, BlockSize, 16>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
+  SingleRowUnrollReduction<T, BlockSize, 4>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
+  SingleRowUnrollReduction<T, BlockSize, 1>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
 
   if (k_id + lane_id * 8 < k) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
@@ -708,15 +684,15 @@ bool TryMatMul4Bits(
     return false;
   }
 
-  if (IsSupportedRouterGemvShape(zero_points, m, n, k, block_size) &&
-      !IsRouterGemvSpecializationDisabled()) {
+  if (IsSupportedSingleRowGemvShape(zero_points != nullptr, m, n, k, block_size) &&
+      !IsSingleRowGemvSpecializationDisabled()) {
     const dim3 blocks(n / kColsPerThreadBlock, 1);
     const dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
     if (block_size == 32) {
-      MatMulFloatInt4RouterKernel<T, 32><<<blocks, threads, 0, stream>>>(
+      MatMulFloatInt4SingleRowKernel<T, 32><<<blocks, threads, 0, stream>>>(
           output, a_data, b_data_quant, scales_data, bias_data, n, k);
     } else {
-      MatMulFloatInt4RouterKernel<T, 64><<<blocks, threads, 0, stream>>>(
+      MatMulFloatInt4SingleRowKernel<T, 64><<<blocks, threads, 0, stream>>>(
           output, a_data, b_data_quant, scales_data, bias_data, n, k);
     }
     return true;

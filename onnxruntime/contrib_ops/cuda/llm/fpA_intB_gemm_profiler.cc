@@ -159,7 +159,8 @@ WeightOnlyGroupwiseQuantGemmPluginProfiler::getDeterministicConfig(int m) const 
     }
   }
   for (const auto& config : configs) {
-    if (!config.enableCudaKernel && config.split_k_style == cutlass_extensions::SplitKStyle::NO_SPLIT_K) {
+    if (!config.enableCudaKernel && config.split_k_style == cutlass_extensions::SplitKStyle::NO_SPLIT_K &&
+        (mArch < 89 || config.stages != 2)) {
       return config;
     }
   }

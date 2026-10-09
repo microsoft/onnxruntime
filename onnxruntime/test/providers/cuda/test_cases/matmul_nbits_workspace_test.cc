@@ -37,6 +37,7 @@
 // below (TensorProto_DataType_FLOAT16 etc.) come from provider_api.h via matmul_nbits.h.
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 #include "test/providers/cuda/test_cases/matmul_nbits_workspace_test_probe.h"
 
 namespace onnxruntime {
@@ -84,13 +85,14 @@ TEST(MatMulNBitsWorkspace, DeterministicTacticsIgnoreProfiledCache) {
   using namespace onnxruntime::llm::kernels::weight_only;
   using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
   using Runner = CutlassFpAIntBGemmRunner<half, uint8_t,
-                                        cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
 
   class TestProfiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
    public:
     TestProfiler() {
       mRunner = std::make_shared<Runner>();
       mRunner->setArch(80);
+      setCudaKernelType({}, 80);
     }
   } profiler;
 
@@ -110,7 +112,7 @@ TEST(MatMulNBitsWorkspace, DeterministicTacticsIgnoreProfiledCache) {
 
   for (int split_k : {2, 5}) {
     const CutlassGemmConfig timed(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
-                                 SplitKStyle::SPLIT_K_SERIAL, split_k, 3);
+                                  SplitKStyle::SPLIT_K_SERIAL, split_k, 3);
     for (int rows : {1, 77}) {
       (*cache->getMProfileMap(gemm_id))[rows] = timed;
       ASSERT_TRUE(profiler.getBestConfig(rows, gemm_id).has_value());
@@ -119,6 +121,60 @@ TEST(MatMulNBitsWorkspace, DeterministicTacticsIgnoreProfiledCache) {
       ASSERT_TRUE(selected.has_value());
       EXPECT_EQ(selected->toString(), (rows == 1 ? decode : prefill)->toString());
     }
+  }
+}
+
+TEST(MatMulNBitsWorkspace, DeterministicTacticsUseSupportedStages) {
+  using namespace onnxruntime::llm::cutlass_extensions;
+  using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+  using Runner = CutlassFpAIntBGemmRunner<half, uint8_t,
+                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+
+  class TestProfiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    explicit TestProfiler(int arch) {
+      mRunner = std::make_shared<Runner>();
+      mRunner->setArch(arch);
+      setCudaKernelType({}, arch);
+    }
+  };
+
+  for (int arch : {75, 80, 86, 89, 90}) {
+    SCOPED_TRACE(arch);
+    TestProfiler profiler(arch);
+    for (int rows : {16, 77}) {
+      const auto config = profiler.getDeterministicConfig(rows);
+      ASSERT_TRUE(config.has_value());
+      EXPECT_FALSE(config->enableCudaKernel);
+      EXPECT_EQ(config->split_k_style, SplitKStyle::NO_SPLIT_K);
+      EXPECT_EQ(config->split_k_factor, 1);
+      if (arch < 89) {
+        EXPECT_EQ(config->stages, 2);
+      } else {
+        EXPECT_NE(config->stages, 2);
+      }
+    }
+  }
+}
+
+TEST(MatMulNBitsWorkspace, SingleRowInt4GemvShapeEligibility) {
+  using onnxruntime::contrib::cuda::IsSupportedSingleRowGemvShape;
+  EXPECT_TRUE(IsSupportedSingleRowGemvShape(false, 1, 248320, 2560, 32));
+  EXPECT_TRUE(IsSupportedSingleRowGemvShape(false, 1, 32, 2880, 32));
+  EXPECT_TRUE(IsSupportedSingleRowGemvShape(false, 1, 32, 2880, 64));
+  EXPECT_FALSE(IsSupportedSingleRowGemvShape(true, 1, 248320, 2560, 32));
+  EXPECT_FALSE(IsSupportedSingleRowGemvShape(true, 1, 32, 2880, 32));
+  for (int rows : {0, 2, 8}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, rows, 248320, 2560, 32));
+  }
+  for (int columns : {248288, 248319, 248321, 248352}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, 1, columns, 2560, 32));
+  }
+  for (int reduction : {2528, 2559, 2561, 2592}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, 1, 248320, reduction, 32));
+  }
+  for (int block_size : {16, 64, 128}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, 1, 248320, 2560, block_size));
   }
 }
 
