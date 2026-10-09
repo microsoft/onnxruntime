@@ -76,6 +76,7 @@ class PackedSparseAttentionIndexerQsaSelectProgram final
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"query_row_stride", ProgramUniformVariableDataType::Uint32},
+      {"query_norm_offset", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
@@ -114,6 +115,27 @@ class PackedSparseAttentionIndexerCsaUpdateProgram final
   bool cos_cache_batched_;
 };
 
+class PackedSparseAttentionIndexerQsaCaptureProgram final
+    : public Program<PackedSparseAttentionIndexerQsaCaptureProgram> {
+ public:
+  explicit PackedSparseAttentionIndexerQsaCaptureProgram(bool has_state_update_active)
+      : Program{"PackedSparseAttentionIndexerQsaCapture"},
+        has_state_update_active_{has_state_update_active} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
+      {"key_row_stride", ProgramUniformVariableDataType::Uint32},
+      {"key_offset", ProgramUniformVariableDataType::Uint32},
+      {"compress_ratio", ProgramUniformVariableDataType::Uint32},
+      {"state_capacity", ProgramUniformVariableDataType::Uint32},
+      {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_state_update_active_;
+};
+
 // One invocation per query token: rotates the query, scores it against every causally visible
 // compressed key_state entry, and selects the index_topk highest scoring entries.
 class PackedSparseAttentionIndexerCsaSelectProgram final
@@ -131,8 +153,10 @@ class PackedSparseAttentionIndexerCsaSelectProgram final
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"state_capacity", ProgramUniformVariableDataType::Uint32},
+      {"buffer_capacity", ProgramUniformVariableDataType::Uint32},
       {"capacity", ProgramUniformVariableDataType::Uint32},
       {"index_topk", ProgramUniformVariableDataType::Uint32},
+      {"epsilon", ProgramUniformVariableDataType::Float32},
       {"scale", ProgramUniformVariableDataType::Float32},
       {"head_weight_scale", ProgramUniformVariableDataType::Float32});
 

@@ -92,6 +92,36 @@ __device__ __forceinline__ float4 LoadQsaVector4(const T* source) {
                      to_float<T>(packed.values[2]), to_float<T>(packed.values[3]));
 }
 
+bool UseHierarchicalQsaTopK(const PackedSparseAttentionIndexerParams& params) {
+  return params.total_tokens > 0 && params.total_tokens <= kDistributedTopKMaxRows &&
+         params.state_capacity >= kDistributedTopKMinBlocks &&
+         params.head_size == kQwenHeadSize && params.compress_ratio == kQwenCompressRatio &&
+         params.num_heads == kQwenNumHeads && params.block_topk > kSaiFastTopKMax &&
+         params.block_topk <= kBoundedTopKMax;
+}
+
+bool UseRaggedQsaPrefill(const PackedSparseAttentionIndexerParams& params) {
+  return params.total_tokens > kDistributedTopKMaxRows &&
+         params.head_size == kQwenHeadSize && params.compress_ratio == kQwenCompressRatio &&
+         params.num_heads == kQwenNumHeads;
+}
+
+int GetHierarchicalTileCount(const PackedSparseAttentionIndexerParams& params) {
+  return (params.state_capacity + kHierarchicalTileBlocks - 1) / kHierarchicalTileBlocks;
+}
+
+template <typename T>
+struct alignas(sizeof(T) * 4) QsaVector4 {
+  T values[4];
+};
+
+template <typename T>
+__device__ __forceinline__ float4 LoadQsaVector4(const T* source) {
+  const QsaVector4<T> packed = *reinterpret_cast<const QsaVector4<T>*>(source);
+  return make_float4(to_float<T>(packed.values[0]), to_float<T>(packed.values[1]),
+                     to_float<T>(packed.values[2]), to_float<T>(packed.values[3]));
+}
+
 // Largest b such that cumulative_sequence_lengths[b] <= token, assuming the array is nondecreasing.
 // If the data itself is malformed this may attribute a token to the wrong request, but the result
 // is always an index in [0, batch_size), so it can never cause an out-of-bounds access.

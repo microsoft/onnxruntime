@@ -1849,7 +1849,10 @@ class SymbolicShapeInference:
         self._fuse_tensor_type(node, 0, vi_out_seq.type, vi_tensor.type)
 
     def _infer_Shape(self, node):  # noqa: N802
-        self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)
+        # Since opset 15, start/end select a slice of the shape; Python slicing clamps them the same way.
+        start = get_attribute(node, "start", 0)
+        end = get_attribute(node, "end")
+        self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)[start:end]
 
     def _infer_Size(self, node):  # noqa: N802
         sympy_shape = self._get_sympy_shape(node, 0)
@@ -2717,6 +2720,7 @@ class SymbolicShapeInference:
             policy_mode = policy_mode.decode("utf-8")
         compress_ratio = get_attribute(node, "compress_ratio", 0)
         query_shape = self._get_sympy_shape(node, 0)
+        head_size = self._get_sympy_shape(node, 2)[0]
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
 
         if policy_mode == "qsa":
@@ -2747,17 +2751,21 @@ class SymbolicShapeInference:
             return self._get_sympy_shape(node, index)
 
         if policy_mode == "qsa":
-            past_key_shape = past_shape(6)
-            past_length = past_key_shape[1] if past_key_shape else 0
-            set_output(1, [query_shape[0], past_length + query_shape[1], query_shape[3]])
+            past_key_shape = past_shape(7)
+            if past_key_shape is None:
+                return
+            if len(node.input) > 12 and node.input[12]:
+                set_output(1, past_key_shape)
+            else:
+                set_output(1, [query_shape[0], past_key_shape[1] + query_shape[1], head_size])
             return
 
-        past_compressed_shape = past_shape(11)
-        past_buffer_shape = past_shape(12)
+        past_compressed_shape = past_shape(7)
+        past_buffer_shape = past_shape(13)
         if past_compressed_shape is None or past_buffer_shape is None:
             return
 
-        buffer_length = past_buffer_shape[1]
+        buffer_length = past_buffer_shape[2]
         sequence_length = query_shape[1]
 
         # The number of compressed entries emitted by this call is known as soon as the buffer and
@@ -2771,14 +2779,21 @@ class SymbolicShapeInference:
             present_buffer_length = (
                 compress_ratio + pending % compress_ratio if new_window_count > 0 else buffer_length + sequence_length
             )
-            present_compressed_length = past_compressed_shape[1] + new_window_count
+            present_compressed_length = (
+                past_compressed_shape[1]
+                if len(node.input) > 12 and node.input[12]
+                else past_compressed_shape[1] + new_window_count
+            )
         else:
-            present_compressed_length = self._new_symbolic_dim_from_output(node, 2, 1)
-            present_buffer_length = self._new_symbolic_dim_from_output(node, 3, 1)
+            present_compressed_length = (
+                past_compressed_shape[1]
+                if len(node.input) > 12 and node.input[12]
+                else self._new_symbolic_dim_from_output(node, 1, 1)
+            )
+            present_buffer_length = self._new_symbolic_dim_from_output(node, 2, 2)
 
-        set_output(2, [query_shape[0], present_compressed_length, query_shape[3]])
-        set_output(3, [query_shape[0], present_buffer_length, past_buffer_shape[2]])
-        set_output(4, [query_shape[0], present_buffer_length, past_buffer_shape[2]])
+        set_output(1, [query_shape[0], present_compressed_length, head_size])
+        set_output(2, [2, query_shape[0], present_buffer_length, past_buffer_shape[3]])
 
     def _infer_PackedSparseAttentionIndexer(self, node):  # noqa: N802
         policy_mode = get_attribute(node, "policy_mode", b"")
@@ -2837,9 +2852,7 @@ class SymbolicShapeInference:
                     helper.make_tensor_value_info(
                         node.output[6],
                         output_dtype,
-                        get_shape_from_sympy_shape(
-                            [past_key_shape[0], state_update_capacity, past_key_shape[2]]
-                        ),
+                        get_shape_from_sympy_shape([past_key_shape[0], state_update_capacity, past_key_shape[2]]),
                     )
                 )
 

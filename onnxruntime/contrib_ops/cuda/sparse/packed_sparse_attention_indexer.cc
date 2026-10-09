@@ -290,6 +290,9 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
                 "PackedSparseAttentionIndexer: total_tokens must be 0 when batch_size is 0");
 
   ORT_RETURN_IF_ERROR(CheckShape(past_sequence_lengths, "past_sequence_lengths", {batch_size}));
+  if (position_ids != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {total_tokens}));
+  }
   if (has_separate_key) {
     ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
   }
@@ -366,6 +369,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   params.rotary_width = static_cast<int>(rotary.rotary_width);
   params.max_rotary_length = static_cast<int>(rotary.max_rotary_length);
   params.cos_cache_batched = rotary.batched;
+  params.has_position_ids = position_ids != nullptr;
   params.compress_ratio = static_cast<int>(compress_ratio_);
   params.state_capacity = static_cast<int>(state_capacity);
   params.buffer_capacity = static_cast<int>(buffer_capacity);
@@ -530,6 +534,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, con
   params.rotary_width = static_cast<int>(rotary.rotary_width);
   params.max_rotary_length = static_cast<int>(rotary.max_rotary_length);
   params.cos_cache_batched = rotary.batched;
+  params.has_position_ids = true;
   params.compress_ratio = static_cast<int>(compress_ratio_);
   params.state_capacity = static_cast<int>(state_capacity);
   params.buffer_capacity = static_cast<int>(buffer_capacity);

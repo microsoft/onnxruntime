@@ -1280,9 +1280,10 @@ TEST(SparseAttentionIndexerTest, QsaLongContextBoundedTopKTies) {
   QsaProblem problem;
   problem.batch_size = 1;
   problem.sequence_length = 1;
-  problem.past_sequence_length = 65536;
-  problem.compress_ratio = 16;
-  problem.token_budget = 8192;
+  problem.past_sequence_length = 8191;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem.scale = 0.0f;
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
@@ -1314,13 +1315,14 @@ TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKBFloat16) 
   RunQsaQwenSpecializedScoreAndPartialTopK<BFloat16>(2.0e-2f);
 }
 
-TEST(SparseAttentionIndexerTest, QsaQwenDistributedPartialTopK) {
+TEST(SparseAttentionIndexerTest, QsaQwenFixedCapacityRawCacheDistributedTopK) {
   QsaProblem problem;
   problem.batch_size = 1;
   problem.sequence_length = 1;
   problem.num_heads = 4;
   problem.head_size = 128;
   problem.past_sequence_length = 8191;
+  problem.key_cache_capacity = 8192;
   problem.rotary_width = 32;
   problem.compress_ratio = 4;
   problem.token_budget = 2048;
@@ -1514,8 +1516,71 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaPackedQkFloat) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu, true);
 }
 
+TEST(SparseAttentionIndexerWebGpuTest, QsaMasklessPrefixCausal) {
+  QsaProblem problem = MakeQsaProblem();
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu, false, true);
+}
+
 TEST(SparseAttentionIndexerWebGpuTest, QsaFloat16) {
   RunQsaTest<MLFloat16>(4.0e-3f, MakeQsaProblem(), ProviderKind::WebGpu);
+}
+
+template <typename T>
+void RunQsaCachedScoresWithMaskHoles(float tolerance) {
+  QsaProblem problem;
+  problem.past_sequence_length = 17;
+  problem.compress_ratio = 4;
+  problem.token_budget = 16;
+  problem = MakeQsaProblem(std::move(problem));
+  const int total = problem.TotalSequenceLength();
+  problem.mask[4] = 0;
+  problem.mask[11] = 0;
+  problem.mask[total + 5] = 0;
+  problem.mask[total + 13] = 0;
+  RunQsaTest<T>(tolerance, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaCachedScoresWithMaskHoles) {
+  RunQsaCachedScoresWithMaskHoles<float>(1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaCachedScoresWithMaskHolesFloat16) {
+  RunQsaCachedScoresWithMaskHoles<MLFloat16>(4.0e-3f);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaScoreCacheBoundary) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 768;
+  problem.num_heads = 1;
+  problem.compress_ratio = 1;
+  problem.token_budget = 4;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  ASSERT_GT(problem.TotalSequenceLength() / problem.compress_ratio, 768);
+  ASSERT_LE(problem.TotalSequenceLength(), 3072);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaVisibilityCacheBoundaryWithMaskHoles) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 3079;
+  problem.num_heads = 1;
+  problem.compress_ratio = 32;
+  problem.token_budget = 32;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  for (int token : {8, 53, 2050, 3011}) {
+    problem.mask[token] = 0;
+  }
+  const int visible_count = problem.TotalSequenceLength() - 4;
+  ASSERT_GT(visible_count, 3072);
+  ASSERT_LE(visible_count / problem.compress_ratio, 768);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
 }
 
 TEST(SparseAttentionIndexerWebGpuTest, QsaExplicitZeroScale) {
@@ -1530,6 +1595,16 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaSharedRotaryCache) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)), ProviderKind::WebGpu);
 }
 
+TEST(SparseAttentionIndexerWebGpuTest, QsaInt64HighWordMask) {
+  QsaProblem problem = MakeQsaProblem();
+  for (int64_t& mask_value : problem.mask) {
+    if (mask_value != 0) {
+      mask_value = int64_t{1} << 32;
+    }
+  }
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
 TEST(SparseAttentionIndexerWebGpuTest, CsaFloat) {
   RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f, ProviderKind::WebGpu);
 }
@@ -1539,6 +1614,12 @@ TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16) {
 }
 
 TEST(SparseAttentionIndexerWebGpuTest, CsaSharedRotaryCache) {
+  CsaProblem problem;
+  problem.shared_rotary_cache = true;
+  RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16ScoresNewKeysBeforeCacheRounding) {
   CsaProblem problem;
   problem.shared_rotary_cache = true;
   RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);

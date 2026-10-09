@@ -1013,8 +1013,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "token_offset",
-               "Offset of each token before packing, with shape (batch_size, sequence_length). "
-               "Values must be in [0, batch_size * sequence_length).",
+               "Offset of each token before packing, with shape (batch_size, sequence_length).",
                "M")
         .Input(5,
                "cumulative_sequence_length",
@@ -2822,6 +2821,11 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
                          psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
+  if (ctx.hasOutput(psai::kPresentGateBuffer) == is_qsa) {
+    fail_shape_inference("PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
+                         is_qsa ? " (present_gate_buffer) must be omitted when policy_mode is 'qsa'"
+                                : " (present_gate_buffer) is required when policy_mode is 'csa'");
+  }
   updateOutputElemType(ctx, psai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   if (has_indexshare) updateOutputElemType(ctx, psai::kIndexShareStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
@@ -3919,8 +3923,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "token_offset",
-               "Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length), "
-               "and values must be in [0, batch_size * sequence_length).",
+               "Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)",
                "M")
         .Output(0,
                 "output",
@@ -5291,9 +5294,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("chunk_size",
-              "Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; "
-              "any other value lets the implementation take the widest chunk the device can "
-              "hold. Default 64.",
+              "Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow "
+              "chunk and any other value lets the implementation select the widest chunk the device "
+              "can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; "
+              "default 64 retains recurrent execution. Default 64.",
               AttributeProto::INT, static_cast<int64_t>(64))
         .Attr("state_update_capacity",
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "

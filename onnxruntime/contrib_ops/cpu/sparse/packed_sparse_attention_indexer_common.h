@@ -13,9 +13,11 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "contrib_ops/cpu/sparse/sparse_attention_indexer_common.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -88,6 +90,13 @@ enum StateLengthColumn : int {
 // Generic pending-buffer capacity: qsa only ever uses up to compress_ratio - 1 of these slots.
 SAI_HOST_DEVICE inline int64_t GenericBufferCapacity(int64_t compress_ratio) {
   return 2 * compress_ratio - 1;
+}
+
+inline Status ValidateDynamicSharedMemory(size_t required_bytes, size_t supported_bytes, const char* kernel_name) {
+  ORT_RETURN_IF(required_bytes > supported_bytes,
+                "PackedSparseAttentionIndexer: ", kernel_name, " requires ", required_bytes,
+                " bytes of dynamic shared memory, but the device supports at most ", supported_bytes);
+  return Status::OK();
 }
 
 }  // namespace packed_sparse_attention_indexer

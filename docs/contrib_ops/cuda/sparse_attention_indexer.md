@@ -282,7 +282,7 @@ that assign one block to each work item clamp the grid to the CUDA `gridDim.x` l
 |---|---|---|
 | `qsa` | float | `B*S*N*D` (rotated query) + `B*S*max_block_count` (block scores) |
 | `qsa` | int32 | optional `B*S*T` (arbitrary-mask visible indices) + `B*S` (visible counts) + up to `B*S*block_topk` (TopK indices) |
-| `csa` | float | `B*S*N*D` (rotated query) + `B*S*present_compressed_length` (scores) |
+| `csa` | float | `B*S*N*D` (rotated query) + `B*S*present_compressed_length` (scores) + `B*W*D` (new compressed keys before persistent-cache rounding) |
 
 Every size is derived from shapes and attributes only.
 

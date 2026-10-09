@@ -235,113 +235,6 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
 
-    def test_dynamic_sparse_attention_separate_qkv_with_past(self):
-        inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
-            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
-            helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
-            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
-            helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
-            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
-            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
-            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
-        ]
-        node = helper.make_node(
-            "DynamicSparseAttention",
-            [
-                "query",
-                "key",
-                "value",
-                "past_key",
-                "past_value",
-                "",
-                "",
-                "selected_indices",
-                "selected_counts",
-                "seqlens_k",
-                "total_sequence_length",
-            ],
-            ["output", "present_key", "present_value"],
-            domain="com.microsoft",
-            num_heads=4,
-            kv_num_heads=2,
-        )
-        outputs = [
-            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
-            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
-            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
-        ]
-        graph = helper.make_graph(
-            [node],
-            "DynamicSparseAttentionSeparate",
-            inputs,
-            outputs,
-            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
-        )
-        model = helper.make_model(
-            graph,
-            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
-        )
-
-        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
-        expected_shapes = [
-            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
-            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
-            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
-        ]
-        self._check_shapes(graph, inferred.graph, expected_shapes)
-
-    def test_dynamic_sparse_attention_packed_qkv_without_past(self):
-        inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 64]),
-            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
-            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
-            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
-        ]
-        node = helper.make_node(
-            "DynamicSparseAttention",
-            [
-                "query",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "selected_indices",
-                "selected_counts",
-                "seqlens_k",
-                "total_sequence_length",
-            ],
-            ["output", "present_key", "present_value"],
-            domain="com.microsoft",
-            num_heads=4,
-            kv_num_heads=2,
-        )
-        outputs = [
-            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
-            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
-            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
-        ]
-        graph = helper.make_graph(
-            [node],
-            "DynamicSparseAttentionPacked",
-            inputs,
-            outputs,
-            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
-        )
-        model = helper.make_model(
-            graph,
-            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
-        )
-
-        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
-        expected_shapes = [
-            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
-            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, 12, 8]),
-            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, 12, 8]),
-        ]
-        self._check_shapes(graph, inferred.graph, expected_shapes)
     def _infer_sparse_attention_indexer(self, node, inputs):
         outputs = [helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None) for name in node.output if name]
         graph = helper.make_graph([node], "SparseAttentionIndexer_Test", inputs, outputs)
@@ -361,7 +254,16 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def test_sparse_attention_indexer_qsa(self):
         node = helper.make_node(
             "SparseAttentionIndexer",
-            ["query", "key", "key_norm_weight", "cos_cache", "sin_cache", "mask", "past_key"],
+            [
+                "query",
+                "key",
+                "query_norm_weight",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "mask",
+                "past_key",
+            ],
             ["selected_indices", "present_key"],
             domain="com.microsoft",
             policy_mode="qsa",
@@ -369,12 +271,13 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             token_budget=8,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["batch", "sequence", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["batch", "sequence", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["batch", "sequence", 8]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
-            helper.make_tensor_value_info("mask", TensorProto.BOOL, ["batch", 1, "sequence", "total"]),
+            helper.make_tensor_value_info("mask", TensorProto.INT64, ["batch", "total"]),
             helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["batch", "past", 8]),
         ]
 
@@ -385,34 +288,75 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(self._tensor_shape(outputs["present_key"]), ["batch", "past + sequence", 8])
         self.assertEqual(outputs["present_key"].type.tensor_type.elem_type, TensorProto.FLOAT16)
 
-    def test_sparse_attention_indexer_csa_static_with_empty_output(self):
+    def test_sparse_attention_indexer_qsa_shared_cache(self):
         node = helper.make_node(
             "SparseAttentionIndexer",
             [
                 "query",
                 "key",
+                "query_norm_weight",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "mask",
+                "past_key",
+                "",
+                "",
+                "",
+                "",
+                "past_sequence_length",
+            ],
+            ["selected_indices", "present_key"],
+            domain="com.microsoft",
+            policy_mode="qsa",
+            compress_ratio=4,
+            token_budget=8,
+        )
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["batch", "sequence", 16]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["batch", "sequence", 8]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT16, [8]),
+            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
+            helper.make_tensor_value_info("mask", TensorProto.INT64, ["batch", "total"]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["batch", "capacity", 8]),
+            helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1]),
+        ]
+
+        inferred = self._infer_sparse_attention_indexer(node, inputs)
+        outputs = {output.name: output for output in inferred.graph.output}
+        self.assertEqual(self._tensor_shape(outputs["present_key"]), ["batch", "capacity", 8])
+
+    def test_sparse_attention_indexer_csa_static(self):
+        node = helper.make_node(
+            "SparseAttentionIndexer",
+            [
+                "query",
+                "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
                 "",
-                "",
+                "past_key",
                 "gate",
                 "position_bias",
                 "head_weights",
                 "position_ids",
-                "past_compressed_key",
-                "past_kv_buffer",
-                "past_gate_buffer",
+                "",
+                "past_proj_buffer",
             ],
-            ["selected_indices", "", "present_compressed_key", "present_kv_buffer", "present_gate_buffer"],
+            ["selected_indices", "present_key", "present_proj_buffer"],
             domain="com.microsoft",
             policy_mode="csa",
             compress_ratio=4,
             index_topk=3,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
@@ -420,18 +364,61 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
             helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, [2, 5, 2]),
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, [2, 5]),
-            helper.make_tensor_value_info("past_compressed_key", TensorProto.FLOAT, [2, 6, 8]),
-            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT, [2, 5, 16]),
-            helper.make_tensor_value_info("past_gate_buffer", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [2, 6, 8]),
+            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, 2, 5, 16]),
         ]
 
         inferred = self._infer_sparse_attention_indexer(node, inputs)
         outputs = {output.name: output for output in inferred.graph.output}
         self.assertEqual(list(inferred.graph.node[0].output), list(node.output))
         self.assertEqual(self._tensor_shape(outputs["selected_indices"]), [2, 5, 3])
-        self.assertEqual(self._tensor_shape(outputs["present_compressed_key"]), [2, 7, 8])
-        self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 6, 16])
-        self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), [2, 6, 16])
+        self.assertEqual(self._tensor_shape(outputs["present_key"]), [2, 7, 8])
+        self.assertEqual(self._tensor_shape(outputs["present_proj_buffer"]), [2, 2, 6, 16])
+
+    def test_sparse_attention_indexer_csa_shared_cache(self):
+        node = helper.make_node(
+            "SparseAttentionIndexer",
+            [
+                "query",
+                "key",
+                "query_norm_weight",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "",
+                "past_key",
+                "gate",
+                "position_bias",
+                "head_weights",
+                "position_ids",
+                "past_sequence_length",
+                "past_proj_buffer",
+            ],
+            ["selected_indices", "present_key", "present_proj_buffer"],
+            domain="com.microsoft",
+            policy_mode="csa",
+            compress_ratio=4,
+            index_topk=3,
+        )
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
+            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("gate", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
+            helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, [2, 5, 2]),
+            helper.make_tensor_value_info("position_ids", TensorProto.INT64, [2, 5]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [2, 32, 8]),
+            helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, 2, 5, 16]),
+        ]
+
+        inferred = self._infer_sparse_attention_indexer(node, inputs)
+        outputs = {output.name: output for output in inferred.graph.output}
+        self.assertEqual(self._tensor_shape(outputs["present_key"]), [2, 32, 8])
 
     def test_sparse_attention_indexer_csa_symbolic_fallback(self):
         node = helper.make_node(
@@ -439,28 +426,29 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             [
                 "query",
                 "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
                 "",
-                "",
+                "past_key",
                 "gate",
                 "position_bias",
                 "head_weights",
                 "position_ids",
-                "past_compressed_key",
-                "past_kv_buffer",
-                "past_gate_buffer",
+                "",
+                "past_proj_buffer",
             ],
-            ["selected_indices", "", "present_compressed_key", "present_kv_buffer", "present_gate_buffer"],
+            ["selected_indices", "present_key", "present_proj_buffer"],
             domain="com.microsoft",
             policy_mode="csa",
             compress_ratio=4,
             index_topk=3,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "sequence", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "sequence", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, ["batch", "sequence", 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, ["batch", 64, 4]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, ["batch", 64, 4]),
@@ -468,82 +456,19 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
             helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, ["batch", "sequence", 2]),
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, ["batch", "sequence"]),
-            helper.make_tensor_value_info("past_compressed_key", TensorProto.FLOAT, ["batch", "compressed", 8]),
-            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT, ["batch", "buffer", 16]),
-            helper.make_tensor_value_info("past_gate_buffer", TensorProto.FLOAT, ["batch", "buffer", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, ["batch", "compressed", 8]),
+            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, "batch", "buffer", 16]),
         ]
 
         inferred = self._infer_sparse_attention_indexer(node, inputs)
         outputs = {output.name: output for output in inferred.graph.output}
-        compressed_shape = self._tensor_shape(outputs["present_compressed_key"])
-        buffer_shape = self._tensor_shape(outputs["present_kv_buffer"])
+        compressed_shape = self._tensor_shape(outputs["present_key"])
+        buffer_shape = self._tensor_shape(outputs["present_proj_buffer"])
         self.assertEqual(compressed_shape[::2], ["batch", 8])
-        self.assertEqual(buffer_shape[::2], ["batch", 16])
+        self.assertEqual(buffer_shape[::3], [2, 16])
+        self.assertEqual(buffer_shape[1], "batch")
         self.assertTrue(compressed_shape[1].startswith("SparseAttentionIndexer_"))
-        self.assertTrue(buffer_shape[1].startswith("SparseAttentionIndexer_"))
-        self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), buffer_shape)
-
-    def test_dynamic_sparse_attention_invalid_widths_are_not_truncated(self):
-        def infer(query_width, packed):
-            input_names = ["query", "", ""]
-            inputs = [helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", query_width])]
-            if not packed:
-                input_names[1:] = ["key", "value"]
-                inputs.extend(
-                    [
-                        helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
-                        helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
-                    ]
-                )
-            inputs.extend(
-                [
-                    helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
-                    helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
-                    helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
-                ]
-            )
-            node = helper.make_node(
-                "DynamicSparseAttention",
-                [
-                    *input_names,
-                    "",
-                    "",
-                    "",
-                    "",
-                    "selected_indices",
-                    "selected_counts",
-                    "seqlens_k",
-                    "total_sequence_length",
-                ],
-                ["output", "present_key", "present_value"],
-                domain="com.microsoft",
-                num_heads=4,
-                kv_num_heads=2,
-            )
-            graph = helper.make_graph(
-                [node],
-                "DynamicSparseAttentionInvalidWidth",
-                inputs,
-                [
-                    helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
-                    helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
-                    helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
-                ],
-                [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
-            )
-            model = helper.make_model(
-                graph,
-                opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
-            )
-            return SymbolicShapeInference.infer_shapes(model, auto_merge=True).graph
-
-        packed_graph = infer(65, True)
-        self.assertTrue(packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param)
-        self.assertFalse(packed_graph.output[1].type.tensor_type.HasField("shape"))
-
-        separate_graph = infer(33, False)
-        self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
-        self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
+        self.assertTrue(buffer_shape[2].startswith("SparseAttentionIndexer_"))
 
     def _infer_packed_sparse_attention_indexer(self, node, inputs):
         outputs = [helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None) for name in node.output if name]
@@ -658,7 +583,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             index_topk=3,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["total_tokens", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["total_tokens", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, ["total_tokens", 16]),
             helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
@@ -684,6 +609,281 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 7, 16])
         self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), [2, 7, 16])
         self.assertEqual(self._tensor_shape(outputs["present_state_lengths"]), [2, 2])
+
+    def test_dynamic_sparse_attention_separate_qkv_with_past(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        outputs = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionSeparate",
+            inputs,
+            outputs,
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_dynamic_sparse_attention_packed_qkv_without_past(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 64]),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        outputs = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionPacked",
+            inputs,
+            outputs,
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, 12, 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, 12, 8]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_dynamic_sparse_attention_unshaped_past_keeps_capacity_unknown(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionUnshapedPast",
+            inputs,
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+                helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+                helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+            ],
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [2])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        for output in inferred.graph.output[1:]:
+            dims = output.type.tensor_type.shape.dim
+            self.assertEqual(len(dims), 4)
+            self.assertEqual(dims[0].dim_param, "b")
+            self.assertEqual(dims[1].dim_value, 2)
+            self.assertFalse(dims[2].HasField("dim_value"))
+            self.assertEqual(dims[3].dim_value, 8)
+
+    def test_sparse_attention_indexer_csa_static_with_empty_output(self):
+        node = helper.make_node(
+            "SparseAttentionIndexer",
+            [
+                "query",
+                "key",
+                "query_norm_weight",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "",
+                "past_key",
+                "gate",
+                "position_bias",
+                "head_weights",
+                "position_ids",
+                "",
+                "past_proj_buffer",
+            ],
+            ["selected_indices", "", "present_proj_buffer"],
+            domain="com.microsoft",
+            policy_mode="csa",
+            compress_ratio=4,
+            index_topk=3,
+        )
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
+            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("gate", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
+            helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, [2, 5, 2]),
+            helper.make_tensor_value_info("position_ids", TensorProto.INT64, [2, 5]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [2, 6, 8]),
+            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, 2, 5, 16]),
+        ]
+
+        inferred = self._infer_sparse_attention_indexer(node, inputs)
+        outputs = {output.name: output for output in inferred.graph.output}
+        self.assertEqual(list(inferred.graph.node[0].output), list(node.output))
+        self.assertEqual(self._tensor_shape(outputs["selected_indices"]), [2, 5, 3])
+        self.assertEqual(self._tensor_shape(outputs["present_proj_buffer"]), [2, 2, 6, 16])
+
+    def test_dynamic_sparse_attention_invalid_widths_are_not_truncated(self):
+        def infer(query_width, packed):
+            input_names = ["query", "", ""]
+            inputs = [helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", query_width])]
+            if not packed:
+                input_names[1:] = ["key", "value"]
+                inputs.extend(
+                    [
+                        helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+                        helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+                    ]
+                )
+            inputs.extend(
+                [
+                    helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+                    helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+                    helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+                ]
+            )
+            node = helper.make_node(
+                "DynamicSparseAttention",
+                [
+                    *input_names,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "selected_indices",
+                    "selected_counts",
+                    "seqlens_k",
+                    "total_sequence_length",
+                ],
+                ["output", "present_key", "present_value"],
+                domain="com.microsoft",
+                num_heads=4,
+                kv_num_heads=2,
+            )
+            graph = helper.make_graph(
+                [node],
+                "DynamicSparseAttentionInvalidWidth",
+                inputs,
+                [
+                    helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+                    helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+                    helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+                ],
+                [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+            )
+            model = helper.make_model(
+                graph,
+                opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+            )
+            return SymbolicShapeInference.infer_shapes(model, auto_merge=True).graph
+
+        packed_graph = infer(65, True)
+        self.assertTrue(packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param)
+        self.assertFalse(packed_graph.output[1].type.tensor_type.HasField("shape"))
+
+        separate_graph = infer(33, False)
+        self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
+        self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
+
+
+
 
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
@@ -735,6 +935,28 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("output", TensorProto.FLOAT, ["b", "s", 1]),
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_shape_start_end(self):
+        graph = helper.make_graph(
+            [
+                helper.make_node("Shape", ["input"], ["tail"], start=1),
+                helper.make_node("Shape", ["input"], ["head"], end=-1),
+                helper.make_node("ConstantOfShape", ["tail"], ["tail_output"]),
+                helper.make_node("ConstantOfShape", ["head"], ["head_output"]),
+            ],
+            "Shape_Test",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["b", "s", 8])],
+            [
+                helper.make_tensor_value_info("tail_output", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("head_output", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 15)])
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        output_shapes = {output.name: self._tensor_shape(output) for output in inferred.graph.output}
+        self.assertEqual(output_shapes["tail_output"], ["s", 8])
+        self.assertEqual(output_shapes["head_output"], ["b", "s"])
 
     def test_gather_indices(self):
         graph = helper.make_graph(

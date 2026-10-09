@@ -103,6 +103,8 @@ struct GraphOptions {
   bool add_capture_count = false;
   bool add_state_update_active = false;
   int64_t state_update_capacity = 0;
+  bool add_qsa_gate_output = false;
+  bool omit_csa_gate_output = false;
   int output_count = psai::kFixedOutputCount;
   std::string policy_mode = psai::kPolicyModeQsa;
 };
@@ -172,7 +174,8 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 
   std::vector<NodeArg*> outputs;
   for (int i = 0; i < options.output_count; ++i) {
-    outputs.push_back(i == psai::kPresentGateBuffer && !is_csa ? &empty : builder.MakeOutput());
+    const bool omit_gate = (!is_csa && !options.add_qsa_gate_output) || (is_csa && options.omit_csa_gate_output);
+    outputs.push_back(i == psai::kPresentGateBuffer && omit_gate ? &empty : builder.MakeOutput());
   }
   Node& node = builder.AddNode("PackedSparseAttentionIndexer", inputs, outputs, kMSDomain);
   node.AddAttribute("policy_mode", options.policy_mode);
@@ -439,13 +442,16 @@ enum class ProviderKind {
   WebGpu,
 };
 
-std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind) {
+std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind,
+                                                   const ConfigOptions* webgpu_options = nullptr) {
   if (provider_kind == ProviderKind::Cuda) {
     return DefaultCudaExecutionProvider();
   }
 #ifdef USE_WEBGPU
-  return DefaultWebGpuExecutionProvider();
+  return webgpu_options == nullptr ? DefaultWebGpuExecutionProvider()
+                                   : WebGpuExecutionProviderWithOptions(*webgpu_options);
 #else
+  ORT_UNUSED_PARAMETER(webgpu_options);
   return nullptr;
 #endif
 }
@@ -587,6 +593,7 @@ struct QsaPackedProblem {
   std::vector<float> key_norm_weight;
   std::vector<float> cos_cache;  // shared: [max_position, rotary_width]
   std::vector<float> sin_cache;
+  std::vector<int64_t> position_ids;
   std::vector<float> past_key_state;  // [batch, state_capacity, head_size]
   std::vector<float> past_kv_buffer;  // [batch, buffer_capacity, head_size]
 
@@ -706,7 +713,9 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
     for (int token = req_start; token < req_end; ++token) {
-      const int position = p.past_sequence_lengths[static_cast<size_t>(b)] + (token - req_start);
+      const int position = p.position_ids.empty()
+                               ? p.past_sequence_lengths[static_cast<size_t>(b)] + (token - req_start)
+                               : static_cast<int>(p.position_ids[static_cast<size_t>(token)]);
       const int causal_count = CausalThreshold(position, p.compress_ratio);
       const int visible_block_count = std::min(key_len_after[static_cast<size_t>(b)], causal_count);
       const int selected = std::min(block_topk, visible_block_count);
@@ -788,8 +797,8 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 template <typename T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
                       ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
-                      bool packed_qk = false, int padding = 0) {
-  auto provider = CreateProvider(provider_kind);
+                      bool packed_qk = false, int padding = 0, const ConfigOptions* webgpu_options = nullptr) {
+  auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
                  << " execution provider is not available";
@@ -854,10 +863,14 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   test.AddInput<T>("sin_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
   test.AddInput<int32_t>("cumulative_sequence_lengths", {batch_size + 1}, problem.cumulative_sequence_lengths);
   test.AddInput<int32_t>("past_sequence_lengths", {batch_size}, problem.past_sequence_lengths);
-  test.AddOptionalInputEdge<T>();        // gate
-  test.AddOptionalInputEdge<T>();        // position_bias
-  test.AddOptionalInputEdge<T>();        // head_weights
-  test.AddOptionalInputEdge<int64_t>();  // position_ids
+  test.AddOptionalInputEdge<T>();  // gate
+  test.AddOptionalInputEdge<T>();  // position_bias
+  test.AddOptionalInputEdge<T>();  // head_weights
+  if (problem.position_ids.empty()) {
+    test.AddOptionalInputEdge<int64_t>();
+  } else {
+    test.AddInput<int64_t>("position_ids", {total_tokens}, problem.position_ids);
+  }
   test.AddInput<T>("past_key_state", {batch_size, problem.state_capacity, head_size},
                    ToElementType<T>(problem.past_key_state));
   test.AddInput<T>("past_kv_buffer", {batch_size, buffer_capacity, head_size},
@@ -1095,6 +1108,18 @@ TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {
   RunQsaPackedTest<float>(1.0e-4f, std::move(problem));
 }
 
+TEST(PackedSparseAttentionIndexerTest, QsaMalformedStateLengthsAreClamped) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {4};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, -1};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
+}
+
+
+
 #ifdef USE_WEBGPU
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
@@ -1106,6 +1131,44 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat16) {
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPackedQueryKey) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, true);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateUpdateCapturesRawAndBlockTransitions) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 3};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateUpdateActiveZeroClearsAllSlots) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 5};
+  problem.state_update_active = 0;
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPortableStorageBindingLimit) {
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, false, 0, &config_options);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaAllEmptyBatchPreservesState) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 0};
+  problem.past_sequence_lengths = {5};
+  problem.past_state_lengths = {2, 1};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected) {
@@ -1368,8 +1431,8 @@ CsaPackedProblem MakeCsaPackedProblem(CsaPackedProblem problem = {}) {
 template <typename T>
 void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
                       ProviderKind provider_kind = ProviderKind::Cuda, CsaPackedResult* actual = nullptr,
-                      bool reuse = false, bool reuse_failure = false) {
-  auto provider = CreateProvider(provider_kind);
+                      bool reuse = false, bool reuse_failure = false, const ConfigOptions* webgpu_options = nullptr) {
+  auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
                  << " execution provider is not available";
@@ -1554,6 +1617,92 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected)
   problem.cumulative_sequence_lengths = {0, 4};
   problem.state_capacity = 1;
   problem.past_state_lengths = {1, 0};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+#endif
+
+#ifdef USE_CUDA
+TEST(PackedSparseAttentionIndexerCudaTest, DynamicSharedMemoryBoundaryValidation) {
+  constexpr size_t supported_bytes = 64 * 1024;
+  EXPECT_STATUS_OK(psai::ValidateDynamicSharedMemory(supported_bytes, supported_bytes, "BoundaryKernel"));
+  const Status status = psai::ValidateDynamicSharedMemory(
+      supported_bytes + 1, supported_bytes, "BoundaryKernel");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("BoundaryKernel"), std::string::npos);
+}
+#endif
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaPresentGateBuffer) {
+  GraphOptions options;
+  options.add_qsa_gate_output = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "present_gate_buffer) must be omitted");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMissingCsaPresentGateBuffer) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.omit_csa_gate_output = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "present_gate_buffer) is required");
+}
+#endif
+
+TEST(PackedSparseAttentionIndexerTest, CsaLargeRatioCompaction) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.compress_ratio = 64;
+  problem.cumulative_sequence_lengths = {0, 64};
+  problem.past_sequence_lengths = {65};
+  problem.state_capacity = 4;
+  problem.past_state_lengths = {0, 65};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
+}
+
+TEST(PackedSparseAttentionIndexerTest, CsaMalformedStateLengthsAreClamped) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {0};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, 8};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
+}
+
+#ifdef USE_WEBGPU
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaMalformedStateLengthsAreClamped) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {4};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, -1};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaPortableStorageBindingLimit) {
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu, nullptr, false, false, &config_options);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaAllEmptyBatchPreservesState) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 0};
+  problem.past_sequence_lengths = {3};
+  problem.past_state_lengths = {1, 1};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaMalformedStateLengthsAreClamped) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {0};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, 8};
   RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
 }
 #endif
