@@ -16,13 +16,28 @@ are needlessly pushed off the GPU.
 
 We want two things from a partition-time estimate that pull in opposite directions:
 
-1. **Safety** — the estimate must be an upper bound, so a placement decision never causes OOM.
+1. **Safety** — the per-node estimate must upper-bound that node's admitted workspace.
 2. **Tightness** — the estimate must be close to actual, so we do not waste VRAM and evict
    heavy nodes to CPU that would have fit.
 
 Forcing a *single static number* to be simultaneously a safe upper bound and a tight value is
 impossible for a dynamic-shape op whose kernel can take several routes with very different
 footprints. "Conservative" wins, VRAM is wasted, and utilization drops.
+
+### Proven bounds, empirical peaks, and heuristics
+
+These are different kinds of evidence and must not be interchanged:
+
+- A **proven upper bound** follows from formulas that cover every admitted state and every reachable
+  route. It is suitable for a capacity decision only while its route and workload assumptions are
+  enforced.
+- An **empirical peak** is the largest allocation observed during one or more profiling Runs. It is
+  useful for validating a bound and calibrating cost models, but an unobserved shape, route, allocator
+  state, or concurrent lifetime can exceed it. A sampled peak is therefore not a proof bound.
+- A **heuristic** is an assumed margin without either proof or exhaustive measurement. The generic
+  resource-accountant fallback is in this category: it estimates workspace as 50% of the known
+  initializer-plus-output bytes. It is neither a GQA route bound nor evidence that placement cannot
+  OOM.
 
 ### The concrete symptom (GQA)
 
@@ -163,8 +178,10 @@ cuDNN-SDPA block in `group_query_attention.cc`) has no graph-free workspace orac
 reachable**. The estimator enforces exactly this: `BuildBounds` flags a reachable cuDNN route
 (`group_query_attention_workspace_estimate.cc`) and `GetGQAWorkspaceAggregateForBounds` returns
 `Unavailable` for it (`group_query_attention_workspace_bounds.cc`), so the reduced estimate is
-emitted only when **every** reachable route is soundly sizeable; otherwise the conservative
-reservation is retained.
+emitted only when **every** reachable route is soundly sizeable. Under capacity-aware CUDA
+partitioning, an unavailable GQA estimate must fail closed by declining CUDA placement for that node.
+The framework's generic 50% fallback remains available to unrelated operators, but it cannot
+substitute for a missing GQA proof bound.
 
 Inputs to the predicate and where they come from at partition time:
 
@@ -277,38 +294,32 @@ The L1 budget must be reconciled with what the kernel actually declares/consumes
 
 - **L1 (partition):** `W_L1 = max over admitted (phase × route) of CompleteWorkspace`, used by
   `IResourceAccountant` for placement. `WorkspaceEstimateSource`
-  (`include/onnxruntime/core/framework/resource_accountant.h`) distinguishes
-  `kFallback / kEstimator / kProfile`; route-aware estimation moves GQA from a fallback multiplier
-  to a trustworthy `kEstimator` value.
+  (`include/onnxruntime/core/framework/resource_accountant.h`) records provenance, not proof:
+  `kFallback` is the generic 50% heuristic, `kEstimator` may be a proven analytical route bound, and
+  `kProfile` is an empirical observation. `kProfileAndEstimator` retains the maximum of the observed
+  and analytical values. Capacity-aware GQA placement accepts only an available route-aware
+  analytical bound; neither `kFallback` nor `kProfile` repairs an unavailable proof.
 - **L2 (Initialize):** `DeclareWorkspaceRequirements` declares the concrete per-slot need for the
   chosen envelope. `session.strict_workspace_verification` governs whether an L2 declaration larger
   than the L1 reservation fails Initialize (`=1`, strict) or logs and retains dynamic allocation
   (`=0`, default).
-- **Single-source the sizing — the estimator half already exists.** The sizing is already
-  consolidated on the estimator side: the recipe system in
+- **Single-source the sizing.** The recipe system in
   `group_query_attention_workspace*.{h,cc}` (`GetGQAPreparationRecipe` plus per-backend
   `GetGQA{Xqa,Flash,MemoryEfficient,Unfused}WorkspaceRecipe`, composed by
-  `GetGQACompleteWorkspaceRecipe`, overflow-checked and validated) is the single source that drives
-  `EstimateGroupQueryAttentionWorkspace` at partition time. What is **not** yet unified is the
-  runtime: `ComputeInternal` still sizes its scratch inline, and `GQABufferRequirements::Compute`
-  (`group_query_attention_impl.h`) sizes only `qkv_buffer`. So the remaining work is
-  one-directional — **migrate the runtime allocation to consume the same recipe builders the
-  estimator already uses** — after which the per-`(state, route)` sizing *formula* is identical on
-  both sides and each concrete Run's allocation is provably **bounded by** `W_L1`. It is **not**
-  *equal*: `W_L1` is the `max` over envelope states and permitted routes, while a Run allocates for
-  one concrete state and route and usually uses strictly less. Profiling then becomes *validation* of
-  that bound, not a *requirement*. (The recipe layouts are marginally larger than the
-  current inline math — e.g. the unfused recipe 256-aligns its QK and softmax regions separately —
-  so this is a sound behavior reconciliation, validated by `group_query_attention_workspace*_test.cc`
-  plus the GQA op tests, not a byte-identical refactor.)
+  `GetGQACompleteWorkspaceRecipe`, overflow-checked and validated) drives both the partition-time
+  estimator and runtime allocation. The remaining Level-2 work is to pass the same validated
+  envelope into `DeclareWorkspaceRequirements` and verify L1/L2 agreement. Sharing formulas makes
+  each concrete Run's allocation provably **bounded by** `W_L1`; it does not make them equal because
+  `W_L1` is the maximum over envelope states and reachable routes, while a Run takes one concrete
+  state and route.
 
 ### Requirements vs. allocation strategy — and the lifetime invariant
 
-L1 answers **how much** (the peak-concurrent requirement of the whole policy); L2 answers **how it is
-provided** (a persistently preallocated slot vs. transient scratch/arena). These must stay separable
-so allocation strategy can be tuned by benchmark without moving the placement number — the benchmark
-lesson (do *not* persist prefill-dominated GQA; *do* persist phase-invariant MatMulNBits) is an L2
-decision that should not perturb L1.
+L1 answers **how much** (the node's peak-concurrent requirement across its policy); L2 answers **how
+it is provided** (a persistently preallocated slot vs. transient scratch/arena). These must stay
+separable so allocation strategy can be tuned by benchmark without moving the placement number — the
+benchmark lesson (do *not* persist prefill-dominated GQA; *do* persist phase-invariant MatMulNBits) is
+an L2 decision that should not perturb L1.
 
 The invariant that keeps them separable:
 
@@ -320,6 +331,24 @@ The invariant that keeps them separable:
 
 `strict_workspace_verification` remains the guardrail that an L2 declaration never exceeds the L1
 reservation.
+
+### Per-node bounds are not the whole-graph peak
+
+`W_L1(node)` is a local contract. A whole-session VRAM bound additionally needs the execution plan's
+lifetimes:
+
+```
+GlobalPeak = persistent residents
+             + max over execution time (live activations + concurrently live workspaces)
+             + allocator/runtime reserve
+```
+
+This is not generally `sum(W_L1(node))`. Sequential scratch can reuse storage, while persistent L2
+slots overlap every Run; parallel streams, control-flow subgraphs, and allocator retention can create
+other overlaps. The current accountant's additive node charges do not perform this liveness analysis.
+Whole-graph peak/lifetime accounting is separate follow-up work. Route-aware per-node bounds are
+required inputs to that planner, not a replacement for it; additive accounting is conservative only
+when every local charge is itself a proven bound and all non-node reserve is represented.
 
 ---
 
@@ -369,19 +398,20 @@ GPU kernel), and that asymmetry is what flips the choice:
   slower. This is the central case the offloading design targets. Also the right pick for
   **multi-tenant / high-concurrency** GPUs (minimize per-session footprint so more sessions stay
   resident) and **large-batch / long-context serving** (spend VRAM on batch/KV rather than scratch).
-- **Choose `safe` for a hard no-OOM guarantee.** The bounded fallback has a known, tight,
-  graph-free worst-case envelope — the only route you can *prove* won't blow a strict VRAM ceiling
-  (shared device) or when **max sequence length is unbounded/unknown at config time** (the fast
-  routes, especially cuDNN, have no graph-free oracle). Also for **correctness / reproducibility /
-  debugging** (A/B against a known-good path, work around a per-arch numerical or availability issue)
-  and **portability** (guarantees the always-present route when cuDNN/XQA/Flash may be absent).
+- **Choose `safe` when a route-level proof is required.** The bounded fallback supplies a known
+  graph-free route bound when fast routes, especially cuDNN, have no graph-free oracle. A system-wide
+  no-OOM guarantee additionally requires runtime enforcement of the query/KV envelope, whole-graph
+  peak/lifetime accounting, and explicit allocator/runtime reserve; those are not supplied by a
+  route policy alone. `safe` is also useful for **correctness / reproducibility / debugging** (A/B
+  against a known-good path, work around a per-architecture numerical or availability issue) and
+  **portability** (select the always-present route when cuDNN/XQA/Flash may be absent).
 
 Users switch away from `latency` precisely when the **system-level** objective (fit, concurrency,
-no-OOM guarantee) outweighs the **node-level** objective (fastest kernel): interactive-and-fits →
-`latency`; constrained-or-shared → `memory`; must-not-OOM / unbounded / debugging → `safe`. These
-three named intents are the **manual approximation** of the Tier-0 auto-optimizer that consumes the
-`(W_L1, cost)` pair per route and solves the offload frontier automatically; shipping the intents
-first lets most users pick the right bucket by hand without the full cost model.
+or a proof-oriented deployment) outweighs the **node-level** objective (fastest kernel):
+interactive-and-fits → `latency`; constrained-or-shared → `memory`; bounded-route / debugging →
+`safe`. These three named intents are the **manual approximation** of the Tier-0 auto-optimizer that
+consumes the `(W_L1, cost)` pair per route and solves the offload frontier automatically; shipping
+the intents first lets most users pick the right bucket by hand without the full cost model.
 
 **Tier 2 — explicit route menu (EP-specific provider option, expert).**
 
@@ -451,12 +481,13 @@ Two archetypes:
 2. **Pin-then-measure** (ggml, vLLM): commit the route (or whole graph), measure its real footprint
    once at the envelope.
 
-ORT's current per-kernel "report your worst-case size" does **neither**: it estimates analytically
-(inherits estimation error) but reports the **worst route** (unfused). This design adopts both: a
-**static route-map + policy** for the plan (constrain-then-select), and an **envelope profiling
-Run** to calibrate (pin-then-measure), with the **bounded fallback** as the linchpin that makes
-budget-driven selection safe. Heed vLLM's documented pitfall: profile the *true* worst envelope
-(include the chunked-prefill shape), or the measured peak under-predicts and OOMs.
+ORT's generic resource-accountant fallback does **neither**: it assigns workspace equal to 50% of
+known initializer-plus-output bytes, without modeling routes or proving a bound. The route-aware GQA
+estimator instead uses a **static route map + analytical envelope bound**. An envelope profiling Run
+then validates that bound and calibrates performance/cost models; it never replaces the analytical
+bound for a strict capacity decision. Heed vLLM's documented pitfall: even a nominal maximum-shape
+profile can miss a larger peak from another admitted regime (such as chunked prefill), and a dummy
+Run can itself OOM before yielding a useful peak.
 
 ---
 
@@ -532,7 +563,9 @@ Policy π_GQA(x):
   # unfused ∉ image(π_GQA)  →  prohibited (error or bounded fallback)
 ```
 
-Envelope: query bound `P` (from `max_shape_override`), KV capacity `C` (from the GQA knob).
+Envelope: caller-declared query bound `P` (estimated from `max_shape_override`) and KV capacity `C`
+(from the GQA knob). Until runtime rejects query or KV values beyond those declarations, this is an
+estimation contract rather than a runtime-enforced no-OOM contract.
 
 ```
 prefill/chunk :  CompleteWorkspace(S_q=P, S_kv=C, Flash) = lse + lse_accum + out_accum
@@ -559,9 +592,9 @@ does not replace it with a sampled peak.
 ## Comparability: one contract → a Pareto set of contracts
 
 The design's natural end-state elevates each node from *one* contract to a small **Pareto set** of
-contracts, each exposing a `(W_L1, latency)` pair. Placement then solves a **global** objective —
-minimize model latency subject to `Σ resident + peak workspace ≤ capacity` — instead of greedily
-fitting each node independently.
+contracts, each exposing a `(W_L1, latency)` pair. After the separate whole-graph lifetime work,
+placement can solve a **global** objective — minimize model latency subject to
+`GlobalPeak(placement, policy) ≤ capacity` — instead of greedily fitting each node independently.
 
 The effect that makes this non-local: a **compact-but-slower** GPU policy can beat a
 **fast-but-larger** one, because the fast policy may evict a neighbor to CPU, and the **CPU boundary
@@ -590,18 +623,19 @@ Initialize coverage check so even an override is verified *total*, not trusted.
 ## Recommended roadmap
 
 ```
-Stage 0 (today): precise resident + conservative (unfused-bounded) workspace.
-                 Safe, wasteful — the current state.
+Stage 0 (baseline): precise known initializer/output bytes + generic 50% workspace heuristic.
+                    Neither route-aware nor a proof bound.
 
 Stage 1: Unify the runtime allocation with the existing estimator recipe system.
          - The recipe system (group_query_attention_workspace*.{h,cc}) already exists and
            drives the L1 estimator; migrate ComputeInternal to allocate from the same
            GetGQA*WorkspaceRecipe builders instead of sizing scratch inline.
-         - Estimate == allocation by construction. Highest leverage.
+         - Route-specific sizing formulas agree by construction; L1 remains their envelope max.
 
 Stage 2: Static route predicate + route-aware, envelope-driven estimate.
          - Extract seq-free flash/MEA eligibility into a pure helper.
          - W_L1 = max over admitted (phase × route) of CompleteWorkspace.
+         - If a reachable route has no proof bound, fail closed for capacity-aware placement.
          - Reclaims most VRAM via static analysis (Case A models).
 
 Stage 3: Committed policy + bounded fallback + enforcement.
@@ -609,16 +643,21 @@ Stage 3: Committed policy + bounded fallback + enforcement.
          - Bounded fallback route so every policy can be made total (Case B).
          - Runtime prohibits unfused under a committed policy.
 
-Stage 4: Envelope profiling Run to calibrate the estimate.
-         - Profile at the max_shape_override envelope (incl. chunked-prefill shape).
-         - Replace estimate with measured peak; feed IResourceAccountant.
+Stage 4: Envelope profiling Run to validate and calibrate.
+         - Exercise every relevant shape/route regime, including chunked prefill.
+         - Treat any observed allocation above W_L1 as a correctness failure.
+         - Never substitute the sampled peak for a proof bound in strict capacity placement.
 
-Stage 5: Adaptive re-partition from observed peaks across real traffic.
+Stage 5: Whole-graph peak/lifetime accounting.
+         - Combine persistent residents, activation liveness, overlapping workspaces, and reserve.
+         - Reuse sequential scratch instead of summing every per-node maximum.
+
+Stage 6: Adaptive policy tuning from observed traffic, constrained by proven contracts.
 ```
 
-Each stage strictly increases utilization without reintroducing OOM risk, because the no-OOM
-guarantee rests on the **precise resident budget + reserve + enforced bounded fallback**, not on the
-workspace estimate being both safe and tight.
+The proof remains route-local until the workload envelope is runtime-enforced and Stage 5 accounts
+for global lifetimes and reserve. Before both land, neither a route-local bound nor an empirical peak
+is a complete no-OOM guarantee.
 
 ### Actionable now vs. forward-looking
 
@@ -628,6 +667,9 @@ workspace estimate being both safe and tight.
 - **Forward-looking** (gate on the Stage-4 profiling that makes latency comparable): full policy
   comparability including CPU-boundary cost, and the auto-optimizer that consumes it — but ship the
   `(W_L1, cost)` interface early so it drops in without rework.
+- **Separate global dependency:** Stage 5 consumes proven per-node bounds but owns activation,
+  workspace, persistent-buffer, and allocator lifetimes. Tightening a node estimate does not by
+  itself prove the whole-session peak.
 - **The hard prerequisite for the Case B reductions:** the dispatch-ladder enforcement change —
   redirecting the unfused terminal (`data.use_unfused = true` in `group_query_attention.cc`) under a
   committed contract — landed as its own small, well-tested PR *before* any estimate that **removes a
@@ -654,6 +696,10 @@ implementation in the source tree. Instead:
 4. **L1 never detects the phase** — it enumerates envelope-admitted phases and takes the `max` of
    the policy-selected route at each, which is why `π` must be a static, total function evaluable at
    partition time.
+5. **Profiles are evidence, not proof** — use empirical peaks to detect estimator bugs and calibrate
+   cost models, never to replace an analytical upper bound required for strict placement.
+6. **Per-node proof is not global proof** — whole-graph liveness and allocator reserve determine the
+   session peak and remain separate accounting work.
 
-The bounded fallback is the linchpin: it is what lets a policy be total (Case B) and what makes the
-budget-driven, constrain-then-select model (cuDNN/TensorRT) safe in ORT.
+The bounded fallback is the linchpin: it is what lets a policy be total (Case B) and makes the
+route-level budget decision in the constrain-then-select model (cuDNN/TensorRT) sound.

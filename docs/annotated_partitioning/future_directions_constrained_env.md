@@ -311,12 +311,13 @@ To eliminate both the multiplier and arena waste for temp buffers, two problems 
 
 A subtlety not addressed above: many kernels (attention especially) can take **several routes**
 with very different workspace footprints, and a single node serves **multiple phases** (prefill /
-decode / chunk) that dispatch to different routes. A route-unaware estimate that bounds the
-worst route (e.g. GQA's quadratic unfused fallback) over-reserves by orders of magnitude and
-scales quadratically with context. See
+decode / chunk) that dispatch to different routes. The generic resource-accountant fallback estimates
+workspace as 50% of known initializer-plus-output bytes; it is a heuristic, not a route bound. A
+route-aware estimate that blindly includes every implementation can instead over-reserve by orders of
+magnitude (for example, by including GQA's quadratic unfused route when it is unreachable). See
 [`policy_based_workspace_estimation.md`](policy_based_workspace_estimation.md) for the
 policy-based, route-aware estimation/declaration design (committed dispatch policy, envelope-driven
-per-phase `max`, bounded fallback, and the user-configuration surface).
+per-phase `max`, proof-versus-profile distinction, and separate whole-graph lifetime accounting).
 
 ### What ORT Is Missing
 
