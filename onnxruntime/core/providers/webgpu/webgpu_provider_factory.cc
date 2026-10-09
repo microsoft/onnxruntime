@@ -246,7 +246,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
     const auto result = std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(),
-                                       config.context_id);
+                                        config.context_id);
     ORT_ENFORCE(result.ec == std::errc{} && result.ptr == context_id_str.data() + context_id_str.size() &&
                     config.context_id >= 0 && config.context_id <= std::numeric_limits<OrtDevice::DeviceId>::max(),
                 "Invalid deviceId value: ", context_id_str, ". Must be an integer in the range 0 to ",

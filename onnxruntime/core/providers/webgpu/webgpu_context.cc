@@ -308,20 +308,35 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       wgpu::Limits required_limits = GetRequiredLimits(adapter);
       device_desc.requiredLimits = &required_limits;
 
-      // TODO: revise temporary error handling
       device_desc.SetUncapturedErrorCallback(
           // Note: Don't throw from a Dawn callback.
           [](const wgpu::Device& /*device*/, wgpu::ErrorType type,
-             wgpu::StringView message) noexcept {
+             wgpu::StringView message, DeviceErrorState* state) noexcept {
+            {
+              std::lock_guard<std::mutex> lock{state->mutex};
+              if (state->status.IsOK()) {
+                state->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device error(", int(type),
+                                                "): ", std::string_view{message});
+              }
+            }
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
             }
-          });
-      // TODO: revise temporary device lost handling
+          },
+          device_error_state_.get());
+      // Dawn stops uncaptured callbacks before invoking the lost callback, which retains their state.
       device_desc.SetDeviceLostCallback(
           wgpu::CallbackMode::AllowSpontaneous,
           // Note: Don't throw from a Dawn callback.
-          [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) noexcept {
+          [state = device_error_state_](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason,
+                                        wgpu::StringView message) noexcept {
+            {
+              std::lock_guard<std::mutex> lock{state->mutex};
+              if (state->status.IsOK()) {
+                state->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device lost (", int(reason),
+                                                "): ", std::string_view{message});
+              }
+            }
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
             }

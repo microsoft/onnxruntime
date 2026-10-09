@@ -673,18 +673,18 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = !context_.HasDevice();
   return {
-      // allocator for initializers
+  // allocator for initializers
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
       context_.HasDevice() &&
               accelerated_initializer_allocator_ != nullptr
           ? accelerated_initializer_allocator_
           :
 #endif
-      CreateWebGpuAllocator(
-          context_id_,
-          device_free,
-          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
-          [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
+          CreateWebGpuAllocator(
+              context_id_,
+              device_free,
+              [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+              [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
       // default allocator
       CreateWebGpuAllocator(
           context_id_,
