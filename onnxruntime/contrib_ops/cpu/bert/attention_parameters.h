@@ -141,12 +141,13 @@ struct PagedAttentionParameters : AttentionParameters {
   // Per-head Q/K RMSNorm (QK-Norm) prologue applied before RoPE (inputs 12/13).
   bool use_qk_norm = false;
   float qk_norm_epsilon = 1e-6f;
-  // Quantized paged KV cache. Scales are inputs 14/15 and are always FP32, as in
-  // GroupQueryAttention. The storage element type is carried by the kernel's TCACHE specialization;
-  // the k_cache_dtype / v_cache_dtype attributes only override it for sub-byte formats packed into
-  // uint8, which no backend supports yet.
+  // Quantized paged KV cache. Static scales (inputs 14/15) are FP32; dynamic per-token scales
+  // (inputs 17/18) are FP16 or FP32. TCACHE carries the storage type, with explicit int4 attributes
+  // distinguishing the signed logical values packed into uint8.
   KVQuantizationType k_quant_type = KVQuantizationType::NONE;
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
+  bool qk_hadamard = false;
+  bool v_hadamard = false;
   // Multi-head Latent Attention (kv_cache_layout == "LATENT"). There is a single physical cache:
   // V of every head is the leading v_head_size channels of the same key_cache row, so 'value' and
   // 'value_cache' are absent. The inherited v_head_size / v_hidden_size hold the effective V width

@@ -68,9 +68,10 @@ enum class KVQuantizationType : int {
   NONE = 0,
   PER_TENSOR = 1,
   PER_CHANNEL = 2,
+  PER_TOKEN = 3,
 };
 
-inline KVQuantizationType StringToKVQuantizationType(std::string s) {
+inline KVQuantizationType StringToKVQuantizationType(std::string s, bool allow_per_token = false) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
   if (s == "NONE") {
     return KVQuantizationType::NONE;
@@ -81,8 +82,11 @@ inline KVQuantizationType StringToKVQuantizationType(std::string s) {
   if (s == "PER_CHANNEL") {
     return KVQuantizationType::PER_CHANNEL;
   }
+  if (allow_per_token && s == "PER_TOKEN") {
+    return KVQuantizationType::PER_TOKEN;
+  }
   ORT_THROW("Invalid KV quantization type: '", s,
-            "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL.");
+            "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL", allow_per_token ? ", PER_TOKEN." : ".");
 }
 
 // Logical element type of a KV cache. Members are named after the ONNX element type they denote.
