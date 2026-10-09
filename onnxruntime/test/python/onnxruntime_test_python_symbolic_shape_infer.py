@@ -275,6 +275,64 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(inferred_shapes["present_key"], ["batch", 2, "kv_sequence", 8])
         self.assertEqual(inferred_shapes["present_value"], ["batch", 2, "kv_sequence", 6])
 
+    def test_multi_head_attention_independent_present_outputs(self):
+        for num_heads in (2, 4):
+            for use_past in (False, True):
+                for output_names in (
+                    ["output"],
+                    ["output", "present_key"],
+                    ["output", "", "present_value"],
+                    ["output", "present_key", "present_value"],
+                ):
+                    with self.subTest(num_heads=num_heads, use_past=use_past, outputs=output_names):
+                        input_names = ["query", "key", "value"]
+                        inputs = [
+                            helper.make_tensor_value_info(
+                                "query", TensorProto.FLOAT, ["batch", "query_sequence", num_heads * 8]
+                            ),
+                            helper.make_tensor_value_info("key", TensorProto.FLOAT, ["batch", "kv_sequence", 16]),
+                            helper.make_tensor_value_info("value", TensorProto.FLOAT, ["batch", "kv_sequence", 12]),
+                        ]
+                        if use_past:
+                            input_names.extend(["", "", "", "past_key", "past_value"])
+                            inputs.extend(
+                                [
+                                    helper.make_tensor_value_info("past_key", TensorProto.FLOAT, ["batch", 2, 5, 8]),
+                                    helper.make_tensor_value_info("past_value", TensorProto.FLOAT, ["batch", 2, 5, 6]),
+                                ]
+                            )
+                        graph = helper.make_graph(
+                            [
+                                helper.make_node(
+                                    "MultiHeadAttention",
+                                    input_names,
+                                    output_names,
+                                    domain="com.microsoft",
+                                    num_heads=num_heads,
+                                    kv_num_heads=2,
+                                )
+                            ],
+                            "MultiHeadAttention_IndependentPresentOutputs",
+                            inputs,
+                            [
+                                helper.make_tensor_value_info(name, TensorProto.FLOAT, None)
+                                for name in output_names
+                                if name
+                            ],
+                        )
+                        model = helper.make_model(
+                            graph,
+                            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                        )
+                        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                        shapes = {output.name: self._tensor_shape(output) for output in inferred.graph.output}
+                        self.assertEqual(shapes["output"], ["batch", "query_sequence", num_heads * 6])
+                        sequence_length = "5+kv_sequence" if use_past else "kv_sequence"
+                        if "present_key" in output_names:
+                            self.assertEqual(shapes["present_key"], ["batch", 2, sequence_length, 8])
+                        if "present_value" in output_names:
+                            self.assertEqual(shapes["present_value"], ["batch", 2, sequence_length, 6])
+
     def test_multi_head_attention_grouped_query_indivisible_value_hidden_size(self):
         # value hidden size 13 is not divisible by kv_num_heads, which the runtime rejects. Shape inference must
         # leave the affected dimensions unknown instead of truncating the division.

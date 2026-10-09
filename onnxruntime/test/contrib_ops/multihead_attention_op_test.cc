@@ -822,6 +822,32 @@ TEST(MultiHeadAttentionTest, SharedCacheRequiresPresentOutputs) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(MultiHeadAttentionTest, GroupedQuerySharedCacheRejectsMismatchedValueHeadSize) {
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 4);
+  tester.AddAttribute<int64_t>("kv_num_heads", 2);
+
+  tester.AddInput<float>("query", {1, 1, 8}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("key", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("value", {1, 1, 2}, std::vector<float>(2, 0.0f));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("past_key", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
+  tester.AddInput<float>("past_value", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {1});
+
+  tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_key", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
+  tester.AddOutput<float>("present_value", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Input 'past_value' dimension 3 should be same as head_size and value head_size",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(MultiHeadAttentionTest, SharedCacheRejectsSequenceBeyondCapacity) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);

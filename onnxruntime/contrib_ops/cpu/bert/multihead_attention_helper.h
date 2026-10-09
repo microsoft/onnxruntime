@@ -178,9 +178,10 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
                            "Input 'past_key' dimension 3 should be same as head_size, got ",
                            past_key_dims[3]);
   }
-  if (past_value_dims[3] != v_head_size) {
+  if (past_value_dims[3] != v_head_size || (past_present_share_buffer && past_value_dims[3] != head_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as value head_size, got ",
+                           "Input 'past_value' dimension 3 should be same as ",
+                           past_present_share_buffer ? "head_size and value head_size" : "value head_size", ", got ",
                            past_value_dims[3]);
   }
   past_sequence_length = static_cast<int>(past_key_dims[2]);

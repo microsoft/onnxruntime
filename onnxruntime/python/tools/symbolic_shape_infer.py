@@ -2486,9 +2486,10 @@ class SymbolicShapeInference:
                 present_value_shape = [batch_size, kv_num_heads, total_sequence_length, value_head_size]
 
                 assert output_dtype is not None
-                if len(node.output) > 2 and node.output[1] and node.output[2]:
+                if node.output[1]:
                     vi = self.known_vi_[node.output[1]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_key_shape))
+                if len(node.output) > 2 and node.output[2]:
                     vi = self.known_vi_[node.output[2]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_value_shape))
 
