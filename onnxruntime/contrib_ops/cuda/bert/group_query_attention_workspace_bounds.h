@@ -35,10 +35,11 @@ constexpr bool HasGQAReachableBackend(GQAReachableBackend mask,
 
 // Graph-free upper bounds and immutable feature facts. Positive dimensions are
 // componentwise bounds, not a claim that their combination is one runtime shape.
-// The aggregate assumes both past/present K/V pairs alias. A caller that permits
-// partial aliasing must separately account for preservation scratch. For a
-// non-windowed cache, present_kv_cache_capacity_bound must bound both the allocated
-// past capacity and the active total KV length.
+// The aggregate assumes both past/present K/V pairs alias unless
+// account_partial_alias_preservation is enabled, in which case it adds the
+// worst-case preservation scratch for partial aliasing. For a non-windowed
+// cache, present_kv_cache_capacity_bound must bound both the allocated past
+// capacity and the active total KV length.
 struct GQAWorkspaceBounds {
   size_t qkv_element_size = 0;
   size_t cache_element_size = 0;
