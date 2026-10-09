@@ -8,6 +8,7 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -44,6 +45,13 @@
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/selectors_actions/actions.h"
 #include "core/optimizer/selectors_actions/helpers.h"
+
+#if defined(USE_CUDA) && !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#include <cuda_runtime_api.h>
+#include <gsl/util>
+#include "core/providers/cuda/cuda_provider_options.h"
+#include "core/providers/cuda/cuda_resource.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -145,6 +153,7 @@ class StreamPoolTestStream : public Stream {
   }
 
   static void SetDevice(OrtDevice::DeviceId device_id) { current_device_ = device_id; }
+  static OrtDevice::DeviceId CurrentDevice() { return current_device_; }
 
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t) override {
     EXPECT_EQ(current_device_, GetDevice().Id());
@@ -234,7 +243,8 @@ static void TestDeviceStreamPool(bool enable_graph_capture, bool register_set_de
   for (size_t i = 0; i < num_threads; ++i) {
     std::promise<void> ran;
     auto completed = ran.get_future();
-    threads.emplace_back([&session_state, main_collection, expect_thread_affinity, ran = std::move(ran), released]() mutable {
+    threads.emplace_back([&session_state, main_collection, expect_thread_affinity, register_set_device,
+                          ran = std::move(ran), released]() mutable {
       auto first = session_state.AcquireDeviceStreamCollection();
       EXPECT_NE(first, nullptr);
       if (expect_thread_affinity) {
@@ -243,6 +253,7 @@ static void TestDeviceStreamPool(bool enable_graph_capture, bool register_set_de
         EXPECT_EQ(first.get(), main_collection);
       }
       if (first) {
+        EXPECT_EQ(StreamPoolTestStream::CurrentDevice(), first->GetStream(0)->GetDevice().Id());
         std::vector<OrtValue> fetches;
         const std::array<size_t, 1> notification_owners{0};
         StreamExecutionContext context(session_state, 1, notification_owners, 0, first.get(),
@@ -251,8 +262,12 @@ static void TestDeviceStreamPool(bool enable_graph_capture, bool register_set_de
       }
       const auto* first_collection = first.get();
       session_state.RecycleDeviceStreamCollection(std::move(first));
+      if (register_set_device) {
+        StreamPoolTestStream::SetDevice(-1);
+      }
       auto second = session_state.AcquireDeviceStreamCollection();
       EXPECT_EQ(second.get(), first_collection);
+      EXPECT_EQ(StreamPoolTestStream::CurrentDevice(), second->GetStream(0)->GetDevice().Id());
       session_state.RecycleDeviceStreamCollection(std::move(second));
       ran.set_value();
       released.wait();
@@ -295,6 +310,141 @@ TEST(SessionStateTest, DeviceStreamPoolGraphCaptureThreadAffinity) {
 TEST(SessionStateTest, DeviceStreamPoolWithoutDeviceSelectionThreadAffinity) {
   TestDeviceStreamPool(false, false);
 }
+
+#if defined(USE_CUDA) && !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+TEST(SessionStateTest, DeviceStreamPoolCudaAsyncCrossThreadReuse) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count < 2) {
+    GTEST_SKIP() << "Requires two CUDA devices";
+  }
+  int original_device = 0;
+  ASSERT_EQ(cudaGetDevice(&original_device), cudaSuccess);
+  auto restore_device = gsl::finally([original_device]() { EXPECT_EQ(cudaSetDevice(original_device), cudaSuccess); });
+
+  OrtCUDAProviderOptionsV2 options{};
+  options.device_id = 1;
+  auto cuda_provider = CudaExecutionProviderWithOptions(&options);
+  ASSERT_NE(cuda_provider, nullptr);
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(cuda_provider)));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, DefaultCpuExecutionProvider()));
+
+  Model model("cuda_stream_pool_test", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_type);
+  auto& output = graph.GetOrCreateNodeArg("output", &tensor_type);
+  graph.AddNode("copy", "MemcpyFromHost", "", {&input}, {&output}).SetExecutionProviderType(kCudaExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  session_options.enable_mem_pattern = false;
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  auto collection = session_state.AcquireDeviceStreamCollection();
+  ASSERT_NE(collection, nullptr);
+  auto* original_collection = collection.get();
+  auto* original_stream = collection->GetStream(0);
+  ASSERT_NE(original_stream, nullptr);
+  ASSERT_EQ(original_stream->GetDevice().Id(), 1);
+  auto cuda_stream = static_cast<cudaStream_t>(original_stream->GetHandle());
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+
+  auto allocator = session_state.GetAllocator(original_stream->GetDevice());
+  ASSERT_NE(allocator, nullptr);
+  auto* deferred_allocator = static_cast<OrtAllocator*>(
+      original_stream->GetResource(ORT_CUDA_RESOURCE_VERSION, CudaResource::deferred_cpu_allocator_t));
+  ASSERT_NE(deferred_allocator, nullptr);
+  ASSERT_EQ(deferred_allocator->Info(deferred_allocator)->alloc_type, OrtArenaAllocator);
+  auto pinned_allocator = session_state.GetAllocator(*deferred_allocator->Info(deferred_allocator));
+  ASSERT_NE(pinned_allocator, nullptr);
+  AllocatorStats initial_pinned_stats;
+  pinned_allocator->GetStats(&initial_pinned_stats);
+  IAllocatorUniquePtr<void> device_buffer;
+  void* host_buffer = nullptr;
+  ASSERT_EQ(cudaMallocHost(&host_buffer, 2), cudaSuccess);
+  std::unique_ptr<unsigned char, decltype(&cudaFreeHost)> result(
+      static_cast<unsigned char*>(host_buffer), cudaFreeHost);
+  std::promise<void> release_gpu_work;
+  auto released = release_gpu_work.get_future().share();
+  bool gpu_work_released = false;
+  auto finish_gpu_work = gsl::finally([&]() {
+    if (!gpu_work_released) {
+      release_gpu_work.set_value();
+    }
+    EXPECT_EQ(cudaStreamSynchronize(cuda_stream), cudaSuccess);
+  });
+
+  std::thread first_caller([&]() {
+    ASSERT_EQ(cudaSetDevice(0), cudaSuccess);
+    DeviceStreamCollectionHolder first_holder(&session_state);
+    auto& first = first_holder.p_;
+    ASSERT_EQ(first.get(), original_collection);
+    int current_device = -1;
+    ASSERT_EQ(cudaGetDevice(&current_device), cudaSuccess);
+    EXPECT_EQ(current_device, 1);
+    // Exercise allocation before notification construction, as input copies do.
+    device_buffer = IAllocator::MakeUniquePtr<void>(allocator, 1);
+    auto pinned_input = IAllocator::MakeUniquePtrFromOrtAllocator<unsigned char>(deferred_allocator, 1);
+    ASSERT_NE(pinned_input, nullptr);
+    *pinned_input = 0x3a;
+    {
+      std::vector<OrtValue> fetches;
+      const std::array<size_t, 1> notification_owners{0};
+      StreamExecutionContext context(session_state, 1, notification_owners, 0, first.get(),
+                                     {}, {}, {}, fetches, {}, session_state.Logger(), true);
+      ASSERT_NE(context.GetNotification(0), nullptr);
+      auto wait_for_release = [](void* gate) {
+        static_cast<std::shared_future<void>*>(gate)->wait();
+      };
+      EXPECT_EQ(cudaLaunchHostFunc(cuda_stream, wait_for_release, &released), cudaSuccess);
+      const auto status = cudaMemcpyAsync(device_buffer.get(), pinned_input.get(), 1, cudaMemcpyHostToDevice, cuda_stream);
+      EXPECT_EQ(status, cudaSuccess);
+      EXPECT_EQ(cudaMemcpyAsync(result.get(), device_buffer.get(), 1, cudaMemcpyDeviceToHost, cuda_stream), cudaSuccess);
+      context.GetNotification(0)->ActivateAndUpdate();
+    }
+    pinned_input.reset();
+    ASSERT_STATUS_OK(first->CleanUp(false));
+  });
+  first_caller.join();
+
+  // The exiting caller and its notification must not destroy the still-busy pooled stream.
+  EXPECT_EQ(cudaSetDevice(0), cudaSuccess);
+  collection = session_state.AcquireDeviceStreamCollection();
+  EXPECT_EQ(collection.get(), original_collection);
+  EXPECT_EQ(collection->GetStream(0), original_stream);
+  EXPECT_EQ(cudaStreamQuery(cuda_stream), cudaErrorNotReady);
+  AllocatorStats pending_pinned_stats;
+  pinned_allocator->GetStats(&pending_pinned_stats);
+  EXPECT_GT(pending_pinned_stats.bytes_in_use, initial_pinned_stats.bytes_in_use);
+  if (device_buffer) {
+    EXPECT_EQ(cudaMemsetAsync(device_buffer.get(), 0x6b, 1, cuda_stream), cudaSuccess);
+    EXPECT_EQ(cudaMemcpyAsync(result.get() + 1, device_buffer.get(), 1, cudaMemcpyDeviceToHost, cuda_stream), cudaSuccess);
+  }
+  EXPECT_TRUE(original_stream->CleanUpOnRunEnd().IsOK());
+  release_gpu_work.set_value();
+  gpu_work_released = true;
+  EXPECT_EQ(cudaStreamSynchronize(cuda_stream), cudaSuccess);
+  ASSERT_NE(device_buffer, nullptr);
+  EXPECT_EQ(result.get()[0], 0x3a);
+  EXPECT_EQ(result.get()[1], 0x6b);
+  AllocatorStats final_pinned_stats;
+  pinned_allocator->GetStats(&final_pinned_stats);
+  EXPECT_EQ(final_pinned_stats.bytes_in_use, initial_pinned_stats.bytes_in_use);
+  ASSERT_STATUS_OK(collection->CleanUp(true));
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+}
+#endif
 #endif
 
 class TestOpKernel : public OpKernel {

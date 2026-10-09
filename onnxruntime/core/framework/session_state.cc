@@ -2403,6 +2403,17 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
       if (it->second.device_streams.empty()) {
         device_stream_pools_.erase(it);
       }
+      // Input copies can allocate before StreamExecutionContext selects the notification device.
+      for (size_t i = 0; i < device_stream->NumStreams(); ++i) {
+        auto* stream = device_stream->GetStream(i);
+        if (stream) {
+          const auto& device = stream->GetDevice();
+          auto set_device_fn = stream_handles_registry_->GetSetDeviceFn(device.Type());
+          if (set_device_fn.has_value()) {
+            set_device_fn.value()(device.Id());
+          }
+        }
+      }
       return device_stream;
     }
 
