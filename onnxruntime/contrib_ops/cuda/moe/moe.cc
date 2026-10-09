@@ -326,7 +326,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
           }
         }
       }
-    } else {
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
       packed.cpu_gemm_float_data.resize(packed.cpu_data.size());
       for (size_t expert = 0; expert < num_experts; ++expert) {
         const T* source = packed.cpu_data.data() + expert * expert_element_count;
@@ -669,7 +669,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       if (!tactics.empty()) {
         moe_runner.setTactic(tactics[0], tactics[0]);
       }
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
+    } else {
       std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
       AllocatorPtr allocator;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
