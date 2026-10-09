@@ -20,6 +20,21 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
+
+namespace {
+
+void SetWeightlessSourceModelBuffer(const OrtSessionOptions& session_options, ProviderInfo& provider_info) {
+  InitProviderOrtApi();
+  const void* source_model_data = nullptr;
+  size_t source_model_data_size = 0;
+  Ort::ThrowOnError(Ort::GetEpApi().SessionOptionsGetWeightlessSourceModelBuffer(
+      &session_options, &source_model_data, &source_model_data_size));
+  provider_info.weightless_source_model_data = source_model_data;
+  provider_info.weightless_source_model_data_size = source_model_data_size;
+}
+
+}  // namespace
+
 void ParseConfigOptions(ProviderInfo& pi) {
   if (pi.config_options == nullptr)
     return;
@@ -30,6 +45,11 @@ void ParseConfigOptions(ProviderInfo& pi) {
   pi.so_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
   pi.so_context_file_path = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
   pi.so_stop_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionStopShareEpContexts, "0") == "1";
+  pi.so_weightless_enabled = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") == "1";
+  pi.so_context_source_model_path = ToPathString(
+      pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextSourceModelPath, ""));
+  pi.external_initializers_file_folder_path = ToPathString(
+      pi.config_options->GetConfigOrDefault(kOrtSessionOptionsModelExternalInitializersFileFolderPath, ""));
 
   if (pi.so_share_ep_contexts) {
     // Set default NPU compilation params only if user hasn't provided them
@@ -431,6 +451,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     ProviderInfo provider_info = provider_info_;
     ParseProviderInfo(provider_options, &config_options, provider_info);
     ParseConfigOptions(provider_info);
+    SetWeightlessSourceModelBuffer(session_options, provider_info);
 
     auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info);
     ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
@@ -440,9 +461,10 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   // This is called during session creation when AppendExecutionProvider_V2 is used.
   // This one is called because ParseProviderInfo / ParseConfigOptions, etc. are already
   // performed in CreateIExecutionProvider, and so provider_info_ has already been populated.
-  std::unique_ptr<IExecutionProvider> CreateProvider_V2(const OrtSessionOptions& /*session_options*/,
+  std::unique_ptr<IExecutionProvider> CreateProvider_V2(const OrtSessionOptions& session_options,
                                                         const OrtLogger& session_logger) {
     ProviderInfo provider_info = provider_info_;
+    SetWeightlessSourceModelBuffer(session_options, provider_info);
     auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info);
     ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
     return ov_ep;

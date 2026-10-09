@@ -8,6 +8,7 @@
 #include <memory>
 #include <sstream>
 #include <fstream>
+#include <iterator>
 #include <utility>
 #include <iostream>
 
@@ -23,6 +24,49 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 using namespace backend_utils;
+
+namespace {
+
+std::shared_ptr<OVNetwork> LoadWeightlessSourceModel(const SessionContext& session_context,
+                                                     const SubGraphContext& subgraph_context) {
+  const bool has_source_buffer = session_context.weightless_source_model_data != nullptr;
+  ORT_ENFORCE(has_source_buffer == (session_context.weightless_source_model_data_size != 0),
+              log_tag, "Invalid weightless source model buffer.");
+
+  const std::filesystem::path source_model_path = !session_context.so_context_source_model_path.empty()
+                                                      ? session_context.so_context_source_model_path
+                                                      : subgraph_context.weightless_source_model_path;
+  ORT_ENFORCE(has_source_buffer || !source_model_path.empty(),
+              log_tag,
+              "A weightless OpenVINO EPContext model requires the source model. Provide it with "
+              "SessionOptionsSetWeightlessSourceModelBuffer(), the ep.context_source_model_path session option, "
+              "or place it next to the EPContext model using the onnx_model_filename attribute.");
+
+  std::string source_model_data;
+  if (has_source_buffer) {
+    const auto* data = static_cast<const char*>(session_context.weightless_source_model_data);
+    source_model_data.assign(data, session_context.weightless_source_model_data_size);
+  } else {
+    std::ifstream source_model_stream(source_model_path, std::ios::binary);
+    ORT_ENFORCE(source_model_stream,
+                log_tag, "Failed to open weightless source model: ", source_model_path.string());
+    source_model_data.assign(std::istreambuf_iterator<char>(source_model_stream),
+                             std::istreambuf_iterator<char>());
+    ORT_ENFORCE(!source_model_stream.bad(),
+                log_tag, "Failed to read weightless source model: ", source_model_path.string());
+  }
+
+  std::filesystem::path external_data_model_path = source_model_path;
+  if (!session_context.external_initializers_file_folder_path.empty()) {
+    external_data_model_path =
+        session_context.external_initializers_file_folder_path / "virtual_model.onnx";
+  }
+
+  return OVCore::Get()->ReadModel(
+      std::move(source_model_data), PathToUTF8String(external_data_model_path.native()));
+}
+
+}  // namespace
 
 BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_proto,
                            SessionContext& session_context,
@@ -40,6 +84,12 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   SetOVDeviceConfiguration(device_config);
   if (subgraph_context_.is_ep_ctx_graph) {
     try {
+      std::shared_ptr<OVNetwork> weightless_source_model;
+      if (session_context_.so_weightless_enabled) {
+        weightless_source_model = LoadWeightlessSourceModel(session_context_, subgraph_context_);
+        device_config.emplace(ov::hint::model(weightless_source_model));
+      }
+
       if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
         // model_file_path will use so_context_file_path if the onnx_model_path_name is not available,
         // especially in case of CreateSessionFormArray() where user must explicitly
@@ -169,6 +219,15 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::No
 
 void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   device_config = {};
+  if (session_context_.so_weightless_enabled) {
+    if (session_context_.device_type.find("NPU") != std::string::npos) {
+      const auto weightless_supported = queryOVProperty(ov::enable_weightless.name(), "NPU");
+      ORT_ENFORCE(weightless_supported.value_or(false),
+                  log_tag, "The selected OpenVINO NPU compiler does not support weightless mode.");
+    }
+    device_config.emplace(ov::enable_weightless(true));
+  }
+
   // Set inference precision based on device precision for OV backend
   if (session_context_.precision.find("FP16") != std::string::npos &&
       session_context_.device_type == "GPU") {

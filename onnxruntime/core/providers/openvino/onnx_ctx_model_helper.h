@@ -29,6 +29,7 @@ static const char MAIN_CONTEXT[] = "main_context";
 static const char PARTITION_NAME[] = "partition_name";
 static const char EP_CACHE_CONTEXT[] = "ep_cache_context";
 static const char EP_SDK_VER[] = "ep_sdk_version";
+static const char ONNX_MODEL_FILENAME[] = "onnx_model_filename";
 static const char SOURCE[] = "source";
 
 class EPCtxHandler {
@@ -40,7 +41,8 @@ class EPCtxHandler {
   Status AddOVEPCtxNodeToGraph(const GraphViewer& subgraph_view,
                                const std::string& graph_name,
                                const bool embed_mode,
-                               std::string&& model_blob_str) const;
+                               std::string&& model_blob_str,
+                               const std::string& source_model_filename) const;
   std::unique_ptr<ModelBlobWrapper> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& subgraph_view, const std::string& device_type) const;
   InlinedVector<const Node*> GetEPCtxNodes() const;
   bool CheckEPCacheContextAttribute(const GraphViewer& subgraph_view, const std::string& target_attr_extn) const;
