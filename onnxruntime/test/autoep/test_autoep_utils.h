@@ -48,6 +48,8 @@ struct Utils {
     using GetEnableWeightlessOptionFn = int (*)();
     using ResetSavedInitializerCountFn = void (*)();
     using GetSavedInitializerCountFn = uint64_t (*)();
+    using ResetWeightlessSourceModelBufferFn = void (*)();
+    using GetWeightlessSourceModelBufferFn = void (*)(const void** data, size_t* length);
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
@@ -59,6 +61,8 @@ struct Utils {
     GetEnableWeightlessOptionFn get_enable_weightless_option{};
     ResetSavedInitializerCountFn reset_saved_initializer_count{};
     GetSavedInitializerCountFn get_saved_initializer_count{};
+    ResetWeightlessSourceModelBufferFn reset_weightless_source_model_buffer{};
+    GetWeightlessSourceModelBufferFn get_weightless_source_model_buffer{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

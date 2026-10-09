@@ -5,8 +5,9 @@
 
 #include <cassert>
 #include <limits>
-#include <string>
 #include <optional>
+#include <string>
+#include <string_view>
 
 #include "ep.h"
 #include "ep_allocator.h"
@@ -387,6 +388,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string enable_weightless;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightless, "<not set>",
                                                  enable_weightless));
+  const void* source_model_data = nullptr;
+  size_t source_model_data_length = 0;
+  RETURN_IF_ERROR(factory->ep_api.SessionOptionsGetWeightlessSourceModelBuffer(session_options, &source_model_data,
+                                                                               &source_model_data_length));
+  RecordWeightlessSourceModelBuffer(source_model_data, source_model_data_length);
+
   RecordEnableWeightlessOption(enable_weightless == "<not set>" ? -1
                                : enable_weightless == "0"       ? 0
                                : enable_weightless == "1"       ? 1
