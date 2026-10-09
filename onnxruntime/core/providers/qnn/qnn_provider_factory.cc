@@ -208,7 +208,8 @@ struct QnnEpFactory : OrtEpFactory {
   QnnEpFactory(const OrtApi& ort_api_in,
                const OrtLogger& default_logger_in,
                const char* ep_name)
-      : ort_api{ort_api_in},
+      : OrtEpFactory{},
+        ort_api{ort_api_in},
         default_logger{default_logger_in},
         ep_name{ep_name} {
     ort_version_supported = ORT_API_VERSION;
