@@ -203,6 +203,9 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   // full past tensor when only one past/present pair aliases, but alias state is
   // unavailable here. Windowed execution is bounded by the cache shape and the
   // runtime requires both past/present pairs to alias before allocating scratch.
+  // config.max_total_sequence_length carries the externally declared KV-length envelope
+  // (session option ep.cuda.gqa_workspace_max_total_sequence_length) intended to bound this
+  // non-windowed path; it is plumbed but not yet consumed here, so behavior is unchanged.
   if (!config.sliding_window_cache) return std::nullopt;
 
   const bool packed = !Present(shapes, kKey);
@@ -319,10 +322,10 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   const bool quantized_xqa = k_quantized && config.kv_cache_bit_width == 8;
   const int64_t group_size = config.num_heads / config.kv_num_heads;
   const bool xqa_head_reachable =
-      (head_bound >= 64) &&
-      ((head_bound >= 64 && IsSupportedGQAXqaHeadSize(64)) ||
-       (head_bound >= 128 && IsSupportedGQAXqaHeadSize(128)) ||
-       (head_bound >= 256 && IsSupportedGQAXqaHeadSize(256)));
+      (head_bound >= 64 && IsSupportedGQAXqaGeometry(64, group_size, k_quantized)) ||
+      (head_bound >= 128 && IsSupportedGQAXqaGeometry(128, group_size, k_quantized)) ||
+      (head_bound >= 256 && IsSupportedGQAXqaGeometry(256, group_size, k_quantized)) ||
+      (head_bound >= 512 && IsSupportedGQAXqaGeometry(512, group_size, k_quantized));
   const bool fp8_cache = k_quantized && config.cache_is_fp8;
   const bool xqa_reachable =
       config.enable_xqa && config.causal == 1 && !has_bias &&
@@ -330,7 +333,6 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
       smooth_supported_by_xqa && (!bounds.use_qk_norm || !k_quantized) &&
       (!k_quantized || config.kv_cache_bit_width == 8) &&
       xqa_head_reachable &&
-      IsSupportedGQAXqaGroupSize(group_size, k_quantized) &&
       (!fp8_cache || device_prop.major >= 9 ||
        (device_prop.major == 8 && device_prop.minor == 9));
   if (xqa_reachable) {
@@ -392,7 +394,12 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   return bounds;
 }
 
-std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
+}  // namespace
+
+std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
+    const Node& node,
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
   if (node.OpType() != "GroupQueryAttention") return std::nullopt;
   GQAWorkspaceEstimateConfig config;
   bool found_heads = false;
@@ -461,10 +468,10 @@ std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
       ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0;
   config.disable_flash_decode =
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FLASH_DECODE", false);
+  config.head_sink_may_be_prepacked = head_sink_is_constant_initializer;
+  config.max_total_sequence_length = max_total_sequence_length;
   return config;
 }
-
-}  // namespace
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
@@ -484,10 +491,11 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
-    bool head_sink_is_constant_initializer) {
-  auto config = ConfigFromNode(node);
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length) {
+  const auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
+      node, head_sink_is_constant_initializer, max_total_sequence_length);
   if (!config.has_value()) return std::nullopt;
-  config->head_sink_may_be_prepacked = head_sink_is_constant_initializer;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);
 }

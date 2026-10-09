@@ -19,9 +19,14 @@ __global__ void _GatherNDGradKernel(
     const size_t slice_size,
     const int64_t* slice_offsets) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, num_slices * slice_size);
-  uint64_t slice_offset = slice_offsets[i / slice_size];
-  size_t j = i % slice_size;
-  atomic_add(output_data + slice_offset + j, update_data[i]);
+  const int64_t slice_offset = slice_offsets[i / slice_size];
+  if (slice_offset < 0) {
+    // Match the forward zero-fill contract by contributing no gradient for an invalid slice.
+    return;
+  }
+
+  const size_t j = i % slice_size;
+  atomic_add(output_data + static_cast<size_t>(slice_offset) + j, update_data[i]);
 };
 
 template <typename T>
