@@ -16,9 +16,9 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-static void FreePackedWeights(gsl::span<IAllocatorUniquePtr<void>> array, size_t array_size) {
-  for (size_t i = 0; i < array_size; i++) {
-    array[i].reset();
+static void FreePackedWeights(gsl::span<IAllocatorUniquePtr<void>> array) {
+  for (auto& weights : array) {
+    weights.reset();
   }
 }
 
@@ -72,7 +72,8 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
                                            const T* weights_data,
                                            size_t weight_matrix_col_size,
                                            /*out*/ PrePackedWeights* prepacked_weights) {
-  size_t packb_size = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size, &mlas_backend_kernel_selector_config_);
+  size_t packb_size = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size,
+                                        &mlas_backend_kernel_selector_config_);
   if (packb_size == 0) {
     return false;
   }
@@ -88,7 +89,8 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
   memset(packed_weights_data, 0, packed_weights_data_size);
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size, weights_data, weight_matrix_col_size, packed_weights_data, &mlas_backend_kernel_selector_config_);
+    MlasGemmPackB(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size, weights_data, weight_matrix_col_size,
+                  packed_weights_data, &mlas_backend_kernel_selector_config_);
     packed_weights_data += packb_size;
     weights_data += head_size;
   }
@@ -120,55 +122,32 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
 
   weight_shape_ = weights.Shape();
   const auto& weights_dims = weight_shape_.GetDims();
-  if (weights_dims.size() != 2) {
+  std::array<int64_t, 3> hidden_sizes{};
+  ORT_RETURN_IF_ERROR(attention::CheckAttentionWeights(weights_dims, qkv_hidden_sizes_, num_heads_,
+                                                       require_same_hidden_size_, hidden_sizes));
+  if (weight_shape_.Size() == 0) {
     return Status::OK();
   }
 
   const auto* weights_data = weights.Data<T>();
   const size_t input_hidden_size = narrow<size_t>(weights_dims[0]);
-  size_t q_hidden_size, k_hidden_size, v_hidden_size;
-
-  if (qkv_hidden_sizes_.size() != 0) {
-    ORT_RETURN_IF_NOT(qkv_hidden_sizes_.size() == 3,
-                      "qkv_hidden_sizes attribute should have 3 elements");
-    ORT_RETURN_IF_NOT(qkv_hidden_sizes_[0] > 0 && qkv_hidden_sizes_[1] > 0 && qkv_hidden_sizes_[2] > 0,
-                      "qkv_hidden_sizes values should be positive");
-
-    q_hidden_size = narrow<size_t>(qkv_hidden_sizes_[0]);
-    k_hidden_size = narrow<size_t>(qkv_hidden_sizes_[1]);
-    v_hidden_size = narrow<size_t>(qkv_hidden_sizes_[2]);
-
-    if (q_hidden_size % num_heads_ != 0 || k_hidden_size % num_heads_ != 0 || v_hidden_size % num_heads_ != 0) {
-      return Status::OK();
-    }
-  } else {
-    const size_t hidden_size_x3 = narrow<size_t>(weights_dims[1]);
-    const size_t hidden_size = hidden_size_x3 / 3;
-
-    if (hidden_size % num_heads_ != 0) {
-      return Status::OK();
-    }
-
-    q_hidden_size = hidden_size;
-    k_hidden_size = hidden_size;
-    v_hidden_size = hidden_size;
-  }
-
+  const size_t q_hidden_size = narrow<size_t>(hidden_sizes[0]);
+  const size_t k_hidden_size = narrow<size_t>(hidden_sizes[1]);
+  const size_t v_hidden_size = narrow<size_t>(hidden_sizes[2]);
+  const size_t v_weights_offset = SafeInt<size_t>(q_hidden_size) + k_hidden_size;
   const size_t qkv_head_size[3] = {q_hidden_size / num_heads_, k_hidden_size / num_heads_, v_hidden_size / num_heads_};
-  const size_t weight_matrix_col_size = SafeInt<size_t>(q_hidden_size) + k_hidden_size + v_hidden_size;
-  ORT_RETURN_IF_NOT(weight_matrix_col_size == narrow<size_t>(weights_dims[1]),
-                    "Input 'weights' dimension 1 should have same length as sum of Q/K/V hidden sizes");
+  const size_t weight_matrix_col_size = narrow<size_t>(weights_dims[1]);
 
   if (!IsPackWeightsSuccessful(0, alloc, qkv_head_size[0], input_hidden_size,
                                weights_data, weight_matrix_col_size, prepacked_weights) ||
       !IsPackWeightsSuccessful(1, alloc, qkv_head_size[1], input_hidden_size,
-                               weights_data + (num_heads_ * qkv_head_size[0]),
+                               weights_data + q_hidden_size,
                                weight_matrix_col_size, prepacked_weights) ||
       !IsPackWeightsSuccessful(2, alloc, qkv_head_size[2], input_hidden_size,
-                               weights_data + (num_heads_ * (qkv_head_size[0] + qkv_head_size[1])),
+                               weights_data + v_weights_offset,
                                weight_matrix_col_size, prepacked_weights)) {
     if (prepacked_weights == nullptr) {
-      FreePackedWeights(packed_weights_, qkv_hidden_sizes_.size());
+      FreePackedWeights(packed_weights_);
     }
     return Status::OK();
   }
@@ -206,11 +185,14 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* attention_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
+  ORT_RETURN_IF_NOT(weights_shape.NumDimensions() == 2, "Input 'weights' is expected to have 2 dimensions");
+  const std::array<int64_t, 1> bias_dims{weights_shape[1]};
+  const TensorShape default_bias_shape(bias_dims);
 
   AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights_shape,
-                                  bias->Shape(),
+                                  bias ? bias->Shape() : default_bias_shape,
                                   mask_index,
                                   past,
                                   attention_bias,
@@ -241,22 +223,24 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute Q, K, V
   // gemm_data(BS, D_t) = input(BS, D_i) x weights(D_i, D_t) + bias(D_t), where D_t = D + D + D_v
   // Hidden dimension of input could be larger than that of Q, K and V when model is pruned.
-  int qkv_hidden_size = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
-  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * qkv_hidden_size * element_size);
+  const int qkv_hidden_size = SafeInt<int>(parameters.hidden_size) * 2 + parameters.v_hidden_size;
+  const size_t gemm_bytes = SafeInt<size_t>(batch_size) * sequence_length * qkv_hidden_size * element_size;
+  auto gemm_data = gemm_bytes == 0 ? nullptr : allocator->Alloc(gemm_bytes);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
+  const size_t q_elements = SafeInt<size_t>(batch_size) * sequence_length * parameters.hidden_size;
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + narrow<size_t>(batch_size) * sequence_length * parameters.hidden_size;
-  auto V = K + narrow<size_t>(batch_size) * sequence_length * parameters.hidden_size;
+  auto K = q_elements == 0 ? Q : Q + q_elements;
+  auto V = q_elements == 0 ? K : K + q_elements;
 
   T* QKV[3] = {Q, K, V};
   const int qkv_head_size[3] = {parameters.head_size, parameters.head_size, parameters.v_head_size};
 
-  {
-    const int loop_len = 3 * batch_size * num_heads_;
+  if (batch_size > 0 && sequence_length > 0) {
+    const ptrdiff_t loop_len = SafeInt<ptrdiff_t>(3) * batch_size * num_heads_;
     const auto* input_data = input->Data<T>();
     const auto* weights_data = weights ? weights->Data<T>() : nullptr;
-    const auto* bias_data = bias->Data<T>();
+    const auto* bias_data = bias ? bias->Data<T>() : nullptr;
 
     // We use Q/K head size to estimate the cost, this is not accurate when Q/K and V head sizes are different.
     const double cost = static_cast<double>(sequence_length) *
@@ -268,29 +252,40 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         const int head_index = static_cast<int>((i / 3) % num_heads_);
         const int qkv_index = static_cast<int>(i % 3);
 
-        int input_offset = batch_index * sequence_length * input_hidden_size;
+        const size_t input_offset = SafeInt<size_t>(batch_index) * sequence_length * input_hidden_size;
 
         T* qkv_dest = QKV[qkv_index];
         int head_size = qkv_head_size[qkv_index];
-        int weights_offset = 0;
-        int bias_offset = qkv_index * parameters.hidden_size + head_index * head_size;
+        size_t weights_offset = 0;
+        const size_t bias_offset = SafeInt<size_t>(qkv_index) * parameters.hidden_size +
+                                   SafeInt<size_t>(head_index) * head_size;
 
         if (!is_prepack_) {
           weights_offset = bias_offset;
         } else {
-          weights_offset = head_index * head_size;
+          weights_offset = SafeInt<size_t>(head_index) * head_size;
         }
 
-        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+        const size_t qkv_offset = (SafeInt<size_t>(batch_index) * num_heads_ + head_index) *
+                                  sequence_length * head_size;
 
         // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast NH -> (B.N.S.H) for each of Q, K, V
-        const T* broadcast_data_src = bias_data + bias_offset;
+        const T* broadcast_data_src = bias_data ? bias_data + bias_offset : nullptr;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
 
         for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
+          const size_t bias_bytes = SafeInt<size_t>(head_size) * sizeof(T);
+          if (broadcast_data_src) {
+            memcpy(broadcast_data_dest, broadcast_data_src, bias_bytes);
+          } else {
+            memset(broadcast_data_dest, 0, bias_bytes);
+          }
           broadcast_data_dest += head_size;
+        }
+
+        if (input_hidden_size == 0) {
+          continue;
         }
 
         //                   original           transposed            iteration
