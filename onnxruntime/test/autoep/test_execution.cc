@@ -1472,7 +1472,9 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_EpMetadataMismatch) {
                                    "metadata: EP metadata 'weightless_supported_modes' = 'all_or_external_only' for"));
   }
 
-  // The requested mode is supported by both, so the mismatch is only a warning.
+  // The requested mode is supported by both, so the mismatch is only a warning. The public API used here can't
+  // capture the session's log; PluginExecutionProviderTest.Compile_WeightlessSupportDoesNotMatchEpMetadata in
+  // onnxruntime_test_all checks that the warning is logged.
   {
     auto status = compile(OrtWeightlessSupport_EXTERNAL_ONLY);
     ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
