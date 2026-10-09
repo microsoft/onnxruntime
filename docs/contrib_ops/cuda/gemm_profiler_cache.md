@@ -272,6 +272,11 @@ unit-testable.
   TSV column-name mapping with an appended column.
 - A100 validation: 2nd session reuses cache (profiling skipped, tune time ≈ 0); outputs unchanged;
   many same-shape MoE nodes yield one entry per unique shape.
+- The fresh-process Python integration test also runs with the CUDA plugin wheel. It checks
+  session-specific selected-tactic reports so import-time plugin log filtering cannot hide cache
+  reuse or bucket filtering. Built-in CUDA additionally checks the INFO diagnostics.
+- CUDA Python CI installs CPU-only PyTorch for weight-packer parity tests when the transformers
+  suite is disabled; compact builds skip only prepacked cases outside their supported contract.
 
 ## 9. Supported environment variables & options
 

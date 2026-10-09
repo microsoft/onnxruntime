@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import contextlib
+import csv
 import gc
 import io
 import os
@@ -191,6 +192,21 @@ class TestFpAIntBTune(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Missing problem-key or tactic-setting columns"):
                 tune._summarize_cache(str(path), self.signature)
 
+    def test_selected_tactics_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = Path(directory) / "selected"
+            path = self.write_cache(prefix)
+            selected = _read_selected_tactics(prefix)
+            self.assertEqual(set(selected), {1})
+            self.assertEqual(selected[1]["split_k"], "1")
+            self.assertEqual(selected[1]["activation_dtype"], "half")
+            path.write_text(path.read_text().replace("\t1\t80\t", "\t0\t80\t"), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "No successful selected tactics"):
+                _read_selected_tactics(prefix)
+            path.write_text("\t".join((*tune._CACHE_KEY_COLUMNS, "m_bucket", *tune._CACHE_CONFIG_COLUMNS)) + "\n")
+            with self.assertRaisesRegex(RuntimeError, "No successful selected tactics"):
+                _read_selected_tactics(prefix)
+
     def test_incompatible_or_missing_cache_is_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
             prefix = str(Path(directory) / "cache")
@@ -263,6 +279,14 @@ def _unlock_file(file):
         fcntl.flock(file, fcntl.LOCK_UN)
 
 
+def _read_selected_tactics(prefix):
+    with open(str(prefix) + tune._CACHE_TABLE_SUFFIX, encoding="utf-8") as file:
+        rows = list(csv.DictReader((line for line in file if not line.startswith("#")), delimiter="\t"))
+    if not rows or any(row["valid_config"] != "1" for row in rows):
+        raise RuntimeError("No successful selected tactics")
+    return {int(row["m_bucket"]): row for row in rows}
+
+
 def _gpu_worker(model, prefix, output, chunk="0"):
     plugin = os.environ.get("ORT_CUDA_PLUGIN_PATH")
     # Plugin wheels may have already registered CUDA during import.
@@ -270,6 +294,7 @@ def _gpu_worker(model, prefix, output, chunk="0"):
         ort.register_execution_provider_library("CUDAExecutionProvider", plugin)
     ort.set_default_logger_severity(1)
     options = tune._make_session_options(prefix, [1, 64])
+    options.add_session_config_entry("ep.cuda.gemm_tactic_cache_tuning_results_prefix", output + ".selected")
     if chunk != "0":
         os.environ["ORT_MATMULNBITS_FORCE_CHUNKED"] = "1"
         options.add_session_config_entry("ep.cuda.matmul_nbits_m_chunk_size", chunk)
@@ -307,7 +332,7 @@ class TestFpAIntBWorker(unittest.TestCase):
                     patch.object(ort, "get_ep_devices", return_value=devices) as get_devices,
                     patch.object(ort, "register_execution_provider_library") as register,
                     patch.object(ort, "set_default_logger_severity"),
-                    patch.object(tune, "_make_session_options"),
+                    patch.object(tune, "_make_session_options") as options,
                     patch.object(ort, "InferenceSession", return_value=session) as create,
                     patch.object(np, "savez"),
                     patch.object(Path, "touch"),
@@ -322,6 +347,9 @@ class TestFpAIntBWorker(unittest.TestCase):
                 else:
                     get_devices.assert_not_called()
                 self.assertFalse(create.call_args.kwargs["enable_fallback"])
+                options.return_value.add_session_config_entry.assert_called_once_with(
+                    "ep.cuda.gemm_tactic_cache_tuning_results_prefix", "output.npz.selected"
+                )
                 session.disable_fallback.assert_called_once_with()
                 self.assertEqual(session.run.call_count, 3)
 
@@ -380,33 +408,37 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
                     command(output, chunk), check=False, capture_output=True, text=True, timeout=180
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                selected = _read_selected_tactics(str(output) + ".selected")
                 with np.load(output) as arrays:
-                    return {key: arrays[key] for key in arrays.files}, result.stderr
+                    return {key: arrays[key] for key in arrays.files}, result.stderr, selected
 
-            cold, _ = run("cold")
+            cold, _, cold_tactics = run("cold")
             cache_path = Path(prefix + tune._CACHE_TABLE_SUFFIX)
             self.assertTrue(cache_path.exists())
             original = cache_path.read_bytes()
-            warm, log = run("warm")
-            self.assertIn("validated fpA_intB tactics from", log)
+            warm, log, warm_tactics = run("warm")
+            self.assertEqual(cold_tactics, warm_tactics)
+            # Plugin loggers cache their severity during automatic import-time registration.
+            if not os.environ.get("ORT_CUDA_PLUGIN_PATH"):
+                self.assertIn("validated fpA_intB tactics from", log)
             self.assertEqual(original, cache_path.read_bytes())
             for key in cold:
                 np.testing.assert_allclose(warm[key], cold[key], rtol=1e-3, atol=1e-3)
 
             # Exercise the actual tool's session-specific evidence, not just its file parser.
+            args = [
+                sys.executable,
+                "-m",
+                "onnxruntime.tools.fpa_intb_tune",
+                "--model",
+                str(model_path),
+                "--output-prefix",
+                prefix,
+                "--m-values",
+                "1,64",
+                "--no-inference",
+            ]
             if not os.environ.get("ORT_CUDA_PLUGIN_PATH"):
-                args = [
-                    sys.executable,
-                    "-m",
-                    "onnxruntime.tools.fpa_intb_tune",
-                    "--model",
-                    str(model_path),
-                    "--output-prefix",
-                    prefix,
-                    "--m-values",
-                    "1,64",
-                    "--no-inference",
-                ]
                 result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=180)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("selected this run:", result.stdout)
@@ -441,8 +473,11 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
             )
             large[columns.index("m_bucket")] = "8192"
             cache_path.write_text("\n".join([*lines, "\t".join(large)]) + "\n", encoding="utf-8")
-            chunked, log = run("chunked", chunk=64)
-            self.assertIn("Loaded 2 validated fpA_intB tactics", log)
+            chunked, log, chunked_tactics = run("chunked", chunk=64)
+            self.assertEqual(set(chunked_tactics), {1, 64})
+            self.assertEqual(chunked_tactics, {m: cold_tactics[m] for m in (1, 64)})
+            if not os.environ.get("ORT_CUDA_PLUGIN_PATH"):
+                self.assertIn("Loaded 2 validated fpA_intB tactics", log)
             unpacked = np.empty((64, 128), dtype=np.float32)
             packed = weights.reshape(64, 64)
             unpacked[:, ::2] = packed & 15
@@ -476,7 +511,8 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
                     self.assertEqual(damaged, cache_path.read_bytes())
                 finally:
                     lock_path.rmdir()
-            repaired, log = run("repaired")
+            repaired, log, repaired_tactics = run("repaired")
+            self.assertNotEqual(repaired_tactics[64]["split_k"], "3")
             self.assertTrue("Rejecting cached GEMM tactic" in log or "Dropping incompatible cached" in log, log)
             for key in cold:
                 np.testing.assert_allclose(repaired[key], cold[key], rtol=1e-3, atol=1e-3)
