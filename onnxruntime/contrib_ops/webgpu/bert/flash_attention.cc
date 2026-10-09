@@ -168,6 +168,7 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
                                              bool q_BNSH,
                                              bool use_seqlen_k,
                                              bool has_head_sink,
+                                             bool has_local_window,
                                              uint32_t kv_cache_quantization_bits,
                                              int compressed_head_size_u32,
                                              bool use_seqlens_q)
@@ -182,6 +183,7 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
       q_BNSH_(q_BNSH),
       use_seqlen_k_(use_seqlen_k),
       has_head_sink_(has_head_sink),
+      has_local_window_(has_local_window),
       max_k_step_(SelectDensePrefillMaxKStep(use_shm_path_, is_fp16, qkv_head_size)),
       kv_cache_quantization_(kv_cache_quantization_bits != 0),
       kv_cache_quantization_bits_(kv_cache_quantization_bits),
@@ -192,7 +194,7 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
   if (prepare_indirect_dispatch_) {
     sh.AddInput("total_sequence_length_input", ShaderUsage::None);
@@ -254,26 +256,32 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  let num_head_id = output_indices[1];\n"
                                "  let batch = output_indices[0];\n";
   if (use_seqlen_k_) {
-    shader.MainFunctionBody() << "  let total_seq_length = u32(seqlen_k[batch]) + 1u;\n";
+    shader.MainFunctionBody() << "  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;\n"
+                              << "  let total_seq_length = min(raw_total_seq_length, uniforms.present_sequence_length);\n";
   } else {
     shader.MainFunctionBody() << "  let total_seq_length = uniforms.total_sequence_length;\n";
   }
   // Right-padded batches with prompt shorter than kv_sequence_length would underflow u32; clamp to 0.
   shader.MainFunctionBody() << "  let past_sequence_length = select(total_seq_length - uniforms.kv_sequence_length, 0u, total_seq_length <= uniforms.kv_sequence_length);\n";
-  if (past_present_share_buffer_) {
-    shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n";
-  } else {
-    shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n";
-  }
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
     shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
     shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
-                              << "    let global_total_seq_length = u32(total_sequence_length_input[0]);\n"
+                              << "    let raw_global_total_seq_length = total_sequence_length_input[0];\n"
+                              << "    let global_total_seq_length = min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_sequence_length);\n"
                               << "    let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
                               << "    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
                               << "  }\n\n";
+  }
+
+  shader.MainFunctionBody() << "  if (sequence_id >= total_seq_length) {\n"
+                            << "    return;\n"
+                            << "  }\n";
+  if (past_present_share_buffer_) {
+    shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n";
+  } else {
+    shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n";
   }
 
   if (has_past_) {
@@ -301,7 +309,8 @@ Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) 
   shader.AddOutput("indirect_buffer", ShaderUsage::None);
   shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
   shader.MainFunctionBody()
-      << "  let global_total_seq_length = u32(total_sequence_length_input[0]);\n"
+      << "  let raw_global_total_seq_length = total_sequence_length_input[0];\n"
+      << "  let global_total_seq_length = min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_sequence_length);\n"
       << "  let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
       << "  populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
   return Status::OK();
@@ -369,6 +378,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+                            {static_cast<uint32_t>(present_key->Shape()[2])},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {static_cast<uint32_t>(parameters.batch_size_)},
@@ -413,6 +423,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
+                             WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                              WGSL_TEMPLATE_PARAMETER(kv_cache_quantization, kv_cache_quantization_),
@@ -628,7 +639,8 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
                                       const WebgpuAttentionParameters& parameters, const Tensor* indirect_buffer, uint32_t num_total_seq_length_tile, uint32_t num_present_sequence_length_tile, uint32_t tile_size, bool use_indirect_dispatch, uint32_t present_sequence_length, uint32_t m_tile, bool use_seqlen_k, const Tensor* total_seqlen,
                                       uint32_t kv_cache_quantization_bits,
                                       int compressed_head_size_u32,
-                                      bool use_seqlens_q, const Tensor* seqlens_q) {
+                                      bool use_seqlens_q, const Tensor* seqlens_q,
+                                      int local_window_size) {
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
 
@@ -687,7 +699,7 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
   program.SetWorkgroupSize(workgroup_size)
       .CacheHint(tile_size, head_size_vec, has_attention_bias, use_indirect_dispatch, q_BNSH,
                  is_unidirectional, m_tile, use_seqlen_k, kv_cache_quantization_bits,
-                 compressed_head_size_u32, use_seqlens_q)
+                 compressed_head_size_u32, use_seqlens_q, local_window_size)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<float>(alpha)},
@@ -699,7 +711,8 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
                             {attn_bias_dim0},
                             {attn_bias_dim1},
                             {attn_bias_dim3},
-                            {static_cast<uint32_t>(parameters.sequence_length_)}});
+                            {static_cast<uint32_t>(parameters.sequence_length_)},
+                            {static_cast<uint32_t>(std::max(local_window_size, 0))}});
 
   return context.RunProgram(program);
 }
@@ -840,6 +853,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
                                            const WebgpuAttentionParameters& parameters,
                                            uint32_t num_total_seq_length_tile,
                                            uint32_t num_present_sequence_length_tile,
+                                           uint32_t present_sequence_length,
                                            uint32_t seq_tile_size,
                                            const Tensor* head_sink,
                                            uint32_t m_tile,
@@ -866,6 +880,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
       .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             num_total_seq_length_tile,
                             num_present_sequence_length_tile,
+                            present_sequence_length,
                             {num_head_size_tile},
                             {batch_heads},
                             {static_cast<uint32_t>(parameters.sequence_length_)},
@@ -922,10 +937,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink,
                            const Tensor* total_seqlen, const Tensor* seqlens_q,
                            const Tensor* block_table, uint32_t block_size, uint32_t max_num_blocks_per_seq,
-                           const Tensor* cumulative_seqlens_q) {
+                           const Tensor* cumulative_seqlens_q, int local_window_size) {
   constexpr uint32_t tile_size = 64;
   const bool use_seqlens_q = seqlens_q != nullptr;
   const bool use_paged_kv_cache = block_table != nullptr;
+  const bool has_local_window = local_window_size > 0;
 
   const uint32_t kv_cache_quantization_bits = context.KvCacheQuantizationBits();
   const bool kv_cache_quantization_enabled = kv_cache_quantization_bits != 0;
@@ -1057,6 +1073,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     // because that is when total_seqlen is GPU-resident and CPU-side dispatch sizing
     // is unavailable.
     if (use_indirect_dispatch) {
+      const uint32_t present_sequence_capacity =
+          use_paged_kv_cache ? block_size * max_num_blocks_per_seq
+                             : static_cast<uint32_t>(present_key->Shape()[2]);
       PrepareIndirectDispatchProgram program;
       program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
       program.AddOutput({indirect_buffer_ptr, ProgramTensorMetadataDependency::None});
@@ -1065,7 +1084,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
           .AddUniformVariables({{tile_size},
                                 {static_cast<uint32_t>(parameters.num_heads_)},
                                 {num_q_tiles},
-                                {static_cast<uint32_t>(parameters.batch_size_)}});
+                                {static_cast<uint32_t>(parameters.batch_size_)},
+                                {present_sequence_capacity}});
       ORT_RETURN_IF_ERROR(context.RunProgram(program));
     }
   }
@@ -1296,6 +1316,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                     q_BNSH,
                                     use_seqlen_k,
                                     has_head_sink,
+                                    has_local_window,
                                     kv_cache_quantization_bits,
                                     compressed_head_size_u32,
                                     use_seqlens_q};
@@ -1343,7 +1364,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
           .SetWorkgroupSize(prefill_tile_size)
           .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_,
                      parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple,
-                     has_subgroups, q_BNSH, use_seqlen_k, has_head_sink,
+                     has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window,
                      kv_cache_quantization_bits,
                      compressed_head_size_u32, program.max_k_step(), use_seqlens_q)
           .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
@@ -1355,7 +1376,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                 {num_seq_tile},
                                 {attn_bias_dim0},
                                 {attn_bias_dim1},
-                                {attn_bias_dim3}});
+                                {attn_bias_dim3},
+                                {static_cast<uint32_t>(has_local_window ? local_window_size : 0)}});
 
       ORT_RETURN_IF_ERROR(context.RunProgram(program));
     }
@@ -1421,11 +1443,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                          present_sequence_length, m_tile, use_seqlen_k, total_seqlen,
                                                          kv_cache_quantization_bits,
                                                          compressed_head_size_u32,
-                                                         use_seqlens_q, seqlens_q));
+                                                         use_seqlens_q, seqlens_q, local_window_size));
 
       ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeVxReduce(context, &out_split_vx, &metadata, attn_output, seqlen_k, parameters,
                                                               num_total_seq_length_tile,
-                                                              num_present_sequence_length_tile, tile_size,
+                                                              num_present_sequence_length_tile, present_sequence_length, tile_size,
                                                               head_sink, m_tile, use_seqlen_k));
     }
   }
@@ -1532,7 +1554,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank, components},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
           {sin_cache, ProgramTensorMetadataDependency::Rank, components},
       });
   if (prepare_indirect_dispatch) {

@@ -219,40 +219,51 @@ TYPED_TEST(PadOpTest, Pad_Wrap_1D) {
                                "wrap");
 }
 
-#ifdef USE_WEBGPU
-TEST(PadOpTest, Pad_Wrap_WebGpu_LowerPadExceedsInt32Fails) {
-  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
-    GTEST_SKIP() << "WebGPU execution provider is not available";
-  }
-
-  OpTester test("Pad", 19);
-  test.AddAttribute("mode", "wrap");
-  test.AddInput<float>("data", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.AddInput<int64_t>("pads", {2}, {2147483648LL, -2147483647LL}, true);
-  test.AddOutput<float>("output", {5}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-
-  std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultWebGpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "WebGPU Pad only supports lower pads in the int32 range", {}, nullptr, &eps);
+TYPED_TEST(PadOpTest, Pad_Wrap_PadsGreaterThanExtent_1D) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3},
+                               {T(1), T(2), T(3)},
+                               {5, 4},
+                               false,
+                               T(0),
+                               false,
+                               {12},
+                               {T(2), T(3), T(1), T(2), T(3), T(1), T(2), T(3), T(1), T(2), T(3), T(1)},
+                               "wrap");
 }
 
-TEST(PadOpTest, Pad_Wrap_WebGpu_PadGreaterThanInputDimension) {
-  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
-    GTEST_SKIP() << "WebGPU execution provider is not available";
-  }
-
-  OpTester test("Pad", 19);
-  test.AddAttribute("mode", "wrap");
-  test.AddInput<float>("data", {3}, {1.0f, 2.0f, 3.0f});
-  test.AddInput<int64_t>("pads", {2}, {5, 0}, true);
-  test.AddOutput<float>("output", {8}, {2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f});
-
-  std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultWebGpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+TYPED_TEST(PadOpTest, Pad_Wrap_PrePadGreaterThanSlicedExtent) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({4},
+                               {T(1), T(2), T(3), T(4)},
+                               {5, -2},
+                               false,
+                               T(0),
+                               false,
+                               {7},
+                               {T(2), T(1), T(2), T(1), T(2), T(1), T(2)},
+                               "wrap",
+                               OpTester::ExpectResult::kExpectSuccess,
+                               "",
+                               {kDmlExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
-#endif
+
+TYPED_TEST(PadOpTest, Pad_Wrap_PrePadGreaterThanOuterExtent) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({2, 3},
+                               {T(1), T(2), T(3), T(4), T(5), T(6)},
+                               {3, 0, 0, 0},
+                               false,
+                               T(0),
+                               false,
+                               {5, 3},
+                               {T(4), T(5), T(6),
+                                T(1), T(2), T(3),
+                                T(4), T(5), T(6),
+                                T(1), T(2), T(3),
+                                T(4), T(5), T(6)},
+                               "wrap");
+}
 
 TYPED_TEST(PadOpTest, Pad_Edge_1D) {
   using T = TypeParam;

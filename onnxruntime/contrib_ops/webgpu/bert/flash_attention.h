@@ -58,6 +58,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"copy_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -82,7 +83,8 @@ class PrepareIndirectDispatchProgram final : public Program<PrepareIndirectDispa
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32});
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32});
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
@@ -100,6 +102,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool q_BNSH,
                         bool use_seqlen_k = false,
                         bool has_head_sink = false,
+                        bool has_local_window = false,
                         uint32_t kv_cache_quantization_bits = 0,
                         int compressed_head_size_u32 = 0,
                         bool use_seqlens_q = false);
@@ -117,7 +120,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32});
+                                          {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -130,6 +134,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
+  bool has_local_window_;
   int max_k_step_;
   bool kv_cache_quantization_;
   uint32_t kv_cache_quantization_bits_;
@@ -227,7 +232,8 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
-                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -256,6 +262,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
                                           {"batch_heads", ProgramUniformVariableDataType::Uint32},
                                           {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -350,7 +357,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr,
                            const Tensor* total_seqlen = nullptr, const Tensor* seqlens_q = nullptr,
                            const Tensor* block_table = nullptr, uint32_t block_size = 0, uint32_t max_num_blocks_per_seq = 0,
-                           const Tensor* cumulative_seqlens_q = nullptr);
+                           const Tensor* cumulative_seqlens_q = nullptr, int local_window_size = -1);
 
 // Adapter/config gate for the fused paged-prefill shader
 // (FlashAttentionPagedPrefillProgram). Callers that decide up front whether Q

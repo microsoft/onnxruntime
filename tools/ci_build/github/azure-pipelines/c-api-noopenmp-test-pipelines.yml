@@ -79,13 +79,13 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
+    AgentPool: 'onnxruntime-Win-CPU-2022'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_android.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-VS2022-Latest'
+    AgentPool : 'onnxruntime-Win-CPU-2022'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_linux.yml
@@ -110,13 +110,20 @@ stages:
 
 - template: nodejs/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
+    AgentPool: 'onnxruntime-Win-CPU-2022'
     StageSuffix: 'Win_CPU_x64'
 
 - template: nodejs/templates/test_linux.yml
   parameters:
     AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    StageSuffix: 'Linux_CPU_x64'
+    StageSuffix: 'Linux_CPU_x64_Node24'
+    NodeVersion: '24.x'
+
+- template: nodejs/templates/test_linux.yml
+  parameters:
+    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    StageSuffix: 'Linux_CPU_x64_Node22'
+    NodeVersion: '22.x'
 
 - template: nuget/templates/test_win.yml
   parameters:
@@ -208,7 +215,7 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: win-x64
-    agentPool: onnxruntime-Win-CPU-VS2022-Latest
+    agentPool: onnxruntime-Win-CPU-2022
 
 # Run GPU tests.
 - stage: Windows_Packaging_cuda_Testing

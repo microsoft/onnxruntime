@@ -23,6 +23,17 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelExternalInitializersFi
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ const ORTCHAR_T* external_initializers_file_path,
                     size_t external_initializer_size_threshold);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ const ORTCHAR_T* logical_file_name,
+                    size_t external_initializer_size_threshold,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_ void** output_buffer_ptr,
+                    _Out_ size_t* output_buffer_size_ptr);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    size_t alignment,
+                    size_t minimum_size);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelBuffer, _In_ OrtModelCompilationOptions* model_compile_options,
                     _Inout_ OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModelCompilationOptions* model_compile_options,
@@ -48,5 +59,9 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetInputModel,
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetWeightlessEnabled,
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ bool use_weightless);
+
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextDataWriteFunc,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
 
 }  // namespace OrtCompileAPI

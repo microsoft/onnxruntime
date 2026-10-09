@@ -2,6 +2,24 @@
 // Licensed under the MIT License.
 #pragma once
 
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+// CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
+// For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
+// causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
+// -1e+30 is safe: 1e30 × 1.4427 ≈ 1.4e30 << FLT_MAX ≈ 3.4e38, and
+// exp(-1e30) ≈ 0 (effectively masked). For fp16 lowest()=-65504 > -1e30, no-op.
+// NOTE: intentionally defined outside the USE_MEMORY_EFFICIENT_ATTENTION guard:
+// it has no CUTLASS dependency and is also used by the unfused attention path
+// (see MaskedBiasSentinel in core/providers/cuda/llm/attention.cc).
+constexpr float kCutlassSafeMaskFilterValue = -1.0e+30f;
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
+
 #if USE_MEMORY_EFFICIENT_ATTENTION
 
 #include <algorithm>
@@ -14,13 +32,6 @@ namespace contrib {
 namespace cuda {
 
 constexpr int kEfficientAttentionMaxHeadSize = 1024;
-
-// CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
-// For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
-// causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
-// -1e+30 is safe: 1e30 × 1.4427 ≈ 1.4e30 << FLT_MAX ≈ 3.4e38, and
-// exp(-1e30) ≈ 0 (effectively masked). For fp16 lowest()=-65504 > -1e30, no-op.
-constexpr float kCutlassSafeMaskFilterValue = -1.0e+30f;
 
 struct MemoryEfficientAttentionParams {
   int32_t sm = 50;

@@ -88,6 +88,37 @@ const MODEL_TEST_TYPES_CASES: Array<{
 ];
 
 describe('API Tests - simple API tests', () => {
+  it('recognizes every WebGPU weightLoadAcceleration value', async () => {
+    const values: ReadonlyArray<NonNullable<InferenceSession.WebGpuExecutionProviderOption['weightLoadAcceleration']>> =
+      ['off', 'preferred', 'required'];
+    const model = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    let unavailableProviderError: string | undefined;
+
+    for (const weightLoadAcceleration of values) {
+      try {
+        const session = await InferenceSession.create(model, {
+          executionProviders: [{ name: 'webgpu', weightLoadAcceleration }],
+        });
+        await session.release();
+      } catch (error) {
+        const message = String(error);
+        assert.doesNotMatch(message, /WebGPU EP has an unrecognized option: 'weightLoadAcceleration'/);
+        if (weightLoadAcceleration === 'off') {
+          // A build without WebGPU, or a machine without a usable adapter, can
+          // fail before an acceleration mode matters. Later modes must not hide
+          // a different, unexpected failure.
+          unavailableProviderError = message;
+        } else if (weightLoadAcceleration === 'required') {
+          if (message !== unavailableProviderError) {
+            assert.match(message, /weightLoadAcceleration|disk-to-GPU|DXGI|D3D12/);
+          }
+        } else {
+          assert.doesNotMatch(message, /weightLoadAcceleration|disk-to-GPU|DXGI|D3D12/);
+        }
+      }
+    }
+  });
+
   MODEL_TEST_TYPES_CASES.forEach((testCase) => {
     it(`${testCase.model}`, async () => {
       const session = await InferenceSession.create(testCase.model);

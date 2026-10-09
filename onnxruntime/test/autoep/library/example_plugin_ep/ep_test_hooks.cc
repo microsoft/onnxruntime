@@ -8,6 +8,7 @@
 std::atomic<uint64_t> g_sync_count{0};
 std::atomic<int> g_preallocated_output_query_result{-1};
 std::atomic<int> g_preallocated_output_bad_index_rejected{-1};
+std::atomic<bool> g_create_data_transfer_should_fail{false};
 
 extern "C" void ExampleEpTestHooks_ResetSyncCount() { g_sync_count.store(0); }
 extern "C" uint64_t ExampleEpTestHooks_GetSyncCount() { return g_sync_count.load(); }
@@ -21,9 +22,15 @@ extern "C" int ExampleEpTestHooks_GetPreallocatedOutputQueryResult() {
 extern "C" int ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected() {
   return g_preallocated_output_bad_index_rejected.load();
 }
+extern "C" void ExampleEpTestHooks_SetCreateDataTransferFailure(int enabled) {
+  g_create_data_transfer_should_fail.store(enabled != 0);
+}
 void RecordPreallocatedOutputQueryResult(int has_preallocated_output) {
   g_preallocated_output_query_result.store(has_preallocated_output);
 }
 void RecordPreallocatedOutputBadIndexRejected(int rejected) {
   g_preallocated_output_bad_index_rejected.store(rejected);
+}
+bool ShouldFailCreateDataTransfer() {
+  return g_create_data_transfer_should_fail.load();
 }

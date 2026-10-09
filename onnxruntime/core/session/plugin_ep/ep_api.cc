@@ -26,8 +26,10 @@
 #include "core/session/abi_ep_types.h"
 #include "core/session/abi_opschema.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ep_context_config.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
@@ -80,6 +82,54 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
 ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
+}
+
+ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_ OrtEpContextConfig** config) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(session_options == nullptr, ORT_INVALID_ARGUMENT, "OrtSessionOptions is NULL");
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "Output OrtEpContextConfig is NULL");
+
+  auto ep_context_config = std::make_unique<OrtEpContextConfig>();
+  if (const auto* write_config = session_options->value.ep_context_gen_options.TryGetEpContextDataWriteFunc()) {
+    ep_context_config->write_func = write_config->write_func;
+    ep_context_config->write_state = write_config->state;
+  }
+
+  ep_context_config->read_func = session_options->value.ep_context_data_read_func;
+  ep_context_config->read_state = session_options->value.ep_context_data_read_state;
+  *config = ep_context_config.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config) {
+  delete config;
+}
+
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "Output read_func is NULL");
+  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
+  *read_func = config->read_func;
+  *state = config->read_func != nullptr ? config->read_state : nullptr;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ORT_API_RETURN_IF(write_func == nullptr, ORT_INVALID_ARGUMENT, "Output write_func is NULL");
+  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
+
+  *write_func = config->write_func;
+  *state = config->write_func != nullptr ? config->write_state : nullptr;
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
@@ -554,7 +604,7 @@ ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_
 ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtDataType** out) {
   API_IMPL_BEGIN
-  const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type);
+  const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(elem_type));
   *out = reinterpret_cast<const OrtDataType*>(ml_type);
   return nullptr;
   API_IMPL_END
@@ -1299,6 +1349,11 @@ static constexpr OrtEpApi ort_ep_api = {
 
     &OrtExecutionProviderApi::SessionOptionsGetWeightlessSourceModelBuffer,
     // End of Version 29 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::SessionOptionsGetEpContextConfig,
+    &OrtExecutionProviderApi::ReleaseEpContextConfig,
+    &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
+    &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1314,7 +1369,7 @@ static_assert(offsetof(OrtEpApi, SessionOptionsGetWeightlessSourceModelBuffer) /
               "Size of version 29 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.30.0",
+static_assert(std::string_view(ORT_VERSION) == "1.32.0",
               "ORT_Version change detected, please follow below steps to ensure OrtEpApi is updated properly");
 
 }  // namespace OrtExecutionProviderApi
