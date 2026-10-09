@@ -11,6 +11,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -43,6 +44,34 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     MatMul);
+
+namespace {
+
+class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
+ public:
+  MatMulGemvProgram() : Program{"MatMulGemv"} {}
+
+  static constexpr uint32_t kWorkgroupSizeX = 1;
+  static constexpr uint32_t kWorkgroupSizeY = 128;
+  static_assert(kWorkgroupSizeY != 0 && (kWorkgroupSizeY & (kWorkgroupSizeY - 1)) == 0,
+                "MatMulGemvProgram requires kWorkgroupSizeY to be a non-zero power of two "
+                "because the WGSL reduction loop halves workgroup_size_y each iteration.");
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& a = shader.AddInput("a", ShaderUsage::None);
+    const auto& b = shader.AddInput("b", ShaderUsage::None);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "math/matmul_gemv.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(a, a),
+                               WGSL_TEMPLATE_VARIABLE(b, b),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32});
+};
+
+}  // namespace
 
 static std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
@@ -171,7 +200,8 @@ Status ComputeMatMul(ComputeContext* context,
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
-  MatMulOptImpl* subgroup_impl = cache.GetOrCreate(*context);
+  const bool requires_fp32_accumulation = context->EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
+  MatMulOptImpl* subgroup_impl = requires_fp32_accumulation ? nullptr : cache.GetOrCreate(*context);
   if (subgroup_impl != nullptr) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(subgroup_impl->Compute(
@@ -261,6 +291,24 @@ Status ComputeMatMul(ComputeContext* context,
   const uint32_t dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
   const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
 
+  // A single row has no cross-row weight reuse. Stream B directly and reduce K
+  // within each workgroup in f32, retaining the existing paths outside this regime.
+  if (batch_size == 1 && dim_a_outer == 1 &&
+      dim_b_outer >= 16 && dim_b_outer <= 64 && dim_b_outer % 4 == 0 &&
+      dim_inner >= 2048 && dim_inner <= 8192 &&
+      !has_bias && activation.activation_kind_ == ActivationKind::None &&
+      a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() && output_tensor->IsDataType<MLFloat16>()) {
+    const uint32_t n_vec_count = dim_b_outer / 4;
+    MatMulGemvProgram program;
+    program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
+                       {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+        .AddUniformVariables({{dim_inner}, {dim_b_outer}})
+        .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
+        .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX));
+    return context->RunProgram(program);
+  }
+
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
   InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
@@ -271,15 +319,16 @@ Status ComputeMatMul(ComputeContext* context,
                                                (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
   const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
                                                (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
-  uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
-                                         (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+  uint32_t dispatch_z = narrow<uint32_t>(CeilDiv(
+      batch_size, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  ProgramOutput output(output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components);
+  Tensor split_k_output;
+  ProgramOutput output(output_tensor, ProgramTensorMetadataDependency::TypeAndRank, output_shape_temp, components);
   const Tensor* bias = has_bias ? inputs[2] : nullptr;
   bool use_bias_in_matmul = has_bias;
   uint32_t split_dim_inner = 1;
@@ -298,8 +347,14 @@ Status ComputeMatMul(ComputeContext* context,
         ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
       }
 
-      // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp, narrow<uint32_t>(batch_size));
+      Tensor* reduction_output = output_tensor;
+      if (requires_fp32_accumulation) {
+        split_k_output = context->CreateGPUTensor(DataTypeImpl::GetType<float>(), output_tensor->Shape());
+        reduction_output = &split_k_output;
+        output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::TypeAndRank, output_shape_temp, components);
+      }
+
+      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, reduction_output, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp, narrow<uint32_t>(batch_size));
       ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
 
       // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
@@ -321,9 +376,9 @@ Status ComputeMatMul(ComputeContext* context,
     }
   }
 
-  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
+  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner, requires_fp32_accumulation};
   matmul_program
-      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
+      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner, requires_fp32_accumulation)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
@@ -340,7 +395,20 @@ Status ComputeMatMul(ComputeContext* context,
     matmul_program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
   }
 
-  return context->RunProgram(matmul_program);
+  ORT_RETURN_IF_ERROR(context->RunProgram(matmul_program));
+  if (split_dim_inner > 1 && requires_fp32_accumulation) {
+    const uint32_t output_size = narrow<uint32_t>(output_tensor->Shape().Size());
+    const uint32_t vec_size = output_size / 4;
+    CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, false, true, false, false};
+    cast_program
+        .AddInput({&split_k_output, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+        .SetDispatchGroupSize(CeilDiv(vec_size, static_cast<uint32_t>(WORKGROUP_SIZE)))
+        .AddUniformVariables({{vec_size}, {output_size}})
+        .CacheHint(std::to_string(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    return context->RunProgram(cast_program);
+  }
+  return Status::OK();
 }
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(

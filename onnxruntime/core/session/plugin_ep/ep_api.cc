@@ -26,8 +26,10 @@
 #include "core/session/abi_ep_types.h"
 #include "core/session/abi_opschema.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ep_context_config.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
@@ -35,13 +37,6 @@
 #include "core/session/utils.h"
 #include "core/common/profiler_common.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
-
-struct OrtEpContextConfig {
-  OrtWriteNamedBufferFunc write_func = nullptr;
-  void* write_state = nullptr;
-  OrtReadNamedBufferFunc read_func = nullptr;
-  void* read_state = nullptr;
-};
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
@@ -609,7 +604,7 @@ ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_
 ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtDataType** out) {
   API_IMPL_BEGIN
-  const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type);
+  const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(elem_type));
   *out = reinterpret_cast<const OrtDataType*>(ml_type);
   return nullptr;
   API_IMPL_END
@@ -1374,7 +1369,7 @@ static_assert(offsetof(OrtEpApi, SessionOptionsGetWeightlessSourceModelBuffer) /
               "Size of version 29 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.31.0",
+static_assert(std::string_view(ORT_VERSION) == "1.32.0",
               "ORT_Version change detected, please follow below steps to ensure OrtEpApi is updated properly");
 
 }  // namespace OrtExecutionProviderApi
