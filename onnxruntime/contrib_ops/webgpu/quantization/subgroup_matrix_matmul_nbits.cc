@@ -52,9 +52,12 @@ constexpr SubgroupMatrixMatMulNBitsTiling GetSubgroupMatrixMatMulNBitsTiling(
     return {64, 64, 256, 1, 64, 32};
   }
   if (config.Is(16, 16, 16)) {
-    return {128, 128, 128, 1, 1, 32};
+    return {128, 128, 128, 1, 64, 32};
   }
-  return {32, 64, 128, 1, 64, 32};
+  if (config.Is(8, 8, 8)) {
+    return {32, 64, 128, 1, 64, 32};
+  }
+  ORT_THROW("Unsupported subgroup matrix configuration: ", config.M, "x", config.N, "x", config.K);
 }
 
 // This program optimizes the layout of input matrix A(MxK) for SubgroupMatrixLoad, so that all elements of each
