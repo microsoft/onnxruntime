@@ -116,6 +116,17 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mL2CacheBytes = l2CacheBytes;
   }
 
+  // Paired-K fp16 int4 GEMV tactic for the M = 8 bucket (M = 5..8 at run time). Mode 1 adds it as an extra
+  // candidate, so it is kept only where it beats the default GEMV and the CUTLASS kernels; mode 2 offers
+  // only that tactic (testing and benchmarking); mode 0 disables it.
+  void setPairedGemvMode(int mode) {
+    mPairedGemvMode = mode;
+  }
+
+  void setWaveAwareGemv(bool enabled) {
+    mWaveAwareGemv = enabled;
+  }
+
  protected:
   bool canProfileInt4Decode(int m) const {
     return m == 1 && mDecodeInterleave == 4 && mQuantBits == INT4_BITS && mGroupSize == 32 &&
@@ -149,6 +160,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mDecodeInterleave = 0;
   size_t mL2CacheBytes = 0;
   std::atomic<size_t> mProfileWeightIndex{0};
+  int mPairedGemvMode = 0;
+  bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
 };
 

@@ -1,0 +1,33 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+var<workgroup> norms: array<vec2<f32>, workgroup_size_x>;
+
+$MAIN {
+  if (workgroup_idx >= uniforms.total_tokens * uniforms.num_heads_q) {
+    return;
+  }
+  let offset = workgroup_idx * uniforms.head_size_qk + local_idx;
+  var query_value = 0.0;
+  var key_value = 0.0;
+  if (local_idx < uniforms.head_size_qk) {
+    query_value = f32(query.getByOffset(offset));
+    key_value = f32(key.getByOffset(offset));
+  }
+  norms[local_idx] = vec2<f32>(query_value * query_value, key_value * key_value);
+  workgroupBarrier();
+  for (var stride = workgroup_size_x / 2u; stride > 0u; stride /= 2u) {
+    if (local_idx < stride) {
+      norms[local_idx] += norms[local_idx + stride];
+    }
+    workgroupBarrier();
+  }
+  if (local_idx < uniforms.head_size_qk) {
+    let inverse_norm = inverseSqrt(norms[0] + vec2<f32>(1e-12));
+    normalized.setByOffset(offset, query_value * inverse_norm.x);
+    let key_offset = uniforms.total_tokens * uniforms.num_heads_q * uniforms.head_size_qk;
+    normalized.setByOffset(key_offset + offset, key_value * inverse_norm.y);
+  }
+}

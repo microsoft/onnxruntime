@@ -97,21 +97,25 @@ class GemmIdCore {
   int k;
   nvinfer::DataType dtype;
   int sm;
+  // Distinguishes tactic candidate sets for the same shape.
+  int tag;
+  bool wave_aware = false;
   int device_id;
   int quant_bits;
   int group_size;
   bool has_bias;
   bool has_zeros;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0,
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, bool wave_aware_ = false, int tag_ = 0,
              int device_id_ = 0, int quant_bits_ = 0, int group_size_ = 0,
              bool has_bias_ = false, bool has_zeros_ = false)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_), device_id(device_id_), quant_bits(quant_bits_), group_size(group_size_), has_bias(has_bias_), has_zeros(has_zeros_) {
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), tag(tag_), wave_aware(wave_aware_), device_id(device_id_), quant_bits(quant_bits_), group_size(group_size_), has_bias(has_bias_), has_zeros(has_zeros_) {
   }
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
         sm(0),
+        tag(0),
         device_id(0),
         quant_bits(0),
         group_size(0),
@@ -127,6 +131,8 @@ class GemmIdCore {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
     out << " sm=" << id.sm;
+    out << " tag=" << id.tag;
+    out << " wave_aware=" << id.wave_aware;
     return out;
   }
 
@@ -134,7 +140,7 @@ class GemmIdCore {
   bool isEqual(GemmIdCore const& id) const {
     return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && device_id == id.device_id &&
            quant_bits == id.quant_bits && group_size == id.group_size && has_bias == id.has_bias &&
-           has_zeros == id.has_zeros;
+           has_zeros == id.has_zeros && tag == id.tag && wave_aware == id.wave_aware;
   }
 };
 
@@ -150,7 +156,9 @@ struct GemmIdCoreHash {
     auto h7 = std::hash<int>{}(id.group_size);
     auto h8 = std::hash<bool>{}(id.has_bias);
     auto h9 = std::hash<bool>{}(id.has_zeros);
-    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9;
+    auto h10 = std::hash<int>{}(id.tag);
+    auto h11 = std::hash<bool>{}(id.wave_aware);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9 ^ h10 ^ h11;
   }
 };
 

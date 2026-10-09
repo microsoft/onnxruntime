@@ -364,7 +364,7 @@ struct CutlassGemmConfig {
   EpilogueScheduleType epilogue_schedule = EpilogueScheduleType::AUTO;
   ClusterShape cluster_shape = ClusterShape::ClusterShape_1x1x1;
   bool enableCudaKernel = false;
-  // CUDA GEMV variant: 0 = default, 2..7 = profiled INT4 decode geometries.
+  // CUDA GEMV variant: 0 = default, 1 = paired-K fp16, 2..7 = profiled INT4 decode geometries.
   int cudaKernelVariant = 0;
   int sm_version = 80;  // Use 80 as a catch all for <90
   bool is_tma_warp_specialized = false;
@@ -418,9 +418,11 @@ struct CutlassGemmConfig {
       tactic << "\n\tstyle=compatible"
              << "\n\ttile shape ID: " << (int)tile_config_sm80 << "\n\tstages: " << (int)stages
              << "\n\tsplit k: " << (int)split_k_factor
-             << "\n\tenable cuda kernel: " << (enableCudaKernel ? "true" : "false");
+             << "\n\tenable cuda kernel: " << (enableCudaKernel ? "true" : "false")
+             << "\n\tcuda kernel variant: " << cudaKernelVariant;
     } else if (enableCudaKernel) {
-      tactic << "\n\tenable cuda kernel: " << (enableCudaKernel ? "true" : "false");
+      tactic << "\n\tenable cuda kernel: " << (enableCudaKernel ? "true" : "false")
+             << "\n\tcuda kernel variant: " << cudaKernelVariant;
     } else {
       tactic << "\n\tundefined";
     }
@@ -441,7 +443,8 @@ inline std::ostream& operator<<(std::ostream& out, CutlassGemmConfig const& conf
         << ", split_k_style_enum: " << int(config.split_k_style)
         << ", split_k_factor: " << config.split_k_factor
         << ", stages: " << config.stages
-        << ", enable_cuda_kernel: " << (config.enableCudaKernel ? "true" : "false");
+        << ", enable_cuda_kernel: " << (config.enableCudaKernel ? "true" : "false")
+        << ", cuda_kernel_variant: " << config.cudaKernelVariant;
   }
   return out;
 }
