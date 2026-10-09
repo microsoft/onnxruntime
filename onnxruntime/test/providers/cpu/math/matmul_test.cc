@@ -3,10 +3,13 @@
 
 #include "gtest/gtest.h"
 
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -498,6 +501,102 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
 
 TEST(MathOpTest, MatMulZeroKDoubleType) {
   RunMatMulZeroKTest<double>();
+}
+
+template <typename T>
+void RunMatMulZeroKBroadcastCpuTest() {
+  Model model("zero_k_cpu_broadcast", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+  auto* a = builder.MakeInput<T>({2, 1, 3, 0}, std::vector<T>{});
+  auto* b = builder.MakeInput<T>({1, 4, 0, 5}, std::vector<T>{});
+  auto* y = builder.MakeOutput<T>(std::vector<int64_t>{2, 4, 3, 5});
+  builder.AddNode("MatMul", {a, b}, {y});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  const std::string bytes = model.ToProto().SerializeAsString();
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  const auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue output;
+  CreateMLValue<T>(allocator, {2, 4, 3, 5}, std::vector<T>(120, T{-99}), &output);
+  std::vector<OrtValue> outputs{output};
+  for (int run = 0; run < 2; ++run) {
+    // Poison every batch so untouched memory cannot appear correctly zeroed.
+    std::fill_n(output.GetMutable<Tensor>()->MutableData<T>(), 120, T{-99});
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &outputs));
+    const auto& tensor = outputs[0].Get<Tensor>();
+    ASSERT_EQ(tensor.Shape(), TensorShape({2, 4, 3, 5}));
+    ASSERT_EQ(tensor.DataRaw(), output.Get<Tensor>().DataRaw());
+    for (T value : tensor.DataAsSpan<T>()) {
+      EXPECT_EQ(value, T{}) << "run=" << run;
+    }
+  }
+}
+
+TEST(MathOpTest, MatMulZeroKBroadcastCpuFloat) {
+  RunMatMulZeroKBroadcastCpuTest<float>();
+}
+
+TEST(MathOpTest, MatMulZeroKBroadcastCpuDouble) {
+  RunMatMulZeroKBroadcastCpuTest<double>();
+}
+
+TEST(MathOpTest, MatMulHelperZeroBatchBroadcast) {
+  const auto check = [](const TensorShape& a, const TensorShape& b, const TensorShape& expected) {
+    for (bool fill_offsets : {false, true}) {
+      MatMulComputeHelper helper;
+      ASSERT_STATUS_OK(helper.Compute(a, b, false, false, false, false, fill_offsets));
+      ASSERT_EQ(helper.OutputShape(), expected);
+      ASSERT_EQ(helper.OutputShape().Size(), 0);
+      if (!fill_offsets) {
+        helper.FillOffsets();
+      }
+      EXPECT_TRUE(helper.LeftOffsets().empty());
+      EXPECT_TRUE(helper.RightOffsets().empty());
+      EXPECT_TRUE(helper.OutputOffsets().empty());
+    }
+  };
+  ASSERT_NO_FATAL_FAILURE(check(TensorShape({1, 3, 0}), TensorShape({0, 0, 5}), TensorShape({0, 3, 5})));
+  ASSERT_NO_FATAL_FAILURE(check(TensorShape({1, 3, 4}), TensorShape({0, 4, 5}), TensorShape({0, 3, 5})));
+  ASSERT_NO_FATAL_FAILURE(check(TensorShape({2, 1, 3, 0}), TensorShape({1, 0, 0, 5}), TensorShape({2, 0, 3, 5})));
+  ASSERT_NO_FATAL_FAILURE(check(TensorShape({0, 1, 3, 0}), TensorShape({1, 2, 0, 5}), TensorShape({0, 2, 3, 5})));
+}
+
+TEST(MathOpTest, MatMulHelperRejectsIncompatibleZeroBatch) {
+  MatMulComputeHelper helper;
+  EXPECT_FALSE(helper.Compute(TensorShape({2, 3, 0}), TensorShape({0, 0, 5})).IsOK());
+  EXPECT_FALSE(helper.Compute(TensorShape({0, 1, 3, 0}), TensorShape({2, 2, 0, 5})).IsOK());
+}
+
+template <typename T>
+void RunMatMulZeroBatchCpuTest(std::initializer_list<int64_t> a_dims,
+                               std::initializer_list<int64_t> b_dims,
+                               std::initializer_list<int64_t> y_dims) {
+  OpTester test("MatMul", 13);
+  test.AddInput<T>("A", a_dims, std::vector<T>(static_cast<size_t>(TensorShape(a_dims).Size()), T{1}));
+  test.AddInput<T>("B", b_dims, std::vector<T>(static_cast<size_t>(TensorShape(b_dims).Size()), T{1}));
+  test.AddOutput<T>("Y", y_dims, std::vector<T>{});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, MatMulZeroBatchCpuFloat) {
+  RunMatMulZeroBatchCpuTest<float>({1, 3, 0}, {0, 0, 5}, {0, 3, 5});
+  RunMatMulZeroBatchCpuTest<float>({1, 3, 4}, {0, 4, 5}, {0, 3, 5});
+  RunMatMulZeroBatchCpuTest<float>({2, 1, 3, 0}, {1, 0, 0, 5}, {2, 0, 3, 5});
+  RunMatMulZeroBatchCpuTest<float>({0, 1, 3, 0}, {1, 2, 0, 5}, {0, 2, 3, 5});
+}
+
+TEST(MathOpTest, MatMulZeroBatchCpuDouble) {
+  RunMatMulZeroBatchCpuTest<double>({1, 3, 0}, {0, 0, 5}, {0, 3, 5});
+  RunMatMulZeroBatchCpuTest<double>({1, 3, 4}, {0, 4, 5}, {0, 3, 5});
+  RunMatMulZeroBatchCpuTest<double>({2, 1, 3, 0}, {1, 0, 0, 5}, {2, 0, 3, 5});
+  RunMatMulZeroBatchCpuTest<double>({0, 1, 3, 0}, {1, 2, 0, 5}, {0, 2, 3, 5});
 }
 
 #if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
