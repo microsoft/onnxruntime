@@ -102,6 +102,10 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       GetProcAddress(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
   hooks.get_saved_initializer_count = reinterpret_cast<ExampleEpHooks::GetSavedInitializerCountFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_GetSavedInitializerCount"));
+  hooks.reset_weightless_source_model_buffer = reinterpret_cast<ExampleEpHooks::ResetWeightlessSourceModelBufferFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetWeightlessSourceModelBuffer"));
+  hooks.get_weightless_source_model_buffer = reinterpret_cast<ExampleEpHooks::GetWeightlessSourceModelBufferFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetWeightlessSourceModelBuffer"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -128,6 +132,12 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       dlsym(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
   hooks.get_saved_initializer_count = reinterpret_cast<Utils::ExampleEpHooks::GetSavedInitializerCountFn>(
       dlsym(lib, "ExampleEpTestHooks_GetSavedInitializerCount"));
+  hooks.reset_weightless_source_model_buffer =
+      reinterpret_cast<Utils::ExampleEpHooks::ResetWeightlessSourceModelBufferFn>(
+          dlsym(lib, "ExampleEpTestHooks_ResetWeightlessSourceModelBuffer"));
+  hooks.get_weightless_source_model_buffer =
+      reinterpret_cast<Utils::ExampleEpHooks::GetWeightlessSourceModelBufferFn>(
+          dlsym(lib, "ExampleEpTestHooks_GetWeightlessSourceModelBuffer"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(

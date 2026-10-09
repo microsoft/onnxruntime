@@ -12,6 +12,8 @@ VERS_1.0.0 {
   ExampleEpTestHooks_GetEnableWeightlessOption;
   ExampleEpTestHooks_ResetSavedInitializerCount;
   ExampleEpTestHooks_GetSavedInitializerCount;
+  ExampleEpTestHooks_ResetWeightlessSourceModelBuffer;
+  ExampleEpTestHooks_GetWeightlessSourceModelBuffer;
  local:
     *;
 };

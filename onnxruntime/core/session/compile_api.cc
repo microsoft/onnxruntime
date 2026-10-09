@@ -500,8 +500,6 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
-    // End of Version 31 - DO NOT MODIFY ABOVE
-
     &OrtCompileAPI::ModelCompilationOptions_SetWeightlessMode,
 };
 
