@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 31
+#define ORT_API_VERSION 32
 
 #ifdef __cplusplus
 extern "C" {
@@ -4149,10 +4149,11 @@ struct OrtApi {
 
   /** \brief Replace initialized Tensors with external data with the data provided in initializers.
    *
-   * The function will find the initialized TensorProtos with external data in the graph with the provided names and
+   * The function will find the initialized TensorProtos with external data in the main graph with the provided names and
    * replace them with the provided tensors. The API verifies that the TensorProto being replaced
    * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
-   * will occur before any of the optimizations take place. The data will be copied into the graph
+   * does not apply to initializers in subgraphs and will occur before any of the optimizations take place.
+   * The data will be copied into the graph
    * since TensorProto can't refer to the user provided buffers.
    *
    * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
@@ -5360,18 +5361,23 @@ struct OrtApi {
 
   /** \brief Replace initialized Tensors with external data with the provided files in memory
    *
-   * The function will find the initialized TensorProtos with external data in the graph with the provided
+   * The function will find the initialized TensorProtos with external data in the main graph with the provided
    * external file names and the file content in memory. The API gets the external file name, offset, data length
    * from TensorProto, and locate the tensor data from the file in memory buffer.
    * It creates a Tensor to replace the existing Tensor in graph. The replacement
-   * will occur before any of the optimizations take place. The data will be copied into the graph
-   * since TensorProto can't refer to the user provided buffers.
+   * will occur before any of the optimizations take place. By default, the data is copied during session creation.
+   * Initializers in subgraphs are not replaced by this API.
+   *
+   * If the session config `session.use_external_initializer_file_buffers_directly` is set to `"1"`, naturally aligned
+   * native-endian slices may be used directly. Other slices are copied. Every session created from these options may
+   * outlive the options, so the application must keep all supplied buffers unchanged and alive until all such sessions
+   * are released. If session creation fails, the buffers may be released after the call returns.
    *
    * \param[in] options
    * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
    *            which holds the external initializers.
    * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.
-   *            The buffer can be freed after session creation.
+   *            The buffer can be freed after session creation unless direct-buffer mode is enabled as described above.
    * \param[in] external_initializer_file_lengths Array of size_t to indicate the length of file content
    * \param[in] num_external_initializer_files Number of external files
    *
@@ -8584,6 +8590,62 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
+
+  /** \brief Store external initializers for the compiled model in one caller-owned buffer.
+   *
+   * This destination replaces any external-initializer file or callback destination configured previously. The
+   * logical file name must be a non-empty relative path. Leading current-directory prefixes (`./` or `.\\`) are
+   * removed before the name is recorded in each externalized TensorProto.
+   * This setter only configures the destination; CompileModel allocates the buffer using `allocator`.
+   * The allocator must provide host-accessible memory (CPU or host-accessible/pinned device memory).
+   * Device-only allocators are rejected with ORT_INVALID_ARGUMENT.
+   * On successful CompileModel completion, the caller owns the allocated buffer and must release it with `allocator`.
+   * If no data is externalized, the output buffer is NULL and its size is zero.
+   * Only main-graph initializers are externalized to this buffer; subgraph initializers remain embedded in the model.
+   * If CompileModel fails, both outputs are unchanged and temporary allocations are freed.
+   * The allocator and output pointer locations must remain valid until CompileModel returns.
+   * If the model also uses an output buffer, its buffer and size output locations must each be distinct from those
+   * provided here. CompileModel rejects aliased output locations with ORT_INVALID_ARGUMENT.
+   *
+   * The output model may be written to a file, buffer, or write callback. When the output model is written to a file,
+   * the caller is responsible for persisting or otherwise supplying this buffer under `logical_file_name` when the
+   * model is loaded.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] logical_file_name Logical external-data file name stored in the model.
+   * \param[in] external_initializers_size_threshold Initializers at least this size are externalized.
+   * \param[in] allocator Allocator providing host-accessible memory for the output buffer.
+   * \param[out] output_buffer_ptr Receives the allocated buffer, or NULL when no data is externalized.
+   * \param[out] output_buffer_size_ptr Receives the allocated buffer size.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* logical_file_name,
+                  size_t external_initializers_size_threshold,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_ void** output_buffer_ptr,
+                  _Out_ size_t* output_buffer_size_ptr);
+
+  /** \brief Configure additional alignment for externalized initializer offsets.
+   *
+   * Applies to file and buffer destinations for initializers at least `minimum_size` bytes. An alignment of zero
+   * disables the additional policy. Otherwise, alignment must be a power of two.
+   * By default, offsets for initializers of at least 1 MiB (1048576 bytes) are aligned to 4096 bytes, even if this
+   * setter is never called. Natural alignment for each tensor's element type is always applied, including when
+   * the additional policy is disabled. These settings align offsets, not the allocator-provided buffer address.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] alignment Required byte alignment, or zero to disable.
+   * \param[in] minimum_size Minimum initializer size at which alignment is applied.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  size_t alignment,
+                  size_t minimum_size);
 };
 
 /**
