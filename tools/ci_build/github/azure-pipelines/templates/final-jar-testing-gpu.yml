@@ -83,7 +83,7 @@ stages:
         clean: all
       pool:
         name: 'Onnxruntime-Linux-GPU-A10'
-        os: linux
+        demands: ImageOverride -equals onnxruntime-ubuntu2404-CUDA
       variables:
       - name: runCodesignValidationInjection
         value: false
@@ -101,6 +101,9 @@ stages:
       - bash: |
           sudo apt-get install -y msopenjdk-17
           dpkg -l msopenjdk-17
+
+      - bash: |
+          nvidia-smi
 
       - bash: |
           echo "Downloading and installing Maven $(mavenVersion) for Linux..."
