@@ -5321,9 +5321,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
-<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.</dd>
+<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequences. CUDA sanitizes malformed values on device: an invalid value suppresses that sequence's cache writes and produces zero output. A backend requiring exact host lengths may instead return INVALID_ARGUMENT when attention_metadata is absent.</dd>
 <dt><tt>block_table</tt> : S</dt>
-<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache.</dd>
+<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache. -1 denotes an unmapped page. CUDA converts values below -1 or greater than or equal to num_blocks to the unmapped sentinel before resolving cache addresses; mapped pages remain attendable.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
