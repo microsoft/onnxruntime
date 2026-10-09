@@ -59,6 +59,13 @@ bool RemoveQDQPair(Graph& graph, Node& q_node, const logging::Logger& logger) {
     if (!produces_graph_output && output_edges_count != 1) {
       return false;
     }
+
+    // ReplaceNodeInput does not update captures inside a consumer's subgraphs.
+    for (auto it = dq_node->OutputEdgesBegin(); it != dq_node->OutputEdgesEnd(); ++it) {
+      if (it->GetDstArgIndex() >= static_cast<int>(it->GetNode().InputDefs().size())) {
+        return false;
+      }
+    }
   }
 
   LOGS(logger, VERBOSE) << "QDQStripActivationsTransformer: removing Q node \"" << q_node.Name()
@@ -93,8 +100,7 @@ bool RemoveQDQPair(Graph& graph, Node& q_node, const logging::Logger& logger) {
       // Remove edge: DQ -> downstream.
       graph.RemoveEdge(dq_node.Index(), downstream_idx, 0, downstream_arg_idx);
 
-      // Rewire: downstream now gets Q's input. Use the helper as downstream_arg_idx may refer to an
-      // implicit input (e.g. the DQ output is consumed by a subgraph).
+      // Implicit inputs were excluded before any graph mutation.
       Node& downstream_node = *graph.GetNode(downstream_idx);
       graph_utils::ReplaceNodeInput(downstream_node, downstream_arg_idx, *q_node.MutableInputDefs()[0]);
 
@@ -213,19 +219,16 @@ Status QDQStripActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
   // Sub-pass C: Constant-fold remaining weight DQ nodes.
   // After activation Q->DQ removal, weight DQ nodes on constant initializers can be folded into float
   // tensors so ops run directly on float weights.
-  if (modified) {
-    // Resolve graph first: sub-passes A and B may have added new nodes (Identity, MatMulNBits) whose
-    // Op() schemas are not yet set. ConstantFolding calls UpdateShapeInference which dereferences
-    // node.Op() — this would crash on unresolved nodes.
-    ORT_RETURN_IF_ERROR(graph.Resolve());
+  // Earlier sub-passes may have added unresolved nodes. Folding is also needed when no activation
+  // pair was removed, but must honor the explicit option to preserve constant DQ nodes.
+  ORT_RETURN_IF_ERROR(graph.Resolve());
 
-    ConstantFolding constant_folding(cpu_execution_provider_,
-                                     /*skip_dequantize_linear=*/false,
-                                     config_options_);
-    bool cf_modified = false;
-    ORT_RETURN_IF_ERROR(constant_folding.Apply(graph, cf_modified, logger));
-    modified |= cf_modified;
-  }
+  const bool skip_dequantize_linear =
+      config_options_.GetConfigOrDefault(kOrtSessionOptionsDisableQDQConstantFolding, "0") == "1";
+  ConstantFolding constant_folding(cpu_execution_provider_, skip_dequantize_linear, config_options_);
+  bool cf_modified = false;
+  ORT_RETURN_IF_ERROR(constant_folding.Apply(graph, cf_modified, logger));
+  modified |= cf_modified;
 
   return Status::OK();
 }

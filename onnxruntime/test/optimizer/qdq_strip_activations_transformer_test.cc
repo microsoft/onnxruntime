@@ -136,6 +136,64 @@ TEST(QDQStripActivationsTransformerTests, RemoveQDQPairMultipleDQConsumers) {
                             true /*enable_strip_activations*/);
 }
 
+TEST(QDQStripActivationsTransformerTests, PreserveImplicitSubgraphCaptures) {
+  for (bool source_from_node : {false, true}) {
+    SCOPED_TRACE(source_from_node);
+    auto build_test_case = [source_from_node](ModelTestBuilder& builder) {
+      auto* source = builder.MakeInput<float>({1, 4, 8}, -1.f, 1.f);
+      if (source_from_node) {
+        auto* relu_output = builder.MakeIntermediate();
+        builder.AddNode("Relu", {source}, {relu_output});
+        source = relu_output;
+      }
+
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(source, kTestScale, kTestZp, q_output);
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, kTestScale, kTestZp, dq_output);
+
+      auto create_subgraph = [&](const char* output_name) {
+        Model model("capture", true, DefaultLoggingManager().DefaultLogger());
+        auto& graph = model.MainGraph();
+        ONNX_NAMESPACE::TypeProto type_proto;
+        type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        auto& captured = graph.GetOrCreateNodeArg(dq_output->Name(), &type_proto);
+        graph.AddOuterScopeNodeArg(captured.Name());
+        auto& output = graph.GetOrCreateNodeArg(output_name, &type_proto);
+        graph.AddNode("identity", "Identity", "", {&captured}, {&output});
+        graph.SetOutputs({&output});
+        ORT_THROW_IF_ERROR(graph.Resolve());
+        return graph.ToGraphProto();
+      };
+
+      auto* condition = builder.MakeInput<bool>({1}, {true});
+      auto* output = builder.MakeOutput();
+      auto& if_node = builder.AddNode("If", {condition}, {output});
+      if_node.AddAttribute("then_branch", create_subgraph("then_output"));
+      if_node.AddAttribute("else_branch", create_subgraph("else_output"));
+
+      // Validate the entire Q fan-out before removing any DQ consumer.
+      auto* explicit_dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, kTestScale, kTestZp, explicit_dq_output);
+      builder.AddNode("Sigmoid", {explicit_dq_output}, {builder.MakeOutput()});
+    };
+
+    auto check_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      EXPECT_EQ(op_to_count["If"], 1);
+    };
+
+    auto add_session_options = [](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
+    };
+    TransformerTester(build_test_case, check_graph,
+                      TransformerLevel::Level1, TransformerLevel::Level2,
+                      21, 0.0f, 0.0f, nullptr, add_session_options);
+  }
+}
+
 // Test: Q->DQ pair not removed when scale/zp mismatch
 TEST(QDQStripActivationsTransformerTests, NoRemovalOnScaleMismatch) {
   auto build_test_case = [](ModelTestBuilder& builder) {
@@ -528,6 +586,35 @@ TEST(QDQStripActivationsTransformerTests, WeightDQConstantFolding) {
                     nullptr, add_session_options);
 }
 
+TEST(QDQStripActivationsTransformerTests, WeightDQConstantFoldingWithoutActivationRemoval) {
+  for (bool disable_folding : {false, true}) {
+    SCOPED_TRACE(disable_folding);
+    auto build_test_case = [](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({1, 4, 8}, -1.f, 1.f);
+      auto* weight = builder.MakeInitializer<int8_t>({1, 4, 8}, -64, 64);
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(weight, 0.01f, int8_t{0}, dq_output);
+      builder.AddNode("Add", {input, dq_output}, {builder.MakeOutput()});
+    };
+
+    auto check_graph = [disable_folding](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], disable_folding ? 1 : 0);
+      EXPECT_EQ(op_to_count["Add"], 1);
+    };
+
+    auto add_session_options = [disable_folding](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+          kOrtSessionOptionsDisableQDQConstantFolding, disable_folding ? "1" : "0"));
+    };
+    TransformerTester(build_test_case, check_graph,
+                      TransformerLevel::Level1, TransformerLevel::Level2,
+                      21, 0.0f, 0.0f, nullptr, add_session_options);
+  }
+}
+
 // Test: Gemm with activation Q->DQ, uint8 weight DQ, and int32 bias DQ
 // Full QDQ quantization commonly use this pattern: all inputs are quantized,
 // with the activation as uint16, weight as uint8, and bias as int32.
@@ -587,10 +674,17 @@ TEST(QDQStripActivationsTransformerTests, GemmWithInt32BiasDQ) {
     EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
     // Bias DQ constant-folded by Sub-pass C (constant int32 initializer)
     EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "MatMulNBits") {
+        EXPECT_EQ(node.GetAttributes().at("accuracy_level").i(), 1);
+      }
+    }
   };
 
   auto add_session_options = [](SessionOptions& so) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
+    // Isolate fusion correctness from accuracy level 4's additional int8 activation rounding.
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "1"));
   };
 
   TransformerTester(build_test_case,
@@ -598,8 +692,8 @@ TEST(QDQStripActivationsTransformerTests, GemmWithInt32BiasDQ) {
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
                     21 /*opset_version*/,
-                    5.0f /*per_sample_tolerance - output Q->DQ rounding error up to scale/2=4*/,
-                    5.0f /*relative_per_sample_tolerance*/,
+                    0.055f /*output rounding <= 0.05 plus input rounding propagated through Gemm*/,
+                    0.0f /*relative_per_sample_tolerance*/,
                     nullptr, add_session_options);
 }
 

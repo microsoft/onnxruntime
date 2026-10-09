@@ -32,9 +32,10 @@ relies on ConstantFolding which is not available in a minimal build.
 Sub-passes:
   A) Remove all adjacent Q->DQ pairs where all of Q's consumers are DQ nodes with matching
      scale/zp, and each such DQ has exactly one output edge (unless that edge goes directly
-     to a graph output).
+     to a graph output). Pairs feeding implicit subgraph inputs are preserved.
   B) Fuse newly eligible DQ -> MatMul / Gemm patterns into MatMulNBits.
-  C) Constant-fold remaining weight DQ nodes on constant initializers into float tensors.
+  C) Constant-fold remaining weight DQ nodes on constant initializers into float tensors,
+     unless session.disable_qdq_constant_folding is enabled.
 */
 class QDQStripActivationsTransformer : public GraphTransformer {
  public:
