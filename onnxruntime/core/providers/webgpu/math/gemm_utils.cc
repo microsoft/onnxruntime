@@ -105,20 +105,6 @@ void HandleMatMulWithSplitK(
   }
 }
 
-// Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
-// `ProgramBase.SetDispatchGroupSize()` may be normalized in
-// `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
-// `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
-void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
-  shader.MainFunctionBody()
-      << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
-      << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
-      << "  const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n"
-      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
-}
-
 void EmitMatMulWriteFnHeader(ShaderHelper& shader, const ShaderVariableHelper& output) {
   const int output_components = output.NumComponents();
   shader.AdditionalImplementation()
@@ -137,6 +123,20 @@ void EmitMatMulWriteFnFooter(ShaderHelper& shader) {
 }
 
 }  // namespace
+
+void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
+  // Dispatch normalization can pad the grid. The return must be uniform across
+  // each workgroup, including kernels that use barriers or reinterpret z for Split-K.
+  shader.MainFunctionBody()
+      << "  let logical_workgroup_id_x = workgroup_idx % uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_yz = workgroup_idx / uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_y = logical_workgroup_id_yz % uniforms.logical_dispatch_y;\n"
+      << "  let logical_workgroup_id_z = logical_workgroup_id_yz / uniforms.logical_dispatch_y;\n"
+      << "  if (logical_workgroup_id_z >= uniforms.logical_dispatch_z) { return; }\n"
+      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
+      << "  const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n"
+      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
+}
 
 void MatMulReadFnSource(ShaderHelper& shader,
                         std::string_view function_name,
