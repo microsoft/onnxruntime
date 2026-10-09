@@ -193,7 +193,7 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
       XCTAssertNil(error);
     }
     NSArray* persisted = [NSFileManager.defaultManager contentsOfDirectoryAtPath:directory error:&error];
-    XCTAssertEqual(persisted.count, 2);
+    XCTAssertEqual(persisted.count, NSUInteger{2});
     XCTAssertNil(error);
     NSData* modelRecord = [NSData dataWithContentsOfFile:encryptedModelPath];
     NSData* contextRecord = [NSData dataWithContentsOfFile:encryptedContextPath];
@@ -244,7 +244,7 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
       ORTAssertBoolResultSuccessful(set, error);
       ORTSession* session = [[ORTSession alloc] initWithEnv:env modelPath:modelPath sessionOptions:options error:&error];
       ORTAssertNullableResultSuccessful(session, error);
-      XCTAssertEqual(calls, 1);
+      XCTAssertEqual(calls, NSUInteger{1});
       for (int iteration = 0; iteration < 2; ++iteration) {
         float x[6], y[6];
         for (int i = 0; i < 6; ++i) {
