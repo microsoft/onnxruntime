@@ -233,6 +233,9 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
 
   // Determine tile sizes first (needed for prepack padding).
   const auto tiling = GetSubgroupMatrixMatMulNBitsTiling(config, has_bias, M, N);
+  ORT_ENFORCE(tiling.workgroup_size <= context.DeviceLimits().maxComputeWorkgroupSizeX &&
+                  tiling.workgroup_size <= context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
+              "Subgroup matrix MatMulNBits workgroup size exceeds device limits: ", tiling.workgroup_size);
 
   // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
   Tensor a_prepack;
