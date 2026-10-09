@@ -30,6 +30,7 @@
 
 #if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <iostream>
@@ -95,7 +96,8 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
                                        int64_t m_dim_value = kE2eM,
                                        int64_t n = kE2eN,
                                        int64_t k = kE2eK,
-                                       uint8_t packed_weight_byte = 0) {
+                                       uint8_t packed_weight_byte = 0,
+                                       [[maybe_unused]] bool include_bias = true) {
   const int64_t k_blocks = (k + kE2eBlockSize - 1) / kE2eBlockSize;
   const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;  // 16
 
@@ -164,11 +166,13 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
 #if !USE_COMPACT_FPA_INTB_GEMM
   // Bias initializer: fp16 {N}, zero-filled. Supplying it after two omitted optional inputs is the
   // regression layout for positional Level-2 input-shape resolution.
-  auto* bias = graph->add_initializer();
-  bias->set_name("bias");
-  bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  bias->add_dims(n);
-  bias->mutable_raw_data()->assign(static_cast<size_t>(n * sizeof(uint16_t)), '\0');
+  if (include_bias) {
+    auto* bias = graph->add_initializer();
+    bias->set_name("bias");
+    bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    bias->add_dims(n);
+    bias->mutable_raw_data()->assign(static_cast<size_t>(n * sizeof(uint16_t)), '\0');
+  }
 #endif
 
   // MatMulNBits node.
@@ -184,7 +188,7 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
 #if USE_COMPACT_FPA_INTB_GEMM
   node->add_input("");
 #else
-  node->add_input("bias");
+  node->add_input(include_bias ? "bias" : "");
 #endif
   node->add_output("Y");
   auto add_int_attr = [node](const char* name, int64_t v) {
@@ -336,9 +340,10 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   ScopedEnvironmentVariables scoped_env(
       EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
                 {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
-  const std::string model_bytes = BuildMatMulNBitsModelBytes();
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(
+      nullptr, 0, kE2eM, kE2eN, kE2eK, 0, false);
 
-  // profile_m=1 limits constructor profiling to M=1. The first M=256 run therefore performs lazy
+  // profile_m=1,16 limits constructor profiling to M=1 and M=16. The first M=256 run performs lazy
   // profiling. Its scratch is runtime transient memory and must be included in the hard budget,
   // while constructor-profile and PrePack_B scratch remain a non-additive initialization peak.
   {
@@ -346,7 +351,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBGemm, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "2048,"));
     InferenceSessionWrapper session(so, GetEnvironment());
@@ -361,11 +366,34 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
 
     const auto estimate = EstimateMatMulNBitsMemoryForTest(
         mm_node, cuda_ep->GetDeviceProp(),
-        {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::string_view{"1"}});
+        {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::string_view{"1,16"}});
     ASSERT_TRUE(estimate.has_value());
     ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
-    EXPECT_GT(estimate->runtime_transient_bytes, *estimate->runtime_workspace_bytes);
-    EXPECT_GT(estimate->initialization_scratch_bytes, size_t{0});
+    const size_t packed_weight_bytes = static_cast<size_t>(kE2eN * kE2eK) / 2;
+    const size_t scale_bytes = static_cast<size_t>(kE2eN * kE2eK / kE2eBlockSize) * sizeof(uint16_t);
+    const size_t matrix_bytes = packed_weight_bytes + scale_bytes;
+    const size_t l2_bytes = static_cast<size_t>(cuda_ep->GetDeviceProp().l2CacheSize);
+    ASSERT_LE(matrix_bytes, l2_bytes);
+    const auto expected_profile_scratch = [&](size_t profile_m, size_t streaming_l2_bytes) {
+      const size_t copies = streaming_l2_bytes == 0 ? 1 : 2 * streaming_l2_bytes / matrix_bytes + 1;
+      const size_t runner_workspace = ((profile_m + 15) / 16) * ((kE2eN + 63) / 64) * 7 * sizeof(float);
+      const std::array<size_t, 7> buffers{
+          profile_m * kE2eK * sizeof(uint16_t), packed_weight_bytes * copies, scale_bytes * copies,
+          scale_bytes, kE2eN * sizeof(uint16_t), profile_m * kE2eN * sizeof(uint16_t), runner_workspace};
+      size_t scratch = 0;
+      for (size_t bytes : buffers) {
+        scratch += (bytes + 127) / 128 * 128;
+      }
+      return scratch;
+    };
+    const size_t streaming_decode_scratch = expected_profile_scratch(1, l2_bytes);
+    const size_t larger_bucket_scratch = expected_profile_scratch(16, 0);
+    const size_t prepack_scratch = packed_weight_bytes + 32 * sizeof(int32_t);
+    ASSERT_GT(streaming_decode_scratch, larger_bucket_scratch);
+    EXPECT_EQ(estimate->initialization_scratch_bytes,
+              std::max({streaming_decode_scratch, larger_bucket_scratch, prepack_scratch}));
+    EXPECT_EQ(estimate->runtime_transient_bytes, expected_profile_scratch(kE2eM, 0));
+    EXPECT_LT(estimate->runtime_transient_bytes, expected_profile_scratch(kE2eM, l2_bytes));
 
     std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
     OrtValue a_value;
@@ -383,7 +411,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBGemm, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
     InferenceSessionWrapper session(so, GetEnvironment());
