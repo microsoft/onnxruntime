@@ -1021,7 +1021,7 @@ TEST(OrtEpLibrary, PluginEp_ExecutableExternalContextRoundTrip) {
   auto options = [&]() {
     Ort::SessionOptions result;
     result.AddConfigEntry("ep.example.test_execute_ep_context", "1");
-    result.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, {});
+    result.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, std::unordered_map<std::string, std::string>{});
     return result;
   };
 
