@@ -32,11 +32,18 @@ class GraphViewer;
  * from the matching IExecutionProvider::Get*Capability() query hook; callers
  * depend only on the mix-in they actually use.
  *
- * This is additive and non-breaking: the legacy per-capability virtuals on
- * IExecutionProvider remain in place, so existing EPs and callers are
- * unaffected. EPs and callers can migrate to the segregated interfaces
- * incrementally, and a cluster's legacy virtuals can be removed from the base
- * once all of its implementers and callers have moved over.
+ * The goal is explicit optional-capability discovery and narrower caller
+ * dependencies, not reduced memory use or improved runtime performance. Opting
+ * into a mix-in adds polymorphic subobjects/vtables and pointer adjustment.
+ * Returning this through the declared capability type uses the compiler's
+ * derived-to-base conversion; callers must not assume identical EP and
+ * capability addresses or reinterpret_cast between them.
+ *
+ * Legacy method signatures and source behavior are retained, and discovery
+ * hooks default to nullptr until an EP opts in. This is not a binary ABI
+ * compatibility guarantee: internal interface/layout changes require matching
+ * EP and runtime rebuilds. Production migration and any removal of legacy
+ * virtuals require a separate owner-approved compatibility decision.
  */
 
 /**
@@ -81,11 +88,12 @@ class IGraphCaptureCapability {
 /**
  * TunableOp tuning capability.
  *
- * Mirrors the legacy IExecutionProvider::GetTuningContext(), which is a const,
- * read-only accessor: the capability hands out the tuning context but does not
- * mutate the EP, so the matching GetTuningCapability() query hook is likewise a
- * const query. Tuning state is recorded through the returned ITuningContext, not
- * by mutating the EP.
+ * Mirrors the legacy IExecutionProvider::GetTuningContext() signature, including
+ * its mutable ITuningContext* return from a const accessor. Constness is shallow:
+ * a const capability or EP does not make the returned context or tuning state
+ * immutable. This retains the existing contract rather than introducing deep
+ * constness or new thread-safety guarantees. Context mutation still requires
+ * the synchronization prescribed by the context/provider.
  */
 class ITuningCapability {
  public:

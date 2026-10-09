@@ -452,6 +452,8 @@ class IExecutionProvider {
 
   /**
    * Return the tuning context which holds all TunableOp state.
+   * This const accessor retains a mutable context pointer; constness does not
+   * prevent tuning-state mutation or imply thread-safe access to that context.
    *
    * See also ITuningCapability / GetTuningCapability() in
    * execution_provider_capabilities.h, the segregated mix-in.
@@ -519,18 +521,18 @@ class IExecutionProvider {
   // optional capability, or nullptr otherwise. They let callers depend only on
   // the capability they need instead of the full IExecutionProvider surface.
   // The legacy per-capability virtuals above are retained for compatibility;
-  // EPs and callers can migrate to these hooks incrementally.
+  // source migration can be incremental, but internal EP/runtime binaries must
+  // be rebuilt together. Mix-ins add polymorphic subobjects/pointer adjustment;
+  // these hooks make optional support explicit, not a memory/performance claim.
 
   /** Return this EP's graph-capture/replay capability, or nullptr if unsupported.
       Non-const because the capability exposes mutating operations (graph replay/release). */
   virtual IGraphCaptureCapability* GetGraphCaptureCapability() noexcept { return nullptr; }
 
   /** Return this EP's TunableOp tuning capability, or nullptr if unsupported.
-      Const and returning a const pointer, mirroring the legacy GetTuningContext()
-      const: ITuningCapability exposes only the read-only GetTuningContext() const,
-      so acquiring it is a const query that stays callable on a const
-      IExecutionProvider&. Tuning state is still recorded through the returned
-      ITuningContext, not by mutating the EP. */
+      The const capability pointer matches the legacy const accessor, but
+      GetTuningContext() still returns mutable ITuningContext*. Constness is
+      shallow and does not prevent context mutation or add synchronization. */
   virtual const ITuningCapability* GetTuningCapability() const noexcept { return nullptr; }
 
   /** Return this EP's data-layout preference capability, or nullptr if unsupported.
