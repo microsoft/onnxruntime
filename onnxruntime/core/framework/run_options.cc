@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/framework/run_options.h"
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
@@ -49,13 +50,17 @@ ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunTag, _In_ const OrtRunOptions* opti
 }
 
 ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetTerminate, _Inout_ OrtRunOptions* options) {
-  options->terminate = true;
+  API_IMPL_BEGIN
+  options->RequestTerminate();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options) {
-  options->terminate = false;
+  API_IMPL_BEGIN
+  options->ResetTerminate();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(void, OrtApis::RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream) {

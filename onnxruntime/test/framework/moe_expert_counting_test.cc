@@ -279,7 +279,7 @@ void TestDisabledRecording(bool quantized) {
                          nullptr,
 #endif
                          state);
-    const bool terminate = false;
+    const CancellationToken terminate{};
     size_t moe_nodes = 0;
     for (NodeIndex index : state.GetGraphViewer().GetNodesInTopologicalOrder()) {
       const auto* kernel = state.GetKernel(index);
@@ -382,7 +382,7 @@ TEST(MoeExpertCountingTest, ContextExposesSessionOwnedCollector) {
                        nullptr,
 #endif
                        session_state);
-  const bool terminate = false;
+  const CancellationToken terminate{};
   const auto* kernel = session_state.GetKernel(0);
   ASSERT_NE(kernel, nullptr);
   OpKernelContextInternal context(session_state, frame, *kernel, session_state.Logger(), terminate, nullptr);
