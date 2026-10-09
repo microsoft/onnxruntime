@@ -2881,7 +2881,15 @@ TEST_F(ExternalDataFileTest, NativeLoaderReceivesTheOpenedFile) {
   std::array<uint8_t, 16> bytes{};
   Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape{16}, bytes.data(),
                 OrtMemoryInfo(CPU, OrtDeviceAllocator));
-  ASSERT_STATUS_OK(LoadExtDataToTensorFromTensorProto(env, model_dir_ / "model.onnx", MakeTensor(), loader, tensor));
+  // The PR merge build also supports the allocator-aware API introduced on main.
+  const auto load_tensor = [&](auto load) {
+    if constexpr (requires { load(env, model_dir_ / "model.onnx", MakeTensor(), loader, AllocatorPtr{}, tensor); }) {
+      return load(env, model_dir_ / "model.onnx", MakeTensor(), loader, AllocatorPtr{}, tensor);
+    } else {
+      return load(env, model_dir_ / "model.onnx", MakeTensor(), loader, tensor);
+    }
+  };
+  ASSERT_STATUS_OK(load_tensor(LoadExtDataToTensorFromTensorProto));
   EXPECT_TRUE(loader.called);
   EXPECT_EQ(env.opens, 1U);
   EXPECT_EQ(env.reads, 1U);
