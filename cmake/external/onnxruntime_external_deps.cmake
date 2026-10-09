@@ -1114,7 +1114,8 @@ if(onnxruntime_USE_1DS_TELEMETRY)
   set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
   set(MATSDK_BUILD_APPLE_HTTP ${APPLE} CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
   set(MATSDK_DISABLE_LOGGING ON CACHE BOOL "Compile internal 1DS logging out" FORCE)
-  set(MATSDK_DISABLE_EXCEPTIONS OFF CACHE BOOL "Retain 1DS SDK exception support" FORCE)
+  set(MATSDK_DISABLE_EXCEPTIONS ${onnxruntime_DISABLE_EXCEPTIONS} CACHE BOOL
+      "Match 1DS SDK exception support to ONNX Runtime" FORCE)
   set(MATSDK_USE_WININET OFF CACHE BOOL "Use WinHTTP for desktop Windows telemetry" FORCE)
   # Desktop ORT supplies a hashed, generated device ID; mobile builds use the SDK's platform ID.
   if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "visionOS")
@@ -1164,7 +1165,7 @@ if(onnxruntime_USE_1DS_TELEMETRY)
   )
   block(PROPAGATE cpp_client_telemetry_SOURCE_DIR cpp_client_telemetry_BINARY_DIR)
     # The SDK otherwise derives its version from the build date, not the release tag.
-    set(BUILD_VERSION "3.10.279.1")
+    set(BUILD_VERSION "3.10.281.1")
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
   endblock()
   if(WIN32 AND TARGET mat)
