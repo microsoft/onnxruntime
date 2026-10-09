@@ -217,7 +217,7 @@ def _summarize_cache(cache_path: str, signature: dict[str, str], *, display: boo
         **signature,
         "ort_cuda_gemm_tactic_cache": "v1",
         "table": "matmulnbits_fpa_intb",
-        "tactic_selection_version": "3",
+        "tactic_selection_version": "4",
     }
     for key, value in expected.items():
         if header.get(key) != value:

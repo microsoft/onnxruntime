@@ -99,7 +99,7 @@ punctuation) that make CSV quoting fragile.
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	matmulnbits_fpa_intb
-# tactic_selection_version	3
+# tactic_selection_version	4
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -197,7 +197,10 @@ cache reuse remains conservative.
 
 MatMulNBits keys separate paired-K modes (disabled, autotuned, forced) and wave-aware GEMV
 launches. `cuda_kernel_variant` preserves the selected GEMV implementation (0 = default,
-1 = paired-K). Selection version 3 rejects older files that cannot represent these choices.
+1 = paired-K, 2–7 = the six symmetric INT4 M=1 decode geometries). Selection version 4
+rejects older selections made before the streaming-L2 decode profiler and its new candidates.
+Loaded decode variants must still pass the current layout, dtype, quantization, M-bucket, and
+grid-limit checks before they are validated on the device.
 
 ## 7. Implemented architecture
 

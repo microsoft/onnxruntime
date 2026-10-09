@@ -98,13 +98,15 @@ struct GemmDims {
 // kernels with different bits/group size/zero points/bias/GEMV support must not share tactics.
 // device_name separates GPUs that share a packing SM (e.g. RTX 4090 and RTX 4060) so a tactic profiled
 // on one device is never reused, or written to a disk cache, for another.
+// device_id also isolates profiling state and allocator context on identical GPUs.
 class GemmIdCore {
  public:
   int n;
   int k;
   nvinfer::DataType dtype;
   int sm;
-  int bits;
+  int quant_bits;
+  int device_id;
   int group_size;
   bool has_zeros;
   bool gemv_enabled;
@@ -116,14 +118,27 @@ class GemmIdCore {
 
   GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, int bits_ = 0, int group_size_ = 0,
              bool has_zeros_ = false, bool gemv_enabled_ = false, bool has_bias_ = false,
-             std::string device_name_ = std::string(), bool wave_aware_ = false, int tag_ = 0)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_), bits(bits_), group_size(group_size_), has_zeros(has_zeros_), gemv_enabled(gemv_enabled_), has_bias(has_bias_), device_name(std::move(device_name_)), wave_aware(wave_aware_), tag(tag_) {
+             std::string device_name_ = std::string(), bool wave_aware_ = false, int tag_ = 0, int device_id_ = 0)
+      : n(n_),
+        k(k_),
+        dtype(dtype_),
+        sm(sm_),
+        quant_bits(bits_),
+        device_id(device_id_),
+        group_size(group_size_),
+        has_zeros(has_zeros_),
+        gemv_enabled(gemv_enabled_),
+        has_bias(has_bias_),
+        device_name(std::move(device_name_)),
+        wave_aware(wave_aware_),
+        tag(tag_) {
   }
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
         sm(0),
-        bits(0),
+        quant_bits(0),
+        device_id(0),
         group_size(0),
         has_zeros(false),
         gemv_enabled(false),
@@ -138,9 +153,9 @@ class GemmIdCore {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
     out << " sm=" << id.sm;
-    out << " bits=" << id.bits << " group_size=" << id.group_size;
+    out << " bits=" << id.quant_bits << " group_size=" << id.group_size;
     out << " has_zeros=" << id.has_zeros << " gemv=" << id.gemv_enabled << " has_bias=" << id.has_bias;
-    out << " device=" << id.device_name;
+    out << " device=" << id.device_name << " device_id=" << id.device_id;
     out << " tag=" << id.tag;
     out << " wave_aware=" << id.wave_aware;
     return out;
@@ -148,9 +163,9 @@ class GemmIdCore {
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && bits == id.bits &&
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && quant_bits == id.quant_bits &&
            group_size == id.group_size && has_zeros == id.has_zeros && gemv_enabled == id.gemv_enabled &&
-           has_bias == id.has_bias && device_name == id.device_name && tag == id.tag &&
+           has_bias == id.has_bias && device_name == id.device_name && device_id == id.device_id && tag == id.tag &&
            wave_aware == id.wave_aware;
   }
 };
@@ -162,12 +177,13 @@ struct GemmIdCoreHash {
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
     auto h4 = std::hash<int>{}(id.sm);
-    auto h5 = std::hash<int>{}((id.bits << 16) ^ (id.group_size << 3) ^ (id.has_bias ? 4 : 0) ^
+    auto h5 = std::hash<int>{}((id.quant_bits << 16) ^ (id.group_size << 3) ^ (id.has_bias ? 4 : 0) ^
                                (id.has_zeros ? 2 : 0) ^ (id.gemv_enabled ? 1 : 0));
     auto h6 = std::hash<std::string>{}(id.device_name);
     auto h7 = std::hash<int>{}(id.tag);
     auto h8 = std::hash<bool>{}(id.wave_aware);
-    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8;
+    auto h9 = std::hash<int>{}(id.device_id);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9;
   }
 };
 
@@ -426,7 +442,10 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
                        ? max_profile_m
                        : RoundUpProfileM(static_cast<int>(dims.maxM), max_profile_m);
 
-  size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
+  size_t workspace_bytes = 0;
+  for (int profile_m : getProfileMBuckets(static_cast<int>(dims.minM), maxM, hasWeightOnlyCudaKernel)) {
+    workspace_bytes = std::max(workspace_bytes, computeTmpSize(profile_m, dims.n, dims.k));
+  }
 
   if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
     // Create map for GEMM ID

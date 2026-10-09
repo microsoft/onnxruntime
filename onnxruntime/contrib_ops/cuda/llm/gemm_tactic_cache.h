@@ -45,7 +45,7 @@ constexpr const char* kCacheMagic = "ort_cuda_gemm_tactic_cache";
 constexpr const char* kCacheFormatVersion = "v1";
 
 // Bump whenever profiling or tactic selection changes which tactic wins, so stale caches are rejected.
-constexpr const char* kTacticSelectionVersion = "3";
+constexpr const char* kTacticSelectionVersion = "4";
 
 constexpr const char* kTableMatMulNBits = "matmulnbits_fpa_intb";
 

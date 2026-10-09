@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <cassert>
 #include <cutlass/numeric_types.h>
 #include <memory>
@@ -62,9 +64,13 @@ float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache
 // Computes the single temporary CUDA allocation used while profiling tactics.
 // `packed_n` is the number of 16-bit elements that hold one packed weight row.
 // Shared with partition-time memory estimation so the allocation formulas cannot drift.
+std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes = 0);
+
 std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,
-    size_t group_size, size_t runner_workspace_bytes);
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes = 0);
 
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
@@ -95,6 +101,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   void setGroupSize(int groupSize) {
     mGroupSize = groupSize;
+  }
+
+  void setDecodeInterleave(int interleave) {
+    mDecodeInterleave = interleave;
   }
 
   void setCudaKernelType(KernelType cudaKernelType, int arch) {
@@ -128,10 +138,19 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   }
 
  protected:
+  bool canProfileInt4Decode(int m) const {
+    return m == 1 && mDecodeInterleave == 4 && mQuantBits == INT4_BITS && mGroupSize == 32 &&
+           !mHasBiases && !mHasZeros &&
+           (mCudaKernelType == KernelType::FP16Int4Groupwise ||
+            mCudaKernelType == KernelType::BF16Int4Groupwise);
+  }
+
   void runTactic(int m, int n, int k, Config const& tactic,
                  char* workspace, cudaStream_t const& stream) override;
 
   size_t computeTmpSize(size_t maxM, size_t n, size_t k) override;
+
+  void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream) override;
 
   std::vector<Config> getTactics(int m, int n, int k) const override;
 
@@ -156,14 +175,16 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   bool stageProfiledTactics(GemmIdCore const& gemmId, MProfileMap const& map,
                             bool hasWeightOnlyCudaKernel);
 
-  bool mHasBiases;
-  int mPairedGemvMode = 0;
-  bool mHasZeros;
-  int mQuantBits;
-  int mGroupSize;
-  KernelType mCudaKernelType;
-  int mArch;
+  bool mHasBiases = false;
+  bool mHasZeros = false;
+  int mQuantBits = 0;
+  int mGroupSize = 0;
+  KernelType mCudaKernelType = KernelType::FP16Int4Groupwise;
+  int mArch = 0;
+  int mDecodeInterleave = 0;
   size_t mL2CacheBytes = 0;
+  std::atomic<size_t> mProfileWeightIndex{0};
+  int mPairedGemvMode = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
   bool mWaveAwareGemv = false;

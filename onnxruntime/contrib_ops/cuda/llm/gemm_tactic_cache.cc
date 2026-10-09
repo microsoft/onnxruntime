@@ -354,7 +354,7 @@ std::optional<std::optional<CutlassGemmConfig>> ParseConfigColumns(
   c.is_tma_warp_specialized = vals[12] != 0;
   c.enableCudaKernel = vals[13] != 0;
   c.cudaKernelVariant = vals[14];
-  if (c.cudaKernelVariant < 0 || c.cudaKernelVariant > 1 || (!c.enableCudaKernel && c.cudaKernelVariant != 0)) {
+  if (c.cudaKernelVariant < 0 || c.cudaKernelVariant > 7 || (!c.enableCudaKernel && c.cudaKernelVariant != 0)) {
     return std::nullopt;
   }
   return std::optional<CutlassGemmConfig>{c};

@@ -36,7 +36,7 @@ class TestFpAIntBTune(unittest.TestCase):
             **self.signature,
             "ort_cuda_gemm_tactic_cache": "v1",
             "table": "matmulnbits_fpa_intb",
-            "tactic_selection_version": "3",
+            "tactic_selection_version": "4",
             **overrides,
         }
         columns = (*tune._CACHE_KEY_COLUMNS, "m_bucket", *tune._CACHE_CONFIG_COLUMNS)

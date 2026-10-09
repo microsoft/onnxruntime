@@ -243,10 +243,42 @@ TEST(GemmTacticCacheTest, ConfigColumnsRoundTripPairedGemv) {
   ASSERT_TRUE(parsed.has_value() && parsed->has_value());
   ExpectConfigEqual(original, **parsed);
 
-  row.back() = "2";
+  row.back() = "8";
   EXPECT_FALSE(gc::ParseConfigColumns(row, 0).has_value());
   row.back() = "-1";
   EXPECT_FALSE(gc::ParseConfigColumns(row, 0).has_value());
+}
+
+TEST(GemmTacticCacheTest, ConfigColumnsRoundTripDecodeVariants) {
+  for (int variant = 2; variant <= 7; ++variant) {
+    auto config = MakeSm80Config();
+    config.enableCudaKernel = true;
+    config.cudaKernelVariant = variant;
+    std::vector<std::string> row;
+    gc::AppendConfigColumns(row, config);
+    const auto parsed = gc::ParseConfigColumns(row, 0);
+    ASSERT_TRUE(parsed.has_value() && parsed->has_value());
+    ExpectConfigEqual(config, **parsed);
+    row[row.size() - 2] = "0";
+    EXPECT_FALSE(gc::ParseConfigColumns(row, 0).has_value());
+  }
+}
+
+TEST(GemmTacticCacheTest, DecodeUpgradeRejectsOldSelectionVersion) {
+  const auto file = UniqueTempPrefix("decode_version") + ".matmulnbits_fpa_intb.tsv";
+  gc::MatMulNBitsTacticCache writer(file, MakeSignature());
+  writer.Put(MakeKey(), 1, MakeSm80Config());
+  ASSERT_TRUE(writer.Flush().IsOK());
+  std::ifstream input(file);
+  std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  const auto position = contents.find("# tactic_selection_version\t4");
+  ASSERT_NE(position, std::string::npos);
+  contents.replace(position, std::string("# tactic_selection_version\t4").size(), "# tactic_selection_version\t3");
+  std::istringstream old(contents);
+  gc::MatMulNBitsTacticCache reader(file, MakeSignature());
+  ASSERT_TRUE(reader.Load(old).IsOK());
+  EXPECT_TRUE(reader.GetAll(MakeKey()).empty());
+  CleanUp(file);
 }
 
 TEST(GemmTacticCacheTest, StoreLoadRoundTrip) {
@@ -559,6 +591,31 @@ TEST(GemmTacticCacheTest, CachedGemvRespectsPairedMode) {
     EXPECT_FALSE(profiler.checkTactic(16, 16, 128, paired));
     EXPECT_FALSE(profiler.checkTactic(16, 16, 128, sequential));
   }
+}
+
+TEST(GemmTacticCacheTest, CachedDecodeVariantRequiresMatchingGeometry) {
+  using namespace onnxruntime::llm::kernels::weight_only;
+  class Profiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    using WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic;
+  } profiler;
+  profiler.setQuant(4, false, false);
+  profiler.setGroupSize(32);
+  profiler.setDecodeInterleave(4);
+  profiler.setCudaKernelType(KernelType::FP16Int4Groupwise, 80);
+  CutlassGemmConfig config;
+  config.enableCudaKernel = true;
+  for (int variant = 2; variant <= 7; ++variant) {
+    config.cudaKernelVariant = variant;
+    EXPECT_TRUE(profiler.checkTactic(1, 384, 1536, config));
+    EXPECT_FALSE(profiler.checkTactic(8, 384, 1536, config));
+    EXPECT_FALSE(profiler.checkTactic(1, 384, 1500, config));
+  }
+  profiler.setDecodeInterleave(1);
+  EXPECT_FALSE(profiler.checkTactic(1, 384, 1536, config));
+  profiler.setDecodeInterleave(4);
+  profiler.setQuant(4, true, false);
+  EXPECT_FALSE(profiler.checkTactic(1, 384, 1536, config));
 }
 #endif
 

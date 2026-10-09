@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
@@ -17,7 +18,12 @@ class ShaderVariableHelper;
 
 template <typename T>
 inline T CeilDiv(T numerator, T denominator) {
-  return (numerator + denominator - 1) / denominator;
+  static_assert(std::is_integral_v<T>, "CeilDiv requires integral operands.");
+  ORT_ENFORCE(denominator > 0, "CeilDiv requires a positive denominator.");
+  if constexpr (std::is_signed_v<T>) {
+    ORT_ENFORCE(numerator >= 0, "CeilDiv requires a nonnegative numerator.");
+  }
+  return numerator / denominator + (numerator % denominator != 0);
 }
 
 /**
