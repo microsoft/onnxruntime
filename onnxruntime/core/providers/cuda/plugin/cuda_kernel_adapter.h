@@ -539,7 +539,6 @@ struct CudaKernelAdapterRuntimeConfig {
   int sdpa_kernel = 0;
   int device_id = 0;
   bool do_copy_in_default_stream = true;
-  bool enable_cuda_graph = false;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
   std::mutex captured_host_buffers_mutex;
