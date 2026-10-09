@@ -4,8 +4,6 @@
 #include <array>
 #include <atomic>
 #include <barrier>
-#include <chrono>
-#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -22,6 +20,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/stream_handles.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
@@ -1036,114 +1035,48 @@ TEST_F(PluginEpWebGpuConcurrency, SerialSingleSessionMultipleGraphCaptureIds) {
   }
 }
 
-TEST_F(PluginEpWebGpuConcurrency, LegacyOnlyConcurrentRunsAreRejected) {
-  if (Env::Default().GetEnvironmentVar("ORT_WEBGPU_EP_FORCE_LEGACY") != "1") {
-    GTEST_SKIP() << "Requires ORT_WEBGPU_EP_FORCE_LEGACY=1 before loading the plugin.";
-  }
-
-  struct LogGate {
-    std::mutex mutex;
-    std::condition_variable changed;
-    bool entered{false};
-    bool released{false};
-    bool timed_out{false};
-    bool finished{false};
-
-    static void ORT_API_CALL Log(void* param, OrtLoggingLevel, const char*, const char*, const char*,
-                                 const char* message) {
-      if (std::string_view{message}.find("Starting program") == std::string_view::npos) {
-        return;
-      }
-      auto& gate = *static_cast<LogGate*>(param);
-      std::unique_lock lock{gate.mutex};
-      gate.entered = true;
-      gate.changed.notify_all();
-      // Bound the hold so a missing overlap guard cannot leave the test waiting indefinitely.
-      if (!gate.changed.wait_for(lock, std::chrono::seconds{10}, [&] { return gate.released; })) {
-        gate.timed_out = true;
-      }
-    }
-  } gate;
-
-  Ort::SessionOptions options;
-  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
-  options.SetLogSeverityLevel(ORT_LOGGING_LEVEL_INFO);
-  Ort::ThrowOnError(Ort::GetApi().SetUserLoggingFunction(options, LogGate::Log, &gate));
-  options.AppendExecutionProvider_V2(
-      *ort_env, {Device()}, std::unordered_map<std::string, std::string>{});
-  Ort::Session first_session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+TEST_F(PluginEpWebGpuConcurrency, SerialRunsAfterRejectedStreamOverride) {
+  auto first_session = CreateSession();
   auto second_session = CreateSession();
   const auto gpu_memory = Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
-  Ort::Allocator first_allocator(first_session, gpu_memory);
-  Ort::Allocator second_allocator(*second_session, gpu_memory);
+  Ort::Allocator first_allocator(*first_session, gpu_memory);
   auto first_input = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
   auto first_output = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
-  auto second_input = Ort::Value::CreateTensor<float>(second_allocator, kShape.data(), kShape.size());
-  auto second_output = Ort::Value::CreateTensor<float>(second_allocator, kShape.data(), kShape.size());
   const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   std::array<float, kElements> input_data{};
   input_data.fill(2.0f);
   auto cpu_input = Ort::Value::CreateTensor<float>(
       cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
   Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, first_input, nullptr));
-  Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, second_input, nullptr));
-  Ort::IoBinding first_binding(first_session);
+  Ort::IoBinding first_binding(*first_session);
   first_binding.BindInput("X", first_input);
   first_binding.BindOutput("Y", first_output);
-  Ort::IoBinding second_binding(*second_session);
-  second_binding.BindInput("X", second_input);
-  second_binding.BindOutput("Y", second_output);
 
-  std::string first_error;
-  std::thread worker([&] {
-    try {
-      first_session.Run(Ort::RunOptions{nullptr}, first_binding);
-    } catch (const std::exception& ex) {
-      first_error = ex.what();
-    } catch (...) {
-      first_error = "Unexpected non-standard exception";
-    }
-    std::lock_guard lock{gate.mutex};
-    gate.finished = true;
-    gate.changed.notify_all();
-  });
-  bool first_started = false;
-  {
-    std::unique_lock lock{gate.mutex};
-    gate.changed.wait_for(lock, std::chrono::seconds{30}, [&] { return gate.entered || gate.finished; });
-    first_started = gate.entered;
-  }
+  // OrtSyncStream is the C API's opaque alias for Stream; no CUDA runtime or GPU work is needed.
+  const OrtDevice foreign_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0};
+  Stream foreign_stream{nullptr, foreign_device};
+  Ort::RunOptions run_options;
+  run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&foreign_stream));
+  Ort::Status rejected{Ort::GetApi().RunWithBinding(*first_session, run_options, first_binding)};
+  ASSERT_FALSE(rejected.IsOK());
+  ASSERT_EQ(rejected.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  ASSERT_NE(rejected.GetErrorMessage().find("No matching stream found to override from OrtRunOptions"),
+            std::string::npos);
 
-  std::string rejection;
-  if (first_started) {
-    // Only Run overlaps: all allocation, upload, and binding happened before starting the worker.
-    try {
-      second_session->Run(Ort::RunOptions{nullptr}, second_binding);
-    } catch (const std::exception& ex) {
-      rejection = ex.what();
-    } catch (...) {
-      rejection = "Unexpected non-standard exception";
-    }
-  }
-  {
-    std::lock_guard lock{gate.mutex};
-    gate.released = true;
-    gate.changed.notify_all();
-  }
-  worker.join();
-
-  // No assertion can leave a worker waiting in the callback.
-  ASSERT_TRUE(first_started) << first_error;
-  ASSERT_FALSE(gate.timed_out) << "Overlapping Run did not return while the first Run was held";
-  ASSERT_TRUE(first_error.empty()) << first_error;
-  ASSERT_NE(rejection.find("Sessions on the same device to run sequentially"), std::string::npos) << rejection;
-  ASSERT_NE(rejection.find("upgrade to the latest ONNX Runtime"), std::string::npos) << rejection;
+  // This host error occurs after OnRunStart and skips OnRunEnd. Neither Session may be blocked.
+  ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, 3.0f));
+  run_options.SetSyncStream(nullptr);
+  ASSERT_NO_THROW(first_session->Run(run_options, first_binding));
   std::array<float, kElements> output_data{};
   auto cpu_output = Ort::Value::CreateTensor<float>(
       cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
   Ort::ThrowOnError(ort_env->CopyTensor(first_output, cpu_output, nullptr));
   VerifyOutput(output_data, 2.0f);
-  RunAndVerify(*second_session, 3.0f);
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    ASSERT_NO_THROW(RunWithCpuInputAndOutput(*first_session, static_cast<float>(iteration + 1)));
+    ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, -static_cast<float>(iteration + 1)));
+  }
 }
 
 TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCpuBindInputReusesDirtyGpuBuffersConcurrently) {

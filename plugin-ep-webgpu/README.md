@@ -59,7 +59,7 @@ Both paths use Session-owned command recordings; there is no context-owned legac
 The single-thread compatibility path requires serializing all WebGPU operations on the same device,
 including operations on different Sessions, I/O binding, Env copies, allocation, and Session
 creation/destruction. Use sequential graph execution. Multiple Sessions can be used in sequence;
-overlapping Runs are rejected.
+overlapping operations are unsupported and are not detected or serialized by the plugin.
 
 The concurrent path supports independent Sessions running concurrently. This does not
 permit overlapping I/O binding and Run on the same Session. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`

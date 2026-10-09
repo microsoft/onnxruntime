@@ -1701,7 +1701,6 @@ block()
       "PluginEpWebGpuConcurrency.CpuInputAndGpuOutputRun"
       "PluginEpWebGpuConcurrency.CpuBindInputReusesDirtyGpuBuffer"
       "PluginEpWebGpuConcurrency.Serial*"
-      "PluginEpWebGpuConcurrency.LegacyOnlyConcurrentRunsAreRejected"
       "PluginEpWebGpuConcurrency.GraphCaptureReplayInterleavedWithIdleSessionCpuBindInput"
       "PluginEpWebGpuConcurrency.GpuInputAndCpuOutputRun"
       "PluginEpWebGpuConcurrency.SharedGpuCopyIsSubmittedBeforeSessionRun"
@@ -1718,7 +1717,7 @@ block()
     set_tests_properties(onnxruntime_webgpu_legacy_test PROPERTIES
       TIMEOUT 10800
       FAIL_REGULAR_EXPRESSION
-        "0 tests from 0 test suites;Requires ORT_WEBGPU_EP_FORCE_LEGACY=1 before loading the plugin"
+        "0 tests from 0 test suites"
     )
     onnxruntime_set_plugin_ep_test_environment(onnxruntime_webgpu_legacy_test)
     set_property(TEST onnxruntime_webgpu_legacy_test APPEND PROPERTY

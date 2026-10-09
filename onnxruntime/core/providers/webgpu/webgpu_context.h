@@ -316,17 +316,7 @@ class WebGpuContext final {
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   CommandRecordingState* ActiveSingleThreadRecording() const { return single_thread_active_recording_; }
-  bool TryBeginSingleThreadRun(CommandRecordingState& recording) {
-    if (single_thread_run_active_.exchange(true)) {
-      return false;
-    }
-    single_thread_active_recording_ = &recording;
-    return true;
-  }
-  void EndSingleThreadRun() {
-    single_thread_active_recording_ = nullptr;
-    single_thread_run_active_.store(false);
-  }
+  void SetActiveSingleThreadRecording(CommandRecordingState* recording) { single_thread_active_recording_ = recording; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -486,7 +476,6 @@ class WebGpuContext final {
   // The active recording is borrowed from the running Session, never owned by the context.
   // All operations on this device must be serialized in single-thread mode, including across Sessions.
   CommandRecordingState* single_thread_active_recording_ = nullptr;
-  std::atomic<bool> single_thread_run_active_{false};
 
   uint32_t max_num_pending_dispatches_ = 16;
 

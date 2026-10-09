@@ -825,7 +825,7 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
   prepack_allocator_.reset();
   session_buffer_pool_.reset();
   if (context_.ActiveSingleThreadRecording() == recording_.get()) {
-    context_.EndSingleThreadRun();
+    context_.SetActiveSingleThreadRecording(nullptr);
   }
   if (context_.Device()) {
     // A failed Run may leave an unsubmitted recording in the context-shared pools.
@@ -854,14 +854,14 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool single_thread = webgpu::ep::UseSingleThreadMode();
-  ORT_RETURN_IF(single_thread && !context_.TryBeginSingleThreadRun(*recording_),
-                "This WebGPU configuration requires Sessions on the same device to run sequentially. "
-                "To run Sessions concurrently, upgrade to the latest ONNX Runtime.");
+  if (single_thread) {
+    context_.SetActiveSingleThreadRecording(recording_.get());
+  }
   bool started = false;
   auto release_on_error = gsl::finally([&] {
     if (single_thread && !started) {
       graph_buffer_mgr_active_ = false;
-      context_.EndSingleThreadRun();
+      context_.SetActiveSingleThreadRecording(nullptr);
     }
   });
 #endif
@@ -928,7 +928,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     run_active_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
     if (webgpu::ep::UseSingleThreadMode()) {
-      context_.EndSingleThreadRun();
+      context_.SetActiveSingleThreadRecording(nullptr);
     }
 #endif
   });
@@ -999,12 +999,12 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool single_thread_replay = webgpu::ep::UseSingleThreadMode() && !IsRunActive();
-  ORT_RETURN_IF(single_thread_replay && !context_.TryBeginSingleThreadRun(*recording_),
-                "This WebGPU configuration requires Sessions on the same device to run sequentially. "
-                "To run Sessions concurrently, upgrade to the latest ONNX Runtime.");
+  if (single_thread_replay) {
+    context_.SetActiveSingleThreadRecording(recording_.get());
+  }
   auto release_single_thread_run = gsl::finally([&] {
     if (single_thread_replay) {
-      context_.EndSingleThreadRun();
+      context_.SetActiveSingleThreadRecording(nullptr);
     }
   });
 #endif
