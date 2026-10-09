@@ -7,6 +7,7 @@
 #include "cuda_plugin_kernels.h"
 #include "core/common/string_utils.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "ep/api.h"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -84,7 +85,8 @@ OrtStatus* CudaEpFactory::GetKernelRegistryForEp(CudaEp& ep,
   std::lock_guard<std::mutex> lock(registry_mutex_);
 
   bool enable_host_pageable_gather = false;
-  if (ep.GetConfig().enable_host_pageable_gather) {
+  if (ep.GetConfig().enable_host_pageable_gather &&
+      ::onnxruntime::ep::CurrentOrtApiVersion() >= ORT_API_VERSION) {
     int pageable_memory_access = 0;
     int uses_host_page_tables = 0;
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10020
