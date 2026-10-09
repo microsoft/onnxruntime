@@ -65,7 +65,7 @@ struct WebGpuExecutionProviderConfig {
   // generator's worth of intermediate buffers.
   size_t session_buffer_pool_generations{1};
   uint32_t kv_cache_quantization_bits{0};  // KV cache quantization bits (0 = off, 4 = 4-bit)
-  // Accumulate MatMulNBits dot products in f32 rather than in the output element type.
+  // Accumulate MatMul, Gemm and MatMulNBits dot products in f32 rather than in the output element type.
   // This is the single line that decides the shipped default for the
   // "enableMatmulFp32Accumulation" provider option.
   bool enable_matmul_fp32_accumulation{false};
