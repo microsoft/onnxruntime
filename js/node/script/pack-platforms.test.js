@@ -22,7 +22,7 @@ let unpacked;
 let originalManifest;
 
 before(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'ort-packaging-test-'));
+  root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ort-packaging-test-')));
   source = path.join(root, 'source');
   fs.mkdirSync(source);
   originalManifest = JSON.stringify({

@@ -50,6 +50,11 @@ ort_node_common_ver = ""
 ort_node_ver = ""
 native_archives = {}
 node_archive = None
+native_libraries = {
+    "linux": "libonnxruntime.so.1",
+    "darwin": "libonnxruntime.1.dylib",
+    "win32": "onnxruntime.dll",
+}
 native_pattern = re.compile(r"^onnxruntime-node-(win32|linux|darwin)-(x64|arm64)-(.+)\.tgz$")
 
 for file in os.listdir(ort_node_pkg_dir):
@@ -95,12 +100,20 @@ if native_archives:
             raise Exception(f"Native package version mismatch: {name}")
         with tarfile.open(os.path.join(ort_node_pkg_dir, filename), "r:gz") as archive:
             manifest = json.load(archive.extractfile("package/package.json"))
-        if manifest.get("name") != name or manifest.get("version") != ort_node_ver:
-            raise Exception(f"Native manifest does not match its archive filename: {name}")
-        if manifest.get("os") != [platform] or manifest.get("cpu") != [arch]:
-            raise Exception(f"Native platform metadata mismatch: {name}")
-        if platform == "linux" and manifest.get("libc") != ["glibc"]:
-            raise Exception(f"Native libc metadata mismatch: {name}")
+            if manifest.get("name") != name or manifest.get("version") != ort_node_ver:
+                raise Exception(f"Native manifest does not match its archive filename: {name}")
+            if manifest.get("os") != [platform] or manifest.get("cpu") != [arch]:
+                raise Exception(f"Native platform metadata mismatch: {name}")
+            if platform == "linux" and manifest.get("libc") != ["glibc"]:
+                raise Exception(f"Native libc metadata mismatch: {name}")
+            for payload_filename in ("onnxruntime_binding.node", native_libraries[platform]):
+                payload_path = f"package/bin/napi-v6/{platform}/{arch}/{payload_filename}"
+                try:
+                    payload = archive.getmember(payload_path)
+                except KeyError:
+                    raise Exception(f"Native payload missing: {name}: {payload_path}") from None
+                if not payload.isfile() or payload.size <= 0:
+                    raise Exception(f"Native payload must be a non-empty regular file: {name}: {payload_path}")
 
 count_ort_web_common_tgz = 0
 count_ort_web_tgz = 0

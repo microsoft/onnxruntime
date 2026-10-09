@@ -11,6 +11,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+NATIVE_LIBRARIES = {
+    "linux": "libonnxruntime.so.1",
+    "darwin": "libonnxruntime.1.dylib",
+    "win32": "onnxruntime.dll",
+}
+NATIVE_TARGETS = tuple((platform, arch) for platform in NATIVE_LIBRARIES for arch in ("x64", "arm64"))
+
 
 class ValidateNpmPackagesTests(unittest.TestCase):
     def setUp(self):
@@ -24,7 +31,7 @@ class ValidateNpmPackagesTests(unittest.TestCase):
         self.write_package("node", "onnxruntime-common", {})
         self.write_package("web", "onnxruntime-common", {})
 
-    def write_package(self, directory, name, fields, version=None):
+    def write_package(self, directory, name, fields, version=None, files=None):
         version = version or self.version
         manifest = {"name": name, "version": version, **fields}
         content = json.dumps(manifest).encode()
@@ -32,16 +39,36 @@ class ValidateNpmPackagesTests(unittest.TestCase):
             member = tarfile.TarInfo("package/package.json")
             member.size = len(content)
             archive.addfile(member, io.BytesIO(content))
+            for filename, payload in (files or {}).items():
+                if isinstance(payload, tarfile.TarInfo):
+                    archive.addfile(payload)
+                else:
+                    member = tarfile.TarInfo(filename)
+                    member.size = len(payload)
+                    archive.addfile(member, io.BytesIO(payload))
+
+    def native_files(self, platform, arch):
+        directory = f"package/bin/napi-v6/{platform}/{arch}"
+        return {
+            f"{directory}/onnxruntime_binding.node": b"binding fixture",
+            f"{directory}/{NATIVE_LIBRARIES[platform]}": b"runtime fixture",
+        }
+
+    def write_native_package(self, platform, arch, fields=None, version=None, files=None):
+        metadata = {"os": [platform], "cpu": [arch]}
+        if platform == "linux":
+            metadata["libc"] = ["glibc"]
+        metadata.update(fields or {})
+        if files is None:
+            files = self.native_files(platform, arch)
+        self.write_package("node", f"onnxruntime-node-{platform}-{arch}", metadata, version, files)
 
     def write_split_packages(self):
         dependencies = {}
-        for platform, arch in (("linux", "x64"), ("darwin", "arm64"), ("win32", "x64")):
+        for platform, arch in NATIVE_TARGETS:
             name = f"onnxruntime-node-{platform}-{arch}"
             dependencies[name] = self.version
-            fields = {"os": [platform], "cpu": [arch]}
-            if platform == "linux":
-                fields["libc"] = ["glibc"]
-            self.write_package("node", name, fields)
+            self.write_native_package(platform, arch)
         self.write_package("node", "onnxruntime-node", {"optionalDependencies": dependencies})
 
     def validate(self):
@@ -90,24 +117,95 @@ class ValidateNpmPackagesTests(unittest.TestCase):
     def test_validate_rejects_native_version_mismatch(self):
         self.write_split_packages()
         (self.root / "node" / f"onnxruntime-node-linux-x64-{self.version}.tgz").unlink()
-        self.write_package("node", "onnxruntime-node-linux-x64", {"os": ["linux"], "cpu": ["x64"]}, "1.31.0")
+        self.write_native_package("linux", "x64", version="1.31.0")
         result = self.validate()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("version mismatch", result.stderr)
 
     def test_validate_rejects_native_platform_mismatch(self):
         self.write_split_packages()
-        self.write_package("node", "onnxruntime-node-linux-x64", {"os": ["win32"], "cpu": ["x64"]})
+        self.write_native_package("linux", "x64", fields={"os": ["win32"]})
         result = self.validate()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("platform metadata mismatch", result.stderr)
 
     def test_validate_rejects_native_libc_mismatch(self):
         self.write_split_packages()
-        self.write_package("node", "onnxruntime-node-linux-x64", {"os": ["linux"], "cpu": ["x64"], "libc": ["musl"]})
+        self.write_native_package("linux", "x64", fields={"libc": ["musl"]})
         result = self.validate()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("libc metadata mismatch", result.stderr)
+
+    def test_validate_rejects_manifest_only_native_archive(self):
+        for platform, arch in NATIVE_TARGETS:
+            with self.subTest(platform=platform, arch=arch):
+                self.write_split_packages()
+                self.write_native_package(platform, arch, files={})
+                result = self.validate()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Native payload missing", result.stderr)
+                self.assertIn(f"package/bin/napi-v6/{platform}/{arch}/onnxruntime_binding.node", result.stderr)
+
+    def test_validate_rejects_missing_native_binding(self):
+        for platform, arch in NATIVE_TARGETS:
+            with self.subTest(platform=platform, arch=arch):
+                self.write_split_packages()
+                files = self.native_files(platform, arch)
+                del files[f"package/bin/napi-v6/{platform}/{arch}/onnxruntime_binding.node"]
+                self.write_native_package(platform, arch, files=files)
+                result = self.validate()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Native payload missing", result.stderr)
+                self.assertIn("onnxruntime_binding.node", result.stderr)
+
+    def test_validate_rejects_missing_native_runtime_library(self):
+        for platform, arch in NATIVE_TARGETS:
+            with self.subTest(platform=platform, arch=arch):
+                self.write_split_packages()
+                files = self.native_files(platform, arch)
+                del files[f"package/bin/napi-v6/{platform}/{arch}/{NATIVE_LIBRARIES[platform]}"]
+                self.write_native_package(platform, arch, files=files)
+                result = self.validate()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Native payload missing", result.stderr)
+                self.assertIn(NATIVE_LIBRARIES[platform], result.stderr)
+
+    def test_validate_rejects_native_payload_in_wrong_directory(self):
+        for platform, arch in NATIVE_TARGETS:
+            with self.subTest(platform=platform, arch=arch):
+                self.write_split_packages()
+                files = {
+                    filename.replace("/napi-v6/", "/napi-v7/"): payload
+                    for filename, payload in self.native_files(platform, arch).items()
+                }
+                self.write_native_package(platform, arch, files=files)
+                result = self.validate()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Native payload missing", result.stderr)
+
+    def test_validate_rejects_empty_or_non_regular_native_payload(self):
+        for platform, arch in NATIVE_TARGETS:
+            for filename in self.native_files(platform, arch):
+                for kind in ("empty", "directory", "symlink", "hardlink"):
+                    with self.subTest(platform=platform, arch=arch, filename=filename, kind=kind):
+                        self.write_split_packages()
+                        files = self.native_files(platform, arch)
+                        if kind == "empty":
+                            files[filename] = b""
+                        else:
+                            member = tarfile.TarInfo(filename)
+                            member.type = {
+                                "directory": tarfile.DIRTYPE,
+                                "symlink": tarfile.SYMTYPE,
+                                "hardlink": tarfile.LNKTYPE,
+                            }[kind]
+                            member.linkname = "package/package.json"
+                            files[filename] = member
+                        self.write_native_package(platform, arch, files=files)
+                        result = self.validate()
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("Native payload must be a non-empty regular file", result.stderr)
+                        self.assertIn(filename, result.stderr)
 
 
 if __name__ == "__main__":
