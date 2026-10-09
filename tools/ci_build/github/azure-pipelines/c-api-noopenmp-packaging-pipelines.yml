@@ -48,13 +48,6 @@ parameters:
   type: string
   default: '--use_azure'
 
-# Do not update this to a version that does not exist for the qnn-runtime Maven package:
-# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
-- name: QnnSdk
-  displayName: QNN SDK Version
-  type: string
-  default: 2.42.0.251225
-
 - name: CudaVersion
   displayName: CUDA version
   type: string
@@ -128,7 +121,7 @@ extends:
         enabled: true
         scanOutputDirectoryOnly: true
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
+        name: onnxruntime-Win-CPU-2022
         os: windows
       componentgovernance:
         ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
@@ -177,7 +170,6 @@ extends:
         AdditionalBuildFlags: ''
         AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
         BuildVariant: 'default'
-        QnnSDKVersion: ${{ parameters.QnnSdk }}
         is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
@@ -223,3 +215,8 @@ extends:
         sln_platform: 'arm64'
         DoEsrp: true
         DependsOnStageName: Windows_Nodejs_Packaging_x64
+
+    - template: stages/nodejs-npm-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}

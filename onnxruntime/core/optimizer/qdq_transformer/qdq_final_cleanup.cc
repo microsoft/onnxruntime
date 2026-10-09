@@ -32,7 +32,8 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   if (!match_first(first_node) ||
       // not filtering on provider currently
       // !graph_utils::IsSupportedProvider(first_node, compatible_execution_providers) ||
-      !(first_node.GetOutputEdgesCount() >= 1)) {
+      !(first_node.GetOutputEdgesCount() >= 1) ||
+      graph.NodeProducesGraphOutput(first_node)) {
     return false;
   }
 
@@ -116,7 +117,9 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
       }
     } else {
       NodeArg* graph_output_nodearg = second_node.MutableOutputDefs()[0];
-      if (src_arg_idx >= 0 && second_node_ptrs.size() == 1) {
+      const NodeArg* input = first_node.InputDefs()[0];
+      if (src_arg_idx >= 0 && second_node_ptrs.size() == 1 &&
+          graph.GetConsumerNodes(input->Name()).size() == 1 && !graph.IsOutput(input)) {
         // update the src node to produce the graph output that was being provided by second_node
         Node& src_node = *graph.GetNode(src_node_idx);
         src_node.MutableOutputDefs()[src_arg_idx] = graph_output_nodearg;
@@ -128,10 +131,17 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
       }
     }
 
-    if (second_node_ptr == second_node_ptrs.back()) {
-      graph.RemoveNode(first_node.Index());
+    InlinedVector<NodeIndex> removed_node_indices;
+    const NodeIndex first_node_index = first_node.Index();
+    const NodeIndex second_node_index = second_node.Index();
+    if (second_node_ptr == second_node_ptrs.back() &&
+        graph.RemoveNode(first_node_index)) {
+      removed_node_indices.push_back(first_node_index);
     }
-    graph.RemoveNode(second_node.Index());
+    if (graph.RemoveNode(second_node_index)) {
+      removed_node_indices.push_back(second_node_index);
+    }
+    graph.NotifyNodesRemoved(removed_node_indices);
   }
 
   return true;

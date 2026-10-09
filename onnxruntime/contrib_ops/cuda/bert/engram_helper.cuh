@@ -49,6 +49,21 @@ __device__ __forceinline__ void BlockSum3(float* a, float* b, float* c, float* s
   __syncthreads();
 }
 
+// Sums one per-thread partial across the block. `shared` must point to at least blockDim.x floats,
+// blockDim.x must be a power of two, and all threads must call this.
+__device__ __forceinline__ void BlockSum1(float* a, float* shared) {
+  shared[threadIdx.x] = *a;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      shared[threadIdx.x] += shared[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  *a = shared[0];
+  __syncthreads();
+}
+
 // Numerically stable logistic function.
 __device__ __forceinline__ float SigmoidFloat(float x) {
   return x > 0.0f ? 1.0f / (1.0f + expf(-x)) : expf(x) / (1.0f + expf(x));
@@ -77,6 +92,9 @@ __device__ __forceinline__ T PositiveMod(T value, T mod) {
 template <typename T>
 __device__ __forceinline__ T WrappedMultiply(T a, T b);
 
+template <typename T>
+__device__ __forceinline__ T WrappedAdd(T a, T b);
+
 template <>
 __device__ __forceinline__ int32_t WrappedMultiply<int32_t>(int32_t a, int32_t b) {
   return static_cast<int32_t>(static_cast<uint32_t>(a) * static_cast<uint32_t>(b));
@@ -85,6 +103,16 @@ __device__ __forceinline__ int32_t WrappedMultiply<int32_t>(int32_t a, int32_t b
 template <>
 __device__ __forceinline__ int64_t WrappedMultiply<int64_t>(int64_t a, int64_t b) {
   return static_cast<int64_t>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
+}
+
+template <>
+__device__ __forceinline__ int32_t WrappedAdd<int32_t>(int32_t a, int32_t b) {
+  return static_cast<int32_t>(static_cast<uint32_t>(a) + static_cast<uint32_t>(b));
+}
+
+template <>
+__device__ __forceinline__ int64_t WrappedAdd<int64_t>(int64_t a, int64_t b) {
+  return static_cast<int64_t>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
 }
 
 }  // namespace engram_helper

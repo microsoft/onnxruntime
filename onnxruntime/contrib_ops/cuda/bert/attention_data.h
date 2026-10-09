@@ -7,6 +7,7 @@
 #include <iostream>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -314,6 +315,19 @@ struct PagedAttentionData {
   // use_paged_decode when set.
   bool use_xqa_decode = false;
   bool use_xqa_spec_dec = false;
+  // cuDNN paged SDPA decode kernel. Opt-in on H100+ for one-token-per-sequence decode when the
+  // cache is unquantized and none of the fused options (softcap / head sink / sliding window /
+  // bias) are requested. Takes precedence over use_flash_attention when set.
+  bool use_cudnn_paged = false;
+
+  // cuDNN paged SDPA path: temp-space allocator, cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner), resolved attention
+  // scale, and per-batch KV length scratch (int32, [batch_size]) filled on device before dispatch.
+  AllocatorPtr cudnn_allocator = nullptr;
+  void* cudnn_handle = nullptr;
+  float cudnn_scale = 0.0f;
+  bool cudnn_debug_info = false;
+  int* cudnn_seqlens_kv = nullptr;
 };
 
 }  // namespace cuda

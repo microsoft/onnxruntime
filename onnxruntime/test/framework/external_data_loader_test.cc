@@ -1,11 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/external_data_loader_manager.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "gtest/gtest.h"
+#include "test/util/include/test_environment.h"
+
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #include <algorithm>
 #include <cstdio>
-#include <memory>
 #include <string>
 
 #include "core/common/inlined_containers.h"
@@ -14,16 +22,17 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
-#include "gtest/gtest.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
 namespace {
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 enum class ReadFailure { None,
                          Status,
                          Exception };
@@ -47,15 +56,27 @@ class TrackingExternalDataLoader final : public IExternalDataLoader {
     return memory_info.device.Type() == OrtDevice::CPU;
   }
 
+#if defined(__wasm__)
   Status LoadTensor(const Env& env, const std::filesystem::path& path, FileOffsetType offset,
                     SafeInt<size_t> length, Tensor& tensor) const override {
+#else
+  Status LoadTensor(const RandomAccessFile& file, FileOffsetType offset,
+                    SafeInt<size_t> length, Tensor& tensor) const override {
+#endif
     state_->offsets.push_back(offset);
     if (state_->failure == ReadFailure::Exception) {
       ORT_THROW("external loader read exception");
     }
     ORT_RETURN_IF(state_->failure == ReadFailure::Status, "external loader read failure");
-    return env.ReadFileIntoBuffer(path.c_str(), offset, length,
-                                  gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
+    ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "external data length does not match tensor size");
+#if defined(__wasm__)
+    return env.ReadFileIntoBuffer(
+        path.c_str(), offset, length,
+        gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
+#else
+    return file.Read(offset,
+                     gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
+#endif
   }
 
  private:
@@ -285,8 +306,104 @@ TEST_F(ExternalDataLoaderLifetimeTest, RecreatesLoaderAfterFactoryFailure) {
 }
 #endif
 
+#endif
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
+ public:
+  enum class FailurePoint {
+    None,
+    Begin,
+    CommitCandidates,
+  };
+
+  explicit BatchLifecycleExternalDataLoader(FailurePoint failure_point = FailurePoint::None)
+      : failure_point_{failure_point} {
+  }
+
+  bool CanLoad(const OrtMemoryInfo&) const override {
+    return false;
+  }
+
+  common::Status BeginLoad() const override {
+    ++begin_count;
+    return failure_point_ == FailurePoint::Begin
+               ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "begin failure")
+               : common::Status::OK();
+  }
+
+  common::Status CommitLoadCandidates(const std::function<bool()>&) const override {
+    ++commit_candidates_count;
+    return failure_point_ == FailurePoint::CommitCandidates
+               ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "commit failure")
+               : common::Status::OK();
+  }
+
+  void EndLoad() const noexcept override {
+    ++end_count;
+  }
+
+  mutable int begin_count = 0;
+  mutable int commit_candidates_count = 0;
+  mutable int end_count = 0;
+
+ private:
+  FailurePoint failure_point_;
+};
+
+TEST(ExternalDataLoaderManagerTest, DefaultBatchLifecycleIsBackwardCompatible) {
+  class LegacyExternalDataLoader final : public IExternalDataLoader {
+   public:
+    bool CanLoad(const OrtMemoryInfo&) const override {
+      return false;
+    }
+  };
+
+  ExternalDataLoaderManager manager;
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::make_unique<LegacyExternalDataLoader>()));
+  EXPECT_STATUS_OK(manager.BeginLoad());
+  EXPECT_STATUS_OK(manager.CommitLoadCandidates([]() { return false; }));
+  manager.EndLoad();
+}
+
+TEST(ExternalDataLoaderManagerTest, BeginFailureEndsEveryLoader) {
+  ExternalDataLoaderManager manager;
+  auto first = std::make_unique<BatchLifecycleExternalDataLoader>();
+  auto* first_ptr = first.get();
+  auto failing = std::make_unique<BatchLifecycleExternalDataLoader>(
+      BatchLifecycleExternalDataLoader::FailurePoint::Begin);
+  auto* failing_ptr = failing.get();
+
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(first)));
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(failing)));
+
+  EXPECT_FALSE(manager.BeginLoad().IsOK());
+  EXPECT_EQ(first_ptr->begin_count, 1);
+  EXPECT_EQ(failing_ptr->begin_count, 1);
+  EXPECT_EQ(first_ptr->end_count, 1);
+  EXPECT_EQ(failing_ptr->end_count, 1);
+}
+
+TEST(ExternalDataLoaderManagerTest, CommitCandidatesFailureEndsEveryLoader) {
+  ExternalDataLoaderManager manager;
+  auto failing = std::make_unique<BatchLifecycleExternalDataLoader>(
+      BatchLifecycleExternalDataLoader::FailurePoint::CommitCandidates);
+  auto* failing_ptr = failing.get();
+  auto uncommitted = std::make_unique<BatchLifecycleExternalDataLoader>();
+  auto* uncommitted_ptr = uncommitted.get();
+
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(failing)));
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(uncommitted)));
+
+  ASSERT_STATUS_OK(manager.BeginLoad());
+  EXPECT_FALSE(manager.CommitLoadCandidates([]() { return false; }).IsOK());
+  EXPECT_EQ(failing_ptr->commit_candidates_count, 1);
+  EXPECT_EQ(uncommitted_ptr->commit_candidates_count, 0);
+  EXPECT_EQ(failing_ptr->end_count, 1);
+  EXPECT_EQ(uncommitted_ptr->end_count, 1);
+}
+#endif
+
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif

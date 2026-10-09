@@ -119,7 +119,21 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims, inputs_segments_[input_index]);
+  const size_t owner_index = program_.InputBufferOwner(input_index);
+  const bool owns_storage_binding = owner_index == input_index;
+  std::string_view storage_name{name};
+  if (!owns_storage_binding) {
+    storage_name = input_vars_[owner_index]->name_;
+  }
+  return AddVariableImpl(true,
+                         name,
+                         usage,
+                         dims,
+                         inputs_segments_[owner_index],
+                         storage_name,
+                         program_.Inputs()[input_index].buffer_offset_in_elements,
+                         program_.Inputs()[input_index].is_buffer_view,
+                         owns_storage_binding);
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -129,7 +143,21 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(false, name, usage, dims, outputs_segments_[output_index]);
+  const size_t owner_index = program_.OutputBufferOwner(output_index);
+  const bool owns_storage_binding = owner_index == output_index;
+  std::string_view storage_name{name};
+  if (!owns_storage_binding) {
+    storage_name = output_vars_[owner_index]->name_;
+  }
+  return AddVariableImpl(false,
+                         name,
+                         usage,
+                         dims,
+                         outputs_segments_[owner_index],
+                         storage_name,
+                         program_.Outputs()[output_index].buffer_offset_in_elements,
+                         program_.Outputs()[output_index].is_buffer_view,
+                         owns_storage_binding);
 }
 
 const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
@@ -232,7 +260,15 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
 Status ValidateVariableShape(const TensorShape& origin_shape,
                              bool use_override_shape,
                              const TensorShape& override_shape,
-                             int num_components) {
+                             int num_components,
+                             bool is_buffer_view,
+                             uint32_t buffer_offset_in_elements) {
+  if (is_buffer_view) {
+    const uint64_t backing_element_count = (origin_shape.Size() + num_components - 1) / num_components;
+    ORT_RETURN_IF_NOT(static_cast<uint64_t>(buffer_offset_in_elements) + override_shape.Size() <= backing_element_count,
+                      "Packed buffer view exceeds the backing tensor.");
+    return Status::OK();
+  }
   if (use_override_shape) {
     // if override shape specified, assert override_size == ceil( origin_size / 4 )
     ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
@@ -278,7 +314,9 @@ Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVar
   ORT_RETURN_IF_ERROR(ValidateVariableShape(input.tensor->Shape(),
                                             input.use_override_shape,
                                             input.use_override_shape ? input.override_shape : input.tensor->Shape(),
-                                            var.num_components_));
+                                            var.num_components_,
+                                            input.is_buffer_view,
+                                            input.buffer_offset_in_elements));
   ORT_RETURN_IF_ERROR(ValidateVariableDependency(input.dependency, var.usage_, true));
 
   return Status::OK();
@@ -288,7 +326,9 @@ Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderV
   ORT_RETURN_IF_ERROR(ValidateVariableShape(output.tensor->Shape(),
                                             output.use_override_shape,
                                             output.use_override_shape ? output.override_shape : output.tensor->Shape(),
-                                            var.num_components_));
+                                            var.num_components_,
+                                            output.is_buffer_view,
+                                            output.buffer_offset_in_elements));
   ORT_RETURN_IF_ERROR(ValidateVariableDependency(output.dependency, var.usage_, false));
 
   return Status::OK();
@@ -300,9 +340,15 @@ ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
                                                     const std::string& name,
                                                     ShaderUsage usage,
                                                     const TensorShape& dims,
-                                                    uint32_t segments) {
+                                                    uint32_t segments,
+                                                    std::string_view storage_name,
+                                                    uint32_t storage_offset_in_elements,
+                                                    bool use_uniform_storage_offset,
+                                                    bool owns_storage_binding) {
   // Add the segments for the new variable we're about to create
-  numbers_storage_buffers_ += segments;
+  if (owns_storage_binding) {
+    numbers_storage_buffers_ += segments;
+  }
   ORT_ENFORCE(numbers_storage_buffers_ <= limits_.maxStorageBuffersPerShaderStage,
               "Too many storage buffers in shader. Current: ", numbers_storage_buffers_,
               ", Max is ", limits_.maxStorageBuffersPerShaderStage);
@@ -320,11 +366,20 @@ ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
     const auto& output = program_.Outputs()[vars.size()];
     type = output.var_type;
     if (segments > 1) {
-      usage |= ShaderUsage::UseSetByOffsetSegments;
+      usage |= ShaderUsage::UseGetByOffsetSegments | ShaderUsage::UseSetByOffsetSegments;
     }
   }
 
-  const auto& var = vars.emplace_back(std::make_unique<ShaderVariableHelper>(name, type, usage, dims, segments, limits_.maxStorageBufferBindingSize));
+  const auto& var = vars.emplace_back(std::make_unique<ShaderVariableHelper>(name,
+                                                                             storage_name,
+                                                                             type,
+                                                                             usage,
+                                                                             dims,
+                                                                             segments,
+                                                                             storage_offset_in_elements,
+                                                                             use_uniform_storage_offset,
+                                                                             owns_storage_binding,
+                                                                             limits_.maxStorageBufferBindingSize));
   return *var;
 }
 
@@ -470,6 +525,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   // inputs
   for (size_t i = 0; i < input_vars_.size(); ++i) {
     const auto& input = input_vars_[i];
+    if (!input->owns_storage_binding_) {
+      continue;
+    }
     uint32_t segments = input->segments_;
     for (uint32_t seg = 0; seg < segments; ++seg) {
       ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read> ";
@@ -484,6 +542,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   // outputs
   for (size_t i = 0; i < output_vars_.size(); ++i) {
     const auto& output = output_vars_[i];
+    if (!output->owns_storage_binding_) {
+      continue;
+    }
     bool is_atomic = program_.Outputs()[i].is_atomic;
     uint32_t segments = output->segments_;
     for (uint32_t seg = 0; seg < segments; ++seg) {
@@ -544,9 +605,15 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     shape_uniform_ranks.push_back(use_uniform ? indices->rank_ : 0);
   }
 
-  if (use_any_shape_uniform || std::any_of(program_.UniformVariables().cbegin(),
-                                           program_.UniformVariables().cend(),
-                                           [](const ProgramUniformVariableValue& x) { return x.length > 0; })) {
+  const bool use_buffer_view_offsets =
+      std::any_of(program_.Inputs().cbegin(), program_.Inputs().cend(),
+                  [](const ProgramInput& input) { return input.is_buffer_view; }) ||
+      std::any_of(program_.Outputs().cbegin(), program_.Outputs().cend(),
+                  [](const ProgramOutput& output) { return output.is_buffer_view; });
+  if (use_any_shape_uniform || use_buffer_view_offsets ||
+      std::any_of(program_.UniformVariables().cbegin(),
+                  program_.UniformVariables().cend(),
+                  [](const ProgramUniformVariableValue& x) { return x.length > 0; })) {
     bool first = true;
     ss << "struct Uniforms {";
 
@@ -619,6 +686,19 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         std::string stride = indices->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
         append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
+      }
+    }
+
+    for (size_t i = 0; i < input_vars_.size(); ++i) {
+      if (program_.Inputs()[i].is_buffer_view) {
+        append_uniform(MakeString(input_vars_[i]->name_, "_offset"),
+                       ProgramUniformVariableDataType::Uint32, 1);
+      }
+    }
+    for (size_t i = 0; i < output_vars_.size(); ++i) {
+      if (program_.Outputs()[i].is_buffer_view) {
+        append_uniform(MakeString(output_vars_[i]->name_, "_offset"),
+                       ProgramUniformVariableDataType::Uint32, 1);
       }
     }
 

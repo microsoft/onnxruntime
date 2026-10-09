@@ -52,6 +52,8 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
      {"Cast", "Clip", "Div", "Max", "Min", "QuantizeLinear", "ReduceMax", "ReduceMin", "Reshape", "Round", "Sub"}},
     {"Einsum", {"MatMul", "Mul", "ReduceSum", "Reshape", "Transpose", "Trilu"}},
     {"GatherBlockQuantized", {"DequantizeLinear", "Gather"}},
+    {"GroupNorm", {"Add", "InstanceNormalization", "Mul", "Reshape", "Sigmoid", "Transpose"}},
+    {"GroupNormalization", {"Add", "Expand", "InstanceNormalization", "Mul", "Reshape"}},
     {"GroupQueryAttention",
      {"Add", "Cast", "Concat", "CumSum", "Div", "Expand", "Less", "MatMul", "Reshape", "ScatterND",
       "Softmax", "Transpose", "Where"}},
@@ -62,6 +64,7 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
     {"MultiHeadAttention", {"Add", "Cast", "Concat", "Div", "MatMul", "Reshape", "Softmax", "Transpose"}},
     {"RotaryEmbedding", {"Add", "Concat", "Gather", "Mul", "Reshape", "Slice", "Split"}},
     {"SimplifiedLayerNormalization", {"Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt"}},
+    {"SkipGroupNorm", {"Add", "InstanceNormalization", "Mul", "Reshape", "Sigmoid", "Transpose"}},
     {"SkipLayerNormalization", {"Add", "LayerNormalization"}},
     {"SkipSimplifiedLayerNormalization", {"Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt"}},
 };

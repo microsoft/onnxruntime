@@ -41,6 +41,7 @@ class ComputeContextBase {
 
    private:
     static const webgpu::BufferManager& Get(const ComputeContextBase& context);
+    static CommandRecordingState& GetRecording(const ComputeContextBase& context);
   };
 
   ComputeContextBase(WebGpuContext& webgpu_context,
@@ -125,13 +126,15 @@ class ComputeContextBase {
   //
   // Get the logger.
   //
-  inline const logging::Logger& Logger() const {
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  inline const onnxruntime::ep::adapter::Logger& Logger() const {
     return ep_.GetEpLogger();
-#else
-    return *ep_.GetLogger();
-#endif
   }
+#else
+  inline const logging::Logger& Logger() const {
+    return *ep_.GetLogger();
+  }
+#endif
 
   //
   // Run a compute shader program.
@@ -214,13 +217,10 @@ class ComputeContext final : public ComputeContextBase {
   //
   // This method creates a tensor of the given data type and shape, using the WebGPU allocator.
   // The tensor owns the underlying WebGPU storage buffer.
+  // In the plugin, the temp-space allocator is the existing Session device allocator,
+  // not an Env shared allocator or a new allocator created for each tensor.
   //
-  template <typename TensorShapeType>
-  Tensor CreateGPUTensor(MLDataType data_type, TensorShapeType&& shape) {
-    AllocatorPtr allocator;
-    ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
-    return {data_type, std::forward<TensorShapeType>(shape), allocator};
-  }
+  Tensor CreateGPUTensor(MLDataType data_type, const TensorShape& shape);
 
   //
   // Copy data from a tensor to another tensor.
@@ -235,9 +235,10 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
-    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches());
-    webgpu_context_.EndComputePass();
-    auto& command_encoder = webgpu_context_.GetCommandEncoder();
+    auto& recording = ep_.Recording();
+    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches(recording));
+    webgpu_context_.EndComputePass(recording);
+    auto& command_encoder = webgpu_context_.GetCommandEncoder(recording);
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
     command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
   }

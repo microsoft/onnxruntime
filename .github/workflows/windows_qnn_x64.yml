@@ -44,7 +44,7 @@ jobs:
           architecture: x64
 
       - name: Setup Java
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -62,11 +62,6 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
-        with:
-          architecture: x64
-
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 

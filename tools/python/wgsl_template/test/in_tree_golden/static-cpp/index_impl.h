@@ -31,16 +31,18 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "wgsl_template_gen/string_table.h"  // d51983d119d3b947e9a2c0b40e11af364bd2c90b1bbf41252a06152069964f45
+#include "wgsl_template_gen/string_table.h"  // 3207f160f8bd1dca0fa8d4d6867a9890f785af733bb5f27183b8ed22bbe1089a
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // b924b0e7b6902b0a6786b9a536c68d3ffee9d8a1603da987abb89dcd82672156
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 26616da09d38ec21713de728effdb3b9feb2340091724b4c321ece03188ae37a
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 4ed8f01f59daebbf590309462caaed6e2695d1355c940f85ce156d57badca705
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 4439415afab81c066b38000959226ba926917a6e435f492193aa568d4887174f
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 0f9aefd7fb118a8a4be8751f9bf70a2390ad04726c9fefb4db4ac0e553e3ae04
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 9f2adcadbf2d8bc9ebb8f1893555eb2a209cdc2984b4f3d0f37bf8d91d40b1bd
+#include "wgsl_template_gen/generated/math/matmul_gemv.h"  // 59e4865f8dfb09777dff88b1b5983d18704a0713a43e26a48ee0479420b5dba5
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // c1d802ca557f329f392fcd71ac806d73af886bcc1a4e0c19f4c39affb0bfd99e
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 8576f40cad9c8942f6c88c357b4e5dd327a30210f07d37da4759a90b53e4b482
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // c58d42477e567010836d7760ad3bc35bf3535d3b2d495d0e41802488a93551c9
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 00270c1d35c7255219ea3c2c80dfcf9ffd51bed5f86016a03696adbfb7293e3a
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // a8b33bafa84a087e1a25113d2bb9713d335b42df628c8388b102a85653e82a64
+#include "wgsl_template_gen/generated/tensor/pad.h"  // 6c0f4b9b286750f45362a67aad3bbf37997b64b7d1b87648973fd8044a334d8e
+#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 34a8d51fedf2ba9ad55a894d7795bf57f6c4a49e74d4f3a053bc558c02f7f690
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")
