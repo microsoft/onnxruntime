@@ -234,7 +234,7 @@ class MatMulComputeHelper {
     output_broadcast_dims_.resize(num_broadcasted_dims_);
     for (size_t i = num_broadcasted_dims_; i > 0; --i) {
       size_t idx = i - 1;
-      output_broadcast_dims_[idx] = output_shape_[idx];
+      output_broadcast_dims_[idx] = static_cast<ptrdiff_t>(output_shape_[idx]);
       output_broadcast_strides_[idx] = ((i == num_broadcasted_dims_) ? 1 : output_broadcast_strides_[idx + 1] * output_broadcast_dims_[idx + 1]);
       left_padded_strides_[idx] = ((i == num_broadcasted_dims_) ? 1 : left_padded_strides_[idx + 1] * left_padded_dims_[idx + 1]);
       right_padded_strides_[idx] = ((i == num_broadcasted_dims_) ? 1 : right_padded_strides_[idx + 1] * right_padded_dims_[idx + 1]);
