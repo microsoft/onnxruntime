@@ -64,13 +64,13 @@ struct PendingKernelInfo {
 };
 
 // State for one in-flight pipeline build. The compiled pipeline is written into
-// `callback_context->pipeline` by the async callback; only that heap-allocated callback context
-// must stay put until `future` completes, so this struct itself can be stored inline.
+// `callback_context->pipeline` by the async callback, which shares ownership of the result state
+// independently of this build's lifetime.
 struct PendingPipelineBuild {
   std::string name;
   std::vector<int> shape_uniform_ranks;
   wgpu::BindGroupLayout bind_group_layout;
-  std::unique_ptr<PipelineCallbackContext> callback_context;
+  std::shared_ptr<PipelineCallbackContext> callback_context;
   wgpu::Future future;
 };
 
@@ -307,6 +307,10 @@ class WebGpuContext final {
 
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
+  // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
+  // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
+  Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
@@ -343,7 +347,7 @@ class WebGpuContext final {
   //
   // This is useful only when "skip_validation" is not set.
   //
-  void PushErrorScope();
+  void PushErrorScope(wgpu::ErrorFilter filter = wgpu::ErrorFilter::Validation);
 
   //
   // Pop error scope.
@@ -432,6 +436,7 @@ class WebGpuContext final {
   // Find the build owner for a cache key in the current deferred window.
   PendingPipelineBuild* FindPendingPipelineBuild(CommandRecordingState& recording, std::string_view key);
   Status WaitForDeferredPipelineBuilds(CommandRecordingState& recording);
+  Status CheckDeviceStatus() const;
 
   friend class BufferManager;
   friend class ComputeContext;
@@ -439,6 +444,11 @@ class WebGpuContext final {
 
   std::once_flag init_flag_;
 
+  struct DeviceErrorState {
+    std::mutex mutex;
+    Status status;
+  };
+  std::shared_ptr<DeviceErrorState> device_error_state_{std::make_shared<DeviceErrorState>()};
   wgpu::Instance instance_;
   wgpu::Device device_;
 

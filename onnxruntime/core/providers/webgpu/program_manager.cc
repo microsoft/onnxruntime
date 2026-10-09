@@ -19,12 +19,12 @@ namespace webgpu {
 namespace detail {
 
 std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path) {
+  static std::mutex dump_mutex{};  // one single mutex is shared across all of the shader dump functions
   auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
-  auto dump_mutex = std::make_shared<std::mutex>();
-  return [dump_file = std::move(dump_file),
-          dump_mutex = std::move(dump_mutex)](std::string_view shader_content) {
-    std::lock_guard<std::mutex> lock{*dump_mutex};
+  return [dump_file = std::move(dump_file)](std::string_view shader_content) {
+    std::lock_guard lock{dump_mutex};
     *dump_file << shader_content << "\n";
+    dump_file->flush();
   };
 }
 
@@ -172,7 +172,7 @@ Status ProgramManager::Build(const ProgramBase& program,
                              wgpu::BindGroupLayout& bind_group_layout,
                              std::vector<int>& shape_uniform_ranks,
                              wgpu::Future& future,
-                             PipelineCallbackContext& callback_context) const {
+                             const std::shared_ptr<PipelineCallbackContext>& callback_context) const {
   auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
@@ -305,8 +305,8 @@ Status ProgramManager::Build(const ProgramBase& program,
 #endif
 
   auto pipeline_callback =
-      [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message,
-         PipelineCallbackContext* context) noexcept {
+      [context = callback_context](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline,
+                                   wgpu::StringView message) noexcept {
         if (status == wgpu::CreatePipelineAsyncStatus::Success) {
           context->pipeline = std::move(pipeline);
         } else {
@@ -319,8 +319,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   future = device.CreateComputePipelineAsync(
       &pipeline_descriptor,
       wgpu::CallbackMode::WaitAnyOnly,
-      pipeline_callback,
-      &callback_context);
+      std::move(pipeline_callback));
   return Status::OK();
 }
 
