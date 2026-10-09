@@ -1456,6 +1456,31 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
+TEST(GatherBlockQuantizedOpTest, FpEmptyGatherDimensionCuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  auto cuda_ep = CudaExecutionProviderWithOptions(
+      ProviderOptions{{"enable_host_pageable_gather", "1"}});
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  OpTester test("GatherBlockQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", 0);
+  test.AddAttribute<int64_t>("quantize_axis", 1);
+  test.AddAttribute<int64_t>("block_size", 0);
+  test.AddInput<Float8E4M3FN>("data", {0, 2}, {}, true);
+  test.AddInput<int64_t>("indices", {2}, {0, -1});
+  test.AddInput<float>("scales", {0, 1}, {});
+  test.AddOutput<float>("output", {2, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(GatherBlockQuantizedOpTest, FpFallbackWithPrepackingDisabledCuda) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";

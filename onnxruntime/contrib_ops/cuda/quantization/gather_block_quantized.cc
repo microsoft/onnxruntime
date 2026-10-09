@@ -273,7 +273,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   } else {
     data_ptr = data->Data<T1>();
   }
-  ORT_RETURN_IF_NOT(N == 0 || data_ptr != nullptr,
+  ORT_RETURN_IF_NOT(data_shape[gather_axis] == 0 || data_ptr != nullptr,
                     "GatherBlockQuantized fallback has no device-resident input 0.");
   const auto* indices_ptr = indices->Data<Tind>();
   const T1* zero_points_ptr = nullptr;
