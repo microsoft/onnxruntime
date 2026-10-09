@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Sequence-length-independent (seq-free) route-eligibility predicates for the CUDA
+// Route-eligibility predicates for the CUDA
 // GroupQueryAttention operator. These factor the exact-geometry backend-selection
 // checks in GroupQueryAttention::ComputeInternal; they are not a bounded-domain
 // Level-1 workspace reachability implementation.
@@ -35,6 +35,7 @@
 #include "core/common/float16.h"
 #include "core/common/float8.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 
 #if USE_FLASH_ATTENTION
@@ -117,8 +118,7 @@ inline bool IsGQAXqaEligibleSeqFree(const GQAXqaSeqFreeInputs& in) {
 
   const bool is_non_quantized_supported =
       !in.is_inputs_quantized &&
-      IsSupportedGQAXqaHeadSize(in.head_size) &&
-      IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/false);
+      IsSupportedGQAXqaGeometry(in.head_size, group_size, /*is_quantized=*/false);
 
   return is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported;
 }
@@ -186,6 +186,19 @@ inline bool IsGQAMemoryEfficientEligibleSeqFree(int32_t sm,
                                         std::is_same<T, BFloat16>::value,
                                         static_cast<int>(head_size),
                                         static_cast<int>(head_size));
+}
+
+template <typename T>
+inline bool IsGQAMemoryEfficientEligible(const GroupQueryAttentionParameters& parameters,
+                                         int32_t sm,
+                                         bool disable_memory_efficient_attention,
+                                         bool is_inputs_quantized,
+                                         bool has_attention_bias,
+                                         bool has_head_sink) {
+  return !PreferNativeGqa(parameters, sm / 10, is_inputs_quantized, has_head_sink) &&
+         IsGQAMemoryEfficientEligibleSeqFree<T>(sm, disable_memory_efficient_attention,
+                                                is_inputs_quantized, has_attention_bias,
+                                                parameters.head_size);
 }
 #endif
 

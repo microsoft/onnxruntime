@@ -899,11 +899,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
-        IsGQAMemoryEfficientEligibleSeqFree<T>(sm,
-                                               disable_memory_efficient_attention_,
-                                               is_inputs_quantized,
-                                               has_attention_bias,
-                                               parameters.head_size);
+        IsGQAMemoryEfficientEligible<T>(parameters, sm, disable_memory_efficient_attention_,
+                                        is_inputs_quantized, has_attention_bias, head_sink != nullptr);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
     // Head-expansion (K/V) and FP32 FMHA-accumulator scratch sizes come from the shared
