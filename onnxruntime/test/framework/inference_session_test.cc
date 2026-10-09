@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cfloat>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -835,8 +836,10 @@ TEST(InferenceSessionTests, WebGpuCompileOnlyUsesNoOpAllocator) {
 // End-to-end via the public V2 API in the *plugin* WebGPU build: select the virtual WebGPU OrtEpDevice and run a
 // compile-only session.
 //
-// Relies on test_main.cc registering the WebGPU plugin EP under a ".virtual" name, whose suffix auto-enables the env
-// config "allow_virtual_devices" so the factory surfaces a virtual GPU OrtEpDevice.
+// Relies on test_main.cc arranging for the factory to surface a virtual GPU OrtEpDevice: in the shared-library
+// plugin build by registering the EP library under a ".virtual" name, whose suffix auto-enables the env config
+// "allow_virtual_devices"; in the static plugin build by setting that env config entry directly at environment
+// creation (ORT core, not the test, registers the statically linked EP, so there is no registration name to suffix).
 //
 // It exercises the accepted (device-free) path even on a host that has a real GPU: device-free is driven by
 // session.compile_only, not by which device is selected, so no Dawn device is created.
@@ -855,9 +858,10 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
       break;
     }
   }
-  // A virtual device must be present in this build (test_main.cc's ".virtual" registration enables it).
+  // A virtual device must be present in this build (see the comment above this test for how test_main.cc enables it).
   ASSERT_FALSE(selected.empty())
-      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+      << "Expected a virtual WebGPU EP device from test_main.cc's virtual device configuration, "
+         "but none was surfaced.";
 
   Ort::SessionOptions session_options;
   // session-level compile_only (NOT an EP option) -> drives the device-free context and stop-before-finalize.
@@ -874,7 +878,7 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
 // internal factory): selecting the virtual WebGPU device for a normal (non-compile-only) session must be rejected
 // up front by the *adapter* factory's CreateEp with ORT_INVALID_ARGUMENT, rather than proceeding into Dawn to fail
 // obscurely with no real GPU behind the virtual device. Exercises the adapter factory's copy of the enforcement
-// through the public V2 API. Depends on the same test_main.cc ".virtual" registration as
+// through the public V2 API. Depends on the same test_main.cc virtual device configuration as
 // WebGpuVirtualDeviceCompileOnlyEndToEnd above (that's what surfaces the virtual device to select).
 TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
   std::vector<Ort::ConstEpDevice> selected;
@@ -889,10 +893,11 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
       break;
     }
   }
-  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present from test_main.cc's .virtual
-  // registration in this build, so fail (not skip) if none was surfaced.
+  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present in this build, so fail (not skip)
+  // if none was surfaced.
   ASSERT_FALSE(selected.empty())
-      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+      << "Expected a virtual WebGPU EP device from test_main.cc's virtual device configuration, "
+         "but none was surfaced.";
 
   // Deliberately NOT setting session.compile_only -> a runnable session on a virtual device, which must be rejected.
   Ort::SessionOptions session_options;
@@ -1240,6 +1245,33 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   ASSERT_TRUE(have_log_entry_with_run_tag);
 #endif
 }
+
+#ifndef __wasm__
+TEST(InferenceSessionTests, MoeExpertStatisticsLoadsStateFileWithNativePath) {
+  for (const auto* state_file : {"moe_expert_state_ascii.txt", "moe_expert_state_\xE6\xB5\x8B\xE8\xAF\x95.txt"}) {
+    SCOPED_TRACE(state_file);
+    const auto state_path = std::filesystem::path(ToPathString(state_file));
+    auto cleanup = gsl::finally([&state_path]() { std::filesystem::remove(state_path); });
+    {
+      std::ofstream output{state_path};
+      ASSERT_TRUE(output.is_open());
+      output << "moe_expert_state 1\n";
+      ASSERT_TRUE(output.good());
+    }
+
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigMoeExpertCounterStateFile, state_file));
+
+    InferenceSession session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
+  }
+}
+#endif
 
 // WebAssembly will emit profiling data into console
 // TODO(hasesh): Investigate why this test fails on Windows CUDA builds
@@ -4517,7 +4549,8 @@ static OrtStatus* ORT_API_CALL HandleCompileApiInitializer(
   return status.release();
 }
 
-static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_path, bool use_initializer) {
+static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_path, bool use_initializer,
+                                     int64_t tensor_size = 2, bool use_second_initializer = false) {
   ModelProto model_proto;
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto.add_opset_import()->set_version(17);
@@ -4525,11 +4558,11 @@ static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_p
   GraphProto& graph = *model_proto.mutable_graph();
   graph.set_name("compile_api_custom_initializer_graph");
 
-  auto add_value_info = [](ValueInfoProto& value_info, const char* name) {
+  auto add_value_info = [tensor_size](ValueInfoProto& value_info, const char* name) {
     value_info.set_name(name);
     auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
     tensor_type.set_elem_type(TensorProto_DataType_FLOAT);
-    tensor_type.mutable_shape()->add_dim()->set_dim_value(2);
+    tensor_type.mutable_shape()->add_dim()->set_dim_value(tensor_size);
   };
 
   add_value_info(*graph.add_input(), "X");
@@ -4539,9 +4572,20 @@ static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_p
     TensorProto& initializer = *graph.add_initializer();
     initializer.set_name("Y");
     initializer.set_data_type(TensorProto_DataType_FLOAT);
-    initializer.add_dims(2);
-    initializer.add_float_data(3.0f);
-    initializer.add_float_data(4.0f);
+    initializer.add_dims(tensor_size);
+    for (int64_t i = 0; i < tensor_size; ++i) {
+      initializer.add_float_data(static_cast<float>(i + 3));
+    }
+
+    if (use_second_initializer) {
+      TensorProto& second_initializer = *graph.add_initializer();
+      second_initializer.set_name("W");
+      second_initializer.set_data_type(TensorProto_DataType_FLOAT);
+      second_initializer.add_dims(tensor_size);
+      for (int64_t i = 0; i < tensor_size; ++i) {
+        second_initializer.add_float_data(static_cast<float>(i + 5));
+      }
+    }
   }
   add_value_info(*graph.add_output(), "Z");
 
@@ -4550,7 +4594,16 @@ static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_p
   node.set_op_type("Add");
   node.add_input("X");
   node.add_input("Y");
-  node.add_output("Z");
+  node.add_output(use_second_initializer ? "A" : "Z");
+
+  if (use_second_initializer) {
+    NodeProto& second_node = *graph.add_node();
+    second_node.set_name("second_add_node");
+    second_node.set_op_type("Add");
+    second_node.add_input("A");
+    second_node.add_input("W");
+    second_node.add_output("Z");
+  }
 
   std::ofstream output(model_path, std::ios::binary);
   ASSERT_TRUE(output.is_open());
@@ -4835,6 +4888,760 @@ TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToBuffer) {
   EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
 
   allocator.Free(output_buffer);
+}
+
+TEST(InferenceSessionTests, CompileApiExternalInitializerBufferRelativeNamesRoundTrip) {
+  const PathString input_path = ORT_TSTR("compile_api_relative_names.onnx");
+  auto remove_input = gsl::finally([&]() { std::filesystem::remove(input_path); });
+  CreateCompileApiAddModel(input_path, true, 64);
+  const std::array<PathString, 6> logical_names{
+      ORT_TSTR("weights.bin"), ORT_TSTR("./weights.bin"), ORT_TSTR(".//weights.bin"),
+      ORT_TSTR(".\\weights.bin"), ORT_TSTR(".\\\\weights.bin"), ORT_TSTR("././weights.bin")};
+
+  for (const auto& logical_name : logical_names) {
+    SCOPED_TRACE(ToUTF8String(logical_name));
+    Ort::SessionOptions options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, options);
+    compile_options.SetInputModelPath(input_path.c_str());
+    Ort::AllocatorWithDefaultOptions allocator;
+    void* model_buffer = nullptr;
+    size_t model_size = 0;
+    void* external_buffer = nullptr;
+    size_t external_size = 0;
+    auto free_buffers = gsl::finally([&]() {
+      allocator.Free(model_buffer);
+      allocator.Free(external_buffer);
+    });
+    compile_options.SetOutputModelBuffer(allocator, &model_buffer, &model_size);
+    compile_options.SetOutputModelExternalInitializersBuffer(logical_name.c_str(), 0, allocator,
+                                                             &external_buffer, &external_size);
+    const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+    ModelProto model_proto;
+    ASSERT_TRUE(model_proto.ParseFromArray(model_buffer, static_cast<int>(model_size)));
+    ASSERT_EQ(model_proto.graph().initializer_size(), 1);
+    std::unique_ptr<ExternalDataInfo> external_info;
+    ASSERT_STATUS_OK(ExternalDataInfo::Create(model_proto.graph().initializer(0).external_data(), external_info));
+    EXPECT_EQ(external_info->GetRelPath(), ORT_TSTR("weights.bin"));
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    // Also load pre-existing models that still record a current-directory prefix.
+    ModelProto prefixed_proto = model_proto;
+    for (auto& entry : *prefixed_proto.mutable_graph()->mutable_initializer(0)->mutable_external_data()) {
+      if (entry.key() == "location") entry.set_value(ToUTF8String(logical_name));
+    }
+    const std::array<std::string, 2> model_bytes{
+        model_proto.SerializeAsString(), prefixed_proto.SerializeAsString()};
+    for (const auto& bytes : model_bytes) {
+      for (const auto& registered_name : {logical_name, PathString{ORT_TSTR("weights.bin")}}) {
+        for (const char* direct : {"0", "1"}) {
+          SCOPED_TRACE(ToUTF8String(registered_name));
+          SCOPED_TRACE(direct);
+          Ort::SessionOptions load_options;
+          load_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+          load_options.AddConfigEntry(kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct);
+          load_options.AddExternalInitializersFromFilesInMemory(
+              {registered_name}, {static_cast<char*>(external_buffer)}, {external_size});
+          Ort::Session session{*ort_env, bytes.data(), bytes.size(), load_options};
+          const std::array<int64_t, 1> shape{64};
+          std::array<float, 64> input_data{};
+          input_data.fill(1.0f);
+          auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+          auto input = Ort::Value::CreateTensor<float>(
+              memory_info, input_data.data(), input_data.size(), shape.data(), shape.size());
+          const std::array<const char*, 1> input_names{"X"};
+          const std::array<const char*, 1> output_names{"Z"};
+          auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), &input, 1,
+                                     output_names.data(), output_names.size());
+          ASSERT_EQ(outputs.size(), 1u);
+          for (size_t i = 0; i < input_data.size(); ++i) {
+            EXPECT_EQ(outputs[0].GetTensorData<float>()[i], static_cast<float>(i + 4));
+          }
+        }
+      }
+    }
+#endif
+  }
+}
+
+TEST(InferenceSessionTests, CompileApiWritesAndReloadsExternalInitializersBuffer) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_external_buffer_input.onnx");
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{input_path};
+  CreateCompileApiAddModel(input_path, true, 64, true);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_path.c_str());
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* model_buffer = nullptr;
+  size_t model_size = 0;
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  compile_options.SetOutputModelBuffer(allocator, &model_buffer, &model_size);
+  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("weights.bin"), 0, allocator,
+                                                           &external_buffer, &external_size);
+  compile_options.SetOutputModelExternalInitializersAlignment(64, 0);
+
+  const Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
+  ASSERT_NE(model_buffer, nullptr);
+  ASSERT_NE(external_buffer, nullptr);
+  ASSERT_GT(external_size, 0u);
+
+  ModelProto model_proto;
+  ASSERT_TRUE(model_proto.ParseFromArray(model_buffer, static_cast<int>(model_size)));
+  ASSERT_EQ(model_proto.graph().initializer_size(), 2);
+  std::array<std::unique_ptr<ExternalDataInfo>, 2> external_infos;
+  for (int i = 0; i < model_proto.graph().initializer_size(); ++i) {
+    ASSERT_STATUS_OK(ExternalDataInfo::Create(model_proto.graph().initializer(i).external_data(), external_infos[i]));
+    EXPECT_EQ(external_infos[i]->GetRelPath(), ORT_TSTR("weights.bin"));
+    EXPECT_EQ(external_infos[i]->GetOffset() % 64, 0);
+    EXPECT_EQ(external_infos[i]->GetLength(), 64 * sizeof(float));
+  }
+  EXPECT_LT(external_infos[0]->GetOffset(), external_infos[1]->GetOffset());
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  const PathString logical_file_name = ORT_TSTR("weights.bin");
+  const InlinedHashMap<PathString, std::pair<char*, size_t>> external_files{
+      {logical_file_name, {static_cast<char*>(external_buffer), external_size}}};
+  const std::array<int64_t, 1> input_shape{64};
+  std::array<float, 64> input_data{};
+  std::fill(input_data.begin(), input_data.end(), 1.0f);
+  auto run_and_verify = [&](InferenceSessionWrapper& session) {
+    OrtValue input_value;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{input_shape}, input_data.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), input_value);
+    NameMLValMap feeds{{"X", input_value}};
+    const std::array<std::string, 1> output_names{"Z"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &fetches));
+    ASSERT_EQ(fetches.size(), 1);
+    const float* output = fetches[0].Get<Tensor>().Data<float>();
+    for (size_t i = 0; i < input_data.size(); ++i) {
+      EXPECT_EQ(output[i], static_cast<float>(2 * i + 9));
+    }
+  };
+
+  {
+    SessionOptions copy_options;
+    copy_options.external_initializer_files_mmap = external_files;
+    InferenceSessionWrapper copy_session{copy_options, GetEnvironment()};
+    ASSERT_STATUS_OK(copy_session.Load(model_buffer, static_cast<int>(model_size)));
+    ASSERT_STATUS_OK(copy_session.Initialize());
+    OrtValue copied_value;
+    EXPECT_FALSE(copy_session.GetGraph().GetOrtValueInitializer("Y", copied_value, false));
+    run_and_verify(copy_session);
+  }
+
+  {
+    SessionOptions direct_options;
+    direct_options.graph_optimization_level = TransformerLevel::Default;
+    direct_options.external_initializer_files_mmap = external_files;
+    ASSERT_STATUS_OK(direct_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "1"));
+    InferenceSessionWrapper direct_session{direct_options, GetEnvironment()};
+    ASSERT_STATUS_OK(direct_session.Load(model_buffer, static_cast<int>(model_size)));
+    ASSERT_STATUS_OK(direct_session.Initialize());
+    for (size_t i = 0; i < external_infos.size(); ++i) {
+      const auto& initializer = model_proto.graph().initializer(static_cast<int>(i));
+      const auto* initializer_buffer = static_cast<char*>(external_buffer) + external_infos[i]->GetOffset();
+      int initializer_index;
+      ASSERT_STATUS_OK(
+          direct_session.GetSessionState().GetOrtValueNameIdxMap().GetIdx(initializer.name(), initializer_index));
+      const auto* actual =
+          direct_session.GetSessionState().GetInitializedTensors().at(initializer_index).Get<Tensor>().DataRaw();
+      if constexpr (endian::native == endian::little) {
+        EXPECT_EQ(actual, initializer_buffer);
+      } else {
+        EXPECT_NE(actual, initializer_buffer);
+      }
+    }
+    run_and_verify(direct_session);
+  }
+
+  {
+    // Relocate only one tensor to a misaligned slice; its aligned neighbor must still borrow the buffer.
+    const size_t relocated_offset = external_size + 1;
+    const size_t relocated_size = relocated_offset + external_infos[0]->GetLength();
+    auto relocated_buffer = IAllocator::MakeUniquePtrFromOrtAllocator<void>(allocator, relocated_size);
+    std::memcpy(relocated_buffer.get(), external_buffer, external_size);
+    std::memcpy(static_cast<char*>(relocated_buffer.get()) + relocated_offset,
+                static_cast<char*>(external_buffer) + external_infos[0]->GetOffset(), external_infos[0]->GetLength());
+    auto& relocated_initializer = *model_proto.mutable_graph()->mutable_initializer(0);
+    relocated_initializer.clear_external_data();
+    ExternalDataInfo::SetExternalLocationToProto(logical_file_name, relocated_offset,
+                                                 external_infos[0]->GetLength(), relocated_initializer);
+    const std::string relocated_model = model_proto.SerializeAsString();
+
+    SessionOptions direct_options;
+    direct_options.graph_optimization_level = TransformerLevel::Default;
+    direct_options.external_initializer_files_mmap = {
+        {logical_file_name, {static_cast<char*>(relocated_buffer.get()), relocated_size}}};
+    ASSERT_STATUS_OK(direct_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "1"));
+    InferenceSessionWrapper session{direct_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(relocated_model.data(), static_cast<int>(relocated_model.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    for (int i = 0; i < 2; ++i) {
+      int index;
+      ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx(
+          model_proto.graph().initializer(i).name(), index));
+      const auto* actual = session.GetSessionState().GetInitializedTensors().at(index).Get<Tensor>().DataRaw();
+      const auto* supplied = static_cast<char*>(relocated_buffer.get()) +
+                             (i == 0 ? relocated_offset : external_infos[i]->GetOffset());
+      if (i == 0 || endian::native != endian::little) {
+        EXPECT_NE(actual, supplied);
+      } else {
+        EXPECT_EQ(actual, supplied);
+      }
+    }
+    run_and_verify(session);
+  }
+#endif
+
+  allocator.Free(external_buffer);
+  allocator.Free(model_buffer);
+}
+
+TEST(InferenceSessionTests, CompileApiWritesModelFileAndExternalInitializersBuffer) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_external_buffer_file_input.onnx");
+  const std::basic_string<ORTCHAR_T> output_path = ORT_TSTR("compile_api_external_buffer_file_output.onnx");
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> input_path;
+    std::basic_string<ORTCHAR_T> output_path;
+    ~RemoveOnExit() {
+      std::filesystem::remove(input_path);
+      std::filesystem::remove(output_path);
+    }
+  } remove_on_exit{input_path, output_path};
+  CreateCompileApiAddModel(input_path, true, 64);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_path.c_str());
+  compile_options.SetOutputModelPath(output_path.c_str());
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("weights.bin"), 0, allocator,
+                                                           &external_buffer, &external_size);
+
+  const Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
+  ASSERT_TRUE(std::filesystem::exists(output_path));
+  ASSERT_NE(external_buffer, nullptr);
+  ASSERT_GT(external_size, 0u);
+
+  ModelProto model_proto;
+  std::ifstream model_stream{output_path, std::ios::binary};
+  ASSERT_TRUE(model_stream.is_open());
+  ASSERT_TRUE(model_proto.ParseFromIstream(&model_stream));
+  ASSERT_EQ(model_proto.graph().initializer_size(), 1);
+  std::unique_ptr<ExternalDataInfo> external_info;
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(model_proto.graph().initializer(0).external_data(), external_info));
+  EXPECT_EQ(external_info->GetRelPath(), ORT_TSTR("weights.bin"));
+  EXPECT_EQ(external_info->GetLength(), 64 * sizeof(float));
+
+  allocator.Free(external_buffer);
+}
+
+TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmbedded) {
+  const PathString input_path = ORT_TSTR("compile_api_subgraph_initializers.onnx");
+  const PathString external_path = ORT_TSTR("compile_api_subgraph_weights.bin");
+  auto remove_input = gsl::finally([&]() { std::filesystem::remove(input_path); });
+  auto remove_external = gsl::finally([&]() { std::filesystem::remove(external_path); });
+  CreateCompileApiAddModel(input_path, true, 64);
+  ModelProto input_proto;
+  {
+    std::ifstream input(input_path, std::ios::binary);
+    ASSERT_TRUE(input_proto.ParseFromIstream(&input));
+  }
+  GraphProto branch = input_proto.graph();
+  auto& graph = *input_proto.mutable_graph();
+  graph.clear_node();
+  graph.clear_initializer();
+  auto& condition = *graph.add_input();
+  condition.set_name("condition");
+  condition.mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  condition.mutable_type()->mutable_tensor_type()->mutable_shape();
+  branch.clear_input();  // X is captured from the outer graph.
+  auto& if_node = *graph.add_node();
+  if_node.set_name("choose_branch");
+  if_node.set_op_type("If");
+  if_node.add_input("condition");
+  if_node.add_output("Z");
+  for (const char* name : {"then_branch", "else_branch"}) {
+    auto& attribute = *if_node.add_attribute();
+    attribute.set_name(name);
+    attribute.set_type(AttributeProto_AttributeType_GRAPH);
+    *attribute.mutable_g() = branch;
+    attribute.mutable_g()->set_name(name);
+    // Same initializer name in different scopes, with different data.
+    for (auto& value : *branch.mutable_initializer(0)->mutable_float_data()) value += 10.0f;
+  }
+  for (bool has_main_initializer : {false, true}) {
+    SCOPED_TRACE(has_main_initializer);
+    ModelProto model_to_compile = input_proto;
+    if (has_main_initializer) {
+      auto& main_graph = *model_to_compile.mutable_graph();
+      auto& bias = *main_graph.add_initializer();
+      bias.set_name("root_bias");
+      bias.set_data_type(TensorProto_DataType_FLOAT);
+      bias.add_dims(64);
+      for (int i = 0; i < 64; ++i) bias.add_float_data(2.0f);
+      main_graph.mutable_node(0)->set_output(0, "R");
+      auto& add = *main_graph.add_node();
+      add.set_op_type("Add");
+      add.add_input("R");
+      add.add_input("root_bias");
+      add.add_output("Z");
+    }
+    const std::string input_model = model_to_compile.SerializeAsString();
+    for (bool buffer_destination : {false, true}) {
+      SCOPED_TRACE(buffer_destination);
+      Ort::SessionOptions options;
+      Ort::ModelCompilationOptions compile_options(*ort_env, options);
+      compile_options.SetInputModelFromBuffer(input_model.data(), input_model.size());
+      compile_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+      Ort::AllocatorWithDefaultOptions allocator;
+      void* model_buffer = nullptr;
+      size_t model_size = 0;
+      void* external_buffer = nullptr;
+      size_t external_size = 0;
+      auto free_buffers = gsl::finally([&]() {
+        allocator.Free(model_buffer);
+        allocator.Free(external_buffer);
+      });
+      compile_options.SetOutputModelBuffer(allocator, &model_buffer, &model_size);
+      if (buffer_destination) {
+        compile_options.SetOutputModelExternalInitializersBuffer(external_path.c_str(), 0, allocator,
+                                                                 &external_buffer, &external_size);
+      } else {
+        compile_options.SetOutputModelExternalInitializersFile(external_path.c_str(), 0);
+      }
+      const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+      ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+      if (buffer_destination) {
+        EXPECT_EQ(external_size, has_main_initializer ? 64 * sizeof(float) : 0u);
+        EXPECT_EQ(external_buffer == nullptr, !has_main_initializer);
+        std::filesystem::remove(external_path);
+      }
+
+      ModelProto compiled_proto;
+      ASSERT_TRUE(compiled_proto.ParseFromArray(model_buffer, static_cast<int>(model_size)));
+      ASSERT_EQ(compiled_proto.graph().initializer_size(), has_main_initializer ? 1 : 0);
+      ASSERT_EQ(compiled_proto.graph().node(0).op_type(), "If");
+      for (const auto& attribute : compiled_proto.graph().node(0).attribute()) {
+        ASSERT_EQ(attribute.g().initializer_size(), 1);
+        EXPECT_EQ(utils::HasExternalData(attribute.g().initializer(0)), !buffer_destination);
+      }
+#if defined(DISABLE_EXTERNAL_INITIALIZERS)
+      if (buffer_destination && has_main_initializer) continue;
+#endif
+#if defined(__EMSCRIPTEN__)
+      // The WASM test module does not provide Module.MountedFiles for file-backed external data.
+      if (!buffer_destination) continue;
+#endif
+      {
+        std::ofstream output(input_path, std::ios::binary);
+        ASSERT_TRUE(compiled_proto.SerializeToOstream(&output));
+      }
+
+      for (int mode : {0, 1, 2, 3}) {
+        SCOPED_TRACE(mode);
+        const bool direct = mode % 2 != 0;
+        SessionOptions load_options;
+        load_options.graph_optimization_level = TransformerLevel::Default;
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+        if (buffer_destination && has_main_initializer) {
+          load_options.external_initializer_files_mmap = {
+              {external_path, {static_cast<char*>(external_buffer), external_size}}};
+        }
+#endif
+        ASSERT_STATUS_OK(load_options.config_options.AddConfigEntry(
+            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
+        InferenceSessionWrapper session{load_options, GetEnvironment()};
+        if (mode >= 2) {
+          ASSERT_STATUS_OK(session.Load(std::filesystem::absolute(input_path).native()));
+        } else {
+          ASSERT_STATUS_OK(session.Load(model_buffer, static_cast<int>(model_size)));
+        }
+        ASSERT_STATUS_OK(session.Initialize());
+
+        OrtValue x;
+        CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {64},
+                             std::vector<float>(64, 1.0f), &x);
+        for (bool take_then : {false, true}) {
+          OrtValue cond;
+          CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {}, {take_then}, &cond);
+          std::vector<OrtValue> outputs;
+          const NameMLValMap feeds{{"X", x}, {"condition", cond}};
+          const std::array<std::string, 1> output_names{"Z"};
+          ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+          ASSERT_EQ(outputs.size(), 1u);
+          const float* result = outputs[0].Get<Tensor>().Data<float>();
+          for (int i = 0; i < 64; ++i) {
+            EXPECT_EQ(result[i], static_cast<float>(i + (take_then ? 4 : 14) + (has_main_initializer ? 2 : 0)));
+          }
+        }
+      }
+    }
+  }
+}
+
+// The WASM test module cannot load host filesystem external data without Module.MountedFiles.
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(__EMSCRIPTEN__)
+TEST(InferenceSessionTests, ExternalInitializerInjectionIsMainGraphOnly) {
+  const std::filesystem::path model_dir = ORT_TSTR("external_buffers_attribute_model_dir");
+  std::filesystem::remove_all(model_dir);
+  std::filesystem::create_directories(model_dir);
+  auto remove_model_dir = gsl::finally([&]() { std::filesystem::remove_all(model_dir); });
+
+  const float attribute_value = 5.f;
+  const std::vector<float> weights{1.f, 2.f, 3.f, 4.f};
+  const size_t data_size = weights.size() * sizeof(float);
+  {
+    std::ofstream attribute_file(model_dir / ORT_TSTR("attr.bin"), std::ios::binary);
+    attribute_file.write(reinterpret_cast<const char*>(&attribute_value), sizeof(attribute_value));
+    ASSERT_TRUE(attribute_file.good());
+  }
+  {
+    std::ofstream weights_file(model_dir / ORT_TSTR("weights.bin"), std::ios::binary);
+    weights_file.write(reinterpret_cast<const char*>(weights.data()), data_size);
+    ASSERT_TRUE(weights_file.good());
+  }
+
+  auto set_float_vector_type = [](ValueInfoProto& value_info, const char* name) {
+    value_info.set_name(name);
+    auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
+    tensor_type.set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type.mutable_shape()->add_dim()->set_dim_value(4);
+  };
+  auto set_external_float_tensor = [](TensorProto& tensor, const char* name, const PathString& file, int64_t count) {
+    tensor.set_name(name);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.add_dims(count);
+    ExternalDataInfo::SetExternalLocationToProto(file, 0, count * sizeof(float), tensor);
+  };
+
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(17);
+  GraphProto& graph = *model_proto.mutable_graph();
+  graph.set_name("external_buffers_attribute_graph");
+  set_float_vector_type(*graph.add_input(), "X");
+  auto& condition = *graph.add_input();
+  condition.set_name("condition");
+  condition.mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  condition.mutable_type()->mutable_tensor_type()->mutable_shape();
+  set_float_vector_type(*graph.add_output(), "Z");
+  set_external_float_tensor(*graph.add_initializer(), "B", ORT_TSTR("weights.bin"), 4);
+
+  // Unlike a Constant node's value, a ConstantOfShape value remains a node attribute and is not an initializer.
+  TensorProto& shape = *graph.add_initializer();
+  shape.set_name("shape");
+  shape.set_data_type(TensorProto_DataType_INT64);
+  shape.add_dims(1);
+  shape.add_int64_data(4);
+  NodeProto& constant = *graph.add_node();
+  constant.set_op_type("ConstantOfShape");
+  constant.add_input("shape");
+  constant.add_output("C");
+  auto& value = *constant.add_attribute();
+  value.set_name("value");
+  value.set_type(AttributeProto_AttributeType_TENSOR);
+  set_external_float_tensor(*value.mutable_t(), "C_value", ORT_TSTR("attr.bin"), 1);
+
+  NodeProto& if_node = *graph.add_node();
+  if_node.set_op_type("If");
+  if_node.add_input("condition");
+  if_node.add_output("R");
+  for (const char* branch_name : {"then_branch", "else_branch"}) {
+    auto& attribute = *if_node.add_attribute();
+    attribute.set_name(branch_name);
+    attribute.set_type(AttributeProto_AttributeType_GRAPH);
+    GraphProto& branch = *attribute.mutable_g();
+    branch.set_name(branch_name);
+    set_external_float_tensor(*branch.add_initializer(), "B", ORT_TSTR("weights.bin"), 4);
+    NodeProto& add = *branch.add_node();
+    add.set_op_type("Add");
+    add.add_input("X");
+    add.add_input("B");
+    add.add_output("branch_out");
+    set_float_vector_type(*branch.add_output(), "branch_out");
+  }
+
+  NodeProto& root_add = *graph.add_node();
+  root_add.set_op_type("Add");
+  root_add.add_input("R");
+  root_add.add_input("B");
+  root_add.add_output("T");
+  NodeProto& final_add = *graph.add_node();
+  final_add.set_op_type("Add");
+  final_add.add_input("T");
+  final_add.add_input("C");
+  final_add.add_output("Z");
+
+  const std::filesystem::path model_path = model_dir / ORT_TSTR("model.onnx");
+  {
+    std::ofstream model_file(model_path, std::ios::binary);
+    ASSERT_TRUE(model_proto.SerializeToOstream(&model_file));
+  }
+
+  for (bool direct : {false, true}) {
+    for (bool named_override : {false, true}) {
+      SCOPED_TRACE(direct);
+      SCOPED_TRACE(named_override);
+      std::vector<float> weights_copy{10.f, 20.f, 30.f, 40.f};
+      std::vector<float> override_data{100.f, 200.f, 300.f, 400.f};
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Default;
+      options.external_initializer_files_mmap = {
+          {ORT_TSTR("weights.bin"), {reinterpret_cast<char*>(weights_copy.data()), data_size}}};
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct ? "1" : "0"));
+      if (named_override) {
+        OrtValue replacement;
+        Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{4}, override_data.data(),
+                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), replacement);
+        const std::array<std::string, 1> names{"B"};
+        const std::array<OrtValue, 1> values{replacement};
+        ASSERT_STATUS_OK(options.AddExternalInitializers(names, values));
+      }
+      InferenceSessionWrapper session{options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(std::filesystem::absolute(model_path).native()));
+      ASSERT_STATUS_OK(session.Initialize());
+
+      auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+      OrtValue x;
+      CreateMLValue<float>(allocator, {4}, std::vector<float>(4, 1.0f), &x);
+      for (bool take_then : {false, true}) {
+        OrtValue cond;
+        CreateMLValue<bool>(allocator, {}, {take_then}, &cond);
+        std::vector<OrtValue> outputs;
+        const NameMLValMap feeds{{"X", x}, {"condition", cond}};
+        const std::array<std::string, 1> output_names{"Z"};
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+        ASSERT_EQ(outputs.size(), 1u);
+        const float* result = outputs[0].Get<Tensor>().Data<float>();
+        for (int i = 0; i < 4; ++i) {
+          EXPECT_EQ(result[i], 1.0f + weights[i] +
+                                   (named_override ? override_data[i] : weights_copy[i]) + attribute_value);
+        }
+      }
+    }
+  }
+}
+#endif
+
+struct CompileApiTrackingAllocator : OrtAllocator {
+  CompileApiTrackingAllocator() : OrtAllocator{}, memory_info(*backing.GetInfo()) {
+    version = ORT_API_VERSION;
+    Alloc = [](OrtAllocator* allocator, size_t size) -> void* {
+      auto& self = *static_cast<CompileApiTrackingAllocator*>(allocator);
+      ++self.allocations;
+      if (self.fail_allocation) return nullptr;
+      return self.backing.Alloc(size);
+    };
+    Free = [](OrtAllocator* allocator, void* ptr) {
+      auto& self = *static_cast<CompileApiTrackingAllocator*>(allocator);
+      if (ptr) ++self.frees;
+      self.backing.Free(ptr);
+    };
+    Info = [](const OrtAllocator* allocator) -> const OrtMemoryInfo* {
+      return &static_cast<const CompileApiTrackingAllocator*>(allocator)->memory_info;
+    };
+  }
+
+  Ort::AllocatorWithDefaultOptions backing;
+  OrtMemoryInfo memory_info;
+  size_t allocations = 0;
+  size_t frees = 0;
+  bool fail_allocation = false;
+};
+
+TEST(InferenceSessionTests, CompileApiExternalInitializerBufferRequiresHostAccessibleAllocator) {
+  const std::array<OrtDevice, 4> devices{
+      OrtDevice{},
+      OrtDevice{OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, 0},
+      OrtDevice{OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, 0},
+      OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0}};
+  for (const auto& device : devices) {
+    SCOPED_TRACE(device.ToString());
+    CompileApiTrackingAllocator allocator;
+    allocator.memory_info = OrtMemoryInfo("CustomAllocator", OrtDeviceAllocator, device);
+    Ort::SessionOptions options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, options);
+    char sentinel;
+    void* output_buffer = &sentinel;
+    size_t output_size = 123;
+    const Ort::Status status{Ort::GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
+        compile_options, ORT_TSTR("weights.bin"), 0, &allocator, &output_buffer, &output_size)};
+    if (device.UsesCpuMemory()) {
+      EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    } else {
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("host-accessible memory"));
+    }
+    EXPECT_EQ(output_buffer, &sentinel);
+    EXPECT_EQ(output_size, 123u);
+    EXPECT_EQ(allocator.allocations, 0u);
+    EXPECT_EQ(allocator.frees, 0u);
+  }
+}
+
+TEST(InferenceSessionTests, CompileApiEmptyExternalInitializerBufferIsReloadable) {
+  const PathString input_path = ORT_TSTR("compile_api_empty_initializer.onnx");
+  auto remove_input = gsl::finally([&]() { std::filesystem::remove(input_path); });
+  CreateCompileApiAddModel(input_path, true, 0);
+  Ort::SessionOptions options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, options);
+  compile_options.SetInputModelPath(input_path.c_str());
+  CompileApiTrackingAllocator allocator;
+  void* model_buffer = nullptr;
+  size_t model_size = 0;
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  auto free_buffers = gsl::finally([&]() {
+    allocator.Free(&allocator, model_buffer);
+    allocator.Free(&allocator, external_buffer);
+  });
+  compile_options.SetOutputModelBuffer(&allocator, &model_buffer, &model_size);
+  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("empty_weights.bin"), 0, &allocator,
+                                                           &external_buffer, &external_size);
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  EXPECT_EQ(external_buffer, nullptr);
+  EXPECT_EQ(external_size, 0u);
+  EXPECT_EQ(allocator.allocations, 1u);  // Only the model buffer needs an allocation.
+  ModelProto model_proto;
+  ASSERT_TRUE(model_proto.ParseFromArray(model_buffer, static_cast<int>(model_size)));
+  ASSERT_EQ(model_proto.graph().initializer_size(), 1);
+  EXPECT_FALSE(utils::HasExternalData(model_proto.graph().initializer(0)));
+  EXPECT_NO_THROW((Ort::Session{*ort_env, model_buffer, model_size, options}));
+}
+
+TEST(InferenceSessionTests, CompileApiRejectsAliasedBufferOutputLocations) {
+  const PathString input_path = ORT_TSTR("compile_api_aliased_outputs.onnx");
+  auto remove_input = gsl::finally([&]() { std::filesystem::remove(input_path); });
+  CreateCompileApiAddModel(input_path, true, 64);
+  for (bool alias_buffer : {false, true}) {
+    for (bool alias_size : {false, true}) {
+      if (!alias_buffer && !alias_size) continue;
+      for (bool external_first : {false, true}) {
+        for (bool externalize : {false, true}) {
+          SCOPED_TRACE(alias_buffer);
+          SCOPED_TRACE(alias_size);
+          SCOPED_TRACE(external_first);
+          SCOPED_TRACE(externalize);
+          CompileApiTrackingAllocator allocator;
+          Ort::SessionOptions options;
+          Ort::ModelCompilationOptions compile_options(*ort_env, options);
+          compile_options.SetInputModelPath(input_path.c_str());
+          char sentinel;
+          void* model_buffer = &sentinel;
+          void* external_buffer = &sentinel;
+          size_t model_size = 123;
+          size_t external_size = 456;
+          auto set_external_output = [&]() {
+            compile_options.SetOutputModelExternalInitializersBuffer(
+                ORT_TSTR("weights.bin"), externalize ? 0 : SIZE_MAX, &allocator,
+                alias_buffer ? &model_buffer : &external_buffer,
+                alias_size ? &model_size : &external_size);
+          };
+          if (external_first) set_external_output();
+          compile_options.SetOutputModelBuffer(&allocator, &model_buffer, &model_size);
+          if (!external_first) set_external_output();
+
+          const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+          ASSERT_FALSE(status.IsOK());
+          EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+          EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("distinct output pointer locations"));
+          EXPECT_EQ(model_buffer, &sentinel);
+          EXPECT_EQ(external_buffer, &sentinel);
+          EXPECT_EQ(model_size, 123u);
+          EXPECT_EQ(external_size, 456u);
+          EXPECT_EQ(allocator.allocations, 0u);
+          EXPECT_EQ(allocator.frees, 0u);
+        }
+      }
+    }
+  }
+}
+
+TEST(InferenceSessionTests, CompileApiExternalBufferOutputsUnchangedOnFailure) {
+  const PathString input_path = ORT_TSTR("compile_api_buffer_failure.onnx");
+  auto remove_input = gsl::finally([&]() { std::filesystem::remove(input_path); });
+  CreateCompileApiAddModel(input_path, true, 64);
+  enum class Failure { WriteCallback,
+                       ModelAllocation,
+                       ExternalAllocation,
+                       FileWrite,
+                       SessionValidation };
+  for (auto failure : {Failure::WriteCallback, Failure::ModelAllocation, Failure::ExternalAllocation,
+                       Failure::FileWrite, Failure::SessionValidation}) {
+    for (bool externalize : {false, true}) {
+      SCOPED_TRACE(static_cast<int>(failure));
+      SCOPED_TRACE(externalize);
+      CompileApiTrackingAllocator external_allocator;
+      CompileApiTrackingAllocator model_allocator;
+      external_allocator.fail_allocation = failure == Failure::ExternalAllocation;
+      model_allocator.fail_allocation = failure == Failure::ModelAllocation;
+      Ort::SessionOptions session_options;
+      if (failure == Failure::SessionValidation) {
+        session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+      }
+      Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+      compile_options.SetInputModelPath(input_path.c_str());
+      char sentinel;
+      void* external_buffer = &sentinel;
+      size_t external_size = 123;
+      void* model_buffer = &sentinel;
+      size_t model_size = 456;
+      compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("weights.bin"),
+                                                               externalize ? 0 : SIZE_MAX, &external_allocator,
+                                                               &external_buffer, &external_size);
+      compile_options.SetOutputModelBuffer(&model_allocator, &model_buffer, &model_size);
+      bool write_called = false;
+      if (failure == Failure::WriteCallback) {
+        compile_options.SetOutputModelWriteFunc(
+            [](void* state, const void*, size_t) -> OrtStatus* {
+              *static_cast<bool*>(state) = true;
+              return Ort::GetApi().CreateStatus(ORT_FAIL, "Intentional model write failure");
+            },
+            &write_called);
+      } else if (failure == Failure::FileWrite) {
+        // The parent is an existing regular file, so opening this output must fail on every platform.
+        const auto invalid_path = std::filesystem::path(input_path) / ORT_TSTR("output.onnx");
+        compile_options.SetOutputModelPath(invalid_path.c_str());
+      }
+      const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+      if (failure == Failure::ExternalAllocation && !externalize) {
+        ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+        EXPECT_EQ(external_buffer, nullptr);
+        EXPECT_EQ(external_size, 0u);
+        EXPECT_EQ(external_allocator.allocations, 0u);
+        model_allocator.Free(&model_allocator, model_buffer);
+      } else {
+        EXPECT_FALSE(status.IsOK());
+        EXPECT_EQ(external_buffer, &sentinel);
+        EXPECT_EQ(external_size, 123u);
+        EXPECT_EQ(model_buffer, &sentinel);
+        EXPECT_EQ(model_size, 456u);
+      }
+      if (failure == Failure::WriteCallback) EXPECT_TRUE(write_called);
+      EXPECT_EQ(external_allocator.allocations, externalize ? 1u : 0u);
+      EXPECT_EQ(external_allocator.frees, externalize && !external_allocator.fail_allocation ? 1u : 0u);
+      EXPECT_EQ(model_allocator.frees, model_allocator.fail_allocation ? 0u : model_allocator.allocations);
+    }
+  }
 }
 
 // Public Compile API -> plain optimized ONNX through a user write function: no EPContext nodes.

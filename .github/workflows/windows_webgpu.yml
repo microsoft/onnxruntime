@@ -93,7 +93,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
@@ -134,7 +134,8 @@ jobs:
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
+            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON `
+            onnxruntime_ENABLE_D3D12_FILE_LOADING=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -442,6 +443,77 @@ jobs:
             exit $lastExitCode
           }
 
+  # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
+  # instead of built as a separate shared library.
+  webgpu_static_plugin_build_x64_RelWithDebInfo:
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "JobId=webgpu_static_plugin_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
+    timeout-minutes: 300
+    env:
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      DocUpdateNeeded: false
+      NVIDIA_TF32_OVERRIDE: "0"
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20.x"
+
+      - uses: actions/cache@v5
+        id: onnx-node-tests-cache
+        with:
+          path: ${{ github.workspace }}/js/test/
+          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
+      # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
+      # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
+      - name: Build and Test
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --skip_submodule_sync `
+            --parallel `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --enable_onnx_tests `
+            --use_webgpu static_plugin `
+            --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
+
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
   webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: [
         "self-hosted",
@@ -491,6 +563,17 @@ jobs:
         run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
         shell: cmd
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+
+      - name: Run host-owned device and cache tests
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        run: |
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device
+          if ($LASTEXITCODE -ne 0) { throw "External host device/cache test failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync
+          if ($LASTEXITCODE -ne 0) { throw "Host device synchronization rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure
+          if ($LASTEXITCODE -ne 0) { throw "Host cache callback exception containment failed" }
 
       - name: Export matching Dawn package and host
         shell: pwsh
@@ -568,6 +651,17 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}\external-dawn-inputs\host
 
+      - name: Run package-backed host-owned device and cache tests
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
+        run: |
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed host device/cache test failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed synchronization rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed cache exception containment failed" }
+
       - name: Reject invalid Dawn packages
         shell: pwsh
         run: |
@@ -618,6 +712,12 @@ jobs:
           .\onnxruntime_webgpu_external_dawn_test.exe --no_proc_table --plugin "$plugin.missing"
           if ($LASTEXITCODE -eq 0) { throw "An unrelated plugin-load error passed the missing-proc-table test" }
           $global:LASTEXITCODE = 0
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed host device/cache test failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed synchronization rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure --plugin $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Plugin-backed cache exception containment failed" }
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: [
@@ -676,7 +776,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:

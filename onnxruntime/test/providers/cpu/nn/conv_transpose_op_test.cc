@@ -575,6 +575,25 @@ TEST(ConvTransposeTest, ConvTranspose_RankPlus2_OutputShape_DynamicRankInput_Run
   }
 }
 
+TEST(ConvTransposeTest, MissingBiasCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("ConvTranspose", 11);
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("W", {1, 1, 1, 1}, {2.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {2.f, 4.f, 6.f, 8.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
@@ -1277,7 +1296,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
-                       kCudaNHWCExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
+                       kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {
@@ -1814,10 +1833,10 @@ TEST(ConvTransposeTest, ConvTranspose_3D_InconsistentOutputShape) {
   test.AddInput<float>("W", {1, 1, 2, 2, 2}, std::vector<float>(8, 1.0f));
   test.AddOutput<float>("Y", {0}, {});
 
-  // CUDA/WebGPU don't support 3D ConvTranspose in most builds.
+  // CUDA doesn't support 3D ConvTranspose in most builds.
   test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
-            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider});
 }
 
 // Test that a valid 3D explicit output_shape with non-trivial padding works correctly.
@@ -1848,7 +1867,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D_ValidOutputShape) {
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
                        kCudaNHWCExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider, kWebGpuExecutionProvider});
+                       kDmlExecutionProvider});
 }
 
 // Test group > 1 with explicit output_shape.

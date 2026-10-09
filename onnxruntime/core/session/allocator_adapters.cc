@@ -139,9 +139,8 @@ onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocat
 
 IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator)
     : IAllocator(*ort_allocator->Info(ort_allocator)) {
-  ort_allocator_ = OrtAllocatorUniquePtr(ort_allocator, [](OrtAllocator*) {
-    // no-op
-  });
+  void (*noop_deleter)(OrtAllocator*) = [](OrtAllocator*) {};
+  ort_allocator_ = OrtAllocatorUniquePtr(ort_allocator, noop_deleter);
 }
 
 IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAllocatorUniquePtr ort_allocator)
