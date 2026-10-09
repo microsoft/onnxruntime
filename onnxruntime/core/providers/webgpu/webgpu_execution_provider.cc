@@ -948,11 +948,6 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
           session_buffer_pool_->SeedInto(*it->second);
         }
       }
-#if defined(ORT_USE_EP_API_ADAPTERS)
-      if (serialized) {
-        ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
-      }
-#endif
       graph_buffer_mgr_active_ = true;
 
       if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
