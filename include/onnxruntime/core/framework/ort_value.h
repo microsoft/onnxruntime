@@ -75,6 +75,14 @@ struct OrtValue {
     return type_;
   }
 
+  const void* DataRaw() const noexcept {
+    return data_.get();
+  }
+
+  void* MutableDataRaw() noexcept {
+    return data_.get();
+  }
+
  private:
   std::shared_ptr<void> data_;
   onnxruntime::MLDataType type_{nullptr};

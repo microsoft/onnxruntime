@@ -3,6 +3,9 @@
 
 #include "core/framework/data_types.h"
 
+#include <mutex>
+#include <shared_mutex>
+
 #include "boost/mp11.hpp"
 
 #include "core/framework/data_types_internal.h"
@@ -258,6 +261,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
 
 class DataTypeRegistry {
   std::unordered_map<DataType, MLDataType> mapping_;
+  mutable std::shared_mutex mapping_mutex_;
 
   DataTypeRegistry() {
     RegisterAllProtos([this](MLDataType mltype) { RegisterDataType(mltype); });
@@ -279,13 +283,26 @@ class DataTypeRegistry {
     const auto* proto = mltype->GetTypeProto();
     ORT_ENFORCE(proto != nullptr, "Only ONNX MLDataType can be registered");
     DataType type = Utils::DataTypeUtils::ToType(*proto);
+    std::unique_lock lock(mapping_mutex_);
     auto p = mapping_.insert(std::make_pair(type, mltype));
     ORT_ENFORCE(p.second, "We do not expect duplicate registration of types for: ", type);
+  }
+
+  void UnregisterDataType(MLDataType mltype) {
+    using namespace ONNX_NAMESPACE;
+    const auto* proto = mltype->GetTypeProto();
+    ORT_ENFORCE(proto != nullptr, "Only ONNX MLDataType can be unregistered");
+    DataType type = Utils::DataTypeUtils::ToType(*proto);
+    std::unique_lock lock(mapping_mutex_);
+    auto p = mapping_.find(type);
+    ORT_ENFORCE(p != mapping_.end() && p->second == mltype, "Data type is not registered: ", type);
+    mapping_.erase(p);
   }
 
   MLDataType GetMLDataType(const ONNX_NAMESPACE::TypeProto& proto) const {
     using namespace ONNX_NAMESPACE;
     DataType type = Utils::DataTypeUtils::ToType(proto);
+    std::shared_lock lock(mapping_mutex_);
     auto p = mapping_.find(type);
     if (p != mapping_.end()) {
       return p->second;
@@ -299,6 +316,7 @@ class DataTypeRegistry {
     if (dtype == nullptr) {
       return nullptr;
     }
+    std::shared_lock lock(mapping_mutex_);
     auto hit = mapping_.find(dtype);
     if (hit == mapping_.end()) {
       return nullptr;
@@ -564,6 +582,10 @@ ONNX_NAMESPACE::TypeProto& NonTensorTypeBase::MutableTypeProto() {
 
 const ONNX_NAMESPACE::TypeProto* NonTensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
+}
+
+void NonTensorTypeBase::CreateOrtValue(OrtValue& output) const {
+  output.Init(GetCreateFunc()(), this, GetDeleteFunc());
 }
 
 #if !defined(DISABLE_ML_OPS)
@@ -974,6 +996,10 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
 
 void DataTypeImpl::RegisterDataType(MLDataType mltype) {
   data_types_internal::DataTypeRegistry::instance().RegisterDataType(mltype);
+}
+
+void DataTypeImpl::UnregisterDataType(MLDataType mltype) {
+  data_types_internal::DataTypeRegistry::instance().UnregisterDataType(mltype);
 }
 
 MLDataType DataTypeImpl::GetDataType(const std::string& data_type) {

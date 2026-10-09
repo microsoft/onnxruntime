@@ -1395,11 +1395,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       // For example, two sessions using the same session_options should not add the same custom op domain
       // to the version map twice
       auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-      const auto& domain_to_version_map = domain_to_version_range_instance.Map();
-
-      if (domain_to_version_map.find(domain->domain_) == domain_to_version_map.end()) {
-        domain_to_version_range_instance.AddDomainToVersion(domain->domain_, 1, 1000);
-      }
+      domain_to_version_range_instance.RetainDomainToVersion(domain->domain_);
     }
 
     // domain_kernels aggregate all custom operator per names.

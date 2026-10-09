@@ -117,6 +117,29 @@ TEST(OptimizerTest, Basic) {
 }
 
 namespace {
+class OptimizerOpaqueType final : public NonTensorTypeBase {
+ public:
+  OptimizerOpaqueType() : NonTensorTypeBase(sizeof(int)) {
+    data_types_internal::AssignOpaqueDomainName("com.microsoft.test", "OptimizerOpaque", MutableTypeProto());
+  }
+
+  bool IsCompatible(const TypeProto& type_proto) const override {
+    return IsOpaqueCompatible(type_proto);
+  }
+
+  DeleteFunc GetDeleteFunc() const override {
+    return nullptr;
+  }
+
+  CreateFunc GetCreateFunc() const override {
+    return nullptr;
+  }
+
+  void CreateOrtValue(OrtValue& output) const override {
+    output.Init(new int(42), this, [](void* value) { delete static_cast<int*>(value); });
+  }
+};
+
 // Adds a scalar NodeArg of the given element type, optionally backed by an initializer with the
 // supplied dims. When dims is empty no initializer is created, so the NodeArg has no tensor behind it.
 NodeArg& AddScalarTypedArg(Graph& graph, const std::string& name, TensorProto_DataType elem_type,
@@ -144,6 +167,35 @@ NodeArg& AddScalarTypedArg(Graph& graph, const std::string& name, TensorProto_Da
   return node_arg;
 }
 }  // namespace
+
+TEST(OptimizerTest, AllocateOpaqueOutputThroughType) {
+  OptimizerOpaqueType opaque_type;
+  DataTypeImpl::RegisterDataType(&opaque_type);
+
+  {
+    Model model("OptimizerOpaqueOutput", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    auto& output = graph.GetOrCreateNodeArg("opaque_output", opaque_type.GetTypeProto());
+    std::vector<NodeArg*> outputs{&output};
+    auto& node = graph.AddNode("opaque", "OpaqueOutput", "", {}, outputs);
+    std::vector<const Node*> nodes{&node};
+
+    CPUExecutionProvider cpu_execution_provider{CPUExecutionProviderInfo{}};
+    OptimizerExecutionFrame::Info info(
+        nodes, InitializedTensorSet{}, graph.ModelPath(), cpu_execution_provider,
+        [](const std::string&) { return false; }, DefaultLoggingManager().DefaultLogger());
+    OptimizerExecutionFrame frame(info, {info.GetMLValueIndex(output.Name())});
+
+    OrtValue* value = nullptr;
+    ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(static_cast<int>(node.Index()), 0, nullptr, value, node));
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(*static_cast<const int*>(value->DataRaw()), 42);
+  }
+
+  DataTypeImpl::UnregisterDataType(&opaque_type);
+}
 
 // Fusion helpers call these utilities on NodeArgs taken straight from a matched subgraph. A model
 // is free to leave such an input without a (constant) initializer, or to declare an initializer that

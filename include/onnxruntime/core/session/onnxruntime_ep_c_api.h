@@ -95,8 +95,46 @@ struct OrtExternalSemaphoreHandle {
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
-ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
+ORT_RUNTIME_CLASS(DataType);  // ONNX data type, including tensors, maps, sequences, and opaque types
 ORT_RUNTIME_CLASS(SharedPrePackedWeightCache);
+
+/** \brief Create an instance of a plugin-owned opaque type.
+ *
+ * The returned value is owned by ONNX Runtime and released with the matching
+ * OrtEpOpaqueTypeReleaseFunc. The callback must not throw; returning NULL is an
+ * allocation failure that ORT reports to the caller. ORT may invoke callbacks
+ * concurrently for different values; synchronize shared `user_data` as needed.
+ *
+ * \param[in] user_data The value supplied to RegisterOpaqueDataType.
+ * \return A newly created opaque value, or NULL on failure.
+ *
+ * \since Version 1.32.
+ */
+typedef void*(ORT_API_CALL* OrtEpOpaqueTypeCreateFunc)(_In_opt_ void* user_data);
+
+/** \brief Release an instance created by OrtEpOpaqueTypeCreateFunc.
+*
+* The callback must not throw. ORT may invoke callbacks concurrently for
+* different values; synchronize shared `user_data` as needed.
+ *
+ * \param[in] user_data The value supplied to RegisterOpaqueDataType.
+ * \param[in] value The opaque value to release.
+ *
+ * \since Version 1.32.
+ */
+typedef void(ORT_API_CALL* OrtEpOpaqueTypeReleaseFunc)(_In_opt_ void* user_data, _In_ void* value);
+
+/** \brief A named input or output in a plugin-registered operator schema.
+ *
+ * The strings are copied during RegisterOperatorSchema and need only remain valid
+ * for that call.
+ *
+ * \since Version 1.32.
+ */
+typedef struct OrtEpSchemaFormalParameter {
+  const char* name;  ///< Non-empty parameter name.
+  const char* type;  ///< ONNX type constraint, such as "tensor(float)" or "opaque(domain,name)".
+} OrtEpSchemaFormalParameter;
 
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
@@ -2159,6 +2197,117 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
                   _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
+
+  /** \brief Register a plugin-owned opaque data type.
+   *
+   * The type is identified in ONNX models by its domain and name. ORT calls `create`
+   * whenever it allocates a value of this type and calls `release` when the value is
+   * destroyed. The plugin must keep `user_data` and both callbacks valid until the type
+   * is unregistered and all values created for it have been released. Register the type
+   * before loading models that use it.
+   *
+   * \param[in] domain Non-empty opaque type domain.
+   * \param[in] name Non-empty opaque type name.
+   * \param[in] size Non-zero size, in bytes, associated with each opaque instance.
+   * \param[in] create Callback that creates a value.
+   * \param[in] release Callback that releases a value created by `create`.
+   * \param[in] user_data Plugin-owned callback state, or NULL.
+   * \param[out] out Receives the registered type handle.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(RegisterOpaqueDataType, _In_z_ const char* domain, _In_z_ const char* name,
+                  _In_ size_t size, _In_ OrtEpOpaqueTypeCreateFunc create,
+                  _In_ OrtEpOpaqueTypeReleaseFunc release, _In_opt_ void* user_data,
+                  _Outptr_ const OrtDataType** out);
+
+  /** \brief Register an operator schema for an operator implemented by a plugin EP.
+   *
+   * The operator is registered with the ONNX schema registry and can declare opaque
+   * parameters using the ONNX type string `opaque(domain,name)`. The parameter arrays
+   * and their strings are copied during this call. Schemas are global to the process;
+   * register them before loading models that use them, and unregister only after sessions
+   * using them have been destroyed. Do not race registration or unregistration with session
+   * loading or execution.
+   *
+   * \param[in] op_type Non-empty operator type.
+   * \param[in] domain Non-empty operator domain.
+   * \param[in] since_version Positive ONNX schema version.
+   * \param[in] inputs Input parameters, or NULL when `input_count` is zero.
+   * \param[in] input_count Number of input parameters.
+   * \param[in] outputs Output parameters, or NULL when `output_count` is zero.
+   * \param[in] output_count Number of output parameters.
+   * \param[in] doc Optional operator documentation.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(RegisterOperatorSchema, _In_z_ const char* op_type, _In_z_ const char* domain,
+                  _In_ int since_version,
+                  _In_reads_(input_count) const OrtEpSchemaFormalParameter* inputs, _In_ size_t input_count,
+                  _In_reads_(output_count) const OrtEpSchemaFormalParameter* outputs, _In_ size_t output_count,
+                  _In_opt_z_ const char* doc);
+
+  /** \brief Get a pointer to an opaque kernel input value.
+   *
+   * The returned pointer is owned by ORT and remains valid while the input OrtValue
+   * remains alive. Do not modify or release it.
+   *
+   * \param[in] context Kernel context.
+   * \param[in] index Input index.
+   * \param[in] type Type handle returned by RegisterOpaqueDataType.
+   * \param[out] out Receives the opaque input pointer.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(KernelContext_GetOpaqueInput, _In_ const OrtKernelContext* context, _In_ size_t index,
+                  _In_ const OrtDataType* type, _Outptr_ const void** out);
+
+  /** \brief Get a pointer to an allocated opaque kernel output value.
+   *
+   * ORT creates the output value on demand using the registered type's create callback.
+   * The returned pointer is owned by ORT and must not be released by the kernel.
+   *
+   * \param[in] context Kernel context.
+   * \param[in] index Output index.
+   * \param[in] type Type handle returned by RegisterOpaqueDataType.
+   * \param[out] out Receives the mutable opaque output pointer.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(KernelContext_GetOpaqueOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
+                  _In_ const OrtDataType* type, _Outptr_ void** out);
+
+  /** \brief Unregister a plugin-owned opaque data type.
+   *
+   * The caller must ensure that no sessions or OrtValues using `type` remain. After
+   * success, `type` is invalid and ORT no longer retains the plugin callbacks or state.
+   *
+   * \param[in] type Opaque data type returned by RegisterOpaqueDataType.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(UnregisterOpaqueDataType, _In_ const OrtDataType* type);
+
+  /** \brief Unregister a plugin-owned operator schema.
+   *
+   * The operator type, domain, and version must exactly match a schema registered by
+   * RegisterOperatorSchema. Ensure no active sessions rely on the schema and no session is
+   * being loaded with it.
+   *
+   * \param[in] op_type Operator type.
+   * \param[in] domain Operator domain.
+   * \param[in] since_version Operator schema version.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(UnregisterOperatorSchema, _In_z_ const char* op_type, _In_z_ const char* domain,
+                  _In_ int since_version);
 };
 
 /**

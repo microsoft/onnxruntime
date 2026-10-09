@@ -204,6 +204,7 @@ class DataTypeImpl {
   // MLDataType. DataType is produced by internalizing an instance of
   // TypeProto contained within MLDataType
   static void RegisterDataType(MLDataType);
+  static void UnregisterDataType(MLDataType);
   static MLDataType GetDataType(const std::string&);
 
   // IR4: includes all float types, includes float16, bfloat16
@@ -701,6 +702,8 @@ class NonTensorTypeBase : public DataTypeImpl {
   DeleteFunc GetDeleteFunc() const override = 0;
 
   virtual CreateFunc GetCreateFunc() const = 0;
+
+  virtual void CreateOrtValue(OrtValue& output) const;
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 

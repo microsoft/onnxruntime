@@ -721,8 +721,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
 }
 
 static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTypeBase& type) {
-  auto creator = type.GetCreateFunc();
-  ort_value.Init(creator(), &type, type.GetDeleteFunc());
+  type.CreateOrtValue(ort_value);
   return Status::OK();
 }
 

@@ -187,8 +187,8 @@ DomainToVersionMap SchemaRegistryManager::GetLastReleasedOpsetVersions(bool is_o
   GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
 
   // check the ONNX schema registry
-  auto& onnx_domain_version_map =
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
+  auto onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMapSnapshot();
 
   for (const auto& domain : onnx_domain_version_map) {
     if (is_onnx_only && domain.first.compare(kOnnxDomain) != 0)
@@ -210,8 +210,8 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
   GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
 
   // check the ONNX schema registry
-  auto& onnx_domain_version_map =
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+  auto onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().MapSnapshot();
 
   for (const auto& domain : onnx_domain_version_map) {
     if (is_onnx_only && domain.first.compare(kOnnxDomain) != 0)
@@ -232,8 +232,8 @@ static bool IsDomainVersionBeyondSupportedRange(
     const std::string& domain,
     const int op_set_version) {
   // check the ONNX schema registry
-  auto& onnx_domain_version_map =
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+  auto onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().MapSnapshot();
 
   auto it = onnx_domain_version_map.find(domain);
   return it != onnx_domain_version_map.end() && op_set_version > it->second.second;

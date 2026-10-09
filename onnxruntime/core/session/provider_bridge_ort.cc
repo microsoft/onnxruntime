@@ -832,10 +832,7 @@ struct ProviderHostImpl : ProviderHost {
   }
   void RegisterSchema(const std::string& domain, const OrtCustomOp* op) override {
     auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-    const auto& domain_to_version_map = domain_instance.Map();
-    if (domain_to_version_map.find(domain) == domain_to_version_map.end()) {
-      domain_instance.AddDomainToVersion(domain, 1, 1000);
-    }
+    domain_instance.RetainDomainToVersion(domain);
     auto schema = CreateSchema(domain, {op});
     ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
   }

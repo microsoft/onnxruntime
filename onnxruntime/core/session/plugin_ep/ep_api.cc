@@ -5,12 +5,19 @@
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
+#include <limits>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "core/common/semver.h"
+#include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
 #include "core/framework/op_kernel_info.h"
@@ -40,6 +47,97 @@
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
+namespace {
+
+class PluginOpaqueType final : public NonTensorTypeBase {
+ public:
+  PluginOpaqueType(const char* domain, const char* name, size_t size,
+                   OrtEpOpaqueTypeCreateFunc create, OrtEpOpaqueTypeReleaseFunc release, void* user_data)
+      : NonTensorTypeBase(size), create_(create), release_(release), user_data_(user_data) {
+    data_types_internal::AssignOpaqueDomainName(domain, name, MutableTypeProto());
+  }
+
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override {
+    return IsOpaqueCompatible(type_proto);
+  }
+
+  DeleteFunc GetDeleteFunc() const override {
+    return nullptr;
+  }
+
+  CreateFunc GetCreateFunc() const override {
+    return nullptr;
+  }
+
+  void CreateOrtValue(OrtValue& output) const override {
+    const auto release = release_;
+    void* user_data = user_data_;
+    std::function<void(void*)> deleter = [release, user_data](void* p) { release(user_data, p); };
+    void* value = create_(user_data_);
+    ORT_ENFORCE(value != nullptr, "Opaque type create callback returned null");
+    output.Init(value, this, std::move(deleter));
+  }
+
+ private:
+  OrtEpOpaqueTypeCreateFunc create_;
+  OrtEpOpaqueTypeReleaseFunc release_;
+  void* user_data_;
+};
+
+std::mutex opaque_types_mutex;
+std::vector<std::unique_ptr<PluginOpaqueType>> opaque_types;
+
+struct PluginSchemaDomainState {
+  bool had_original_range;
+  int original_min_version;
+  int original_max_version;
+  int original_last_release_version;
+  std::map<int, size_t> plugin_version_counts;
+};
+
+using PluginSchemaKey = std::tuple<std::string, std::string, int>;
+
+std::mutex plugin_schemas_mutex;
+std::map<std::string, PluginSchemaDomainState> plugin_schema_domains;
+std::set<PluginSchemaKey> plugin_schemas;
+
+void UpdatePluginSchemaDomainRange(const std::string& domain, const PluginSchemaDomainState& state) {
+  auto& domains = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+  if (state.plugin_version_counts.empty()) {
+    ONNX_NAMESPACE::OpSchemaRegistry::RestoreDomainToVersionIfUnused(
+        domain, state.had_original_range, state.original_min_version, state.original_max_version,
+        state.original_last_release_version);
+    return;
+  }
+
+  int min_version = state.plugin_version_counts.begin()->first;
+  int max_version = state.plugin_version_counts.rbegin()->first;
+  int last_release_version = max_version;
+  if (state.had_original_range) {
+    min_version = std::min(min_version, state.original_min_version);
+    max_version = std::max(max_version, state.original_max_version);
+    last_release_version = std::max(last_release_version, state.original_last_release_version);
+  }
+
+  const auto domain_ranges = domains.MapSnapshot();
+  if (domain_ranges.find(domain) == domain_ranges.end()) {
+    domains.AddDomainToVersion(domain, min_version, max_version, last_release_version);
+  } else {
+    domains.UpdateDomainToVersion(domain, min_version, max_version, last_release_version);
+  }
+}
+
+const PluginOpaqueType* FindPluginOpaqueType(const OrtDataType* type) {
+  const auto* type_ptr = reinterpret_cast<const DataTypeImpl*>(type);
+  const auto it = std::find_if(opaque_types.begin(), opaque_types.end(),
+                               [type_ptr](const auto& registered_type) {
+                                 return registered_type.get() == type_ptr;
+                               });
+  return it == opaque_types.end() ? nullptr : it->get();
+}
+
+}  // namespace
+
 ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _In_ const OrtHardwareDevice* hardware_device,
                     _In_opt_ const OrtKeyValuePairs* ep_metadata,
@@ -606,6 +704,215 @@ ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
   API_IMPL_BEGIN
   const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(elem_type));
   *out = reinterpret_cast<const OrtDataType*>(ml_type);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(RegisterOpaqueDataType, _In_z_ const char* domain, _In_z_ const char* name,
+                    _In_ size_t size, _In_ OrtEpOpaqueTypeCreateFunc create,
+                    _In_ OrtEpOpaqueTypeReleaseFunc release, _In_opt_ void* user_data,
+                    _Outptr_ const OrtDataType** out) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(domain != nullptr && domain[0] != '\0' && name != nullptr && name[0] != '\0',
+              "Opaque type domain and name are required");
+  ORT_ENFORCE(size != 0 && create != nullptr && release != nullptr,
+              "Opaque type size, create callback, and release callback are required");
+  ORT_ENFORCE(out != nullptr, "Opaque type output is required");
+
+  std::lock_guard<std::mutex> lock(opaque_types_mutex);
+  std::string type_string("opaque(");
+  type_string.append(domain).append(",").append(name).append(")");
+  ORT_ENFORCE(DataTypeImpl::GetDataType(type_string) == nullptr,
+              "Opaque type is already registered: ", type_string);
+
+  auto type = std::make_unique<PluginOpaqueType>(domain, name, size, create, release, user_data);
+  const auto* type_ptr = type.get();
+  opaque_types.push_back(std::move(type));
+  ORT_TRY {
+    DataTypeImpl::RegisterDataType(type_ptr);
+  }
+  ORT_CATCH(...) {
+    opaque_types.pop_back();
+    ORT_RETHROW;
+  }
+  *out = reinterpret_cast<const OrtDataType*>(type_ptr);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(RegisterOperatorSchema, _In_z_ const char* op_type, _In_z_ const char* domain,
+                    _In_ int since_version,
+                    _In_reads_(input_count) const OrtEpSchemaFormalParameter* inputs, _In_ size_t input_count,
+                    _In_reads_(output_count) const OrtEpSchemaFormalParameter* outputs, _In_ size_t output_count,
+                    _In_opt_z_ const char* doc) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(op_type != nullptr && op_type[0] != '\0' && domain != nullptr && domain[0] != '\0',
+              "Operator type and domain are required");
+  ORT_ENFORCE(since_version > 0, "Operator since_version must be positive");
+  ORT_ENFORCE((input_count == 0 || inputs != nullptr) && (output_count == 0 || outputs != nullptr),
+              "Schema parameter arrays are required");
+  ORT_ENFORCE(input_count <= static_cast<size_t>(std::numeric_limits<int>::max()) &&
+                  output_count <= static_cast<size_t>(std::numeric_limits<int>::max()),
+              "Schema parameter count exceeds the supported range");
+
+  (void)ONNX_NAMESPACE::OpSchemaRegistry::Schema(op_type, since_version, domain);
+
+  ONNX_NAMESPACE::OpSchema schema(op_type, __FILE__, __LINE__);
+  schema.SetDomain(domain).SinceVersion(since_version).SetDoc(doc == nullptr ? "" : doc);
+  for (size_t i = 0; i < input_count; ++i) {
+    ORT_ENFORCE(inputs[i].name != nullptr && inputs[i].name[0] != '\0' &&
+                    inputs[i].type != nullptr && inputs[i].type[0] != '\0',
+                "Schema input name and type are required");
+    schema.Input(static_cast<int>(i), inputs[i].name, "", inputs[i].type);
+  }
+  for (size_t i = 0; i < output_count; ++i) {
+    ORT_ENFORCE(outputs[i].name != nullptr && outputs[i].name[0] != '\0' &&
+                    outputs[i].type != nullptr && outputs[i].type[0] != '\0',
+                "Schema output name and type are required");
+    schema.Output(static_cast<int>(i), outputs[i].name, "", outputs[i].type);
+  }
+
+  std::lock_guard<std::mutex> lock(plugin_schemas_mutex);
+  const PluginSchemaKey schema_key{domain, op_type, since_version};
+  ORT_ENFORCE(plugin_schemas.find(schema_key) == plugin_schemas.end(),
+              "Operator schema is already registered by a plugin");
+
+  auto domain_it = plugin_schema_domains.find(domain);
+  const bool inserted_domain = domain_it == plugin_schema_domains.end();
+  if (inserted_domain) {
+    const auto& domains = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+    const auto domain_ranges = domains.MapSnapshot();
+    const auto range_it = domain_ranges.find(domain);
+    const bool had_original_range = range_it != domain_ranges.end();
+    int original_last_release_version = 0;
+    if (had_original_range) {
+      original_last_release_version = domains.LastReleaseVersionMapSnapshot().at(domain);
+    }
+    domain_it = plugin_schema_domains.emplace(
+        domain, PluginSchemaDomainState{
+                    had_original_range,
+                    had_original_range ? range_it->second.first : 0,
+                    had_original_range ? range_it->second.second : 0,
+                    original_last_release_version,
+                    {}})
+                    .first;
+  }
+
+  auto& state = domain_it->second;
+  auto version_it = state.plugin_version_counts.try_emplace(since_version, 0).first;
+  ++version_it->second;
+  ORT_TRY {
+    plugin_schemas.insert(schema_key);
+    UpdatePluginSchemaDomainRange(domain, state);
+    ONNX_NAMESPACE::RegisterSchema(std::move(schema), 0, true, true);
+  }
+  ORT_CATCH(...) {
+    plugin_schemas.erase(schema_key);
+    if (--version_it->second == 0) {
+      state.plugin_version_counts.erase(version_it);
+    }
+    UpdatePluginSchemaDomainRange(domain, state);
+    if (inserted_domain) {
+      plugin_schema_domains.erase(domain_it);
+    }
+    ORT_RETHROW;
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(UnregisterOpaqueDataType, _In_ const OrtDataType* type) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(type != nullptr, "Opaque type is required");
+
+  std::lock_guard<std::mutex> lock(opaque_types_mutex);
+  const auto* type_ptr = reinterpret_cast<const DataTypeImpl*>(type);
+  const auto it = std::find_if(opaque_types.begin(), opaque_types.end(),
+                               [type_ptr](const auto& registered_type) {
+                                 return registered_type.get() == type_ptr;
+                               });
+  ORT_ENFORCE(it != opaque_types.end(), "Opaque type is not registered");
+  DataTypeImpl::UnregisterDataType(type_ptr);
+  opaque_types.erase(it);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(UnregisterOperatorSchema, _In_z_ const char* op_type, _In_z_ const char* domain,
+                    _In_ int since_version) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(op_type != nullptr && op_type[0] != '\0' && domain != nullptr && domain[0] != '\0',
+              "Operator type and domain are required");
+  ORT_ENFORCE(since_version > 0, "Operator since_version must be positive");
+
+  std::lock_guard<std::mutex> lock(plugin_schemas_mutex);
+  const PluginSchemaKey schema_key{domain, op_type, since_version};
+  const auto schema_it = plugin_schemas.find(schema_key);
+  ORT_ENFORCE(schema_it != plugin_schemas.end(), "Operator schema is not registered by a plugin");
+  const auto domain_it = plugin_schema_domains.find(domain);
+  ORT_ENFORCE(domain_it != plugin_schema_domains.end(), "Operator schema domain is not registered by a plugin");
+
+  auto& state = domain_it->second;
+  const auto version_it = state.plugin_version_counts.find(since_version);
+  ORT_ENFORCE(version_it != state.plugin_version_counts.end() && version_it->second > 0,
+              "Operator schema version is not registered by a plugin");
+
+  ONNX_NAMESPACE::DeregisterSchema(op_type, since_version, domain);
+  plugin_schemas.erase(schema_it);
+
+  if (--version_it->second == 0) {
+    state.plugin_version_counts.erase(version_it);
+  }
+  UpdatePluginSchemaDomainRange(domain, state);
+  if (state.plugin_version_counts.empty()) {
+    plugin_schema_domains.erase(domain_it);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelContext_GetOpaqueInput, _In_ const OrtKernelContext* context, _In_ size_t index,
+                    _In_ const OrtDataType* type, _Outptr_ const void** out) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(context != nullptr && type != nullptr && out != nullptr, "Arguments must not be null");
+  ORT_ENFORCE(index <= static_cast<size_t>(std::numeric_limits<int>::max()),
+              "Opaque input index is out of range");
+  const auto* kernel_context = reinterpret_cast<const OpKernelContext*>(context);
+  ORT_ENFORCE(index < static_cast<size_t>(kernel_context->InputCount()), "Opaque input index is out of range");
+  const PluginOpaqueType* expected_type;
+  {
+    std::lock_guard<std::mutex> lock(opaque_types_mutex);
+    expected_type = FindPluginOpaqueType(type);
+  }
+  ORT_ENFORCE(expected_type != nullptr, "Opaque input type is not registered");
+  ORT_ENFORCE(kernel_context->InputType(static_cast<int>(index)) == expected_type,
+              "Opaque input has an unexpected type");
+  const auto* value = kernel_context->GetInputOrtValue(static_cast<int>(index));
+  ORT_ENFORCE(value != nullptr && value->Type() == expected_type, "Opaque input has an unexpected type");
+  *out = value->DataRaw();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelContext_GetOpaqueOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
+                    _In_ const OrtDataType* type, _Outptr_ void** out) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(context != nullptr && type != nullptr && out != nullptr, "Arguments must not be null");
+  ORT_ENFORCE(index <= static_cast<size_t>(std::numeric_limits<int>::max()),
+              "Opaque output index is out of range");
+  auto* kernel_context = reinterpret_cast<OpKernelContext*>(context);
+  ORT_ENFORCE(index < static_cast<size_t>(kernel_context->OutputCount()), "Opaque output index is out of range");
+  const PluginOpaqueType* expected_type;
+  {
+    std::lock_guard<std::mutex> lock(opaque_types_mutex);
+    expected_type = FindPluginOpaqueType(type);
+  }
+  ORT_ENFORCE(expected_type != nullptr, "Opaque output type is not registered");
+  ORT_ENFORCE(kernel_context->OutputType(static_cast<int>(index)) == expected_type,
+              "Opaque output has an unexpected type");
+  auto* value = kernel_context->GetOrCreateOutputOrtValue(static_cast<int>(index));
+  ORT_ENFORCE(value != nullptr && value->Type() == expected_type, "Opaque output has an unexpected type");
+  *out = value->MutableDataRaw();
   return nullptr;
   API_IMPL_END
 }
@@ -1354,6 +1661,13 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpContextConfig,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
+
+    &OrtExecutionProviderApi::RegisterOpaqueDataType,
+    &OrtExecutionProviderApi::RegisterOperatorSchema,
+    &OrtExecutionProviderApi::KernelContext_GetOpaqueInput,
+    &OrtExecutionProviderApi::KernelContext_GetOpaqueOutput,
+    &OrtExecutionProviderApi::UnregisterOpaqueDataType,
+    &OrtExecutionProviderApi::UnregisterOperatorSchema,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

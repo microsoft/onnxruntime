@@ -10,14 +10,18 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <string>
+
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
 #include "core/common/logging/sinks/file_sink.h"
 #include "core/common/path_string.h"
 #include "core/framework/config_options.h"
+#include "core/framework/data_types.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/stream_handles.h"
@@ -34,6 +38,50 @@
 #include "test/util/include/test_environment.h"
 
 namespace onnxruntime::test {
+
+namespace {
+
+struct OpaqueValueCallbackState {
+  int created = 0;
+  int released = 0;
+};
+
+void* ORT_API_CALL CreateOpaqueValue(void* user_data) {
+  auto& state = *static_cast<OpaqueValueCallbackState*>(user_data);
+  ++state.created;
+  return new int(42);
+}
+
+void ORT_API_CALL ReleaseOpaqueValue(void* user_data, void* value) {
+  auto& state = *static_cast<OpaqueValueCallbackState*>(user_data);
+  ++state.released;
+  delete static_cast<int*>(value);
+}
+
+class TestOpaqueKernelContext final : public OpKernelContext {
+ public:
+  TestOpaqueKernelContext(const NonTensorTypeBase* type, const logging::Logger& logger)
+      : OpKernelContext(nullptr, logger, nullptr), type_(type) {
+    type_->CreateOrtValue(input_);
+    type_->CreateOrtValue(output_);
+  }
+
+  int InputCount() const override { return 1; }
+  int OutputCount() const override { return 1; }
+  MLDataType InputType(int /*index*/) const override { return type_; }
+  MLDataType OutputType(int /*index*/) const override { return type_; }
+
+ protected:
+  const OrtValue* GetInputMLValue(int /*index*/) const override { return &input_; }
+  OrtValue* GetOrCreateOutputMLValue(int /*index*/) override { return &output_; }
+
+ private:
+  const NonTensorTypeBase* type_;
+  OrtValue input_;
+  OrtValue output_;
+};
+
+}  // namespace
 
 // Helper class to access public ORT APIs.
 struct ApiPtrs {
@@ -1092,6 +1140,59 @@ TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
     ASSERT_THROW(ep->ConcurrentRunSupported(), OnnxRuntimeException);
   }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
+}
+
+TEST(PluginExecutionProviderTest, RegisterOpaqueDataType) {
+  const auto& ep_api = Ort::GetEpApi();
+  OpaqueValueCallbackState callback_state;
+  const OrtDataType* type = nullptr;
+  constexpr char domain[] = "com.microsoft.onnxruntime.test.plugin";
+  constexpr char name[] = "OpaqueValue";
+  const std::string type_string = "opaque(" + std::string(domain) + "," + name + ")";
+
+  ASSERT_ORTSTATUS_OK(ep_api.RegisterOpaqueDataType(domain, name, sizeof(int), CreateOpaqueValue,
+                                                    ReleaseOpaqueValue, &callback_state, &type));
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(DataTypeImpl::GetDataType(type_string), reinterpret_cast<MLDataType>(type));
+
+  {
+    TestOpaqueKernelContext context(reinterpret_cast<const NonTensorTypeBase*>(type),
+                                    DefaultLoggingManager().DefaultLogger());
+    EXPECT_EQ(callback_state.created, 2);
+
+    const void* input_value = nullptr;
+    ASSERT_ORTSTATUS_OK(ep_api.KernelContext_GetOpaqueInput(
+        reinterpret_cast<const OrtKernelContext*>(&context), 0, type, &input_value));
+    ASSERT_NE(input_value, nullptr);
+    EXPECT_EQ(*static_cast<const int*>(input_value), 42);
+
+    void* output_value = nullptr;
+    ASSERT_ORTSTATUS_OK(ep_api.KernelContext_GetOpaqueOutput(
+        reinterpret_cast<OrtKernelContext*>(&context), 0, type, &output_value));
+    ASSERT_NE(output_value, nullptr);
+    EXPECT_EQ(*static_cast<const int*>(output_value), 42);
+  }
+  EXPECT_EQ(callback_state.released, 2);
+
+  ASSERT_ORTSTATUS_OK(ep_api.UnregisterOpaqueDataType(type));
+  EXPECT_EQ(DataTypeImpl::GetDataType(type_string), nullptr);
+}
+
+TEST(PluginExecutionProviderTest, RegisterAndUnregisterOperatorSchemaWithOpaqueType) {
+  const auto& ep_api = Ort::GetEpApi();
+  constexpr char domain[] = "com.microsoft.onnxruntime.test.plugin.schema";
+  constexpr char opaque_type[] = "opaque(com.microsoft.onnxruntime.test.plugin.schema,OpaqueValue)";
+  constexpr char op_type[] = "OpaquePassThrough";
+  const OrtEpSchemaFormalParameter input{"state", opaque_type};
+  const OrtEpSchemaFormalParameter output{"next_state", opaque_type};
+
+  ASSERT_ORTSTATUS_OK(ep_api.RegisterOperatorSchema(op_type, domain, 1, &input, 1, &output, 1, nullptr));
+  ASSERT_NE(ONNX_NAMESPACE::OpSchemaRegistry::Schema(op_type, 1, domain), nullptr);
+  ASSERT_ORTSTATUS_OK(ep_api.UnregisterOperatorSchema(op_type, domain, 1));
+  EXPECT_EQ(ONNX_NAMESPACE::OpSchemaRegistry::Schema(op_type, 1, domain), nullptr);
+
+  const auto domain_ranges = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().MapSnapshot();
+  EXPECT_EQ(domain_ranges.count(domain), 0u);
 }
 
 // Tests for the Ort::OpSchema C++ wrapper API and Ort::GetOpSchema free function.
