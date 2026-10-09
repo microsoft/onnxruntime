@@ -28,14 +28,15 @@ const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 
-// f16 MatMul cases that exercise the Intel 8x16x16 subgroup-matrix impl.
+// f16 MatMul cases that exercise the 8x16x16 and 16x16x16 subgroup-matrix impl.
 // The host picks the tile shape adaptively (TileM in {8,16,32,64}, TileN in
 // {16,32,64}); M and N may be any size and K must be a multiple of 16. When the
 // output has few tiles and K is large, the host also splits K across multiple
 // cooperating subgroups (split_k in {1,2,4,8}) that reduce in shared memory. B
-// is a constant initializer. On non-Intel hardware these fall back to the
-// default impl but still validate correctness.
-static void RunSubgroupMatrixMatMulTest(const std::vector<int64_t>& a_dims, int64_t K, int64_t N) {
+// is a constant initializer except in the last case. On hardware that reports
+// neither config these fall back to the default impl but still validate correctness.
+static void RunSubgroupMatrixMatMulTest(const std::vector<int64_t>& a_dims, int64_t K, int64_t N,
+                                        bool b_is_initializer = true) {
   int64_t M = 1;
   for (size_t i = 0; i + 1 < a_dims.size(); ++i) {
     M *= a_dims[i];
@@ -73,7 +74,7 @@ static void RunSubgroupMatrixMatMulTest(const std::vector<int64_t>& a_dims, int6
 
   OpTester test("MatMul", 14);
   test.AddInput<MLFloat16>("A", a_dims, f_A);
-  test.AddInput<MLFloat16>("B", {K, N}, f_B, /*is_initializer=*/true);
+  test.AddInput<MLFloat16>("B", {K, N}, f_B, b_is_initializer);
   test.AddOutput<MLFloat16>("Y", y_dims, f_Y);
   test.SetOutputTolerance(0.02f);
   test.ConfigExcludeEps({kTensorrtExecutionProvider})
@@ -125,7 +126,7 @@ TEST(MathOpTest, MatMulSubgroupMatrix) {
       // Batched A folds to M=8; one tile + K=256 -> split_k=8.
       {"SplitKBatched (2*4 -> M=8)", {2, 4, 256}, 256, 16},
       // Odd N: the subgroup f16 load needs an even B row stride, so a constant odd-N
-      // weight is padded once to N+1 (even) and cached; output is still written at
+      // weight is padded once to an even width and cached. Output is still written at
       // the real, odd N. Covers small/large odd N, min K, partial M, batched-A fold,
       // and split-K, all with odd N.
       {"OddN15 (N=15)", {32, 64}, 64, 15},
@@ -134,12 +135,20 @@ TEST(MathOpTest, MatMulSubgroupMatrix) {
       {"OddN PartialM (M=40,N=31)", {40, 64}, 64, 31},
       {"OddN BatchedA (2*32 -> M=64,N=63)", {2, 32, 64}, 64, 63},
       {"OddN SplitK (K=256,N=17)", {8, 256}, 256, 17},
+      // N is even but not a multiple of 8 so only the 16x16x16 config pads B.
+      {"UnalignedN36 (N=36)", {64, 128}, 128, 36},
+      {"UnalignedN44 PartialM (M=40,N=44)", {40, 128}, 128, 44},
   };
 
   for (const auto& c : cases) {
     SCOPED_TRACE(c.name);
     RunSubgroupMatrixMatMulTest(c.a_dims, c.K, c.N);
   }
+
+  // B is a runtime input here so its padded copy could not be cached and the
+  // 16x16x16 config falls back to the default impl for this width.
+  SCOPED_TRACE("RuntimeB UnalignedN36 (N=36)");
+  RunSubgroupMatrixMatMulTest({64, 128}, 128, 36, /*b_is_initializer=*/false);
 }
 #endif  // defined(USE_WEBGPU)
 #endif
