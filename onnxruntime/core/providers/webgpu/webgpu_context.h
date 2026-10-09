@@ -483,7 +483,8 @@ class WebGpuContext final {
   std::unique_ptr<ProgramManager> program_mgr_;
 
   // Old plugin hosts cannot reliably associate framework copies with a Session.
-  // All operations on this timeline must be serialized, including across Sessions.
+  // The active recording is borrowed from the running Session, never owned by the context.
+  // All operations on this device must be serialized in single-thread mode, including across Sessions.
   CommandRecordingState* single_thread_active_recording_ = nullptr;
   std::atomic<bool> single_thread_run_active_{false};
 
