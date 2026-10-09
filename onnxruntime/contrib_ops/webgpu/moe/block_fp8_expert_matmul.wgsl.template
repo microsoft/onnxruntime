@@ -1,0 +1,53 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+#param has_bias
+#param has_indirect_experts
+#param broadcast_input
+
+$MAIN {
+  let row = global_id.y;
+  let col = global_id.x;
+  if (row >= uniforms.rows || col >= uniforms.cols) {
+    return;
+  }
+
+#if has_indirect_experts
+  let expert_idx = indirect_experts.getByOffset(row);
+  let weight_base = (expert_idx * uniforms.cols + col) * uniforms.inner;
+  let scale_base = expert_idx * uniforms.scale_n_blocks * uniforms.scale_k_blocks +
+                   (col / 128u) * uniforms.scale_k_blocks;
+#else
+  let weight_base = uniforms.weight_byte_offset + col * uniforms.inner;
+  let scale_base = (col / 128u) * uniforms.scale_k_blocks;
+#endif
+#if broadcast_input
+  let input_row = 0u;
+#else
+  let input_row = row;
+#endif
+
+  var value = 0.0;
+  for (var k_block = 0u; k_block < uniforms.scale_k_blocks; k_block++) {
+    let scale = f32(scales.getByOffset(scale_base + k_block));
+    let start = k_block * 128u;
+    let end = min(start + 128u, uniforms.inner);
+    for (var inner = start; inner < end; inner++) {
+      let weight_offset = weight_base + inner;
+      let packed_word = u32(weights.getByOffset(weight_offset / 4u));
+      let weight_code = unpack4xU8(packed_word)[weight_offset % 4u];
+      let weight = bitcast<f32>(kFp8DequantLutBits[weight_code]);
+      value += f32(input.getByOffset(input_row * uniforms.inner + inner)) * weight * scale;
+    }
+  }
+#if has_bias
+#if has_indirect_experts
+  value += f32(bias.getByOffset(expert_idx * uniforms.cols + col));
+#else
+  value += f32(bias.getByOffset(col));
+#endif
+#endif
+  output.setByOffset(row * uniforms.cols + col, output_element_t(value));
+} // MAIN

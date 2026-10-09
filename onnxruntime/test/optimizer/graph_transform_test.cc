@@ -2398,108 +2398,257 @@ TEST_F(GraphTransformationTests, FusePadWithNoPadsConv) {
   }
 }
 
-TEST_F(GraphTransformationTests, FusePadWithMaxPool) {
+struct PadMaxPoolFusionTestConfig {
+  std::vector<int64_t> pad_pads{0, 0, 1, 0, 0, 0};
+  std::vector<int64_t> max_pool_pads{0, 1};
+  std::vector<int64_t> strides{};
+  int64_t ceil_mode{0};
+  bool use_explicit_pad_value{true};
+};
+
+template <typename PadType, typename PoolType = PadType>
+void RunPadMaxPoolFusionTest(const std::vector<PadType>& input_values, bool expect_fusion,
+                             PadMaxPoolFusionTestConfig config = {}) {
+  constexpr bool add_cast = !std::is_same_v<PadType, PoolType>;
+
+  auto build_test_case = [&input_values, &config](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<PadType>({1, 1, 2}, input_values);
+    auto* pads = builder.Make1DInitializer<int64_t>(config.pad_pads);
+    auto* pad_output = builder.MakeIntermediate<PadType>(std::nullopt);
+    if (config.use_explicit_pad_value) {
+      auto* pad_value = builder.MakeScalarInitializer<PadType>(PadType{0});
+      builder.AddNode("Pad", {input, pads, pad_value}, {pad_output});
+    } else {
+      builder.AddNode("Pad", {input, pads}, {pad_output});
+    }
+
+    NodeArg* pool_input = pad_output;
+    if constexpr (add_cast) {
+      auto* cast_output = builder.MakeIntermediate<PoolType>(std::nullopt);
+      builder.AddNode("Cast", {pad_output}, {cast_output})
+          .AddAttribute("to", static_cast<int64_t>(utils::ToTensorProtoElementType<PoolType>()));
+      pool_input = cast_output;
+    }
+
+    auto* output = builder.MakeOutput<PoolType>(std::nullopt);
+    auto& max_pool = builder.AddNode("MaxPool", {pool_input}, {output});
+    max_pool.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+    max_pool.AddAttribute("pads", config.max_pool_pads);
+    if (!config.strides.empty()) {
+      max_pool.AddAttribute("strides", config.strides);
+    }
+    if (config.ceil_mode != 0) {
+      max_pool.AddAttribute("ceil_mode", config.ceil_mode);
+    }
+  };
+
+  auto check_transformed_graph = [expect_fusion, &config](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const auto pad_count = op_to_count.find("Pad");
+    ASSERT_EQ(op_to_count.at("MaxPool"), 1);
+    ASSERT_EQ(pad_count == op_to_count.end() ? 0 : pad_count->second, expect_fusion ? 0 : 1);
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "MaxPool") {
+        const auto& pads = node.GetAttributes().at("pads").ints();
+        ASSERT_EQ(pads.size(), 2);
+        ASSERT_EQ(pads[0], config.max_pool_pads[0] + (expect_fusion ? config.pad_pads[2] : 0));
+        ASSERT_EQ(pads[1], config.max_pool_pads[1] + (expect_fusion ? config.pad_pads[5] : 0));
+      }
+    }
+    if constexpr (add_cast) {
+      ASSERT_EQ(op_to_count.at("Cast"), 1);
+      for (const auto& node : session.GetGraph().Nodes()) {
+        if (node.OpType() == "Cast") {
+          const auto* cast_output_shape = node.OutputDefs()[0]->Shape();
+          ASSERT_NE(cast_output_shape, nullptr);
+          ASSERT_EQ(cast_output_shape->dim_size(), 3);
+          ASSERT_EQ(cast_output_shape->dim(0).dim_value(), 1);
+          ASSERT_EQ(cast_output_shape->dim(1).dim_value(), 1);
+          const int64_t expected_width = expect_fusion ? 2 : 2 + config.pad_pads[2] + config.pad_pads[5];
+          ASSERT_EQ(cast_output_shape->dim(2).dim_value(), expected_width);
+        }
+      }
+    }
+  };
+
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_l1));
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFloat) {
+  PadMaxPoolFusionTestConfig config;
+  config.use_explicit_pad_value = false;
+  RunPadMaxPoolFusionTest<float>({-1.0f, -2.0f}, false, config);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsInt8) {
+  RunPadMaxPoolFusionTest<int8_t>({-1, -2}, false);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionPreservesUint8) {
+  RunPadMaxPoolFusionTest<uint8_t>({1, 2}, true);
+}
+
+TEST_F(GraphTransformationTests, PadCastMaxPoolFusionSkipsDouble) {
+  RunPadMaxPoolFusionTest<float, double>({-1.0f, -2.0f}, false);
+}
+
+TEST_F(GraphTransformationTests, PadCastMaxPoolFusionPreservesUint8) {
+  RunPadMaxPoolFusionTest<float, uint8_t>({1.0f, 2.0f}, true);
+}
+
+TEST_F(GraphTransformationTests, PadCastMaxPoolFusionHandlesMissingInputShape) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::nullopt);
+    auto* pads = builder.Make1DInitializer<int64_t>({0, 0, 1, 0, 0, 0});
+    auto* pad_output = builder.MakeIntermediate<float>(std::nullopt);
+    builder.AddNode("Pad", {input, pads}, {pad_output});
+
+    auto* cast_output = builder.MakeIntermediate<uint8_t>(std::nullopt);
+    builder.AddNode("Cast", {pad_output}, {cast_output})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8));
+
+    auto* output = builder.MakeOutput<uint8_t>(std::nullopt);
+    auto& max_pool = builder.AddNode("MaxPool", {cast_output}, {output});
+    max_pool.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+    max_pool.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count.find("Pad") == op_to_count.end(), "Pad should be fused away");
+    ORT_RETURN_IF_NOT(op_to_count.at("Cast") == 1, "Cast should remain");
+    ORT_RETURN_IF_NOT(op_to_count.at("MaxPool") == 1, "MaxPool should remain");
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Cast") {
+        ORT_RETURN_IF_NOT(node.OutputDefs()[0]->Shape() == nullptr,
+                          "Cast output shape should remain unknown after fusion");
+      }
+    }
+
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case,
+                                        13,
+                                        *logger_,
+                                        std::move(rule_transformer),
+                                        TransformerLevel::Level1,
+                                        1,
+                                        nullptr,
+                                        post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsCeilModeWithTrailingPad) {
+  PadMaxPoolFusionTestConfig config;
+  config.pad_pads = {0, 0, 0, 0, 0, 1};
+  config.max_pool_pads = {0, 0};
+  config.strides = {2};
+  config.ceil_mode = 1;
+  RunPadMaxPoolFusionTest<uint8_t>({1, 2}, false, config);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFusedPadNotSmallerThanKernel) {
+  PadMaxPoolFusionTestConfig config;
+  config.max_pool_pads = {1, 0};
+  RunPadMaxPoolFusionTest<uint8_t>({1, 2}, false, config);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFloatModel) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-maxpool.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::vector<int64_t> expected_pads;
-  GraphViewer graphViewer(graph);
-  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
-    auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "Pad") {
-      const auto* pads_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
-      Initializer pads{graph, *pads_proto, graph.ModelPath()};
-      gsl::span<const int64_t> pads_values = pads.DataAsSpan<int64_t>();
-      expected_pads.resize(pads_values.size() - 4);
-
-      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
-        expected_pads[index] = pads_values[pads_index];
-        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
-      }
-    } else if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        expected_pads[index] += child_pads->Get(index);
-      }
-    }
-  }
-
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_l1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Pad"], 0);
-  ASSERT_EQ(op_to_count["MaxPool"], 1);
-
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
-          << "fusion should produce the same size of pads integer as the MaxPool node";
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
-            << "fusion does not produce correct padding value";
-      }
-    }
-  }
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.at("Pad"), 1);
+  ASSERT_EQ(op_to_count.at("MaxPool"), 1);
 }
 
-TEST_F(GraphTransformationTests, FusePadWithMaxPoolOpsetLessThan11) {
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFloatModelOpsetLessThan11) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-maxpool-opset8.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::vector<int64_t> expected_pads;
-  GraphViewer graphViewer(graph);
-  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
-    auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "Pad") {
-      gsl::span<const int64_t> pads_values = node.GetAttributes().at("pads").ints();
-      expected_pads.resize(pads_values.size() - 4);
-
-      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
-        expected_pads[index] = pads_values[pads_index];
-        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
-      }
-    } else if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        expected_pads[index] += child_pads->Get(index);
-      }
-    }
-  }
-
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_l1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Pad"], 0);
-  ASSERT_EQ(op_to_count["MaxPool"], 1);
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.at("Pad"), 1);
+  ASSERT_EQ(op_to_count.at("MaxPool"), 1);
+}
 
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
-          << "fusion should produce the same size of pads integer as the MaxPool node";
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
-            << "fusion does not produce correct padding value";
+TEST_F(GraphTransformationTests, PadAveragePoolFusionPreservesCeilModeDivisor) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 1, 2}, {2.0f, 4.0f});
+    auto* pads = builder.Make1DInitializer<int64_t>({0, 0, 1, 0, 0, 0});
+    auto* pad_output = builder.MakeIntermediate<float>(std::nullopt);
+    builder.AddNode("Pad", {input, pads}, {pad_output});
+
+    auto* output = builder.MakeOutput<float>(std::nullopt);
+    auto& average_pool = builder.AddNode("AveragePool", {pad_output}, {output});
+    average_pool.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+    average_pool.AddAttribute("strides", std::vector<int64_t>{2});
+    average_pool.AddAttribute("pads", std::vector<int64_t>{0, 0});
+    average_pool.AddAttribute("ceil_mode", static_cast<int64_t>(1));
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const auto pad_count = op_to_count.find("Pad");
+    ASSERT_EQ(pad_count == op_to_count.end() ? 0 : pad_count->second, 0);
+    ASSERT_EQ(op_to_count.at("AveragePool"), 1);
+
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "AveragePool") {
+        const auto& attributes = node.GetAttributes();
+        const auto& pads = attributes.at("pads").ints();
+        ASSERT_EQ(pads.size(), 2);
+        ASSERT_EQ(pads[0], 1);
+        ASSERT_EQ(pads[1], 0);
+        ASSERT_EQ(attributes.at("count_include_pad").i(), 1);
       }
     }
-  }
+  };
+
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+
+  // Before fusion the explicit zero is a real input value, while the extra cell created by
+  // ceil_mode is outside the padded tensor. The expected output is [1, 4]: only the former is
+  // included in an average. TransformerTester verifies that the fused graph preserves this
+  // distinction when it changes the explicit Pad to count_include_pad=1.
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_l1));
 }
 
 TEST_F(GraphTransformationTests, FusePadWithAvgPool) {

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -16,6 +17,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -23,15 +25,20 @@
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include <d3d12.h>
+#include <wrl/client.h>
+#endif
+
 namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
+
 class WebGpuContext;
 class ComputeContextBase;
 class ComputeContext;
 class ProgramBase;
-
 // PendingKernelInfo stores profiling information for a kernel execution
 struct PendingKernelInfo {
   PendingKernelInfo(std::string_view kernel_name,
@@ -64,13 +71,13 @@ struct PendingKernelInfo {
 };
 
 // State for one in-flight pipeline build. The compiled pipeline is written into
-// `callback_context->pipeline` by the async callback; only that heap-allocated callback context
-// must stay put until `future` completes, so this struct itself can be stored inline.
+// `callback_context->pipeline` by the async callback, which shares ownership of the result state
+// independently of this build's lifetime.
 struct PendingPipelineBuild {
   std::string name;
   std::vector<int> shape_uniform_ranks;
   wgpu::BindGroupLayout bind_group_layout;
-  std::unique_ptr<PipelineCallbackContext> callback_context;
+  std::shared_ptr<PipelineCallbackContext> callback_context;
   wgpu::Future future;
 };
 
@@ -122,6 +129,10 @@ struct CommandRecordingState {
   // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
   // BufferManager clears it under its cache lock after submission or abandonment.
   std::atomic<bool> has_unsubmitted_work{false};
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  std::mutex pending_release_callbacks_mutex;
+  std::vector<std::function<void()>> pending_release_callbacks;
+#endif
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
@@ -164,6 +175,8 @@ struct WebGpuContextConfig {
   };
   bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
+  WeightLoadAccelerationMode weight_load_acceleration_mode{
+      WeightLoadAccelerationMode::Off};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
   bool compile_only{false};
@@ -251,6 +264,8 @@ class WebGpuContext final {
   static constexpr uint64_t kWebGpuGuaranteedMaxStorageBufferBindingSize =
       128ULL * 1024 * 1024;
 
+  ~WebGpuContext();
+
   Status Wait(wgpu::Future f);
 
   const wgpu::Instance& Instance() const { return instance_; }
@@ -307,6 +322,10 @@ class WebGpuContext final {
 
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
+  // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
+  // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
+  Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
@@ -318,6 +337,15 @@ class WebGpuContext final {
   // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
   inline bool HasDevice() const { return device_ != nullptr; }
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  ID3D12Device* WeightLoadingD3D12Device() const;
+  bool D3D12SharedResourceFeaturesAvailable() const {
+    return d3d12_shared_resource_features_available_;
+  }
+  wgpu::BackendType SelectedBackendType() const {
+    return selected_backend_type_;
+  }
+#endif
 
   //
   // Get Split-K configuration.
@@ -343,7 +371,7 @@ class WebGpuContext final {
   //
   // This is useful only when "skip_validation" is not set.
   //
-  void PushErrorScope();
+  void PushErrorScope(wgpu::ErrorFilter filter = wgpu::ErrorFilter::Validation);
 
   //
   // Pop error scope.
@@ -432,6 +460,7 @@ class WebGpuContext final {
   // Find the build owner for a cache key in the current deferred window.
   PendingPipelineBuild* FindPendingPipelineBuild(CommandRecordingState& recording, std::string_view key);
   Status WaitForDeferredPipelineBuilds(CommandRecordingState& recording);
+  Status CheckDeviceStatus() const;
 
   friend class BufferManager;
   friend class ComputeContext;
@@ -439,6 +468,11 @@ class WebGpuContext final {
 
   std::once_flag init_flag_;
 
+  struct DeviceErrorState {
+    std::mutex mutex;
+    Status status;
+  };
+  std::shared_ptr<DeviceErrorState> device_error_state_{std::make_shared<DeviceErrorState>()};
   wgpu::Instance instance_;
   wgpu::Device device_;
 
@@ -482,6 +516,13 @@ class WebGpuContext final {
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
   bool preserve_device_;
+  WeightLoadAccelerationMode weight_load_acceleration_mode_{
+      WeightLoadAccelerationMode::Off};
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  Microsoft::WRL::ComPtr<ID3D12Device> weight_loading_d3d12_device_;
+  bool d3d12_shared_resource_features_available_ = false;
+  wgpu::BackendType selected_backend_type_ = wgpu::BackendType::Undefined;
+#endif
   uint64_t max_storage_buffer_binding_size_;
   uint32_t max_storage_buffers_per_shader_stage_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

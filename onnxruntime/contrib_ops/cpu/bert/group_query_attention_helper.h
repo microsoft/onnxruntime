@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -11,6 +13,21 @@
 namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
+
+struct FlashAttentionBlockSizes {
+  int q_block_size;
+  int kv_block_size;
+};
+
+inline FlashAttentionBlockSizes GetFlashAttentionBlockSizes(int l2_cache_size, int head_size) {
+  // Unknown cache sizes must not collapse FlashAttention to 1x1 tiles. This is a tiling budget,
+  // not a claim about the hardware cache topology.
+  constexpr int kFallbackCacheBudget = 1024 * 1024;
+  const int effective_l2_cache_size = l2_cache_size > 0 ? l2_cache_size : kFallbackCacheBudget;
+  const int kv_block_size = std::max(
+      effective_l2_cache_size / (static_cast<int>(sizeof(float)) * 4 * (head_size + head_size)), 1);
+  return {std::min(kv_block_size, 2 * head_size), kv_block_size};
+}
 
 template <typename T>
 Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
