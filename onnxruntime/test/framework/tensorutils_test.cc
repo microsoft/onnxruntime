@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/common/parse_string.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/prepacked_weights.h"
@@ -9,6 +10,10 @@
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/model.h"
+#include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "file_util.h"
 
@@ -16,6 +21,7 @@
 #include <cstdint>
 #include <limits>
 #include <fstream>
+#include <sstream>
 #include <utility>
 
 #include "gtest/gtest.h"
@@ -1092,6 +1098,14 @@ TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModelAndData_Hugging
   // model.onnx is a symlink; data.bin is also a symlink.
   // Both resolve to the same blobs/ directory — should pass.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "data.bin"));
+
+  ModelPath model_path;
+  ASSERT_STATUS_OK(Env::Default().CaptureModelPath(snapshots_dir / "model.onnx", model_path));
+  ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+  EXPECT_EQ(model_path.GetExternalDataDirectories()->apparent, std::filesystem::canonical(snapshots_dir));
+  EXPECT_EQ(model_path.GetExternalDataDirectories()->model_target, std::filesystem::canonical(blobs_dir));
+  std::filesystem::remove(snapshots_dir / "model.onnx");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "data.bin"));
 }
 
 // Test that symlinked model + empty external data path is rejected (not silently accepted).
@@ -2208,6 +2222,747 @@ TEST(TensorProtoDataSizeShapeValidationTest, UnpackInitializerDataRejectsInlineR
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("raw_data size"));
 }
+#endif  // !defined(__wasm__)
+
+#if !defined(__wasm__)
+namespace {
+
+class ExternalFileTestEnv final : public Env {
+ public:
+  std::function<Status(const std::filesystem::path&)> before_open;
+  std::function<Status()> before_map;
+  bool copy_only{false};
+  mutable size_t opens{0};
+  mutable size_t maps{0};
+  mutable size_t reads{0};
+
+  Status OpenCanonicalFile(const ORTCHAR_T* path, std::unique_ptr<RandomAccessFile>& file) const override {
+    ++opens;
+    if (before_open) {
+      ORT_RETURN_IF_ERROR(before_open(std::filesystem::path{path}));
+    }
+    std::unique_ptr<RandomAccessFile> opened;
+    ORT_RETURN_IF_ERROR(Env::Default().OpenCanonicalFile(path, opened));
+    file = std::make_unique<File>(std::move(opened), *this);
+    return Status::OK();
+  }
+
+  EnvThread* CreateThread(const ORTCHAR_T* name, int index,
+                          unsigned (*start)(int, Eigen::ThreadPoolInterface*),
+                          Eigen::ThreadPoolInterface* pool, const ThreadOptions& options) override {
+    return Env::Default().CreateThread(name, index, start, pool, options);
+  }
+  int GetNumPhysicalCpuCores() const override { return Env::Default().GetNumPhysicalCpuCores(); }
+  std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override { return {}; }
+  int GetL2CacheSize() const override { return Env::Default().GetL2CacheSize(); }
+  void SleepForMicroseconds(int64_t micros) const override { Env::Default().SleepForMicroseconds(micros); }
+  Status GetFileLength(const ORTCHAR_T* path, size_t& length) const override {
+    return Env::Default().GetFileLength(path, length);
+  }
+  Status GetFileLength(int fd, size_t& length) const override { return Env::Default().GetFileLength(fd, length); }
+  Status ReadFileIntoBuffer(const ORTCHAR_T*, FileOffsetType, size_t, gsl::span<char>) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected pathname read.");
+  }
+  Status MapFileIntoMemory(const ORTCHAR_T*, FileOffsetType, size_t, MappedMemoryPtr&) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected pathname mapping.");
+  }
+#ifdef _WIN32
+  bool FolderExists(const std::wstring& path) const override { return Env::Default().FolderExists(path); }
+  bool FileExists(const std::wstring& path) const override { return Env::Default().FileExists(path); }
+  Status CreateFolder(const std::wstring& path) const override { return Env::Default().CreateFolder(path); }
+  Status FileOpenRd(const std::wstring& path, int& fd) const override { return Env::Default().FileOpenRd(path, fd); }
+  Status FileOpenWr(const std::wstring& path, int& fd) const override { return Env::Default().FileOpenWr(path, fd); }
+#endif
+  bool FolderExists(const std::string& path) const override { return Env::Default().FolderExists(path); }
+  bool FileExists(const std::string& path) const override { return Env::Default().FileExists(path); }
+  Status CreateFolder(const std::string& path) const override { return Env::Default().CreateFolder(path); }
+  Status DeleteFolder(const PathString& path) const override { return Env::Default().DeleteFolder(path); }
+  Status FileOpenRd(const std::string& path, int& fd) const override { return Env::Default().FileOpenRd(path, fd); }
+  Status FileOpenWr(const std::string& path, int& fd) const override { return Env::Default().FileOpenWr(path, fd); }
+  Status FileClose(int fd) const override { return Env::Default().FileClose(fd); }
+  Status GetCanonicalPath(const PathString& path, PathString& result) const override {
+    return Env::Default().GetCanonicalPath(path, result);
+  }
+  Status GetWeaklyCanonicalPath(const PathString& path, PathString& result) const override {
+    return Env::Default().GetWeaklyCanonicalPath(path, result);
+  }
+  PIDType GetSelfPid() const override { return Env::Default().GetSelfPid(); }
+  Status LoadDynamicLibrary(const PathString& path, bool global, void** handle) const override {
+    return Env::Default().LoadDynamicLibrary(path, global, handle);
+  }
+  Status UnloadDynamicLibrary(void* handle) const override { return Env::Default().UnloadDynamicLibrary(handle); }
+  PathString GetRuntimePath() const override { return Env::Default().GetRuntimePath(); }
+  Status GetSymbolFromLibrary(void* handle, const std::string& name, void** symbol) const override {
+    return Env::Default().GetSymbolFromLibrary(handle, name, symbol);
+  }
+  std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
+    return Env::Default().FormatLibraryFileName(name, version);
+  }
+  const Telemetry& GetTelemetryProvider() const override { return Env::Default().GetTelemetryProvider(); }
+  std::string GetEnvironmentVar(const std::string& name) const override {
+    return Env::Default().GetEnvironmentVar(name);
+  }
+
+ private:
+  class File final : public RandomAccessFile {
+   public:
+    File(std::unique_ptr<RandomAccessFile> file, const ExternalFileTestEnv& env)
+        : file_(std::move(file)), env_(env) {}
+    Status GetLength(uint64_t& length) const override { return file_->GetLength(length); }
+    Status GetCanonicalPath(PathString& path) const override { return file_->GetCanonicalPath(path); }
+    Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
+      ++env_.reads;
+      return file_->Read(offset, buffer);
+    }
+    Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapping) const override {
+      ++env_.maps;
+      if (env_.before_map) {
+        ORT_RETURN_IF_ERROR(env_.before_map());
+      }
+      if (env_.copy_only) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Test requests a positional read.");
+      }
+      return file_->Map(offset, length, mapping);
+    }
+
+   private:
+    std::unique_ptr<RandomAccessFile> file_;
+    const ExternalFileTestEnv& env_;
+  };
+};
+
+class ExternalDataFileTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    PathString path = ORT_TSTR("external_file_test_XXXXXX");
+    FILE* file = nullptr;
+    ASSERT_NO_FATAL_FAILURE(CreateTestFile(file, path));
+    ASSERT_NE(file, nullptr);
+    ASSERT_EQ(fclose(file), 0);
+    std::error_code error;
+    root_ = std::filesystem::absolute(path, error);
+    ASSERT_FALSE(error) << error.message();
+    ASSERT_TRUE(std::filesystem::remove(root_, error));
+    ASSERT_FALSE(error) << error.message();
+    model_dir_ = root_ / "model";
+    other_dir_ = root_ / "other";
+    ASSERT_TRUE(std::filesystem::create_directories(model_dir_, error));
+    ASSERT_FALSE(error) << error.message();
+    ASSERT_TRUE(std::filesystem::create_directories(other_dir_, error));
+    ASSERT_FALSE(error) << error.message();
+    ASSERT_STATUS_OK(Write(model_dir_ / "data.bin", contents_));
+    ASSERT_STATUS_OK(Write(other_dir_ / "data.bin", "other file bytes"));
+  }
+
+  void TearDown() override {
+    if (!root_.empty()) {
+      std::error_code error;
+      std::filesystem::remove_all(root_, error);
+      EXPECT_FALSE(error) << error.message();
+    }
+  }
+
+  static Status Write(const std::filesystem::path& path, const std::string& contents) {
+    std::ofstream file(path, std::ios::binary);
+    file << contents;
+    file.close();
+    ORT_RETURN_IF(file.fail(), "Cannot write fixture file: ", path);
+    return Status::OK();
+  }
+
+  static bool LinkUnavailable(const std::error_code& error) {
+#ifdef _WIN32
+    if (error.value() == ERROR_PRIVILEGE_NOT_HELD) {
+      return true;
+    }
+#endif
+    return error == std::errc::operation_not_permitted || error == std::errc::permission_denied ||
+           error == std::errc::operation_not_supported || error == std::errc::function_not_supported;
+  }
+
+  static TensorProto MakeTensor(std::string_view location = "data.bin", int64_t count = 16,
+                                FileOffsetType offset = 0) {
+    TensorProto tensor;
+    tensor.set_name("external");
+    tensor.set_data_type(TensorProto_DataType_UINT8);
+    tensor.add_dims(count);
+    tensor.set_data_location(TensorProto_DataLocation_EXTERNAL);
+    auto* entry = tensor.add_external_data();
+    entry->set_key("location");
+    entry->set_value(std::string(location));
+    entry = tensor.add_external_data();
+    entry->set_key("offset");
+    entry->set_value(std::to_string(offset));
+    return tensor;
+  }
+
+  static ModelProto MakeModel(std::string_view location = "data.bin") {
+    ModelProto model;
+    model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+    model.add_opset_import()->set_version(13);
+    auto& graph = *model.mutable_graph();
+    graph.set_name("external_file");
+    *graph.add_initializer() = MakeTensor(location);
+    auto* node = graph.add_node();
+    node->set_op_type("Identity");
+    node->add_input("external");
+    node->add_output("output");
+    auto* output = graph.add_output();
+    output->set_name("output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(TensorProto_DataType_UINT8);
+    type->mutable_shape()->add_dim()->set_dim_value(16);
+    return model;
+  }
+
+  void InitializeAndExpectContents(InferenceSession& session) const {
+    ASSERT_STATUS_OK(session.Initialize());
+    const InlinedVector<std::string> names{"output"};
+    std::vector<OrtValue> values;
+    ASSERT_STATUS_OK(session.Run(NameMLValMap{}, names, &values));
+    ASSERT_EQ(values.size(), 1U);
+    ExpectContents(values.front());
+  }
+
+  void ExpectContents(const OrtValue& value) const {
+    const auto& tensor = value.Get<Tensor>();
+    ASSERT_EQ(tensor.SizeInBytes(), contents_.size());
+    EXPECT_EQ(std::string(static_cast<const char*>(tensor.DataRaw()), tensor.SizeInBytes()), contents_);
+  }
+
+  std::filesystem::path root_;
+  std::filesystem::path model_dir_;
+  std::filesystem::path other_dir_;
+  const std::string contents_{"0123456789abcdef"};
+};
+
+TEST_F(ExternalDataFileTest, MappingAndCopyKeepTheOpenedFile) {
+  for (const bool copy_only : {false, true}) {
+    SCOPED_TRACE(copy_only);
+    const auto data_path = model_dir_ / "data.bin";
+    ASSERT_STATUS_OK(Write(data_path, contents_));
+    ExternalFileTestEnv env;
+    env.copy_only = copy_only;
+    bool replaced = false;
+    env.before_map = [&]() {
+      std::error_code error;
+      std::filesystem::rename(data_path, model_dir_ / (copy_only ? "saved-copy.bin" : "saved-map.bin"), error);
+      ORT_RETURN_IF(error, "Cannot rename fixture file: ", error.message());
+      auto status = Write(data_path, "replacement data");
+      replaced = status.IsOK();
+      return status;
+    };
+    OrtValue value;
+    ASSERT_STATUS_OK(GetExtDataFromTensorProto(env, model_dir_ / "model.onnx", MakeTensor(), value));
+    ExpectContents(value);
+    EXPECT_TRUE(replaced);
+    EXPECT_EQ(env.opens, 1U);
+    EXPECT_EQ(env.maps, 1U);
+    EXPECT_EQ(env.reads, copy_only ? 1U : 0U);
+  }
+}
+
+TEST_F(ExternalDataFileTest, PrepackedBlobsUseTheSameFileAsTheTensor) {
+  auto tensor = MakeTensor();
+  auto* entry = tensor.add_external_data();
+  entry->set_key("prepacked_0");
+  entry->set_value("packed|0;8;0|8;8;0");
+  ExternalFileTestEnv env;
+  bool replaced = false;
+  env.before_map = [&]() {
+    if (env.maps == 2) {
+      std::error_code error;
+      const auto path = model_dir_ / "data.bin";
+      std::filesystem::rename(path, model_dir_ / "saved.bin", error);
+      ORT_RETURN_IF(error, "Cannot rename fixture file: ", error.message());
+      auto status = Write(path, "replacement data");
+      replaced = status.IsOK();
+      return status;
+    }
+    return Status::OK();
+  };
+  PrepackedKeyToBlobMap blobs;
+  PrepackedWeightsForGraph weights(blobs, false);
+  OrtValue value;
+  ASSERT_STATUS_OK(GetExtDataFromTensorProto(env, model_dir_ / "model.onnx", tensor, value, &weights));
+  ExpectContents(value);
+  EXPECT_TRUE(replaced);
+  const auto* packed = weights.GetPrepackedWeights("packed");
+  ASSERT_NE(packed, nullptr);
+  ASSERT_EQ(packed->buffers_.size(), 2U);
+  for (size_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(packed->buffer_sizes_[i], 8U);
+    EXPECT_EQ(std::string(static_cast<const char*>(packed->buffers_[i].get()), 8), contents_.substr(i * 8, 8));
+  }
+  EXPECT_EQ(env.opens, 1U);
+  EXPECT_EQ(env.maps, 3U);
+  EXPECT_EQ(env.reads, 0U);
+}
+
+TEST_F(ExternalDataFileTest, PrepackedRangesReturnStatusOnOverflow) {
+  auto tensor = MakeTensor();
+  auto* entry = tensor.add_external_data();
+  entry->set_key("prepacked_0");
+  entry->set_value("packed|" + std::to_string(std::numeric_limits<FileOffsetType>::max()) + ";8;0");
+  PrepackedKeyToBlobMap blobs;
+  PrepackedWeightsForGraph weights(blobs, false);
+  const auto status = LoadPrepackedWeightsFromExternalData(Env::Default(), model_dir_ / "model.onnx", tensor, weights);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "not representable");
+  EXPECT_TRUE(blobs.empty());
+}
+
+TEST_F(ExternalDataFileTest, ResolvesTheLocationBeforeOpening) {
+  std::error_code error;
+  const auto link = model_dir_ / "weights.bin";
+  std::filesystem::create_symlink(model_dir_ / "data.bin", link, error);
+  if (LinkUnavailable(error)) {
+    GTEST_SKIP() << "This environment does not permit symbolic links: " << error.message();
+  }
+  ASSERT_FALSE(error) << error.message();
+  ExternalFileTestEnv env;
+  env.before_open = [&](const std::filesystem::path& resolved) {
+    ORT_RETURN_IF(resolved.filename() != "data.bin", "Expected the resolved file name.");
+    std::error_code ec;
+    std::filesystem::remove(link, ec);
+    ORT_RETURN_IF(ec, "Cannot remove fixture link: ", ec.message());
+    std::filesystem::create_symlink(other_dir_ / "data.bin", link, ec);
+    ORT_RETURN_IF(ec, "Cannot replace fixture link: ", ec.message());
+    return Status::OK();
+  };
+  OrtValue value;
+  ASSERT_STATUS_OK(GetExtDataFromTensorProto(env, model_dir_ / "model.onnx", MakeTensor("weights.bin"), value));
+  ExpectContents(value);
+  EXPECT_EQ(env.opens, 1U);
+}
+
+TEST_F(ExternalDataFileTest, RejectsReplacementOfResolvedFileOrDirectory) {
+  std::error_code error;
+  std::filesystem::create_symlink(other_dir_ / "data.bin", root_ / "probe", error);
+  if (LinkUnavailable(error)) {
+    GTEST_SKIP() << "This environment does not permit symbolic links: " << error.message();
+  }
+  ASSERT_FALSE(error) << error.message();
+  for (const bool replace_directory : {false, true}) {
+    SCOPED_TRACE(replace_directory);
+    const auto directory = model_dir_ / (replace_directory ? "parent-case" : "file-case");
+    ASSERT_TRUE(std::filesystem::create_directory(directory, error));
+    ASSERT_FALSE(error) << error.message();
+    ASSERT_STATUS_OK(Write(directory / "data.bin", contents_));
+    ExternalFileTestEnv env;
+    bool replaced = false;
+    env.before_open = [&](const std::filesystem::path& resolved) {
+      const auto target = replace_directory ? resolved.parent_path() : resolved;
+      std::error_code ec;
+      std::filesystem::rename(target, target.native() + ORT_TSTR(".saved"), ec);
+      ORT_RETURN_IF(ec, "Cannot rename fixture path: ", ec.message());
+      if (replace_directory) {
+        std::filesystem::create_directory_symlink(other_dir_, target, ec);
+      } else {
+        std::filesystem::create_symlink(other_dir_ / "data.bin", target, ec);
+      }
+      ORT_RETURN_IF(ec, "Cannot replace fixture path: ", ec.message());
+      replaced = true;
+      return Status::OK();
+    };
+    const auto location = ToUTF8String((directory.filename() / "data.bin").native());
+    OrtValue value;
+    EXPECT_FALSE(GetExtDataFromTensorProto(env, model_dir_ / "model.onnx", MakeTensor(location), value).IsOK());
+    EXPECT_FALSE(value.IsAllocated());
+    EXPECT_TRUE(replaced);
+    EXPECT_EQ(env.opens, 1U);
+    EXPECT_EQ(env.maps, 0U);
+    EXPECT_EQ(env.reads, 0U);
+  }
+}
+
+TEST_F(ExternalDataFileTest, SupportsSymlinkedModelAndDataInOneDirectory) {
+  const auto model = model_dir_ / "model.onnx";
+  const auto weights = model_dir_ / "weights.bin";
+  ASSERT_STATUS_OK(Write(other_dir_ / "model-blob", ""));
+  std::error_code error;
+  std::filesystem::create_symlink(other_dir_ / "model-blob", model, error);
+  if (LinkUnavailable(error)) {
+    GTEST_SKIP() << "This environment does not permit symbolic links: " << error.message();
+  }
+  ASSERT_FALSE(error) << error.message();
+  std::filesystem::create_symlink(other_dir_ / "data.bin", weights, error);
+  ASSERT_FALSE(error) << error.message();
+  ASSERT_STATUS_OK(Write(other_dir_ / "data.bin", contents_));
+  ModelPath model_path;
+  std::unique_ptr<RandomAccessFile> model_file;
+  ASSERT_STATUS_OK(Env::Default().OpenModelFile(model, model_file, model_path));
+  std::filesystem::remove(model, error);
+  ASSERT_FALSE(error) << error.message();
+  OrtValue value;
+  ASSERT_STATUS_OK(GetExtDataFromTensorProto(Env::Default(), model_path, MakeTensor("weights.bin"), value));
+  ExpectContents(value);
+  std::vector<uint8_t> unpacked;
+  ASSERT_STATUS_OK(UnpackInitializerData(MakeTensor("weights.bin"), model_path, unpacked));
+  EXPECT_EQ(std::string(unpacked.begin(), unpacked.end()), contents_);
+  std::array<uint8_t, 16> bytes{};
+  ASSERT_STATUS_OK(UnpackTensor(MakeTensor("weights.bin"), model_path, bytes.data(), bytes.size()));
+  EXPECT_EQ(std::string(bytes.begin(), bytes.end()), contents_);
+}
+
+TEST_F(ExternalDataFileTest, ModelParsingUsesTheOpenedFile) {
+  const auto path = model_dir_ / "model.onnx";
+  auto model_proto = MakeModel();
+  model_proto.set_doc_string(std::string(4 * 1024 * 1024 + 7, 'x'));
+  ASSERT_STATUS_OK(Write(path, model_proto.SerializeAsString()));
+  ExternalFileTestEnv env;
+  ModelPath model_path;
+  std::unique_ptr<RandomAccessFile> file;
+  ASSERT_STATUS_OK(env.OpenModelFile(path, file, model_path));
+  ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+  const auto* directories = model_path.GetExternalDataDirectories();
+  const ModelPath copy = model_path;
+  EXPECT_EQ(copy.GetExternalDataDirectories(), directories);
+  std::error_code error;
+  std::filesystem::rename(path, model_dir_ / "saved.onnx", error);
+  ASSERT_FALSE(error) << error.message();
+  ASSERT_STATUS_OK(Write(path, "replacement"));
+  ModelProto parsed;
+  ASSERT_STATUS_OK(Model::Load(*file, parsed));
+  EXPECT_EQ(parsed.SerializeAsString(), model_proto.SerializeAsString());
+  EXPECT_EQ(env.opens, 1U);
+  EXPECT_GT(env.reads, 1U);
+  EXPECT_EQ(directories->apparent, directories->model_target);
+}
+
+TEST_F(ExternalDataFileTest, ModelReplacementDoesNotChangeAllowedDirectories) {
+  const auto path = model_dir_ / "model.onnx";
+  ASSERT_STATUS_OK(Write(path, MakeModel().SerializeAsString()));
+  std::error_code error;
+  std::filesystem::create_symlink(other_dir_ / "data.bin", root_ / "probe", error);
+  if (LinkUnavailable(error)) {
+    GTEST_SKIP() << "This environment does not permit symbolic links: " << error.message();
+  }
+  ASSERT_FALSE(error) << error.message();
+  ModelProto parsed;
+  ModelPath model_path;
+  ASSERT_STATUS_OK(Model::Load(path.native(), parsed, &model_path));
+  std::filesystem::remove(path, error);
+  ASSERT_FALSE(error) << error.message();
+  std::filesystem::create_symlink(other_dir_ / "data.bin", path, error);
+  ASSERT_FALSE(error) << error.message();
+  std::filesystem::create_symlink(other_dir_ / "data.bin", model_dir_ / "weights.bin", error);
+  ASSERT_FALSE(error) << error.message();
+  ExternalFileTestEnv env;
+  OrtValue value;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      GetExtDataFromTensorProto(env, model_path, MakeTensor("weights.bin"), value), "escapes model directory");
+  EXPECT_FALSE(value.IsAllocated());
+  EXPECT_EQ(env.opens, 0U);
+  std::vector<uint8_t> unpacked;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      UnpackInitializerData(MakeTensor("weights.bin"), model_path, unpacked), "escapes model directory");
+  EXPECT_TRUE(unpacked.empty());
+}
+
+TEST_F(ExternalDataFileTest, ModelLoadingReturnsStatusForInvalidContent) {
+  const auto path = model_dir_ / "model.onnx";
+  ASSERT_STATUS_OK(Write(path, "not a protobuf model"));
+  ModelPath model_path;
+  ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, model_path, false));
+  const auto* directories = model_path.GetExternalDataDirectories();
+  ModelProto parsed;
+  auto status = Model::Load(path.native(), parsed, &model_path);
+  EXPECT_EQ(status.Code(), common::INVALID_PROTOBUF);
+  EXPECT_EQ(model_path.GetExternalDataDirectories(), directories);
+
+  std::shared_ptr<Model> model;
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  auto initialize_output = [&]() {
+    ASSERT_STATUS_OK(Model::Load(MakeModel(), ModelPath(path), model, nullptr, logger));
+    ASSERT_NE(model, nullptr);
+  };
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
+  status = Model::Load(path.native(), model, nullptr, DefaultLoggingManager().DefaultLogger());
+  EXPECT_EQ(status.Code(), common::INVALID_PROTOBUF);
+  EXPECT_EQ(model, nullptr);
+
+  std::string invalid_bytes = "not a protobuf model";
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
+  status = Model::LoadFromBytes(narrow<int>(invalid_bytes.size()), invalid_bytes.data(), model, nullptr, logger);
+  EXPECT_EQ(status.Code(), common::INVALID_PROTOBUF);
+  EXPECT_EQ(model, nullptr);
+
+  {
+    ASSERT_NO_FATAL_FAILURE(initialize_output());
+    int fd = -1;
+    ASSERT_STATUS_OK(Env::Default().FileOpenRd(path.c_str(), fd));
+    auto close_file = gsl::finally([&]() { EXPECT_STATUS_OK(Env::Default().FileClose(fd)); });
+    status = Model::Load(fd, ModelPath(path), model, nullptr, logger);
+    EXPECT_EQ(status.Code(), common::INVALID_PROTOBUF);
+    EXPECT_EQ(model, nullptr);
+  }
+
+  auto invalid_model = MakeModel();
+  invalid_model.mutable_graph()->mutable_node(0)->set_op_type("UnregisteredExternalFileTestOp");
+  ASSERT_STATUS_OK(Write(path, invalid_model.SerializeAsString()));
+  ASSERT_NO_FATAL_FAILURE(initialize_output());
+  status = Model::Load(path.native(), model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "UnregisteredExternalFileTestOp");
+  EXPECT_EQ(model, nullptr);
+}
+
+TEST_F(ExternalDataFileTest, SessionKeepsTheOriginalDirectory) {
+  ASSERT_STATUS_OK(Write(model_dir_ / "model.onnx", MakeModel().SerializeAsString()));
+  std::error_code error;
+  const auto original_directory = std::filesystem::current_path(error);
+  ASSERT_FALSE(error) << error.message();
+  for (const bool parse_in_constructor : {false, true}) {
+    for (const auto level : {TransformerLevel::Default, TransformerLevel::Level1}) {
+      SCOPED_TRACE(MakeString(parse_in_constructor, ", ", static_cast<int>(level)));
+      auto restore_directory = gsl::finally([&]() {
+        std::error_code restore_error;
+        std::filesystem::current_path(original_directory, restore_error);
+        EXPECT_FALSE(restore_error) << restore_error.message();
+      });
+      std::filesystem::current_path(model_dir_, error);
+      ASSERT_FALSE(error) << error.message();
+      SessionOptions options;
+      options.graph_optimization_level = level;
+      options.intra_op_param.thread_pool_size = 1;
+      std::unique_ptr<InferenceSession> session;
+      if (parse_in_constructor) {
+        session = std::make_unique<InferenceSession>(options, GetEnvironment(), ORT_TSTR("model.onnx"));
+      } else {
+        session = std::make_unique<InferenceSession>(options, GetEnvironment());
+        ASSERT_STATUS_OK(session->Load(ORT_TSTR("model.onnx")));
+      }
+      std::filesystem::current_path(other_dir_, error);
+      ASSERT_FALSE(error) << error.message();
+      if (parse_in_constructor) {
+        ASSERT_STATUS_OK(session->Load());
+      }
+      ASSERT_NO_FATAL_FAILURE(InitializeAndExpectContents(*session));
+    }
+  }
+}
+
+TEST_F(ExternalDataFileTest, ExplicitExternalDirectoryDoesNotUseAVirtualModelTarget) {
+  const auto path = model_dir_ / "virtual_model.onnx";
+  std::error_code error;
+  std::filesystem::create_symlink(other_dir_ / "data.bin", path, error);
+  if (LinkUnavailable(error)) {
+    GTEST_SKIP() << "This environment does not permit symbolic links: " << error.message();
+  }
+  ASSERT_FALSE(error) << error.message();
+  ModelPath model_path;
+  ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, model_path, false));
+  ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+  EXPECT_TRUE(model_path.GetExternalDataDirectories()->model_target.empty());
+  std::filesystem::create_symlink(other_dir_ / "data.bin", model_dir_ / "weights.bin", error);
+  ASSERT_FALSE(error) << error.message();
+  OrtValue value;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      GetExtDataFromTensorProto(Env::Default(), model_path, MakeTensor("weights.bin"), value),
+      "escapes model directory");
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsModelExternalInitializersFileFolderPath, ToUTF8String(model_dir_.native()).c_str()));
+  InferenceSession session(options, GetEnvironment());
+  const auto bytes = MakeModel("weights.bin").SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "escapes model directory");
+}
+
+TEST_F(ExternalDataFileTest, ExplicitExternalDirectoryRejectsOutsideData) {
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsModelExternalInitializersFileFolderPath, ToUTF8String(model_dir_.native()).c_str()));
+  InferenceSession session(options, GetEnvironment());
+  const auto bytes = MakeModel("../other/data.bin").SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "escapes model directory");
+}
+
+TEST_F(ExternalDataFileTest, SubgraphsKeepTheOriginalDirectory) {
+  auto model = MakeModel("subgraph-data.bin");
+  const auto branch = model.graph();
+  auto& graph = *model.mutable_graph();
+  graph.clear_initializer();
+  graph.clear_node();
+  auto* condition = graph.add_initializer();
+  condition->set_name("condition");
+  condition->set_data_type(TensorProto_DataType_BOOL);
+  condition->add_int32_data(1);
+  auto* node = graph.add_node();
+  node->set_op_type("If");
+  node->add_input("condition");
+  node->add_output("output");
+  for (const auto* name : {"then_branch", "else_branch"}) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(AttributeProto_AttributeType_GRAPH);
+    *attribute->mutable_g() = branch;
+  }
+  ASSERT_STATUS_OK(Write(model_dir_ / "model.onnx", model.SerializeAsString()));
+  ASSERT_STATUS_OK(Write(model_dir_ / "subgraph-data.bin", contents_));
+  std::error_code error;
+  const auto original_directory = std::filesystem::current_path(error);
+  ASSERT_FALSE(error) << error.message();
+  auto restore_directory = gsl::finally([&]() {
+    std::error_code restore_error;
+    std::filesystem::current_path(original_directory, restore_error);
+    EXPECT_FALSE(restore_error) << restore_error.message();
+  });
+  std::filesystem::current_path(model_dir_, error);
+  ASSERT_FALSE(error) << error.message();
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  options.intra_op_param.thread_pool_size = 1;
+  InferenceSession session(options, GetEnvironment(), ORT_TSTR("model.onnx"));
+  std::filesystem::current_path(other_dir_, error);
+  ASSERT_FALSE(error) << error.message();
+  ASSERT_STATUS_OK(session.Load());
+  ASSERT_NO_FATAL_FAILURE(InitializeAndExpectContents(session));
+}
+
+TEST_F(ExternalDataFileTest, ExplicitExternalDirectoryIsUsedByAllModelSources) {
+  const auto path = other_dir_ / "model.onnx";
+  const auto bytes = MakeModel().SerializeAsString();
+  ASSERT_STATUS_OK(Write(path, bytes));
+  enum class Source { File,
+                      Bytes,
+                      Stream,
+                      Constructor };
+  for (const auto source : {Source::File, Source::Bytes, Source::Stream, Source::Constructor}) {
+    SCOPED_TRACE(static_cast<int>(source));
+    SessionOptions options;
+    options.intra_op_param.thread_pool_size = 1;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsModelExternalInitializersFileFolderPath, ToUTF8String(model_dir_.native()).c_str()));
+    std::unique_ptr<InferenceSession> session;
+    if (source == Source::Constructor) {
+      session = std::make_unique<InferenceSession>(options, GetEnvironment(), path.native());
+      ASSERT_STATUS_OK(session->Load());
+    } else {
+      session = std::make_unique<InferenceSession>(options, GetEnvironment());
+      if (source == Source::File) {
+        ASSERT_STATUS_OK(session->Load(path.native()));
+      } else if (source == Source::Bytes) {
+        ASSERT_STATUS_OK(session->Load(bytes.data(), narrow<int>(bytes.size())));
+      } else {
+        std::istringstream stream(bytes);
+        ASSERT_STATUS_OK(session->Load(stream));
+      }
+    }
+    ASSERT_NO_FATAL_FAILURE(InitializeAndExpectContents(*session));
+  }
+}
+
+TEST_F(ExternalDataFileTest, ZeroElementsDoNotExpandToTheFileLength) {
+  for (const FileOffsetType offset : {0, 3, 16}) {
+    OrtValue value;
+    const auto tensor = MakeTensor("data.bin", 0, offset);
+    ASSERT_STATUS_OK(GetExtDataFromTensorProto(Env::Default(), model_dir_ / "model.onnx", tensor, value));
+    EXPECT_EQ(value.Get<Tensor>().SizeInBytes(), 0U);
+    std::vector<uint8_t> unpacked{1, 2, 3};
+    ASSERT_STATUS_OK(UnpackInitializerData(tensor, model_dir_ / "model.onnx", unpacked));
+    EXPECT_TRUE(unpacked.empty());
+  }
+}
+
+TEST_F(ExternalDataFileTest, InvalidRangesReturnStatusBeforeReading) {
+  for (const auto offset : {FileOffsetType{-1}, FileOffsetType{17}, std::numeric_limits<FileOffsetType>::max()}) {
+    SCOPED_TRACE(offset);
+    ExternalFileTestEnv env;
+    OrtValue value;
+    const auto tensor = MakeTensor("data.bin", 4, offset);
+    EXPECT_FALSE(GetExtDataFromTensorProto(env, model_dir_ / "model.onnx", tensor, value).IsOK());
+    EXPECT_FALSE(value.IsAllocated());
+    EXPECT_EQ(env.maps, 0U);
+    EXPECT_EQ(env.reads, 0U);
+    std::vector<uint8_t> unpacked;
+    EXPECT_FALSE(UnpackInitializerData(tensor, model_dir_ / "model.onnx", unpacked).IsOK());
+    EXPECT_TRUE(unpacked.empty());
+  }
+}
+
+TEST_F(ExternalDataFileTest, RejectsNullCharactersInLocations) {
+  const std::string location{"data.bin\0ignored", 16};
+  OrtValue value;
+  auto status = GetExtDataFromTensorProto(Env::Default(), model_dir_ / "model.onnx", MakeTensor(location), value);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "null character");
+}
+
+class FileOnlyExternalLoader final : public IExternalDataLoader {
+ public:
+  mutable bool called{false};
+  std::function<Status()> before_read;
+  bool CanLoad(const OrtMemoryInfo&) const override { return true; }
+  Status LoadTensor(const RandomAccessFile& file, FileOffsetType offset, SafeInt<size_t> length,
+                    Tensor& tensor) const override {
+    called = true;
+    ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "Unexpected tensor length.");
+    if (before_read) {
+      ORT_RETURN_IF_ERROR(before_read());
+    }
+    return file.Read(offset, gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), length));
+  }
+};
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+TEST_F(ExternalDataFileTest, ExternalLoaderCandidateAcceptsModelPath) {
+  class CandidateLoader final : public IExternalDataLoader {
+   public:
+    mutable std::filesystem::path candidate_path;
+    mutable size_t candidate_length{0};
+
+    bool CanLoad(const OrtMemoryInfo&) const override { return true; }
+    Status RegisterLoadCandidate(const Env&, const std::filesystem::path& path,
+                                 std::string_view, FileOffsetType offset, SafeInt<size_t> length) const override {
+      EXPECT_EQ(offset, 0);
+      candidate_path = path;
+      candidate_length = length;
+      return Status::OK();
+    }
+  } loader;
+
+  const ModelPath model_path{model_dir_ / "model.onnx"};
+  ASSERT_STATUS_OK(utils::RegisterExternalDataLoadCandidateFromTensorProto(
+      Env::Default(), model_path, MakeTensor(), loader));
+  EXPECT_EQ(loader.candidate_path, model_dir_ / "data.bin");
+  EXPECT_EQ(loader.candidate_length, contents_.size());
+}
+#endif
+
+TEST_F(ExternalDataFileTest, NativeLoaderReceivesTheOpenedFile) {
+  ExternalFileTestEnv env;
+  FileOnlyExternalLoader loader;
+  loader.before_read = [&]() {
+    std::error_code error;
+    const auto path = model_dir_ / "data.bin";
+    std::filesystem::rename(path, model_dir_ / "saved.bin", error);
+    ORT_RETURN_IF(error, "Cannot rename fixture file: ", error.message());
+    return Write(path, "replacement data");
+  };
+  std::array<uint8_t, 16> bytes{};
+  Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape{16}, bytes.data(),
+                OrtMemoryInfo(CPU, OrtDeviceAllocator));
+  // The PR merge build also supports the allocator-aware API introduced on main.
+  const auto load_tensor = [&](auto load) {
+    if constexpr (requires { load(env, model_dir_ / "model.onnx", MakeTensor(), loader, AllocatorPtr{}, tensor); }) {
+      return load(env, model_dir_ / "model.onnx", MakeTensor(), loader, AllocatorPtr{}, tensor);
+    } else {
+      return load(env, model_dir_ / "model.onnx", MakeTensor(), loader, tensor);
+    }
+  };
+  ASSERT_STATUS_OK(load_tensor(LoadExtDataToTensorFromTensorProto));
+  EXPECT_TRUE(loader.called);
+  EXPECT_EQ(env.opens, 1U);
+  EXPECT_EQ(env.reads, 1U);
+  EXPECT_EQ(std::string(bytes.begin(), bytes.end()), contents_);
+}
+
+}  // namespace
 #endif  // !defined(__wasm__)
 
 }  // namespace test

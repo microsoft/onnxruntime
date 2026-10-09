@@ -141,17 +141,16 @@ int ParseSpinDurationUs(std::string_view str, const char* config_key,
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Returns the virtual model path derived from the
-// kOrtSessionOptionsModelExternalInitializersFileFolderPath config option, or an empty
-// PathString when the option is not set. When set, external initializers are resolved
-// relative to this folder, overriding the model's own directory.
-PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_options) {
+// An explicit external-data folder has no model symlink whose target may extend the allowed directory.
+Status GetExternalInitializersFolderModelPath(const ConfigOptions& config_options, ModelPath& model_path) {
   const std::string external_data_folder_path = config_options.GetConfigOrDefault(
       kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
   if (external_data_folder_path.empty()) {
-    return PathString{};
+    model_path = ModelPath{};
+    return Status::OK();
   }
-  return ToPathString(external_data_folder_path + "/virtual_model.onnx");
+  return Env::Default().CaptureModelPath(
+      std::filesystem::path(ToPathString(external_data_folder_path)) / "virtual_model.onnx", model_path, false);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -866,7 +865,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
     : model_location_(model_uri),
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       environment_(session_env) {
-  auto status = Model::Load(model_location_, model_proto_);
+  auto status = Model::Load(model_location_, model_proto_, &parsed_model_path_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
   is_model_proto_parsed_ = true;
@@ -1253,10 +1252,12 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
 
     // When set, the external initializers folder overrides the model's own directory as the
     // base for resolving external data. The model bytes are still read from model_uri.
-    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    ModelPath external_data_model_path;
+    ORT_RETURN_IF_ERROR(
+        GetExternalInitializersFolderModelPath(session_options_.config_options, external_data_model_path));
     if (!external_data_model_path.empty()) {
-      model_location_ = external_data_model_path;
-      return onnxruntime::Model::Load(model_uri, model_location_, model,
+      model_location_ = external_data_model_path.native();
+      return onnxruntime::Model::Load(model_uri, external_data_model_path, model,
                                       HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                       *session_logger_, model_opts);
     }
@@ -1346,12 +1347,16 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
 
-    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    ModelPath external_data_model_path;
+    ORT_RETURN_IF_ERROR(
+        GetExternalInitializersFolderModelPath(session_options_.config_options, external_data_model_path));
+    ModelPath model_path{model_location_};
     if (!external_data_model_path.empty()) {
-      model_location_ = external_data_model_path;
+      model_location_ = external_data_model_path.native();
+      model_path = std::move(external_data_model_path);
     }
 
-    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
+    return onnxruntime::Model::Load(std::move(model_proto), model_path, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
   };
@@ -1410,13 +1415,17 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
 
-    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    ModelPath external_data_model_path;
+    ORT_RETURN_IF_ERROR(
+        GetExternalInitializersFolderModelPath(session_options_.config_options, external_data_model_path));
+    ModelPath model_path{model_location_};
     if (!external_data_model_path.empty()) {
-      model_location_ = external_data_model_path;
+      model_location_ = external_data_model_path.native();
+      model_path = std::move(external_data_model_path);
     }
 
     // This call will move model_proto to the constructed model instance
-    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
+    return onnxruntime::Model::Load(std::move(model_proto), model_path, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
   };
@@ -1452,12 +1461,16 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
 
-    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    ModelPath external_data_model_path;
+    ORT_RETURN_IF_ERROR(
+        GetExternalInitializersFolderModelPath(session_options_.config_options, external_data_model_path));
+    ModelPath model_path{model_location_};
     if (!external_data_model_path.empty()) {
-      model_location_ = external_data_model_path;
+      model_location_ = external_data_model_path.native();
+      model_path = std::move(external_data_model_path);
     }
 
-    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
+    return onnxruntime::Model::Load(std::move(model_proto), model_path, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_, model_opts);
   };
@@ -1485,13 +1498,17 @@ common::Status InferenceSession::Load() {
     const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
                                                 kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
-    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    ModelPath external_data_model_path;
+    ORT_RETURN_IF_ERROR(
+        GetExternalInitializersFolderModelPath(session_options_.config_options, external_data_model_path));
+    ModelPath model_path = parsed_model_path_;
     if (!external_data_model_path.empty()) {
-      model_location_ = external_data_model_path;
+      model_location_ = external_data_model_path.native();
+      model_path = std::move(external_data_model_path);
     }
 
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
-    return Model::Load(std::move(this->model_proto_), model_location_, model,
+    return Model::Load(std::move(this->model_proto_), model_path, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                        ModelOptions{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_});
   };
@@ -3220,7 +3237,10 @@ common::Status InferenceSession::Initialize() {
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+        session_state_->FinalizeSessionState(model_->ModelPath().GetExternalDataDirectories() != nullptr
+                                                 ? model_->ModelPath()
+                                                 : ModelPath{model_location_},
+                                             kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
@@ -4022,7 +4042,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #if !defined(ORT_MINIMAL_BUILD)
   if (IsNodeStatsCollectionEnabled() && retval.IsOK()) {
     // Dump node stats if the run was successful
-    node_stats_recorder_->DumpStats(session_state_->GetGraphViewer().ModelPath());
+    node_stats_recorder_->DumpStats(session_state_->GetGraphViewer().ModelPath().Path());
     node_stats_recorder_->ResetPerRunNameDeduper();
   }
 #endif

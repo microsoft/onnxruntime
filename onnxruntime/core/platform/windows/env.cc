@@ -417,16 +417,11 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
   }
 
   Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
-    ORT_RETURN_IF_NOT(offset >= 0, "RandomAccessFile::Map: offset < 0");
+    ORT_RETURN_IF_ERROR(ValidateRange(offset, length));
     if (length == 0) {
       mapped_memory = MappedMemoryPtr{};
       return Status::OK();
     }
-
-    uint64_t file_size = 0;
-    ORT_RETURN_IF_ERROR(GetLength(file_size));
-    const uint64_t requested_end = SafeInt<uint64_t>(offset) + length;
-    ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
 
     wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr, PAGE_READONLY, 0, 0, nullptr)};
     ORT_RETURN_IF(mapping.get() == nullptr,
@@ -448,8 +443,37 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
     mapped_memory = MappedMemoryPtr{
         reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
         MappedMemoryDeleter{mapped_base, mapped_length, [](void* base, size_t) noexcept {
-                              UnmapViewOfFile(base);
+                              UnmapFile(base);
                             }}};
+    return Status::OK();
+  }
+
+  Status CheckCanonicalPath(const std::filesystem::path& expected_path) const {
+    constexpr std::wstring_view nt_prefix{L"\\\\?\\GLOBALROOT"};
+    const bool use_nt_path = expected_path.native().compare(0, nt_prefix.size(), nt_prefix) == 0;
+    const DWORD flags = FILE_NAME_NORMALIZED | (use_nt_path ? VOLUME_NAME_NT : VOLUME_NAME_DOS);
+    std::wstring path(MAX_PATH, L'\0');
+    for (;;) {
+      const DWORD length = GetFinalPathNameByHandleW(file_handle_.get(), path.data(),
+                                                     static_cast<DWORD>(path.size()), flags);
+      if (length == 0) {
+        return FileError("GetFinalPathNameByHandleW", GetLastError());
+      }
+      if (length < path.size()) {
+        path.resize(length);
+        break;
+      }
+      path.resize(length);
+    }
+    if (use_nt_path) {
+      path.insert(0, nt_prefix);
+    } else if (path.compare(0, 8, L"\\\\?\\UNC\\") == 0) {
+      path.replace(0, 8, L"\\\\");
+    } else if (path.compare(0, 4, L"\\\\?\\") == 0) {
+      path.erase(0, 4);
+    }
+    ORT_RETURN_IF(std::filesystem::path(path) != expected_path,
+                  "File path changed while opening: ", ToUTF8String(expected_path.native()));
     return Status::OK();
   }
 
@@ -516,16 +540,17 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
   wil::unique_hfile file_handle_;
 };
 
-}  // namespace
-
-Status WindowsEnv::OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
-                                        std::unique_ptr<RandomAccessFile>& file) const {
+Status OpenWindowsFile(const ORTCHAR_T* file_path, bool canonical,
+                       std::unique_ptr<RandomAccessFile>& file) {
   if (file_path == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "OpenRandomAccessFile: file_path == nullptr");
   }
+  const std::filesystem::path path{file_path};
+  ORT_RETURN_IF(canonical && (!path.is_absolute() || path != path.lexically_normal()),
+                "Expected a normalized absolute file path.");
   CREATEFILE2_EXTENDED_PARAMETERS parameters{};
   parameters.dwSize = sizeof(parameters);
-  parameters.dwFileFlags = FILE_FLAG_OVERLAPPED;
+  parameters.dwFileFlags = FILE_FLAG_OVERLAPPED | (canonical ? FILE_FLAG_OPEN_REPARSE_POINT : 0);
   wil::unique_hfile file_handle{
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING, &parameters)};
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
@@ -545,9 +570,29 @@ Status WindowsEnv::OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
   if ((information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OpenRandomAccessFile: expected a regular file");
   }
-  file = std::make_unique<WindowsRandomAccessFile>(std::move(file_handle));
+  ORT_RETURN_IF(canonical && (information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0,
+                "Expected a resolved file path.");
+  auto opened_file = std::make_unique<WindowsRandomAccessFile>(std::move(file_handle));
+  if (canonical) {
+    ORT_RETURN_IF_ERROR(opened_file->CheckCanonicalPath(path));
+  }
+  file = std::move(opened_file);
   return Status::OK();
 }
+
+}  // namespace
+
+Status WindowsEnv::OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
+                                        std::unique_ptr<RandomAccessFile>& file) const {
+  return OpenWindowsFile(file_path, false, file);
+}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status WindowsEnv::OpenCanonicalFile(_In_z_ const ORTCHAR_T* file_path,
+                                     std::unique_ptr<RandomAccessFile>& file) const {
+  return OpenWindowsFile(file_path, true, file);
+}
+#endif
 
 Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                                       const gsl::span<char> buffer) const {
@@ -607,76 +652,14 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
     return Status::OK();
   }
 
-  wil::unique_hfile file_handle{
-      CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-  if (file_handle.get() == INVALID_HANDLE_VALUE) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "open file ", ToUTF8String(Basename(file_path)),
-                           " fail, errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
-  }
-
-  // Validate that the file is large enough for the requested mapping.
-  LARGE_INTEGER actual_size;
-  if (!GetFileSizeEx(file_handle.get(), &actual_size)) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "GetFileSizeEx ", ToUTF8String(Basename(file_path)),
-                           " fail, errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
-  }
-  const size_t requested_end = SafeInt<size_t>(offset) + length;
-  ORT_RETURN_IF(static_cast<ULONGLONG>(actual_size.QuadPart) < requested_end,
-                "File ", ToUTF8String(Basename(file_path)),
-                " is too small for the requested mapping (file size: ",
-                actual_size.QuadPart, " bytes, requested offset + length: ",
-                requested_end, " bytes).");
-
-  wil::unique_hfile file_mapping_handle{
-      CreateFileMappingW(file_handle.get(),
-                         nullptr,
-                         PAGE_READONLY,
-                         0,
-                         0,
-                         nullptr)};
-  if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "open file mapping ", ToUTF8String(Basename(file_path)),
-                           " fail, errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
-  }
-
-  SYSTEM_INFO sysinfo;
-  GetSystemInfo(&sysinfo);
-
-  static const DWORD allocation_granularity = sysinfo.dwAllocationGranularity;
-  const FileOffsetType offset_to_granularity = offset % static_cast<FileOffsetType>(allocation_granularity);
-  const SIZE_T mapped_length = SafeInt<SIZE_T>(offset_to_granularity) + length;
-  const FileOffsetType mapped_offset = offset - offset_to_granularity;
-  assert((mapped_offset % allocation_granularity) == 0);
-
-  void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
-                                          FILE_MAP_READ,
-                                          static_cast<DWORD>((mapped_offset >> 32) & 0xFFFFFFFF),
-                                          static_cast<DWORD>(mapped_offset & 0xFFFFFFFF),
-                                          mapped_length);
-
-  if (mapped_base == nullptr) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "MapViewOfFile ", ToUTF8String(Basename(file_path)),
-                           " fail, errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
-  }
-
-  mapped_memory =
-      MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
-                      [mapped_base](void*) {
-                        UnmapFile(mapped_base);
-                      }};
-
+  std::unique_ptr<RandomAccessFile> file;
+  ORT_RETURN_IF_ERROR(OpenRandomAccessFile(file_path, file));
+  RandomAccessFile::MappedMemoryPtr mapping;
+  ORT_RETURN_IF_ERROR(file->Map(offset, length, mapping));
+  const auto deleter = mapping.get_deleter();
+  MappedMemoryPtr result{mapping.get(), [deleter](void* p) { deleter(static_cast<char*>(p)); }};
+  mapping.release();
+  mapped_memory = std::move(result);
   return Status::OK();
 }
 

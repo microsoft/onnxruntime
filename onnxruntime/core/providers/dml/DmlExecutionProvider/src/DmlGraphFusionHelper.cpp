@@ -123,7 +123,8 @@ namespace DmlGraphFusionHelper
             std::basic_string<ORTCHAR_T> externalFilePath;
             onnxruntime::FileOffsetType fileOffset;
             SafeInt<size_t> safeTensorByteSize;
-            THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*initializer,  graph.ModelPath(), /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
+            THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(
+                *initializer, graph.ModelPath().parent_path(), externalFilePath, fileOffset, safeTensorByteSize));
             if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
             {
                 if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
@@ -215,7 +216,7 @@ namespace DmlGraphFusionHelper
         std::wstring modelName;
         if (graphSerializationEnabled)
         {
-            modelName = GetModelName(graph.ModelPath());
+            modelName = GetModelName(graph.ModelPath().Path());
         }
 
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
@@ -639,7 +640,7 @@ namespace DmlGraphFusionHelper
         if (graphSerializationEnabled)
         {
 
-          const std::wstring modelName = GetModelName(graph.ModelPath());
+          const std::wstring modelName = GetModelName(graph.ModelPath().Path());
           auto buffer = SerializeDmlGraph(graphDesc);
 
           const std::wstring partitionName =
@@ -757,7 +758,7 @@ namespace DmlGraphFusionHelper
             std::move(graphNodePropertyMap));
 
         // Owned copy: the closure registered below outlives this frame.
-        std::filesystem::path modelPath = graph.ModelPath();
+        onnxruntime::ModelPath modelPath = graph.ModelPath();
 
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph->GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph->GetMetaDef()->outputs;

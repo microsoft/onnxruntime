@@ -19,12 +19,14 @@ limitations under the License.
 #include <iosfwd>
 #include <functional>
 #include <memory>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <gsl/gsl>
 
 #include "core/common/common.h"
+#include "core/common/model_path.h"
 #include "core/common/path_string.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
@@ -108,6 +110,8 @@ std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors>);
 /// <returns>errno and the error message string if errno indicates an error.</returns>
 std::pair<int, std::string> GetErrnoInfo();
 
+using MappedMemoryPtr = std::unique_ptr<char[], std::function<void(void*)>>;
+
 /**
  * An owned open file supporting concurrent positional reads.
  *
@@ -141,9 +145,6 @@ class RandomAccessFile {
   // Return the canonical path of this open file handle.
   virtual common::Status GetCanonicalPath(PathString& path) const = 0;
 
-  // Map bytes from this open file without reopening its pathname.
-  virtual common::Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const = 0;
-
   /**
    * Fill buffer starting at offset without changing a shared file position.
    * Concurrent calls must use disjoint buffers. Returns only after all I/O has completed.
@@ -151,6 +152,25 @@ class RandomAccessFile {
    * An empty buffer succeeds for any nonnegative offset. On failure, buffer may be partially written.
    */
   virtual common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const = 0;
+
+  // Map this open file; the view can outlive the file. Leaves mapped_memory unchanged on failure.
+  virtual common::Status Map(FileOffsetType /*offset*/, size_t /*length*/,
+                             MappedMemoryPtr& /*mapped_memory*/) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This file does not support memory mapping.");
+  }
+
+  common::Status ValidateRange(FileOffsetType offset, size_t length) const {
+    ORT_RETURN_IF(offset < 0, "File offset must be nonnegative.");
+    ORT_RETURN_IF(static_cast<uintmax_t>(length) >
+                      static_cast<uintmax_t>(std::numeric_limits<FileOffsetType>::max() - offset),
+                  "File range is not representable.");
+    uint64_t file_length = 0;
+    ORT_RETURN_IF_ERROR(GetLength(file_length));
+    ORT_RETURN_IF(static_cast<uintmax_t>(offset) > file_length ||
+                      length > file_length - static_cast<uint64_t>(offset),
+                  "File range is out of bounds or cannot be read in full.");
+    return common::Status::OK();
+  }
 
  protected:
   RandomAccessFile() = default;
@@ -236,7 +256,7 @@ class Env {
   virtual common::Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                                             gsl::span<char> buffer) const = 0;
 
-  using MappedMemoryPtr = std::unique_ptr<char[], std::function<void(void*)>>;
+  using MappedMemoryPtr = onnxruntime::MappedMemoryPtr;
 
   /**
    * Maps the content of the file into memory.
@@ -347,6 +367,28 @@ class Env {
                                               std::unique_ptr<RandomAccessFile>& /*file*/) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This environment does not support random-access files.");
   }
+
+  /**
+   * Open an already resolved absolute pathname without following replacement links.
+   * The caller must validate the resolved path before calling this method. All reads and mappings must use
+   * the returned file, not reopen the pathname. Leaves file unchanged on failure.
+   */
+  virtual common::Status OpenCanonicalFile(const ORTCHAR_T* /*file_path*/,
+                                           std::unique_ptr<RandomAccessFile>& /*file*/) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This environment does not support canonical file opens.");
+  }
+
+  // WASM FILESYSTEM=0 builds must check this before issuing filesystem syscalls.
+  static bool HasFileSystem();
+
+  // Capture explicit caller-supplied external-data directories without retaining a model file.
+  common::Status CaptureModelPath(const std::filesystem::path& path, ModelPath& model_path,
+                                  bool allow_model_symlink = true) const;
+
+  // Bind the captured directories to the canonical file that will supply the model bytes.
+  // Both outputs remain unchanged on failure.
+  common::Status OpenModelFile(const std::filesystem::path& path, std::unique_ptr<RandomAccessFile>& file,
+                               ModelPath& model_path) const;
 
  protected:
   Env();

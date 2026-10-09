@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #include "core/common/const_pointer_container.h"
+#include "core/common/model_path.h"
 #include "core/framework/allocator.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensor.h"
@@ -40,7 +41,7 @@ using SaveTensorFunction = std::function<Status(const std::string& name, int idx
 using MemoryProfileFunction = std::function<void(ITensorAllocator& planner)>;
 
 common::Status SaveInitializedTensors(
-    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+    const Env& env, const ModelPath& graph_loc,
     const GraphViewer& graph, const AllocatorPtr& default_cpu_memory_info,
     const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,

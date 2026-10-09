@@ -1055,6 +1055,7 @@ class InferenceSession {
 
   // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
   ONNX_NAMESPACE::ModelProto model_proto_;
+  onnxruntime::ModelPath parsed_model_path_;
 
   // Flag indicating if ModelProto has been parsed in an applicable ctor
   bool is_model_proto_parsed_ = false;
