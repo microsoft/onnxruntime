@@ -3,6 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/quantization/gather_block_quantized_data_policy.h"
 
 using namespace onnxruntime::common;
 
@@ -393,7 +394,9 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
+Status RegisterCudaContribKernels(KernelRegistry& kernel_registry,
+                                  bool enable_host_pageable_gather) {
+  const ScopedHostPageableGatherRegistration registration_scope(enable_host_pageable_gather);
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample)>,

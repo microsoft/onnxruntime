@@ -20,6 +20,10 @@ class KernelDefBuilder;
 
 typedef std::map<size_t, OrtMemType> MemTypeMap;
 
+// Internal sentinel used for inputs that stay on an EP's default device at runtime but whose
+// constant initializer should be materialized on CPU for PrePack().
+constexpr OrtMemType kCpuInputForInitializer = static_cast<OrtMemType>(1);
+
 class KernelDef {
  private:
   // note that input/output might be on CPU implicitly when the node is from CPU execution provider
@@ -76,6 +80,10 @@ class KernelDef {
   }
 
   bool IsInputOnCpu(size_t input_index) const { return MemTypeOnCpuExplicitly(InputMemoryType(input_index)); }
+
+  bool IsInitializerInputOnCpu(size_t input_index) const {
+    return InputMemoryType(input_index) == kCpuInputForInitializer;
+  }
 
   bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
 
@@ -288,6 +296,15 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& InputMemoryType(OrtMemType type, int input_index) {
     kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
+    return *this;
+  }
+
+  /**
+     Keep runtime inputs on the EP's default device, but materialize a constant initializer
+     for this input on CPU so that PrePack() can retain or transform it there.
+  */
+  KernelDefBuilder& InputMemoryTypeForInitializer(int input_index) {
+    kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, kCpuInputForInitializer));
     return *this;
   }
 

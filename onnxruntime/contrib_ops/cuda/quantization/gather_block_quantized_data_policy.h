@@ -19,4 +19,24 @@ constexpr GatherBlockQuantizedDataPolicy SelectGatherBlockQuantizedDataPolicy(
              : GatherBlockQuantizedDataPolicy::DeviceCopy;
 }
 
+inline thread_local bool host_pageable_gather_registration_enabled = false;
+
+class ScopedHostPageableGatherRegistration final {
+ public:
+  explicit ScopedHostPageableGatherRegistration(bool enabled)
+      : previous_(host_pageable_gather_registration_enabled) {
+    host_pageable_gather_registration_enabled = enabled;
+  }
+
+  ~ScopedHostPageableGatherRegistration() {
+    host_pageable_gather_registration_enabled = previous_;
+  }
+
+  ScopedHostPageableGatherRegistration(const ScopedHostPageableGatherRegistration&) = delete;
+  ScopedHostPageableGatherRegistration& operator=(const ScopedHostPageableGatherRegistration&) = delete;
+
+ private:
+  bool previous_;
+};
+
 }  // namespace onnxruntime::contrib::cuda

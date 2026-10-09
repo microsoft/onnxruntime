@@ -156,6 +156,13 @@ struct KernelDefBuilder {
     return *this;
   }
 
+  /// Keep runtime inputs on the EP device while materializing constant initializers on CPU.
+  KernelDefBuilder& InputMemoryTypeForInitializer(int input_index) {
+    // Must match onnxruntime::kCpuInputForInitializer in the host runtime.
+    builder_.SetInputMemType(input_index, static_cast<OrtMemType>(1));
+    return *this;
+  }
+
   KernelDefBuilder& InputMemoryType(OrtMemType type, const std::vector<int>& input_indexes) {
     for (int input_index : input_indexes) {
       builder_.SetInputMemType(input_index, type);

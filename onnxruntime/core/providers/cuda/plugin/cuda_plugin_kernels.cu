@@ -14,6 +14,7 @@
 #include "cuda_plugin_kernels.h"
 #include "cuda_stream_plugin.h"
 #include "cuda_kernel_adapter.h"
+#include "contrib_ops/cuda/quantization/gather_block_quantized_data_policy.h"
 
 // Define the BuildKernelCreateInfo<void>() sentinel in onnxruntime::cuda.
 // This is normally defined in cuda_execution_provider.cc (excluded from plugin).
@@ -31,7 +32,7 @@ namespace cuda_plugin {
 
 OrtStatus* CreateCudaKernelRegistry(const OrtEpApi& /*ep_api*/,
                                     const char* /*ep_name*/,
-                                    void* /*create_kernel_state*/,
+                                    void* create_kernel_state,
                                     OrtKernelRegistry** out_registry) {
   *out_registry = nullptr;
 
@@ -39,6 +40,10 @@ OrtStatus* CreateCudaKernelRegistry(const OrtEpApi& /*ep_api*/,
 
   // adapter::KernelRegistry wraps OrtKernelRegistry via the Ort C++ API.
   ::onnxruntime::ep::adapter::KernelRegistry registry;
+  const bool enable_host_pageable_gather =
+      create_kernel_state != nullptr && *static_cast<const bool*>(create_kernel_state);
+  const ::onnxruntime::contrib::cuda::ScopedHostPageableGatherRegistration registration_scope(
+      enable_host_pageable_gather);
 
   // Iterate all self-registered BuildKernelCreateInfoFn pointers.
   auto entries = ::onnxruntime::cuda::PluginKernelCollector::Instance().Entries();

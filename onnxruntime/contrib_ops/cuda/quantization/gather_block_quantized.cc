@@ -12,13 +12,24 @@ namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
 
+template <typename T1>
+std::unique_ptr<KernelDefBuilder> CreateGatherBlockQuantizedKernelDefBuilder() {
+  auto builder = KernelDefBuilder::Create();
+  if constexpr (IsFp8QuantizedV<T1>) {
+    if (host_pageable_gather_registration_enabled) {
+      builder->InputMemoryTypeForInitializer(0);
+    }
+  }
+  return builder;
+}
+
 #define REGISTER_GATHERBLOCKQUANTIZED(T1, T2, Tind)                     \
   ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(                                  \
       GatherBlockQuantized,                                             \
       kMSDomain, 1,                                                     \
       T1, T2, Tind,                                                     \
       kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
+      (*CreateGatherBlockQuantizedKernelDefBuilder<T1>())               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())      \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())      \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()), \
@@ -163,9 +174,10 @@ Status GatherBlockQuantized<T1, T2, Tind>::PrePack(
                       "Direct host-pageable GatherBlockQuantized requires a CPU-resident initializer.");
     direct_host_data_ptr_ = tensor.Data<T1>();
     data_shape_.assign(tensor.Shape().GetDims().begin(), tensor.Shape().GetDims().end());
-  } else {
-    ORT_RETURN_IF_ERROR(CreateDeviceCopy(tensor, std::move(alloc)));
+    return Status::OK();
   }
+
+  ORT_RETURN_IF_ERROR(CreateDeviceCopy(tensor, std::move(alloc)));
   is_packed = true;
   if (prepacked_weights != nullptr) {
     prepacked_weights->has_kernel_owned_packed_weights_ = true;

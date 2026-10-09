@@ -68,6 +68,9 @@ CudaEpFactory::~CudaEpFactory() {
   if (kernel_registry_ != nullptr) {
     ep_api_.ReleaseKernelRegistry(kernel_registry_);
   }
+  if (host_pageable_gather_kernel_registry_ != nullptr) {
+    ep_api_.ReleaseKernelRegistry(host_pageable_gather_kernel_registry_);
+  }
 
   for (const auto& entry : runtime_discovered_hardware_devices_) {
     ep_api_.ReleaseHardwareDevice(entry.second);
@@ -80,14 +83,34 @@ OrtStatus* CudaEpFactory::GetKernelRegistryForEp(CudaEp& ep,
 
   std::lock_guard<std::mutex> lock(registry_mutex_);
 
-  if (kernel_registry_ == nullptr) {
+  bool enable_host_pageable_gather = false;
+  if (ep.GetConfig().enable_host_pageable_gather) {
+    int pageable_memory_access = 0;
+    int uses_host_page_tables = 0;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10020
+    const bool attributes_available =
+        cudaDeviceGetAttribute(&pageable_memory_access, cudaDevAttrPageableMemoryAccess,
+                               ep.GetConfig().device_id) == cudaSuccess &&
+        cudaDeviceGetAttribute(&uses_host_page_tables, cudaDevAttrPageableMemoryAccessUsesHostPageTables,
+                               ep.GetConfig().device_id) == cudaSuccess;
+    if (!attributes_available) {
+      cudaGetLastError();
+    }
+#endif
+    enable_host_pageable_gather = pageable_memory_access != 0 && uses_host_page_tables != 0;
+  }
+
+  OrtKernelRegistry*& kernel_registry =
+      enable_host_pageable_gather ? host_pageable_gather_kernel_registry_ : kernel_registry_;
+  if (kernel_registry == nullptr) {
     const char* ep_name = ep.GetEpName();
     // CreateCudaKernelRegistry dispatches between legacy/generated registrations
     // and adapter-mode registration path based on build configuration.
-    RETURN_IF_ERROR(CreateCudaKernelRegistry(ep_api_, ep_name, nullptr, &kernel_registry_));
+    RETURN_IF_ERROR(CreateCudaKernelRegistry(
+        ep_api_, ep_name, &enable_host_pageable_gather, &kernel_registry));
   }
 
-  *out_kernel_registry = kernel_registry_;
+  *out_kernel_registry = kernel_registry;
   return nullptr;
 }
 

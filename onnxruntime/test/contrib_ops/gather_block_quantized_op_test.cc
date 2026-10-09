@@ -1437,6 +1437,22 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
             GatherBlockQuantizedDataPolicy::DeviceCopy);
   EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, false),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
+
+  EXPECT_FALSE(contrib::cuda::host_pageable_gather_registration_enabled);
+  {
+    const contrib::cuda::ScopedHostPageableGatherRegistration registration_scope(true);
+    EXPECT_TRUE(contrib::cuda::host_pageable_gather_registration_enabled);
+  }
+  EXPECT_FALSE(contrib::cuda::host_pageable_gather_registration_enabled);
+
+  auto kernel_def = KernelDefBuilder()
+                        .SetName("InitializerOnCpu")
+                        .Provider(kCudaExecutionProvider)
+                        .SinceVersion(1)
+                        .InputMemoryTypeForInitializer(0)
+                        .Build();
+  EXPECT_TRUE(kernel_def->IsInitializerInputOnCpu(0));
+  EXPECT_FALSE(kernel_def->IsInputOnCpu(0));
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -1574,7 +1590,10 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
   OrtValue mapped_data_value;
   Tensor::InitOrtValue(std::move(mapped_tensor), mapped_data_value);
 
-  std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
+  std::unordered_map<std::string, int> domain_to_version = {
+      {onnxruntime::kMSDomain, 1},
+      {onnxruntime::kOnnxDomain, 13},
+  };
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   auto model = std::make_unique<Model>(
       "gather_block_quantized_cuda_graph", true, ModelMetaData(), PathString(),
@@ -1583,7 +1602,7 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
   auto& graph = model->MainGraph();
 
   std::vector<ONNX_NAMESPACE::TypeProto> tensor_types;
-  tensor_types.reserve(4);
+  tensor_types.reserve(5);
   auto add_tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
     tensor_types.emplace_back();
     auto* type = &tensor_types.back();
@@ -1603,6 +1622,8 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
       "scales", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {4, 1}));
   auto& output_arg = graph.GetOrCreateNodeArg(
       "output", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 2}));
+  auto& shared_output_arg = graph.GetOrCreateNodeArg(
+      "shared_output", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN, {2, 2}));
 
   ONNX_NAMESPACE::TensorProto data_initializer;
   data_initializer.set_name("data");
@@ -1622,6 +1643,12 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
                              {&data_arg, &indices_arg, &scales_arg}, {&output_arg},
                              &attributes, onnxruntime::kMSDomain);
   node.SetExecutionProviderType(cuda_ep_ptr->Type());
+  NodeAttributes gather_attributes = {
+      {"axis", utils::MakeAttribute("axis", int64_t{0})},
+  };
+  auto& shared_gather = graph.AddNode("shared_gather", "Gather", "CUDA consumer of the shared initializer",
+                                      {&data_arg, &indices_arg}, {&shared_output_arg}, &gather_attributes);
+  shared_gather.SetExecutionProviderType(cuda_ep_ptr->Type());
   ASSERT_STATUS_OK(graph.Resolve());
 
   std::string model_string;
@@ -1645,6 +1672,30 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
     ASSERT_NE(device_memory_info, nullptr);
     ASSERT_STATUS_OK(session.Load(model_stream));
     ASSERT_STATUS_OK(session.Initialize());
+
+    int data_index = -1;
+    const auto& session_state = session.GetSessionState();
+    ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx("data", data_index));
+    ASSERT_EQ(session_state.GetExecutionPlan()->allocation_plan[data_index].location.Type(),
+              OrtDevice::CPU);
+    const auto& initialized_data = session_state.GetInitializedTensors().at(data_index).Get<Tensor>();
+    ASSERT_EQ(initialized_data.Location().device.Type(), OrtDevice::CPU);
+    ASSERT_EQ(initialized_data.DataRaw(), mapped_memory.get());
+    const auto& transformed_graph = session_state.GetGraphViewer();
+    const Node* transformed_gather = nullptr;
+    const Node* transformed_shared_gather = nullptr;
+    for (const auto& transformed_node : transformed_graph.Nodes()) {
+      if (transformed_node.OpType() == "GatherBlockQuantized") {
+        transformed_gather = &transformed_node;
+      } else if (transformed_node.OpType() == "Gather") {
+        transformed_shared_gather = &transformed_node;
+      }
+    }
+    ASSERT_NE(transformed_gather, nullptr);
+    ASSERT_NE(transformed_shared_gather, nullptr);
+    EXPECT_EQ(transformed_gather->InputDefs()[0]->Name(), "data");
+    EXPECT_NE(transformed_shared_gather->InputDefs()[0]->Name(), "data");
+
     auto device_allocator = session.GetAllocator(*device_memory_info);
     ASSERT_NE(device_allocator, nullptr);
 
@@ -1684,7 +1735,6 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
       EXPECT_EQ(actual, std::vector<float>(expected.begin(), expected.end()));
     };
     verify_output({1.0f, 2.0f, 10.0f, 12.0f});
-    indices = {3, 1};
     indices = {3, 1};
     Tensor cpu_indices(DataTypeImpl::GetType<int64_t>(), TensorShape({2}), indices.data(), cpu_memory_info);
     ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(cpu_indices, *indices_value.GetMutable<Tensor>()));
