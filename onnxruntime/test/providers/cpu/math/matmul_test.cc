@@ -7,6 +7,8 @@
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -498,6 +500,50 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
 
 TEST(MathOpTest, MatMulZeroKDoubleType) {
   RunMatMulZeroKTest<double>();
+}
+
+template <typename T>
+void RunMatMulZeroKBroadcastCpuTest() {
+  Model model("zero_k_cpu_broadcast", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+  auto* a = builder.MakeInput<T>({2, 1, 3, 0}, std::vector<T>{});
+  auto* b = builder.MakeInput<T>({1, 4, 0, 5}, std::vector<T>{});
+  auto* y = builder.MakeOutput<T>(std::vector<int64_t>{2, 4, 3, 5});
+  builder.AddNode("MatMul", {a, b}, {y});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  const std::string bytes = model.ToProto().SerializeAsString();
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  const auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue output;
+  CreateMLValue<T>(allocator, {2, 4, 3, 5}, std::vector<T>(120, T{-99}), &output);
+  std::vector<OrtValue> outputs{output};
+  for (int run = 0; run < 2; ++run) {
+    // Poison every batch so untouched memory cannot appear correctly zeroed.
+    std::fill_n(output.GetMutable<Tensor>()->MutableData<T>(), 120, T{-99});
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &outputs));
+    const auto& tensor = outputs[0].Get<Tensor>();
+    ASSERT_EQ(tensor.Shape(), TensorShape({2, 4, 3, 5}));
+    ASSERT_EQ(tensor.DataRaw(), output.Get<Tensor>().DataRaw());
+    for (T value : tensor.DataAsSpan<T>()) {
+      EXPECT_EQ(value, T{}) << "run=" << run;
+    }
+  }
+}
+
+TEST(MathOpTest, MatMulZeroKBroadcastCpuFloat) {
+  RunMatMulZeroKBroadcastCpuTest<float>();
+}
+
+TEST(MathOpTest, MatMulZeroKBroadcastCpuDouble) {
+  RunMatMulZeroKBroadcastCpuTest<double>();
 }
 
 #if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
