@@ -41,7 +41,7 @@ else()
     FetchContent_Declare(
       nlohmann_json
       URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-      URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757f0f1b0b77571b1c626ade15f15d6f0b7b16d31
+      URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
     )
     FetchContent_MakeAvailable(nlohmann_json)
   endif()
@@ -52,8 +52,13 @@ endif()
 # ─────────────────────────────────────────────────────────────────────────────
 
 set(MODEL_PACKAGE_SOURCES
-  src/api.cc
-  src/parser.cc
+  src/asset_hasher.cc
+  src/authoring.cc
+  src/commit_prune.cc
+  src/manifest_parser.cc
+  src/model_package_impl.cc
+  src/path_resolver.cc
+  src/sha256.cc
 )
 
 if(MODEL_PACKAGE_BUILD_SHARED)
@@ -91,6 +96,45 @@ install(TARGETS model_package
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES include/model_package_api.h
+install(FILES include/model_package_api.h include/model_package.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+if(MODEL_PACKAGE_BUILD_TESTS)
+  enable_testing()
+  add_executable(test_inspection tests/test_inspection.cc)
+  target_link_libraries(test_inspection PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_inspection PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME inspection COMMAND test_inspection)
+
+  add_executable(test_asset_hashing tests/test_asset_hashing.cc)
+  target_link_libraries(test_asset_hashing PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_asset_hashing PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME asset_hashing COMMAND test_asset_hashing)
+
+  add_executable(test_authoring tests/test_authoring.cc)
+  target_link_libraries(test_authoring PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_authoring PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME authoring COMMAND test_authoring)
+
+  add_executable(test_commit tests/test_commit.cc)
+  target_link_libraries(test_commit PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_commit PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME commit COMMAND test_commit)
+endif()

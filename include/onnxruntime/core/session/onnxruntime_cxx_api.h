@@ -251,6 +251,19 @@ inline const OrtInteropApi& GetInteropApi() {
 }
 
 /// <summary>
+/// This returns a reference to the stable ORT Model Package API.
+/// </summary>
+/// <returns>ORT C Model Package API reference</returns>
+inline const OrtModelPackageApi& GetModelPackageApi() {
+  auto* api = GetApi().GetModelPackageApi();
+  if (api == nullptr) {
+    ORT_CXX_API_THROW("Model Package API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
+/// <summary>
 /// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
 /// </summary>
 /// <returns>ORT C EP API reference</returns>
@@ -658,6 +671,10 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageOptions, GetModelPackageApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageContext, GetModelPackageApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageComponentContext, GetModelPackageApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -786,10 +803,14 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
+struct EpContextConfig;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
 struct Model;
+struct ModelPackageOptions;
+struct ModelPackageContext;
+struct ModelPackageComponentContext;
 struct Node;
 struct ModelMetadata;
 struct TypeInfo;
@@ -1187,9 +1208,15 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
 
 /** \brief Validate a compiled model's compatibility for one or more EP devices.
  *
- * Throws on error. Returns the resulting compatibility status.
- * /// \param ep_devices The EP devices to check compatibility against.
- * /// \param compatibility_info The compatibility string from the precompiled model to validate.
+ * The EP interprets the ordered device configuration using the same selection, fallback, and participation rules as
+ * OrtEpFactory::CreateEp. If the model is subsequently loaded, pass the same devices in the same order to
+ * Ort::SessionOptions::AppendExecutionProvider_V2.
+ *
+ * Throws on error.
+ *
+ * \param ep_devices The non-empty, ordered EP device configuration to check.
+ * \param compatibility_info The opaque compatibility string from the precompiled model.
+ * \return The compatibility status for the intended EP device configuration.
  */
 OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
     const std::vector<ConstEpDevice>& ep_devices,
@@ -1477,8 +1504,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   ///
   /// The function attempts to load the adapter from the specified file
   /// \param adapter_path The path to the Lora adapter
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                        OrtAllocator* allocator);
 
@@ -1487,8 +1515,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// The function attempts to load the adapter from the specified byte array.
   /// \param bytes The byte array containing file LoraAdapter format
   /// \param num_bytes The number of bytes in the byte array
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
                                                 OrtAllocator* allocator);
 };
@@ -1662,6 +1691,11 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
+  /// Register or clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state);
+  /// Clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
+  SessionOptionsImpl& ClearEpContextDataReadFunc();
+
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
   SessionOptionsImpl& AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& external_initializer_file_names,
@@ -1737,6 +1771,24 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
+/** \brief Move-only owner for the EPContext callback configuration used by plugin EPs.
+ *
+ * Construct during OrtEpFactory::CreateEp from the provided session options, retain for the EP lifetime, and query
+ * the application callbacks from Compile. The wrapper owns the OrtEpContextConfig handle, not the application state.
+ */
+struct EpContextConfig : detail::Base<OrtEpContextConfig> {
+  using Base = detail::Base<OrtEpContextConfig>;
+  using Base::Base;
+
+  explicit EpContextConfig(std::nullptr_t) noexcept {}
+  explicit EpContextConfig(const SessionOptions& session_options);  ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
+  explicit EpContextConfig(ConstSessionOptions session_options);    ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
+
+  /// Wraps OrtEpApi::EpContextConfigGetEpContextDataReadFunc.
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
+  void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;  ///< Wraps OrtEpApi::EpContextConfigGetEpContextDataWriteFunc.
+};
+
 /** \brief Options object used when compiling a model.
  *
  * Wraps ::OrtModelCompilationOptions object and methods
@@ -1757,6 +1809,12 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                   size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+  ModelCompilationOptions& SetOutputModelExternalInitializersBuffer(const ORTCHAR_T* logical_file_name,
+                                                                    size_t initializer_size_threshold,
+                                                                    OrtAllocator* allocator,
+                                                                    void** output_buffer_ptr,
+                                                                    size_t* output_buffer_size_ptr);
+  ModelCompilationOptions& SetOutputModelExternalInitializersAlignment(size_t alignment, size_t minimum_size);
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc
   ModelCompilationOptions& SetOutputModelGetInitializerLocationFunc(
@@ -1769,13 +1827,17 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
 
+  /// Register or clear the external EPContext write callback. Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc.
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state = nullptr);
+
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
   ModelCompilationOptions& SetFlags(uint32_t flags);                                    ///< Wraps OrtApi::ModelCompilationOptions_SetFlags
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
 
-  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);       ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
@@ -1785,6 +1847,52 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
  * \return A Status indicating success or failure.
  */
 Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
+
+/** \brief Options used to select a component variant from a model package.
+ *
+ * The constructor captures execution provider configuration from session options.
+ */
+struct ModelPackageOptions : detail::Base<OrtModelPackageOptions> {
+  using Base = detail::Base<OrtModelPackageOptions>;
+  using Base::Base;
+
+  explicit ModelPackageOptions(std::nullptr_t) {}
+  ModelPackageOptions(const Env& env, const SessionOptions& session_options);
+  ModelPackageOptions(const Env& env, ConstSessionOptions session_options);
+};
+
+/** \brief Context used to inspect a model package and select one of its components. */
+struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
+  using Base = detail::Base<OrtModelPackageContext>;
+  using Base::Base;
+
+  explicit ModelPackageContext(std::nullptr_t) {}
+  explicit ModelPackageContext(const ORTCHAR_T* package_root);
+
+  int64_t GetSchemaVersion() const;
+  size_t GetComponentCount() const;
+  std::vector<std::string> GetComponentNames() const;
+  size_t GetVariantCount(const char* component_name) const;
+  std::vector<std::string> GetVariantNames(const char* component_name) const;
+  const char* GetVariantEpName(const char* component_name, const char* variant_name) const;
+  std::string ResolveStringRef(const char* base_dir, const char* input, bool must_exist) const;
+  ModelPackageComponentContext SelectComponent(const char* component_name,
+                                               const ModelPackageOptions& options) const;
+};
+
+/** \brief Context for a selected model package component and variant. */
+struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentContext> {
+  using Base = detail::Base<OrtModelPackageComponentContext>;
+  using Base::Base;
+
+  explicit ModelPackageComponentContext(std::nullptr_t) {}
+
+  std::string GetSelectedVariantName() const;
+  std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;
+  Session CreateSession(const Env& env);
+  Session CreateSession(const Env& env, const SessionOptions& session_options);
+  Session CreateSession(const Env& env, ConstSessionOptions session_options);
+};
 
 /** \brief Wrapper around ::OrtModelMetadata
  *
@@ -2064,7 +2172,12 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
   using B::B;
 
   ONNXTensorElementDataType GetElementType() const;  ///< Wraps OrtApi::GetTensorElementType
-  size_t GetElementCount() const;                    ///< Wraps OrtApi::GetTensorShapeElementCount
+
+  /// Wraps OrtApi::GetTensorShapeElementCount.
+  /// Returns the number of logical elements in the tensor (the product of its shape dimensions).
+  /// Use Ort::Value::GetTensorSizeInBytes() when sizing or bounds-checking the raw buffer returned
+  /// by GetTensorRawData()/GetTensorData\<T\>().
+  size_t GetElementCount() const;
 
   size_t GetDimensionsCount() const;  ///< Wraps OrtApi::GetDimensionsCount
 
@@ -2345,7 +2458,11 @@ struct ConstValueImpl : Base<T> {
   /// <summary>
   /// Returns the total size of the tensor data in bytes. Throws an exception if the OrtValue
   /// does not contain a tensor or if it contains a tensor that contains strings.
-  /// For numeric tensors, this is sizeof(element_type) * total_element_count.
+  /// For numeric tensors of a type that occupies at least one byte per element, this is
+  /// sizeof(element_type) * total_element_count. For packed sub-byte types (e.g. int4/uint4)
+  /// it is the actual packed storage size, which is smaller than the element count returned by
+  /// GetTensorTypeAndShapeInfo().GetElementCount(). Use this value (not the element count) when
+  /// copying or bounds-checking the raw buffer from GetTensorRawData()/GetTensorData\<T\>().
   /// </summary>
   /// <returns>The total size of the tensor data in bytes</returns>
   size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
@@ -3019,7 +3136,9 @@ struct KernelContext {
   // which can be compared to nullptr.
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  UnownedValue GetPreallocatedOutput(size_t index) const;
   void* GetGPUComputeStream() const;
+  OrtSyncStream* GetSyncStream() const;
   Logger GetLogger() const;
   Ort::Allocator GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }

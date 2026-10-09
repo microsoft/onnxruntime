@@ -1,10 +1,19 @@
 diff --git a/src/linux/processors.c b/src/linux/processors.c
-index 47bee76..d0c5569 100644
+index fd040a3..2ca8ec4 100644
 --- a/src/linux/processors.c
 +++ b/src/linux/processors.c
-@@ -2,0 +3 @@
+@@ -3,6 +3,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
 +#include <unistd.h>
-@@ -291,0 +293,22 @@
+ 
+ #if !defined(__ANDROID__)
+ /*
+@@ -289,6 +290,28 @@ static bool max_processor_number_parser(uint32_t processor_list_start, uint32_t
+ 	return true;
+ }
+ 
 +static uint32_t cpuinfo_linux_get_max_processor_from_sysconf(
 +	uint32_t max_processors_count,
 +	const char* processor_list_name) {
@@ -27,13 +36,31 @@ index 47bee76..d0c5569 100644
 +	return max_processor;
 +}
 +
-@@ -301 +324 @@
+ uint32_t cpuinfo_linux_get_max_possible_processor(uint32_t max_processors_count) {
+ 	uint32_t max_possible_processor = 0;
+ 	if (!cpuinfo_linux_parse_cpulist(
+@@ -298,7 +321,7 @@ uint32_t cpuinfo_linux_get_max_possible_processor(uint32_t max_processors_count)
+ #else
+ 		cpuinfo_log_warning("failed to parse the list of possible processors in %s", POSSIBLE_CPULIST_FILENAME);
+ #endif
 -		return UINT32_MAX;
 +		return cpuinfo_linux_get_max_processor_from_sysconf(max_processors_count, POSSIBLE_CPULIST_FILENAME);
-@@ -323 +346 @@
+ 	}
+ 	if (max_possible_processor >= max_processors_count) {
+ 		cpuinfo_log_warning(
+@@ -320,7 +343,7 @@ uint32_t cpuinfo_linux_get_max_present_processor(uint32_t max_processors_count)
+ #else
+ 		cpuinfo_log_warning("failed to parse the list of present processors in %s", PRESENT_CPULIST_FILENAME);
+ #endif
 -		return UINT32_MAX;
 +		return cpuinfo_linux_get_max_processor_from_sysconf(max_processors_count, PRESENT_CPULIST_FILENAME);
-@@ -357,0 +381,31 @@
+ 	}
+ 	if (max_present_processor >= max_processors_count) {
+ 		cpuinfo_log_warning(
+@@ -355,6 +378,37 @@ static bool detect_processor_parser(uint32_t processor_list_start, uint32_t proc
+ 	return true;
+ }
+ 
 +static bool cpuinfo_linux_detect_processors_from_sysconf(
 +	uint32_t max_processors_count,
 +	uint32_t* processor0_flags,
@@ -65,7 +92,13 @@ index 47bee76..d0c5569 100644
 +	return true;
 +}
 +
-@@ -373 +427,6 @@
+ bool cpuinfo_linux_detect_possible_processors(
+ 	uint32_t max_processors_count,
+ 	uint32_t* processor0_flags,
+@@ -370,7 +424,12 @@ bool cpuinfo_linux_detect_possible_processors(
+ 		return true;
+ 	} else {
+ 		cpuinfo_log_warning("failed to parse the list of possible processors in %s", POSSIBLE_CPULIST_FILENAME);
 -		return false;
 +		return cpuinfo_linux_detect_processors_from_sysconf(
 +			max_processors_count,
@@ -73,7 +106,13 @@ index 47bee76..d0c5569 100644
 +			processor_struct_size,
 +			possible_flag,
 +			POSSIBLE_CPULIST_FILENAME);
-@@ -392 +451,6 @@
+ 	}
+ }
+ 
+@@ -389,7 +448,12 @@ bool cpuinfo_linux_detect_present_processors(
+ 		return true;
+ 	} else {
+ 		cpuinfo_log_warning("failed to parse the list of present processors in %s", PRESENT_CPULIST_FILENAME);
 -		return false;
 +		return cpuinfo_linux_detect_processors_from_sysconf(
 +			max_processors_count,
@@ -81,3 +120,6 @@ index 47bee76..d0c5569 100644
 +			processor_struct_size,
 +			present_flag,
 +			PRESENT_CPULIST_FILENAME);
+ 	}
+ }
+ 

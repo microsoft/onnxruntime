@@ -1,0 +1,6 @@
+// This file should NOT be included because all #include directives
+// referencing it are inside comments
+
+fn utility_function() -> f32 {
+    return 42.0;
+}

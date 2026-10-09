@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Forward declarations of instantiated kernels from H64, H128, and H256 namespaces
+// Forward declarations of instantiated kernels from H64, H128, H256, and H512 namespaces
 namespace H64 {
 template <typename T>
 Status LaunchXQAKernelImpl(
@@ -24,9 +24,12 @@ Status LaunchXQAKernelImpl(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
-    const float* kv_cache_scale,
+    const float* attention_sinks,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
     const XqaQuantType kv_quant_type,
     void* workspace,
     size_t workspace_size);
@@ -47,9 +50,12 @@ Status LaunchXQAKernelImpl(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
-    const float* kv_cache_scale,
+    const float* attention_sinks,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
     const XqaQuantType kv_quant_type,
     void* workspace,
     size_t workspace_size);
@@ -70,13 +76,40 @@ Status LaunchXQAKernelImpl(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
-    const float* kv_cache_scale,
+    const float* attention_sinks,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
     const XqaQuantType kv_quant_type,
     void* workspace,
     size_t workspace_size);
 }  // namespace H256
+
+namespace H512 {
+template <typename T>
+Status LaunchXQAKernelImpl(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    const void* query,
+    const void* key_cache,
+    const void* value_cache,
+    void* output,
+    const int batch_size,
+    const int num_heads,
+    const int kv_num_heads,
+    const int head_size,
+    const int max_seq_len,
+    const float scale,
+    const int local_window_size,
+    const bool is_bsnh,
+    const int* past_seq_lens,
+    const float* attention_sinks,
+    const XqaQuantType kv_quant_type,
+    void* workspace,
+    size_t workspace_size);
+}  // namespace H512
 
 // Forward declaration for INT8 BF16 dispatcher
 Status LaunchXQAInt8KernelBF16(
@@ -92,9 +125,12 @@ Status LaunchXQAInt8KernelBF16(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
-    const float* kv_cache_scale,
+    const float* attention_sinks,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
     void* workspace,
     size_t workspace_size);
 
@@ -116,32 +152,42 @@ Status LaunchXQAKernel<__nv_bfloat16>(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
-    const float* kv_cache_scale,
+    const float* attention_sinks,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
     const XqaQuantType kv_quant_type,
     void* workspace,
     size_t workspace_size) {
-  // Dispatch to INT8 path if requested
+  // Dispatch to INT8 path if requested. Attention sinks (smooth softmax) are supported: the sink
+  // term is folded into the softmax row sum, and the KV dequant scale is already applied to the QK
+  // scores before the row max/sum are computed, so both are in the same dequantized domain.
   if (kv_quant_type == XqaQuantType::kInt8) {
-    return LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
+    return LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size);
   }
 
   // Dispatch based on head_size
-  if (head_size == 256) {
+  // H512 shares its split-KV implementation with FP16; only cache loads and output conversion differ.
+  if (head_size == 512) {
+    return H512::LaunchXQAKernelImpl<__nv_bfloat16>(
+        device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size,
+        max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, attention_sinks, kv_quant_type, workspace, workspace_size);
+  } else if (head_size == 256) {
     return H256::LaunchXQAKernelImpl<__nv_bfloat16>(
         device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size,
-        max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, kv_quant_type, workspace, workspace_size);
+        max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, kv_quant_type, workspace, workspace_size);
   } else if (head_size == 128) {
     return H128::LaunchXQAKernelImpl<__nv_bfloat16>(
         device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size,
-        max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, kv_quant_type, workspace, workspace_size);
+        max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, kv_quant_type, workspace, workspace_size);
   } else if (head_size == 64) {
     return H64::LaunchXQAKernelImpl<__nv_bfloat16>(
         device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size,
-        max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, kv_quant_type, workspace, workspace_size);
+        max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, attention_sinks, k_cache_scale, v_cache_scale, kv_quant_type, workspace, workspace_size);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA only supports head_size=64, 128, or 256. Input has ", head_size);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA only supports head_size=64, 128, 256, or 512. Input has ", head_size);
   }
 }
 

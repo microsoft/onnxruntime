@@ -199,7 +199,11 @@ struct AttentionKernel {
     int32_t* seqstart_k_ptr = nullptr;
 
     int32_t* seqlen_k_ptr = nullptr;
-    uint32_t causal_diagonal_offset = 0;
+    // Signed: CausalFromBottomRight sets this to (num_keys - num_queries), which is NEGATIVE in the
+    // external-KV-cache regime where nonpad_kv_seqlen < q_sequence_length (onnx#8068 / ORT #28904).
+    // A uint32_t here wraps the negative value to ~4.29e9 and breaks the causal-mask guard below
+    // (see the signed comparison at the "Mask out last if causal" block), so it MUST stay int32_t.
+    int32_t causal_diagonal_offset = 0;
 
     // Output tensors
     output_t* output_ptr = nullptr;  // [num_queries, num_heads, head_dim_value]
@@ -344,7 +348,11 @@ struct AttentionKernel {
       }
 
       // Custom masking
-      if (custom_mask_type == CausalFromBottomRight) {
+      if (custom_mask_type == CausalFromBottomRight ||
+          (custom_mask_type == NoCustomMask && window_size > 0)) {
+        // A non-causal left window uses the same bottom-right query positions, without an upper mask.
+        // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
+        // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
         causal_diagonal_offset = num_keys - num_queries;
       }
       // We use num_keys_absolute to index into the rng_state
@@ -368,7 +376,8 @@ struct AttentionKernel {
       // 15/16th of tensor core compute In that case :
       //  - we only launch kernels for head_id % kQueriesPerBlock == 0
       //  - we iterate over heads instead of queries (strideM = strideH)
-      if (num_queries == 1 && k_strideH == 0 && v_strideH == 0) {
+      // A local window must not treat these head rows as different query positions.
+      if (num_queries == 1 && k_strideH == 0 && v_strideH == 0 && window_size <= 0) {
         if (head_id % kQueriesPerBlock != 0)
           return false;
         q_strideM = q_strideH;
@@ -678,12 +687,6 @@ struct AttentionKernel {
     XFORMERS_CHECK(
         p.custom_mask_type < NumCustomMaskTypes,
         "invalid value for `custom_mask_type`");
-    if (p.window_size > 0) {
-      XFORMERS_CHECK(
-          p.custom_mask_type == CausalFromTopLeft ||
-              p.custom_mask_type == CausalFromBottomRight,
-          "invalid value for custom_mask_type");
-    }
     return true;
   }
 
@@ -910,9 +913,14 @@ struct AttentionKernel {
       // first masked element is x = y + offset -> query_start + offset There is
       // intersection (and we need to mask) if min(iter_key_start +
       // kKeysPerBlock, num_keys)) >= query_start + offset
+      // NOTE: query_start is uint32_t and causal_diagonal_offset can be negative
+      // (CausalFromBottomRight with num_keys < num_queries, onnx#8068 / ORT #28904). Cast query_start
+      // to int32_t so this comparison is performed in signed arithmetic; otherwise the RHS wraps
+      // to ~4.29e9, the guard is always false, and the per-element causal mask is skipped
+      // entirely (boundary query rows then attend one extra key).
       if (p.custom_mask_type &&
           cutlass::fast_min(iter_key_start + kKeysPerBlock, p.num_keys) >=
-              (query_start + p.causal_diagonal_offset)) {
+              (static_cast<int32_t>(query_start) + p.causal_diagonal_offset)) {
         auto query_start = blockIdx.x * kQueriesPerBlock;
         auto lane_offset = MM0::AccumLambdaIterator::get_lane_offset(
             my_lane_id, my_warp_id, iteratorC_tile_offset);
@@ -942,8 +950,14 @@ struct AttentionKernel {
       // query_start + kQueriesPerBlock - window_size mask if x_fist >
       // x_lowerleft
 
+      // Mirrors the signed-comparison hardening of the "Mask out last if causal" guard above
+      // (onnx#8068 / ORT #28904): query_start is uint32_t, so cast it to int32_t to keep this
+      // relational comparison in signed arithmetic. Dormant today (window_size > 0 never co-occurs
+      // with a negative causal_diagonal_offset — opset-24 Attention hard-codes window=-1, GQA/Paged
+      // keep offset >= 0), but this prevents an unsigned-wrap landmine if a future sliding-window /
+      // KV-trimming caller combines window_size > 0 with a negative offset.
       if (p.window_size > 0 &&
-          (query_start + p.causal_diagonal_offset +
+          (static_cast<int32_t>(query_start) + p.causal_diagonal_offset +
                cutlass::fast_min(
                    static_cast<int32_t>(kQueriesPerBlock), static_cast<int32_t>(p.num_queries)) -
                p.window_size >=

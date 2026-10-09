@@ -279,7 +279,8 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
         rmax = +absmax
 
     assert qmin <= qmax, f"qmin={rmin} > qmax={rmax}"
-    dr = numpy.array(rmax - rmin, dtype=numpy.float64)
+    # Promote before subtraction: a finite input range can overflow its original dtype.
+    dr = numpy.array(rmax, dtype=numpy.float64) - numpy.array(rmin, dtype=numpy.float64)
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
     scale = numpy.array(dr / dq)
     assert scale >= 0, "scale issue"
@@ -378,7 +379,7 @@ def compute_scale_zp_float8(element_type, std):
             from ml_dtypes import float8_e4m3fn  # noqa: PLC0415
 
             zp_dtype = float8_e4m3fn
-            all_values = [float(i) for i in range(256)]
+            all_values = numpy.arange(256, dtype=numpy.uint8).view(float8_e4m3fn).astype(numpy.float32)
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
             )

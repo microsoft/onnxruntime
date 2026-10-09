@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -11,6 +12,8 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/telemetry_strings.h"
+#include "core/platform/telemetry_redaction.h"
 #ifdef _WIN32
 #include <Windows.h>
 #include <winmeta.h>
@@ -23,6 +26,9 @@ namespace onnxruntime {
 
 /**
 Class for managing lookup of the execution providers in a session.
+
+Add() must not run concurrently with accessors or iteration, except for
+GetProviderOptionsSnapshot(), which is explicitly synchronized for ETW capture-state callbacks.
 */
 class ExecutionProviders {
  public:
@@ -48,14 +54,8 @@ class ExecutionProviders {
           // Check if this callback is for capturing state
           if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
               ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
-            for (size_t i = 0; i < exec_providers_.size(); ++i) {
-              const auto& provider_id = exec_provider_ids_[i];
-
-              auto it = exec_provider_options_.find(provider_id);
-              if (it != exec_provider_options_.end()) {
-                const auto& options = it->second;
-                LogProviderOptions(provider_id, options, true);
-              }
+            for (const auto& [provider_id, options] : GetProviderOptionsSnapshot()) {
+              LogProviderOptions(provider_id, options, true);
             }
           }
         });
@@ -71,28 +71,58 @@ class ExecutionProviders {
 
   common::Status
   Add(const std::string& provider_id, const std::shared_ptr<IExecutionProvider>& p_exec_provider) {
-    // make sure there are no issues before we change any internal data structures
-    if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
-      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
+    // A null provider would crash later when we dereference it (e.g. GetProviderOptions()).
+    // Fail with a clear error instead so the caller can diagnose the missing provider.
+    if (p_exec_provider == nullptr) {
+      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " is null and cannot be registered.");
       LOGS_DEFAULT(ERROR) << status.ErrorMessage();
       return status;
     }
 
-    // index that provider will have after insertion
-    auto new_provider_idx = exec_providers_.size();
+    const auto check_provider_not_registered = [&]() -> common::Status {
+      if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
+      }
 
-    ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+      return Status::OK();
+    };
 
-    // update execution provider options
-    auto providerOptions = p_exec_provider->GetProviderOptions();
-    exec_provider_options_[provider_id] = providerOptions;
+    common::Status duplicate_status;
+    {
+      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+      duplicate_status = check_provider_not_registered();
+    }
+    if (!duplicate_status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << duplicate_status.ErrorMessage();
+      return duplicate_status;
+    }
+
+    ProviderOptions providerOptions = p_exec_provider->GetProviderOptions();
+
+    {
+      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+      // make sure there are no issues before we change any internal data structures
+      duplicate_status = check_provider_not_registered();
+      if (duplicate_status.IsOK()) {
+        // index that provider will have after insertion
+        auto new_provider_idx = exec_providers_.size();
+
+        ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+
+        // update execution provider options
+        exec_provider_options_[provider_id] = providerOptions;
+        exec_provider_ids_.push_back(provider_id);
+        exec_providers_.push_back(p_exec_provider);
+      }
+    }
+    if (!duplicate_status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << duplicate_status.ErrorMessage();
+      return duplicate_status;
+    }
 
 #ifdef _WIN32
     LogProviderOptions(provider_id, providerOptions, false);
 #endif
-
-    exec_provider_ids_.push_back(provider_id);
-    exec_providers_.push_back(p_exec_provider);
     return Status::OK();
   }
 
@@ -129,6 +159,22 @@ class ExecutionProviders {
   const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
   const ProviderOptionsMap& GetAllProviderOptions() const { return exec_provider_options_; }
 
+  using ProviderOptionsSnapshot = std::vector<std::pair<std::string, ProviderOptions>>;
+
+  ProviderOptionsSnapshot GetProviderOptionsSnapshot() const {
+    std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+    ProviderOptionsSnapshot provider_options_snapshot;
+    provider_options_snapshot.reserve(exec_provider_ids_.size());
+    for (const auto& provider_id : exec_provider_ids_) {
+      auto it = exec_provider_options_.find(provider_id);
+      if (it != exec_provider_options_.end()) {
+        provider_options_snapshot.emplace_back(provider_id, it->second);
+      }
+    }
+
+    return provider_options_snapshot;
+  }
+
   bool GetCpuProviderWasImplicitlyAdded() const { return cpu_execution_provider_was_implicitly_added_; }
 
   void SetCpuProviderWasImplicitlyAdded(bool cpu_execution_provider_was_implicitly_added) {
@@ -140,17 +186,16 @@ class ExecutionProviders {
   // with a container that has unique_ptr or something move-only.
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
 
+  // Synchronizes provider registration with ETW capture-state snapshots.
+  mutable std::mutex exec_providers_mutex_;
+
   void LogProviderOptions(const std::string& provider_id, const ProviderOptions& options, bool capture_state) {
     const Env& env = Env::Default();
     // Convert ProviderOptions to string for telemetry logging
-    std::string provider_options_str;
-    for (const auto& config_pair : options) {
-      if (!provider_options_str.empty()) {
-        provider_options_str += ",";
-      }
-      provider_options_str += config_pair.first + ":" + config_pair.second;
-    }
-    env.GetTelemetryProvider().LogProviderOptions(provider_id, provider_options_str, capture_state);
+    bool truncated = false;
+    const auto provider_options_str = telemetry_detail::FormatTelemetryMap(options, ",", ":", &truncated);
+    env.GetTelemetryProvider().LogProviderOptions(
+        provider_id, ScrubStringForTelemetry(provider_options_str, truncated), capture_state);
   }
 
   std::vector<std::shared_ptr<IExecutionProvider>> exec_providers_;

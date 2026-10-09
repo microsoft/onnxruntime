@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <functional>
 #include <iostream>
 #include <set>
+#include <array>
 
 #include "core/common/common.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -102,13 +104,13 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
   constexpr int64_t NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   const char* keys_arr[NUM_KV_PAIRS] = {"abc", "def", "ghi", "jkl"};
-  std::vector<std::string> keys{keys_arr, keys_arr + NUM_KV_PAIRS};
-  std::vector<int64_t> dims = {NUM_KV_PAIRS};
-  std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
+  std::array<int64_t, 1> dims = {NUM_KV_PAIRS};
+  std::array<float, NUM_KV_PAIRS> values{3.0f, 1.0f, 2.f, 0.f};
   for (size_t i = 0; i < N; ++i) {
     // create key tensor
-    Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(std::string),
-                                                      dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    Ort::Value keys_tensor = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), dims.data(), dims.size(),
+                                                      ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    keys_tensor.FillStringTensor(keys_arr, NUM_KV_PAIRS);
     // create value tensor
     Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float),
                                                         dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
@@ -147,7 +149,7 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
       std::string stemp(s + start, count);
       keys_ret.insert(stemp);
     }
-    ASSERT_EQ(keys_ret, std::set<std::string>(std::begin(keys), std::end(keys)));
+    ASSERT_EQ(keys_ret, std::set<std::string>(std::begin(keys_arr), std::end(keys_arr)));
 
     // second fetch the values
     Ort::Value values_ort = map_out.GetValue(1, default_allocator.get());
@@ -275,6 +277,52 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
     }
   }
   ASSERT_EQ(string_set, std::set<std::string>(std::begin(string_input_data), std::end(string_input_data)));
+}
+
+// Test - GetValue() on a sequence of packed sub-byte tensors
+// (int4/uint4) must copy only the packed storage bytes.
+TEST(CApiTest, CreateGetSeqSubByteTensors) {
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  auto run_for_type = [&](ONNXTensorElementDataType elem_type, std::array<uint8_t, 4> packed) {
+    const std::vector<int64_t> dims{7};  // 7 4-bit elements -> 4 packed bytes
+    constexpr int N = 2;
+
+    std::vector<Ort::Value> in;
+    for (int i = 0; i < N; ++i) {
+      Ort::Value tensor = Ort::Value::CreateTensor(info, packed.data(), packed.size(),
+                                                   dims.data(), dims.size(), elem_type);
+      in.push_back(std::move(tensor));
+    }
+
+    Ort::Value seq_ort = Ort::Value::CreateSequence(in);
+
+    for (int idx = 0; idx < N; ++idx) {
+      Ort::Value out = seq_ort.GetValue(idx, default_allocator.get());
+
+      auto type_info = out.GetTypeInfo();
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      ASSERT_EQ(tensor_info.GetElementType(), elem_type);
+      ASSERT_EQ(tensor_info.GetShape(), dims);
+
+      // `out` is a fresh tensor that GetValue() allocated and copied into, so its data is a
+      // distinct buffer from the input `packed` bytes (the input tensors alias `packed`).
+      // Comparing them therefore validates the copy rather than reading the same memory twice.
+      const size_t out_bytes = out.GetTensorSizeInBytes();
+      ASSERT_EQ(out_bytes, packed.size());
+      const auto* ret = static_cast<const uint8_t*>(out.GetTensorRawData());
+      ASSERT_NE(static_cast<const void*>(ret), static_cast<const void*>(packed.data()));
+      for (size_t i = 0; i < out_bytes; ++i) {
+        ASSERT_EQ(ret[i], packed[i]);
+      }
+    }
+  };
+
+  // {0, 1, 2, 3, -8, 7, 6, pad_0}
+  run_for_type(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, {0x10, 0x32, 0x78, 0x06});
+  // {0, 1, 2, 3, 4, 5, 15, pad_0}
+  run_for_type(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, {0x10, 0x32, 0x54, 0x0F});
 }
 
 TEST(CApiTest, TypeInfoSequence) {

@@ -1,0 +1,13 @@
+
+
+const MAX_VALUE: f32 = 100.0;
+const SCALE_FACTOR: f32 = 1.5;
+
+
+fn normalize_value(value: f32) -> f32 {
+    return clamp(value / MAX_VALUE, 0.0, 1.0);
+}
+
+fn multiply_vec3(v: vec3<f32>, factor: f32) -> vec3<f32> {
+    return v * factor * SCALE_FACTOR;
+}

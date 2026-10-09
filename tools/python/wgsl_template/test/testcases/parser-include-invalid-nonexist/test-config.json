@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser behavior when trying to include files that do not exist",
+  "expectsError": "File \"this-file-does-not-exist.wgsl.template\" not found"
+}

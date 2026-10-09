@@ -8,8 +8,28 @@ For more information about plugin EPs, see the documentation
 
 ## Contents
 
-- [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) - Minimum compatible ONNX Runtime version for the Python package.
+- [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) - Minimum compatible core `onnxruntime` version. Single source
+  of truth shared by all packages built from this directory. The packages do not declare a hard dependency on a
+  specific ONNX Runtime package; instead, this version string is injected into each package's README at build/pack
+  time, and the native plugin EP code validates compatibility at registration time.
+- [`paths.txt`](paths.txt) - Specifies directories and paths related to the CUDA EP. These paths are used to filter the
+  commits considered when identifying changes between releases, e.g., for generating release notes.
 - [`python/`](python/) - Sources and build script for the `onnxruntime-ep-cuda12`/`onnxruntime-ep-cuda13` Python wheels.
+- [`csharp/`](csharp/) - Sources and packaging script for the per-RID
+  `Microsoft.ML.OnnxRuntime.EP.Cuda{12,13}.<rid>` NuGet packages.
+
+## Contrib operator compatibility
+
+`MIN_ONNXRUNTIME_VERSION` defines the minimum supported ONNX Runtime core version, but it does not by itself guarantee
+compatibility when contributed operators are involved. ONNX Runtime core and a plugin EP can be built from different
+revisions, and a contributed operator such as `GroupQueryAttention` may gain an input, output, attribute, or supported
+type without a change to its historical schema version. In that case, core may fuse or validate a node using one
+operator contract and dispatch it to a plugin kernel compiled against another, potentially causing incorrect execution
+or a crash.
+
+When a plugin EP implements contributed operators, it must be built against the same contributed-operator schemas used
+by ONNX Runtime core. Building core and the plugin EP from the same ONNX Runtime revision is the recommended way to
+ensure that alignment.
 
 ## Usage
 

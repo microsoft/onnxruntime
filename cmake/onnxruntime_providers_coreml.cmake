@@ -13,9 +13,9 @@ add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
 if(LINUX)
   find_library(LibUUID_LIBRARY NAMES uuid)
   find_path(LibUUID_INCLUDE_DIR NAMES uuid/uuid.h)
-  if (NOT LibUUID_INCLUDE_DIR)
-    message(FATAL "uuid/uuid.h was not found as is required for ML Program support. "
-                    "Run `sudo apt install uuid-dev` if you need to test ML Program related CoreML EP code. ")
+  if (NOT LibUUID_INCLUDE_DIR OR NOT LibUUID_LIBRARY)
+    message(FATAL_ERROR "libuuid (uuid/uuid.h) was not found and is required for ML Program support. "
+                        "Run `sudo apt install uuid-dev`, or build with `--use_vcpkg` so the libuuid port is used. ")
   endif()
 endif()
 
@@ -26,7 +26,7 @@ file(GLOB coreml_proto_srcs "${COREML_PROTO_ROOT}/*.proto")
 onnxruntime_add_static_library(coreml_proto ${coreml_proto_srcs})
 target_include_directories(coreml_proto
                            PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES>
-                           "${CMAKE_CURRENT_BINARY_DIR}")
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 target_compile_definitions(coreml_proto
                            PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
 set_target_properties(coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
@@ -42,6 +42,7 @@ onnxruntime_protobuf_generate(
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(TARGETS coreml_proto
+          EXPORT ${PROJECT_NAME}Targets
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -193,7 +194,8 @@ target_include_directories(onnxruntime_providers_coreml PRIVATE
 )
 
 if (LINUX)
-  target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
+  target_include_directories(onnxruntime_providers_coreml PRIVATE ${LibUUID_INCLUDE_DIR})
+  target_link_libraries(onnxruntime_providers_coreml PRIVATE ${LibUUID_LIBRARY})
 endif()
 
 

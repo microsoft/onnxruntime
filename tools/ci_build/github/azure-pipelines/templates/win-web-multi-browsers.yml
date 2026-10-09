@@ -12,8 +12,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
-    submodules: false
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'
@@ -32,9 +32,9 @@ jobs:
      git submodule update --init -- cmake\external\onnx
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodule onnx'
-  - task: NodeTool@0
+  - task: UseNode@1
     inputs:
-      versionSpec: '22.x'
+      version: '24.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: 'Release_*/**/*'

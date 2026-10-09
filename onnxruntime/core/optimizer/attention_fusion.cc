@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
 #include "core/graph/graph_utils.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
@@ -9,6 +10,7 @@
 #include "core/optimizer/utils.h"
 #include "core/optimizer/attention_fusion_helper.h"
 #include <cmath>
+#include <limits>
 #include <optional>
 
 namespace onnxruntime {
@@ -142,13 +144,8 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
   num_heads = reshape_dims[3];
   head_size = reshape_dims[4];
 
-  try {
-    hidden_size = SafeInt<int64_t>(num_heads) * head_size;
-  } catch (const OnnxRuntimeException&) {
-    return false;
-  }
-
-  return hidden_size > 0;
+  return SafeMultiply(num_heads, head_size, hidden_size) && hidden_size > 0 &&
+         hidden_size <= std::numeric_limits<int64_t>::max() / 3;
 }
 
 static std::optional<ONNX_NAMESPACE::TypeProto> TryCreateMobileClipMhaOutputType(const NodeArg& qkv_output,
@@ -349,7 +346,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
 
   const Node* sequence_transpose = graph_utils::GetInputNode(qkv_matmul, 0);
   if (sequence_transpose == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*sequence_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*sequence_transpose, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain) ||
       !HasExpectedPerm(*sequence_transpose, {0, 2, 1}) ||
       !optimizer_utils::CheckOutputEdges(graph, *sequence_transpose, 1)) {
     return false;
@@ -357,14 +354,14 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
 
   const Node* input_reshape = graph_utils::GetInputNode(*sequence_transpose, 0);
   if (input_reshape == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*input_reshape, "Reshape", {5, 13, 14}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*input_reshape, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain) ||
       !optimizer_utils::CheckOutputEdges(graph, *input_reshape, 1)) {
     return fail("missing input Reshape before sequence transpose");
   }
 
   Node* qkv_reshape = GetOnlyChildByOutputIndex(graph, qkv_matmul, 0, "Reshape");
   if (qkv_reshape == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*qkv_reshape, "Reshape", {5, 13, 14}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*qkv_reshape, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain) ||
       !optimizer_utils::CheckOutputEdges(graph, *qkv_reshape, 1)) {
     return fail("qkv Reshape after MatMul not matched");
   }
@@ -379,9 +376,9 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
   Node* k_squeeze = GetOnlyChildByOutputIndex(graph, *split, 1, "Squeeze");
   Node* v_transpose = GetOnlyChildByOutputIndex(graph, *split, 2, "Transpose");
   if (q_transpose == nullptr || k_squeeze == nullptr || v_transpose == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*q_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*k_squeeze, "Squeeze", {13}, kOnnxDomain) ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*v_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*q_transpose, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*k_squeeze, "Squeeze", {13, 21, 23, 24, 25}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*v_transpose, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain) ||
       !HasExpectedPerm(*q_transpose, {2, 0, 3, 1, 4}) ||
       !HasExpectedPerm(*v_transpose, {2, 0, 3, 1, 4}) ||
       !HasExpectedAxesInput(graph, *k_squeeze, {2})) {
@@ -391,8 +388,8 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
   Node* q_squeeze = GetOnlyChildByOutputIndex(graph, *q_transpose, 0, "Squeeze");
   Node* v_squeeze = GetOnlyChildByOutputIndex(graph, *v_transpose, 0, "Squeeze");
   if (q_squeeze == nullptr || v_squeeze == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*q_squeeze, "Squeeze", {13}, kOnnxDomain) ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*v_squeeze, "Squeeze", {13}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*q_squeeze, "Squeeze", {13, 21, 23, 24, 25}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*v_squeeze, "Squeeze", {13, 21, 23, 24, 25}, kOnnxDomain) ||
       !HasExpectedAxesInput(graph, *q_squeeze, {0}) ||
       !HasExpectedAxesInput(graph, *v_squeeze, {0})) {
     return fail("q/v squeeze pattern not matched");
@@ -402,7 +399,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
   Node* k_transpose = GetOnlyChildByOutputIndex(graph, *k_squeeze, 0, "Transpose");
   if (q_scale_mul == nullptr || k_transpose == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*q_scale_mul, "Mul", {7, 13, 14}, kOnnxDomain) ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*k_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*k_transpose, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain) ||
       !HasExpectedPerm(*k_transpose, {0, 2, 3, 1})) {
     return fail("q scale Mul or k Transpose(0,2,3,1) not matched");
   }
@@ -460,7 +457,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
 
   Node* transpose_3 = GetOnlyChildByOutputIndex(graph, *qkv_matmul_1, 0, "Transpose");
   if (transpose_3 == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*transpose_3, "Transpose", {1, 13}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*transpose_3, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain) ||
       !HasExpectedPerm(*transpose_3, {0, 2, 1, 3}) ||
       !optimizer_utils::CheckOutputEdges(graph, *transpose_3, 1)) {
     return fail("output Transpose(0,2,1,3) not matched");
@@ -468,7 +465,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
 
   Node* reshape_2 = GetOnlyChildByOutputIndex(graph, *transpose_3, 0, "Reshape");
   if (reshape_2 == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_2, "Reshape", {5, 13, 14}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_2, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain) ||
       !optimizer_utils::CheckOutputEdges(graph, *reshape_2, 1)) {
     return fail("output Reshape not matched");
   }
@@ -497,7 +494,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
     if (proj_gemm == nullptr) {
       proj_gemm_input_reshape = GetOnlyChildByOutputIndex(graph, *reshape_2, 0, "Reshape");
       if (proj_gemm_input_reshape == nullptr ||
-          !graph_utils::IsSupportedOptypeVersionAndDomain(*proj_gemm_input_reshape, "Reshape", {5, 13, 14}, kOnnxDomain) ||
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*proj_gemm_input_reshape, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain) ||
           !optimizer_utils::CheckOutputEdges(graph, *proj_gemm_input_reshape, 1)) {
         return fail("projection MatMul/Gemm not matched");
       }
@@ -511,7 +508,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
 
       proj_gemm_output_reshape = GetOnlyChildByOutputIndex(graph, *proj_gemm, 0, "Reshape");
       if (proj_gemm_output_reshape == nullptr ||
-          !graph_utils::IsSupportedOptypeVersionAndDomain(*proj_gemm_output_reshape, "Reshape", {5, 13, 14}, kOnnxDomain) ||
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*proj_gemm_output_reshape, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain) ||
           !optimizer_utils::CheckOutputEdges(graph, *proj_gemm_output_reshape, 1)) {
         return fail("normalized projection Gemm output Reshape not matched");
       }
@@ -651,6 +648,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
     nodes_to_remove.push_back(proj_gemm->Index());
   }
 
+  graph.NotifyNodeReplacement(nodes_to_remove, mha_node.Index());
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
     if (node == nullptr) {
@@ -748,25 +746,25 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     const float* k_weight = k_initializer.data<float>();
     const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
-    result.reserve(gsl::narrow<size_t>(element_count));
+    result.reserve(narrow<size_t>(element_count));
     if (is_matmul) {
       optimizer_utils::MergeMatMulWeightsByRow<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
       optimizer_utils::MergeWeights1d<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
-    utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
+    utils::SetRawDataInTensorProto(initializer, result.data(), narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
     const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
     const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
-    result.reserve(gsl::narrow<size_t>(element_count));
+    result.reserve(narrow<size_t>(element_count));
     if (is_matmul) {
       optimizer_utils::MergeMatMulWeightsByRow<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
       optimizer_utils::MergeWeights1d<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
-    utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, result.data(), narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   return graph_utils::AddInitializerWithOrtValue(graph, initializer);
@@ -908,6 +906,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                int64_t num_heads,
                                int64_t head_size,
                                const float mask_filter_value,
+                               NodeIndex& attention_node_index,
                                const logging::Logger& logger) {
   InlinedVector<std::reference_wrapper<const Node>> pivot_nodes;
   if (edges.size() == 2) {
@@ -920,11 +919,11 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   }
 
   std::vector<graph_utils::EdgeEndToMatch> q_path{
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
   if (!graph_utils::FindPath(edges[edges.size() - 1]->GetNode(), true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
     return false;
@@ -937,6 +936,12 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   const Node& q_root = edges[4]->GetNode();
   if (q_root.Index() != layer_norm.Index()) {
     DEBUG_LOG("q root should be layer normalization");
+    return false;
+  }
+
+  if (!optimizer_utils::CheckOutputEdges(graph, q_matmul, 1) || graph.NodeProducesGraphOutput(q_matmul) ||
+      !optimizer_utils::CheckOutputEdges(graph, q_add, 1) || graph.NodeProducesGraphOutput(q_add)) {
+    DEBUG_LOG("q projection has an external use");
     return false;
   }
 
@@ -953,9 +958,9 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   }
 
   std::vector<graph_utils::EdgeEndToMatch> k_path{
-      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 1, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
 
@@ -973,6 +978,13 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     DEBUG_LOG("k root is not layer norm");
     return false;
   }
+
+  if (!optimizer_utils::CheckOutputEdges(graph, k_matmul, 1) || graph.NodeProducesGraphOutput(k_matmul) ||
+      !optimizer_utils::CheckOutputEdges(graph, k_add, 1) || graph.NodeProducesGraphOutput(k_add)) {
+    DEBUG_LOG("k projection has an external use");
+    return false;
+  }
+
   if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads,
                                                 head_size, /*transpose_optimized_pattern*/ false, logger)) {
     DEBUG_LOG("CheckNodesInPathK returns false");
@@ -1032,6 +1044,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
 
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
+  attention_node_index = attention_node.Index();
 
   // Remove nodes that are not used anymore.
   parent_path_nodes.insert(parent_path_nodes.end(), pivot_nodes.begin(), pivot_nodes.end());
@@ -1070,8 +1083,8 @@ static bool FuseSubGraphQK(Node& layer_norm,
                            const logging::Logger& logger) {
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_varience_path{
-      {0, 0, "Div", {7, 13}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+      {0, 0, "Div", {7, 13, 14}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(*(mask_nodes.add), true, q_varience_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
@@ -1079,14 +1092,16 @@ static bool FuseSubGraphQK(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
+  NodeIndex attention_node_index = 0;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes,
                           mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, attention_node_index, logger)) {
     return false;
   }
 
   AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
 
+  graph.NotifyNodeReplacement(nodes_to_remove, attention_node_index);
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -1163,7 +1178,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_varience_path{
       {0, 2, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "Div", {7, 13}, kOnnxDomain}};
+      {0, 0, "Div", {7, 13, 14}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(*(mask_nodes.where), true, q_varience_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
@@ -1171,9 +1186,10 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
+  NodeIndex attention_node_index = 0;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes,
                           mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, attention_node_index, logger)) {
     return false;
   }
 
@@ -1183,14 +1199,17 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   const Node* p_concat_1 = graph_utils::GetInputNode(reshape_1, 1);
   const Node* p_concat_2 = graph_utils::GetInputNode(reshape_2, 1);
   if (p_concat_1 != nullptr && p_concat_2 != nullptr) {
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_1);
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2);
+    std::vector<NodeIndex> removed_node_indices;
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_1, &removed_node_indices);
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2, &removed_node_indices);
+    graph.NotifyNodeReplacement(removed_node_indices, attention_node_index);
   } else {
     return false;
   }
 
   AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
 
+  graph.NotifyNodeReplacement(nodes_to_remove, attention_node_index);
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -1265,14 +1284,14 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm,
                                    std::map<std::string, NodeArg*>& mask_int32_map,
                                    const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 1, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
 

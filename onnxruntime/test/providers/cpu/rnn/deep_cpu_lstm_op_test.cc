@@ -3,7 +3,9 @@
 
 #include "gtest/gtest.h"
 
+#include <cstdint>
 #include <iterator>
+#include <limits>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
@@ -13,6 +15,54 @@
 using namespace std;
 namespace onnxruntime {
 namespace test {
+
+TEST(LSTMTest, StateElementCountUsesSizeTArithmetic) {
+  using rnn::detail::CalculateBufferElementCount;
+  EXPECT_EQ(CalculateBufferElementCount({std::numeric_limits<int>::max(), 1}),
+            static_cast<size_t>(std::numeric_limits<int>::max()));
+  EXPECT_EQ(CalculateBufferElementCount({std::numeric_limits<int>::max(), 2}),
+            static_cast<size_t>(std::numeric_limits<int>::max()) * 2);
+  EXPECT_EQ(CalculateBufferElementCount({65535, 65537}), static_cast<size_t>(4294967295ULL));
+#if SIZE_MAX > UINT32_MAX
+  EXPECT_EQ(CalculateBufferElementCount({65536, 65536}), static_cast<size_t>(4294967296ULL));
+  EXPECT_EQ(CalculateBufferElementCount({65536, 65537}), static_cast<size_t>(4295032832ULL));
+#elif !defined(ORT_NO_EXCEPTIONS)
+  EXPECT_THROW((void)CalculateBufferElementCount({65536, 65536}), OnnxRuntimeException);
+  EXPECT_THROW((void)CalculateBufferElementCount({65536, 65537}), OnnxRuntimeException);
+#endif
+}
+
+TEST(LSTMTest, RejectsUnrepresentableOutputStrideBeforeAllocation) {
+  // A zero-length sequence keeps input and expected output empty even for large batch dimensions.
+  for (const std::string direction : {"forward", "reverse", "bidirectional"}) {
+    for (const int hidden_size : {1, 2, 4}) {
+      SCOPED_TRACE(direction);
+      SCOPED_TRACE(hidden_size);
+      const int64_t batch_size = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 1;
+      if (direction != "bidirectional" && hidden_size == 1) {
+        continue;
+      }
+
+      const int num_directions = direction == "bidirectional" ? 2 : 1;
+      OpTester test("LSTM");
+      test.AddAttribute("direction", direction);
+      test.AddAttribute("hidden_size", static_cast<int64_t>(hidden_size));
+      test.AddInput<float>("X", {0, batch_size, 1}, {});
+      test.AddInput<float>("W", {num_directions, 4 * hidden_size, 1},
+                           std::vector<float>(num_directions * 4 * hidden_size, 0.0f));
+      test.AddInput<float>("R", {num_directions, 4 * hidden_size, hidden_size},
+                           std::vector<float>(num_directions * 4 * hidden_size * hidden_size, 0.0f));
+      test.AddOutput<float>("Y", {0, num_directions, batch_size, hidden_size}, {});
+      test.AddOptionalOutputEdge<float>();
+      test.AddOptionalOutputEdge<float>();
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectFailure, "LSTM output stride exceeds the maximum supported int value",
+               {}, nullptr, &execution_providers);
+    }
+  }
+}
 
 // copy the contents of the container to the end so the original values are duplicated
 template <typename T>
@@ -1347,6 +1397,55 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
   LstmOpContext2x1x2x2 context(direction, activations);
   context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
+}
+
+// Regression test for a model whose hidden_size attribute is inconsistent with the actual W
+// weight tensor shape. ONNX shape inference/checker does not validate the relationship between
+// hidden_size and the W/R weight shapes, so such a model previously reached the LSTM kernel and
+// caused an out-of-bounds access. The kernel must now reject it up front via ValidateCommonRnnInputs,
+// matching the behavior of the RNN and GRU kernels.
+TEST(LSTMTest, MismatchedWeightShapeIsRejected) {
+  OpTester test("LSTM");
+
+  constexpr int64_t seq_length = 1;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t input_size = 2;
+  constexpr int64_t hidden_size = 2;     // attribute value; sizes the outputs and R
+  constexpr int64_t bogus_w_hidden = 3;  // W is sized for a different (larger) hidden size
+
+  test.AddAttribute<std::vector<std::string>>("activations", {"sigmoid", "tanh", "tanh"});
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data(seq_length * batch_size * input_size, 0.1f);
+  test.AddInput<float>("X", X_dims, X_data);
+
+  // W has 4 * bogus_w_hidden rows instead of 4 * hidden_size, which is inconsistent with the
+  // hidden_size attribute.
+  std::vector<int64_t> W_dims = {1, 4 * bogus_w_hidden, input_size};
+  std::vector<float> W_data(1 * 4 * bogus_w_hidden * input_size, 0.1f);
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {1, 4 * hidden_size, hidden_size};
+  std::vector<float> R_data(1 * 4 * hidden_size * hidden_size, 0.1f);
+  test.AddInput<float>("R", R_dims, R_data);
+
+  // Optional inputs left empty.
+  test.AddOptionalInputEdge<float>();  // B
+  test.AddOptionalInputEdge<int>();    // sequence_lens
+  test.AddOptionalInputEdge<float>();  // initial_h
+  test.AddOptionalInputEdge<float>();  // initial_c
+  test.AddOptionalInputEdge<float>();  // P
+
+  std::vector<int64_t> Y_dims = {seq_length, 1, batch_size, hidden_size};
+  std::vector<float> Y_data(seq_length * 1 * batch_size * hidden_size, 0.f);
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  // Expect a clean validation error rather than a crash. Skip DML (deprecated) and QNN (now maintained
+  // out-of-tree in the onnxruntime-qnn repo), which do not perform this validation.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input W must have shape",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
 }
 
 #ifndef ENABLE_TRAINING

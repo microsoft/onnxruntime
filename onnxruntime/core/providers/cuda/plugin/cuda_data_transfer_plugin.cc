@@ -10,7 +10,7 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
     : OrtDataTransferImpl{},
       ort_api_(ort_api),
       ep_api_(ep_api) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = ORT_API_VERSION;
   Release = ReleaseImpl;
   CanCopy = CanCopyImpl;
   CopyTensors = CopyTensorsImpl;

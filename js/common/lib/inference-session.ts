@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
+import type { LoraAdapter } from './lora-adapter.js';
 import { OnnxModelOptions } from './onnx-model.js';
 import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
 import type { Tensor } from './tensor.js';
@@ -47,6 +48,33 @@ export declare namespace InferenceSession {
    * A set of configurations for session behavior.
    */
   export interface SessionOptions extends OnnxModelOptions {
+    /**
+     * Configure loading external data referenced by EPContext nodes.
+     *
+     * The callback is invoked synchronously with the external data name and must return a `Uint8Array`. The returned
+     * bytes are copied into ONNX Runtime-owned memory during the enclosing native operation. Do not modify or reuse the
+     * returned view's backing storage until that operation completes; return a fresh array when using mutable shared
+     * storage. Empty arrays are supported. Callback invocations may originate from multiple ONNX Runtime threads; the
+     * native JavaScript bindings serialize calls before invoking JavaScript.
+     *
+     * `maxDataSize` is a required, finite, positive safe integer. Session creation fails if the callback throws, returns
+     * another type, or returns more bytes than this limit. ONNX Runtime does not fall back to loading the data from disk
+     * after a callback failure.
+     *
+     * The binding retains and enforces this limit in its callback state before allocating the native output buffer.
+     * It is not configured in the native API and does not constrain allocations made inside the JavaScript callback.
+     *
+     * This setting is available only in the Node.js and React Native bindings. ONNX Runtime Web rejects it because a
+     * JavaScript callback cannot currently be registered safely through the WebAssembly ABI.
+     *
+     * JavaScript does not currently expose model compilation, so the corresponding EPContext data write callback is not
+     * available.
+     */
+    epContextDataRead?: {
+      callback: (name: string) => Uint8Array;
+      maxDataSize: number;
+    };
+
     /**
      * An array of execution provider options.
      *
@@ -273,6 +301,97 @@ export declare namespace InferenceSession {
     validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
 
     /**
+     * Enable robust buffer access for an ORT-created Dawn device. This is a global, first-device-wins option. Later
+     * conflicting values and values supplied with an external device are ignored with a warning.
+     *
+     * This setting is available only in ONNX Runtime (Node.js binding).
+     *
+     * @default `true` in Debug builds; `false` in Release and RelWithDebInfo builds
+     */
+    enableRobustness?: boolean;
+
+    /**
+     * Select accelerated external-weight loading for the native Windows WebGPU execution provider.
+     * - 'off': Disable accelerated weight loading.
+     * - 'preferred': Use D3D12 accelerated loading when available and otherwise use the ordinary loading path.
+     * - 'required': Require D3D12 accelerated loading support.
+     *
+     * This setting is available only in ONNX Runtime (Node.js binding) builds with D3D12 file loading support.
+     *
+     * @default 'off'
+     */
+    weightLoadAcceleration?: 'off' | 'preferred' | 'required';
+
+    /**
+     * Specify the cache mode for storage buffers.
+     * - 'disabled': Disable buffer cache. Buffers are destroyed when no longer in use.
+     * - 'lazyRelease': Buffers are released lazily, at the end of the current run.
+     * - 'simple': Released buffers are cached and reused only for requests of the exact same size.
+     * - 'bucket': Released buffers are cached and reused using predefined size buckets. This is the default mode.
+     *
+     * For static-shape models, 'simple' may reduce GPU memory usage, because exact-size buffers are reused across
+     * runs instead of allocating new bucket-sized buffers.
+     *
+     * @default 'bucket'
+     */
+    storageBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
+     * Specify the cache mode for uniform buffers.
+     *
+     * See {@link storageBufferCacheMode} for a description of the available modes.
+     *
+     * @default 'simple'
+     */
+    uniformBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
+     * Specify the cache mode for query resolve buffers.
+     *
+     * See {@link storageBufferCacheMode} for a description of the available modes.
+     *
+     * @default 'disabled'
+     */
+    queryResolveBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
+     * Specify the cache mode for buffers not covered by the other buffer cache mode options.
+     *
+     * See {@link storageBufferCacheMode} for a description of the available modes.
+     *
+     * @default 'disabled'
+     */
+    defaultBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
+     * Accumulate the dot products in f32 instead of in the output element type. The input and
+     * weight tensors keep their own type, so global memory traffic is identical either way.
+     *
+     * When this is false the accumulator follows the output element type. Partial sums along K
+     * can exceed the f16 maximum (65504) on backends that round strictly at every step, which
+     * saturates the accumulator to Inf; setting this avoids that at the cost of registers and
+     * workgroup memory.
+     *
+     * Where a fused kernel computes its epilogue on the accumulators, that epilogue carries the
+     * wider type too. On the fused MLP decode fast path the bias, the SiLU and the gate/up product
+     * are applied to the f32 accumulators and rounded once at the final store rather than after
+     * every step, so with the option on its output can differ from the same graph run unfused by
+     * more than the accumulation change alone. Fused MLP shapes that do not take that fast path
+     * materialize the gate and up tensors in the output element type before the activation, and
+     * are unaffected in their epilogue.
+     *
+     * This currently applies to MatMulNBits and its fused variants. Coverage of the unquantized
+     * MatMul family is planned as follow-up work under the same option.
+     *
+     * This option is read by the native WebGPU execution provider only. Builds of onnxruntime-web
+     * that use the JSEP WebGPU backend ignore it, and their MatMulNBits shaders keep accumulating
+     * in the output element type.
+     *
+     * @default false
+     */
+    enableMatmulFp32Accumulation?: boolean;
+
+    /**
      * Specify an optional WebGPU device to be used by the WebGPU execution provider.
      */
     device?: TryGetGlobalType<'GPUDevice'>;
@@ -462,6 +581,19 @@ export declare namespace InferenceSession {
      * ```
      */
     extra?: Record<string, unknown>;
+
+    /**
+     * A list of LoRA adapters to activate for this run. See `LoraAdapter`.
+     *
+     * The adapters must be created by the same backend as the session. Parameters of different adapters that are
+     * active at the same time must not overlap.
+     *
+     * This setting is available only in WebAssembly backend. It is not supported yet in proxy mode
+     * (`env.wasm.proxy`), or for a session that uses IO binding. IO binding is used when an output is preferred to be
+     * on GPU (see `SessionOptions.preferredOutputLocation`), when graph capture is enabled, and in some cases with the
+     * WebNN execution provider.
+     */
+    activeLoraAdapters?: readonly LoraAdapter[];
   }
 
   // #endregion

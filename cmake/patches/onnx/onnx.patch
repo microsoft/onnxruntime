@@ -1,33 +1,27 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 044996e..ded7e39 100644
+index 791e24b..5f861a1 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -53,6 +53,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
- option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
+@@ -46,6 +46,7 @@ option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
  option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for ONNX operator schemas." OFF)
  option(ONNX_USE_UNITY_BUILD "Enable Unity (Jumbo) build for" OFF)
+ option(ONNX_PYODIDE_BUILD "Build ONNX for Pyodide/Emscripten (wasm32)." OFF)
 +option(ONNX_MINIMAL_BUILD "Build only essential ONNX components" OFF)
  option(ONNX_INSTALL "Install ONNX targets, headers, and CMake config files" ON)
  if(WIN32)
-   option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime" OFF)
-@@ -399,14 +400,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
-                                onnx/onnx-operators.in.proto
-                                onnx/onnx-data.in.proto)
- 
--file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
--file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
--    "${ONNX_ROOT}/onnx/test/cpp/*.cc"
--    "${ONNX_ROOT}/onnx/backend/test/cpp/*.cc"
--    "${ONNX_ROOT}/onnx/backend/test/cpp/*.h")
--list(REMOVE_ITEM __tmp_srcs "${ONNX_ROOT}/onnx/cpp2py_export.cc")
--list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src} "${ONNX_ROOT}/onnx/test/cmake/main.cc")
--list(APPEND ONNX_SRCS ${__tmp_srcs})
+   option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime. Ignored if CMAKE_MSVC_RUNTIME_LIBRARY is defined." OFF)
+@@ -515,7 +516,22 @@ add_dependencies(onnx_proto onnx_proto_gen)
+ # Core library. Hand-written sources come from target_sources(onnx ...) in the
+ # subdirectories; the protobuf objects are pulled in from onnx_proto.
+ add_library(onnx $<TARGET_OBJECTS:onnx_proto>)
+-add_subdirectory(onnx)
 +if(ONNX_MINIMAL_BUILD)
 +    message(STATUS "Configuring ONNX minimal build")
-+    set(ONNX_SRCS
-+      "${ONNX_ROOT}/onnx/common/common.h"
-+      "${ONNX_ROOT}/onnx/defs/data_type_utils.h"
-+      "${ONNX_ROOT}/onnx/defs/data_type_utils.cc"
++    # ORT's minimal/WebAssembly builds only need ONNX's type utilities and the
++    # generated protobuf sources (linked via onnx_proto above); skip pulling in
++    # the full operator/schema sources via add_subdirectory(onnx).
++    target_sources(onnx PRIVATE
++        "${ONNX_ROOT}/onnx/defs/data_type_utils.cc"
 +    )
 +    # Ensure ONNX_ML is treated as ON for minimal build consistency with ORT's file
 +    set(ONNX_ML ON CACHE BOOL "Enable traditional ML API." FORCE)
@@ -35,46 +29,16 @@ index 044996e..ded7e39 100644
 +    set(ONNX_BUILD_PYTHON OFF CACHE BOOL "Build Python binaries" FORCE)
 +    set(ONNX_BUILD_TESTS OFF CACHE BOOL "Build ONNX C++ APIs Tests" FORCE)
 +else()
-+    file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
-+    file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
-+        "${ONNX_ROOT}/onnx/test/cpp/*.cc"
-+        "${ONNX_ROOT}/onnx/backend/test/cpp/*.cc"
-+        "${ONNX_ROOT}/onnx/backend/test/cpp/*.h")
-+    list(REMOVE_ITEM __tmp_srcs "${ONNX_ROOT}/onnx/cpp2py_export.cc")
-+    list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src} "${ONNX_ROOT}/onnx/test/cmake/main.cc")
-+    list(APPEND ONNX_SRCS ${__tmp_srcs})
++    add_subdirectory(onnx)
 +endif()
- 
- set(LINKED_PROTOBUF_TARGET protobuf::libprotobuf)
- if(ONNX_USE_LITE_PROTO)
-diff --git a/cmake/Utils.cmake b/cmake/Utils.cmake
-index 1987edd..04b3088 100644
---- a/cmake/Utils.cmake
-+++ b/cmake/Utils.cmake
-@@ -103,18 +103,7 @@ endfunction()
- 
- function(add_onnx_compile_options target)
-   if(MSVC)
--    # For disabling Protobuf related warnings
--    set(protobuf_warnings
--        /wd4146 # unary minus operator applied to unsigned type, result still
--                # unsigned
--        /wd4244 # 'argument': conversion from 'google::protobuf::uint64' to
--                # 'int', possible loss of data
--        /wd4267 # Conversion from 'size_t' to 'int', possible loss of data
--        /wd4141 # 'inline': used more than once
--        /wd4047 # '=': 'uintptr_t' differs in levels of indirection from 'void *'
--    )
-     add_msvc_runtime_flag(${target})
--    target_compile_options(${target} PUBLIC ${protobuf_warnings})
-     if(ONNX_WERROR)
-       target_compile_options(${target} PRIVATE "/WX")
-     endif()
+ add_dependencies(onnx onnx_proto)
+ set_target_properties(onnx PROPERTIES CXX_VISIBILITY_PRESET hidden)
+ add_onnx_global_defines(onnx)
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
-index a6a8a83..153da87 100644
+index 3887169..8432613 100644
 --- a/onnx/defs/nn/old.cc
 +++ b/onnx/defs/nn/old.cc
-@@ -4026,7 +4026,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+@@ -4078,7 +4078,6 @@ ONNX_OPERATOR_SET_SCHEMA(
      GroupNormalization,
      18,
      OpSchema()
@@ -82,3 +46,146 @@ index a6a8a83..153da87 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/defs/nn/defs.cc b/onnx/defs/nn/defs.cc
+index 0c271d5..6d64da7 100644
+--- a/onnx/defs/nn/defs.cc
++++ b/onnx/defs/nn/defs.cc
+@@ -2670,7 +2670,7 @@ ONNX_OPERATOR_SET_SCHEMA(
+                               // positive value.
+                               axis += input_ndim;
+                          }
+-          if (axis < 0) {
++          if (axis < 0 || axis >= input_ndim) {
+                               fail_shape_inference(
+                                         "Unexpected axis value (",
+                                         axis,
+diff --git a/onnx/common/assertions.h b/onnx/common/assertions.h
+--- a/onnx/common/assertions.h
++++ b/onnx/common/assertions.h
+@@ -27,9 +27,9 @@
+ #endif
+ std::string barf(const char* fmt, ...);
+
+-[[noreturn]] void throw_assert_error(std::string& /*msg*/);
++[[noreturn]] void throw_assert_error(const std::string& /*msg*/);
+
+-[[noreturn]] void throw_tensor_error(std::string& /*msg*/);
++[[noreturn]] void throw_tensor_error(const std::string& /*msg*/);
+
+ } // namespace ONNX_NAMESPACE
+
+diff --git a/onnx/common/assertions.cc b/onnx/common/assertions.cc
+--- a/onnx/common/assertions.cc
++++ b/onnx/common/assertions.cc
+@@ -42,11 +42,11 @@
+ }
+
+-void throw_assert_error(std::string& msg) {
++void throw_assert_error(const std::string& msg) {
+     ONNX_THROW_EX(assert_error(msg));
+ }
+
+-void throw_tensor_error(std::string& msg) {
++void throw_tensor_error(const std::string& msg) {
+     ONNX_THROW_EX(tensor_error(msg));
+ }
+
+ } // namespace ONNX_NAMESPACE
+diff --git a/onnx/common/tensor.h b/onnx/common/tensor.h
+--- a/onnx/common/tensor.h
++++ b/onnx/common/tensor.h
+@@ -51,13 +51,13 @@
+     /// size_from_dim() cannot handle this case, while elem_num() handles it correctly
+     int64_t elem_num() const {
+-    return safe_dim_product(sizes_, [](const char* msg) { throw tensor_error(msg); });
++    return safe_dim_product(sizes_, [](const char* msg) { throw_tensor_error(msg); });
+     }
+     int64_t size_from_dim(int dim) const {
+       if (dim < 0) {
+           dim += static_cast<int>(sizes_.size());
+       }
+       ONNX_ASSERT(dim >= 0 && (size_t)dim < sizes_.size())
+-    return safe_dim_product(sizes_.begin() + dim, sizes_.end(), [](const char* msg) { throw tensor_error(msg); });
++    return safe_dim_product(sizes_.begin() + dim, sizes_.end(), [](const char* msg) { throw_tensor_error(msg); });
+     }
+
+     int32_t elem_type() const {
+diff --git a/onnx/common/scoped_resource.h b/onnx/common/scoped_resource.h
+--- a/onnx/common/scoped_resource.h
++++ b/onnx/common/scoped_resource.h
+@@ -25,18 +25,18 @@
+ // Usage:
+-//   using ScopedFd = ScopedResource<-1, close_fd>;
+-//   ScopedFd guard(fd);          // destructor calls close_fd(fd)
++//   using ScopedFd = ScopedResource<FdTraits>;
++//   ScopedFd guard(fd);          // destructor calls FdTraits::close(fd)
+ //   int raw = guard.release();   // relinquish ownership
+-template <auto Invalid, void (*Close)(decltype(Invalid))>
++template <typename Traits>
+ class ScopedResource {
+-  using T = decltype(Invalid);
++  using T = typename Traits::type;
+     T val_;
+
+  public:
+     explicit ScopedResource(T v) : val_(v) {}
+     ~ScopedResource() {
+-    if (val_ != Invalid) {
+-      Close(val_);
++    if (val_ != Traits::invalid()) {
++      Traits::close(val_);
+       }
+     }
+     T get() const {
+       return val_;
+@@ -44,7 +44,7 @@
+     }
+     T release() {
+       T tmp = val_;
+-    val_ = Invalid;
++    val_ = Traits::invalid();
+       return tmp;
+     }
+     ScopedResource(const ScopedResource&) = delete;
+@@ -55,20 +55,32 @@
+ #ifdef _WIN32
+-inline void close_handle(HANDLE h) {
+-  CloseHandle(h);
+-}
+-using ScopedHandle = ScopedResource<INVALID_HANDLE_VALUE, close_handle>;
++struct HandleTraits {
++  using type = HANDLE;
++  static HANDLE invalid() {
++    return INVALID_HANDLE_VALUE;
++  }
++  static void close(HANDLE h) {
++    CloseHandle(h);
++  }
++};
++using ScopedHandle = ScopedResource<HandleTraits>;
+ #endif
+
+-inline void close_fd(int fd) {
++struct FdTraits {
++  using type = int;
++  static constexpr int invalid() {
++    return -1;
++  }
++  static void close(int fd) {
+ #ifdef _WIN32
+-  _close(fd);
++    _close(fd);
+ #else
+-  close(fd);
++    ::close(fd);
+ #endif
+-}
+-using ScopedFd = ScopedResource<-1, close_fd>;
++  }
++};
++using ScopedFd = ScopedResource<FdTraits>;
+
+ // RAII guard that invokes a callable on destruction (scope exit).
+ template <typename F>
+ class ScopeExit {
+     F fn_;

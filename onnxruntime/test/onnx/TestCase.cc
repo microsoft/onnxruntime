@@ -958,6 +958,22 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"cast_UINT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_UINT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      // onnx#7959: the materialized node corpus now runs on the CPU EP via the
+      // onnx_test_node_materialized ctest (previously the C++ node runner was QNN-only). ORT has
+      // no per-channel-quantization ConvInteger support on any EP -- the CPU kernel throws and
+      // CUDA has no ConvInteger kernel at all -- so skip it globally here, mirroring the
+      // provider-agnostic exclusion in onnx_backend_test_series_filters.jsonc.
+      {"convinteger_with_padding", "ORT does not support per-channel quantization for ConvInteger (onnx#7959; mirrors onnx_backend_test_series_filters.jsonc global exclusion)"},
+      // onnx#7959 (same CPU-materialized-node-runner exposure as convinteger above): the ORT DFT
+      // rfft/irfft outputs are numerically near-correct but a few near-zero elements exceed the
+      // runner's tight ~1e-5 absolute tolerance (platform-dependent FFT roundoff: passes on Windows
+      // CPU, fails on Linux CPU by <=~1.6e-4). This mirrors the pre-existing GLOBAL exclusion of
+      // these same 4 tests in onnx_backend_test_series_filters.jsonc ("current_failing_tests"), so
+      // the C++ materialized runner stays at parity with the python conformance suite's pass set.
+      {"dft_irfft", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
+      {"dft_irfft_opset19", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
+      {"dft_rfft", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
+      {"dft_rfft_opset19", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
       // Spec-leading: PR #28379 fixed CPU Attention to match the corrected
       // scale -> softcap -> bias/mask -> softmax ordering established by
       // onnx/onnx#7867 (softcap before mask) and onnx/onnx#7913
@@ -1012,6 +1028,39 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
        "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
       {"attention_4d_diff_heads_mask4d_padded_kv_expanded",
        "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      // #28904: preemptive skip for the onnx#8068 Attention tests (bottom-right
+      // is_causal + nonpad_kv_seqlen, and composed is_causal+attn_mask
+      // fully-masked-row->0). The bundled cmake/external/onnx is v1.21.0 and does
+      // not yet contain these tests, so these entries are no-ops today; they
+      // prevent the new tests from failing the C++ onnx_test_runner the moment the
+      // onnx pin is bumped to a release including #8068, before the CPU/CUDA
+      // kernels land. This mirrors the jsonc filter block in
+      // onnx_backend_test_series_filters.jsonc (the Python series uses the jsonc;
+      // this C++ runner uses GetBrokenTests()). De-skip per path as each kernel
+      // lands, and remove entirely once the onnx pin includes #8068.
+      // TODO(#28904): remove this block when the CPU/CUDA kernels land and cmake/external/onnx is bumped to a release containing onnx/onnx#8068.
+      {"attention_4d_gqa_causal_nonpad_decode",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_gqa_causal_nonpad_decode_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_gqa_causal_nonpad_decode_fp16",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_gqa_causal_nonpad_decode_fp16_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_causal_nonpad_continued_prefill",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_causal_nonpad_continued_prefill_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_causal_boolmask_nan_robustness",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_causal_boolmask_nan_robustness_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_23_boolmask_fullymasked_row_nan_robustness",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_23_boolmask_fullymasked_row_nan_robustness_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      // NOTE: the #8068 mode-3 qk_matmul_output skips are CUDA-only (CPU implements mode 3 and
+      // would pass) — they live in the `provider_name == "cuda"` block below, not here. See #28994.
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
@@ -1184,6 +1233,25 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
 #else
     broken_tests->insert({"bidaf", "this test should be recovered when multi-gpu pipeline deprecates NV12", {"opset9"}});
 #endif
+    // #28994: preemptive skip for the #8068 mode-3 qk_matmul_output conformance tests. CUDA returns
+    // NOT_IMPLEMENTED for qk_matmul_output modes beyond kQK (cuda/llm/attention.cc:1477), so these
+    // hard-fail the moment the onnx pin is bumped past onnx/onnx#8068. CPU IMPLEMENTS mode 3 and
+    // passes, so these are scoped to CUDA only (not the provider-agnostic block above) to preserve
+    // CPU mode-3 conformance. The bundled cmake/external/onnx is v1.21.0 and does not yet contain
+    // these tests, so the entries are no-ops today. Exact names sourced from the onnx#8068 generated
+    // corpus. De-skip when mode>kQK is supported in Attention-cuda (#27712). See #28994 Section A.
+    broken_tests->insert({"attention_23_fullymasked_qk_matmul_output_mode3_zero",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_23_fullymasked_qk_matmul_output_mode3_zero_expanded",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_fullymasked_qk_matmul_output_mode3_zero",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_fullymasked_qk_matmul_output_mode3_zero_expanded",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_qk_matmul_output_mode3_softmax_precision",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_qk_matmul_output_mode3_softmax_precision_expanded",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
   }
 
   if (provider_name == "nnapi") {
@@ -1515,12 +1583,10 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     // Fails since ONNX==1.20.0
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded", "unknown version"});
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "unknown version"});
-    broken_tests->insert({"convinteger_with_padding", "unknown version"});
-    // Fails since ONNX==1.21.0
-    broken_tests->insert({"dft_irfft", "unknown version"});
-    broken_tests->insert({"dft_irfft_opset19", "unknown version"});
-    broken_tests->insert({"dft_rfft", "unknown version"});
-    broken_tests->insert({"dft_rfft_opset19", "unknown version"});
+    // Note: dft_irfft/dft_irfft_opset19/dft_rfft/dft_rfft_opset19 (previously listed here as
+    // "Fails since ONNX==1.21.0") are now in the common GetBrokenTests initializer above, since
+    // the CPU-materialized node runner (onnx#7959) exposes the same marginal FFT precision failure
+    // that onnx_backend_test_series_filters.jsonc already excludes globally.
     broken_tests->insert({"bitcast_bool_to_uint8", "ORT BitCast kernel does not register bool type"});
   }
 

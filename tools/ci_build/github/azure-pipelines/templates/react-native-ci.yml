@@ -68,8 +68,6 @@ stages:
       runCodesignValidationInjection: false
     steps:
     - template: use-xcode-version.yml
-      parameters:
-        xcodeVersion: 16.4
 
     - template: setup-build-tools.yml
       parameters:
@@ -112,17 +110,16 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/ios_pod'
 
     - template: use-xcode-version.yml
-      parameters:
-        xcodeVersion: 16.4
 
-    - task: NodeTool@0
+    - task: UseNode@1
       inputs:
-        versionSpec: '22.x'
+        version: '24.x'
 
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
         brew tap wix/brew
+        brew trust wix/brew
         brew install applesimutils
       displayName: Install applesimutils
 

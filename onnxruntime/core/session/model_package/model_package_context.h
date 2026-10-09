@@ -13,6 +13,7 @@
 #include "core/session/model_package/model_package_variant_selector.h"
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -36,11 +37,15 @@ struct VariantModelInfo {
   std::string identifier;                 // deterministic id (e.g., filename)
   std::filesystem::path model_file_path;  // resolved path under <component>/<variant>/
 
-  // from variant.json file entry
+  // from variant.json file entry. Values of path-valued session option keys (see
+  // IsModelPackagePathSessionOption) are resolved to absolute paths at parse time.
   std::optional<std::unordered_map<std::string, std::string>> session_options;
   std::optional<std::unordered_map<std::string, std::string>> provider_options;
-  std::optional<std::unordered_map<std::string, std::string>> shared_files;  // logical_name -> checksum/path
 };
+
+// True if the given ORT session-option config key holds a file/folder path reference that must be
+// resolved against the model package (sha256:<hex>, relative, or absolute) before use.
+bool IsModelPackagePathSessionOption(std::string_view key);
 
 // variant-level info (metadata.json + variant.json)
 struct VariantInfo {
@@ -67,13 +72,17 @@ struct ComponentInfo {
 };
 
 struct ModelPackageInfo {
-  int64_t schema_version{0};
+  int64_t schema_version_major{0};
+  int64_t schema_version_minor{0};
   std::vector<ComponentInfo> components{};
 };
+
+struct IExecutionProviderFactory;
 
 struct VariantSelectionEpInfo {
   std::string ep_name{};
   OrtEpFactory* ep_factory{nullptr};
+  std::shared_ptr<IExecutionProviderFactory> provider_factory;
   std::vector<const OrtEpDevice*> ep_devices{};
   std::vector<const OrtHardwareDevice*> hardware_devices{};
   std::vector<const OrtKeyValuePairs*> ep_metadata{};
@@ -83,6 +92,8 @@ class ModelPackageOptions;  // forward declaration
 
 class ModelPackageComponentContext {
  public:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ModelPackageComponentContext);
+
   explicit ModelPackageComponentContext(const std::string& component_name,
                                         const ComponentInfo& component_model_info,
                                         const ModelPackageOptions& options);
@@ -124,16 +135,13 @@ class ModelPackageComponentContext {
 
   Status GetSelectedVariantName(const std::string*& out_name) const;
 
-  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }
   const std::vector<const OrtEpDevice*>& DevicesSelected() const { return devices_selected_; }
   gsl::span<const VariantSelectionEpInfo> EpInfos() const { return ep_infos_; }
   bool IsFromPolicy() const { return from_policy_; }
 
-  // Rebuild the provider list for a new session creation call (providers are consumed/moved
-  // when registered, so they must be rebuilt for each session).
-  // Uses the provided session options for provider creation (should include merged provider options).
-  Status RebuildProviderListForSession(const Environment& env, const OrtSessionOptions& effective_options);
+  // Bind the captured EP when the caller did not supply explicit provider factories.
+  Status ConfigureSessionOptions(const Environment& env, OrtSessionOptions& options) const;
 
  private:
   std::string component_model_name_;
@@ -141,7 +149,6 @@ class ModelPackageComponentContext {
 
   gsl::span<const VariantSelectionEpInfo> ep_infos_{};    // non-owning EP intent when options are not used
   std::vector<VariantSelectionEpInfo> owned_ep_infos_{};  // owned copy when constructed from ModelPackageOptions
-  std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
 
   // optional runtime state mirrors (if needed by callers)
   std::vector<const OrtEpDevice*> execution_devices_{};
@@ -151,7 +158,6 @@ class ModelPackageComponentContext {
   // Caches for selected variant info.
   mutable std::string consumer_metadata_cache_{};
   mutable bool consumer_metadata_cache_valid_{false};
-  mutable std::filesystem::path folder_path_cache_{};
   mutable std::vector<std::string> session_option_keys_cache_{};
   mutable std::vector<std::string> session_option_values_cache_{};
   mutable std::vector<std::string> provider_option_keys_cache_{};
@@ -170,21 +176,22 @@ class ModelPackageComponentContext {
 class ModelPackageContext {
  public:
   explicit ModelPackageContext(const std::filesystem::path& package_root);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ModelPackageContext);
 
   size_t GetComponentCount() const noexcept;
   Status GetComponentNames(gsl::span<const std::string>& out_names) const;
 
   // C API helpers: return const char* pointer arrays with context-owned lifetime.
   void GetComponentNamePtrs(const char* const*& out_ptrs, size_t& out_count) const;
-  void GetVariantNamePtrs(const std::string& component_name,
-                          const char* const*& out_ptrs, size_t& out_count) const;
+  Status GetVariantNamePtrs(const std::string& component_name,
+                            const char* const*& out_ptrs, size_t& out_count) const;
 
   Status GetVariantCount(const std::string& component_name, size_t& out_count) const;
   Status GetVariantNames(const std::string& component_name,
                          gsl::span<const std::string>& out_variant_names) const;
 
   // Get the EP compatibility info declared on a variant.
-  // Lets callers (e.g. GenAI defaulting logic) inspect what EP a variant targets
+  // Lets callers inspect what EP a variant targets
   // before any EP has been resolved / before SelectComponent has been called.
   Status GetVariantEpCompatibility(const std::string& component_name,
                                    const std::string& variant_name,
@@ -198,18 +205,35 @@ class ModelPackageContext {
     return model_variant_infos_;
   }
 
+  // Resolves a path reference from the package against the model_package library's rules:
+  // a "sha256:<hex>[/tail]" content-addressed shared-asset reference (honoring manifest
+  // overrides), or a plain relative path resolved against `base_dir` (empty base_dir falls
+  // back to the package root). When `must_exist` is true the resolved path must exist on
+  // disk. The returned pointer is owned by this context and stays valid until the next
+  // ResolveStringRef call. The underlying package handle is kept open for the context's
+  // lifetime so no reopen/reparse happens per call.
+  Status ResolveStringRef(const std::string& base_dir, const std::string& input,
+                          bool must_exist, const char*& out_path) const;
+
  private:
+  // The open model_package library handle, kept alive for this context's lifetime so path
+  // references can be resolved on demand. Stored type-erased (void*) to keep the
+  // model_package C header out of this ORT header; the deleter defined in the .cc closes it
+  // via ModelPackage_Close.
+  std::unique_ptr<void, void (*)(void*)> package_handle_;
+  std::filesystem::path package_root_{};
+  mutable std::string resolve_string_ref_cache_{};
+
   ModelPackageInfo model_package_info_{};
   std::vector<VariantInfo> model_variant_infos_;
 
   std::unordered_map<std::string, size_t> component_name_to_index_{};
   std::vector<std::string> component_names_cache_{};
-  mutable std::unordered_map<std::string, std::vector<std::string>> component_to_variant_names_cache_{};
-  mutable std::unordered_map<std::string, std::vector<std::string>> variant_to_file_identifiers_cache_{};
+  std::unordered_map<std::string, std::vector<std::string>> component_to_variant_names_cache_{};
 
   // C API pointer caches: owned by the context so their lifetime matches the documented contract.
-  mutable std::vector<const char*> component_name_ptrs_cache_{};
-  mutable std::unordered_map<std::string, std::vector<const char*>> variant_name_ptrs_cache_{};
+  std::vector<const char*> component_name_ptrs_cache_{};
+  std::unordered_map<std::string, std::vector<const char*>> variant_name_ptrs_cache_{};
 };
 
 }  // namespace onnxruntime

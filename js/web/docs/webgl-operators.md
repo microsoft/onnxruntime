@@ -33,6 +33,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [BlackmanWindow](https://github.com/onnx/onnx/blob/main/docs/Operators.md#BlackmanWindow) |  |
 | [Cast](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Cast) | [6-8](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-6), [9-12](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-9), [13-18](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-13), [19-20](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-19), [21-22](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-21), [23](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-23), [24](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-24), [25+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cast-25) |
 | [CastLike](https://github.com/onnx/onnx/blob/main/docs/Operators.md#CastLike) |  |
+| [CausalConvWithState](https://github.com/onnx/onnx/blob/main/docs/Operators.md#CausalConvWithState) |  |
 | [Ceil](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Ceil) | [6-12](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Ceil-6), [13+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Ceil-13) |
 | [Celu](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Celu) |  |
 | [CenterCropPad](https://github.com/onnx/onnx/blob/main/docs/Operators.md#CenterCropPad) |  |
@@ -97,6 +98,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [LeakyRelu](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LeakyRelu) | [6-15](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LeakyRelu-6), [16+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LeakyRelu-16) |
 | [Less](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Less) | [7-8](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Less-7), [9-12](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Less-9), [13+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Less-13) |
 | [LessOrEqual](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LessOrEqual) |  |
+| [LinearAttention](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LinearAttention) |  |
 | [Log](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Log) | [6-12](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Log-6), [13+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Log-13) |
 | [LogSoftmax](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LogSoftmax) |  |
 | [Loop](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Loop) |  |

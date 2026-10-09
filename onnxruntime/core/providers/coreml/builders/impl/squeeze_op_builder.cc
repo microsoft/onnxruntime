@@ -41,7 +41,8 @@ void GetAxes(ModelBuilder& model_builder, const Node& node, TensorShapeVector& a
     // If axes is not provided, return an empty axes as default to squeeze all
     if (node.InputDefs().size() > 1) {
       const auto& axes_tensor = *model_builder.GetConstantInitializer(node.InputDefs()[1]->Name());
-      Initializer unpacked_tensor(axes_tensor);
+      const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), axes_tensor,
+                                        model_builder.GetGraphViewer().ModelPath());
       auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       const auto size = SafeInt<size_t>(axes_tensor.dims()[0]);
       axes.reserve(size);

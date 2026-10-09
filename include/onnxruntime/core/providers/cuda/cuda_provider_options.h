@@ -17,6 +17,8 @@
 /// User can only get the instance of OrtCUDAProviderOptionsV2 via CreateCUDAProviderOptions.
 /// </summary>
 struct OrtCUDAProviderOptionsV2 {
+  static constexpr size_t kMaxExternalDataLoaderReadingThreadCount = 64;
+
   int device_id = 0;                                                                                           // cuda device id.
   int has_user_compute_stream = 0;                                                                             // indicator of user specified CUDA compute stream.
   void* user_compute_stream = nullptr;                                                                         // user specified CUDA compute stream.
@@ -33,11 +35,12 @@ struct OrtCUDAProviderOptionsV2 {
   int tunable_op_enable = 0;                                                                                   // flag specifying if TunableOp is enabled.
   int tunable_op_tuning_enable = 0;                                                                            // flag specifying if TunableOp is enabled for tuning, this relies on TunableOp is enabled.
   int tunable_op_max_tuning_duration_ms = 0;                                                                   // Max tuning duration time limit for TunableOp.
-  int enable_skip_layer_norm_strict_mode = 0;                                                                  // flag specifying if SkipLayerNorm is in strict mode. If true, use LayerNormalization kernel.
-                                                                                                               // The strict mode has better accuracy but lower performance.
+  int enable_skip_layer_norm_strict_mode = 0;                                                                  // [Deprecated] Accepted for ABI/back-compat but not stored in EP info. SkipLayerNorm always accumulates in fp32.
+                                                                                                               // Setting it has no effect on computation or output.
   int prefer_nhwc = 0;                                                                                         // make the CUDA EP NHWC preferred
   int use_ep_level_unified_stream = 0;                                                                         // flag specifying if ep level stream is used or not
   int use_tf32 = 1;                                                                                            // use TF32
   int fuse_conv_bias = 0;                                                                                      // Enable CUDNN Frontend kernel fusing, results in JIT compiles
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
+  size_t external_data_loader_reading_threads = 4;                                                             // Number of CPU read tasks per external-data staging buffer. 0 disables the loader; 1 disables parallel reads.
 };

@@ -100,12 +100,36 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const auto device = memory_info.device;
 
   if (utils::HasExternalData(tensor_proto)) {
-    auto external_data_loader = external_data_loader_mgr.GetExternalDataLoader(memory_info);
+    auto external_data_loader =
+        external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
+#if defined(ENABLE_D3D12_FILE_LOADING)
+    // Tensor-creating file loaders cannot consume memory-backed external data.
+    // Other loaders, including WebAssembly loaders, must still receive it.
+    if (utils::HasExternalDataInMemory(tensor_proto) &&
+        external_data_loader != nullptr &&
+        external_data_loader->CreatesTensorForDevice(device)) {
+      external_data_loader = nullptr;
+    }
+#endif
     if (external_data_loader) {
-      // if custom external data loader is used, always allocate memory on device
-      ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+#if defined(ENABLE_D3D12_FILE_LOADING)
+      if (external_data_loader->CreatesTensorForDevice(device)) {
+        ORT_RETURN_IF(memory_buffer != nullptr,
+                      "An external data loader that creates tensors cannot use a preallocated buffer.");
+        ORT_RETURN_IF(alloc == nullptr,
+                      "An external data loader that creates tensors requires a device allocator.");
+        tensor = Tensor{type, tensor_shape, nullptr, alloc};
+      } else
+#endif
+      {
+        // if custom external data loader is used, always allocate memory on device
+        ORT_RETURN_IF_ERROR(
+            AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+      }
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
-                                                                    *external_data_loader, tensor));
+                                                                    *external_data_loader, alloc, tensor));
+      ORT_RETURN_IF_ERROR(utils::LoadPrepackedWeightsFromExternalData(env, proto_path, tensor_proto,
+                                                                      prepacked_for_graph));
 
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
@@ -135,6 +159,20 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path, tensor_proto,
                                                            deserialized_value,
                                                            &prepacked_for_graph));
+
+      const Tensor& cpu_staging_tensor = deserialized_value.Get<Tensor>();
+      // Bool external initializers are copied verbatim and may carry bytes outside the canonical
+      // {0, 1} set. The CPU staging tensor above can be backed by a read-only mmap, so normalize into
+      // a writable CPU copy before copying to the device (see utils::NormalizeBoolTensorIfNeeded).
+      if (cpu_staging_tensor.IsDataType<bool>()) {
+        Tensor normalized_cpu_tensor;
+        ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
+                                                           tensor_shape, type,
+                                                           default_cpu_alloc, normalized_cpu_tensor));
+        utils::MakeCpuTensorCopy(cpu_staging_tensor, normalized_cpu_tensor);
+        utils::NormalizeBoolTensorIfNeeded(normalized_cpu_tensor);
+        return CopyTensorFromCPUToDevice(data_transfer_mgr, normalized_cpu_tensor, std::move(tensor), ort_value);
+      }
 
       return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_value.Get<Tensor>(),
                                        std::move(tensor), ort_value);
@@ -314,8 +352,18 @@ common::Status SaveInitializedTensors(
     // - Values that are external and mapped from disk. We let the OS manage the memory.
     // - we do not trace values that are in memory because they may be sitting on top of the user allocated
     //   memory.
-    const bool trace_allocation = (exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
-                                  !utils::HasExternalData(*tensor_proto);
+#if defined(ENABLE_D3D12_FILE_LOADING)
+    const bool loader_creates_tensor =
+        utils::HasExternalData(*tensor_proto) &&
+        !utils::HasExternalDataInMemory(*tensor_proto) &&
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(ort_value_index), tensor_proto->data_type()) != nullptr;
+#else
+    constexpr bool loader_creates_tensor = false;
+#endif
+    const bool trace_allocation = !loader_creates_tensor &&
+                                  ((exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
+                                   !utils::HasExternalData(*tensor_proto));
 
     if (trace_allocation) {
       // can not trace string tensor, and they exist only on CPU
@@ -334,6 +382,14 @@ common::Status SaveInitializedTensors(
       // do not trace string tensor
       continue;
     }
+#if defined(ENABLE_D3D12_FILE_LOADING)
+    if (utils::HasExternalData(*entry.second) &&
+        !utils::HasExternalDataInMemory(*entry.second) &&
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(entry.first), entry.second->data_type()) != nullptr) {
+      continue;
+    }
+#endif
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
 
@@ -358,6 +414,40 @@ common::Status SaveInitializedTensors(
   const bool use_device_allocator_for_initializers =
       session_options.config_options.GetConfigOrDefault(
           kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
+  bool external_data_load_ended = false;
+  auto end_external_data_load = gsl::finally([&]() {
+    if (!external_data_load_ended) {
+      external_data_loader_mgr.EndLoad();
+    }
+  });
+
+  for (const auto& entry : id_to_initialized_tensor) {
+    if (user_supplied_initializer_ids.contains(entry.first) ||
+        !utils::HasExternalData(*entry.second) ||
+        utils::HasExternalDataInMemory(*entry.second)) {
+      continue;
+    }
+
+    if (session_options.IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Preparing session state weights is canceled due to user request.");
+    }
+
+    const auto* tensor_creator = external_data_loader_mgr.GetTensorCreator(
+        exec_plan.GetLocation(entry.first), entry.second->data_type());
+    if (tensor_creator != nullptr) {
+      ORT_RETURN_IF_ERROR(
+          utils::RegisterExternalDataLoadCandidateFromTensorProto(
+              env, graph_loc, *entry.second, *tensor_creator));
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.CommitLoadCandidates(
+      [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
+#endif
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
@@ -392,8 +482,12 @@ common::Status SaveInitializedTensors(
       if (OrtValue ort_value_from_graph;
           graph.GetOrtValueInitializer(name, ort_value_from_graph)) {
         const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
-        if (memory_info.device == default_cpu_device) {
-          // This is on CPU use directly from the graph
+        const auto& graph_value_device = ort_value_from_graph.Get<Tensor>().Location().device;
+        if (memory_info.device == default_cpu_device || graph_value_device == memory_info.device) {
+          // Either the initializer is planned on CPU, or the user-supplied initializer (e.g. from
+          // AddExternalInitializers) already lives on the planned device. In both cases use it in
+          // place: no per-session device allocation or copy, and the underlying buffer can be
+          // shared across sessions that supply the same OrtValue (matching the AddInitializer path).
           ort_value = std::move(ort_value_from_graph);
         } else {
           TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
@@ -442,6 +536,13 @@ common::Status SaveInitializedTensors(
 #endif
   }
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  // EndLoad is the idempotent end-of-batch cleanup hook. All claimed
+  // allocations have transferred ownership, so this only releases metadata
+  // and any unclaimed resources left by a successful batch.
+  external_data_loader_mgr.EndLoad();
+  external_data_load_ended = true;
+#endif
   LOGS(logger, INFO) << "Done saving initialized tensors";
   return common::Status::OK();
 }

@@ -77,6 +77,14 @@ struct UnfusedAttentionParams {
   // Per-batch K lengths (optional). When non-null, positions k >= seqlens_k[b]
   // are masked out (useful for right-padded packed batches).
   const int* seqlens_k = nullptr;
+
+  // Composed is_causal + attn_mask fully-masked-row -> 0 guard (onnx/onnx#8068, Bug-2).
+  // When a query row's every in-range key is masked by a finite additive-bias sentinel,
+  // the row would otherwise softmax to a uniform mean-of-V instead of zero. Set this to the
+  // (negative) sentinel value used for masked keys to enable the guard: a row whose softmax
+  // max stays at/below the sentinel is emitted as zeros. Leave at 0 (default) to disable;
+  // disabled = legacy mean-of-V behavior (used by contrib GQA, which passes no bias).
+  float masked_bias_value = 0.0f;
 };
 
 // Returns required scratch size in bytes. Caller must allocate

@@ -63,7 +63,8 @@ struct use_dq_gemm<Mma, void_t<typename Mma::IteratorScale>> : platform::true_ty
 
 template <typename Element>
 CUTLASS_HOST_DEVICE bool tensor_aligned(Element const* ref, int stride, int alignment) {
-  return (reinterpret_cast<uintptr_t>(ref) % alignment == 0) && (stride % alignment == 0);
+  const int alignment_bytes = alignment * cutlass::sizeof_bits<Element>::value / 8;
+  return (reinterpret_cast<uintptr_t>(ref) % alignment_bytes == 0) && (stride % alignment == 0);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -180,7 +181,8 @@ struct MoeFCGemm {
               int64_t const* total_tokens_including_expert, int64_t gemm_n, int64_t gemm_k,
               GemmCoord* host_problem_sizes = nullptr)
         : problem_count(problem_count), threadblock_count(threadblock_count), group_size(group_size), output_op(output_op), ptr_A(const_cast<ElementA*>(ptr_A)), ptr_B(const_cast<ElementB*>(ptr_B)), weight_scales(const_cast<ElementScale*>(weight_scales)), weight_zeros(const_cast<ElementScale*>(weight_zeros)), ptr_C(const_cast<ElementC*>(ptr_C)), C_is_broadcast{C_is_broadcast}, ptr_D(ptr_D), total_tokens_including_expert(total_tokens_including_expert), gemm_n(gemm_n), gemm_k(gemm_k), host_problem_sizes(nullptr) {
-      if (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value) {
+      if (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value ||
+          platform::is_same<cutlass::float_e2m1_t, ElementB>::value) {
         assert(weight_scales);
       }
       this->gather_A_indices = nullptr;
@@ -283,9 +285,11 @@ struct MoeFCGemm {
   }
 
   static Status can_implement(Arguments const& args) {
-    if constexpr (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value) {
+    if constexpr (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value ||
+                  platform::is_same<uint2b_t, ElementB>::value ||
+                  platform::is_same<cutlass::float_e2m1_t, ElementB>::value) {
       if (args.weight_scales == nullptr) {
-        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t and uint4b_t");
+        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t, uint4b_t, uint2b_t, and cutlass::float_e2m1_t");
         return Status::kInvalid;
       }
       static int const kAlignmentA = (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
@@ -356,7 +360,7 @@ struct MoeFCGemm {
       }
     } else if (args.weight_scales != nullptr) {
       CUTLASS_TRACE_HOST(
-          "MoeFCGemm::can_implement() - weight scales are ignored for all types except uint8_t and uint4b_t");
+          "MoeFCGemm::can_implement() - weight scales are supported only for uint8_t, uint4b_t, uint2b_t, and cutlass::float_e2m1_t");
       return Status::kInvalid;
     } else if (args.group_size != args.gemm_k) {
       CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - scale shape should be (1, gemm_n)");
@@ -498,7 +502,7 @@ struct MoeFCGemm {
       __syncthreads();
 
       if constexpr (use_dq_gemm<Mma>::value) {
-        typename MatrixCoord::Index scale_row_extent = isFinegrained(Mma::QuantOp) ? gemm_k / 64 : 1;
+        typename MatrixCoord::Index scale_row_extent = isFinegrained(Mma::QuantOp) ? gemm_k / params.group_size : 1;
         typename Mma::IteratorScale iterator_scale = initialize_scale<typename Mma::IteratorScale, Mma::QuantOp>(LayoutScaleZero(ldm_Scale),
                                                                                                                  reinterpret_cast<typename Mma::IteratorScale::Pointer>(ptr_Scale),
                                                                                                                  reinterpret_cast<typename Mma::IteratorScale::Pointer>(ptr_Zero),

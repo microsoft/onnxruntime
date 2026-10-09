@@ -17,6 +17,7 @@ from onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization.quant_utils import (
     QuantType,
     compute_scale_zp,
+    compute_scale_zp_float8,
     load_model_with_shape_infer,
     model_has_infer_metadata,
     pack_bytes_to_4bit,
@@ -82,6 +83,41 @@ class TestQuantUtil(unittest.TestCase):
             _compute_scale_zp(0.0, 0.0, -32768, 32767, numpy.int16, symmetric=True, min_real_range=0.0001),
             [0, 0.0002 / 65535],
         )
+
+    def test_compute_scale_zp_large_finite_range(self):
+        for dtype, magnitude in ((numpy.float16, 40000), (numpy.float32, 3e38)):
+            for qtype in (numpy.int8, numpy.uint8, numpy.int16, numpy.uint16):
+                for symmetric in (False, True):
+                    with self.subTest(dtype=dtype, qtype=qtype, symmetric=symmetric):
+                        rmin = numpy.array(-0.75 * magnitude, dtype=dtype)
+                        rmax = numpy.array(magnitude, dtype=dtype)
+                        qmin = numpy.array(numpy.iinfo(qtype).min, dtype=qtype)
+                        qmax = numpy.array(numpy.iinfo(qtype).max, dtype=qtype)
+                        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=symmetric)
+
+                        # Use Python floats so the reference range does not overflow the input dtype.
+                        real_min = -float(rmax) if symmetric else float(rmin)
+                        expected_scale = (float(rmax) - real_min) / (int(qmax) - int(qmin))
+                        expected_zero = (
+                            round((int(qmax) + int(qmin)) / 2)
+                            if symmetric
+                            else round(int(qmin) - real_min / expected_scale)
+                        )
+                        self.assertTrue(numpy.isfinite(scale))
+                        self.assertEqual(scale.dtype, dtype)
+                        self.assertEqual(zero_point.dtype, qtype)
+                        numpy.testing.assert_array_equal(scale, numpy.array(expected_scale, dtype=dtype))
+                        self.assertEqual(int(zero_point), expected_zero)
+
+    def test_compute_scale_zp_float8(self):
+        # The FLOAT8E4M3FN reference distribution must be the 254 finite float8
+        # values (std ~= 100.0577), not the integers 0..255 (std ~= 73.9). With
+        # std=1 the scale is therefore 1 / 100.0577, not 1 / 73.9.
+        zero, scale = compute_scale_zp_float8(TensorProto.FLOAT8E4M3FN, numpy.float32(1.0))
+        numpy.testing.assert_allclose(float(scale), 1.0 / 100.05772, rtol=1e-5)
+        # Scale is linear in the input std.
+        _, scale2 = compute_scale_zp_float8(TensorProto.FLOAT8E4M3FN, numpy.float32(2.0))
+        numpy.testing.assert_allclose(float(scale2), 2.0 / 100.05772, rtol=1e-5)
 
     def test_load_external_model(self):
         input_name = "input"

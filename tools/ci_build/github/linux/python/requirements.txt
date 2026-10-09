@@ -4,7 +4,7 @@ mypy
 pytest
 setuptools>=68.2.2
 wheel
-protobuf==6.33.5
+protobuf==6.33.6
 sympy==1.14
 flatbuffers
 psutil
@@ -12,4 +12,4 @@ onnxscript==0.6.2
 onnx-ir==0.1.16
 jinja2
 markupsafe
-onnx==1.21.0
+onnx==1.22.0

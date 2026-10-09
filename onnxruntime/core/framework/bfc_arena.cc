@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
 #include <type_traits>
@@ -260,9 +261,9 @@ void BFCArena::DeallocateChunk(ChunkHandle h) {
 
 // static
 size_t BFCArena::RoundedBytes(size_t bytes) {
-  size_t rounded_bytes =
-      (kMinAllocationSize *
-       ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
+  SafeInt<size_t> rounded_bytes =
+      kMinAllocationSize *
+      ((SafeInt<size_t>(bytes) + kMinAllocationSize - 1) / kMinAllocationSize);
   ORT_ENFORCE(size_t{0} == rounded_bytes % kMinAllocationSize);
   return rounded_bytes;
 }
@@ -283,6 +284,7 @@ void* BFCArena::Reserve(size_t size) {
   ORT_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
+  stats_.bytes_requested_in_use += size;
   stats_.num_reserves += 1;
   stats_.num_allocs += 1;
   stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), size);
@@ -388,6 +390,7 @@ BFCArena::Chunk* BFCArena::SplitFreeChunkFromBin(BFCArena::Bin::FreeChunkSet* fr
   // Update stats.
   ++stats_.num_allocs;
   stats_.bytes_in_use += chunk->size;
+  stats_.bytes_requested_in_use += num_bytes;
   stats_.max_bytes_in_use =
       std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
   stats_.max_alloc_size =
@@ -478,6 +481,7 @@ void BFCArena::Free(void* p) {
   if (it != reserved_chunks_.end()) {
     device_allocator_->Free(it->first);
     stats_.bytes_in_use -= it->second;
+    stats_.bytes_requested_in_use -= it->second;
     stats_.total_allocated_bytes -= it->second;
     reserved_chunks_.erase(it);
   } else {
@@ -635,6 +639,7 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
 
   // Updates the stats.
   stats_.bytes_in_use -= c->size;
+  stats_.bytes_requested_in_use -= c->requested_size;
 
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.

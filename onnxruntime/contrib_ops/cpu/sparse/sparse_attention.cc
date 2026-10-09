@@ -36,6 +36,74 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+namespace {
+
+// Validate CSR row-pointer monotonicity and column-index range.
+// Must be called after CheckInputs has populated the parameters struct.
+Status ValidateCSRIndices(const SparseAttentionParameters& parameters,
+                          const Tensor& block_row_indices,
+                          const Tensor& block_col_indices) {
+  const int num_layout = parameters.num_sparse_layout;
+  const int max_blocks = parameters.stride_row_indices - 1;
+  const int col_count = parameters.stride_col_indices;
+
+  const int32_t* row_data = block_row_indices.Data<int32_t>();
+  const int32_t* col_data = block_col_indices.Data<int32_t>();
+  for (int l = 0; l < num_layout; ++l) {
+    const int32_t* r = row_data + l * (max_blocks + 1);
+    if (r[0] != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "block_row_indices[", l, "][0] must be 0, got ", r[0]);
+    }
+    for (int i = 0; i < max_blocks; ++i) {
+      if (r[i] < 0 || r[i] > r[i + 1] || r[i + 1] > col_count) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "block_row_indices values are not monotonically non-decreasing or exceed "
+                               "block_col_indices columns at layout ",
+                               l, " row ", i,
+                               ": r[", i, "]=", r[i], ", r[", i + 1, "]=", r[i + 1],
+                               ", col_count=", col_count);
+      }
+    }
+    const int32_t* c = col_data + l * col_count;
+    const int nnz = r[max_blocks];
+    for (int k = 0; k < nnz; ++k) {
+      if (c[k] < 0 || c[k] >= max_blocks) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "block_col_indices[", l, "][", k, "]=", c[k],
+                               " is out of valid range [0, ", max_blocks, ")");
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+// Validate total_key_lengths element values.
+Status ValidateKeyLengths(const SparseAttentionParameters& parameters,
+                          const Tensor& total_key_lengths) {
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int total_sequence_length = parameters.total_sequence_length;
+
+  const auto* key_len_data = total_key_lengths.Data<int32_t>();
+  const bool is_prompt = (sequence_length == total_sequence_length);
+  const int min_key_length = is_prompt ? 1 : sequence_length;
+  for (int i = 0; i < batch_size; ++i) {
+    const int key_length = key_len_data[i];
+    if (key_length < min_key_length || key_length > total_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "key_total_sequence_lengths value ", key_length,
+                             " at batch index ", i,
+                             " is out of range [", min_key_length, ", ", total_sequence_length, "].");
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
 template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info) : OpKernel(info), SparseAttentionBase(info) {
 }
@@ -75,6 +143,11 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
                                                            block_col_indices,
                                                            total_key_lengths,
                                                            total_seq_len));
+  ORT_RETURN_IF_ERROR(ValidateCSRIndices(parameters,
+                                         *block_row_indices,
+                                         *block_col_indices));
+  ORT_RETURN_IF_ERROR(ValidateKeyLengths(parameters,
+                                         *total_key_lengths));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;

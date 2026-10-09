@@ -16,7 +16,7 @@ class SqueezeOpDataPropagation : public CustomDataPropagationBase {
  public:
   SqueezeOpDataPropagation(const Node& node,
                            NodeArg& output_def,
-                           std::function<Status(const std::string&, TensorShapeVector&)> func,
+                           GetInitializedInputValuesFunc func,
                            const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
                            const logging::Logger& logger) noexcept
       : CustomDataPropagationBase(node, output_def, func, output_from_onnx_op_data_propagation, logger) {}

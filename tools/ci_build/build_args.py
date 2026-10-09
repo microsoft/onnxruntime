@@ -8,6 +8,7 @@ import sys
 import warnings
 
 from util import (
+    is_linux,
     is_macOS,
     is_windows,
 )
@@ -98,7 +99,7 @@ def _openvino_verify_device_type(device_read: str) -> str:
 
 def _webgpu_verify_library_kind(library_kind: str) -> str:
     """Verifies the library kind for the WebGPU Execution Provider."""
-    choices = ["shared_lib", "static_lib"]
+    choices = ["shared_lib", "static_lib", "static_plugin"]
     if library_kind not in choices:
         print("\nYou have specified an invalid library kind for WebGPU EP.")
         print(f"The invalid library kind was: {library_kind}")
@@ -198,6 +199,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
+    parser.add_argument("--terrapin_retrieval_tool_path", help="Path to TerrapinRetrievalTool binary.")
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
     parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
@@ -435,7 +437,6 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Must be >=14.40")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
-    parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
     parser.add_argument("--caller_framework", type=str, help="Name of the framework calling ONNX Runtime.")
 
     # Cross-compilation targets hosted on Windows
@@ -777,8 +778,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     vitis_group.add_argument("--use_vitisai", action="store_true", help="Enable Vitis-AI EP.")
 
     # --- ACL (Arm Compute Library) ---
-    acl_group = parser.add_argument_group("ACL Execution Provider")
-    acl_group.add_argument("--use_acl", action="store_true", help="Enable ACL EP (ARM architectures).")
+    acl_group = parser.add_argument_group("[DEPRECATED] ACL Execution Provider")
+    acl_group.add_argument(
+        "--use_acl",
+        action="store_true",
+        help="Enable ACL EP (ARM architectures). The ACL EP is deprecated and will be removed in a future release.",
+    )
     acl_group.add_argument("--acl_home", help="Path to ACL home directory.")
     acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
     acl_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL).")
@@ -823,16 +828,28 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         const="static_lib",
         type=_webgpu_verify_library_kind,
-        help="Enable WebGPU EP. Optionally specify 'static_lib' (default) or 'shared_lib'.",
+        help="Enable WebGPU EP. Optionally specify 'static_lib' (default), 'shared_lib', or 'static_plugin'. "
+        "'static_lib' builds the EP as an internal ORT EP. 'shared_lib' builds it as a separate plugin EP "
+        "library that is loaded at runtime. 'static_plugin' builds it as a plugin EP that is linked into the "
+        "ORT binary and registered at environment creation.",
     )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )
     webgpu_group.add_argument(
+        "--use_dawn_agility_sdk",
+        action="store_true",
+        help=(
+            "Build Dawn's D3D12 backend with the Agility SDK for local development "
+            "(Windows desktop x86, x64, or ARM64 only; static library build only; "
+            "packaging and plugin EP builds unsupported)."
+        ),
+    )
+    webgpu_group.add_argument(
         "--wgsl_template",
-        choices=["static", "dynamic"],
-        default="static",  # By default, use static WGSL template generation
-        help="Specify the generator for WebGPU WGSL template generation.",
+        choices=["static"],
+        default="static",
+        help="Deprecated no-op. WGSL template generation is always static; kept for backward compatibility.",
     )
 
     # --- XNNPACK ---
@@ -869,6 +886,25 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
     )
+    # Telemetry arguments (cross-platform)
+    telemetry_group = parser.add_mutually_exclusive_group()
+    telemetry_group.add_argument(
+        "--no_telemetry",
+        dest="use_telemetry",
+        action="store_false",
+        help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
+    )
+    telemetry_group.add_argument(
+        "--use_telemetry",
+        dest="use_telemetry_legacy",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    telemetry_group.add_argument(
+        "--use_windows_telemetry",
+        action="store_true",
+        help="Use the legacy Windows TraceLogging telemetry backend instead of 1DS.",
+    )
 
 
 def is_cross_compiling(args: argparse.Namespace) -> bool:
@@ -889,6 +925,39 @@ def is_cross_compiling(args: argparse.Namespace) -> bool:
             getattr(args, "use_gdk", False),  # GDK args added conditionally
         ]
     )
+
+
+def target_supports_telemetry(args: argparse.Namespace) -> bool:
+    """Returns whether the selected build target has a telemetry provider."""
+    if (
+        args.build_wasm
+        or getattr(args, "disable_exceptions", False)
+        or getattr(args, "rv64", False)
+        or getattr(args, "visionos", False)
+        or getattr(args, "tvos", False)
+        or getattr(args, "macos", None) == "Catalyst"
+    ):
+        return False
+
+    if getattr(args, "android", False) or is_windows() or is_macOS():
+        return True
+
+    if not is_linux():
+        return False
+
+    return platform.machine().lower() in {
+        "aarch64",
+        "amd64",
+        "arm",
+        "arm64",
+        "armv6l",
+        "armv7l",
+        "armv8l",
+        "i386",
+        "i686",
+        "x86",
+        "x86_64",
+    }
 
 
 # --- Main Argument Parsing Function ---
@@ -976,6 +1045,25 @@ def parse_arguments() -> argparse.Namespace:
     if args.build_wasm_static_lib:
         args.build_wasm = True
 
+    if args.use_telemetry_legacy:
+        warnings.warn(
+            "--use_telemetry is deprecated because telemetry is enabled by default. "
+            "For native Windows targets it retains its historical TraceLogging behavior; use "
+            "--use_windows_telemetry to request that backend explicitly.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        if not target_supports_telemetry(args):
+            parser.error("--use_telemetry requires a telemetry-capable target")
+        args.use_telemetry = True
+        if is_windows() and not args.android:
+            args.use_windows_telemetry = True
+
+    if not target_supports_telemetry(args):
+        args.use_telemetry = False
+    if args.use_windows_telemetry and (not is_windows() or args.android or not target_supports_telemetry(args)):
+        parser.error("--use_windows_telemetry requires a telemetry-capable native Windows target")
+
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:
         args.disable_wasm_exception_catching = True  # Catching at API level implies disabling broader catching
@@ -994,7 +1082,10 @@ def parse_arguments() -> argparse.Namespace:
 
     # Handle deprecated args
     if hasattr(args, "enable_cuda_nhwc_ops") and args.enable_cuda_nhwc_ops:
-        warnings.warn("The argument '--enable_cuda_nhwc_ops' is deprecated and enabled by default.", DeprecationWarning)
+        warnings.warn("The argument '--enable_cuda_nhwc_ops' is deprecated and enabled by default.", FutureWarning)
+
+    if args.use_acl:
+        warnings.warn("The ACL EP is deprecated and will be removed in a future release.", FutureWarning)
 
     # Default behavior (update/build/test) if no action flags are specified
     # Determine if it's a cross-compiled build (approximated by checking common cross-compile flags)

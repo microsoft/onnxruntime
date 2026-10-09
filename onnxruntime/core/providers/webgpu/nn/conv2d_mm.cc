@@ -4,6 +4,7 @@
 #include <vector>
 #include <iterator>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -113,6 +114,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
   const std::string b_type = is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type) : TypeSnippet(inner_element_size_x, data_type);
   const std::string apply_activation = GetActivationSnippet(activation, res_type, data_type);
   std::stringstream user_code;
+  // Emit activation helpers before mm_write uses them.
+  user_code << GetActivationDeclaration(activation, res_type, data_type);
   user_code << "fn mm_readA(batch : i32, row : i32, colIn : i32) -> " << a_type << " {\n"
             << (is_channels_last_ ? sample_x.str() : sample_w.str())
             << "}\n"
@@ -136,23 +139,24 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
 }
 
 Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& result = shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias);
+
   std::stringstream declaration_functions;
   declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << ") {\n"
-                        << "  result[flatIndex] = " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "(value);\n"
+                        << "  " << result.SetByOffset("u32(flatIndex)", (is_vec4_ ? "vec4<x_element_t>(value)" : "x_element_t(value)")) << "\n"
                         << "}\n"
                         << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "){\n"
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
                         << "  setOutputAtIndex(flatIndex, value);\n"
                         << "}\n";
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   std::vector<const ShaderVariableHelper*> inputs = {&x, &w};
-  ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias));
   if (has_bias_) {
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     inputs.push_back(&bias);
     declaration_functions << "fn getBiasByOutputCoords(coords : vec4<i32>) -> bias_value_t {" << "\n"
-                          << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y") << "];\n"
+                          << "  return " << bias.GetByOffset(is_channels_last_ ? "u32(coords.w)" : "u32(coords.y)") << ";\n"
                           << "}";
   }
   shader.AdditionalImplementation()
@@ -161,8 +165,8 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << Conv2dCommonSnippet(x, w, activation_, "x_element_t", element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_element_t";
 
-  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, 4, tile_inner_)
-                  : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0);
+  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, 4, tile_inner_, false, 0, true)
+                  : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0, true);
 }
 
 Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
@@ -177,20 +181,20 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto output_width = is_channels_last ? output_shape[2] : output_shape[3];
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
   const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
+  const int64_t output_spatial_size = SafeMul<int64_t>(output_width, output_height);
   // TODO: enable vec4 for NCHW
   const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
 
   // TODO: fine tune size
-  const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
-  const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
+  const auto dispatch_x = is_channels_last ? output_channels : output_spatial_size;
+  const auto dispatch_y = is_channels_last ? output_spatial_size : output_channels;
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
-  auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_x, workgroup_size[0]), elements_per_thread[0])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_y, workgroup_size[1]), elements_per_thread[1])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(batch_size, workgroup_size[2]), elements_per_thread[2])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_x, static_cast<int64_t>(workgroup_size[0])), elements_per_thread[0])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_y, static_cast<int64_t>(workgroup_size[1])), elements_per_thread[1])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(batch_size, static_cast<int64_t>(workgroup_size[2])), elements_per_thread[2])),
   };
 
   uint32_t inner_element_size = is_vec4 ? (is_channels_last && in_channels % 4 != 0 ? 3 : 4) : 1;
@@ -218,7 +222,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     return oss.str();
   };
 
-  program.CacheHint(activation.ToString(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_b_outer, tile_inner, static_cast<uint32_t>(components)}))
+  program.CacheHint(activation.CacheKey(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_b_outer, tile_inner, static_cast<uint32_t>(components)}))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
@@ -231,6 +235,8 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
                             {dispatch[0]},
                             {dispatch[1]},
                             {dispatch[2]}});
+  // Activation uniforms must remain last because definitions and values are matched by index.
+  AppendActivationUniformsData(activation, program);
 
   return program;
 }
