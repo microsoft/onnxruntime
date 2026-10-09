@@ -4092,7 +4092,8 @@ static void RunGQACudaCacheAliasingTest(
     std::vector<float>* captured_output = nullptr,
     std::optional<int32_t> decode_seqlens_k = std::nullopt,
     bool shared_cache_only = false,
-    bool enable_flash_fast_decode = false) {
+    bool enable_flash_fast_decode = false,
+    bool packed_qkv = false) {
   ScopedEnvironmentVariables scoped_env_vars{{
       {"ORT_DISABLE_FLASH_ATTENTION", use_flash ? "0" : "1"},
       {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
@@ -4129,7 +4130,11 @@ static void RunGQACudaCacheAliasingTest(
   fp16_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   int32_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
   std::vector<NodeArg*> inputs;
-  for (const char* name : {"query", "key", "value", "past_key", "past_value"}) {
+  inputs.push_back(&graph.GetOrCreateNodeArg("query", &fp16_type));
+  for (const char* name : {"key", "value"}) {
+    inputs.push_back(&graph.GetOrCreateNodeArg(packed_qkv ? "" : name, packed_qkv ? nullptr : &fp16_type));
+  }
+  for (const char* name : {"past_key", "past_value"}) {
     inputs.push_back(&graph.GetOrCreateNodeArg(name, &fp16_type));
   }
   inputs.push_back(&graph.GetOrCreateNodeArg("seqlens_k", &int32_type));
@@ -4191,7 +4196,22 @@ static void RunGQACudaCacheAliasingTest(
   const auto value_data = make_data(kv_shape.Size(), 5);
   const auto past_key_data = make_data(cache_shape.Size(), 7);
   const auto past_value_data = make_data(cache_shape.Size(), 11);
-  auto query_value = make_gpu_value(make_data(query_shape.Size(), 1), query_shape);
+  const auto query_data = make_data(query_shape.Size(), 1);
+  OrtValue query_value;
+  if (packed_qkv) {
+    constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+    std::vector<MLFloat16> packed_data(static_cast<size_t>(batch_size) * sequence_length * packed_hidden_size);
+    for (int token = 0; token < batch_size * sequence_length; ++token) {
+      auto destination = packed_data.begin() + token * packed_hidden_size;
+      std::copy_n(query_data.begin() + token * hidden_size, hidden_size, destination);
+      std::copy_n(key_data.begin() + token * kv_hidden_size, kv_hidden_size, destination + hidden_size);
+      std::copy_n(value_data.begin() + token * kv_hidden_size, kv_hidden_size,
+                  destination + hidden_size + kv_hidden_size);
+    }
+    query_value = make_gpu_value(packed_data, {batch_size, sequence_length, packed_hidden_size});
+  } else {
+    query_value = make_gpu_value(query_data, query_shape);
+  }
   auto key_value = make_gpu_value(key_data, kv_shape);
   auto value_value = make_gpu_value(value_data, kv_shape);
   const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - sequence_length);
@@ -4223,8 +4243,10 @@ static void RunGQACudaCacheAliasingTest(
       std::unique_ptr<IOBinding> binding;
       ASSERT_STATUS_OK(session.NewIOBinding(&binding));
       ASSERT_STATUS_OK(binding->BindInput("query", query_value));
-      ASSERT_STATUS_OK(binding->BindInput("key", key_value));
-      ASSERT_STATUS_OK(binding->BindInput("value", value_value));
+      if (!packed_qkv) {
+        ASSERT_STATUS_OK(binding->BindInput("key", key_value));
+        ASSERT_STATUS_OK(binding->BindInput("value", value_value));
+      }
       ASSERT_STATUS_OK(binding->BindInput("past_key", past_key_value));
       ASSERT_STATUS_OK(binding->BindInput("past_value", past_value_value));
       ASSERT_STATUS_OK(binding->BindInput("seqlens_k", seqlens_value));
@@ -4315,8 +4337,50 @@ static void RunGQACudaCacheAliasingTest(
   }
 }
 
+static void RunGQACudaPackedPreparationTest(bool use_flash, int windowed_sequence_length = 0) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  if (use_flash && !HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "FlashAttention requires SM80 or later";
+  }
+  std::vector<float> separate_output;
+  std::vector<float> packed_output;
+  const bool windowed = windowed_sequence_length > 0;
+  RunGQACudaCacheAliasingTest(use_flash, windowed, windowed_sequence_length, &separate_output);
+  RunGQACudaCacheAliasingTest(
+      use_flash, windowed, windowed_sequence_length, &packed_output, std::nullopt, false, false, true);
+  ASSERT_FALSE(separate_output.empty());
+  ASSERT_FALSE(packed_output.empty());
+  ExpectOutputsMatch(packed_output, separate_output, 0.002f, "packed preparation matches separate inputs");
+}
+
 TEST(GroupQueryAttentionTest, CudaCacheAliasingUnfused) {
   RunGQACudaCacheAliasingTest(false);
+}
+
+TEST(GroupQueryAttentionTest, CudaPackedPreparationUnfused) {
+  RunGQACudaPackedPreparationTest(false);
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedPackedPreparationUnfused) {
+  RunGQACudaPackedPreparationTest(false, 3);
+}
+
+TEST(GroupQueryAttentionTest, CudaPackedPreparationFlash) {
+#if USE_FLASH_ATTENTION
+  RunGQACudaPackedPreparationTest(true);
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedPackedPreparationFlash) {
+#if USE_FLASH_ATTENTION
+  RunGQACudaPackedPreparationTest(true, 3);
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
 }
 
 TEST(GroupQueryAttentionTest, CudaCacheAliasingFlash) {
