@@ -272,6 +272,11 @@ class MatMulNBits final : public OpKernel {
 
     ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
                 "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    // No CPU path dequantizes 8-bit weights with floating-point zero points: prepacking is skipped for them, and
+    // the unpacked compute path only handles 2-bit and 4-bit. Reject them here instead of failing on the first run.
+    ORT_ENFORCE(!(nbits_ == 8 && has_unquantized_zero_point_),
+                "MatMulNBits on CPU does not support 8-bit weights with floating-point zero points; "
+                "use uint8 zero points.");
     ORT_ENFORCE(logical_block_size_ >= 16 && (logical_block_size_ & (logical_block_size_ - 1)) == 0,
                 "Only power-of-two block sizes >= 16 are supported for MatMulNBits op, got: ", logical_block_size_);
     const Tensor* tensor_scales = nullptr;

@@ -6,6 +6,8 @@
 // and INT8/UINT8 activation boundaries must keep going through the existing QDQ rules.
 
 #include <functional>
+#include <limits>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -62,8 +64,10 @@ struct A16Case {
   BiasKind bias{BiasKind::kNone};
   // The activation DQ output also feeds an Identity that produces a graph output.
   bool share_activation_dq{false};
-  // Gemm attribute that makes the node incompatible with MatMulNBits.
+  // Gemm attributes that make the node incompatible with MatMulNBits.
   bool gemm_trans_b{false};
+  std::optional<float> gemm_alpha;
+  std::optional<float> gemm_beta;
   int64_t M{7};
   int64_t K{256};
   int64_t N{32};
@@ -171,6 +175,12 @@ std::function<void(ModelTestBuilder&)> BuildA16Case(const A16Case& c) {
       NodeAttributes attrs;
       if (c.gemm_trans_b) {
         utils::SetNodeAttribute(utils::MakeAttribute("transB", static_cast<int64_t>(1)), attrs);
+      }
+      if (c.gemm_alpha.has_value()) {
+        utils::SetNodeAttribute(utils::MakeAttribute("alpha", *c.gemm_alpha), attrs);
+      }
+      if (c.gemm_beta.has_value()) {
+        utils::SetNodeAttribute(utils::MakeAttribute("beta", *c.gemm_beta), attrs);
       }
       builder.AddNode("Gemm", inputs, {target_output}, "", &attrs);
     } else {
@@ -488,6 +498,29 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_UnsupportedGemm) {
   c.K = 32;
   c.N = 32;  // square so transB keeps the graph valid
   RunTransformerOnly(c, kCpuExecutionProvider, [&](Graph& graph) { ExpectNotFused(graph, c); });
+}
+
+// MatMulNBits drops alpha and beta, so they must be exactly 1: NaN and values within rounding distance of 1
+// (1.0000005f differs from 1 by less than the old 1e-6 tolerance) are rejected.
+TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_GemmAlphaNotExactlyOne) {
+  for (float alpha : {1.0000005f, std::numeric_limits<float>::quiet_NaN()}) {
+    SCOPED_TRACE(::testing::Message() << "alpha=" << alpha);
+    A16Case c;
+    c.gemm = true;
+    c.gemm_alpha = alpha;
+    RunTransformerOnly(c, kCpuExecutionProvider, [&](Graph& graph) { ExpectNotFused(graph, c); });
+  }
+}
+
+TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_GemmBetaNotExactlyOne) {
+  for (float beta : {1.0000005f, std::numeric_limits<float>::quiet_NaN()}) {
+    SCOPED_TRACE(::testing::Message() << "beta=" << beta);
+    A16Case c;
+    c.gemm = true;
+    c.bias = BiasKind::kFloat;
+    c.gemm_beta = beta;
+    RunTransformerOnly(c, kCpuExecutionProvider, [&](Graph& graph) { ExpectNotFused(graph, c); });
+  }
 }
 
 TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_UnsupportedOutputConsumers) {

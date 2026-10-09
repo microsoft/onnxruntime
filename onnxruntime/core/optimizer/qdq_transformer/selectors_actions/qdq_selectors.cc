@@ -831,9 +831,11 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node, bo
 // Validate Gemm attributes for DQ->MatMulNBits fusion.
 // Gemm must be equivalent to MatMul: alpha=1, transA=0, transB=0.
 // If bias exists, beta must be 1 and bias shape must be [N].
+// alpha and beta must be exactly 1: MatMulNBits drops them, so any other value, including NaN or a value
+// within rounding distance of 1, would change the result.
 static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_node, const Node& weight_dq_node) {
   if (const auto* alpha_attr = graph_utils::GetNodeAttribute(gemm_node, "alpha");
-      alpha_attr && std::abs(alpha_attr->f() - 1.0f) > 1e-6f)
+      alpha_attr && !(alpha_attr->f() == 1.0f))
     return false;
   if (const auto* trans_a = graph_utils::GetNodeAttribute(gemm_node, "transA");
       trans_a && trans_a->i() != 0)
@@ -844,9 +846,9 @@ static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_no
 
   const auto& inputs = gemm_node.InputDefs();
   if (inputs.size() > 2 && inputs[2] && inputs[2]->Exists()) {
-    // Bias exists — beta must be 1.0
+    // Bias exists — beta must be exactly 1.0
     if (const auto* beta_attr = graph_utils::GetNodeAttribute(gemm_node, "beta");
-        beta_attr && std::abs(beta_attr->f() - 1.0f) > 1e-6f)
+        beta_attr && !(beta_attr->f() == 1.0f))
       return false;
 
     // Bias shape must be [N] where N = weight dim 1. Prefer reading N and

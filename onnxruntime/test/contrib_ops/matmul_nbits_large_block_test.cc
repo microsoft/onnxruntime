@@ -42,7 +42,7 @@ enum class ZeroPoint {
   kAbsent,    // implicit midpoint 2^(bits-1)
   kMidpoint,  // explicit uint8 zero points equal to the midpoint
   kRandom,    // explicit uint8 zero points
-  kFloat,     // float zero points (T1), 4-bit only
+  kFloat,     // float zero points (T1); 4-bit here, 8-bit is rejected on CPU
 };
 
 // Authored quantization, kept as unpacked values so every serialized layout is derived independently.
@@ -704,6 +704,26 @@ TEST(MatMulNBitsLargeBlock, Invalid_GroupIndexWithLargeBlock) {
                                -1, /*add_g_idx*/ true);
   ASSERT_FALSE(r.status.IsOK());
   EXPECT_NE(r.status.ErrorMessage().find("g_idx does not support block_size > 256"), std::string::npos) << r.status;
+}
+
+// No CPU path dequantizes 8-bit weights with float or FP16 zero points, so the kernel rejects them when the
+// session is initialized, for large and existing block sizes alike, instead of failing on the first run.
+TEST(MatMulNBitsLargeBlock, Invalid_EightBitFloatZeroPoints) {
+  uint32_t seed = 1400;
+  for (int64_t block_size : {1024, 256}) {
+    for (bool fp16 : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << "block_size=" << block_size << " fp16=" << fp16);
+      RunConfig cfg;
+      cfg.fp16 = fp16;
+      const uint32_t weight_seed = seed++;
+      const Weights w = MakeWeights(4, 1024, 8, block_size, ZeroPoint::kFloat, weight_seed);
+      const RunResult r = RunModel(w, Serialize(w, block_size), cfg, MakeIo(w, cfg, seed++));
+      ASSERT_FALSE(r.status.IsOK());
+      EXPECT_NE(r.status.ErrorMessage().find("does not support 8-bit weights with floating-point zero points"),
+                std::string::npos)
+          << r.status;
+    }
+  }
 }
 
 TEST(MatMulNBitsLargeBlock, Invalid_UndersizedTensors) {
