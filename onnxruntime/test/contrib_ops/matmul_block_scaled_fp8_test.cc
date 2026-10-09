@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <cstdlib>
 
 #include "gtest/gtest.h"
@@ -141,9 +142,16 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
       {8191, 8, 80, 128, 8, 9, 8},
       {8192, 9, 128, 128, 8, 9, 8},
 
-      // RTX 5060 Ti (SM120, 36 SMs): the measured crossover is 72/73 output blocks.
+      // RTX 5060 Ti (SM120, 36 SMs): preserve pinned KS16 at 73..108 output blocks.
       {1152, 1, 80, 36, 12, 0, 16},
-      {1153, 1, 80, 36, 12, 0, 8},
+      {1153, 1, 80, 36, 12, 0, 16},
+      {1728, 1, 80, 36, 12, 0, 16},
+      {1729, 1, 80, 36, 12, 0, 8},
+      {1729, 8, 40, 36, 12, 0, 8},
+      {1729, 8, 96, 36, 12, 0, 8},
+      {1729, 8, 39, 36, 12, 0, 16},
+      {1729, 8, 97, 36, 12, 0, 16},
+      {1729, 9, 80, 36, 12, 0, 16},
       {5120, 4, 96, 36, 12, 0, 8},
       {1153, 1, 39, 36, 12, 0, 16},
       {1153, 1, 97, 36, 12, 0, 16},
@@ -183,6 +191,38 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
                   c.compute_capability_major, c.compute_capability_minor),
               c.expected);
   }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreResidencySelection) {
+  using onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency;
+  using onnxruntime::contrib::cuda::Fp8MmaOutputBlocks;
+  using onnxruntime::contrib::cuda::PickGenericFp8MmaKSplit;
+
+  for (const auto& device : {std::array<int, 3>{8, 9, 128}, {12, 0, 36}, {9, 0, 132}}) {
+    const auto [major, minor, sm_count] = device;
+    for (int n : {32 * sm_count, 32 * sm_count + 1, 48 * sm_count, 48 * sm_count + 1}) {
+      SCOPED_TRACE("N = " + std::to_string(n) + ", SMs = " + std::to_string(sm_count));
+      const int k_split = PickGenericFp8MmaKSplit(n, 8, 80, sm_count, major, minor);
+      const int output_blocks = Fp8MmaOutputBlocks(n);
+      const bool in_pinned_window = output_blocks > 2 * sm_count && output_blocks <= 3 * sm_count;
+      EXPECT_EQ(Fp8MmaGemvPinsResidency(n, k_split, 1, sm_count, major, minor), in_pinned_window);
+      if (in_pinned_window) {
+        EXPECT_EQ(k_split, 16);
+      }
+      EXPECT_FALSE(Fp8MmaGemvPinsResidency(n, 8, 1, sm_count, major, minor));
+      EXPECT_FALSE(Fp8MmaGemvPinsResidency(n, 16, 2, sm_count, major, minor));
+      EXPECT_FALSE(Fp8MmaGemvPinsResidency(n, 16, 4, sm_count, major, minor));
+    }
+  }
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(4097, 16, 1, 128, 8, 0));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(4097, 16, 1, 128, 8, 6));
+
+  // A small recursive tail of a request above M=32 is not a qualified low-M request.
+  EXPECT_EQ(PickGenericFp8MmaKSplit(7168, 8, 80, 128, 8, 9, false), 16);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(5120, 1, 96, 36, 12, 0, false), 16);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(8192, 1, 96, 36, 12, 0, false), 8);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(5120, 1, 12, 36, 12, 0, false), 8);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(5120, 1, 4, 36, 12, 0, false), 4);
 }
 
 TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreForcedKSplit32) {

@@ -12,20 +12,21 @@ inline int Fp8MmaOutputBlocks(int n) {
 }
 
 inline int PickGenericFp8MmaKSplit(int n, int m, int windows, int sm_count,
-                                   int compute_capability_major, int compute_capability_minor) {
+                                   int compute_capability_major, int compute_capability_minor,
+                                   bool enable_device_qualification = true) {
   int k_split = (n >= 8192) ? 8 : 16;
   const int output_blocks = Fp8MmaOutputBlocks(n);
   const bool qualified_rtx4090 = compute_capability_major == 8 && compute_capability_minor == 9 &&
                                  sm_count == 128 && m <= 8 && windows >= 16 && windows <= 96 &&
                                  output_blocks > 3 * sm_count;
-  // The 2-SM-wave crossover is qualified only on the measured 36-SM SM120 configuration.
-  // A 170-SM SM120 GPU did not reproduce it; its winner varied with M and K instead.
+  // Preserve the pinned KS16 window: the measured 2-SM-wave crossover compared plain kernels,
+  // not the residency-hinted entry point. A 170-SM SM120 GPU did not reproduce it either.
   const bool qualified_sm120_36sm = compute_capability_major == 12 && compute_capability_minor == 0 &&
                                     sm_count == 36 && m <= 8 && windows >= 40 && windows <= 96 &&
-                                    output_blocks > 2 * sm_count;
+                                    output_blocks > 3 * sm_count;
   // SM90/132 SMs qualified here on standalone timings, then regressed 16-18% per call when
   // measured inside a live decode stream. See section 6.7 of the experiments doc.
-  if (qualified_rtx4090 || qualified_sm120_36sm) {
+  if (enable_device_qualification && (qualified_rtx4090 || qualified_sm120_36sm)) {
     k_split = 8;
   }
   if (windows < k_split) {

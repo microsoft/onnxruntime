@@ -316,7 +316,9 @@ qualified low-M configurations select 8 earlier:
   and changes only `6144 < N < 8192`, `1024 <= K <= 6144` relative to the
   generic policy.
 - SM120 with 36 SMs (measured on RTX 5060 Ti), `M <= 8`, `40 <= K/64 <= 96`:
-  more than `2 * sm_count` output blocks.
+  more than `3 * sm_count` output blocks. The measured plain-kernel crossover
+  at two blocks per SM does not qualify replacing the residency-hinted KS16
+  entry point in its `(2 * sm_count, 3 * sm_count]` window.
 
 The SM count is part of the measured SM120 qualification, not a proxy for the
 architecture. A 170-SM RTX 5090 Laptop did not reproduce that crossover and
@@ -622,7 +624,16 @@ Nsight reported 54 registers per thread for both variants in this Windows
 SM120 build. A KSplit 16 block has 512 threads and fits two blocks per SM by the
 register limit, while a KSplit 8 block has 256 threads and fits four. The exact
 72/73-block timing discontinuity, rather than an assumed cross-architecture
-register count, is the evidence for the retained `2 * sm_count` boundary.
+register count, is the evidence for the plain-kernel `2 * sm_count` crossover.
+
+These 54-register KS16 measurements describe the plain entry point, not the
+residency-hinted entry point with `__launch_bounds__(512, 3)`. The production
+selector already uses that hinted entry point for 73..108 output blocks.
+Consequently the plain-kernel crossover alone does not qualify a change in
+that window. Preserve pinned KS16 through `N=1728`; the retained KS8 override
+begins at `N=1729` (109 blocks). The `N=5120` confirmation remains outside the
+pinned window and supports the retained rule. A pinned-KS16 versus KS8
+comparison on the target device is required before widening it.
 
 #### RTX 5090 Laptop: Residency Boundary Does Not Generalize
 
@@ -701,11 +712,19 @@ shape-dependent.
 
 The retained selector consequently qualifies only the measured 36-SM SM120
 configuration (`M <= 8` and `40 <= K/64 <= 96`) for KSplit 8 above
-`2 * sm_count` output blocks. The 170-SM SM120 configuration, RTX 3060, and other
+`3 * sm_count` output blocks, preserving the production residency-hinted
+KS16 window. The 170-SM SM120 configuration, RTX 3060, and other
 unqualified devices keep the legacy `N >= 8192` crossover. The final
-default-route traces confirmed KSplit 8 on the 36-SM boundary case, KSplit 16 on
+default-route traces for the original two-block rule confirmed KSplit 8 on the
+36-SM boundary case, KSplit 16 on
 the RTX 3060 boundary case, and KSplit 16 on both sides of the 170-SM boundary.
 These results reject an SM120 architecture-wide residency rule.
+
+Recursive tiles of requests above `M=32` retain the legacy split-K policy,
+including small final tiles. Their local row count does not qualify the
+original larger-M request for either device-specific override. Disabling the
+separate GB10 KS32 tuning switch does not disable the SM89/SM120 qualifications
+for genuine low-M requests.
 
 ### 6.7 Standalone Timings Do Not Rank Split-K for These Shapes
 
@@ -738,9 +757,10 @@ directly, moving from standalone to in situ costs the hinted KSplit 16 kernel
 1.38x but costs KSplit 8 1.76x. A standalone benchmark replays one shape in a
 loop, so its weights stay resident in L2; in a decode round every projection is
 touched once and the weights stream from DRAM. The extra blocks per SM that
-KSplit 8 buys are worth nothing once DRAM bandwidth is the limit, while the
-larger split adds reduction traffic, and the hinted KSplit 16 kernel degrades
-less under cold weights.
+KSplit 8 buys may stop helping once DRAM bandwidth is the limit. KS8 has fewer
+warps in its split reduction, not more; the cache-sensitive timing reversal
+does not isolate bandwidth, scheduling, or reduction overhead as its cause.
+The measured result is that hinted KSplit 16 degrades less under cold weights.
 
 #### End-to-end confirmation
 
