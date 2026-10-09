@@ -109,6 +109,12 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
       }
       kernel_shape.push_back(second_input_shape.dim(i).dim_value());
     }
+    // A longer kernel_shape (W rank > X rank) overruns `dilations` in the loop right below;
+    // a shorter one (W rank < X rank) leaves `effective_kernel_shape` too short for the
+    // output-shape loop further below.
+    if (kernel_shape.size() != n_input_dims) {
+      return;
+    }
   }
 
   std::vector<int64_t> effective_kernel_shape = kernel_shape;
@@ -121,6 +127,10 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   std::vector<int64_t> pads;
 
   // Infer output shape if 'pads' tensor is available
+  if (ctx.getNumInputs() <= 2) {
+    return;
+  }
+
   const auto* pads_initializer = ctx.getInputData(2);
   if (nullptr == pads_initializer) {
     return;
@@ -1402,6 +1412,12 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
       GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
       usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. MoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs must contain one corresponding row per
+      token in either form.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1427,33 +1443,64 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "input", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-        .Input(1, "router_probs", "2D input tensor with shape (num_tokens, num_experts)", "T")
+        .Input(0, "input",
+               "2D packed token tensor with shape (total_tokens, hidden_size), where tokens "
+               "from ragged sequences may be concatenated without padding, or 3D input tensor with shape "
+               "(batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1, "router_probs",
+               "2D input tensor with shape (total_tokens, num_experts), where total_tokens "
+               "must match the flattened token count of input",
+               "T")
         .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
         .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
         .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
         .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, inter_size, hidden_size)", "T", OpSchema::Optional)
         .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Output(0, "output", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(0, "output",
+                "Same shape as input: packed (total_tokens, hidden_size) or padded "
+                "(batch_size, sequence_length, hidden_size)",
+                "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 constexpr const char* qMoE_ver1_doc = R"DOC(
       Quantized mixture of experts (MoE).
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. QMoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs and optional router_weights must contain
+      one corresponding row per token in either form.
 
       The quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
 
-      The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+      For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
         dequantized_weight = (quantized_weight - zero_point) * scale
       When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
 
-      If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+      For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
       the dequantization is performed per block of size block_size along the K (input feature) dimension.
 
-      If block_size and zero_point are provided, both hidden_size and inter_size must be divisible by block_size * pack_size,
-      where pack_size = 8 / expert_weight_bits.
+      For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
+      A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
+      [num_experts, ceil(N / block_size), ceil(K / block_size)]:
+        dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
+      Partial edge blocks are allowed. No zero points or activation scales are accepted.
+      Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
+      Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
+
+      Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
+      Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
+
+      fc1_expert_weight_bits, fc2_expert_weight_bits, and fc3_expert_weight_bits optionally override
+      expert_weight_bits for the corresponding projection. An omitted override inherits expert_weight_bits.
+      When SwiGLU is fused, FC3 is stored in FC1 and fc3_expert_weight_bits must be omitted or equal to
+      fc1_expert_weight_bits after inheritance.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1491,6 +1538,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
+        .Attr("fc1_expert_weight_bits",
+              "Optional FC1 override for expert_weight_bits. Inherits expert_weight_bits when omitted.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("fc2_expert_weight_bits",
+              "Optional FC2 override for expert_weight_bits. Inherits expert_weight_bits when omitted.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("fc3_expert_weight_bits",
+              "Optional FC3 override for expert_weight_bits. Inherits expert_weight_bits when omitted. "
+              "For fused SwiGLU, the effective FC3 width must equal the effective FC1 width.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Attr("swiglu_fusion",
               "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
               AttributeProto::INT,
@@ -1505,12 +1565,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("activation_beta",
               "Beta parameter used in activation function.",
               AttributeProto::FLOAT, 0.0f)
+        .Attr("accuracy_level",
+              "Minimum accuracy level of the expert GEMMs on CPU, with the MatMulNBits meaning. For block-wise 4-bit "
+              "experts, 0 (default) or 1 keeps fp32 activations and 4 allows int8 activations (int8 dot-product kernels). "
+              "Block-wise 8-bit experts have no fp32 kernel and use int8 activations at every level. "
+              "Other values are treated as 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("block_size",
-              "Size of each quantization block along the K (input feature) dimension. "
+              "For integer quantization, size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "Both hidden_size and inter_size must be divisible by the block size. "
+              "For integer and FP4 quantization, both hidden_size and inter_size must be divisible by "
+              "the block size. FP8 with block_size=128 supports partial 128x128 tiles. "
               "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
               "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
+              "For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, "
+              "with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. "
+              "Without a positive value, FP8 uses per-expert global scales. "
               "For integer quantization ('int'), omitting block_size means there is no blocking "
               "and a whole column shares one scaling factor. ",
               AttributeProto::INT,
@@ -1522,7 +1592,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
               "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
               "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
-              "with block_size 16.",
+              "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
+              "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.",
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
@@ -1534,17 +1605,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(-1))
         .Input(0,
                "input",
-               "2D tensor with shape (num_tokens, hidden_size), or "
+               "2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences "
+               "may be concatenated without padding, or "
                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1,
                "router_probs",
-               "2D tensor with shape (num_tokens, num_experts)",
+               "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
+               "token count of input",
                "T")
         .Input(2,
                "fc1_experts_weights",
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
-               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
+               "3D tensor with shape (num_experts, fusion_size * inter_size, "
+               "hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. "
+               "The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is "
+               "fc1_expert_weight_bits when provided, otherwise expert_weight_bits.",
                "T1")
         .Input(3,
                "fc1_scales",
@@ -1554,7 +1629,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, fusion_size * inter_size, hidden_size / 32). "
                "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / 16). Not used for quant_type='fp8'.",
+               "(num_experts, fusion_size * inter_size, hidden_size / 16). "
+               "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+               "(num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(4,
@@ -1562,7 +1639,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(5,
                "fc2_experts_weights",
-               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
+               "3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). "
+               "The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits "
+               "when provided, otherwise expert_weight_bits.",
                "T1")
         .Input(6,
                "fc2_scales",
@@ -1572,7 +1651,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, hidden_size, inter_size / 32). "
                "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, hidden_size, inter_size / 16). Not used for quant_type='fp8'.",
+               "(num_experts, hidden_size, inter_size / 16). "
+               "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+               "(num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(7,
@@ -1582,7 +1663,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)",
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size * effective_fc3_bits / 8). "
+               "The last dimension must be byte-aligned. effective_fc3_bits is fc3_expert_weight_bits "
+               "when provided, otherwise expert_weight_bits.",
                "T1",
                OpSchema::Optional)
         .Input(9,
@@ -1591,7 +1674,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(num_experts, inter_size), or a 3D tensor with shape "
                "(num_experts, inter_size, hidden_size / block_size) when block_size is provided. "
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
+               "(num_experts, inter_size, hidden_size / 32). "
+               "For quant_type='fp8' and block_size > 0, required when FC3 is present, with floating-point scales shaped "
+               "(num_experts, ceil(inter_size / block_size), ceil(hidden_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(10,
@@ -1601,20 +1686,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(11,
                "fc1_zero_points",
-               "2D tensor with shape (num_experts, fusion_size * inter_size / pack_size), or "
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "2D tensor with shape (num_experts, ceil(fusion_size * inter_size * effective_fc1_bits / 8)), or "
+               "3D tensor with shape (num_experts, fusion_size * inter_size, "
+               "ceil((hidden_size / block_size) * effective_fc1_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(12,
                "fc2_zero_points",
-               "2D tensor with shape (num_experts, hidden_size / pack_size), or "
-               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided.",
+               "2D tensor with shape (num_experts, ceil(hidden_size * effective_fc2_bits / 8)), or "
+               "3D tensor with shape (num_experts, hidden_size, "
+               "ceil((inter_size / block_size) * effective_fc2_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(13,
                "fc3_zero_points",
-               "2D optional tensor with shape (num_experts, inter_size / pack_size), or "
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "2D optional tensor with shape (num_experts, ceil(inter_size * effective_fc3_bits / 8)), or "
+               "3D optional tensor with shape (num_experts, inter_size, "
+               "ceil((hidden_size / block_size) * effective_fc3_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(14,
@@ -1630,13 +1718,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(15,
                "fc1_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+               "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
                "T4",
                OpSchema::Optional)
         .Input(16,
                "fc2_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+               "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
                "T4",
                OpSchema::Optional)
         .Input(17,
@@ -1667,7 +1757,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
         .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
-                        "Constrain scale types. Float tensors are used for integer quantization scales. "
+                        "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
@@ -1802,6 +1892,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ConvTransposeWithDynamicPads, 1,
                                     "W",
                                     "",
                                     "T")
+                                // Pads is required by the kernels, but v1 published it as optional.
+                                // Keep the schema compatible and reject a missing tensor at runtime.
                                 .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
                                 .Input(3, "B", "", "T", OpSchema::Optional)
                                 .Output(
@@ -4163,7 +4255,8 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
   5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
-     for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+     for `bits` < 8 the values are packed along the last dimension (low-order bits first), and `gather_axis`
+     and `quantize_axis` must differ.
   6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
      (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
      no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
@@ -4294,6 +4387,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         }
 
         uint32_t components = (data_elem_type == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
+        if (components > 1 && gather_axis == quantize_axis) {
+          fail_shape_inference("gather_axis and quantize_axis must not be the same for packed uint8 data");
+        }
+
         for (int i = 0; i < r; ++i) {
           if (data_shape.dim(i).has_dim_value() && scales_shape.dim(i).has_dim_value()) {
             if (i == quantize_axis) {
@@ -4352,7 +4449,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         // Find the correct dimension to expand and multiply it by components
         if (components > 1) {
           int quantize_output_dim_idx = (quantize_axis < gather_axis) ? quantize_axis : quantize_axis + q - 1;
-          if (quantize_output_dim_idx < out_rank) {
+          if (quantize_output_dim_idx >= 0 && quantize_output_dim_idx < out_rank) {
             auto* dim_to_update = output_shape->mutable_dim(quantize_output_dim_idx);
             if (dim_to_update->has_dim_value()) {
               dim_to_update->set_dim_value(dim_to_update->dim_value() * components);

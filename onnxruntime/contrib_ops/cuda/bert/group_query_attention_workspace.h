@@ -11,6 +11,18 @@ namespace contrib {
 namespace cuda {
 
 constexpr size_t kGQAWorkspaceAlignment = 256;
+constexpr size_t kGQAXqaH512Partitions = 32;
+
+// Windowed backends consume at most the resident/staged cache extent. Non-windowed
+// allocations intentionally continue to use the caller's absolute total length.
+constexpr int64_t GetGQAEffectiveWorkspaceKvLength(
+    int64_t total_sequence_length,
+    int64_t present_kv_cache_capacity,
+    bool is_windowed_kv_cache) noexcept {
+  return is_windowed_kv_cache && present_kv_cache_capacity < total_sequence_length
+             ? present_kv_cache_capacity
+             : total_sequence_length;
+}
 
 enum class GQAWorkspaceError {
   None,
@@ -47,6 +59,12 @@ constexpr bool IsSupportedGQAXqaGroupSize(int64_t group_size, bool is_quantized)
 
   return group_size == 1 || group_size == 2 || group_size == 4 || group_size == 5 ||
          group_size == 8 || group_size == 16 || group_size == 32;
+}
+
+constexpr bool IsSupportedGQAXqaGeometry(int64_t head_size, int64_t group_size, bool is_quantized) noexcept {
+  return !is_quantized && head_size == 512
+             ? group_size > 0
+             : IsSupportedGQAXqaHeadSize(head_size) && IsSupportedGQAXqaGroupSize(group_size, is_quantized);
 }
 
 // This mode describes only the QKV preprocessing behavior selected by the runtime route.
@@ -192,6 +210,7 @@ struct GQAXqaConfig {
 // reproduce GetXQAScratchSize. Optional RoPE and dynamic-head-sink views follow it
 // in the same allocation. Offsets are relative to the start of that allocation.
 struct GQAXqaWorkspaceRecipe {
+  bool is_h512 = false;
   size_t sequence_count = 0;
   size_t subsequences_per_sequence = 0;
   size_t subsequence_count = 0;
@@ -224,6 +243,8 @@ struct GQAXqaWorkspaceResult {
 };
 
 struct GQAFlashConfig {
+  // Standalone recipes consume this value as-is. Complete recipes accept the
+  // absolute length and apply the windowed resident/staged-capacity bound.
   int64_t total_sequence_length = 0;
   int64_t local_window_size = -1;
   int64_t multi_processor_count = 0;
@@ -299,6 +320,8 @@ struct GQAUnfusedWorkspaceResult {
 };
 
 struct GQAUnfusedConfig {
+  // Complete recipes accept the absolute length and apply the windowed
+  // resident/staged-capacity bound before building the standalone recipe.
   int64_t total_sequence_length = 0;
 };
 

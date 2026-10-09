@@ -22,7 +22,8 @@ constexpr GQAWorkspaceStatus Unavailable(const char* message) noexcept {
 }
 
 bool IsDefault(const GQAXqaWorkspaceRecipe& recipe) noexcept {
-  return recipe.sequence_count == 0 &&
+  return !recipe.is_h512 &&
+         recipe.sequence_count == 0 &&
          recipe.subsequences_per_sequence == 0 &&
          recipe.subsequence_count == 0 &&
          recipe.m_tile_size == 0 &&
@@ -129,7 +130,12 @@ GQACompleteWorkspaceResult GetGQACompleteWorkspaceRecipe(
       break;
     }
     case GQABackend::Flash: {
-      const auto backend = GetGQAFlashWorkspaceRecipe(problem, route.flash);
+      auto flash_config = route.flash;
+      flash_config.total_sequence_length = GetGQAEffectiveWorkspaceKvLength(
+          route.flash.total_sequence_length,
+          preparation.recipe.effective_kv_cache_capacity,
+          problem.is_windowed_kv_cache);
+      const auto backend = GetGQAFlashWorkspaceRecipe(problem, flash_config);
       result.status = backend.status;
       if (!result.status.IsOK()) return result;
       recipe.flash = backend.recipe;
@@ -146,8 +152,12 @@ GQACompleteWorkspaceResult GetGQACompleteWorkspaceRecipe(
       break;
     }
     case GQABackend::Unfused: {
+      const int64_t effective_kv_length = GetGQAEffectiveWorkspaceKvLength(
+          route.unfused.total_sequence_length,
+          preparation.recipe.effective_kv_cache_capacity,
+          problem.is_windowed_kv_cache);
       const auto backend = GetGQAUnfusedWorkspaceRecipe(
-          problem, route.unfused.total_sequence_length);
+          problem, effective_kv_length);
       result.status = backend.status;
       if (!result.status.IsOK()) return result;
       recipe.unfused = backend.recipe;
