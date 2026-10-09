@@ -5,6 +5,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import itertools
 import tempfile
 import unittest
 import warnings
@@ -31,7 +32,9 @@ from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, 
 
 class TestOpGemm(unittest.TestCase):
     def test_quantize_gemm_float16_bias_scale_underflow(self):
-        for per_channel in (False, True):
+        for per_channel, weight_type, symmetric in itertools.product(
+            (False, True), (QuantType.QInt8, QuantType.QUInt8), (False, True)
+        ):
             for magnitude, bias_value, input_max in (
                 (2**-11, 1, 1),
                 (0.005, 1, 1),
@@ -39,10 +42,14 @@ class TestOpGemm(unittest.TestCase):
                 (2**-11, 150, 0.255),
             ):
                 with (
-                    self.subTest(per_channel=per_channel, magnitude=magnitude),
+                    self.subTest(
+                        per_channel=per_channel, weight_type=weight_type, symmetric=symmetric, magnitude=magnitude
+                    ),
                     tempfile.TemporaryDirectory() as directory,
                 ):
-                    weights = np.array([[-magnitude, -magnitude / 2], [magnitude, magnitude / 2]], dtype=np.float16)
+                    weights = np.array(
+                        [[-magnitude * 0.75, -magnitude / 2], [magnitude, magnitude / 2]], dtype=np.float16
+                    )
                     bias = np.full(2, bias_value, dtype=np.float16)
                     inputs = {"input": np.eye(2, dtype=np.float16) * input_max}
                     model = helper.make_model(
@@ -72,9 +79,9 @@ class TestOpGemm(unittest.TestCase):
                         TestDataFeeds([inputs]),
                         quant_format=QuantFormat.QDQ,
                         activation_type=QuantType.QUInt8,
-                        weight_type=QuantType.QInt8,
+                        weight_type=weight_type,
                         per_channel=per_channel,
-                        extra_options={"WeightSymmetric": True},
+                        extra_options={"WeightSymmetric": symmetric},
                     )
                     quantized = onnx.load(output_path)
                     onnx.checker.check_model(quantized)
@@ -85,11 +92,13 @@ class TestOpGemm(unittest.TestCase):
                     dequantized = initializers["bias_quantized"].astype(np.float32) * scales
                     np.testing.assert_allclose(dequantized, bias, rtol=1e-5)
                     self.assertTrue((initializers["weight_scale"] < 0.001).all())
-                    self.assertTrue((initializers["weight_quantized"] != 0).all())
+                    self.assertTrue((initializers["weight_quantized"] != initializers["weight_zero_point"]).all())
                     effective_bias_scale = initializers["input_scale"].astype(np.float64) * initializers[
                         "weight_scale"
                     ].astype(np.float64)
-                    self.assertTrue((effective_bias_scale * np.iinfo(np.int32).max >= bias).all())
+                    if weight_type == QuantType.QInt8 and symmetric:
+                        self.assertTrue((effective_bias_scale * np.iinfo(np.int32).max >= bias).all())
+                    self.assertTrue((scales.astype(np.float64) * np.iinfo(np.int32).max >= bias).all())
                     for level in (GraphOptimizationLevel.ORT_DISABLE_ALL, GraphOptimizationLevel.ORT_ENABLE_ALL):
                         options = SessionOptions()
                         options.graph_optimization_level = level

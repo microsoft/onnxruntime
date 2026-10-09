@@ -218,6 +218,12 @@ class BaseQuantizer:
             # calculate scale for bias
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
             bias_scale = input_scale * weight_scale * beta
+            if bias_scale_dtype is not None:
+                # A separate FP32 DQ permits a sufficient bias scale even when weight adjustment is skipped.
+                min_bias_scale = np.abs(np.asarray(bias_data, dtype=np.float64)) / np.iinfo(np.int32).max
+                if bias_scale.size == 1:
+                    min_bias_scale = min_bias_scale.max()
+                bias_scale = np.maximum(bias_scale, min_bias_scale * 1.0001).astype(bias_scale_dtype)
 
             # Quantize by dividing by bias_scale
             quantized_data = np.asarray(bias_data, dtype=np.float64) / np.asarray(bias_scale, dtype=np.float64)
