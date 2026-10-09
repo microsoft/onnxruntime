@@ -2,9 +2,9 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <unordered_map>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/nn/average_pool.h"
+#include "core/providers/cann/nn/padding.h"
 
 using onnxruntime::common::Status;
 namespace onnxruntime {
@@ -39,12 +39,6 @@ Status AveragePool<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y_shape.Size() == 0)
     return Status::OK();
 
-  std::unordered_map<AutoPadType, const char*> padding_mode = {
-      {AutoPadType::NOTSET, "CALCULATED"},
-      {AutoPadType::SAME_UPPER, "SAME"},
-      {AutoPadType::SAME_LOWER, "SAME"},
-      {AutoPadType::VALID, "VALID"}};
-
   const aclDataType aclType = getACLType<T>();
   aclFormat format = ACL_FORMAT_ND;
 
@@ -57,7 +51,8 @@ Status AveragePool<T>::ComputeInternal(OpKernelContext* ctx) const {
   CANN_RETURN_IF_ERROR(aclopSetAttrBool(prepare.opAttr_, "ceil_mode", pool_attrs_.ceil_mode));
   CANN_RETURN_IF_ERROR(aclopSetAttrBool(prepare.opAttr_, "exclusive", pool_attrs_.count_include_pad));
   if (!pool_attrs_.global_pooling) {
-    CANN_RETURN_IF_ERROR(aclopSetAttrString(prepare.opAttr_, "padding_mode", padding_mode[pool_attrs_.auto_pad]));
+    CANN_RETURN_IF_ERROR(
+        aclopSetAttrString(prepare.opAttr_, "padding_mode", GetPoolAutoPadMode(pool_attrs_.auto_pad)));
     CANN_RETURN_IF_ERROR(aclopSetAttrBool(prepare.opAttr_, "global_pooling", false));
   } else {
     CANN_RETURN_IF_ERROR(aclopSetAttrString(prepare.opAttr_, "padding_mode", "VALID"));
