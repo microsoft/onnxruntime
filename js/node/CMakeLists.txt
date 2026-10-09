@@ -39,6 +39,11 @@ option(USE_CUDA "Build with CUDA support" OFF)
 option(USE_TENSORRT "Build with TensorRT support" OFF)
 option(USE_COREML "Build with CoreML support" OFF)
 option(USE_QNN "Build with QNN support" OFF)
+option(ORT_NODEJS_TEST_EP_CONTEXT "Enable test-only example EP compilation and selection" OFF)
+
+if(ORT_NODEJS_TEST_EP_CONTEXT)
+  add_compile_definitions(ORT_NODEJS_TEST_EP_CONTEXT=1)
+endif()
 
 if(USE_DML)
   add_compile_definitions(USE_DML=1)

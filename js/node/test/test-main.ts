@@ -15,6 +15,7 @@ warmup();
 // unittests
 require('./unittests/lib/index');
 require('./unittests/lib/ep-context-data-read');
+require('./unittests/lib/encrypted-ep-context');
 require('./unittests/lib/inference-session');
 require('./unittests/lib/model-metadata');
 require('./unittests/lib/tensor');
