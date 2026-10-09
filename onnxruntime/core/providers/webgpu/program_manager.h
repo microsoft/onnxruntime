@@ -26,7 +26,8 @@ class WebGpuContext;
 
 namespace detail {
 std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path);
-}
+Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z, uint32_t limit_per_dimension);
+}  // namespace detail
 
 // Shared by the pending build and Dawn's one-shot callback. Dropping a build after a failed
 // wait must not destroy the state before callback completion or cancellation.
@@ -58,6 +59,7 @@ class ProgramManager {
  public:
   ProgramManager(WebGpuContext& webgpu_context);
 
+  // May pad the grid. Both the logical and normalized counts must fit a u32 workgroup index.
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
   Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 

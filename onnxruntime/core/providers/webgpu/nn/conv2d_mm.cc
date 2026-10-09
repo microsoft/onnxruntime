@@ -4,6 +4,7 @@
 #include <vector>
 #include <iterator>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -180,20 +181,20 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto output_width = is_channels_last ? output_shape[2] : output_shape[3];
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
   const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
+  const int64_t output_spatial_size = SafeMul<int64_t>(output_width, output_height);
   // TODO: enable vec4 for NCHW
   const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
 
   // TODO: fine tune size
-  const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
-  const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
+  const auto dispatch_x = is_channels_last ? output_channels : output_spatial_size;
+  const auto dispatch_y = is_channels_last ? output_spatial_size : output_channels;
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
-  auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_x, workgroup_size[0]), elements_per_thread[0])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_y, workgroup_size[1]), elements_per_thread[1])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(batch_size, workgroup_size[2]), elements_per_thread[2])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_x, static_cast<int64_t>(workgroup_size[0])), elements_per_thread[0])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_y, static_cast<int64_t>(workgroup_size[1])), elements_per_thread[1])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(batch_size, static_cast<int64_t>(workgroup_size[2])), elements_per_thread[2])),
   };
 
   uint32_t inner_element_size = is_vec4 ? (is_channels_last && in_channels % 4 != 0 ? 3 : 4) : 1;
