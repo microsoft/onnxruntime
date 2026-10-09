@@ -320,6 +320,7 @@ std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
 
 }  // namespace
 
+// Charge lazy prefill scratch without adding decode's constructor-only rotating buffers.
 TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
@@ -364,7 +365,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_TRUE(estimate.has_value());
     ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
     EXPECT_GT(estimate->runtime_transient_bytes, *estimate->runtime_workspace_bytes);
-    EXPECT_GT(estimate->runtime_transient_bytes, estimate->initialization_scratch_bytes);
+    EXPECT_GT(estimate->initialization_scratch_bytes, size_t{0});
 
     std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
     OrtValue a_value;

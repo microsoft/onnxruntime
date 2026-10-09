@@ -97,14 +97,26 @@ class GemmIdCore {
   int k;
   nvinfer::DataType dtype;
   int sm;
+  int device_id;
+  int quant_bits;
+  int group_size;
+  bool has_bias;
+  bool has_zeros;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_) {
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0,
+             int device_id_ = 0, int quant_bits_ = 0, int group_size_ = 0,
+             bool has_bias_ = false, bool has_zeros_ = false)
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), device_id(device_id_), quant_bits(quant_bits_), group_size(group_size_), has_bias(has_bias_), has_zeros(has_zeros_) {
   }
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
-        sm(0) {
+        sm(0),
+        device_id(0),
+        quant_bits(0),
+        group_size(0),
+        has_bias(false),
+        has_zeros(false) {
   }
 
   bool operator==(GemmIdCore const& id) const {
@@ -120,7 +132,9 @@ class GemmIdCore {
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm;
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && device_id == id.device_id &&
+           quant_bits == id.quant_bits && group_size == id.group_size && has_bias == id.has_bias &&
+           has_zeros == id.has_zeros;
   }
 };
 
@@ -131,7 +145,12 @@ struct GemmIdCoreHash {
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
     auto h4 = std::hash<int>{}(id.sm);
-    return h1 ^ h2 ^ h3 ^ h4;
+    auto h5 = std::hash<int>{}(id.device_id);
+    auto h6 = std::hash<int>{}(id.quant_bits);
+    auto h7 = std::hash<int>{}(id.group_size);
+    auto h8 = std::hash<bool>{}(id.has_bias);
+    auto h9 = std::hash<bool>{}(id.has_zeros);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9;
   }
 };
 
@@ -329,7 +348,10 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
                        ? max_profile_m
                        : RoundUpProfileM(static_cast<int>(dims.maxM), max_profile_m);
 
-  size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
+  size_t workspace_bytes = 0;
+  for (int profile_m : getProfileMBuckets(dims.minM, maxM, hasWeightOnlyCudaKernel)) {
+    workspace_bytes = std::max(workspace_bytes, computeTmpSize(profile_m, dims.n, dims.k));
+  }
 
   if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
     // Create map for GEMM ID

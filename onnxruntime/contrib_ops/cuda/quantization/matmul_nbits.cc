@@ -355,10 +355,25 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       }
       return onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
           profile_bucket_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
-          SafeInt<size_t>(block_size), *profiler_runner_workspace);
+          SafeInt<size_t>(block_size), *profiler_runner_workspace,
+          profile_bucket_m == 1 && nbits == 4 && block_size == 32 && !has_bias && !has_zero_points &&
+                  weight_prepacked != kMatMulNBitsWeightPrepackedSm90
+              ? static_cast<size_t>(device_prop.l2CacheSize)
+              : 0);
     };
 
-    const auto constructor_profile_scratch = compute_profiler_scratch(constructor_profile_max_m);
+    const auto constructor_profile_scratch = [&]() -> std::optional<size_t> {
+      size_t peak = 0;
+      for (int profile_bucket_m : WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+               1, constructor_profile_max_m, profile_m)) {
+        const auto scratch = compute_profiler_scratch(profile_bucket_m);
+        if (!scratch.has_value()) {
+          return std::nullopt;
+        }
+        peak = std::max(peak, *scratch);
+      }
+      return peak;
+    }();
     if (!constructor_profile_scratch.has_value()) {
       return std::nullopt;
     }
@@ -614,6 +629,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
+  gemmProfiler_->setDecodeInterleave(weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? 1 : 4);
 
   auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
   gemmProfiler_->setAllocator(allocator);
@@ -628,9 +644,13 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm,
+                         this->GetDeviceId(), static_cast<int>(nbits_), static_cast<int>(block_size_),
+                         has_bias_, has_zero_points_);
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm,
+                         this->GetDeviceId(), static_cast<int>(nbits_), static_cast<int>(block_size_),
+                         has_bias_, has_zero_points_);
   }
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
@@ -1021,6 +1041,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
               fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
               bias_data, chunk_out_data,
               alpha, rows, n, k, static_cast<int>(block_size_), cuda_kernel_type, apply_alpha_in_advance);
+          params.decode_variant = bestTactic->cudaKernelVariant >= 2 ? bestTactic->cudaKernelVariant : 0;
 
           // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),
           // not the raw device SM. The GEMV interleave layout is arch-dependent: arch in [90,100)

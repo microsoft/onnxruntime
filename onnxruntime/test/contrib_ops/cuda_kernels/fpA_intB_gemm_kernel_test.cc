@@ -11,6 +11,7 @@
 #include "cutlass/numeric_types.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
@@ -29,9 +30,11 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <tuple>
 #include <vector>
 
 namespace wo = onnxruntime::llm::kernels::fpA_intB_gemv;
+namespace wo_profile = onnxruntime::llm::kernels::weight_only;
 using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
 namespace {
@@ -412,7 +415,8 @@ class KernelTestFixture : public ::testing::Test {
     d_bias_->from_cpu(h_bias_.data());
   }
 
-  bool BenchmarkAndVerifyKernel(bool use_zero_points = QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS) {
+  bool BenchmarkAndVerifyKernel(bool use_zero_points = QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS,
+                                int decode_variant = 0) {
     std::cout << "m=" << m_ << ", n=" << n_ << ", k=" << k_ << ", block_size=" << block_size_ << std::endl;
 
     void* p_act_scale = nullptr;
@@ -431,6 +435,7 @@ class KernelTestFixture : public ::testing::Test {
 
     wo::Params params(d_act_->data(), p_act_scale, d_weight_->data(), d_scales_->data(), p_zeros, p_bias,
                       d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
+    params.decode_variant = decode_variant;
 
     //------------------------
     // Run FpA_IntB_Gemv CUDA kernel
@@ -664,6 +669,143 @@ TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
 #endif
 }
 
+// Keep profile choices separate across devices, layouts, dtypes, quantization, and fused features.
+TEST(FpAIntBGemvTest, TacticCacheSeparatesDeviceAndQuantization) {
+  using TacticCache = std::unordered_map<wo_profile::GemmIdCore, int, wo_profile::GemmIdCoreHash>;
+  const wo_profile::GemmIdCore base(384, 1536, onnxruntime::llm::nvinfer::DataType::kHALF,
+                                    80, 0, 4, 32, false, false);
+  std::vector<wo_profile::GemmIdCore> ids{base};
+  for (int field = 0; field < 7; ++field) {
+    auto id = base;
+    switch (field) {
+      case 0:
+        id.device_id = 1;
+        break;
+      case 1:
+        id.sm = 90;
+        break;
+      case 2:
+        id.dtype = onnxruntime::llm::nvinfer::DataType::kBF16;
+        break;
+      case 3:
+        id.quant_bits = 8;
+        break;
+      case 4:
+        id.group_size = 64;
+        break;
+      case 5:
+        id.has_bias = true;
+        break;
+      case 6:
+        id.has_zeros = true;
+        break;
+    }
+    EXPECT_FALSE(id == base);
+    ids.push_back(id);
+  }
+  TacticCache cache;
+  for (size_t index = 0; index < ids.size(); ++index) cache.emplace(ids[index], static_cast<int>(index));
+  EXPECT_EQ(cache.size(), ids.size());
+  for (size_t index = 0; index < ids.size(); ++index) EXPECT_EQ(cache.at(ids[index]), static_cast<int>(index));
+}
+
+// Allocate a bounded rotating weight/scale set beyond L2, retaining the original scratch fallback.
+TEST(Int4DecodeTileTest, StreamingScratchSize) {
+  constexpr size_t cache_bytes = 64 * 1024;
+  const auto warm = wo_profile::ComputeWeightOnlyGemmProfilerBufferSizes(1, 16, 64, 4, 32, 0);
+  const auto streaming = wo_profile::ComputeWeightOnlyGemmProfilerBufferSizes(1, 16, 64, 4, 32, 0, cache_bytes);
+  ASSERT_TRUE(warm.has_value());
+  ASSERT_TRUE(streaming.has_value());
+  EXPECT_GT((*streaming)[1] + (*streaming)[2], 2 * cache_bytes);
+  EXPECT_LE((*streaming)[1] + (*streaming)[2], 2 * cache_bytes + (*warm)[1] + (*warm)[2]);
+  EXPECT_EQ((*streaming)[1] / (*warm)[1], (*streaming)[2] / (*warm)[2]);
+  EXPECT_EQ((*streaming)[3], (*warm)[3]);
+  const auto scratch = wo_profile::ComputeWeightOnlyGemmProfilerScratchSize(1, 16, 64, 4, 32, 0, cache_bytes);
+  ASSERT_TRUE(scratch.has_value());
+  EXPECT_GE(*scratch, (*streaming)[1] + (*streaming)[2]);
+  EXPECT_EQ(wo_profile::ComputeWeightOnlyGemmProfilerBufferSizes(1, 4096, 4096, 4, 32, 0, cache_bytes),
+            wo_profile::ComputeWeightOnlyGemmProfilerBufferSizes(1, 4096, 4096, 4, 32, 0));
+  EXPECT_FALSE(wo_profile::ComputeWeightOnlyGemmProfilerScratchSize(
+                   1, 16, 64, 4, 32, 0, std::numeric_limits<size_t>::max())
+                   .has_value());
+}
+
+// Enumerate legal geometries and reject production misalignment, incompatible layout, and overflowing grids.
+TEST(Int4DecodeTileTest, GeometryAndAlignment) {
+  for (const auto& [variant, tile, threads] : std::vector<std::tuple<int, int, int>>{
+           {2, 2, 128}, {3, 2, 256}, {4, 4, 128}, {5, 4, 256}, {6, 8, 128}, {7, 8, 256}}) {
+    EXPECT_EQ(wo::GetInt4DecodeGeometry(variant), std::make_pair(tile, threads));
+    EXPECT_TRUE(wo::IsInt4DecodeGeometryLegal(variant, 1536, 12352, 4));
+    EXPECT_FALSE(wo::IsInt4DecodeGeometryLegal(variant, 32, 256, 4));
+    EXPECT_FALSE(wo::IsInt4DecodeGeometryLegal(variant, 1536, 32, 4));
+    EXPECT_FALSE(wo::IsInt4DecodeGeometryLegal(variant, 524296, 256, 4));
+    EXPECT_FALSE(wo::IsInt4DecodeGeometryLegal(variant, 1536, 96, 4));
+    EXPECT_FALSE(wo::IsInt4DecodeGeometryLegal(variant, 1536, 1536, 2));
+    EXPECT_TRUE(wo::IsInt4DecodeGeometryLegal(variant, tile * 4 * 65535 - (tile * 4 * 65535) % 64, 256, 4));
+    EXPECT_FALSE(wo::IsInt4DecodeGeometryLegal(variant, tile * 4 * 65536, 256, 4));
+  }
+  for (int variant : {0, 1, 8}) EXPECT_EQ(wo::GetInt4DecodeGeometry(variant), std::make_pair(0, 0));
+}
+
+// Select by explicit packing capability rather than an architecture identifier; retain default and CUTLASS tactics.
+TEST(Int4DecodeTileTest, ProfilerEligibilityAndFallback) {
+  struct Profiler : wo_profile::WeightOnlyGroupwiseQuantGemmPluginProfiler {
+    explicit Profiler(WeightOnlyGemmRunnerPtr runner) { mRunner = std::move(runner); }
+    using WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic;
+    using WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics;
+  };
+  using Runner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner<
+      half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+  auto runner = std::make_shared<Runner>();
+  runner->setArch(80);
+  Profiler profiler(runner);
+  profiler.setQuant(4, false, false);
+  profiler.setGroupSize(32);
+  profiler.setDecodeInterleave(4);
+  for (auto type : {wo::KernelType::FP16Int4Groupwise, wo::KernelType::BF16Int4Groupwise}) {
+    for (int arch : {75, 80, 86, 89, 90, 100, 120}) {
+      profiler.setCudaKernelType(type, arch);
+      std::set<int> variants;
+      for (const auto& tactic : profiler.getTactics(1, 384, 1536)) {
+        if (tactic.enableCudaKernel) variants.insert(tactic.cudaKernelVariant);
+      }
+      EXPECT_EQ(variants, (std::set<int>{0, 2, 3, 4, 5, 6, 7}));
+      for (int variant = 2; variant <= 7; ++variant) {
+        CutlassGemmConfig tactic;
+        tactic.enableCudaKernel = true;
+        tactic.cudaKernelVariant = variant;
+        EXPECT_TRUE(profiler.checkTactic(1, 384, 12352, tactic));
+        EXPECT_FALSE(profiler.checkTactic(2, 384, 12352, tactic));
+        for (int interleave : {0, 1, 2, 8}) {
+          profiler.setDecodeInterleave(interleave);
+          EXPECT_FALSE(profiler.checkTactic(1, 384, 12352, tactic));
+        }
+        profiler.setDecodeInterleave(4);
+      }
+    }
+    CutlassGemmConfig tactic;
+    tactic.enableCudaKernel = true;
+    tactic.cudaKernelVariant = 2;
+    EXPECT_FALSE(profiler.checkTactic(1, 131072, 256, tactic));
+    profiler.setGroupSize(64);
+    EXPECT_FALSE(profiler.checkTactic(1, 384, 1536, tactic));
+    profiler.setGroupSize(32);
+    for (const auto& [bits, bias, zeros] : std::vector<std::tuple<int, bool, bool>>{
+             {8, false, false}, {2, false, false}, {4, true, false}, {4, false, true}}) {
+      profiler.setQuant(bits, bias, zeros);
+      EXPECT_FALSE(profiler.checkTactic(1, 384, 1536, tactic));
+    }
+    profiler.setQuant(4, false, false);
+    tactic.cudaKernelVariant = 8;
+    EXPECT_FALSE(profiler.checkTactic(1, 384, 1536, tactic));
+    std::set<int> wide_variants;
+    for (const auto& candidate : profiler.getTactics(1, 131072, 256)) {
+      if (candidate.enableCudaKernel) wide_variants.insert(candidate.cudaKernelVariant);
+    }
+    EXPECT_EQ(wide_variants, (std::set<int>{0, 4, 5, 6, 7}));
+  }
+}
+
 TEST_F(Fp16Int8GroupwiseTest, Fp16_Int8_Gemm_CudaKernel) {
   int const arch = onnxruntime::llm::common::getSMVersion();
   if (arch < kMinSupportedSm) {
@@ -704,7 +846,7 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
   }
 }
 
-// Check FP16 narrow-tile bounds and small/deep/wide fallbacks with a symmetric SM80-compatible reference.
+// Check FP16 default bounds and every legal profiled geometry against a symmetric CUTLASS reference.
 TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
   EXPECT_EQ(GetKernelArch(90), 80);
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
@@ -715,10 +857,15 @@ TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
     SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
     InitBuffers(1, columns, depth, 32);
     EXPECT_TRUE(BenchmarkAndVerifyKernel());
+    for (int variant = 2; variant <= 7; ++variant) {
+      if (wo::IsInt4DecodeGeometryLegal(variant, columns, depth, 4)) {
+        EXPECT_TRUE(BenchmarkAndVerifyKernel(false, variant));
+      }
+    }
   }
 }
 
-// Check the same BF16 bounds and fallbacks with a symmetric reference in both build configurations.
+// Check BF16 default bounds and every legal profiled geometry against the symmetric reference.
 TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
   EXPECT_EQ(GetKernelArch(90), 80);
   if (onnxruntime::llm::common::getSMVersion() < 80) {
@@ -729,6 +876,41 @@ TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1Decode) {
     SCOPED_TRACE(testing::Message() << "N=" << columns << " K=" << depth);
     InitBuffers(1, columns, depth, 32);
     EXPECT_TRUE(BenchmarkAndVerifyKernel());
+    for (int variant = 2; variant <= 7; ++variant) {
+      if (wo::IsInt4DecodeGeometryLegal(variant, columns, depth, 4)) {
+        EXPECT_TRUE(BenchmarkAndVerifyKernel(false, variant));
+      }
+    }
+  }
+}
+
+// Check all FP16 decode geometries on short-K, long-K, and wide-N projections with a CUTLASS reference.
+TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4DecodeProfiledGeometries) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 decode requires SM " << kMinSupportedSm << " or later";
+  }
+  for (int variant = 2; variant <= 7; ++variant) {
+    for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{
+             {128, 256}, {1536, 12288}, {12288, 1536}}) {
+      SCOPED_TRACE(testing::Message() << "variant=" << variant << " N=" << columns << " K=" << depth);
+      InitBuffers(1, columns, depth, 32);
+      EXPECT_TRUE(BenchmarkAndVerifyKernel(false, variant));
+    }
+  }
+}
+
+// Check the same BF16 geometries on representative projections with a scale-only CUTLASS reference.
+TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4DecodeProfiledGeometries) {
+  if (onnxruntime::llm::common::getSMVersion() < 80) {
+    GTEST_SKIP() << "BF16 decode requires SM80 or later";
+  }
+  for (int variant = 2; variant <= 7; ++variant) {
+    for (const auto& [columns, depth] : std::vector<std::pair<int, int>>{
+             {128, 256}, {1536, 12288}, {12288, 1536}}) {
+      SCOPED_TRACE(testing::Message() << "variant=" << variant << " N=" << columns << " K=" << depth);
+      InitBuffers(1, columns, depth, 32);
+      EXPECT_TRUE(BenchmarkAndVerifyKernel(false, variant));
+    }
   }
 }
 
@@ -741,15 +923,20 @@ TEST_F(Fp16Int4GroupwiseTest, Int4GroupwiseHopperRouting) {
 #endif
 }
 
-// Check widths immediately below and above the narrow SM80 tile's grid.y limit.
+// Check default dispatch and every legal geometry around the two-column grid.y limit.
 TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM1GridLimit) {
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT4 decode requires SM " << kMinSupportedSm << " or later";
   }
-  for (int columns : {524224, 524288}) {
+  for (int columns : {524224, 524288, 524352}) {
     SCOPED_TRACE(testing::Message() << "N=" << columns);
     InitBuffers(1, columns, 256, 32);
     EXPECT_TRUE(BenchmarkAndVerifyKernel());
+    for (int variant = 2; variant <= 7; ++variant) {
+      if (wo::IsInt4DecodeGeometryLegal(variant, columns, 256, 4)) {
+        EXPECT_TRUE(BenchmarkAndVerifyKernel(false, variant));
+      }
+    }
   }
 }
 

@@ -16,6 +16,7 @@
 
 #pragma once
 #include <cuda_runtime.h>
+#include <utility>
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -36,6 +37,31 @@ enum class KernelType {
   BF16Int2PerChannel
 };
 
+inline std::pair<int, int> GetInt4DecodeGeometry(int variant) {
+  switch (variant) {
+    case 2:
+      return {2, 128};
+    case 3:
+      return {2, 256};
+    case 4:
+      return {4, 128};
+    case 5:
+      return {4, 256};
+    case 6:
+      return {8, 128};
+    case 7:
+      return {8, 256};
+    default:
+      return {0, 0};
+  }
+}
+
+inline bool IsInt4DecodeGeometryLegal(int variant, int n, int k, int interleave) {
+  const auto [tile, threads] = GetInt4DecodeGeometry(variant);
+  return tile != 0 && threads != 0 && interleave == 4 && n >= 64 && n % 64 == 0 &&
+         k >= 64 && k % 64 == 0 && n % (tile * interleave) == 0 && n / (tile * interleave) <= 65535;
+}
+
 struct Params {
   using Pointer = void*;
   using ConstPointer = void const*;
@@ -53,6 +79,7 @@ struct Params {
   int groupsize;
   KernelType type;
   bool apply_alpha_in_advance;
+  int decode_variant = 0;
 
   Params(ConstPointer _act, ConstPointer _act_scale, ConstPointer _weight, ConstPointer _scales, ConstPointer _zeros,
          ConstPointer _bias, Pointer _out, float _alpha, int _m, int _n, int _k, int _groupsize, KernelType _type,

@@ -416,10 +416,47 @@ void dispatcher(Params& params, cudaStream_t s) {
     }                                                                                               \
   } while (0);
 
+  if (params.decode_variant != 0) {
+    if constexpr (NarrowInt4Decode && Details::kStepK == 32 && Details::kInterleave == 4 &&
+                  !EnableActScale && !EnableBias && !ApplyAlphaInAdvance) {
+      ORT_ENFORCE(params.m == 1 && IsInt4DecodeGeometryLegal(params.decode_variant, params.n, params.k,
+                                                             Details::kInterleave),
+                  "Unsupported INT4 decode geometry");
+      switch (params.decode_variant) {
+        case 2:
+          DISPATCHER_FOR_M(1, 1, 2, 128);
+          break;
+        case 3:
+          DISPATCHER_FOR_M(1, 1, 2, 256);
+          break;
+        case 4:
+          DISPATCHER_FOR_M(1, 1, 4, 128);
+          break;
+        case 5:
+          DISPATCHER_FOR_M(1, 1, 4, 256);
+          break;
+        case 6:
+          DISPATCHER_FOR_M(1, 1, 8, 128);
+          break;
+        case 7:
+          DISPATCHER_FOR_M(1, 1, 8, 256);
+          break;
+      }
+    } else {
+      ORT_THROW("INT4 decode geometry requires the symmetric group32 interleave4 layout");
+    }
+  }
+
   if constexpr (NarrowInt4Decode) {
-    // Keep the original tile outside measured small-N/deep-K cases, also avoiding grid.y overflow.
-    if (params.m == 1 && (params.n < 64 || params.n > 8192 || params.k < 64 || params.k > 4096 ||
-                          (params.n > 256 && params.k < 2560))) {
+    if (params.m == 1) {
+      if (params.n >= 64 && params.n <= 8192 && params.k >= 64 && params.k <= 4096 &&
+          (params.n <= 256 || params.k >= 2560) &&
+          params.n % (CtaNDecode * Details::kInterleave) == 0 &&
+          params.n / (CtaNDecode * Details::kInterleave) <= 65535) {
+        exec_kernel<Details, 1, CtaNDecode, DecodeThreads, GroupSize, EnableActScale, EnableZero, EnableBias,
+                    ApplyAlphaInAdvance>(params, s);
+        return;
+      }
       exec_kernel<Details, 1, CtaN, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
                   ApplyAlphaInAdvance>(params, s);
       return;
