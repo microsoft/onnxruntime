@@ -230,6 +230,11 @@ if(onnxruntime_DAWN_PREBUILT_DIR)
 endif()
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
+option(onnxruntime_ENABLE_D3D12_FILE_LOADING
+       "Enable accelerated file-to-D3D12-buffer loading on Windows" OFF)
+if(onnxruntime_ENABLE_D3D12_FILE_LOADING)
+  add_compile_definitions(ENABLE_D3D12_FILE_LOADING=1)
+endif()
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
 option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on Windows)" ON)

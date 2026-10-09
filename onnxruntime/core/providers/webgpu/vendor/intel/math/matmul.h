@@ -34,6 +34,9 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_inner", ProgramUniformVariableDataType::Uint32},
+                                          {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
+                                          {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
+                                          {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32},
                                           WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:

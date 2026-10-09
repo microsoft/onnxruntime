@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "contrib_ops/webgpu/moe/qmoe.h"
+#include "contrib_ops/webgpu/moe/gate_1token.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
@@ -237,45 +238,32 @@ class GateProgram final : public Program<GateProgram> {
   bool normalize_routing_weights_;
 };
 
-class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
- public:
-  Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
-      : Program<Gate1TokenProgram>{"QmoeGate1Token"},
-        k_{k},
-        is_fp16_{is_fp16},
-        has_router_weights_{has_router_weights},
-        normalize_routing_weights_{normalize_routing_weights} {}
+Gate1TokenProgram::Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
+    : Program<Gate1TokenProgram>{"QmoeGate1Token"},
+      k_{k},
+      is_fp16_{is_fp16},
+      has_router_weights_{has_router_weights},
+      normalize_routing_weights_{normalize_routing_weights} {}
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
-    const ShaderVariableHelper* router_weights = &router_logits;
-    if (has_router_weights_) {
-      router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
-    }
-    const auto& topk_values = shader.AddOutput("topk_values");
-    const auto& indirect_experts = shader.AddOutput("indirect_experts");
+Status Gate1TokenProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* router_weights = &router_logits;
+  if (has_router_weights_) {
+    router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+  }
+  const auto& topk_values = shader.AddOutput("topk_values");
+  const auto& indirect_experts = shader.AddOutput("indirect_experts");
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
-                               WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                               WGSL_TEMPLATE_PARAMETER(k, k_),
-                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
-                               WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
-                               WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
-                               WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
-                               WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
-  };
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int k_;
-  bool is_fp16_;
-  bool has_router_weights_;
-  bool normalize_routing_weights_;
-};
+  return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
+                             WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
+                             WGSL_TEMPLATE_PARAMETER(k, k_),
+                             WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                             WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
+                             WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
+                             WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
+                             WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
+}
 
 class HiddenStateGatherProgram final : public Program<HiddenStateGatherProgram> {
  public:
