@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <limits>
+
 #ifndef SHARED_PROVIDER
 #include "core/providers/common.h"
 #endif
@@ -147,12 +149,20 @@ class ConcatBase {
       // While concatenating, the rank of the output is the same as the input rank(s)
 
       // Calculate the size of the concatenated axis
-      size_t concat_axis_size = 0;
+      int64_t concat_axis_size = 0;
       for (size_t index = 0; index < input_count; index++) {
-        concat_axis_size += onnxruntime::narrow<size_t>(input_tensors[index]->Shape()[onnxruntime::narrow<size_t>(p.axis)]);
+        const auto& input_shape = input_tensors[index]->Shape();
+        ORT_RETURN_IF_NOT(p.axis < input_shape.NumDimensions(),
+                          "Input rank must be greater than the concat axis: ",
+                          p.axis, " >= ", input_shape.NumDimensions());
+
+        const int64_t input_axis_size = input_shape[onnxruntime::narrow<size_t>(p.axis)];
+        ORT_RETURN_IF_NOT(input_axis_size <= std::numeric_limits<int64_t>::max() - concat_axis_size,
+                          "Concat axis dimension overflow");
+        concat_axis_size += input_axis_size;
       }
 
-      output_dims[onnxruntime::narrow<size_t>(p.axis)] = onnxruntime::narrow<int64_t>(concat_axis_size);
+      output_dims[onnxruntime::narrow<size_t>(p.axis)] = concat_axis_size;
     } else {  // 'Stack' mode
       // While stacking, the rank of the output is one more than the input rank(s).
       // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
