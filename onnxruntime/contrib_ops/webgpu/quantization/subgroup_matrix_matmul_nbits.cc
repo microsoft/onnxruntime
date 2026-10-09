@@ -245,7 +245,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     }
 
     // Pad M to workgroup tile size so all subgroups read valid prepacked data.
-    const uint32_t padded_M = ((M + tiling.tile_m - 1) / tiling.tile_m) * tiling.tile_m;
+    const uint32_t padded_M = CeilDiv(M, tiling.tile_m) * tiling.tile_m;
     const auto dispatch_group_size_x = padded_M / m;
     ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
     const auto dispatch_group_size_y = K / k;
@@ -270,22 +270,22 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   // dispatch below moves the valid rows into `y`. This keeps the no-bias write-out
   // free of any bounds-checked workgroup-scratch store.
   const bool has_tail_buffer = !has_bias && config.Is(8, 16, 16) && (M % tiling.tile_m != 0);
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tiling.tile_m, tiling.tile_n, has_tail_buffer};
-  mul_program.SetWorkgroupSize(tiling.workgroup_size);
+  SubgroupMatrixMatMulNBitsProgram matmul_program{nbits, config, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tiling.tile_m, tiling.tile_n, has_tail_buffer};
+  matmul_program.SetWorkgroupSize(tiling.workgroup_size);
 
   // Pin kernels running on variable-size adapters to the subgroup size they were written for.
   if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-    mul_program.SetSubgroupSize(config.subgroupSize);
+    matmul_program.SetSubgroupSize(config.subgroupSize);
   }
 
   uint32_t num_N_tile = CeilDiv(N, tiling.tile_n);
   uint32_t num_M_tile = CeilDiv(M, tiling.tile_m);
-  mul_program.SetDispatchGroupSize(num_N_tile, num_M_tile, 1);
+  matmul_program.SetDispatchGroupSize(num_N_tile, num_M_tile, 1);
 
   const int input_b_components = static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components);
-  mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, input_b_components},
-                         {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+  matmul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                            {b, ProgramTensorMetadataDependency::TypeAndRank, input_b_components},
+                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}, {num_N_tile}, {num_M_tile}, {weight_index}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
       .CacheHint(nbits,
@@ -295,21 +295,21 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                  has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect,
                  tiling.tile_m, tiling.tile_n, has_tail_buffer);
   if (has_zero_points) {
-    mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+    matmul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
   if (bias) {
-    mul_program.AddInput({bias, ProgramTensorMetadataDependency::None});
+    matmul_program.AddInput({bias, ProgramTensorMetadataDependency::None});
   }
   if (has_weight_idx_indirect) {
-    mul_program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
+    matmul_program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
   }
 
   Tensor tail_buffer;
   if (has_tail_buffer) {
     tail_buffer = context.CreateGPUTensor(y->DataType(), TensorShape{tiling.tile_m, N});
-    mul_program.AddOutput({&tail_buffer, ProgramTensorMetadataDependency::None});
+    matmul_program.AddOutput({&tail_buffer, ProgramTensorMetadataDependency::None});
   }
-  ORT_RETURN_IF_ERROR(context.RunProgram(mul_program));
+  ORT_RETURN_IF_ERROR(context.RunProgram(matmul_program));
 
   if (has_tail_buffer) {
     // Only the rows below `tail_rows` in `tail_buffer` were ever written by the
