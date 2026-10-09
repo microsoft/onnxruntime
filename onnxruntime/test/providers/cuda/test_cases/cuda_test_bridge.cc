@@ -29,6 +29,9 @@ struct ConvPlanCacheTestPeer {
       if (state.conv_plan->bias_fused && state.b_data) {
         snapshot.b_binding = state.variant_pack.at(state.conv_plan->B);
       }
+      if (state.conv_plan->bias_fused && state.conv_plan->Z) {
+        snapshot.z_binding = state.variant_pack.at(state.conv_plan->Z);
+      }
     }
     return snapshot;
   }
@@ -40,9 +43,17 @@ struct ConvPlanCacheTestPeer {
 namespace onnxruntime::test {
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(BUILD_CUDA_EP_AS_PLUGIN) && CUDNN_MAJOR >= 9
-ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, bool bfloat16) {
-  return bfloat16 ? cuda::ConvPlanCacheTestPeer::Snapshot<BFloat16>(kernel)
-                  : cuda::ConvPlanCacheTestPeer::Snapshot<float>(kernel);
+ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t element_type) {
+  switch (element_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return cuda::ConvPlanCacheTestPeer::Snapshot<float>(kernel);
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      return cuda::ConvPlanCacheTestPeer::Snapshot<MLFloat16>(kernel);
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      return cuda::ConvPlanCacheTestPeer::Snapshot<BFloat16>(kernel);
+    default:
+      ORT_THROW("Unsupported Conv plan cache test element type: ", element_type);
+  }
 }
 #endif
 

@@ -38,9 +38,10 @@ struct ConvPlanCacheSnapshot {
   const void* w_binding = nullptr;
   const void* b_binding = nullptr;
   const void* y_binding = nullptr;
+  const void* z_binding = nullptr;
 };
 
-ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, bool bfloat16);
+ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t element_type);
 #endif
 
 // Node and Tensor are borrowed core objects. The provider-side accessors forward

@@ -238,16 +238,15 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   try {
     CUDNN_FE_CALL_THROW(plan->graph->validate());
     CUDNN_FE_CALL_THROW(plan->graph->build_operation_graph(handle));
-    CUDNN_FE_CALL_THROW(plan->graph->create_execution_plans({heur_mode}));
   } catch (const std::exception& ex) {
     std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what(),
                                      " with the cudnn frontend json:\n", plan->graph->print());
     return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
   }
 
-  if (!use_tf32) plan->graph->deselect_numeric_notes({cudnn_frontend::NumericalNote_t::TENSOR_CORE});
-
   try {
+    CUDNN_FE_CALL_THROW(plan->graph->create_execution_plans({heur_mode}));
+    if (!use_tf32) plan->graph->deselect_numeric_notes({cudnn_frontend::NumericalNote_t::TENSOR_CORE});
     CUDNN_FE_CALL_THROW(plan->graph->check_support(handle));
     CUDNN_FE_CALL_THROW(plan->graph->build_plans(handle));
   } catch (const std::exception& ex) {
@@ -314,6 +313,8 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
       s_.last_bias_expected != bias_expected) {
     s_.conv_plan_matches_inputs = false;
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, w_in_nhwc));
+    ORT_RETURN_IF_NOT(B == nullptr || (B->Shape().NumDimensions() == 1 && B->Shape()[0] == w_dims[0]),
+                      "Bias must be 1D with ", w_dims[0], " elements.");
 
     TensorShapeVector kernel_shape;
     ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape, w_in_nhwc));
@@ -512,7 +513,7 @@ Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
     s_.variant_pack.insert_or_assign(plan.Z, const_cast<void*>(s_.z_data));
     if (Layout == LAYOUT_NCHW && s_.z_data == s_.y_data) {
       // memset Z if it's required for a succesful fusion
-      CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(s_.y_data, 0, s_.Y->SizeInBytes(), Stream(context)));
     }
   }
   auto ws = GetWorkSpace(GetComputeStream(context));
