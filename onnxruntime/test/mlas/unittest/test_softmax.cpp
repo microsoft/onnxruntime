@@ -44,6 +44,9 @@ class MlasComputeExpTest : public MlasTestBase {
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
   void TestFp16(size_t N, float MinimumValue, float MaximumValue) {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
@@ -70,6 +73,9 @@ class MlasComputeExpTest : public MlasTestBase {
   }
 
   void TestSumFp16(size_t N, float MinimumValue, float MaximumValue) {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
