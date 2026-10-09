@@ -424,7 +424,6 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!source_dir) return NullArg("source_dir");
   if (!out_uri) return NullArg("out_uri");
-  *out_uri = nullptr;
 
   if (!copy_in && pkg->layout == "portable") {
     return MakeStatus(MODEL_PACKAGE_ERR_STATE,

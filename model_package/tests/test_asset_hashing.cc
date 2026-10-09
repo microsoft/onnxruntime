@@ -291,7 +291,7 @@ bool test_directory_hash_unicode_paths() {
   return true;
 }
 
-bool test_existing_asset_hash_survives_validation_and_commit() {
+bool test_existing_asset_hash_survives_commit() {
   Sandbox s;
   const std::string filename = u8"caf\u00e9.bin";
   std::string native_filename;
@@ -317,11 +317,8 @@ bool test_existing_asset_hash_survives_validation_and_commit() {
   ModelPackage* raw = nullptr;
   CHECK_OK(ModelPackage_Open((s.root() / "package").u8string().c_str(), nullptr, &raw));
   std::unique_ptr<ModelPackage, decltype(&ModelPackage_Close)> pkg(raw, ModelPackage_Close);
-  const char* report = nullptr;
-  CHECK_OK(ModelPackage_Validate(pkg.get(), MODEL_PACKAGE_VALIDATE_ASSET_REHASH, &report));
   CHECK_OK(ModelPackage_Commit(pkg.get(), (s.root() / "saved").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
-  CHECK_OK(ModelPackage_Validate(pkg.get(), MODEL_PACKAGE_VALIDATE_ASSET_REHASH, &report));
   const auto* info = ModelPackage_Info(pkg.get());
   CHECK(info->num_shared_assets == 1);
   CHECK(std::string(info->shared_assets[0].uri) == "sha256:" + digest);
@@ -348,7 +345,7 @@ const Test kTests[] = {
     {"directory_hash_uses_forward_slash", test_directory_hash_uses_forward_slash},
     {"missing_directory_errors", test_missing_directory_errors},
     {"directory_hash_unicode_paths", test_directory_hash_unicode_paths},
-    {"existing_asset_hash_survives_validation_and_commit", test_existing_asset_hash_survives_validation_and_commit},
+    {"existing_asset_hash_survives_commit", test_existing_asset_hash_survives_commit},
 };
 
 }  // namespace

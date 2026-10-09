@@ -192,7 +192,6 @@ ModelPackageStatus* ModelPackage_Open(const char* package_root,
                                       ModelPackage** out) try {
   if (!package_root) return NullArg("package_root");
   if (!out) return NullArg("out");
-  *out = nullptr;
 
   ModelPackageOpenOptions effective{};
   effective.allow_external_paths = false;
@@ -273,7 +272,6 @@ ModelPackageStatus* ModelPackage_ResolveAssetUri(const ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!uri) return NullArg("uri");
   if (!out_path) return NullArg("out_path");
-  *out_path = nullptr;
   auto it = pkg->shared_asset_index_by_uri.find(uri);
   if (it == pkg->shared_asset_index_by_uri.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_ASSET_MISSING,
@@ -339,7 +337,6 @@ ModelPackageStatus* ModelPackage_GetComponentJson(const ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!component_name) return NullArg("component_name");
   if (!out_json) return NullArg("out_json");
-  *out_json = nullptr;
   auto it = pkg->component_index_by_name.find(component_name);
   if (it == pkg->component_index_by_name.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
@@ -361,7 +358,6 @@ ModelPackageStatus* ModelPackage_GetVariantJson(const ModelPackage* pkg,
   if (!component_name) return NullArg("component_name");
   if (!variant_name) return NullArg("variant_name");
   if (!out_json) return NullArg("out_json");
-  *out_json = nullptr;
   auto it = pkg->component_index_by_name.find(component_name);
   if (it == pkg->component_index_by_name.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,

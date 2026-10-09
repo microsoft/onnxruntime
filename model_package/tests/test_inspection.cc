@@ -284,7 +284,7 @@ bool test_invalid_external_executor_info() {
     "variant_directory":"v","executor_info":{"ort":"ort_info.json"}}}}}})");
   s.Write("v/ort_info.json", "not-json");
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
   return true;
 }
 
@@ -387,8 +387,11 @@ bool test_shared_assets_resolve() {
                                         &path));
   CHECK(fs::u8path(path) == fs::canonical(s.root() / "assets" / "a"));
 
+  const char* const path_sentinel = "unchanged";
+  path = path_sentinel;
   CHECK_ERR(ModelPackage_ResolveAssetUri(pkg, "sha256:not_a_known_one", &path),
             MODEL_PACKAGE_ERR_ASSET_MISSING);
+  CHECK(path == path_sentinel);
 
   ModelPackage_Close(pkg);
   return true;
@@ -440,6 +443,18 @@ bool test_round_trip_getters_preserve_order() {
   size_t ep_pos = std::string(var_json).find("\"ep\"");
   size_t dev_pos = std::string(var_json).find("\"device\"");
   CHECK(ep_pos != std::string::npos && dev_pos != std::string::npos && ep_pos < dev_pos);
+
+  const char* const json_sentinel = "unchanged";
+  comp_json = json_sentinel;
+  CHECK_ERR(ModelPackage_GetComponentJson(pkg, "missing", &comp_json),
+            MODEL_PACKAGE_ERR_NOT_FOUND);
+  CHECK(comp_json == json_sentinel);
+
+  var_json = json_sentinel;
+  CHECK_ERR(ModelPackage_GetVariantJson(pkg, "decoder", "missing", &var_json),
+            MODEL_PACKAGE_ERR_NOT_FOUND);
+  CHECK(var_json == json_sentinel);
+
   ModelPackage_Close(pkg);
   return true;
 }
@@ -464,8 +479,10 @@ bool test_round_trip_preserves_unknown_fields_lenient() {
 
 bool test_missing_manifest() {
   Sandbox s;
-  ModelPackage* pkg = nullptr;
+  ModelPackage* const sentinel = reinterpret_cast<ModelPackage*>(static_cast<uintptr_t>(1));
+  ModelPackage* pkg = sentinel;
   CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_IO);
+  CHECK(pkg == sentinel);
   return true;
 }
 
@@ -473,7 +490,7 @@ bool test_invalid_manifest_json() {
   Sandbox s;
   s.Write("manifest.json", "not-json");
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
   return true;
 }
 
@@ -533,7 +550,7 @@ bool test_schema_version_string_and_minor() {
     Sandbox s;
     s.Write("manifest.json", R"({"schema_version": "9223372036854775808.0", "components": {}})");
     ModelPackage* pkg = nullptr;
-    CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+    CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
   }
   return true;
 }

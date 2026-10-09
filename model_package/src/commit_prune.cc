@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/// \file commit_prune_validate.cc
-/// \brief Commit, prune, and validate implementation.
+/// \file commit_prune.cc
+/// \brief Commit and prune implementation.
 
 #include "model_package.h"
 
@@ -651,122 +651,6 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) try {
   SweepOrphanDirs(pkg, &pkg->pending_orphan_component_dirs, live_dirs);
   SweepOrphanDirs(pkg, &pkg->pending_orphan_variant_dirs, live_dirs);
 
-  return nullptr;
-} catch (const std::system_error& error) {
-  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Validate
-// ─────────────────────────────────────────────────────────────────────────────
-
-namespace {
-
-void AddFinding(ordered_json* arr, const std::string& code, const std::string& msg) {
-  ordered_json e = ordered_json::object();
-  e["code"] = code;
-  e["message"] = msg;
-  arr->push_back(e);
-}
-
-}  // namespace
-
-ModelPackageStatus* ModelPackage_Validate(ModelPackage* pkg, int flags,
-                                          const char** out_report_json) try {
-  if (!pkg) return NullArg("pkg");
-  if (!out_report_json) return NullArg("out_report_json");
-  *out_report_json = nullptr;
-  ordered_json report = ordered_json::object();
-  report["errors"] = ordered_json::array();
-  report["warnings"] = ordered_json::array();
-  ordered_json* errors = &report["errors"];
-  ordered_json* warnings = &report["warnings"];
-
-  std::error_code ec;
-
-  // SCHEMA: re-validate the in-memory manifest by serializing then re-parsing
-  // into a scratch ModelPackage with strict mode. Validates schema for both
-  // committed and uncommitted state.
-  if (flags & MODEL_PACKAGE_VALIDATE_SCHEMA) {
-    // Re-run each component/variant through the parser to confirm shape.
-    for (const auto& comp : pkg->components) {
-      mp::ComponentRecord scratch;
-      auto opts = mp::PathOptionsFor(pkg);
-      if (auto* s = mp::ParseComponentBody(pkg->package_root, opts,
-                                           /*strict=*/true,
-                                           comp->name, comp->body,
-                                           comp->component_dir, &scratch)) {
-        AddFinding(errors, "SCHEMA", std::string("component '") + comp->name + "': " + ModelPackageStatus_Message(s));
-        ModelPackageStatus_Release(s);
-      }
-    }
-  }
-
-  // PATHS: each external component's path on disk; each shared-asset resolved_path exists.
-  if (flags & MODEL_PACKAGE_VALIDATE_PATHS) {
-    for (const auto& comp : pkg->components) {
-      if (comp->storage == mp::ComponentStorage::kExternal) {
-        if (!fs::exists(comp->external_path, ec)) {
-          AddFinding(warnings, "PATHS",
-                     "component '" + comp->name + "' external file does not exist: " +
-                         comp->external_path.u8string());
-        }
-      }
-    }
-    for (const auto& rec : pkg->shared_assets) {
-      if (!fs::is_directory(rec->resolved_path, ec)) {
-        AddFinding(warnings, "PATHS",
-                   "shared asset " + rec->uri + " resolved path is not a directory: " +
-                       rec->resolved_path.u8string());
-      }
-    }
-  }
-
-  // ASSET_REHASH: re-hash each on-disk shared asset and compare to its URI.
-  if (flags & MODEL_PACKAGE_VALIDATE_ASSET_REHASH) {
-    for (const auto& rec : pkg->shared_assets) {
-      if (!fs::is_directory(rec->resolved_path, ec)) continue;  // PATHS / REACH covers this.
-      std::string computed;
-      if (auto* s = mp::ComputeDirectoryAssetUri(rec->resolved_path, &computed)) {
-        AddFinding(errors, "ASSET_REHASH",
-                   "shared asset " + rec->uri + ": hashing failed: " +
-                       ModelPackageStatus_Message(s));
-        ModelPackageStatus_Release(s);
-        continue;
-      }
-      if (computed != rec->uri) {
-        AddFinding(errors, "ASSET_REHASH",
-                   "shared asset " + rec->uri + " on-disk hash differs: " + computed);
-      }
-    }
-  }
-
-  // UNKNOWN_FIELDS: re-run with strict=true (only flags top-level / known scopes).
-  if (flags & MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS) {
-    static const char* kKnown[] = {
-        "schema_version", "package_name", "package_version", "description",
-        "layout", "components", "shared_assets", "additional_metadata"};
-    for (auto it = pkg->manifest.begin(); it != pkg->manifest.end(); ++it) {
-      bool found = false;
-      for (auto* k : kKnown)
-        if (it.key() == k) {
-          found = true;
-          break;
-        }
-      if (!found) {
-        AddFinding(warnings, "UNKNOWN_FIELDS",
-                   "manifest contains unknown field '" + it.key() + "'.");
-      }
-    }
-  }
-
-  pkg->last_validate_report = report.dump(2);
-  *out_report_json = pkg->last_validate_report->c_str();
-  if (!errors->empty()) {
-    return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                      "ModelPackage_Validate: " + std::to_string(errors->size()) +
-                          " error(s) found. See out_report_json for details.");
-  }
   return nullptr;
 } catch (const std::system_error& error) {
   return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());

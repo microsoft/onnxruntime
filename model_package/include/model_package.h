@@ -17,6 +17,9 @@
 ///
 /// All strings, including filesystem paths, are UTF-8 encoded.
 ///
+/// Unless explicitly documented otherwise, a function that returns a non-NULL
+/// status leaves all output parameters unchanged.
+///
 /// Object lifetime: every `const char*` and every `const ModelPackageInfo*`
 /// (and its sub-arrays) returned by this API is owned by the `ModelPackage`
 /// handle and remains valid until the next mutation of that scope or until
@@ -303,7 +306,7 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetAdditionalMetadataJson(Mod
                                                                              const char* json_or_null);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Commit / Prune / Validate
+// Commit / Prune
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef enum {
@@ -328,24 +331,6 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Commit(ModelPackage*,
 /// Content-addressed shared-asset (`sha256-<hex>`) directories are never removed
 /// — use ModelPackage_RemoveSharedAsset to reclaim those.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Prune(ModelPackage*);
-
-typedef enum {
-  MODEL_PACKAGE_VALIDATE_SCHEMA = 1 << 0,
-  MODEL_PACKAGE_VALIDATE_PATHS = 1 << 1,
-  MODEL_PACKAGE_VALIDATE_ASSET_REHASH = 1 << 2,
-  MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS = 1 << 3,
-  MODEL_PACKAGE_VALIDATE_ALL = ~0,
-} ModelPackageValidateFlags;
-
-/// Run structural and reachability checks. `*out_report_json` is set to a
-/// JSON string owned by the package describing findings:
-///   `{"errors": [{"code": "...", "message": "..."}, ...],
-///     "warnings": [...]}`
-/// Returns non-NULL status when any error-level finding fired; warnings alone
-/// still return success.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Validate(ModelPackage*,
-                                                            int flags,
-                                                            const char** out_report_json);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -1,6 +1,6 @@
 # Model Package Library
 
-A standalone C library for **reading, authoring, validating, and committing**
+A standalone C library for **reading, authoring, and committing**
 ONNX Runtime model packages. The library has no dependency on ONNX Runtime
 itself, so any consumer (ORT, publisher tools, ...) can compile it in
 without dragging in a session runtime. It is distributed and consumed as
@@ -11,6 +11,7 @@ native UTF-16 paths before calling the library; returned paths are also UTF-8.
 Path-conversion failures return `MODEL_PACKAGE_ERR_IO`; no alternative encoding
 is tried. Directory hashes retain the existing native filename encoding with `/`
 separators, including the Windows code page, so published asset URIs do not change.
+Calls that return a non-NULL status leave output parameters unchanged.
 
 The library owns three things:
 
@@ -441,22 +442,6 @@ delete a shared asset explicitly when the caller knows it is unreferenced.
 
 Only paths registered through this API and strictly inside `package_root`
 are touched.
-
-### Validate
-
-`ModelPackage_Validate(pkg, flags, &report_json)` runs a configurable set of
-structural checks and returns a JSON report
-`{"errors": [...], "warnings": [...]}`:
-
-| Flag                                    | Checks |
-| --------------------------------------- | ------ |
-| `MODEL_PACKAGE_VALIDATE_SCHEMA`         | Required keys, types, value ranges. |
-| `MODEL_PACKAGE_VALIDATE_PATHS`          | Every recorded path resolves under the configured layout. |
-| `MODEL_PACKAGE_VALIDATE_ASSET_REHASH`   | Recompute every asset directory hash and compare to its URI (slow). |
-| `MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS` | Surface unknown JSON fields as warnings. |
-| `MODEL_PACKAGE_VALIDATE_ALL`            | All of the above. |
-
-Errors cause a non-NULL status return; warnings alone return success.
 
 ---
 

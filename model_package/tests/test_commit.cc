@@ -355,63 +355,6 @@ bool test_prune_removes_stale_staging_dirs() {
   return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Validate
-// ─────────────────────────────────────────────────────────────────────────────
-
-bool test_validate_all_clean_package() {
-  Sandbox s;
-  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
-                               MODEL_PACKAGE_WRITE_PRESERVE));
-  const char* report = nullptr;
-  CHECK_OK(ModelPackage_Validate(p.get(), MODEL_PACKAGE_VALIDATE_ALL, &report));
-  CHECK(report != nullptr);
-  CHECK(std::string(report).find("\"errors\": []") != std::string::npos);
-  return true;
-}
-
-bool test_validate_paths_flags_missing_external() {
-  Sandbox s;
-  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
-                               MODEL_PACKAGE_WRITE_PRESERVE));
-  // Register an external component then delete the file behind the library's back.
-  CHECK_OK(ModelPackage_SetComponentExternal(p.get(), "decoder", "decoder.json"));
-  CHECK_OK(ModelPackage_Commit(p.get(), nullptr, MODEL_PACKAGE_WRITE_PRESERVE));
-  std::error_code ec;
-  fs::remove(s.path("pkg") / "decoder.json", ec);
-  const char* report = nullptr;
-  CHECK_OK(ModelPackage_Validate(p.get(), MODEL_PACKAGE_VALIDATE_PATHS, &report));
-  CHECK(std::string(report).find("PATHS") != std::string::npos);
-  return true;
-}
-
-bool test_validate_asset_rehash_detects_mutation() {
-  Sandbox s;
-  s.Write("src_asset/m.onnx", "alpha");
-  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
-                                       nullptr, /*copy_in=*/true, &uri));
-  std::string uri_copy(uri);
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
-                               MODEL_PACKAGE_WRITE_PRESERVE));
-  // Mutate the on-disk shared asset directly.
-  std::string hex = uri_copy.substr(7);
-  fs::path landed = s.path("pkg") / "shared_assets" / ("sha256-" + hex) / "m.onnx";
-  CHECK(fs::is_regular_file(landed));
-  {
-    std::ofstream f(landed, std::ios::binary);
-    f << "MUTATED";
-  }
-  const char* report = nullptr;
-  CHECK_ERR(ModelPackage_Validate(p.get(), MODEL_PACKAGE_VALIDATE_ASSET_REHASH, &report),
-            MODEL_PACKAGE_ERR_STATE);
-  CHECK(std::string(report).find("ASSET_REHASH") != std::string::npos);
-  return true;
-}
-
 bool test_commit_accepts_unreferenced_shared_asset() {
   // Shared assets no longer require an in-manifest reference: AddSharedAsset
   // signals the user's intent to ship the asset, period. Commit materializes
@@ -507,9 +450,6 @@ const Test kTests[] = {
     {"prune_never_touches_shared_assets", test_prune_never_touches_shared_assets},
     {"prune_reclaims_tracked_orphan_variant_dirs", test_prune_reclaims_tracked_orphan_variant_dirs},
     {"prune_removes_stale_staging_dirs", test_prune_removes_stale_staging_dirs},
-    {"validate_all_clean_package", test_validate_all_clean_package},
-    {"validate_paths_flags_missing_external", test_validate_paths_flags_missing_external},
-    {"validate_asset_rehash_detects_mutation", test_validate_asset_rehash_detects_mutation},
     {"commit_accepts_unreferenced_shared_asset", test_commit_accepts_unreferenced_shared_asset},
     {"commit_leaves_no_temp_files", test_commit_leaves_no_temp_files},
     {"commit_unicode_paths_and_assets", test_commit_unicode_paths_and_assets},

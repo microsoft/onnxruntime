@@ -378,10 +378,12 @@ bool test_add_shared_asset_copy_in_false_portable_rejected() {
   ModelPackage* raw = nullptr;
   CHECK_OK(ModelPackage_New(&raw));
   PkgHandle p(raw);
-  const char* uri = nullptr;
+  const char* const sentinel = "unchanged";
+  const char* uri = sentinel;
   CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").u8string().c_str(),
                                         nullptr, /*copy_in=*/false, &uri),
             MODEL_PACKAGE_ERR_STATE);
+  CHECK(uri == sentinel);
   return true;
 }
 
