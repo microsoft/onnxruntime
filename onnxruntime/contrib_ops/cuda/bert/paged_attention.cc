@@ -569,6 +569,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       parameters.token_count == parameters.batch_size &&
       !use_latent_attention &&
       !kIsQuantizedCache &&
+      !parameters.qk_hadamard &&
+      !parameters.v_hadamard &&
       parameters.is_causal &&
       parameters.softcap == 0.0f &&
       parameters.local_window_size <= 0 &&

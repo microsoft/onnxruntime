@@ -9,9 +9,10 @@ import ml_dtypes
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from onnxruntime.capi import _pybind_state
+from test_paged_attention_int4 import has_sm80_cuda, run_with_kernel
 
 import onnxruntime as ort
+from onnxruntime.capi import _pybind_state
 
 
 def int4_kernel_available():
@@ -359,7 +360,7 @@ def per_channel_int4_case(**kwargs):
 
 
 @unittest.skipUnless(int4_kernel_available(), "Requires CUDA PagedAttention built with USE_INT4_KV_CACHE")
-class TestPagedAttentionInt4(unittest.TestCase):
+class TestPagedAttentionHadamard(unittest.TestCase):
     def setUp(self):
         self.environment = patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"})
         self.environment.start()
@@ -385,9 +386,22 @@ class TestPagedAttentionInt4(unittest.TestCase):
     def test_hadamard_rotation_is_output_neutral(self):
         for width in (16, 32, 64, 128, 256):
             with self.subTest(width=width):
-                rotated = self.check_case(width=width, int4=False)
                 plain = self.check_case(width=width, int4=False, qk_rotation=False, v_rotation=False)
-                np.testing.assert_allclose(rotated["output"], plain["output"], atol=8e-4, rtol=5e-3)
+                for qk_rotation, v_rotation in ((True, True), (True, False), (False, True)):
+                    with self.subTest(qk_rotation=qk_rotation, v_rotation=v_rotation):
+                        rotated = self.check_case(
+                            width=width, int4=False, qk_rotation=qk_rotation, v_rotation=v_rotation
+                        )
+                        np.testing.assert_allclose(rotated["output"], plain["output"], atol=8e-4, rtol=5e-3)
+
+    def test_hadamard_does_not_route_to_cudnn_paged_without_inverse_rotation(self):
+        model, feeds, expected = make_case(width=128, int4=False, block_size=256)
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_CUDNN_FLASH_ATTENTION": "1", "ORT_DISABLE_FLASH_ATTENTION": "1"},
+        ):
+            actual = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
+        np.testing.assert_allclose(actual["output"], expected["output"], atol=8e-4, rtol=5e-3)
 
     def test_int4_decode_pack_and_scale_cache(self):
         for width in (16, 32, 64, 128, 256):
@@ -419,7 +433,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
             else:
                 np.testing.assert_array_equal(actual[name], reference)
 
-    def test_int4_xqa_decode(self):
+    def test_int4_per_token_decode_with_xqa_enabled(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             for block_size in (128, 256):
                 for window in (-1, 129):
@@ -434,11 +448,11 @@ class TestPagedAttentionInt4(unittest.TestCase):
                             sink=True,
                         )
 
-    def test_int4_xqa_unsupported_scales_fall_back(self):
+    def test_int4_per_token_fp32_scales_with_xqa_enabled(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             self.check_case(width=256, heads=24, kv_heads=4, past=(513, 138), block_size=256, scale_dtype=np.float32)
 
-    def test_int4_xqa_speculative_decode(self):
+    def test_int4_per_token_speculative_decode_with_xqa_enabled(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             for lengths in ((2, 1), (8, 3), (0, 8)):
                 for window in (-1, 129):
@@ -454,7 +468,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
                             sink=True,
                         )
 
-    def test_int4_xqa_cuda_graph_replay(self):
+    def test_int4_per_token_cuda_graph_replay_with_xqa_enabled(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             model, feeds, _ = make_case(
                 width=256, heads=24, kv_heads=4, block_size=256, lengths=(8, 3), past=(513, 138)
@@ -467,9 +481,64 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 np.testing.assert_array_equal(actual[1][name], actual[2][name])
                 np.testing.assert_allclose(actual[1][name], reference[name], atol=8e-4, rtol=5e-3)
 
+    def test_per_token_scales_do_not_use_static_scale_xqa(self):
+        for k_dynamic, v_dynamic in ((True, True), (True, False), (False, True)):
+            with self.subTest(k_dynamic=k_dynamic, v_dynamic=v_dynamic):
+                model, feeds, _ = make_case(
+                    width=256,
+                    heads=24,
+                    kv_heads=4,
+                    lengths=(2,),
+                    past=(0,),
+                    block_size=128,
+                    qk_rotation=False,
+                    v_rotation=False,
+                )
+                for side, prefix, index, dynamic in (
+                    ("key", "k", 14, k_dynamic),
+                    ("value", "v", 15, v_dynamic),
+                ):
+                    if not dynamic:
+                        remove_input(model, feeds, f"{side}_scale_cache")
+                        replace_input(model, feeds, f"{prefix}_scale", np.ones((4, 1, 256), dtype=np.float32))
+                        model.graph.node[0].input[index] = f"{prefix}_scale"
+                        set_attribute(model, f"{prefix}_quant_type", "PER_CHANNEL")
+                        model.graph.node[0].output[index - 11] = ""
+                        kept = [out for out in model.graph.output if out.name != f"{side}_scale_cache_out"]
+                        del model.graph.output[:]
+                        model.graph.output.extend(kept)
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1", "ORT_ENABLE_PER_CHANNEL_XQA": "1"}):
+                    actual = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+                    portable = run_case(model, feeds)[0]
+                for name in portable:
+                    np.testing.assert_array_equal(actual[name], portable[name])
+
+    def test_per_token_fp16_scale_rounding_does_not_overflow_xqa_grains(self):
+        model, feeds, _ = make_case(
+            width=256,
+            heads=24,
+            kv_heads=4,
+            lengths=(2,),
+            past=(0,),
+            block_size=128,
+            qk_rotation=False,
+            v_rotation=False,
+        )
+        set_attribute(model, "is_causal", 0)
+        feeds["query"].fill(0)
+        feeds["key"].fill(0)
+        feeds["value"][0].fill(65504)
+        feeds["value"][1].fill(-32752)
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1", "ORT_ENABLE_PER_CHANNEL_XQA": "1"}):
+            actual = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
+        self.assertTrue(np.isfinite(actual["output"]).all())
+        np.testing.assert_allclose(actual["output"], np.float16(16380), atol=16, rtol=0)
+
     def test_int4_without_rotation_and_k_only(self):
         self.check_case(qk_rotation=False, v_rotation=False)
         self.check_case(v_rotation=False)
+        self.check_case(qk_rotation=False)
 
     def test_int4_cuda_graph_replay(self):
         model, feeds, _ = make_case(width=128)
@@ -718,6 +787,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
         np.testing.assert_array_equal(actual["key_cache_out"], expected["key_cache_out"])
         np.testing.assert_array_equal(actual["key_scale_cache_out"], expected["key_scale_cache_out"])
 
+    @unittest.skipUnless(has_sm80_cuda(), "Requires an SM80-or-newer CUDA GPU")
     def test_int4_per_channel_xqa_matches_portable(self):
         # A PER_CHANNEL scale is folded into Q and the output, so XQA has to agree with the
         # portable kernel. lengths (2, 1) also covers the speculative INT4 kernel.
@@ -728,8 +798,8 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 )
                 with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
                     portable = run_case(model, feeds)[0]
-                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
-                    accelerated = run_case(model, feeds)[0]
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1", "ORT_ENABLE_PER_CHANNEL_XQA": "1"}):
+                    accelerated = run_with_kernel(model, feeds, "XQA")[0]
                 np.testing.assert_allclose(
                     accelerated["output"].astype(np.float32),
                     portable["output"].astype(np.float32),

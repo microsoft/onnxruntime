@@ -542,9 +542,9 @@ Status LaunchReshapeAndCacheImpl(const T* key, const T* value, TCACHE* key_cache
 
 template <typename T, typename TCACHE, typename SlotResolver>
 __global__ void ReshapeAndCacheHeads(const T* input, TCACHE* cache, const float* static_scale,
-                                    PagedScaleCache scale_cache, bool per_channel, bool hadamard,
-                                    SlotResolver resolver, int head_size, int kv_num_heads,
-                                    int input_stride, int64_t num_slots) {
+                                     PagedScaleCache scale_cache, bool per_channel, bool hadamard,
+                                     SlotResolver resolver, int head_size, int kv_num_heads,
+                                     int input_stride, int64_t num_slots) {
   const int token = blockIdx.x;
   const int head = blockIdx.y;
   const int channel = threadIdx.x;
@@ -564,8 +564,9 @@ __global__ void ReshapeAndCacheHeads(const T* input, TCACHE* cache, const float*
       if (channel < stride) shared_values[channel] = fmaxf(shared_values[channel], shared_values[channel + stride]);
       __syncthreads();
     }
-    constexpr float quant_max = std::is_same_v<TCACHE, uint8_t> ? kInt4Max
-                               : std::is_same_v<TCACHE, int8_t> ? kInt8Max : kFp8E4M3Max;
+    constexpr float quant_max = std::is_same_v<TCACHE, uint8_t>  ? kInt4Max
+                                : std::is_same_v<TCACHE, int8_t> ? kInt8Max
+                                                                 : kFp8E4M3Max;
     if (channel == 0) shared_values[0] = scale_cache.Store(scale_index, shared_values[0] / quant_max);
     __syncthreads();
     scale = shared_values[0];
@@ -760,9 +761,9 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
 
     const int64_t scale_index = paged_idx / head_size;
     gathered_key[tid] = static_cast<T>(ReadPagedCache(key_cache, paged_idx) * key_scale_cache.Load(scale_index) *
-                       GetCacheScale(k_scale, channel_index, k_per_channel));
+                                       GetCacheScale(k_scale, channel_index, k_per_channel));
     gathered_value[tid] = static_cast<T>(ReadPagedCache(value_cache, paged_idx) * value_scale_cache.Load(scale_index) *
-                       GetCacheScale(v_scale, channel_index, v_per_channel));
+                                         GetCacheScale(v_scale, channel_index, v_per_channel));
   }
 }
 
@@ -984,7 +985,8 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
       if (lane_id == 0) {
         if (block_id >= 0) {
           dot *= key_scale_cache.Load((static_cast<int64_t>(block_id) * block_size + pos % block_size) *
-                                          kv_num_heads + kv_head_id);
+                                          kv_num_heads +
+                                      kv_head_id);
         }
         block_id_sh[t] = block_id;
         logits_sh[t] = block_id < 0 ? -FLT_MAX
@@ -1023,8 +1025,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
       const float p = __expf(logits_sh[t] - m_new);
       const int block_id = block_id_sh[t];
       const int pos = tile_begin + t;
-      logits_sh[t] = block_id < 0 ? 0.0f : p * value_scale_cache.Load(
-          (static_cast<int64_t>(block_id) * block_size + pos % block_size) * kv_num_heads + kv_head_id);
+      logits_sh[t] = block_id < 0 ? 0.0f : p * value_scale_cache.Load((static_cast<int64_t>(block_id) * block_size + pos % block_size) * kv_num_heads + kv_head_id);
       local_sum += p;
     }
     red_sh[tid] = local_sum;
@@ -1499,14 +1500,14 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
         data.q_norm_weight, parameters.qk_norm_epsilon, batch_size, token_count, num_heads, head_size,
         rotary_dim, parameters.rotary_offset, parameters.rotary_interleaved, packed_seq_stride,
         max_threads_per_block, parameters.qk_hadamard));
-      if (parameters.do_rotary || parameters.use_qk_norm) {
-        ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
-        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
-        data.k_norm_weight, parameters.qk_norm_epsilon, batch_size, token_count, kv_num_heads, head_size,
-        rotary_dim, parameters.rotary_offset, parameters.rotary_interleaved, packed_seq_stride,
-        max_threads_per_block));
-        key = k_buffer;
-      }
+    if (parameters.do_rotary || parameters.use_qk_norm) {
+      ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
+          stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
+          data.k_norm_weight, parameters.qk_norm_epsilon, batch_size, token_count, kv_num_heads, head_size,
+          rotary_dim, parameters.rotary_offset, parameters.rotary_interleaved, packed_seq_stride,
+          max_threads_per_block));
+      key = k_buffer;
+    }
     query = q_buffer;
   } else if (parameters.is_packed_qkv) {
     // Only unpack Q. K and V are unpacked by ReshapeAndCache.
@@ -2195,7 +2196,7 @@ Status QkvToContext(
     ORT_RETURN_IF_ERROR(status);
     if (parameters.v_hadamard) {
       PagedHadamardHeads<<<dim3(parameters.token_count, parameters.num_heads), parameters.v_head_size,
-                          parameters.v_head_size * sizeof(float), stream>>>(
+                           parameters.v_head_size * sizeof(float), stream>>>(
           data.output, data.output, parameters.v_head_size, parameters.v_hidden_size, parameters.num_heads);
       return CUDA_CALL(cudaGetLastError());
     }

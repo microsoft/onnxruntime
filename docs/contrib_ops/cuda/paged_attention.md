@@ -184,9 +184,6 @@ For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage 
 dimension is `(head_size + 1) / 2`, not `head_size`. Scale tensors are paged with the same slot map
 and block table as the payload. Copying or evicting a block must include its scale tensors.
 
-For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage and their last
-dimension is `(head_size + 1) / 2`, not `head_size`.
-
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
 
@@ -945,6 +942,8 @@ the activation dtype for Q/output. Since `H H^T = H^2 = I`, scores and output ar
 arithmetic: `(QH)(KH)^T = QK^T` and `(softmax(scores) VH) H = softmax(scores) V`.
 Tests isolate this property with an unquantized cache before checking INT4 error. Rotation is
 CUDA-only; WebGPU rejects it rather than silently ignoring the attributes.
+Hadamard rotation excludes cuDNN paged SDPA and uses the existing FlashAttention,
+memory-efficient, or portable decode paths, all of which apply the inverse V transform.
 
 Hadamard and per-token tests are in `onnxruntime/test/python/transformers/test_paged_attention_hadamard.py`, covering
 FP16/BF16, packed/derived writes, skipped slots, exact nibble encoding, zero padding, scale-cache
