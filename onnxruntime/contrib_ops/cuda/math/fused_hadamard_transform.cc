@@ -46,7 +46,7 @@ Status FusedHadamardTransform::ComputeInternal(OpKernelContext* context) const {
   }
 
   const int64_t block_count = element_count / block_size_;
-  ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<uint32_t>::max(),
+  ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<int32_t>::max(),
                     "The input contains too many Hadamard blocks for a CUDA launch.");
 
   CUDA_RETURN_IF_ERROR(LaunchFusedHadamardTransform(

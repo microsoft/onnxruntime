@@ -38,6 +38,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
+  * <a href="#com.microsoft.FusedHadamardTransform">com.microsoft.FusedHadamardTransform</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
   * <a href="#com.microsoft.GatedAdd">com.microsoft.GatedAdd</a>
@@ -2209,6 +2210,47 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(uint32), tensor(uint64), tensor(int32), tensor(int64)</dt>
 <dd>Constrain input and output types to float/int tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.FusedHadamardTransform"></a><a name="com.microsoft.fusedhadamardtransform">**com.microsoft.FusedHadamardTransform**</a>
+
+  Multiplies X by a 1-D sign tensor broadcast over the last dimension, then applies an
+  independent normalized Sylvester-Walsh-Hadamard transform to each contiguous block.
+  The output has the same shape as X.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>block_size</tt> : int (default is 1024)</dt>
+<dd>Size of each contiguous Hadamard block. Must be a power of two no greater than 1024. The last dimension of X must be a positive multiple of block_size.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor with rank at least one.</dd>
+<dt><tt>sign</tt> : T</dt>
+<dd>1-D tensor whose length equals the last dimension of X.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Signed blockwise normalized Hadamard transform of X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>Constrain input, sign, and output to float16 tensors.</dd>
 </dl>
 
 

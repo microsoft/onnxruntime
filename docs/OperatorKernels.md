@@ -1099,6 +1099,7 @@ The **OpSet Version** column uses the following notation:
 |EngramGate|*in* key:**T**<br> *in* query:**T**<br> *in* value:**T**<br> *in* key_norm_scale:**T**<br> *in* query_norm_scale:**T**<br> *in* conv_norm_scale:**T**<br> *out* output:**T**<br> *out* gated_value_normed:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |FastGelu|*in* X:**T**<br> *in* bias:**T**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |FusedConv|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *in* Z:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
+|FusedHadamardTransform|*in* X:**T**<br> *in* sign:**T**<br> *out* Y:**T**|1+|**T** = tensor(float16)|
 |FusedMatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |GatedAdd|*in* X:**T**<br> *in* Y:**T**<br> *in* gate:**T**<br> *out* output:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |GatedDeltaNet|*in* query:**T**<br> *in* key:**T**<br> *in* value:**T**<br> *in* cu_seqlens:**TI**<br> *in* decay:**TS**<br> *in* beta:**TS**<br> *in* initial_state:**TS**<br> *in* a_log:**TS**<br> *in* dt_bias:**TS**<br> *in* capture_count:**TI**<br> *in* state_update_active:**TI**<br> *out* output:**T**<br> *out* final_state:**TS**<br> *out* state_update:**TS**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **TI** = tensor(int32)<br/> **TS** = tensor(float)|

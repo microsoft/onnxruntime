@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {

@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -52,8 +53,8 @@ std::vector<MLFloat16> DenseReference(
 }
 
 void RunTest(const std::vector<int64_t>& shape, int64_t block_size, bool use_default_attribute) {
-  if (!HasCudaEnvironment(900)) {
-    GTEST_SKIP() << "FusedHadamardTransform test requires CUDA SM90 or newer.";
+  if (!HasCudaEnvironment(530)) {
+    GTEST_SKIP() << "FusedHadamardTransform test requires CUDA fp16 support.";
   }
 
   int64_t element_count = 1;
@@ -88,14 +89,67 @@ void RunTest(const std::vector<int64_t>& shape, int64_t block_size, bool use_def
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+void RunInvalidInputTest(const std::vector<int64_t>& shape,
+                         const std::vector<int64_t>& sign_shape,
+                         int64_t block_size,
+                         const char* error) {
+  if (!HasCudaEnvironment(530)) {
+    GTEST_SKIP() << "FusedHadamardTransform test requires CUDA fp16 support.";
+  }
+
+  OpTester tester("FusedHadamardTransform", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddInput<MLFloat16>("X", shape, std::vector<MLFloat16>(static_cast<size_t>(TensorShape(shape).Size())));
+  tester.AddInput<MLFloat16>("sign", sign_shape,
+                             std::vector<MLFloat16>(static_cast<size_t>(TensorShape(sign_shape).Size())));
+  tester.AddOutput<MLFloat16>("Y", shape, std::vector<MLFloat16>(static_cast<size_t>(TensorShape(shape).Size())));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, error, {}, nullptr, &execution_providers);
+}
+
 }  // namespace
 
 TEST(FusedHadamardTransformTest, SmallDenseReference) {
   RunTest({2, 16}, 8, false);
 }
 
-TEST(FusedHadamardTransformTest, Sm90Float16Width5120MultipleRows) {
+TEST(FusedHadamardTransformTest, Float16Width5120MultipleRows) {
   RunTest({3, 5120}, 1024, true);
+}
+
+TEST(FusedHadamardTransformTest, AllBlockSizes) {
+  for (int64_t block_size = 1; block_size <= 1024; block_size *= 2) {
+    SCOPED_TRACE(block_size);
+    RunTest({2, 2, 2 * block_size}, block_size, false);
+  }
+}
+
+TEST(FusedHadamardTransformTest, RankOne) {
+  RunTest({16}, 8, false);
+}
+
+TEST(FusedHadamardTransformTest, EmptyLeadingDimension) {
+  RunTest({0, 16}, 8, false);
+}
+
+TEST(FusedHadamardTransformTest, InvalidBlockSizes) {
+  for (int64_t block_size : {-1, 0, 3, 2048}) {
+    SCOPED_TRACE(block_size);
+    RunInvalidInputTest({2, 16}, {16}, block_size,
+                        "block_size must be a power of two no greater than 1024.");
+  }
+}
+
+TEST(FusedHadamardTransformTest, InvalidInputShapes) {
+  RunInvalidInputTest({}, {1}, 1, "X must have at least one dimension.");
+  RunInvalidInputTest({2, 16}, {2, 8}, 8, "sign must be a 1-D tensor.");
+  RunInvalidInputTest({2, 16}, {8}, 8, "sign length must equal the last dimension of X.");
+  RunInvalidInputTest({2, 12}, {12}, 8,
+                      "The last dimension of X must be a positive multiple of block_size.");
+  RunInvalidInputTest({2, 0}, {0}, 8,
+                      "The last dimension of X must be a positive multiple of block_size.");
 }
 #endif
 
