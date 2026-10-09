@@ -107,7 +107,21 @@ Status PackedSparseAttentionIndexerMerge::ComputeInternal(ComputeContext& contex
   const auto* base_binding = base->Shape().Size() == 0 ? &empty_binding.value() : base;
   const auto* counts_binding = counts->Shape().Size() == 0 ? &empty_binding.value() : counts;
   PackedSparseAttentionIndexerMergeProgram program(dimensions.hash_capacity);
-  program.SetWorkgroupSize(1).SetDispatchGroupSize(dimensions.queries).CacheHint(std::to_string(dimensions.hash_capacity)).AddInputs({{base_binding, ProgramTensorMetadataDependency::None}, {counts_binding, ProgramTensorMetadataDependency::None}, {rows, ProgramTensorMetadataDependency::None}, {starts, ProgramTensorMetadataDependency::None}, {ends, ProgramTensorMetadataDependency::None}}).AddOutputs({{output, ProgramTensorMetadataDependency::None}, {output_counts, ProgramTensorMetadataDependency::None}, {status, ProgramTensorMetadataDependency::None}}).AddUniformVariables({{static_cast<uint32_t>(dimensions.rows)}, {static_cast<uint32_t>(dimensions.capacity)}, {static_cast<uint32_t>(dimensions.queries)}, {static_cast<uint32_t>(capacity_)}});
+  program.SetWorkgroupSize(1)
+      .SetDispatchGroupSize(dimensions.queries)
+      .CacheHint(std::to_string(dimensions.hash_capacity))
+      .AddInputs({{base_binding, ProgramTensorMetadataDependency::Type},
+                  {counts_binding, ProgramTensorMetadataDependency::Type},
+                  {rows, ProgramTensorMetadataDependency::Type},
+                  {starts, ProgramTensorMetadataDependency::Type},
+                  {ends, ProgramTensorMetadataDependency::Type}})
+      .AddOutputs({{output, ProgramTensorMetadataDependency::Type},
+                   {output_counts, ProgramTensorMetadataDependency::Type},
+                   {status, ProgramTensorMetadataDependency::Type}})
+      .AddUniformVariables({{static_cast<uint32_t>(dimensions.rows)},
+                            {static_cast<uint32_t>(dimensions.capacity)},
+                            {static_cast<uint32_t>(dimensions.queries)},
+                            {static_cast<uint32_t>(capacity_)}});
   return context.RunProgram(program);
 }
 
