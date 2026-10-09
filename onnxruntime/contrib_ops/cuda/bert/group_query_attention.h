@@ -56,6 +56,9 @@ class GroupQueryAttention final : public CudaKernel {
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
   int kv_cache_bit_width_;
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  int64_t max_total_sequence_length_ = 0;
+#endif
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;

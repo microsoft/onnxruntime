@@ -15,6 +15,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cuda/bert/group_query_attention_eligibility.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "core/framework/resource_accountant.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
@@ -132,6 +133,10 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  ORT_THROW_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+      info.GetConfigOptions(), max_total_sequence_length_));
+#endif
 
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
@@ -219,6 +224,7 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
   config.causal = is_unidirectional_ ? 1 : 0;
   config.local_window_size = local_window_size_;
   config.sliding_window_cache = sliding_window_cache_;
+  config.max_total_sequence_length = max_total_sequence_length_;
   config.do_rotary = do_rotary_;
   config.smooth_softmax = use_smooth_softmax_;
   config.softcap = softcap_;
