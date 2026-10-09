@@ -1365,6 +1365,11 @@ struct OpKernelContext final {
   KernelPilot* GetKernelPilot() const {
     return g_host->OpKernelContext__GetKernelPilot(this);
   }
+#if !defined(ORT_MINIMAL_BUILD)
+  concurrency::ThreadPool* GetOperatorThreadPool() const {
+    return g_host->OpKernelContext__GetOperatorThreadPool(this);
+  }
+#endif
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };

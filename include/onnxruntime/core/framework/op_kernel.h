@@ -36,6 +36,10 @@ class OpKernelContext;
 
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
+class KernelPilot;
+#endif
+
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info);
 
 class OpKernel {
@@ -169,6 +173,14 @@ class OpKernel {
     used_shared_buffers = false;
     return Status::OK();
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Called after session-global piloting state is finalized and all constant inputs have been offered to PrePack().
+  // Kernels may use this hook to materialize resources selected by the pilot before session initialization returns.
+  virtual Status InitializeKernelPilot(KernelPilot* /*pilot*/) {
+    return Status::OK();
+  }
+#endif
 
   const OrtDevice GetDevice(OrtMemType mem_type) const;
   const OpKernelInfo& Info() const {

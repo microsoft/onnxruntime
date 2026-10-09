@@ -3,6 +3,7 @@
 
 #include "core/framework/kernel_pilot_moe_expert_state.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -17,6 +18,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph.h"
+#include "core/graph/constants.h"
 
 namespace onnxruntime {
 
@@ -49,6 +51,13 @@ Status KernelPilotMoeExpertState::SetCounterParameters(double alpha, double beta
                 "MoE expert counter parameters cannot change after node registration.");
   alpha_ = alpha;
   beta_ = beta;
+  return Status::OK();
+}
+
+Status KernelPilotMoeExpertState::SetCpuOffloadExpertCount(size_t cpu_offload_expert_count) {
+  ORT_RETURN_IF(initialized_, "MoE CPU offload expert count cannot change after initialization.");
+  cpu_offload_expert_count_ = cpu_offload_expert_count;
+  cpu_offload_enabled_ = cpu_offload_expert_count > 0;
   return Status::OK();
 }
 
@@ -131,6 +140,93 @@ Status KernelPilotMoeExpertState::Load(std::istream& input) {
 
 Status KernelPilotMoeExpertState::FinalizeInitialization() {
   ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
+
+  if (cpu_offload_enabled_) {
+    struct Candidate {
+      KernelState* state;
+      int expert_id;
+      double counter;
+    };
+
+    InlinedVector<KernelState*> cuda_kernels;
+    size_t cuda_eligible_expert_count = 0;
+    for (auto& [kernel, state] : kernels_) {
+      const auto* input_type = kernel->Node().InputDefs().empty()
+                                   ? nullptr
+                                   : kernel->Node().InputDefs()[0]->TypeAsProto();
+      const int32_t element_type =
+          input_type != nullptr && input_type->has_tensor_type()
+              ? input_type->tensor_type().elem_type()
+              : ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+      if (kernel->Node().GetExecutionProviderType() == kCudaExecutionProvider &&
+          kernel->Node().Domain() == kMSDomain && kernel->Node().OpType() == "MoE" &&
+          (element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+           element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)) {
+        cuda_kernels.push_back(&state);
+        cuda_eligible_expert_count += state.experts.count;
+      }
+    }
+    ORT_RETURN_IF(cpu_offload_expert_count_ > cuda_eligible_expert_count,
+                  "session.moe_cpu_offload_experts is ", cpu_offload_expert_count_,
+                  ", but CUDA FP16/BF16 MoE nodes contain only ", cuda_eligible_expert_count, " experts.");
+    const size_t cuda_expert_count = cuda_eligible_expert_count - cpu_offload_expert_count_;
+
+    std::sort(cuda_kernels.begin(), cuda_kernels.end(), [](const KernelState* lhs, const KernelState* rhs) {
+      return lhs->key < rhs->key;
+    });
+
+    bool all_zero = true;
+    for (const auto* state : cuda_kernels) {
+      for (size_t expert = 0; expert < state->experts.count; ++expert) {
+        all_zero = all_zero && counters_[state->experts.begin + expert] == 0.0;
+      }
+    }
+
+    if (all_zero) {
+      size_t selected = 0;
+      for (size_t expert = 0; selected < cuda_expert_count; ++expert) {
+        bool made_progress = false;
+        for (auto* state : cuda_kernels) {
+          if (expert < state->experts.count && selected < cuda_expert_count) {
+            state->cuda_experts.push_back(static_cast<int>(expert));
+            ++selected;
+            made_progress = true;
+          }
+        }
+        ORT_ENFORCE(made_progress || selected == cuda_expert_count);
+      }
+    } else {
+      InlinedVector<Candidate> candidates;
+      candidates.reserve(cuda_eligible_expert_count);
+      for (auto* state : cuda_kernels) {
+        for (size_t expert = 0; expert < state->experts.count; ++expert) {
+          candidates.push_back(
+              {state, static_cast<int>(expert), counters_[state->experts.begin + expert]});
+        }
+      }
+      std::sort(candidates.begin(), candidates.end(), [](const Candidate& lhs, const Candidate& rhs) {
+        if (lhs.counter != rhs.counter) {
+          return lhs.counter > rhs.counter;
+        }
+        if (lhs.expert_id != rhs.expert_id) {
+          return lhs.expert_id < rhs.expert_id;
+        }
+        return lhs.state->key < rhs.state->key;
+      });
+      for (size_t i = 0; i < cuda_expert_count; ++i) {
+        candidates[i].state->cuda_experts.push_back(candidates[i].expert_id);
+      }
+      for (auto* state : cuda_kernels) {
+        std::sort(state->cuda_experts.begin(), state->cuda_experts.end());
+      }
+    }
+  }
+
+  for (auto& [kernel, state] : kernels_) {
+    ORT_UNUSED_PARAMETER(kernel);
+    state.pilot.SetMoeCudaExperts(state.cuda_experts);
+  }
+
   initialized_ = true;
   return Status::OK();
 }

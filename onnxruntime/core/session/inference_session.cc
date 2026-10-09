@@ -2771,6 +2771,8 @@ common::Status InferenceSession::Initialize() {
       if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
             option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
            value != "0") ||
+          (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts &&
+           (value.empty() || value.find_first_not_of('0') != std::string::npos)) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
           option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
@@ -2792,28 +2794,37 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_NOT(enable_moe_counting == "0" || enable_moe_counting == "1",
                       kOrtSessionOptionsConfigEnableMoeExpertCounting, " must be \"0\" or \"1\".");
     const bool enable_moe_expert_counting = enable_moe_counting == "1";
+    const auto moe_cpu_offload_experts = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+    int64_t moe_cpu_offload_expert_count = -1;
+    ORT_RETURN_IF_NOT(
+        TryParseStringWithClassicLocale(moe_cpu_offload_experts, moe_cpu_offload_expert_count) &&
+            moe_cpu_offload_expert_count >= 0,
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+        " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
+    const bool enable_moe_cpu_offload = moe_cpu_offload_expert_count > 0;
     const auto moe_counter_state_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);
     if (moe_counter_state_file) {
-      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics,
+      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload,
                         kOrtSessionOptionsConfigMoeExpertCounterStateFile,
-                        " requires expert counting or statistics logging to be enabled.");
+                        " requires expert counting, statistics logging, or MoE CPU offload to be enabled.");
       ORT_RETURN_IF(moe_counter_state_file->empty(),
                     kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
     }
     for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha,
                             kOrtSessionOptionsConfigMoeExpertCounterBeta}) {
       ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() &&
-                        !enable_moe_expert_counting && !enable_moe_expert_statistics,
-                    key, " requires expert counting or statistics logging to be enabled.");
+                        !enable_moe_expert_counting && !enable_moe_expert_statistics && !enable_moe_cpu_offload,
+                    key, " requires expert counting, statistics logging, or MoE CPU offload to be enabled.");
     }
-    if (enable_moe_expert_counting) {
+    if (enable_moe_expert_counting || enable_moe_cpu_offload) {
       for (const auto& execution_provider : execution_providers_) {
         ORT_RETURN_IF(execution_provider->Type() == kCudaExecutionProvider &&
                           execution_provider->GetOrtEp() != nullptr,
-                      "MoE expert counting is not supported by the CUDA plugin execution provider.");
+                      "MoE expert counting and CPU offload are not supported by the CUDA plugin execution provider.");
         ORT_RETURN_IF(execution_provider->IsGraphCaptureEnabled(),
-                      "MoE expert counting is not supported when graph capture is enabled.");
+                      "MoE expert counting and CPU offload are not supported when graph capture is enabled.");
       }
     }
     if (enable_moe_expert_statistics) {
@@ -3721,11 +3732,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  const bool track_moe_experts =
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
@@ -3832,9 +3838,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
 #if !defined(ORT_MINIMAL_BUILD)
-      if (track_moe_experts) {
-        moe_expert_state = session_state_->GetMoeExpertState();
-        ORT_RETURN_IF_NOT(moe_expert_state, "MoE expert state is unavailable.");
+      moe_expert_state = session_state_->GetMoeExpertState();
+      if (moe_expert_state != nullptr) {
         ORT_RETURN_IF_ERROR_SESSIONID_(moe_expert_state->BeginRun(
             run_options.run_tag, collect_moe_statistics ? &run_logger : nullptr));
         moe_run_active = true;

@@ -9,9 +9,9 @@
 Implement adaptive expert placement for Qwen 3.6 and other Mixture-of-Experts (MoE) models whose expert weights do not
 all fit in GPU memory.
 
-Each expert is resident either on CPU or CUDA. The configured global offload target determines how many experts remain
-on CPU, while the complementary set resides on CUDA. Each `MoE` and `QMoE` node maintains one exponentially decayed
-counter per expert, uses those counters to rank experts, and updates its placement asynchronously.
+CPU memory keeps the canonical copy of every expert. CUDA holds a configurable subset of expert copies. Each `MoE` and
+`QMoE` node maintains one exponentially decayed counter per expert, uses those counters to rank experts, and updates
+its CUDA placement asynchronously.
 
 The placement policy has two levels, both evaluated by the pilot after a complete model inference:
 
@@ -58,21 +58,19 @@ The four numerical policy parameters are exposed as session configuration entrie
 
 | Session option | Parameter | Meaning and valid range |
 |---|---|---|
-| `session.moe_cpu_offload_experts` | Offload target | Global integer expert count (`>= 1`) or proportion (`0 < value < 1`). |
+| `session.moe_cpu_offload_experts` | Offload count | Global number of experts to execute from CPU (`>= 0`); default `0`. |
 | `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and `>= 0`; default `0.9`. |
 | `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`; default `0.1`. |
 | `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`. |
 
 The optional `session.moe_expert_counter_state_file` path is configured separately from these four numerical parameters.
 
-The offload target has the following meaning:
+The CPU offload count has the following meaning:
 
-- An integer greater than or equal to `1` is the total number of experts to offload to CPU.
-- A value strictly between `0` and `1` is the proportion of all experts to offload to CPU. The concrete expert count is
-  `ceil(value * total_expert_count)`.
-- Zero, negative values, non-integral values greater than `1`, non-finite values, and counts larger than the total
-  number of experts are invalid.
-- When the option is absent, expert offloading is disabled.
+- A non-negative integer is the total number of experts to offload to CPU.
+- Negative values, non-integer values, and counts larger than the total number of eligible CUDA FP16/BF16 `MoE` experts
+  are invalid.
+- Zero disables expert offloading.
 
 The global CUDA budget is:
 
@@ -80,8 +78,8 @@ The global CUDA budget is:
 cuda_expert_count = total_expert_count - cpu_offload_expert_count
 ```
 
-One CUDA slot contains all weights required to execute one expert. Moving an expert changes its residency: the expert
-leaving CUDA is transferred to CPU before the replacement expert is transferred from CPU to CUDA.
+One CUDA slot contains all weights required to execute one expert. CUDA slots contain copies only; moving an expert
+into or out of CUDA never removes or modifies its canonical CPU weights.
 
 ## Expert counters
 
@@ -121,12 +119,10 @@ The file starts with a format-version line and contains one line per
 
 Experts omitted from the file start at zero. When the setting is absent, all counters start at zero.
 
-The first offload implementation does not use counters to choose its initial placement. It visits participating
-`MoE` and `QMoE` kernels in graph order and fills the global CUDA expert budget from the first kernels. If the budget
-ends within one kernel, the lowest expert IDs of that boundary kernel remain on CUDA. All remaining experts, including
-those of the last kernels, execute on CPU. This placement remains fixed for the lifetime of the session and separates
-hybrid CPU/CUDA inference correctness from the adaptive policy. Counter-based placement changes are added only in the
-second implementation step.
+The first offload implementation uses loaded counters to select the highest-ranked experts globally. If all counters
+are zero, it distributes CUDA slots round-robin across eligible nodes and selects lower local expert IDs first. This
+placement remains fixed for the lifetime of the session and separates hybrid CPU/CUDA inference correctness from
+adaptive placement changes.
 
 ## Per-node placement update
 
@@ -224,7 +220,7 @@ regressing the regular CUDA path, an internal graph transformer may insert an ex
 operator. That operator must reuse `MoE`/`QMoE` schema semantics and kernels and must not become part of the exported
 model contract.
 
-When `session.moe_cpu_offload_experts` is absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
+When `session.moe_cpu_offload_experts` is `0` or absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
 
 ## State ownership and concurrency
 
@@ -267,19 +263,29 @@ The session-global expert state and counters are already implemented. The remain
 steps so that hybrid inference is validated before placement starts changing at runtime. Each pull request includes
 the tests and documentation for its own scope.
 
-### Step 1: fixed kernel-order placement and hybrid inference
+### Step 1: static FP16/BF16 placement and hybrid inference
 
-- Parse and validate the count-or-proportion offload target.
-- Fill the global CUDA expert budget from the first `MoE` and `QMoE` kernels in graph order, splitting only the
-  boundary kernel when the budget does not contain a whole number of kernels.
-- Keep the remaining experts, including all experts of the last kernels, on CPU.
+Implemented for the built-in CUDA FP16 and BF16 `MoE` paths:
+
+- Parse and validate `session.moe_cpu_offload_experts`; `0` disables offloading.
+- Use loaded counters to select CUDA experts globally; distribute an all-zero budget round-robin across eligible nodes.
+- Keep one representation of all constant expert weights on CPU and materialize only selected expert slices in compact
+  CUDA storage. All-CUDA nodes retain the original host weights; nodes with CPU experts retain the GEMM-layout weights.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
-- Materialize each expert only on its assigned device.
-- Dispatch resident experts on CUDA and offloaded experts through the shared CPU expert-compute path.
-- Combine CPU and CUDA expert results without changing the exported `MoE` or `QMoE` model contract.
-- Preserve the existing CUDA implementation when offloading is disabled.
-- Test CPU-only, CUDA-only, and mixed expert execution, the global offload count, numerical agreement, bounded memory,
-  repeated inference with a fixed placement, and unchanged disabled-path behavior.
+- Dispatch CUDA-resident routes through CUTLASS. CPU-resident FP16 routes use MLAS FP16 GEMMs; BF16 weights are
+  converted once during initialization and CPU-resident BF16 routes use MLAS FP32 GEMMs.
+- Complete the host input copy before CUDA expert kernels can overwrite an aliased input/output buffer, then overlap
+  CPU and CUDA expert GEMMs.
+- Combine CPU and CUDA expert results on CUDA without changing the exported `MoE` model contract.
+- Continue collecting complete routing selections and updating counters.
+- Preserve dynamic FP16/BF16 weights and the existing CUDA implementation when offloading is disabled.
+- Test CPU-only, CUDA-only, and mixed expert execution, numerical agreement, counter updates, invalid configuration,
+  and unchanged disabled-path behavior.
+
+Current limitations are deliberate: constant FC1/FC2 weights are required; FC3, sparse mixer, QMoE, FP32,
+minimal builds, CUDA graph capture, and the CUDA plugin EP are not supported by this first slice.
+Prepacking must remain enabled, the input hidden dimension must be statically known, and connected FC1/FC2 biases
+must also be constant.
 
 ### Step 2: adaptive expert swaps
 

@@ -19,7 +19,7 @@ session.moe_expert_counter_beta=<finite non-negative value>  # default: 0.1
 The coefficients must satisfy `alpha + beta <= 1`; zero is allowed for either coefficient.
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
-capture are not supported when either counting or counter-update logging is enabled.
+capture are not supported when counting, counter-update logging, or CPU offload is enabled.
 Minimal builds omit the counter state, its initialization/run bookkeeping, and the CUDA routing-snapshot collector
 sources. They reject counter configuration except for explicitly disabling counting.
 
@@ -38,7 +38,7 @@ entire model invocation.
 The root `SessionState` owns a `KernelPilotMoeExpertState` shared with its subgraph states. Sessions never share counters.
 While counter-update logging is active, the state also stores the current request ID and logger. Because expert
 selections and counters are session-owned mutable state, a concurrent Run is rejected whenever counting or
-counter-update logging is enabled.
+counter-update logging is enabled, or when static CPU offload uses the counters.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
 be statically known when the session is initialized. The global expert count is the sum of those per-node dimensions;
 for `N` equally sized MoE nodes with `E` experts, it is `N * E`.
@@ -124,6 +124,36 @@ kernel skips collector construction, collection calls, and statistics-only size 
 There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
 remain. Enabling these diagnostics adds overhead.
 
+## Static FP16/BF16 CUDA expert placement
+
+Set the session-wide CPU offload count with:
+
+```text
+session.moe_cpu_offload_experts=<non-negative integer>
+```
+
+This first offload implementation applies to built-in CUDA `MoE` nodes with FP16 or BF16 activations and constant
+expert weights. Before session initialization returns, `KernelPilot` chooses the experts that remain resident in CUDA
+memory. All-zero counters distribute slots round-robin across eligible nodes; initialized counters rank experts by
+descending value with deterministic ties. The offload count is global and must not exceed the number of experts in
+eligible CUDA nodes. The default is `0`, which disables CPU offloading.
+
+Every expert retains a CPU weight representation. Only selected experts are copied to CUDA. During inference, CUDA
+experts run through the existing CUTLASS MoE path. CPU-resident FP16 experts use MLAS FP16 GEMMs; BF16 expert weights
+are converted once during initialization and CPU-resident BF16 experts use MLAS FP32 GEMMs. Their weighted outputs are
+combined on CUDA. Routing still records every selected expert, so counter updates continue unchanged. Each kernel
+retains only one host representation of its FC1/FC2 weights: original weights for all-CUDA nodes, or GEMM-layout weights
+for nodes with CPU experts. The temporary original copy is released after transposition.
+
+Offload requires prepacking to remain enabled and the input hidden dimension to be statically known. Connected
+FC1/FC2 biases must be constant, just like the expert weights.
+Expert-weight collection and validation follow actual outer-scope captures into subgraphs; same-named local inputs
+and initializers are separate values and do not cause ancestor values to be validated or moved to CPU.
+
+Placement is static in this stage: counters continue to evolve, but no weight transfer, expert swap, or end-of-run
+redistribution occurs. Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, FP32, the CUDA plugin
+EP, CUDA graphs, and minimal builds are not supported by this option.
+
 ## Initial counter file
 
 Optionally set:
@@ -132,7 +162,7 @@ Optionally set:
 session.moe_expert_counter_state_file=/path/to/counters.txt
 ```
 
-This requires counting or counter-update logging to be enabled. The UTF-8 text file begins with
+This requires counting, counter-update logging, or static CPU offload to be enabled. The UTF-8 text file begins with
 `moe_expert_state 1`, followed by whitespace-separated records:
 
 ```text
