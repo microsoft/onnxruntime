@@ -29,7 +29,7 @@ $MAIN {
     }
     workgroupBarrier();
     var acc = subgroupMatrixLoad<subgroup_matrix_result<f32, 16, 16>, row_major>(
-        &tile_partial, (lane / 32u) * 256u, 16u);
+        &tile_partial, subgroup_index * 256u, 16u);
     let block_start = k_block * 128u;
     let block_end = min(block_start + 128u, uniforms.inner);
     for (var k_base = block_start; k_base < block_end; k_base += 16u) {
@@ -57,12 +57,12 @@ $MAIN {
       }
       workgroupBarrier();
       let left = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, 16>, row_major>(
-          &tile_a, (lane / 32u) * 256u, 16u);
+          &tile_a, subgroup_index * 256u, 16u);
       let right = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, col_major>(&tile_b, 0u, 16u);
       acc = subgroupMatrixMultiplyAccumulate(left, right, acc);
       workgroupBarrier();
     }
-    subgroupMatrixStore<row_major>(&tile_partial, (lane / 32u) * 256u, acc, 16u);
+    subgroupMatrixStore<row_major>(&tile_partial, subgroup_index * 256u, acc, 16u);
     workgroupBarrier();
     for (var i = lane; i < 1024u; i += 128u) {
       let col = col_base + i % 16u;
