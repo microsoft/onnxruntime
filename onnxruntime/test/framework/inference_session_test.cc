@@ -5244,6 +5244,10 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
 #if defined(DISABLE_EXTERNAL_INITIALIZERS)
       if (buffer_destination && has_main_initializer) continue;
 #endif
+#if defined(__EMSCRIPTEN__)
+      // The WASM test module does not provide Module.MountedFiles for file-backed external data.
+      if (!buffer_destination) continue;
+#endif
       {
         std::ofstream output(input_path, std::ios::binary);
         ASSERT_TRUE(compiled_proto.SerializeToOstream(&output));
@@ -5291,7 +5295,8 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
   }
 }
 
-#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+// The WASM test module cannot load host filesystem external data without Module.MountedFiles.
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(__EMSCRIPTEN__)
 TEST(InferenceSessionTests, ExternalInitializerInjectionIsMainGraphOnly) {
   const std::filesystem::path model_dir = ORT_TSTR("external_buffers_attribute_model_dir");
   std::filesystem::remove_all(model_dir);
