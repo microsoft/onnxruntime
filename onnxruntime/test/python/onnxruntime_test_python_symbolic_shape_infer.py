@@ -949,6 +949,28 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=0)
         self.assertEqual(infer(node, initializers, nodes), ["b", 3, 5])
 
+    def test_shape_start_end(self):
+        graph = helper.make_graph(
+            [
+                helper.make_node("Shape", ["input"], ["tail"], start=1),
+                helper.make_node("Shape", ["input"], ["head"], end=-1),
+                helper.make_node("ConstantOfShape", ["tail"], ["tail_output"]),
+                helper.make_node("ConstantOfShape", ["head"], ["head_output"]),
+            ],
+            "Shape_Test",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["b", "s", 8])],
+            [
+                helper.make_tensor_value_info("tail_output", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("head_output", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 15)])
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        output_shapes = {output.name: self._tensor_shape(output) for output in inferred.graph.output}
+        self.assertEqual(output_shapes["tail_output"], ["s", 8])
+        self.assertEqual(output_shapes["head_output"], ["b", "s"])
+
     def test_gather_indices(self):
         graph = helper.make_graph(
             [
