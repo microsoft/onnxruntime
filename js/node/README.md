@@ -58,6 +58,29 @@ npm install onnxruntime-node --onnxruntime-node-install=skip
 
 ~~You can also use this flag to specify the version of the CUDA: (v11 or v12)~~ CUDA v11 is no longer supported since v1.22.
 
+## Experimental platform package generation
+
+The release packer supports an opt-in `ORT_NODE_SPLIT_PACKAGES=1` environment variable for the `node` target.
+It generates `onnxruntime-node-<os>-<arch>` native packages and an `onnxruntime-node` parent with exact-version
+optional dependencies. Only platforms present in `bin/napi-v6` are generated. The Linux payload is marked `glibc`;
+this does not add musl support. Without the flag, packaging retains the existing bundled layout.
+
+Publish all generated native packages before publishing the parent, using the same npm tag. Package name ownership
+and release automation must be coordinated before enabling this flag in official builds.
+The validation script checks that the native archive set and parent optional dependencies agree.
+
+Consumers must keep optional dependencies enabled. npm selects native packages for the host OS/CPU, and pnpm's
+`supportedArchitectures` can select production targets. No application inference API changes are required.
+Source builds continue to load their local native binaries. CUDA installation flags keep their existing meaning;
+additional libraries are installed alongside the selected native binding.
+
+To test the packaging code without building native binaries:
+
+```
+node --test js/node/script/pack-platforms.test.js
+python -m unittest discover -s tools/ci_build/github/js -p 'test_validate_npm_packages.py'
+```
+
 ## License
 
 License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).
