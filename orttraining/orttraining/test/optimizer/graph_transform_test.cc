@@ -1315,7 +1315,9 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionGuards) {
     bool should_fuse;
   };
 
-  for (const auto test_case : {TestCase{1, false, true}, TestCase{0, false, false}, TestCase{1, true, false}}) {
+  for (const auto test_case :
+       {TestCase{1, false, true}, TestCase{-1, false, true}, TestCase{0, false, false},
+        TestCase{1, true, false}}) {
     auto build_test_case = [test_case](ModelTestBuilder& builder) {
       auto* scores = builder.MakeInput<float>({{2, 3}});
       auto* labels = builder.MakeInput<int64_t>({{2}});
@@ -1381,17 +1383,43 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionPre13Requi
   }
 }
 
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionPre13RejectsUnknownRank) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* scores = builder.MakeInput<float>(std::nullopt);
+    auto* labels = builder.MakeInput<int64_t>(std::nullopt);
+    auto* log_prob = builder.MakeIntermediate<float>(std::nullopt);
+    auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+    builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{1});
+    builder.AddNode("NegativeLogLikelihoodLossInternal", {log_prob, labels}, {loss}, kMSDomain)
+        .AddAttribute("reduction", "mean");
+  };
+
+  auto check_unchanged = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 12, *logger_, std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+      TransformerLevel::Level1, 1, check_unchanged, check_unchanged));
+}
+
 TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionRejectsSharedIntermediates) {
   enum class SharedValue {
     DirectLogSoftmaxOutput,
     LogSoftmaxOutput,
     CastOutput,
+    PublicCastOutput,
   };
 
-  for (const auto shared_value :
-       {SharedValue::DirectLogSoftmaxOutput, SharedValue::LogSoftmaxOutput, SharedValue::CastOutput}) {
+  for (const auto shared_value : {SharedValue::DirectLogSoftmaxOutput, SharedValue::LogSoftmaxOutput,
+                                  SharedValue::CastOutput, SharedValue::PublicCastOutput}) {
     auto build_test_case = [shared_value](ModelTestBuilder& builder) {
       const bool use_cast = shared_value != SharedValue::DirectLogSoftmaxOutput;
+      const bool public_cast_output = shared_value == SharedValue::PublicCastOutput;
       auto* scores = use_cast ? builder.MakeInput<MLFloat16>({{2, 3}}) : builder.MakeInput<float>({{2, 3}});
       auto* labels = builder.MakeInput<int64_t>({{2}});
       auto* log_prob = use_cast ? builder.MakeIntermediate<MLFloat16>({{2, 3}})
@@ -1399,20 +1427,24 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionRejectsSha
       NodeArg* nll_input = log_prob;
       NodeArg* cast_log_prob = nullptr;
       auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
-      auto* shared_output = builder.MakeOutput();
 
       builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{-1});
       if (use_cast) {
-        cast_log_prob = builder.MakeIntermediate<float>({{2, 3}});
+        cast_log_prob = public_cast_output
+                            ? builder.MakeOutput<float>(std::vector<int64_t>{2, 3})
+                            : builder.MakeIntermediate<float>(std::vector<int64_t>{2, 3});
         builder.AddNode("Cast", {log_prob}, {cast_log_prob})
             .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
         nll_input = cast_log_prob;
       }
       builder.AddNode("NegativeLogLikelihoodLossInternal", {nll_input, labels}, {loss}, kMSDomain)
           .AddAttribute("reduction", "mean");
-      builder.AddNode("Identity",
-                      {shared_value == SharedValue::CastOutput ? cast_log_prob : log_prob},
-                      {shared_output});
+      if (!public_cast_output) {
+        auto* shared_output = builder.MakeOutput();
+        builder.AddNode("Identity",
+                        {shared_value == SharedValue::CastOutput ? cast_log_prob : log_prob},
+                        {shared_output});
+      }
     };
 
     auto check_unchanged = [shared_value](Graph& graph) {
