@@ -59,3 +59,26 @@ bool
     kernel(Input, Scale, Bias, Output, MeanOut, InvStdDevOut, NormSize, Epsilon, Simplified);
     return true;
 }
+
+bool
+    MLASCALL
+    MlasLayerNormF16(
+        const uint16_t* Input,
+        const float* Scale,
+        const float* Bias,
+        uint16_t* Output,
+        float* MeanOut,
+        float* InvStdDevOut,
+        size_t NormSize,
+        float Epsilon,
+        bool Simplified
+    )
+{
+    auto kernel = GetMlasPlatform().LayerNormF16Kernel;
+    if (kernel == nullptr || NormSize < 16) {
+        return false;
+    }
+
+    kernel(Input, Scale, Bias, Output, MeanOut, InvStdDevOut, NormSize, Epsilon, Simplified);
+    return true;
+}
