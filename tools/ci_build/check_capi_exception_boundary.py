@@ -3,15 +3,16 @@
 # Licensed under the MIT License.
 """Check that C-API function bodies balance their exception-boundary macros.
 
-Every exported C-API function must wrap its body in ``API_IMPL_BEGIN ... API_IMPL_END``
+Exception-handling C-API function bodies use ``API_IMPL_BEGIN ... API_IMPL_END``
 (or the ``TENSOR_READ_API_BEGIN`` / ``TENSOR_READWRITE_API_BEGIN`` openers, which both
 expand to ``API_IMPL_BEGIN``). That funnel catches C++ exceptions so they never cross the
-C ABI, which would be undefined behavior. The pairing is an opt-in convention with no
-compiler enforcement, so a body that opens a boundary without closing it (or vice versa)
-is a latent UB / build bug.
+C ABI. With exceptions enabled, the compiler already rejects an unmatched ``try`` /
+``catch`` pair. This lightweight source check can catch macro-count mismatches before a
+build, but does not prove that every function has an exception boundary.
 
 This script counts, per ``.cc`` file, the opening macros vs ``API_IMPL_END`` and fails if
-they are unbalanced. Macro *definitions* (``#define`` lines) are ignored.
+they are unbalanced. Macro *definitions* (``#define`` lines) are ignored. Equal counts
+within a file do not establish correct pairing within individual functions.
 
 Usage::
 
@@ -62,10 +63,11 @@ def main() -> int:
         "--root",
         type=Path,
         default=repo_root / "onnxruntime" / "core" / "session",
-        help="Directory to scan for C-API .cc files (default: onnxruntime/core/session).",
+        help="Directory to scan for C-API .cc files (relative to the repository; default: onnxruntime/core/session).",
     )
     parser.add_argument("--list", action="store_true", help="Print per-file counts for files that use the macros.")
     args = parser.parse_args()
+    args.root = (repo_root / args.root).resolve() if not args.root.is_absolute() else args.root.resolve()
 
     if not args.root.is_dir():
         print(f"error: root directory not found: {args.root}", file=sys.stderr)
@@ -83,29 +85,36 @@ def main() -> int:
         if opens == 0 and closes == 0:
             continue  # file does not use the boundary macros
         checked += 1
-        rel = path.relative_to(repo_root).as_posix()
+        rel = display_path(path, repo_root)
         if args.list:
             print(f"{rel}: open={opens} close={closes}")
         if opens != closes:
             unbalanced.append(f"{rel}: {opens} opening macro(s) vs {closes} API_IMPL_END")
 
-    print(f"Checked {checked} C-API source file(s) under {args.root.relative_to(repo_root).as_posix()}.")
+    print(f"Checked {checked} C-API source file(s) under {display_path(args.root, repo_root)}.")
 
     if unbalanced:
         print(
-            "error: unbalanced C-API exception boundary (a thrown exception could cross the C ABI):",
+            "error: unbalanced C-API exception-boundary macro counts:",
             file=sys.stderr,
         )
         for item in unbalanced:
             print(f"  {item}", file=sys.stderr)
         print(
-            "Every exported C-API body must open with API_IMPL_BEGIN (or a TENSOR_*_API_BEGIN) "
-            "and close with API_IMPL_END.",
+            "Check that each API_IMPL_BEGIN (or TENSOR_*_API_BEGIN) is paired with API_IMPL_END "
+            "in the same function body.",
             file=sys.stderr,
         )
         return 1
 
     return 0
+
+
+def display_path(path: Path, repo_root: Path) -> str:
+    try:
+        return path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 if __name__ == "__main__":
