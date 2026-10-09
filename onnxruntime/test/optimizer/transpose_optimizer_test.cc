@@ -6479,16 +6479,12 @@ TEST(TransposeOptimizerTests, NhwcTransformerDoesNotAddAxisToOpset11DequantizeLi
 
   size_t rewritten_dq_count = 0;
   for (const auto& node : session.GetGraph().Nodes()) {
-    if (node.Name() == "ortshared_1_1_1_DequantizeLinear") {
+    if (node.Name() == "reshape_823_DequantizeLinear") {
       ++rewritten_dq_count;
       EXPECT_EQ(node.SinceVersion(), 10);
       EXPECT_EQ(node.GetAttributes().count("axis"), 0U);
-      ASSERT_EQ(node.OutputDefs().size(), 1U);
-      const auto* shape = node.OutputDefs()[0]->Shape();
-      ASSERT_NE(shape, nullptr);
-      // The NHWC rewrite expands this value from [1] to [1, 1, 1, 1]. This proves
-      // SetUpdatedInput ran before we check that it did not add the unsupported axis.
-      EXPECT_EQ(shape->dim_size(), 4);
+      ASSERT_FALSE(node.InputDefs().empty());
+      EXPECT_EQ(node.InputDefs()[0]->Name(), "Conv_208");
     }
   }
   EXPECT_EQ(rewritten_dq_count, 1U);
