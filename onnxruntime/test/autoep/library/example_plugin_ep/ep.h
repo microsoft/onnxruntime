@@ -65,8 +65,10 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool embed_ep_context_in_model = false;
     // Weightless mode selected by the app. Determines which constant initializers this EP copies.
     OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
-    // Modes returned by GetWeightlessSupport(). Must match the kOrtEpDevice_EpMetadataKey_WeightlessSupport EP
-    // metadata reported by the factory. Tests can override it to check that ORT detects a mismatch.
+    // Value returned by GetWeightlessSupport(). Must match the kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes EP
+    // metadata ("all_or_external_only") reported by the factory, which ORT compares it with. ORT only falls back to the
+    // older kOrtEpDevice_EpMetadataKey_WeightlessSupport key ("all", kept for apps written for earlier versions) when
+    // the newer key is absent. Tests can override this value to check that ORT detects a mismatch.
     OrtWeightlessSupport weightless_support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
     bool advertise_ep_context_data_support = true;
     bool use_default_cpu_allocator = false;
