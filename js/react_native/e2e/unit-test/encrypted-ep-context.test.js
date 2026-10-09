@@ -4,8 +4,11 @@
 import { gcm } from '@noble/ciphers/aes';
 import { runEncryptedEpContextWorkflow } from '../src/EncryptedEpContextWorkflow';
 import RNFS from 'react-native-fs';
+import { InferenceSession } from 'onnxruntime-react-native';
 
-jest.mock('onnxruntime-react-native', () => ({ InferenceSession: {}, Tensor: jest.fn() }), { virtual: true });
+jest.mock('onnxruntime-react-native', () => ({ InferenceSession: { create: jest.fn() }, Tensor: jest.fn() }), {
+  virtual: true,
+});
 jest.mock(
   'react-native-fs',
   () => ({
@@ -13,9 +16,16 @@ jest.mock(
     MainBundlePath: '/bundle',
     exists: jest.fn().mockResolvedValue(true),
     readFile: jest.fn(),
+    mkdir: jest.fn().mockResolvedValue(undefined),
+    unlink: jest.fn().mockResolvedValue(undefined),
   }),
   { virtual: true },
 );
+
+beforeEach(() => {
+  InferenceSession.create.mockReset();
+  InferenceSession.create.mockResolvedValue({ release: jest.fn().mockResolvedValue(undefined) });
+});
 
 afterEach(() => {
   delete globalThis.OrtApi;
@@ -31,6 +41,25 @@ test('the runner rejects production builds without the native compilation fixtur
   RNFS.readFile.mockResolvedValue(JSON.stringify({ plugin: '/test/plugin', sourceModel: '/test/model' }));
   globalThis.OrtApi = {};
   await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('ORT_RN_TEST_EP_CONTEXT=1');
+});
+
+test('the runner initializes the binding before looking up the native compilation fixture', async () => {
+  RNFS.readFile.mockResolvedValue(JSON.stringify({ plugin: '/test/plugin', sourceModel: '/test/model' }));
+  const release = jest.fn().mockResolvedValue(undefined);
+  const compile = jest.fn(() => {
+    throw new Error('Native compilation fixture reached');
+  });
+  InferenceSession.create.mockImplementationOnce(async () => {
+    globalThis.OrtApi = {
+      __testCompileEpContextModel: compile,
+      __testUnregisterEpContextPlugin: jest.fn(),
+    };
+    return { release };
+  });
+  await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('Native compilation fixture reached');
+  expect(InferenceSession.create).toHaveBeenCalledWith('/test/model');
+  expect(release).toHaveBeenCalledTimes(1);
+  expect(compile).toHaveBeenCalledTimes(1);
 });
 
 test('the runner reads CI-bundled configuration when no document configuration is provisioned', async () => {

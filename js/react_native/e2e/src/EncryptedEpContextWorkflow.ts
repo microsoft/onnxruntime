@@ -45,6 +45,9 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   }
   const plugin = bundled ? `${bundleDirectory}/${config.plugin}` : config.plugin;
   const sourceModel = bundled ? `${bundleDirectory}/${config.sourceModel}` : config.sourceModel;
+  // Metro can defer installing the native API until the first session is created.
+  const warmup = await InferenceSession.create(sourceModel);
+  await warmup.release();
   const api = globalThis.OrtApi as typeof globalThis.OrtApi & Partial<TestApi>;
   // eslint-disable-next-line no-underscore-dangle
   const compile = api?.__testCompileEpContextModel;
@@ -53,9 +56,6 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   if (!compile || !unregister) {
     throw new Error('Rebuild the mobile binding with ORT_RN_TEST_EP_CONTEXT=1');
   }
-  // Initialize the real language binding before using its native fixture environment.
-  const warmup = await InferenceSession.create(sourceModel);
-  await warmup.release();
   const directory = `${RNFS.DocumentDirectoryPath}/ort-encryption-${Date.now()}`;
   await RNFS.mkdir(directory);
   const registration = 'rn_encryption_test';

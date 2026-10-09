@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <random>
 #include <stdexcept>
+#include <unordered_map>
 
 #include "Env.h"
 
@@ -23,7 +24,7 @@ inline Ort::SessionOptions encryptionTestOptions(Ort::Env& env, const std::strin
   }
   Ort::SessionOptions options;
   options.AddConfigEntry("ep.example.test_execute_ep_context", "1");
-  options.AppendExecutionProvider_V2(env, {*device}, {});
+  options.AppendExecutionProvider_V2(env, {*device}, std::unordered_map<std::string, std::string>{});
   return options;
 }
 
