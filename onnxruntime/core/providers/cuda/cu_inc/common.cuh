@@ -311,9 +311,10 @@ __device__ __inline__ double _Log(double a) { return log(a); }
 template <>
 __device__ __inline__ half _Log(half a) { return half(logf((float)a)); }
 
-// Keeps the exponent non-positive on both branches, matching OP_Sigmoid.
+// Keep the exponent non-positive without cancellation for small affinities.
 __device__ __inline__ float _Sigmoid(float a) {
-  return a > 0.0f ? 1.0f / (1.0f + expf(-a)) : 1.0f - 1.0f / (1.0f + expf(a));
+  const float e = expf(-fabsf(a));
+  return a > 0.0f ? 1.0f / (1.0f + e) : e / (1.0f + e);
 }
 
 template <typename T>

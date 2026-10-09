@@ -42,7 +42,8 @@ def affinity_of(scores, scoring):
     if scoring == "sqrt_softplus":
         return np.sqrt(softplus(scores))
     if scoring == "sigmoid":
-        return 1.0 / (1.0 + np.exp(-scores))
+        e = np.exp(-np.abs(scores))
+        return np.where(scores > 0, 1.0 / (1.0 + e), e / (1.0 + e))
     e = np.exp(scores - scores.max(axis=-1, keepdims=True))
     return e / e.sum(axis=-1, keepdims=True)
 
@@ -57,7 +58,7 @@ def moe_router_reference(scores, bias, expert_ids, cfg, elem):
     scale = np.zeros((tokens, 1), dtype=np.float32)
     for t in range(tokens):
         if expert_ids is not None:
-            chosen = [int(e) for e in expert_ids[t]]
+            chosen = [int(e) for e in expert_ids[t] if 0 <= e < scores.shape[1]]
         else:
             sel = affinity[t].copy()
             if bias is not None:
@@ -69,13 +70,17 @@ def moe_router_reference(scores, bias, expert_ids, cfg, elem):
                 chosen.append(best)
                 sel[best] = -np.inf
         weights = affinity[t, chosen]
-        weights = weights / weights.sum()
-        local = 0.0
+        total = weights.sum()
+        if total <= 0:
+            continue
+        weights = weights / total
+        local_weights = np.zeros(count, dtype=np.float32)
         for j, e in enumerate(chosen):
             if start <= e < start + count:
-                probs[t, e - start] = np.log(weights[j])
-                local += float(weights[j])
-        scale[t, 0] = local * cfg["route_scale"]
+                local_weights[e - start] += weights[j]
+        selected = local_weights > 0
+        probs[t, selected] = np.log(local_weights[selected])
+        scale[t, 0] = local_weights.sum() * cfg["route_scale"]
     return rt(torch.from_numpy(probs), elem).numpy(), scale
 
 
@@ -232,6 +237,72 @@ class TestMoERouter(unittest.TestCase):
         aff = np.sqrt(softplus(scores[0, [1, 2]]))
         np.testing.assert_allclose(np.exp(probs[0, [1, 2]]), aff / aff.sum(), rtol=1e-6)
         np.testing.assert_allclose(scale, 1.0, rtol=1e-6)
+
+    def test_hash_routing_combines_duplicate_ids(self):
+        scores = np.zeros((2, 4), dtype=np.float32)
+        ids = np.array([[1, 1, 2], [1, 1, 1]], dtype=np.int64)
+        for elem in ELEM_TYPES:
+            for start, count in ((0, 4), (0, 2), (2, 2)):
+                with self.subTest(dtype=NAME_OF[elem], start=start):
+                    cfg = {"topk": 3, "start": start, "count": count, "route_scale": 1.0}
+                    model, names = build_moe_router(cfg, elem, 2, 4, with_bias=False, with_ids=True)
+                    probs, scale = run(model, {"scores": scores, "expert_ids": ids}, names)
+                    want_probs, want_scale = moe_router_reference(scores, None, ids, cfg, elem)
+                    self.assert_close(probs, want_probs, TOL[elem], "duplicate ids probs")
+                    self.assert_close(scale, want_scale, 1e-6, "duplicate ids scale")
+
+    def test_sigmoid_extreme_negative_scores(self):
+        scores = np.array([[-20.0, -21.0, -22.0, -23.0], [-30.0, -30.0, -30.0, -30.0]], dtype=np.float32)
+        for elem in ELEM_TYPES:
+            with self.subTest(dtype=NAME_OF[elem]):
+                cfg = {"topk": 2, "start": 0, "count": 4, "route_scale": 1.0, "scoring": "sigmoid"}
+                model, names = build_moe_router(cfg, elem, 2, 4, with_bias=False, with_ids=False)
+                probs, scale = run(model, {"scores": scores}, names)
+                want_probs, want_scale = moe_router_reference(scores, None, None, cfg, elem)
+                self.assert_close(probs, want_probs, TOL[elem], "negative sigmoid probs")
+                self.assert_close(scale, want_scale, 1e-6, "negative sigmoid scale")
+                np.testing.assert_allclose(scale, 1.0, atol=1e-6)
+
+    def test_hash_routing_ignores_bias_with_topk_selection(self):
+        cfg = {"topk": 2, "start": 0, "count": 4, "route_scale": 1.0, "selection": "topk"}
+        model, names = build_moe_router(cfg, TP.FLOAT, 1, 4, with_bias=True, with_ids=True)
+        scores = np.zeros((1, 4), dtype=np.float32)
+        ids = np.array([[1, 2]], dtype=np.int64)
+        feeds = {"scores": scores, "expert_ids": ids, "bias": np.full(4, np.nan, dtype=np.float32)}
+        probs, scale = run(model, feeds, names)
+        want_probs, want_scale = moe_router_reference(scores, None, ids, cfg, TP.FLOAT)
+        self.assert_close(probs, want_probs, TOL[TP.FLOAT], "ignored bias probs")
+        self.assert_close(scale, want_scale, 1e-6, "ignored bias scale")
+
+    def test_local_expert_start_overflow_is_rejected(self):
+        cfg = {"topk": 2, "start": np.iinfo(np.int64).max, "count": 1, "route_scale": 1.0}
+        model, names = build_moe_router(cfg, TP.FLOAT, 1, 4, with_bias=False, with_ids=False)
+        with self.assertRaisesRegex(Exception, "exceed the 4 experts"):
+            run(model, {"scores": np.zeros((1, 4), dtype=np.float32)}, names)
+
+    def test_local_expert_count_is_required(self):
+        cfg = {"topk": 2, "start": 0, "count": 4, "route_scale": 1.0}
+        model, _ = build_moe_router(cfg, TP.FLOAT, 1, 4, with_bias=False, with_ids=False)
+        node = model.graph.node[0]
+        attrs = [a for a in node.attribute if a.name != "local_expert_count"]
+        del node.attribute[:]
+        node.attribute.extend(attrs)
+        with self.assertRaisesRegex(Exception, "local_expert_count"):
+            ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
+
+    def test_score_dimensions_must_fit_int32(self):
+        num_experts = np.iinfo(np.int32).max + 1
+        cfg = {"topk": 1, "start": 0, "count": 1, "route_scale": 1.0}
+        model, names = build_moe_router(cfg, TP.FLOAT, 0, num_experts, with_bias=False, with_ids=False)
+        with self.assertRaisesRegex(Exception, "scores dimensions must fit in int32"):
+            run(model, {"scores": np.empty((0, num_experts), dtype=np.float32)}, names)
+
+    def test_shared_memory_limit_is_reported(self):
+        num_experts = 1 << 18
+        cfg = {"topk": 2, "start": 0, "count": 4, "route_scale": 1.0}
+        model, names = build_moe_router(cfg, TP.FLOAT, 1, num_experts, with_bias=False, with_ids=False)
+        with self.assertRaisesRegex(Exception, "bytes of shared memory, exceeding the device limit"):
+            run(model, {"scores": np.zeros((1, num_experts), dtype=np.float32)}, names)
 
     def test_hash_routing_ignores_out_of_range_ids(self):
         cfg = {"topk": 2, "start": 0, "count": 4, "route_scale": 1.0}

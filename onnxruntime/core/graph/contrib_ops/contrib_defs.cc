@@ -1778,7 +1778,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             "  noaux_tc: the top `topk` of `affinity + bias`\n"
             "Ties go to the lower expert index. Supplying `expert_ids` overrides `selection` "
             "and fixes the choice per token (hash routing); `bias` is then ignored, and an id "
-            "outside [0, num_experts) selects nothing. Either way the weights are the "
+            "outside [0, num_experts) selects nothing. Repeated ids contribute their combined "
+            "weight to that expert. Either way the weights are the "
             "affinities of the chosen experts, normalised to sum to one.\n"
             "\n"
             "Under expert parallelism a rank holds only `local_expert_count` experts starting "
@@ -1789,7 +1790,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             "`weight_scale` is `route_scale * W_local`, which multiplies that factor back out "
             "of the expert output before the all-reduce; a token with no local expert gets a "
             "zero scale, which annihilates the degenerate uniform softmax of an all-negative "
-            "row. A single-rank model sets the local range to all experts.")
+            "row. A single-rank model sets the local range to all experts. The CUDA kernel "
+            "requires 8 * (num_experts + topk + 8) bytes of per-block shared memory; "
+            "expert counts exceeding the device's default per-block limit are rejected.")
         .Attr("topk", "Experts activated per token, in [1, 32].", AttributeProto::INT,
               static_cast<int64_t>(1))
         .Attr("scoring",
@@ -1800,8 +1803,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::STRING, std::string("noaux_tc"))
         .Attr("local_expert_start", "First expert held by this rank.", AttributeProto::INT,
               static_cast<int64_t>(0))
-        .Attr("local_expert_count", "Experts held by this rank. Must be positive.", AttributeProto::INT,
-              static_cast<int64_t>(0))
+        .Attr("local_expert_count", "Experts held by this rank. Must be positive.", AttributeProto::INT)
         .Attr("route_scale", "Factor folded into `weight_scale`.", AttributeProto::FLOAT, 1.0f)
         .Attr("dtype",
               "Element type of `router_probs`. T appears on no input, so it cannot be "

@@ -10,14 +10,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 // The MoE routing decision, from the gate GEMM's output to the two tensors QMoE
 // needs: the log-domain router row for this rank's expert columns, and the local weight mass
 // that has to be multiplied back in afterwards.  Scoring and selection are attributes, so
 // softmax/sigmoid routers and DeepSeek-style sqrt-softplus + noaux_tc both map onto it.
 template <typename T>
-class MoERouter final : public CudaKernel {
+class MoERouter final : public onnxruntime::cuda::CudaKernel {
  public:
   explicit MoERouter(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;

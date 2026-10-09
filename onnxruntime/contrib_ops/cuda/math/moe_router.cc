@@ -3,6 +3,8 @@
 
 #include "contrib_ops/cuda/math/moe_router.h"
 
+#include <limits>
+
 #include "contrib_ops/cuda/math/moe_router_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -33,7 +35,7 @@ template <typename T>
 MoERouter<T>::MoERouter(const OpKernelInfo& info) : CudaKernel(info) {
   topk_ = info.GetAttrOrDefault<int64_t>("topk", static_cast<int64_t>(1));
   local_expert_start_ = info.GetAttrOrDefault<int64_t>("local_expert_start", static_cast<int64_t>(0));
-  local_expert_count_ = info.GetAttrOrDefault<int64_t>("local_expert_count", static_cast<int64_t>(0));
+  ORT_THROW_IF_ERROR(info.GetAttr("local_expert_count", &local_expert_count_));
   route_scale_ = info.GetAttrOrDefault<float>("route_scale", 1.0f);
 
   const std::string scoring = info.GetAttrOrDefault<std::string>("scoring", "sqrt_softplus");
@@ -77,17 +79,20 @@ Status MoERouter<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "topk ", topk_,
                            " exceeds the ", num_experts, " experts on offer.");
   }
-  if (local_expert_start_ + local_expert_count_ > num_experts) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "the local experts [",
-                           local_expert_start_, ", ",
-                           local_expert_start_ + local_expert_count_, ") run past the ",
-                           num_experts, " experts on offer.");
+  if (local_expert_start_ > num_experts || local_expert_count_ > num_experts - local_expert_start_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "local_expert_start ",
+                           local_expert_start_, " and local_expert_count ",
+                           local_expert_count_, " exceed the ", num_experts, " experts on offer.");
   }
-  if (bias != nullptr && bias->Shape().Size() != num_experts) {
+  if (num_tokens > std::numeric_limits<int>::max() || num_experts > std::numeric_limits<int>::max()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "scores dimensions must fit in int32.");
+  }
+  const Tensor* selection_bias = expert_ids == nullptr ? bias : nullptr;
+  if (selection_bias != nullptr && selection_bias->Shape() != TensorShape({num_experts})) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "bias must hold ", num_experts,
-                           " elements, got ", bias->Shape().Size());
+                           " elements in a rank-1 tensor, got ", selection_bias->Shape());
   }
-  if (bias != nullptr && !add_bias_before_topk_) {
+  if (selection_bias != nullptr && !add_bias_before_topk_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "bias is only used by selection='noaux_tc'; drop it or switch "
                            "selection.");
@@ -110,8 +115,9 @@ Status MoERouter<T>::ComputeInternal(OpKernelContext* context) const {
   params.route_scale = route_scale_;
   params.scoring = scoring_;
 
-  return LaunchMoERouter<T>(Stream(context), params, scores->Data<float>(),
-                            bias == nullptr ? nullptr : bias->Data<float>(),
+  return LaunchMoERouter<T>(Stream(context), params, GetDeviceProp().sharedMemPerBlock,
+                            scores->Data<float>(),
+                            selection_bias == nullptr ? nullptr : selection_bias->Data<float>(),
                             expert_ids == nullptr ? nullptr : expert_ids->Data<int64_t>(),
                             router_probs->MutableData<T>(),
                             weight_scale->MutableData<float>());

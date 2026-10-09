@@ -4438,9 +4438,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   `selection` then chooses the experts:
     topk:     the top `topk` of `affinity`
     noaux_tc: the top `topk` of `affinity + bias`
-  Ties go to the lower expert index. Supplying `expert_ids` overrides `selection` and fixes the choice per token (hash routing); `bias` is then ignored, and an id outside [0, num_experts) selects nothing. Either way the weights are the affinities of the chosen experts, normalised to sum to one.
+  Ties go to the lower expert index. Supplying `expert_ids` overrides `selection` and fixes the choice per token (hash routing); `bias` is then ignored, and an id outside [0, num_experts) selects nothing. Repeated ids contribute their combined weight to that expert. Either way the weights are the affinities of the chosen experts, normalised to sum to one.
   
-  Under expert parallelism a rank holds only `local_expert_count` experts starting at `local_expert_start`, and sees only that column block. `router_probs` carries the log of the weight for a chosen local expert and a large negative value elsewhere (-1e30, or -1e4 for float16, which -1e30 does not survive), so QMoE's own softmax over the block returns w_e / W_local. `weight_scale` is `route_scale * W_local`, which multiplies that factor back out of the expert output before the all-reduce; a token with no local expert gets a zero scale, which annihilates the degenerate uniform softmax of an all-negative row. A single-rank model sets the local range to all experts.
+  Under expert parallelism a rank holds only `local_expert_count` experts starting at `local_expert_start`, and sees only that column block. `router_probs` carries the log of the weight for a chosen local expert and a large negative value elsewhere (-1e30, or -1e4 for float16, which -1e30 does not survive), so QMoE's own softmax over the block returns w_e / W_local. `weight_scale` is `route_scale * W_local`, which multiplies that factor back out of the expert output before the all-reduce; a token with no local expert gets a zero scale, which annihilates the degenerate uniform softmax of an all-negative row. A single-rank model sets the local range to all experts. The CUDA kernel requires 8 * (num_experts + topk + 8) bytes of per-block shared memory; expert counts exceeding the device's default per-block limit are rejected.
 
 #### Version
 
@@ -4451,7 +4451,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>dtype</tt> : int</dt>
 <dd>Element type of `router_probs`. T appears on no input, so it cannot be inferred.</dd>
-<dt><tt>local_expert_count</tt> : int</dt>
+<dt><tt>local_expert_count</tt> : int (required)</dt>
 <dd>Experts held by this rank. Must be positive.</dd>
 <dt><tt>local_expert_start</tt> : int</dt>
 <dd>First expert held by this rank.</dd>

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -27,6 +29,7 @@ struct MoERouterParams {
 
 template <typename T>
 Status LaunchMoERouter(cudaStream_t stream, const MoERouterParams& params,
+                       size_t shared_memory_limit,
                        const float* scores, const float* bias, const int64_t* expert_ids,
                        T* router_probs, float* weight_scale);
 

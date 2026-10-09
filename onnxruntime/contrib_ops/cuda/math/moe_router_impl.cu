@@ -219,11 +219,10 @@ __global__ void MoERouterKernel(const MoERouterParams p,
     float weight = 0.0f;
     for (int j = 0; j < topk; ++j) {
       if (s_index[j] == expert) {
-        weight = s_weight[j];
-        if (weight > 0.0f) log_weight = logf(weight);
-        break;
+        weight += s_weight[j];
       }
     }
+    if (weight > 0.0f) log_weight = logf(weight);
     out_row[c] = static_cast<CudaT>(log_weight);
     local_sum += weight;
   }
@@ -241,12 +240,15 @@ __global__ void MoERouterKernel(const MoERouterParams p,
 }  // namespace
 
 template <typename T>
-Status LaunchMoERouter(cudaStream_t stream, const MoERouterParams& p, const float* scores,
+Status LaunchMoERouter(cudaStream_t stream, const MoERouterParams& p, size_t shared_memory_limit,
+                       const float* scores,
                        const float* bias, const int64_t* expert_ids, T* router_probs,
                        float* weight_scale) {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const size_t shared = (2 * static_cast<size_t>(p.num_experts) + p.topk + kWarps) * sizeof(float) +
                         (static_cast<size_t>(p.topk) + kWarps) * sizeof(int);
+  ORT_RETURN_IF(shared > shared_memory_limit, "MoERouter requires ", shared,
+                " bytes of shared memory, exceeding the device limit of ", shared_memory_limit, ".");
   MoERouterKernel<CudaT><<<p.num_tokens, kThreads, shared, stream>>>(
       p, scores, bias, expert_ids, reinterpret_cast<CudaT*>(router_probs), weight_scale);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -254,7 +256,7 @@ Status LaunchMoERouter(cudaStream_t stream, const MoERouterParams& p, const floa
 }
 
 #define INSTANTIATE(T)                                                               \
-  template Status LaunchMoERouter<T>(cudaStream_t, const MoERouterParams&,           \
+  template Status LaunchMoERouter<T>(cudaStream_t, const MoERouterParams&, size_t,   \
                                      const float*, const float*, const int64_t*, T*, \
                                      float*)
 
