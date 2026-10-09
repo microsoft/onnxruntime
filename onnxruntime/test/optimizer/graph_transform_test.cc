@@ -3116,6 +3116,47 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyReshape) {
   }
 }
 
+// should not fuse - the in-between Reshape node produces a graph output
+TEST_F(GraphTransformationTests, FuseMatmulBNWithGraphOutputInBetweenNode) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-reshape.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  // mark the Reshape output as an additional graph output
+  std::vector<const NodeArg*> graph_outputs = graph.GetOutputs();
+  const NodeArg* reshape_output = nullptr;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      reshape_output = node.OutputDefs()[0];
+      graph_outputs.push_back(reshape_output);
+    }
+  }
+  ASSERT_TRUE(reshape_output != nullptr);
+  graph.SetOutputs(graph_outputs);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
+
+  // the reported failure mode orphaned the graph output's NodeArg; check it
+  // still has a producing node (Graph::Resolve does not verify this for
+  // manually-set outputs, so assert it directly)
+  ASSERT_NE(graph.GetProducerNode(reshape_output->Name()), nullptr);
+  ASSERT_EQ(graph.GetProducerNode(reshape_output->Name())->OpType(), "Reshape");
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+
 TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyTranspose) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-transpose.onnx";
 
