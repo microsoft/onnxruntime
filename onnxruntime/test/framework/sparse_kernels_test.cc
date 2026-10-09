@@ -2431,6 +2431,74 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_Ra
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw_data size"));
 }
 
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_IndicesSizeMismatch) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_tensor_idx_size_mismatch");
+  sparse.add_dims(utils::kMaxEmbeddedInitializerSizeInBytes / sizeof(float) + 1);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(2);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+  val->add_float_data(2.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->set_name("test_tensor_idx_size_mismatch_indices");
+  ind->add_dims(2);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data field count"));
+}
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_IndicesSizeMismatch_RawData) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_tensor_idx_size_mismatch_raw");
+  sparse.add_dims(utils::kMaxEmbeddedInitializerSizeInBytes / sizeof(float) + 1);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(2);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+  val->add_float_data(2.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->set_name("test_tensor_idx_size_mismatch_raw_indices");
+  ind->add_dims(2);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+
+  int64_t raw_index = 0;
+  onnxruntime::utils::SetRawDataInTensorProto(*ind, &raw_index, sizeof(raw_index));
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw_data size"));
+}
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsUnsupportedIndexTypeForEmptyTensor) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("unsupported_index_type");
+  sparse.add_dims(0);
+
+  auto* values = sparse.mutable_values();
+  values->add_dims(0);
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* indices = sparse.mutable_indices();
+  indices->add_dims(0);
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  const auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::INVALID_GRAPH);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("indices. Should be one of the following types"));
+}
+
 // Tests for SparseTensorProtoToDenseTensorProto with negative indices (model-loading path)
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_NegativeIndex_Rank1) {
   // Dense size 4

@@ -2712,6 +2712,25 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
                            ONNX_NAMESPACE::TensorProto_DataType_STRING);
   }
 
+  // CopySparseData also validates the type, but it runs after allocating the dense buffer
+  // and is skipped entirely for an empty dense tensor. Validate here so unsupported types
+  // are rejected before either path.
+  if (indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT16 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_GRAPH,
+        "Sparse tensor: ", name,
+        " indices. Should be one of the following types: int8, int16, int32 or int64");
+  }
+
+  // Validate embedded indices before allocating the dense zero-filled buffer so malformed
+  // inline data is rejected before a large representable dense allocation is attempted.
+  if (!HasExternalData(indices)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(indices));
+  }
+
   if (dense_elements == 0) {
     // if there are no elements in the dense tensor, we can return early with an empty tensor proto
     return status;
