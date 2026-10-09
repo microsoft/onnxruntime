@@ -1171,6 +1171,7 @@ TEST(HalfGemmKleidiAIPath, TransposedBRuntimePacking) {
   constexpr size_t ldb = K + 1;
   std::vector<MLFp16> a(M * K);
   std::vector<MLFp16> b(N * ldb, MLFp16(-1.0f));
+  std::vector<MLFp16> bias{MLFp16(1.0f), MLFp16(2.0f), MLFp16(3.0f)};
   std::vector<MLFp16> c(M * N, MLFp16(0.0f));
 
   for (size_t m = 0; m < M; ++m) {
@@ -1187,6 +1188,7 @@ TEST(HalfGemmKleidiAIPath, TransposedBRuntimePacking) {
   MLAS_HALF_GEMM_DATA_PARAMS data{};
   data.A = a.data();
   data.B = b.data();
+  data.Bias = reinterpret_cast<const MLAS_FP16*>(bias.data());
   data.C = reinterpret_cast<MLAS_FP16*>(c.data());
   data.lda = K;
   data.ldb = ldb;
@@ -1197,7 +1199,7 @@ TEST(HalfGemmKleidiAIPath, TransposedBRuntimePacking) {
   ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
   for (size_t m = 0; m < M; ++m) {
     for (size_t n = 0; n < N; ++n) {
-      float expected = 0.0f;
+      float expected = float(bias[n]);
       for (size_t k = 0; k < K; ++k) {
         expected += float(a[m * K + k]) * float(b[n * ldb + k]);
       }
