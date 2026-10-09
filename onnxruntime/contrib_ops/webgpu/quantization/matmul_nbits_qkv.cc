@@ -298,9 +298,12 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const bool single_scale_weights =
       q_scales->Shape().Size() == 1 && k_scales->Shape().Size() == 1 && v_scales->Shape().Size() == 1;
 
-  uint32_t workgroup_size = 128;
-  uint32_t tile_size = 8;
-  uint32_t tile_size_k_vec = (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
+  const bool use_apple_decode_geometry =
+      context.AdapterInfo().vendor == std::string_view{"apple"} &&
+      a->DataType() == DataTypeImpl::GetType<MLFloat16>();
+  const uint32_t workgroup_size = use_apple_decode_geometry ? 256u : 128u;
+  const uint32_t tile_size = use_apple_decode_geometry ? 32u : 8u;
+  const uint32_t tile_size_k_vec = (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
 
   const uint32_t elements_in_value_b = components_b * (32u / onnxruntime::narrow<uint32_t>(bits_));
   const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;

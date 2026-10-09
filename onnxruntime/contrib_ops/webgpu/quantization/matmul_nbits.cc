@@ -329,13 +329,20 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     return context.RunProgram(program);
   }
 
+  const bool use_apple_decode_tile =
+      context.AdapterInfo().vendor == std::string_view{"apple"} &&
+      M == 1 &&
+      a->DataType() == DataTypeImpl::GetType<MLFloat16>() &&
+      nbits == 4 &&
+      block_size == 32;
+
   // Use tile_size_k_vec=32 by default for better K-dimension parallelism.
   // Intel devices use 16 as they have different subgroup/cache characteristics.
   const uint32_t tile_size_k_vec =
       (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
 
-  constexpr uint32_t workgroup_size = 128;
-  constexpr uint32_t tile_size = 8;
+  const uint32_t workgroup_size = use_apple_decode_tile ? 256u : 128u;
+  const uint32_t tile_size = use_apple_decode_tile ? 32u : 8u;
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
@@ -360,7 +367,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {batch_count},
                             {weight_index},
                             {dispatch_M}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size, tile_size_k_vec, broadcast_a, acc_f32);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

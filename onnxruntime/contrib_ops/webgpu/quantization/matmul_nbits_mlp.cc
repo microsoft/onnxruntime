@@ -391,9 +391,12 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     const bool decode_has_skip_input = has_skip_input && !exceeds_storage_buffer_limit;
     const bool decode_has_skip_output = has_skip_output && !exceeds_storage_buffer_limit;
 
-    uint32_t workgroup_size = 128;
-    uint32_t tile_size = 8;
-    uint32_t tile_size_k_vec =
+    const bool use_apple_decode_geometry =
+        context.AdapterInfo().vendor == std::string_view{"apple"} &&
+        a->DataType() == DataTypeImpl::GetType<MLFloat16>();
+    const uint32_t workgroup_size = use_apple_decode_geometry ? 256u : 128u;
+    const uint32_t tile_size = use_apple_decode_geometry ? 32u : 8u;
+    const uint32_t tile_size_k_vec =
         (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
 
     const uint32_t elements_in_value_b = components_b * (32u / onnxruntime::narrow<uint32_t>(bits_));
@@ -454,6 +457,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                    decode_has_norm_input,
                    decode_has_skip_input,
                    decode_has_skip_output,
+                   tile_size,
                    tile_size_k_vec,
                    k_unroll_tiles,
                    static_cast<uint32_t>(activation_kind_),
