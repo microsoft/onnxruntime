@@ -32,14 +32,19 @@ from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, 
 class TestOpGemm(unittest.TestCase):
     def test_quantize_gemm_float16_bias_scale_underflow(self):
         for per_channel in (False, True):
-            for magnitude in (2**-11, 0.005):
+            for magnitude, bias_value, input_max in (
+                (2**-11, 1, 1),
+                (0.005, 1, 1),
+                (2**-17, 1.25, 2),
+                (2**-11, 150, 0.255),
+            ):
                 with (
                     self.subTest(per_channel=per_channel, magnitude=magnitude),
                     tempfile.TemporaryDirectory() as directory,
                 ):
                     weights = np.array([[-magnitude, -magnitude / 2], [magnitude, magnitude / 2]], dtype=np.float16)
-                    bias = np.array([1, 2], dtype=np.float16)
-                    inputs = {"input": np.eye(2, dtype=np.float16)}
+                    bias = np.full(2, bias_value, dtype=np.float16)
+                    inputs = {"input": np.eye(2, dtype=np.float16) * input_max}
                     model = helper.make_model(
                         helper.make_graph(
                             [helper.make_node("Gemm", ["input", "weight", "bias"], ["output"])],
@@ -75,12 +80,16 @@ class TestOpGemm(unittest.TestCase):
                     onnx.checker.check_model(quantized)
                     initializers = {t.name: onnx.numpy_helper.to_array(t) for t in quantized.graph.initializer}
                     scales = initializers["bias_quantized_scale"]
-                    self.assertEqual(scales.dtype, np.float32 if magnitude == 2**-11 else np.float16)
+                    self.assertEqual(scales.dtype, np.float16 if magnitude == 0.005 else np.float32)
                     self.assertTrue((scales > 0).all())
                     dequantized = initializers["bias_quantized"].astype(np.float32) * scales
                     np.testing.assert_allclose(dequantized, bias, rtol=1e-5)
-                    self.assertTrue((initializers["weight_scale"] < np.finfo(np.float16).tiny).all())
+                    self.assertTrue((initializers["weight_scale"] < 0.001).all())
                     self.assertTrue((initializers["weight_quantized"] != 0).all())
+                    effective_bias_scale = initializers["input_scale"].astype(np.float64) * initializers[
+                        "weight_scale"
+                    ].astype(np.float64)
+                    self.assertTrue((effective_bias_scale * np.iinfo(np.int32).max >= bias).all())
                     for level in (GraphOptimizationLevel.ORT_DISABLE_ALL, GraphOptimizationLevel.ORT_ENABLE_ALL):
                         options = SessionOptions()
                         options.graph_optimization_level = level
@@ -89,7 +98,7 @@ class TestOpGemm(unittest.TestCase):
                             None, inputs
                         )[0]
                         np.testing.assert_allclose(
-                            result.astype(np.float32), weights.astype(np.float32) + bias, rtol=0.01
+                            result.astype(np.float32), weights.astype(np.float32) * input_max + bias, rtol=0.01
                         )
 
     def input_feeds(self, n, name2shape):

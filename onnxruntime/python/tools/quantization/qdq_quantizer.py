@@ -470,7 +470,11 @@ class QDQQuantizer(BaseQuantizer):
                     f"ensure bias input `{bias_tp.name}` has a valid scale."
                 )
                 new_scale = weight_scale_fp64 * ratio
-                weight_scale = new_scale.astype(weight_scale_dtype)
+                rounded_scale = new_scale.astype(weight_scale_dtype)
+                # FP16 rounding must not undo the minimum scale required to represent the bias.
+                if weight_scale_dtype == np.float16 and rounded_scale < new_scale:
+                    rounded_scale = np.nextafter(rounded_scale, np.array(np.inf, dtype=weight_scale_dtype))
+                weight_scale = rounded_scale
                 updated_an_elem = True
         elif weight_scale.shape and len(weight_scale.shape) == 1:
             # per-channel case
@@ -491,7 +495,10 @@ class QDQQuantizer(BaseQuantizer):
                         f"to ensure bias input `{bias_tp.name}` has a valid scale."
                     )
                     new_scale = weight_scale_fp64 * ratio
-                    weight_scale[i] = new_scale.astype(weight_scale_dtype)
+                    rounded_scale = new_scale.astype(weight_scale_dtype)
+                    if weight_scale_dtype == np.float16 and rounded_scale < new_scale:
+                        rounded_scale = np.nextafter(rounded_scale, np.array(np.inf, dtype=weight_scale_dtype))
+                    weight_scale[i] = rounded_scale
                     updated_an_elem = True
 
         return updated_an_elem, weight_scale
@@ -1258,12 +1265,16 @@ class QDQQuantizer(BaseQuantizer):
         if (
             self.weight_qType != onnx.TensorProto.FLOAT8E4M3FN
             and bias_initializer.data_type == onnx.TensorProto.FLOAT16
-            and np.any(np.asarray(input_scale * weight_scale * bias_info.beta, dtype=np.float16) == 0)
         ):
-            # Dequantize the bias in FP32, then cast back to FP16 without losing a subnormal scale product.
-            input_scale = input_scale.astype(np.float32)
-            weight_scale = weight_scale.astype(np.float32)
-            bias_scale_dtype = np.float32
+            bias_scale_fp16 = np.asarray(input_scale * weight_scale * bias_info.beta, dtype=np.float16)
+            bias_data_fp64 = tensor_proto_to_array(bias_initializer).astype(np.float64)
+            if np.any(bias_scale_fp16 == 0) or np.any(
+                np.abs(bias_data_fp64) > np.iinfo(np.int32).max * bias_scale_fp16.astype(np.float64)
+            ):
+                # Use FP32 DQ followed by an FP16 cast if scale rounding would erase or clip the bias.
+                input_scale = input_scale.astype(np.float32)
+                weight_scale = weight_scale.astype(np.float32)
+                bias_scale_dtype = np.float32
 
         (
             quantized_bias_name,
