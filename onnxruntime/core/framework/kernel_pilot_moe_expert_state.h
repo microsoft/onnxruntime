@@ -129,6 +129,7 @@ class KernelPilotMoeExpertState {
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;
+  std::mutex counter_logging_mutex_;
   mutable std::mutex run_mutex_;
   bool run_active_{false};
   std::string logging_request_id_;

@@ -9,6 +9,7 @@
 #include <limits>
 #include <locale>
 #include <map>
+#include <numeric>
 #include <set>
 #include <sstream>
 #include <tuple>
@@ -321,7 +322,60 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
   ORT_RETURN_IF_NOT(usage.ExpertCount() == range.count, "MoE kernel usage expert count does not match registration.");
   gsl::span<const int> used_expert_ids;
   ORT_RETURN_IF_ERROR(usage.GetSelectedExperts(used_expert_ids));
+  const bool log_counter_event =
+      logging_logger_ != nullptr &&
+      logging_logger_->OutputIsEnabled(logging::Severity::kINFO, logging::DataType::SYSTEM);
   auto counters = gsl::make_span(counters_).subspan(range.begin, range.count);
+  InlinedVector<double> logged_scores;
+  InlinedVector<size_t> node_ranks;
+  InlinedHashMap<int, size_t> selected_ranks;
+  InlinedHashMap<int, size_t> global_positions;
+  std::unique_lock<std::mutex> counter_logging_lock(counter_logging_mutex_, std::defer_lock);
+  if (log_counter_event) {
+    counter_logging_lock.lock();
+    logged_scores.assign(counters.begin(), counters.end());
+    InlinedVector<size_t> ranked_node_experts(range.count);
+    std::iota(ranked_node_experts.begin(), ranked_node_experts.end(), 0);
+    std::sort(ranked_node_experts.begin(), ranked_node_experts.end(),
+              [counters](size_t lhs, size_t rhs) {
+                return counters[lhs] != counters[rhs] ? counters[lhs] > counters[rhs] : lhs < rhs;
+              });
+    node_ranks.reserve(range.count);
+    for (size_t expert = 0; expert < range.count; ++expert) {
+      node_ranks.push_back(0);
+    }
+    for (size_t rank = 0; rank < ranked_node_experts.size(); ++rank) {
+      node_ranks[ranked_node_experts[rank]] = rank;
+    }
+
+    InlinedVector<int> ranked_selected_experts(used_expert_ids.begin(), used_expert_ids.end());
+    std::sort(ranked_selected_experts.begin(), ranked_selected_experts.end(),
+              [counters](int lhs, int rhs) {
+                const size_t lhs_index = static_cast<size_t>(lhs);
+                const size_t rhs_index = static_cast<size_t>(rhs);
+                return counters[lhs_index] != counters[rhs_index]
+                           ? counters[lhs_index] > counters[rhs_index]
+                           : lhs < rhs;
+              });
+    selected_ranks.reserve(ranked_selected_experts.size());
+    for (size_t rank = 0; rank < ranked_selected_experts.size(); ++rank) {
+      selected_ranks.emplace(ranked_selected_experts[rank], rank);
+    }
+
+    global_positions.reserve(used_expert_ids.size());
+    for (int expert : used_expert_ids) {
+      const size_t global_expert = expert_ids_.at({kernel, expert});
+      const double score = counters_[global_expert];
+      size_t global_position = 0;
+      for (size_t other_expert = 0; other_expert < counters_.size(); ++other_expert) {
+        if (counters_[other_expert] > score ||
+            (counters_[other_expert] == score && other_expert < global_expert)) {
+          ++global_position;
+        }
+      }
+      global_positions.emplace(expert, global_position);
+    }
+  }
   for (auto& counter : counters) {
     counter *= alpha_;
   }
@@ -329,8 +383,7 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
     counters_[expert_ids_.at({kernel, expert})] += beta_;
   }
 
-  if (logging_logger_ != nullptr &&
-      logging_logger_->OutputIsEnabled(logging::Severity::kINFO, logging::DataType::SYSTEM)) {
+  if (log_counter_event) {
     // Reserve across parallel nodes before formatting. Counters remain independent of the log budget.
     if (logging_record_count_.load(std::memory_order_relaxed) > kMaxCounterLogRecordsPerRun) {
       return Status::OK();
@@ -358,19 +411,32 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
     event << ",\"node_index\":" << node->second.key.second
           << ",\"node_type\":";
     common::WriteJsonString(event, kernel->Node().OpType());
+    event << ",\"moe_count\":" << kernels_.size()
+          << ",\"total_expert_count\":" << counters_.size();
+
+    gsl::span<const int> cuda_experts;
+    ORT_RETURN_IF_ERROR(node->second.pilot.GetMoeCudaExperts(cuda_experts));
+    const bool has_expert_cache = node->second.pilot.GetMoeExpertCache() != nullptr;
+    const bool node_runs_on_cuda = kernel->Node().GetExecutionProviderType() == kCudaExecutionProvider;
+
     event << ",\"selected_experts\":[";
     for (size_t i = 0; i < used_expert_ids.size(); ++i) {
       if (i != 0) {
         event << ",";
       }
-      event << used_expert_ids[i];
-    }
-    event << "],\"counters\":[";
-    for (size_t i = 0; i < counters.size(); ++i) {
-      if (i != 0) {
-        event << ",";
-      }
-      event << std::setprecision(std::numeric_limits<double>::max_digits10) << counters[i];
+      const int selected_expert = used_expert_ids[i];
+      const size_t expert = static_cast<size_t>(selected_expert);
+      const bool runs_on_cuda =
+          has_expert_cache
+              ? std::find(cuda_experts.begin(), cuda_experts.end(), selected_expert) != cuda_experts.end()
+              : node_runs_on_cuda;
+      event << "{\"expert_id\":" << selected_expert
+            << ",\"score\":" << std::setprecision(std::numeric_limits<double>::max_digits10)
+            << logged_scores[expert]
+            << ",\"selected_rank\":" << selected_ranks.at(selected_expert)
+            << ",\"node_rank\":" << node_ranks[expert]
+            << ",\"global_position\":" << global_positions.at(selected_expert)
+            << ",\"device\":\"" << (runs_on_cuda ? "CUDA" : "CPU") << "\"}";
     }
     event << "]}";
     LOGS(*logging_logger_, INFO) << "moe_expert_counters " << event.str();

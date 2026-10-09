@@ -104,6 +104,27 @@ by the larger of their initial value and `1`. Their defaults and constraints are
 Expert identity is `(graph_scope, node_index, node_type, expert_id)`. Ranking is by descending counter. Ties are resolved
 by `expert_id`, then graph scope and node index, so placement is deterministic.
 
+When counter logging is enabled, each event reports only the experts selected by that invocation. Each selected-expert
+record contains the local `expert_id`, its pre-update `score`, its zero-based `selected_rank` among the selected
+experts, its zero-based `node_rank` among every expert in the node, its zero-based `global_position` among every
+expert in the model, and its current `device` (`CPU` or `CUDA`). Ranks use descending score. Local ties are broken by
+expert ID, while global ties are broken by the fixed model-wide expert index. The device reflects the currently
+published placement; an asynchronous swap is not visible until the kernel publishes it. Each event also reports
+`moe_count` and `total_expert_count`.
+
+```json
+"selected_experts": [
+  {
+    "expert_id": 7,
+    "score": 0.1,
+    "selected_rank": 0,
+    "node_rank": 3,
+    "global_position": 1024,
+    "device": "CUDA"
+  }
+]
+```
+
 ## Initial counter state
 
 An optional session setting names a UTF-8 text file containing initial counter values:
