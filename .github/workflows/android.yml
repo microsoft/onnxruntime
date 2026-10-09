@@ -141,7 +141,7 @@ jobs:
         id: vcpkg-tool-info
         uses: ./.github/actions/get-vcpkg-tool-info
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           ccache-version: 4.13.1
           ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
@@ -256,7 +256,7 @@ jobs:
         id: vcpkg-tool-info
         uses: ./.github/actions/get-vcpkg-tool-info
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           ccache-version: 4.13.1
           ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
