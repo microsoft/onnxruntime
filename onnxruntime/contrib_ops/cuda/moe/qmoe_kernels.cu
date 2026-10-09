@@ -543,6 +543,34 @@ void LaunchQMoEPrePackZP(
 }
 
 template <typename T>
+__global__ void QMoEConstantFillKernel(T* out, int num_elements, float value) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < num_elements) {
+    out[idx] = static_cast<T>(value);
+  }
+}
+
+// Fills a buffer with a constant. Used to materialize a per-block float zero-point from the scalar
+// fractional ``zero_point_offset`` so the dense int dequant can apply dequant = (code - value) * scale.
+void LaunchQMoEConstantFill(float* output, int num_elements, float value, cudaStream_t stream) {
+  int block = 256;
+  int grid = Compute1DGridSize(num_elements, block);
+  QMoEConstantFillKernel<float><<<grid, block, 0, stream>>>(output, num_elements, value);
+}
+
+void LaunchQMoEConstantFill(half* output, int num_elements, float value, cudaStream_t stream) {
+  int block = 256;
+  int grid = Compute1DGridSize(num_elements, block);
+  QMoEConstantFillKernel<half><<<grid, block, 0, stream>>>(output, num_elements, value);
+}
+
+void LaunchQMoEConstantFill(__nv_bfloat16* output, int num_elements, float value, cudaStream_t stream) {
+  int block = 256;
+  int grid = Compute1DGridSize(num_elements, block);
+  QMoEConstantFillKernel<__nv_bfloat16><<<grid, block, 0, stream>>>(output, num_elements, value);
+}
+
+template <typename T>
 __global__ void QMoEPrePackPacked4BitZPKernel(const uint8_t* packed_zp, const T* scales, T* out, int num_elements, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_elements) {
