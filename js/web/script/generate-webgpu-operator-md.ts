@@ -11,7 +11,7 @@ const COMMENTS: Record<string, string> = {
   AveragePool: 'need perf optimization; need implementing activation',
   MaxPool: 'need perf optimization; need implementing activation',
   Conv: 'need perf optimization; conv3d is not supported; need implementing activation',
-  ConvTranspose: 'need perf optimization; ConvTranspose3d is not supported; need implementing activation',
+  ConvTranspose: 'need perf optimization; need implementing activation',
   Transpose: 'need perf optimization',
   Reshape: 'no GPU kernel',
   Shape: 'no GPU kernel; an ORT warning is generated - need to fix',

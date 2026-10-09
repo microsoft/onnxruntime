@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include "core/providers/webgpu/d3d12_external_data_loader.h"
+#endif
 
 #include <mutex>
 #include <string_view>
@@ -71,7 +74,7 @@ class Memcpy final : public OpKernel {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
     const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    DataTransfer transfer(ep.BufferManager(), ep.Recording());
+    DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
     return transfer.CopyTensor(*X, *Y);
   }
 };
@@ -606,7 +609,7 @@ using namespace webgpu;
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
                                                  WebGpuContext& context,
                                                  WebGpuExecutionProviderConfig&& config)
-    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice},
+    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice(context_id)},
       context_id_{context_id},
       context_{context},
       preferred_data_layout_{config.data_layout},
@@ -617,11 +620,40 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
+#endif
       recording_{std::make_unique<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
+          context_id,
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode) &&
+      context_.HasDevice()) {
+    accelerated_initializer_allocator_ =
+        CreateD3D12AcceleratedWebGpuAllocator(
+            context_,
+            context_id_,
+            [this]() -> webgpu::CommandRecordingState& { return Recording(); },
+            accelerated_initializer_state_);
+  }
+#else
+  if (webgpu::IsWeightLoadAccelerationRequired(
+          config.weight_load_acceleration_mode)) {
+    ORT_THROW(
+        "The requested weightLoadAcceleration mode requires a supported "
+        "disk-to-GPU weight loading implementation.");
+  }
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode)) {
+    LOGS_DEFAULT(WARNING)
+        << "Accelerated weight loading is unavailable in this build; using "
+           "the ordinary WebGPU initializer loading path.";
+  }
+#endif
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -641,13 +673,21 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = !context_.HasDevice();
   return {
-      // allocator for initializers
-      CreateWebGpuAllocator(
-          device_free,
-          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
-          [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
+  // allocator for initializers
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      context_.HasDevice() &&
+              accelerated_initializer_allocator_ != nullptr
+          ? accelerated_initializer_allocator_
+          :
+#endif
+          CreateWebGpuAllocator(
+              context_id_,
+              device_free,
+              [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+              [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
       // default allocator
       CreateWebGpuAllocator(
+          context_id_,
           device_free,
           [this]() -> const webgpu::BufferManager& { return BufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); },
@@ -760,12 +800,22 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording());
+  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording(), context_id_);
 }
 
 #if defined(__wasm__)
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<webgpu::ExternalDataLoader>();
+}
+#elif defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
+  if (accelerated_initializer_state_ == nullptr) {
+    return nullptr;
+  }
+
+  return std::make_unique<webgpu::D3D12AcceleratedExternalDataLoader>(
+      context_, context_id_, accelerated_initializer_state_,
+      weight_load_acceleration_mode_);
 }
 #endif
 
@@ -816,6 +866,11 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
   prepack_allocator_.reset();
   session_buffer_pool_.reset();
+  if (context_.Device()) {
+    // A failed Run may leave an unsubmitted recording in the context-shared pools.
+    context_.BufferManager().DiscardPendingBuffers(*recording_);
+    context_.InitializerBufferManager().DiscardPendingBuffers(*recording_);
+  }
   recording_.reset();
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   pix_frame_generator_.reset();
@@ -996,7 +1051,7 @@ Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
 }
 
 webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
-  if (graph_buffer_mgr_active_) {
+  if (IsGraphCaptureEnabled() && graph_buffer_mgr_active_) {
     auto it = per_graph_buffer_mgrs_.find(current_graph_annotation_id_);
     if (it != per_graph_buffer_mgrs_.end()) {
       return *it->second;

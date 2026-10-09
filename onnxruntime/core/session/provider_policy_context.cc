@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "core/session/provider_policy_context.h"
+#include "core/platform/telemetry_strings.h"
 
 #include <algorithm>
 #include <memory>
@@ -222,19 +223,21 @@ Status ProviderPolicyContext::LogTelemetry(InferenceSession& sess,
                                            const std::vector<const OrtEpDevice*>& execution_devices,
                                            const std::vector<const OrtEpDevice*>& devices_selected) {
   std::vector<std::string> requested_ep_ids;
-  requested_ep_ids.reserve(devices_selected.size());
+  requested_ep_ids.reserve(std::min(devices_selected.size(), telemetry_detail::kMaxTelemetryCollectionEntries));
 
   for (const auto* device : devices_selected) {
+    if (requested_ep_ids.size() == telemetry_detail::kMaxTelemetryCollectionEntries) break;
     if (device != nullptr) {
-      requested_ep_ids.push_back(device->ep_name);
+      requested_ep_ids.push_back(telemetry_detail::BoundedTelemetryString(device->ep_name));
     }
   }
 
   // Extract available execution provider IDs
   std::vector<std::string> available_ep_ids;
-  available_ep_ids.reserve(execution_devices.size());
+  available_ep_ids.reserve(std::min(execution_devices.size(), telemetry_detail::kMaxTelemetryCollectionEntries));
   for (const auto* device : execution_devices) {
-    available_ep_ids.push_back(device->ep_name);
+    if (available_ep_ids.size() == telemetry_detail::kMaxTelemetryCollectionEntries) break;
+    available_ep_ids.push_back(telemetry_detail::BoundedTelemetryString(device->ep_name));
   }
 
   std::string policy_type;
