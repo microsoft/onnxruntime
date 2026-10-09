@@ -156,20 +156,35 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       wgpu::Limits required_limits = GetRequiredLimits(adapter);
       device_desc.requiredLimits = &required_limits;
 
-      // TODO: revise temporary error handling
       device_desc.SetUncapturedErrorCallback(
           // Note: Don't throw from a Dawn callback.
           [](const wgpu::Device& /*device*/, wgpu::ErrorType type,
-             wgpu::StringView message) noexcept {
+             wgpu::StringView message, DeviceErrorState* state) noexcept {
+            {
+              std::lock_guard<std::mutex> lock{state->mutex};
+              if (state->status.IsOK()) {
+                state->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device error(", int(type),
+                                                "): ", std::string_view{message});
+              }
+            }
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
             }
-          });
-      // TODO: revise temporary device lost handling
+          },
+          device_error_state_.get());
+      // Dawn stops uncaptured callbacks before invoking the lost callback, which retains their state.
       device_desc.SetDeviceLostCallback(
           wgpu::CallbackMode::AllowSpontaneous,
           // Note: Don't throw from a Dawn callback.
-          [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) noexcept {
+          [state = device_error_state_](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason,
+                                        wgpu::StringView message) noexcept {
+            {
+              std::lock_guard<std::mutex> lock{state->mutex};
+              if (state->status.IsOK()) {
+                state->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device lost (", int(reason),
+                                                "): ", std::string_view{message});
+              }
+            }
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
             }
@@ -343,9 +358,8 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds(CommandRecordingState& recor
     }
 
     const ProgramArtifact* artifact = program_mgr_->Get(dispatch.program_key);
-    // Another thread may populate the cache after this dispatch starts its own build. In that case,
-    // the cached pipeline can be reused, but the pending build must still be waited on before its
-    // callback context is released.
+    // Another thread may populate the cache after this dispatch starts its own build. Still wait
+    // for our callback so its completion status is checked even when the cached pipeline is reused.
     if (artifact != nullptr && !dispatch.pending_build) {
       dispatch.compute_pipeline = artifact->compute_pipeline;
       continue;
@@ -354,15 +368,12 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds(CommandRecordingState& recor
     if (!dispatch.pending_build) {
       result = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "No cached or pending pipeline for deferred dispatch: ", dispatch.program_key);
-      // Do not return early. Later dispatches may own pending callback contexts that must remain
-      // alive until their builds complete. The caller will discard all dispatches without encoding
-      // them after this function finishes draining the window.
+      // Drain the rest of the window before discarding all dispatches without encoding them.
       continue;
     }
 
-    // With WaitAnyOnly, dropping the future does not cancel its callback; Dawn retains the callback
-    // context and may invoke it when the instance shuts down. Wait before discarding the context,
-    // even if another dispatch has populated the cache in the meantime.
+    // A failed wait does not cancel a WaitAnyOnly callback. Its captured shared ownership keeps
+    // the result state alive even if the failed dispatch is discarded.
     auto& build = *dispatch.pending_build;
     Status wait_status = Wait(build.future);
     if (!wait_status.IsOK()) {
@@ -558,13 +569,13 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     if (in_flight_build == nullptr) {
       auto& build = pending_build.emplace();
       build.name = program.Name();
-      build.callback_context = std::make_unique<PipelineCallbackContext>();
+      build.callback_context = std::make_shared<PipelineCallbackContext>();
       ORT_RETURN_IF_ERROR(program_mgr_->Build(program, metadata, inputs_segments, outputs_segments,
                                               key, x, y, z,
                                               build.bind_group_layout,
                                               build.shape_uniform_ranks,
                                               build.future,
-                                              *build.callback_context));
+                                              build.callback_context));
       in_flight_build = &*pending_build;
     }
     deferred_ranks = &in_flight_build->shape_uniform_ranks;
@@ -1086,24 +1097,94 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) 
   }
 }
 
-void WebGpuContext::PushErrorScope() { device_.PushErrorScope(wgpu::ErrorFilter::Validation); }
+void WebGpuContext::PushErrorScope(wgpu::ErrorFilter filter) { device_.PushErrorScope(filter); }
 
 Status WebGpuContext::PopErrorScope() {
-  Status status{};
+  // A failed WaitAny does not cancel the callback. Let Dawn retain its result until it fires.
+  auto status = std::make_shared<Status>();
   ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
       wgpu::CallbackMode::WaitAnyOnly,
       // Note: Don't throw from a Dawn callback.
-      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, wgpu::StringView message,
-         Status* status) noexcept {
+      [status](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, wgpu::StringView message) noexcept {
         if (pop_status != wgpu::PopErrorScopeStatus::Success) {
           *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pop WebGPU error scope. status=",
                                     static_cast<uint32_t>(pop_status));
         } else if (error_type != wgpu::ErrorType::NoError) {
-          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", std::string_view(message));
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU error scope failed. type=",
+                                    static_cast<uint32_t>(error_type), ". ", std::string_view(message));
         }
-      },
-      &status)));
-  return status;
+      })));
+  return *status;
+}
+
+Status WebGpuContext::CheckDeviceStatus() const {
+  // Queue work-done and error-scope callbacks can both succeed on an already-lost device.
+  // Poll the existing lost future without replacing externally supplied device callbacks.
+  const auto wait_status = instance_.WaitAny(device_.GetLostFuture(), 0);
+  ORT_RETURN_IF(wait_status == wgpu::WaitStatus::Success, "WebGPU device lost.");
+  ORT_RETURN_IF_NOT(wait_status == wgpu::WaitStatus::TimedOut,
+                    "Failed to check WebGPU device loss. status=", static_cast<uint32_t>(wait_status));
+  std::lock_guard<std::mutex> lock{device_error_state_->mutex};
+  return device_error_state_->status;
+}
+
+Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr,
+                                          CommandRecordingState& recording) {
+  ORT_RETURN_IF_NOT(HasDevice(), "WebGPU checked completion requires a device.");
+
+  PushErrorScope(wgpu::ErrorFilter::Internal);
+  PushErrorScope(wgpu::ErrorFilter::OutOfMemory);
+  PushErrorScope(wgpu::ErrorFilter::Validation);
+
+  Status result;
+  const auto record_failure = [&result](const Status& status) {
+    if (status.IsOK()) {
+      return;
+    }
+    if (result.IsOK()) {
+      result = status;
+      return;
+    }
+    result = Status(result.Category(), result.Code(), result.ErrorMessage() + "; " + status.ErrorMessage());
+  };
+
+  ORT_TRY {
+    record_failure(Flush(buffer_mgr, recording));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      record_failure(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU checked flush failed: ", ex.what()));
+    });
+  }
+
+  ORT_TRY {
+    auto completion_status = std::make_shared<Status>();
+    const auto future = device_queue_.OnSubmittedWorkDone(
+        wgpu::CallbackMode::WaitAnyOnly,
+        [completion_status](wgpu::QueueWorkDoneStatus status, wgpu::StringView message) noexcept {
+          if (status != wgpu::QueueWorkDoneStatus::Success) {
+            *completion_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU queue completion failed. status=",
+                                                 static_cast<uint32_t>(status), ". ", std::string_view{message});
+          }
+        });
+    const auto wait_status = Wait(future);
+    record_failure(wait_status);
+    if (wait_status.IsOK()) {
+      record_failure(*completion_status);
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      record_failure(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU checked wait failed: ", ex.what()));
+    });
+  }
+
+  // Do not return early: every scope must be popped even if flushing or waiting failed.
+  for (int i = 0; i < 3; ++i) {
+    record_failure(PopErrorScope());
+  }
+  record_failure(CheckDeviceStatus());
+  return result;
 }
 
 Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,

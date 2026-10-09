@@ -154,9 +154,8 @@ Status ApplyMatMulSubgroup(ComputeContext& context,
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
   const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1]));
-  const uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) +
-                                                kSubgroupLogicalWorkGroupSizeZ * elements_per_thread[2] - 1) /
-                                               (kSubgroupLogicalWorkGroupSizeZ * elements_per_thread[2]));
+  const uint32_t dispatch_z = narrow<uint32_t>(CeilDiv(
+      batch_size, kSubgroupLogicalWorkGroupSizeZ * elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
   const int a_components = a_vec4 ? 4 : 1;
@@ -176,7 +175,7 @@ Status ApplyMatMulSubgroup(ComputeContext& context,
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
