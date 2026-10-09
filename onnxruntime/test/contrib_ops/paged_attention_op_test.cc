@@ -2044,12 +2044,17 @@ TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
 }
 
 TEST(PagedAttention, CudaOversizedQueryIsSuppressedWithoutReadback) {
+#if defined(USE_FLASH_ATTENTION)
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Native FlashAttention requires compute capability 8.0 or later.";
   }
 
   IoBindingCase c;
   c.token_count = 257;
+  c.head_size = 128;
   c.block_size = 256;
   c.num_blocks = 1;
   c.max_num_blocks_per_seq = 1;
@@ -2062,11 +2067,18 @@ TEST(PagedAttention, CudaOversizedQueryIsSuppressedWithoutReadback) {
   c.verify_malformed_output_finite = true;
   c.verify_malformed_output_zero = true;
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+#else
+  GTEST_SKIP() << "FlashAttention is not enabled in this build.";
+#endif
 }
 
 TEST(PagedAttention, CudaGraphOversizedQueryIsSuppressed) {
+#if defined(USE_FLASH_ATTENTION)
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Native FlashAttention requires compute capability 8.0 or later.";
   }
 
   OrtCUDAProviderOptionsV2 provider_options{};
@@ -2074,6 +2086,7 @@ TEST(PagedAttention, CudaGraphOversizedQueryIsSuppressed) {
 
   IoBindingCase c;
   c.token_count = 257;
+  c.head_size = 128;
   c.block_size = 256;
   c.num_blocks = 1;
   c.max_num_blocks_per_seq = 1;
@@ -2090,6 +2103,9 @@ TEST(PagedAttention, CudaGraphOversizedQueryIsSuppressed) {
   RunIoBindingCase(
       CudaExecutionProviderWithOptions(&provider_options),
       kCudaExecutionProvider, true, false, c);
+#else
+  GTEST_SKIP() << "FlashAttention is not enabled in this build.";
+#endif
 }
 
 TEST(PagedAttention, CudaRejectsZeroPhysicalCacheBlocks) {
