@@ -26,6 +26,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <random>
 #include <set>
@@ -73,11 +74,11 @@ std::vector<std::pair<int, int>> get_n_k_list(wo::KernelType kernel_type) {
 }
 
 struct CudaBuffer {
-  void* _data;
+  void* _data = nullptr;
   size_t _bytes;
 
   CudaBuffer(size_t size_in_bytes) : _bytes(size_in_bytes) {
-    cudaMalloc(&_data, _bytes);
+    CUDA_CALL_THROW(cudaMalloc(&_data, _bytes));
   }
 
   template <typename T = void>
@@ -86,17 +87,32 @@ struct CudaBuffer {
   }
 
   void to_cpu(void* dst) {
-    cudaMemcpy(dst, _data, _bytes, cudaMemcpyDeviceToHost);
+    CUDA_CALL_THROW(cudaMemcpy(dst, _data, _bytes, cudaMemcpyDeviceToHost));
   }
 
   void from_cpu(void* src) {
-    cudaMemcpy(_data, src, _bytes, cudaMemcpyHostToDevice);
+    CUDA_CALL_THROW(cudaMemcpy(_data, src, _bytes, cudaMemcpyHostToDevice));
   }
 
   ~CudaBuffer() {
-    cudaFree(_data);
+    EXPECT_TRUE(CUDA_CALL(cudaFree(_data)).IsOK());
   }
 };
+
+TEST(CudaBufferTest, RoundTrip) {
+  float expected[] = {1.f, -2.f, 3.f};
+  float actual[3] = {};
+  CudaBuffer buffer(sizeof(expected));
+  buffer.from_cpu(expected);
+  buffer.to_cpu(actual);
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_FLOAT_EQ(actual[i], expected[i]);
+  }
+}
+
+TEST(CudaBufferTest, AllocationFailureIsReported) {
+  EXPECT_THROW(CudaBuffer{std::numeric_limits<size_t>::max()}, onnxruntime::OnnxRuntimeException);
+}
 
 template <typename T>
 float compare(void* a, void* b, size_t size, float scale) {
@@ -329,8 +345,8 @@ class KernelTestFixture : public ::testing::Test {
   std::vector<typename cutlassTypeMapper<KT>::AType> h_act_, h_act_scale_, h_scales_, h_zeros_, h_bias_, h_out1_, h_out2_;
   std::vector<uint8_t> h_weight_;
   std::vector<BenchmarkResult> benchmark_results_;
-  cudaStream_t s_;
-  cublasHandle_t cublas_handle_;
+  cudaStream_t s_ = nullptr;
+  cublasHandle_t cublas_handle_ = nullptr;
 
   static constexpr int WSizeInBits = cutlassTypeMapper<KT>::WSizeInBits;
   static constexpr bool kIsInt2 = (WSizeInBits == 2);
@@ -340,15 +356,19 @@ class KernelTestFixture : public ::testing::Test {
     CUDA_CALL_THROW(cudaGetDevice(&device));
     CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device));
     std::srand(20240123);
-    cudaStreamCreate(&s_);
+    CUDA_CALL_THROW(cudaStreamCreate(&s_));
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, s_));
   }
 
   void TearDown() override {
     PrintBenchmarkSummary(benchmark_results_);
-    cudaStreamDestroy(s_);
-    cublasDestroy(cublas_handle_);
+    if (s_ != nullptr) {
+      EXPECT_TRUE(CUDA_CALL(cudaStreamDestroy(s_)).IsOK());
+    }
+    if (cublas_handle_ != nullptr) {
+      EXPECT_TRUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)).IsOK());
+    }
   }
 
   void InitBuffers(int m, int n, int k, int block_size) {
