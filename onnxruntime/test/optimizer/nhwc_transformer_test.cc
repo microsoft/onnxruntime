@@ -433,7 +433,7 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
                     TransformerLevel::Level3);
 }
 
-TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwcUntilDepthwiseKernelEnabled) {
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_UsesHelperCapability) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
     auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
@@ -445,10 +445,10 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwcUntilDepthwiseKernelEnable
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_FALSE(HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8));
-    EXPECT_EQ(op_to_count["Conv"] + op_to_count["com.microsoft.nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
-    EXPECT_EQ(op_to_count["Transpose"], 0);
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8);
+    EXPECT_EQ(op_to_count["Conv"] + op_to_count["com.microsoft.nchwc.Conv"], expect_nhwc ? 0 : 1);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expect_nhwc ? 1 : 0);
+    EXPECT_EQ(op_to_count["Transpose"], expect_nhwc ? 2 : 0);
   };
 
   TransformerTester(build_test_case,
@@ -572,6 +572,44 @@ TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
 
     EXPECT_TRUE(kleidi_supported);
     EXPECT_EQ(nhwc_count, 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvFloat_SymbolicChannelsUsesNhwc) {
+  if (!HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1})) {
+    GTEST_SKIP() << "Float NHWC KleidiAI path is not available on this configuration.";
+  }
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInput<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    auto input_shape = *input_arg->Shape();
+    input_shape.mutable_dim(1)->set_dim_param("channels");
+    input_arg->SetShape(input_shape);
+
+    auto weight_shape = *weight_arg->Shape();
+    weight_shape.mutable_dim(1)->set_dim_param("channels");
+    weight_arg->SetShape(weight_shape);
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["Conv"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
     EXPECT_EQ(op_to_count["Transpose"], 2);
   };
 
