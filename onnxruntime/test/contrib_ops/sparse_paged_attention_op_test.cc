@@ -243,12 +243,12 @@ TEST(SparsePagedAttention, Cuda_GroupedSessionOption) {
   };
   for (const char* env_value : {"", "0", "1", "invalid"}) {
     SCOPED_TRACE(env_value);
-    ScopedEnvironmentVariables env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", env_value}});
+    ScopedEnvironmentVariables env(EnvVarMap{{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", env_value}});
     run("0");
     run("1");
     run(nullptr, std::string(env_value) == "invalid" ? "Failed to parse environment variable" : nullptr);
   }
-  ScopedEnvironmentVariables env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", "0"}});
+  ScopedEnvironmentVariables env(EnvVarMap{{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", "0"}});
   for (const char* config_value : {"", "2", "true", "-1"}) {
     SCOPED_TRACE(config_value);
     run(config_value, "ep.cuda.sparse_paged_attention_grouped must be 0 or 1");
@@ -285,7 +285,7 @@ TEST(SparsePagedAttention, Cuda_GroupedProductionGeometryMatchesReference) {
   std::vector<std::vector<MLFloat16>> baseline_outputs;
   for (const int arm : {0, 1, 2, 3, 4}) {
     SCOPED_TRACE(arm);
-    ScopedEnvironmentVariables scoped_env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", arm == 1 || arm == 3 ? "1" : "0"}});
+    ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", arm == 1 || arm == 3 ? "1" : "0"}});
     SessionOptions options;
     if (arm >= 2) {
       ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.sparse_paged_attention_grouped", arm == 3 ? "0" : "1"));
@@ -535,7 +535,7 @@ static void RunGroupedAliasedCacheAppendTest(int rows, bool unaligned = false) {
   }
   for (const auto& [grouped, vectorized] :
        std::vector<std::tuple<bool, bool>>{{false, false}, {true, false}, {true, true}}) {
-    ScopedEnvironmentVariables scoped_env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", grouped ? "1" : "0"}});
+    ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", grouped ? "1" : "0"}});
     OpTester tester("SparsePagedAttention", 1, kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", kHeads);
     tester.AddAttribute<int64_t>("kv_num_heads", kKvHeads);

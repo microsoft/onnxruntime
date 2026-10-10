@@ -1566,11 +1566,11 @@ __device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params
   const int scale_n = (source_n + params.block_size - 1) / params.block_size;
   const int scale_k = (params.k + params.block_size - 1) / params.block_size;
   const int64_t scale_index = (static_cast<int64_t>(expert) * scale_n + row / params.block_size) * scale_k +
-                             col / params.block_size;
+                              col / params.block_size;
   const int64_t weight_index = (static_cast<int64_t>(expert) * source_n + row) * params.k + col;
-  const float scale = scale_type == 0 ? static_cast<const float*>(scales)[scale_index]
-                     : scale_type == 1 ? __half2float(static_cast<const half*>(scales)[scale_index])
-                                       : __bfloat162float(static_cast<const __nv_bfloat16*>(scales)[scale_index]);
+  const float scale = scale_type == 0   ? static_cast<const float*>(scales)[scale_index]
+                      : scale_type == 1 ? __half2float(static_cast<const half*>(scales)[scale_index])
+                                        : __bfloat162float(static_cast<const __nv_bfloat16*>(scales)[scale_index]);
   return static_cast<T>(DecodeFloat8E4M3FN(weights[weight_index]) * scale);
 }
 
@@ -1604,7 +1604,7 @@ __global__ void QMoEFp8ExpertTilesKernel(const int64_t* expert_offsets, int* til
 }
 
 void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
-                            int num_experts, cudaStream_t stream) {
+                              int num_experts, cudaStream_t stream) {
   QMoEFp8ExpertTilesKernel<<<1, 1, 0, stream>>>(expert_offsets, tile_offsets, num_experts);
   CUDA_CALL_THROW(cudaGetLastError());
 }
@@ -1644,7 +1644,7 @@ __global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input
       T value = static_cast<T>(0.0f);
       if (row < row_end && col < params.k) {
         const int input_row = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows
-                                                     : static_cast<int>(row);
+                                                       : static_cast<int>(row);
         value = input[static_cast<int64_t>(input_row) * params.k + col];
       }
       activation_tile[index] = value;
@@ -1680,7 +1680,7 @@ __global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input
 
 template <typename T>
 void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
-                            const T* input, T* output, cudaStream_t stream) {
+                             const T* input, T* output, cudaStream_t stream) {
   if (params.tile_offsets) {
     const int tiles = std::min(params.expanded_rows,
                                std::min(params.num_experts, params.expanded_rows) + params.expanded_rows / 16);
@@ -1693,8 +1693,8 @@ void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
 
 template <typename T>
 __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output,
-                                      const int* experts, int rows, int inter_size, int fusion,
-                                      float alpha, float beta, float limit) {
+                                        const int* experts, int rows, int inter_size, int fusion,
+                                        float alpha, float beta, float limit) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= static_cast<int64_t>(rows) * inter_size) {
     return;
@@ -1710,7 +1710,7 @@ __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output
     gate += static_cast<float>(bias[static_cast<int64_t>(experts[row]) * n + bias_col]);
     if (fusion) {
       up += static_cast<float>(bias[static_cast<int64_t>(experts[row]) * n +
-                                   (fusion == 2 ? col + inter_size : gate_col + 1)]);
+                                    (fusion == 2 ? col + inter_size : gate_col + 1)]);
     }
   }
   if (fusion) {
@@ -1722,8 +1722,8 @@ __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output
 
 template <typename T>
 void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
-                            const int* experts, int rows, int inter_size, int fusion,
-                            float alpha, float beta, float limit, cudaStream_t stream) {
+                             const int* experts, int rows, int inter_size, int fusion,
+                             float alpha, float beta, float limit, cudaStream_t stream) {
   const int64_t count = static_cast<int64_t>(rows) * inter_size;
   QMoEFp8ActivationKernel<<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
       input, bias, output, experts, rows, inter_size, fusion, alpha, beta, limit);

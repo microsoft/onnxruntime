@@ -357,7 +357,14 @@ class TestQMoEBlockFP8(unittest.TestCase):
 
     @staticmethod
     def _session(
-        tensors, block=128, fusion=0, top_k=10, normalize=1, initializers=False, row_tile_size=0, enable_cuda_graph=False
+        tensors,
+        block=128,
+        fusion=0,
+        top_k=10,
+        normalize=1,
+        initializers=False,
+        row_tile_size=0,
+        enable_cuda_graph=False,
     ):
         dtype = TensorProto.BFLOAT16 if tensors["input"].dtype == torch.bfloat16 else TensorProto.FLOAT16
         model, input_types = create_block_fp8_moe_graph(tensors, top_k, dtype, block, fusion, normalize, initializers)
@@ -651,9 +658,7 @@ def test_block_fp8_fused_without_weight_scratch(capfd, monkeypatch, tokens, path
 @pytest.mark.parametrize("row_tile_size", [0, 17])
 def test_block_fp8_fused_gemm_partial_tiles(monkeypatch, dtype, fusion, row_tile_size):
     monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
-    tensors = TestQMoEBlockFP8._inputs(
-        hidden=72, inter=40, experts=32, tokens=35, block=32, fusion=fusion, dtype=dtype
-    )
+    tensors = TestQMoEBlockFP8._inputs(hidden=72, inter=40, experts=32, tokens=35, block=32, fusion=fusion, dtype=dtype)
     tensors["router_probs"].fill_(-10)
     selected = [31, 7, 2, 19, 25, 0, 17, 11, 9, 23]
     tensors["router_probs"][:, selected] = torch.linspace(2, 1, 10, device=device, dtype=dtype)
