@@ -16,6 +16,11 @@
 #include <memory>
 #include <functional>
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -233,6 +238,24 @@ void TestStagedMultiLoopSections(const std::string& name, int num_threads, int n
 }  // namespace
 
 namespace onnxruntime {
+#if defined(__linux__) && !defined(__ANDROID__)
+TEST(ThreadPoolTest, DestructionAfterForkDoesNotJoinParentThreads) {
+  auto thread_pool = std::make_unique<ThreadPool>(&Env::Default(), ThreadOptions{}, nullptr, 2);
+
+  const pid_t child_pid = fork();
+  ASSERT_NE(child_pid, -1);
+  if (child_pid == 0) {
+    thread_pool.reset();
+    _exit(0);
+  }
+
+  int status = 0;
+  ASSERT_EQ(waitpid(child_pid, &status, 0), child_pid);
+  ASSERT_TRUE(WIFEXITED(status));
+  EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+#endif
+
 TEST(ThreadPoolTest, TestParallelFor_0_Thread_NoTask) {
   TestParallelFor("TestParallelFor_0_Thread_NoTask", 0, 0);
 }
