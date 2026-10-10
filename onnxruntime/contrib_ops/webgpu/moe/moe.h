@@ -7,6 +7,7 @@
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
+#include "contrib_ops/webgpu/moe/moe_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -15,23 +16,11 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-class MoEProgram final : public Program<MoEProgram> {
- public:
-  MoEProgram(TensorShape output_shape) : Program<MoEProgram>{"MoE"}, output_shape_{output_shape} {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  TensorShape output_shape_;
-};
-
 class MoE : public WebGpuKernel {
  public:
   MoE(const OpKernelInfo& info) : WebGpuKernel(info) {
     activation_alpha_ = static_cast<float>(info.GetAttrOrDefault<float>("activation_alpha", 1.0));
-    activation_beta_ = static_cast<float>(info.GetAttrOrDefault<float>("activation_beta", 1.0));
+    activation_beta_ = static_cast<float>(info.GetAttrOrDefault<float>("activation_beta", 0.0));
     swiglu_fusion_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0));
     swiglu_limit_ = info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
     k_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("k", 4));
@@ -52,8 +41,10 @@ class MoE : public WebGpuKernel {
       ORT_THROW("Unsupported MoE activation type: ", activation_type);
     }
 
-    // for now webgpu only implements a subset of MoE features
-    // ORT_ENFORCE(normalize_routing_weights_ == 0, "normalize_routing_weights not supported");
+    ORT_ENFORCE(swiglu_fusion_ >= 0 && swiglu_fusion_ <= 2,
+                "swiglu_fusion must be 0, 1, or 2, but got ", swiglu_fusion_);
+    ORT_ENFORCE(activation_type_ == MoEActivationType::SwiGLU || swiglu_fusion_ == 0,
+                "swiglu_fusion is only valid when activation_type is 'swiglu'.");
     ORT_ENFORCE(use_sparse_mixer_ == 0, "use_sparse_mixer not supported");
   }
 

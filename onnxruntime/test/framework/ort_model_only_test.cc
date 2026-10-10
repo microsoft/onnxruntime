@@ -19,6 +19,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 #include <filesystem>
+#include <limits>
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
@@ -153,16 +154,47 @@ TEST(OrtModelOnlyTests, RejectsGqaValueLayoutOptionWhenDisabled) {
 
 #if defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelOnlyTests, RejectsMoeExpertStatisticsInMinimalBuild) {
-  SessionOptions options;
-  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-  InferenceSessionWrapper session{options, GetEnvironment()};
-  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
-  const Status status = session.Initialize();
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+  for (const char* value : {"1", "true", ""}) {
+    SCOPED_TRACE(value);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigEnableMoeExpertStatistics, value));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    const Status status = session.Initialize();
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+  }
+}
+
+TEST(OrtModelOnlyTests, RejectsMoeExpertCountingInMinimalBuild) {
+  for (const auto& [key, value] : {
+           std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"},
+           std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "true"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "counters.txt"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"}}) {
+    SCOPED_TRACE(key);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(key, value));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    const Status status = session.Initialize();
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(key));
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+  }
 }
 #endif
+
+TEST(OrtModelOnlyTests, MoeExpertCountingDisabled) {
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0"));
+  InferenceSessionWrapper session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+  ASSERT_STATUS_OK(session.Initialize());
+}
 
 TEST(OrtModelOnlyTests, RejectsStrictWorkspaceVerification) {
   SessionOptions options;
@@ -284,6 +316,115 @@ TEST(OrtModelTest, RejectsGraphInputWithUnknownNodeArg) {
   EXPECT_THAT(status.ErrorMessage(),
               testing::HasSubstr("Graph references unknown NodeArg 'nonexistent'"));
 }
+
+TEST(OrtModelTest, RejectsNegativeInputArgCount) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{-1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts contains a negative value"));
+}
+
+TEST(OrtModelTest, RejectsMismatchedInputArgCountTotal) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{2};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts total (2) does not match"));
+}
+
+TEST(OrtModelTest, RejectsInputArgCountTotalOverflow) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{
+        std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::max(), 3};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  if constexpr (sizeof(size_t) == sizeof(uint32_t)) {
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts total overflows size_t"));
+  } else {
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("does not match number of explicit inputs"));
+  }
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelTest, NormalizesValidVariadicInputArgCounts) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{
+        builder.CreateSharedString("x"), builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("z")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{1, 1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Sum",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(buffer.data(), static_cast<int>(buffer.size())));
+
+  const auto& graph = session_object.GetGraph();
+  const auto* node = graph.GetNode(0);
+  ASSERT_NE(node, nullptr);
+
+  EXPECT_THAT(node->InputArgCount(), testing::ElementsAre(2));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 // Keep the CompareTypeProtos in case we need debug the difference

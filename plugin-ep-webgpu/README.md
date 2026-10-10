@@ -45,6 +45,41 @@ nuget.org, or the ORT-Nightly feed. Publishing to public feeds is handled by sep
 
 ## Usage
 
+### Runtime compatibility and concurrency
+
+The minimum runtime is ORT 1.24.4. The default execution path depends on the host version:
+
+| ORT version | Execution path |
+| --- | --- |
+| 1.28.x starting at 1.28.3 | Concurrent independent Sessions |
+| 1.30.x starting at 1.30.1 | Concurrent independent Sessions |
+| 1.31 and later | Concurrent independent Sessions |
+| Other supported versions, including 1.29.x | Serialized compatibility |
+
+Both paths use Session-owned command recordings; there is no context-owned legacy recording.
+The serialized compatibility path requires serializing all WebGPU operations on the same device,
+including operations on different Sessions, I/O binding, Env copies, allocation, and Session
+creation/destruction. Use sequential graph execution. Multiple Sessions can be used in sequence;
+overlapping operations are unsupported and are not detected or serialized by the plugin.
+
+The concurrent path supports independent Sessions running concurrently. This does not
+permit overlapping I/O binding and Run on the same Session. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`
+before registering the plugin to test the serialized path on a host that supports concurrent
+Sessions. The existing override name is retained for compatibility. This process-wide override
+cannot enable concurrency on unsupported hosts.
+
+Both paths retain cached-buffer clearing and dispatch batching. The serial path does not submit
+after every kernel. Serialized-mode Session ordinary allocations submit cached-buffer clears outside
+Run and defer them during Run using `!IsRunActive()`. Kernels use ordinary Tensor allocation
+through that same Session allocator for temporary space, without requiring the host's kernel stream API.
+Under the serialized, non-reentrant calling contract, public allocations occur outside Run.
+Env allocations and concurrent-mode ordinary allocations continue to submit independent clears,
+including during Run; concurrent-mode scratch uses an explicit stream.
+Streamless copies in serialized mode submit the active Session's pending work before
+using their own independent recording.
+See the [execution design](../onnxruntime/core/providers/webgpu/ep/README.md)
+for the stream and allocator contracts.
+
 Once installed, the plugin EP is registered at runtime. Example in Python:
 
 ```python
@@ -53,15 +88,25 @@ import onnxruntime_ep_webgpu as webgpu_ep
 
 ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
 
-# The WebGPU EP currently accepts one EP device and selects the physical GPU independently.
+# The WebGPU EP currently accepts one EP device. Select a physical Dawn adapter independently.
 webgpu_ep_device = next((d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()), None)
 if webgpu_ep_device is None:
     raise RuntimeError("No WebGPU EP device found.")
 
 sess_options = ort.SessionOptions()
-sess_options.add_provider_for_devices([webgpu_ep_device], {})
+sess_options.add_provider_for_devices(
+  [webgpu_ep_device],
+  {"adapterIndex": "0"},
+)
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
+
+`adapterIndex` is a zero-based index into Dawn's adapter enumeration for the requested backend, using the power
+preference as an ordering and selection hint.
+It selects a physical adapter; `deviceId` remains the ORT WebGPU context identifier and does not select a GPU.
+The default context owns one device per process, so use a separate process for each adapter, or supply a custom
+`webgpuInstance`/`webgpuDevice` pair for multiple devices in one process. Omit `adapterIndex` to retain Dawn's
+automatic adapter selection.
 
 See the user-facing package READMEs (bundled into the published packages) for full per-language usage:
 

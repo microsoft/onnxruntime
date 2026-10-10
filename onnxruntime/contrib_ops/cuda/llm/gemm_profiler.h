@@ -62,7 +62,8 @@ inline int GetProfileTimedRuns(float probe_ms, float best_ms) {
   if (probe_ms * kMaxRuns <= kTimedBudgetMs) {
     return kMaxRuns;
   }
-  if (probe_ms > kPruneRatio * best_ms) {
+  // best_ms can be FLT_MAX when no tactic has been profiled yet.
+  if (probe_ms > kPruneRatio * static_cast<double>(best_ms)) {
     return 0;
   }
   return std::max(1, static_cast<int>(kTimedBudgetMs / probe_ms));
@@ -96,14 +97,30 @@ class GemmIdCore {
   int k;
   nvinfer::DataType dtype;
   int sm;
+  // Distinguishes tactic candidate sets for the same shape.
+  int tag;
+  bool wave_aware = false;
+  int device_id;
+  int quant_bits;
+  int group_size;
+  bool has_bias;
+  bool has_zeros;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_) {
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, bool wave_aware_ = false, int tag_ = 0,
+             int device_id_ = 0, int quant_bits_ = 0, int group_size_ = 0,
+             bool has_bias_ = false, bool has_zeros_ = false)
+      : n(n_), k(k_), dtype(dtype_), sm(sm_), tag(tag_), wave_aware(wave_aware_), device_id(device_id_), quant_bits(quant_bits_), group_size(group_size_), has_bias(has_bias_), has_zeros(has_zeros_) {
   }
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
-        sm(0) {
+        sm(0),
+        tag(0),
+        device_id(0),
+        quant_bits(0),
+        group_size(0),
+        has_bias(false),
+        has_zeros(false) {
   }
 
   bool operator==(GemmIdCore const& id) const {
@@ -114,12 +131,16 @@ class GemmIdCore {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
     out << " sm=" << id.sm;
+    out << " tag=" << id.tag;
+    out << " wave_aware=" << id.wave_aware;
     return out;
   }
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm;
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && device_id == id.device_id &&
+           quant_bits == id.quant_bits && group_size == id.group_size && has_bias == id.has_bias &&
+           has_zeros == id.has_zeros && tag == id.tag && wave_aware == id.wave_aware;
   }
 };
 
@@ -130,7 +151,14 @@ struct GemmIdCoreHash {
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
     auto h4 = std::hash<int>{}(id.sm);
-    return h1 ^ h2 ^ h3 ^ h4;
+    auto h5 = std::hash<int>{}(id.device_id);
+    auto h6 = std::hash<int>{}(id.quant_bits);
+    auto h7 = std::hash<int>{}(id.group_size);
+    auto h8 = std::hash<bool>{}(id.has_bias);
+    auto h9 = std::hash<bool>{}(id.has_zeros);
+    auto h10 = std::hash<int>{}(id.tag);
+    auto h11 = std::hash<bool>{}(id.wave_aware);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9 ^ h10 ^ h11;
   }
 };
 
@@ -215,6 +243,12 @@ class GemmPluginProfiler {
 
   virtual bool checkTactic(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/) const {
     return true;
+  }
+
+  // Maps a measured tactic time to the value compared when choosing the best tactic. Subclasses
+  // can bias the choice toward tactics the synthetic profiling setup is known to under-rate.
+  virtual float getSelectionTime(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/, float time) const {
+    return time;
   }
 
   virtual std::vector<Config> getTactics(int m, int n, int k) const = 0;
@@ -322,7 +356,10 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
                        ? max_profile_m
                        : RoundUpProfileM(static_cast<int>(dims.maxM), max_profile_m);
 
-  size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
+  size_t workspace_bytes = 0;
+  for (int profile_m : getProfileMBuckets(static_cast<int>(dims.minM), maxM, hasWeightOnlyCudaKernel)) {
+    workspace_bytes = std::max(workspace_bytes, computeTmpSize(profile_m, dims.n, dims.k));
+  }
 
   if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
     // Create map for GEMM ID
@@ -506,7 +543,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
         continue;
       }
       // Profile particular tactic for given M, N and K
-      time = profileTacticForProblem(m, n, k, candidateConfig, workspace, stream, bestTime);
+      time = getSelectionTime(m, n, k, candidateConfig,
+                              profileTacticForProblem(m, n, k, candidateConfig, workspace, stream, bestTime));
 
 #if ORT_LLM_VERBOSE > 1
       if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {

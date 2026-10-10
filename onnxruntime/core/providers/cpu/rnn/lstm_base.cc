@@ -4,6 +4,9 @@
 #include "lstm_base.h"
 #include "uni_directional_lstm.h"
 #include "core/common/narrow.h"
+
+#include <limits>
+
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
@@ -46,6 +49,13 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
 
   Status status = ValidateInputs(X, B, sequence_lens, initial_h, initial_c, P);
   ORT_RETURN_IF_ERROR(status);
+
+  // The compute path uses int output strides. Validate them before allocating outputs or scratch buffers.
+  if (batch_size > std::numeric_limits<int>::max() / hidden_size_ / num_directions_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "LSTM output stride exceeds the maximum supported int value.",
+                           " batch_size=", batch_size, ", hidden_size=", hidden_size_, ", num_directions=", num_directions_);
+  }
+  const size_t state_size_per_direction = CalculateBufferElementCount({batch_size, hidden_size_});
 
   // LSTM outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
@@ -91,12 +101,12 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
   gsl::span<const int> sequence_lens_span =
       sequence_lens != nullptr ? sequence_lens->DataAsSpan<int>() : gsl::span<const int>();
 
-  const size_t initial_hidden_size_per_direction = batch_size * hidden_size_;
+  const size_t initial_hidden_size_per_direction = state_size_per_direction;
   gsl::span<const InputT> initial_hidden = initial_h != nullptr ? initial_h->DataAsSpan<InputT>() : gsl::span<const InputT>();
   gsl::span<const InputT> initial_hidden_1 =
       initial_hidden.empty() ? initial_hidden : initial_hidden.subspan(0, initial_hidden_size_per_direction);
 
-  const size_t initial_cell_size_per_direction = batch_size * hidden_size_;
+  const size_t initial_cell_size_per_direction = state_size_per_direction;
   gsl::span<const InputT> initial_cell = initial_c != nullptr ? initial_c->DataAsSpan<InputT>() : gsl::span<const InputT>();
   gsl::span<const InputT> initial_cell_1 =
       initial_cell.empty() ? initial_cell : initial_cell.subspan(0, initial_cell_size_per_direction);
@@ -105,14 +115,14 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
   // so it's not a case of all the output for one direction being first.
   // due to that we can only easily check that the end of the output for each direction is valid.
   const size_t output_size = onnxruntime::narrow<size_t>(Y != nullptr ? Y->Shape().Size() : 0);
-  const size_t per_direction_offset = batch_size * hidden_size_;
+  const size_t per_direction_offset = state_size_per_direction;
   gsl::span<InputT> output = Y != nullptr ? Y->MutableDataAsSpan<InputT>() : gsl::span<InputT>();
   gsl::span<InputT> output_1 =
       output.empty() ? output : output.subspan(0, output_size - (num_directions_ - 1) * per_direction_offset);
 
   // UniDirectionalLstm needs somewhere to write output, so even if we aren't returning Y_h and Y_c
   // we provide an appropriately sized buffer for that purpose.
-  const size_t hidden_output_size_per_direction = batch_size * hidden_size_;
+  const size_t hidden_output_size_per_direction = state_size_per_direction;
   IAllocatorUniquePtr<InputT> local_hidden_output;
   gsl::span<InputT> hidden_output =
       Y_h ? Y_h->MutableDataAsSpan<InputT>()
@@ -120,7 +130,7 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
 
   gsl::span<InputT> hidden_output_1 = hidden_output.subspan(0, hidden_output_size_per_direction);
 
-  const size_t last_cell_size_per_direction = batch_size * hidden_size_;
+  const size_t last_cell_size_per_direction = state_size_per_direction;
   IAllocatorUniquePtr<InputT> local_last_cell;
   gsl::span<InputT> last_cell = Y_c ? Y_c->MutableDataAsSpan<InputT>() : Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
 

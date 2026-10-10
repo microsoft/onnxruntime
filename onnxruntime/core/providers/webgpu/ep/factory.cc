@@ -2,12 +2,15 @@
 // Licensed under the MIT License.
 
 #include "factory.h"
+#include "allocator.h"
 #include "ep.h"
+#include "runtime_compatibility.h"
 
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 
 #include <algorithm>
+#include <functional>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
@@ -15,6 +18,7 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/data_transfer.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -56,6 +60,8 @@ Factory::Factory(Config config)
   CreateDataTransfer = CreateDataTransferImpl;
 
   IsStreamAware = IsStreamAwareImpl;
+  // Session streams are created by OrtEp; reject unsupported factory streams explicitly.
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
   if (config_.allow_virtual_devices) {
     Ort::KeyValuePairs hw_metadata;
@@ -210,19 +216,28 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
+  // These implementations belong to this Session, not the Env shared allocator below.
+  // Serialized-mode callers serialize all operations; internal Run allocations can defer their clears.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
+      context_id,
       device_free,
-      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false,
-      [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
+      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
+      [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
+      false,
+      UseSerializedExecutionMode()
+          ? std::function<bool()>{[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); }}
+          : std::function<bool()>{});
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
-      device_alloc,                     // default device allocator
+      device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
       webgpu::CreateWebGpuAllocator(
+          context_id,
           device_free,
-          [context_id]() -> const webgpu::BufferManager& {
-            return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager();
+          [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
+            return webgpu_ep_ptr->InitializerBufferManager();
           },
-          true),  // initializer device allocator
+          [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
+          true),  // read-only initializers: separate allocator, same Session recording
   };
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
   return nullptr;
@@ -248,21 +263,27 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
-  *allocator = new onnxruntime::ep::adapter::Allocator(memory_info,
-                                                       [](const OrtMemoryInfo&) -> AllocatorPtr {
-                                                         return std::make_shared<webgpu::GpuBufferAllocator>(
-                                                             []() -> const webgpu::BufferManager& {
-                                                               return WebGpuContextFactory::DefaultContext()
-                                                                   .BufferManager();
-                                                             },
-                                                             false,
-                                                             []() { return true; });
-                                                       });
+  // Env allocations submit their own clears and never borrow a Session recording.
+  *allocator = new onnxruntime::ep::adapter::Allocator(
+      memory_info,
+      [](const OrtMemoryInfo&) -> AllocatorPtr {
+        auto context = std::shared_ptr<WebGpuContext>(
+            &WebGpuContextFactory::DefaultContext(),
+            [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
+        return std::make_shared<GpuBufferAllocator>(
+            0,
+            [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
+            std::function<CommandRecordingState&()>{},
+            false);
+      });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* allocator) noexcept {
+  if (TryReleaseWebGpuSessionAllocator(allocator)) {
+    return;
+  }
   onnxruntime::ep::adapter::Allocator* ptr = static_cast<onnxruntime::ep::adapter::Allocator*>(allocator);
   delete ptr;
 }
@@ -271,24 +292,23 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
     OrtEpFactory* /*this_ptr*/,
     OrtDataTransferImpl** data_transfer) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
+  *data_transfer = OrtWebGpuCreateDataTransfer();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 bool ORT_API_CALL Factory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
-  return false;  // Default: not stream aware
+  return true;
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateSyncStreamForDeviceImpl(
     OrtEpFactory* /*this_ptr*/,
     const OrtMemoryDevice* /*memory_device*/,
     const OrtKeyValuePairs* /*stream_options*/,
-    OrtSyncStreamImpl** stream) noexcept {
+    OrtSyncStreamImpl** /*stream*/) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  *stream = nullptr;
   return Api().ort.CreateStatus(ORT_NOT_IMPLEMENTED,
-                                "CreateSyncStreamForDevice is not implemented for this EP factory.");
+                                "WebGPU supports Session-owned streams only; factory streams are not supported.");
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 

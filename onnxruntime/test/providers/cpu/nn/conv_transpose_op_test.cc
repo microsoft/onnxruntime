@@ -9,6 +9,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/providers/cpu/nn/conv_transpose_internal.h"
 #include "core/session/inference_session.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/test_environment.h"
@@ -572,6 +573,25 @@ TEST(ConvTransposeTest, ConvTranspose_RankPlus2_OutputShape_DynamicRankInput_Run
   for (size_t i = 0; i < expected_vals.size(); ++i) {
     EXPECT_FLOAT_EQ(span[i], expected_vals[i]) << "mismatch at index " << i;
   }
+}
+
+TEST(ConvTransposeTest, MissingBiasCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("ConvTranspose", 11);
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("W", {1, 1, 1, 1}, {2.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {2.f, 4.f, 6.f, 8.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
@@ -1276,7 +1296,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
-                       kCudaNHWCExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
+                       kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {
@@ -1813,10 +1833,10 @@ TEST(ConvTransposeTest, ConvTranspose_3D_InconsistentOutputShape) {
   test.AddInput<float>("W", {1, 1, 2, 2, 2}, std::vector<float>(8, 1.0f));
   test.AddOutput<float>("Y", {0}, {});
 
-  // CUDA/WebGPU don't support 3D ConvTranspose in most builds.
+  // CUDA doesn't support 3D ConvTranspose in most builds.
   test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
-            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider});
 }
 
 // Test that a valid 3D explicit output_shape with non-trivial padding works correctly.
@@ -1847,7 +1867,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D_ValidOutputShape) {
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
                        kCudaNHWCExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider, kWebGpuExecutionProvider});
+                       kDmlExecutionProvider});
 }
 
 // Test group > 1 with explicit output_shape.
@@ -2066,7 +2086,44 @@ TEST(ConvTransposeTest, ConvTranspose_2D_ValidOutputPadding_ConsistencyCheck) {
                        kCudaNHWCExecutionProvider});
 }
 
+TEST(ConvTransposeTest, ZeroInputChannelsWithLargeSpatialDimensions) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  constexpr int64_t kLargeDimension = static_cast<int64_t>(1) << 32;
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{kLargeDimension});
+  test.AddAttribute("pads", std::vector<int64_t>{kLargeDimension - 1, kLargeDimension - 1});
+  test.AddInput<float>("X", {1, 0, kLargeDimension}, {});
+  test.AddInput<float>("W", {0, 1, kLargeDimension}, {});
+  test.AddOutput<float>("Y", {1, 1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ConvTransposeTest, ZeroInputChannelsFillOutputWithBias) {
+  OpTester test("ConvTranspose", 11);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+  test.AddInput<float>("X", {2, 0, 2}, {});
+  test.AddInput<float>("W", {0, 3, 1}, {});
+  test.AddInput<float>("B", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddOutput<float>("Y", {2, 3, 2},
+                        {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f,
+                         1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #if !defined(ORT_NO_EXCEPTIONS)
+TEST(ConvTransposeTest, NonzeroInputChannelsRejectColBufferSizeOverflow) {
+  constexpr size_t kNonzeroInputImageSize = 2;
+  constexpr size_t kOverflowingKernelDim = std::numeric_limits<size_t>::max();
+  EXPECT_ANY_THROW(::onnxruntime::conv_transpose_internal::CalculateColBufferSize(
+      sizeof(float), kOverflowingKernelDim, kNonzeroInputImageSize));
+}
+
 // Test that extreme attribute values causing arithmetic overflow are caught.
 // SafeInt throws on overflow; in no-exceptions builds this aborts, so skip there.
 TEST(ConvTransposeTest, ConvTranspose_OverflowInPadComputation) {

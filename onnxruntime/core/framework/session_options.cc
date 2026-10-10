@@ -6,6 +6,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/string_utils.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
@@ -65,20 +66,8 @@ Status SessionOptions::AddExternalInitializersFromFilesInMemory(gsl::span<const 
   const auto num_files = file_names.size();
   ORT_ENFORCE(num_files == files_buffers.size(), "Expecting same size spans");
   external_initializer_files_mmap.reserve(external_initializer_files_mmap.size() + num_files);
-  static constexpr std::array<std::basic_string_view<ORTCHAR_T>, 4> prefix_list{
-      ORT_TSTR(".//"),
-      ORT_TSTR("./"),
-      ORT_TSTR(".\\\\"),
-      ORT_TSTR(".\\")};
   for (size_t i = 0; i < num_files; ++i) {
-    // ignore "./" from file name if it has
-    auto file_name = file_names[i];
-    for (auto prefix : prefix_list) {
-      if (file_name.rfind(prefix, 0) == 0) {
-        file_name = file_name.substr(prefix.length());
-        break;
-      }
-    }
+    auto file_name = ExternalDataInfo::NormalizeFileName(file_names[i]);
     bool result = external_initializer_files_mmap.emplace(file_name, files_buffers[i]).second;
     if (!result) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An entry for this name has already been added: ",
