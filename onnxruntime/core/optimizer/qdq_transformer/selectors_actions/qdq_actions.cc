@@ -8,6 +8,7 @@
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_nbits_sharing_identity.h"
+#include "core/graph/constants.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -639,6 +640,13 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    const NodesToOptimize& selected_nodes,
                                                    Node& replacement_node) const {
   const auto* dq_node = selected_nodes.Input(0);
+  const int64_t bits = DQWeightBits(dq_node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type());
+  // Only the CPU MatMulNBits kernel executes authored blocks larger than kMatMulNBitsMaxBlockSize.
+  const bool allow_cpu_large_block = selected_nodes.Target().GetExecutionProviderType() == kCpuExecutionProvider;
+  auto is_supported_block_size = [&](int64_t block_size) {
+    return IsValidMatMulNBitsBlockSize(block_size) ||
+           (allow_cpu_large_block && IsValidCpuLargeMatMulNBitsBlockSize(block_size, bits));
+  };
 
   // Graph::Resolve fills in the schema default (block_size = 0) for DQ nodes that do not declare
   // one, so presence of the attribute alone does not mean the DQ is blockwise. Only a positive
@@ -647,14 +655,15 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   const auto block_size_iter = dq_attributes.find("block_size");
   if (block_size_iter != dq_attributes.end() && block_size_iter->second.i() > 0) {
     const int64_t block_size = block_size_iter->second.i();
-    ORT_RETURN_IF_NOT(IsValidMatMulNBitsBlockSize(block_size),
+    ORT_RETURN_IF_NOT(is_supported_block_size(block_size),
                       "DQ block_size must be a power-of-two in [",
                       kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
-                      "] for MatMulNBits fusion. Got: ", block_size);
+                      "] for MatMulNBits fusion (or a larger power of two for 4/8-bit weights on CPU). Got: ",
+                      block_size);
   }
 
   const int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_);
-  ORT_RETURN_IF_NOT(IsValidMatMulNBitsBlockSize(effective_bs),
+  ORT_RETURN_IF_NOT(is_supported_block_size(effective_bs),
                     "Effective block_size must be a power-of-two in [",
                     kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
                     "] for MatMulNBits fusion. Got: ", effective_bs);
@@ -668,7 +677,6 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   const auto* weight_shape = weight_arg->Shape();
   ORT_RETURN_IF_NOT(weight_shape != nullptr && weight_shape->dim_size() >= 2,
                     "Weight shape unavailable for DQ node ", dq_node->Name());
-  const int64_t bits = DQWeightBits(weight_arg->TypeAsProto()->tensor_type().elem_type());
   const std::string share_id = ComputeMatMulNBitsSharingId(
       transposed.weight, transposed.scale, transposed.zero_point,
       weight_shape->dim(1).dim_value(), weight_shape->dim(0).dim_value(),

@@ -2088,9 +2088,10 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
             kOpenVINOExecutionProvider});
 }
 
-// Test that block_size=512 (unsupported) is rejected at kernel creation.
-TEST(MatMulNBits, UnsupportedBlockSize_512) {
-  constexpr int64_t M = 1, N = 1, K = 512, block_size = 512;
+// Test that a non-power-of-two block_size is rejected at kernel creation.
+// (Power-of-two blocks > 256 are supported on CPU; see matmul_nbits_large_block_test.cc.)
+TEST(MatMulNBits, UnsupportedBlockSize_384) {
+  constexpr int64_t M = 1, N = 1, K = 384, block_size = 384;
   constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
   constexpr int64_t blob_size = block_size * QBits / 8;
 
@@ -2115,7 +2116,7 @@ TEST(MatMulNBits, UnsupportedBlockSize_512) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Only block sizes 16, 32, 64, 128, and 256 are supported",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Only power-of-two block sizes >= 16 are supported",
            {}, nullptr, &execution_providers);
 }
 
