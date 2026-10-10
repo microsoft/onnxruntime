@@ -25,9 +25,31 @@ bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const 
   // We don't cast a node with a subgraph as we'd need to do a lot more checking of the subgraph inputs
   // (both explicit and implicit) and contents to determine if it was safe to do so.
   // TODO: a better check is to check does the CPU kernel with float exist or not.
-  return node->GetExecutionProviderType().empty() &&
-         !node->ContainsSubgraph() &&
-         IsMLFloat16Tensor(*input);
+  if (!node->GetExecutionProviderType().empty() || node->ContainsSubgraph() || !IsMLFloat16Tensor(*input)) {
+    return false;
+  }
+
+  if (const auto* schema = node->Op()) {
+    const auto& formal_inputs = schema->inputs();
+    const auto& input_counts = node->InputArgCount();
+    const auto& inputs = node->InputDefs();
+    const auto& constraints = schema->typeConstraintMap();
+    const auto float_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(float)");
+    size_t actual_index = 0;
+    for (size_t formal_index = 0; formal_index < formal_inputs.size() && formal_index < input_counts.size();
+         ++formal_index) {
+      const auto constraint = constraints.find(formal_inputs[formal_index].GetTypeStr());
+      if (constraint != constraints.end() && constraint->second.first.count(float_type) == 0) {
+        for (int count = 0; count < input_counts[formal_index]; ++count) {
+          if (inputs[actual_index + count] && IsMLFloat16Tensor(*inputs[actual_index + count])) {
+            return false;
+          }
+        }
+      }
+      actual_index += input_counts[formal_index];
+    }
+  }
+  return true;
 }
 
 onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,

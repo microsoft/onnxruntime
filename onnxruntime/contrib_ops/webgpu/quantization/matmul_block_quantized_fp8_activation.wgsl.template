@@ -1,0 +1,27 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+const E4M3_MAX: f32 = 448.0;
+
+$MAIN {
+  if (global_idx >= uniforms.size) {
+    return;
+  }
+  let scale = input_scale.getByOffset(0u);
+  let inverse = select(0.0, 1.0 / scale, scale != 0.0);
+  let input_value = f32(input_a.getByOffset(global_idx));
+  let v = input_value * inverse;
+  let magnitude = min(abs(v), E4M3_MAX);
+  let magnitude_exponent = (bitcast<u32>(magnitude) >> 23u) & 255u;
+  let step = bitcast<f32>((max(magnitude_exponent, 121u) - 3u) << 23u);
+  let units = magnitude / step;
+  let lower = floor(units);
+  let halfway = (lower + 0.5) * step;
+  let round_up = magnitude > halfway ||
+                 (magnitude == halfway && (u32(lower) & 1u) != 0u);
+  let rounded = min((lower + select(0.0, 1.0, round_up)) * step, E4M3_MAX);
+  let q = select(rounded, -rounded, v < 0.0);
+  output.setByOffset(global_idx, f16(q * scale));
+}
