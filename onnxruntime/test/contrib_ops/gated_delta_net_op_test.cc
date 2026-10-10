@@ -429,11 +429,11 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   if (use_webgpu) {
 #ifdef USE_WEBGPU
     if (test_max_storage_buffer_binding_size != 0) {
+      WebGpuExecutionProviderTestOptions test_options{};
+      test_options.max_storage_buffer_binding_size = test_max_storage_buffer_binding_size;
       webgpu_ep = webgpu_config != nullptr
-                      ? WebGpuExecutionProviderWithTestStorageBufferBindingSize(
-                            *webgpu_config, test_max_storage_buffer_binding_size)
-                      : WebGpuExecutionProviderWithTestStorageBufferBindingSize(
-                            test_max_storage_buffer_binding_size);
+                      ? WebGpuExecutionProviderWithTestOptions(*webgpu_config, test_options)
+                      : WebGpuExecutionProviderWithTestOptions(test_options);
     } else {
       webgpu_ep = webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
                                            : DefaultWebGpuExecutionProvider();
@@ -1651,7 +1651,9 @@ TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
 }
 
 TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
-  auto webgpu_ep = WebGpuExecutionProviderWithTestStorageBufferBindingSize(64 * 1024);
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = 64 * 1024;
+  auto webgpu_ep = WebGpuExecutionProviderWithTestOptions(test_options);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }

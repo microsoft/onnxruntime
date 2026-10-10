@@ -4,7 +4,12 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
+#include <string_view>
 #include <type_traits>
+#include <utility>
+#include <vector>
+
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
@@ -109,11 +114,17 @@ inline Tensor CreateTensorView(const Tensor& tensor, MLDataType new_data_type, c
  */
 class SplitKConfig {
  public:
-  explicit SplitKConfig(const wgpu::AdapterInfo& adapter_info);
+  SplitKConfig() = default;
+  SplitKConfig(
+      uint32_t max_batch_size,
+      uint32_t split_dim_inner,
+      uint32_t min_dim_inner_with_split_k,
+      std::initializer_list<std::pair<uint32_t, double>> configs_per_dim_inner_range);
 
   bool UseSplitK(
       bool is_vec4, ActivationKind activation_kind, uint64_t batch_size,
-      uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last = true) const;
+      uint64_t dim_a_outer, uint64_t dim_b_outer, uint64_t dim_inner,
+      bool is_channels_last = true) const;
 
   uint32_t GetSplitDimInner() const;
 
@@ -132,6 +143,9 @@ class SplitKConfig {
   };
   std::vector<ConfigAtRange> configs_per_dim_inner_range_;
 };
+
+SplitKConfig CreateSplitKConfig(const wgpu::AdapterInfo& adapter_info);
+SplitKConfig CreateSplitKConfig(std::string_view vendor, std::string_view architecture);
 
 /**
  * Generates WGSL (WebGPU Shading Language) code for performing an atomic add operation
