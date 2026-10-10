@@ -183,7 +183,7 @@ TEST_F(WebGpuDispatchExecutionTest, PackedMatMulSupportsNonDefaultValidTuning) {
                         /*split_dim_inner=*/1, /*tile_inner=*/64};
   program.AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank, a_program_shape, 4},
                      {&b, ProgramTensorMetadataDependency::TypeAndRank, b_program_shape, 4}})
-      .AddUniformVariables({{M}, {N}, {K}, {1}, {1}, {1}, {1}})
+      .AddUniformVariables({{M}, {N}, {K}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(1, 1, 1)
       .SetWorkgroupSize(16, 4, 1)
