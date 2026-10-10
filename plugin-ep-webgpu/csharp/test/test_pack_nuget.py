@@ -7,10 +7,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pack_nuget
@@ -75,7 +75,7 @@ class PackNugetTest(unittest.TestCase):
                 argv = ["pack_nuget.py", "--version", "0.1.0"]
                 if required:
                     argv.append("--require-agility-sdk")
-                with mock.patch.object(sys, "argv", argv):
+                with unittest.mock.patch.object(sys, "argv", argv):
                     self.assertEqual(pack_nuget.parse_args().require_agility_sdk, required)
 
     def test_stage_binaries_agility_requirement(self):
@@ -133,7 +133,7 @@ class PackNugetTest(unittest.TestCase):
                     require_agility_sdk=required,
                 )
                 with (
-                    mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package) as run,
+                    unittest.mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package) as run,
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     if required:
@@ -171,7 +171,7 @@ class PackNugetTest(unittest.TestCase):
         )
         log = io.StringIO()
         with (
-            mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package),
+            unittest.mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package),
             contextlib.redirect_stdout(log),
         ):
             pack_nuget.do_pack(self.staging / "test.csproj", output, args)
@@ -198,7 +198,7 @@ class PackNugetTest(unittest.TestCase):
             require_agility_sdk=True,
         )
         with (
-            mock.patch.object(pack_nuget.subprocess, "run"),
+            unittest.mock.patch.object(pack_nuget.subprocess, "run"),
             contextlib.redirect_stdout(io.StringIO()),
             self.assertRaisesRegex(pack_nuget.PackError, "no .nupkg files found"),
         ):
