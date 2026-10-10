@@ -249,6 +249,16 @@ class TestCudaQuantizerTorchPackerParity(unittest.TestCase):
                     with self.subTest(bits=bits, force_arch=force_arch, n=n, k=k):
                         self._check(bits, force_arch, n, k)
 
+    def test_explicit_sm90_layout_does_not_fall_back_to_sm80(self):
+        # Layout selection must not depend on whether SM90 compute kernels were compiled.
+        n = k = 128
+        for bits in (4, 8):
+            with self.subTest(bits=bits):
+                q = np.random.default_rng(42).integers(0, 256, size=(n, k // (8 // bits)), dtype=np.uint8)
+                sm80 = np.asarray(_cuda_quant.pack_weights_for_cuda_mixed_gemm(q, n, k, bits, 80))
+                sm90 = np.asarray(_cuda_quant.pack_weights_for_cuda_mixed_gemm(q, n, k, bits, 90))
+                self.assertFalse(np.array_equal(sm80, sm90), "force_arch=90 must preserve the SM90 weight layout")
+
 
 @unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")
 @unittest.skipUnless(hasattr(_pybind, "quantize_matmul_4bits"), "MatMulNBits 4-bit quantizer is unavailable")
