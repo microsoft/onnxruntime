@@ -340,6 +340,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string test_ort_version;
   std::string use_default_cpu_allocator;
   std::string test_read_ep_context_during_compile;
+  std::string test_execute_ep_context;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
@@ -372,6 +373,14 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   }
 
   ExampleEp::Config config = {};
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options,
+                                                 "ep.example.test_execute_ep_context", "0",
+                                                 test_execute_ep_context));
+  if (test_execute_ep_context != "0" && test_execute_ep_context != "1") {
+    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "Example EP execution test option must be '0' or '1'.");
+  }
+  config.test_execute_ep_context = test_execute_ep_context == "1";
   config.enable_ep_context = ep_context_enable == "1";
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
