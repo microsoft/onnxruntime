@@ -4,10 +4,14 @@
 
 
 # -*- coding: UTF-8 -*-
+import os
+import tempfile
 import unittest
 
 import numpy as np
+import onnx
 from helper import get_name
+from onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, RunOptions
@@ -428,6 +432,92 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         result = ort_value.numpy()
         self.assertEqual(list(result.shape), common_shape)
         self.assertTrue(np.array_equal(Y_result, result))
+
+    def test_sparse_initializer_preserves_dense_value_type(self):
+        values = helper.make_tensor("weight", TensorProto.FLOAT, [2], [2.0, 4.0])
+        indices = helper.make_tensor("indices", TensorProto.INT64, [2], [0, 3])
+        sparse_initializer = helper.make_sparse_tensor(values, indices, [2, 2])
+        weight_info = helper.make_tensor_value_info("weight", TensorProto.FLOAT, [2, 2])
+        expected = np.array([[2.0, 0.0], [0.0, 4.0]], dtype=np.float32)
+
+        for declaration in ("implicit", "input", "value_info", "output"):
+            for optimization in (
+                onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL,
+                onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL,
+            ):
+                with self.subTest(declaration=declaration, optimization=optimization):
+                    is_output = declaration == "output"
+                    nodes = [] if is_output else [helper.make_node("Add", ["weight", "weight"], ["result"])]
+                    output = (
+                        weight_info if is_output else helper.make_tensor_value_info("result", TensorProto.FLOAT, [2, 2])
+                    )
+                    graph = helper.make_graph(
+                        nodes,
+                        "dense_value_sparse_storage",
+                        [weight_info] if declaration == "input" else [],
+                        [output],
+                        sparse_initializer=[sparse_initializer],
+                        value_info=[weight_info] if declaration == "value_info" else [],
+                    )
+                    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+                    options = onnxrt.SessionOptions()
+                    options.graph_optimization_level = optimization
+                    session = onnxrt.InferenceSession(
+                        model.SerializeToString(), options, providers=["CPUExecutionProvider"]
+                    )
+                    result = session.run(None, {})[0]
+                    np.testing.assert_array_equal(result, expected if is_output else 2 * expected)
+
+    def test_run_contrib_sparse_mat_mul_sparse_initializer(self):
+        """A SparseToDenseMatMul input may be supplied by sparse_initializer."""
+        values = helper.make_tensor("data1", TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0])
+        indices = helper.make_tensor(
+            "data1_indices",
+            TensorProto.INT64,
+            [4, 2],
+            [0, 0, 0, 2, 1, 1, 1, 3],
+        )
+        sparse_initializer = onnx.SparseTensorProto()
+        sparse_initializer.values.CopyFrom(values)
+        sparse_initializer.indices.CopyFrom(indices)
+        sparse_initializer.dims.extend([2, 4])
+
+        dense_initializer = helper.make_tensor(
+            "input1",
+            TensorProto.FLOAT,
+            [4, 3],
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        )
+        output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 3])
+        node = helper.make_node(
+            "SparseToDenseMatMul",
+            ["data1", "input1"],
+            ["output"],
+            name="SparseToDenseMatMul1",
+            domain="com.microsoft",
+        )
+        graph = helper.make_graph(
+            [node],
+            "SparseMatMulExample",
+            [],
+            [output],
+            initializer=[dense_initializer],
+            sparse_initializer=[sparse_initializer],
+        )
+        model = helper.make_model(
+            graph,
+            producer_name="sparse_initializer_test",
+            opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = os.path.join(temp_dir, "sparse_initializer_matmul.onnx")
+            onnx.save(model, model_path)
+            sess = onnxrt.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+            result = sess.run(None, {})[0]
+
+        expected = np.array([[15.0, 18.0, 21.0], [52.0, 59.0, 66.0]], dtype=np.float32)
+        np.testing.assert_allclose(result, expected)
 
 
 if __name__ == "__main__":
