@@ -7,11 +7,15 @@
 
 """Tests for float16 conversion (convert_float_to_float16)."""
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
+from parameterized import parameterized
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
@@ -293,6 +297,60 @@ class TestFloat16Conversion(unittest.TestCase):
         self.assertIsNotNone(value)
         self.assertEqual(value.data_type, TensorProto.FLOAT16)
         np.testing.assert_array_equal(numpy_helper.to_array(value), np.array([0], dtype=np.float16))
+
+
+class TestFloat16ModelPathConversion(unittest.TestCase):
+    def _save_model(self, directory, external_data=False):
+        graph = helper.make_graph(
+            [
+                helper.make_node("Mul", ["input", "weight"], ["product"]),
+                helper.make_node("Identity", ["product"], ["output"]),
+            ],
+            "model_path_test",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [2])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [2])],
+            [numpy_helper.from_array(np.array([0.5, 2.0], dtype=np.float32), "weight")],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=8)
+        model_path = directory / "model with spaces.onnx"
+        onnx.save_model(
+            model,
+            model_path,
+            save_as_external_data=external_data,
+            all_tensors_to_one_file=True,
+            location=f"{directory.name}.weights.bin",
+            size_threshold=0,
+        )
+        return model_path
+
+    @parameterized.expand([(False,), (True,)])
+    def test_model_path_matches_model_proto(self, external_data):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            model_path = self._save_model(directory, external_data)
+            original_files = {path.name: path.read_bytes() for path in directory.iterdir()}
+            for keep_io_types in (False, True, ["input"]):
+                with self.subTest(keep_io_types=keep_io_types):
+                    expected = convert_float_to_float16(onnx.load(model_path), keep_io_types=keep_io_types)
+                    for _ in range(2):
+                        converted = convert_float_to_float16(str(model_path), keep_io_types=keep_io_types)
+                        self.assertEqual(converted, expected)
+                        self.assertEqual({path.name: path.read_bytes() for path in directory.iterdir()}, original_files)
+
+    @parameterized.expand([("infer_shapes_path",), ("onnx.load",)])
+    def test_model_path_removes_temporary_file_on_error(self, operation):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            model_path = self._save_model(directory)
+            original_files = {path.name: path.read_bytes() for path in directory.iterdir()}
+            error = RuntimeError("model path conversion failed")
+            with (
+                patch(f"{convert_float_to_float16.__module__}.{operation}", side_effect=error),
+                self.assertRaises(RuntimeError) as raised,
+            ):
+                convert_float_to_float16(str(model_path))
+            self.assertIs(raised.exception, error)
+            self.assertEqual({path.name: path.read_bytes() for path in directory.iterdir()}, original_files)
 
 
 if __name__ == "__main__":
