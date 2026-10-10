@@ -92,7 +92,11 @@ if (typeof INSTALL_FLAG === 'string') {
   INSTALL_MANIFEST_NAMES = installations;
 }
 
-const BIN_FOLDER = path.join(__dirname, '..', 'bin/napi-v6', PLATFORM);
+if (INSTALL_MANIFEST_NAMES.length === 0) {
+  process.exit(0);
+}
+
+const BIN_FOLDER = require('./native-directory.js').getNativeDirectory();
 const INSTALL_MANIFESTS = [];
 
 const PACKAGES = new Set();

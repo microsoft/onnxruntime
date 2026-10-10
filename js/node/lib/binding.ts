@@ -57,8 +57,9 @@ export declare namespace Binding {
 
 // export native binding
 export const binding =
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  require(`../bin/napi-v6/${process.platform}/${process.arch}/onnxruntime_binding.node`) as {
+  // The installer shares this JavaScript helper because TypeScript is unavailable during postinstall.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, import/no-internal-modules
+  require(require('../script/native-directory.js').getNativeBindingPath()) as {
     // eslint-disable-next-line @typescript-eslint/naming-convention
     InferenceSession: Binding.InferenceSessionConstructor;
     listSupportedBackends: () => Binding.SupportedBackend[];
