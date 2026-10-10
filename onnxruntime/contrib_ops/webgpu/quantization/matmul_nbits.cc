@@ -236,8 +236,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                         y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
                                         subgroup_matrix_config,
                                         M,
-                                        has_weight_idx_indirect,
-                                        bias != nullptr)) {
+                                        has_weight_idx_indirect)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
                                           static_cast<uint32_t>(nbits), zero_blocks_per_col,
                                           *subgroup_matrix_config, context, y, weight_index,

@@ -76,8 +76,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        bool is_fp16,
                                        std::optional<SubgroupMatrixConfig>& config,
                                        uint32_t M = std::numeric_limits<uint32_t>::max(),
-                                       bool has_weight_idx_indirect = false,
-                                       bool has_bias = false);
+                                       bool has_weight_idx_indirect = false);
 
 }  // namespace webgpu
 }  // namespace contrib
