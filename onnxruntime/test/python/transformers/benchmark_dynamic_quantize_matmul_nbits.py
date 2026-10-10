@@ -36,6 +36,7 @@ def make_session(
     runtime_scales,
     weight_only=False,
     runtime_weights=False,
+    cuda_graph=False,
 ):
     onnx_type = TensorProto.FLOAT16 if dtype == "fp16" else TensorProto.BFLOAT16
     initializers = []
@@ -80,7 +81,15 @@ def make_session(
     return ort.InferenceSession(
         model.SerializeToString(),
         options,
-        providers=[("CUDAExecutionProvider", {"user_compute_stream": str(torch.cuda.current_stream().cuda_stream)})],
+        providers=[
+            (
+                "CUDAExecutionProvider",
+                {
+                    "user_compute_stream": str(torch.cuda.current_stream().cuda_stream),
+                    "enable_cuda_graph": str(int(cuda_graph)),
+                },
+            )
+        ],
     )
 
 
@@ -180,6 +189,7 @@ def run_case(args, m, k, n):
             args.runtime_scales,
             weight_only,
             args.runtime_weights,
+            args.cuda_graph,
         )
         y = torch.empty((m, n), device="cuda", dtype=torch_dtype)
         binding = session.io_binding()
@@ -287,6 +297,11 @@ def main():
     parser.add_argument("--runtime-scales", action="store_true")
     parser.add_argument("--runtime-weights", action="store_true", help="Disable constant-weight prepacking")
     parser.add_argument(
+        "--cuda-graph",
+        action="store_true",
+        help="Replay the ORT CUDA graph (requires constant scales); removes host launch overhead",
+    )
+    parser.add_argument(
         "--skip-matmul-nbits",
         action="store_true",
         help="Explicitly omit the weight-only baseline if this build does not support its geometry",
@@ -303,6 +318,8 @@ def main():
         parser.error("Rows, warmup, repeat, trials, and activation block size must be positive")
     if args.k is not None and min(args.k, args.n) <= 0:
         parser.error("K and N must be positive")
+    if args.cuda_graph and args.runtime_scales:
+        parser.error("--cuda-graph requires constant scales")
     if args.block_size and (args.block_size < 16 or args.block_size & (args.block_size - 1)):
         parser.error("--block-size must be a power of two >= 16")
     if "CUDAExecutionProvider" not in ort.get_available_providers():
@@ -319,6 +336,7 @@ def main():
         "baselines": "FP GEMM uses decoded/scaled weights; MatMulNBits reuses byte-identical B/scales; no accuracy equivalence claimed",
         "matmul_nbits_baseline": "explicitly disabled" if args.skip_matmul_nbits else "enabled",
         "sm90_gemm_disabled": os.environ.get("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", "0"),
+        "cuda_graph": args.cuda_graph,
         "prepack_memory": "Upper bound for the optional SM90 signed-W8 copy; availability depends on compiled images",
     }
     print(json.dumps(metadata), flush=True)

@@ -93,7 +93,8 @@ def reference(a, packed, scales, bits, block, mode, activation_block):
     start = 0
     while start < k:
         end = min(k, start + block - start % block, start + domain_size - start % domain_size)
-        acc = quantized[:, start:end] @ weights[:, start:end].T
+        # Exact in float64 (|acc| < 2**53), so it rounds to FP32 identically to an INT32 accumulator.
+        acc = quantized[:, start:end].astype(np.float64) @ weights[:, start:end].T.astype(np.float64)
         term = (acc.astype(np.float32) * a_scales[:, start, None]) * scales[:, start // block].astype(np.float32)
         output = term if output is None else output + term
         start = end
@@ -234,6 +235,51 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
                     binding.synchronize_outputs()
                     expected = np.full((m, n), k * (iteration + 1) ** 2, dtype=np.float16)
                     np.testing.assert_array_equal(y.numpy(), expected)
+
+    def test_capture_replays_match_exact_reference_for_native_paths(self):
+        rng = np.random.default_rng(7)
+        # (bits, mode, m, k, n, block): Hopper W8 (both tiles), tensor-core W8/W4/W2, and per-block intervals.
+        cases = (
+            (8, "dynamic_per_token", 256, 1024, 1024, 1024),
+            (8, "dynamic_per_tensor", 256, 1024, 1024, 1024),
+            (8, "dynamic_per_token", 129, 272, 512, 512),
+            (8, "dynamic_per_token", 160, 512, 4096, 512),
+            (4, "dynamic_per_token", 64, 512, 256, 128),
+            (2, "dynamic_per_tensor", 64, 512, 256, 128),
+            (4, "dynamic_per_block", 65, 320, 137, 128),
+        )
+        for bits, mode, m, k, n, block in cases:
+            for constant_weights in (True, False):
+                with self.subTest(bits=bits, mode=mode, m=m, n=n, constant_weights=constant_weights):
+                    groups = (k + block - 1) // block
+                    scales = rng.uniform(-0.01, 0.01, size=(n, groups)).astype(np.float32)
+                    packed = rng.integers(0, 256, size=(n, groups, block * bits // 8), dtype=np.uint8)
+                    model = make_model(scales, bits=bits, m=m, k=k, n=n, block=block)
+                    node = model.graph.node[0]
+                    node.attribute.append(helper.make_attribute("activation_quantization", mode))
+                    if mode == "dynamic_per_block":
+                        node.attribute.append(helper.make_attribute("activation_block_size", 192))
+                    if constant_weights:
+                        model.graph.input.remove(model.graph.input[1])
+                        model.graph.initializer.append(numpy_helper.from_array(packed, "B"))
+                    session = make_session(model, capture=True)
+                    a = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, k), dtype=np.float16), "cuda", 0)
+                    y = ort.OrtValue.ortvalue_from_shape_and_type((m, n), np.float16, "cuda", 0)
+                    binding = session.io_binding()
+                    binding.bind_ortvalue_input("A", a)
+                    if not constant_weights:
+                        b = ort.OrtValue.ortvalue_from_numpy(packed, "cuda", 0)
+                        binding.bind_ortvalue_input("B", b)
+                    binding.bind_ortvalue_output("Y", y)
+                    # Runs beyond the first replay one captured graph with new activations (including a zero row).
+                    for iteration in range(4):
+                        values = (rng.normal(size=(m, k)) * 4.0 ** (iteration - 1)).astype(np.float16)
+                        values[iteration % m] = 0
+                        a.update_inplace(values)
+                        session.run_with_iobinding(binding)
+                        binding.synchronize_outputs()
+                        expected = reference(values, packed, scales, bits, block, mode, 192)
+                        np.testing.assert_array_equal(y.numpy().view(np.uint16), expected.view(np.uint16))
 
     def test_concurrent_runs_use_independent_activation_scratch(self):
         for m, k, n, block in (

@@ -1536,6 +1536,30 @@ per-token, per-tensor, and per-block domains with tails, and infinite/NaN
 rows against the exact CPU reference. Compute Sanitizer reports zero memory
 errors and zero race hazards on the full operator test set.
 
+### 8.11 CUDA graph readiness
+
+The operator is CUDA-graph safe on every native path: all launches use the
+compute stream, scratch comes from the framework allocator, the CUTLASS
+parameters are rebuilt on the stack for each run so a replay never depends
+on a stale host descriptor, and there is no host synchronization or
+allocation in `Compute`. Constant, non-overridable scales are required for
+capture (section 5.1). Signed-weight preparation happens once in `PrePack`.
+
+`test_capture_replays_match_exact_reference_for_native_paths` captures a
+graph and replays it with fresh random activations (including a zero row),
+comparing every output bit with the exact reference. It covers the Hopper W8
+path (both tile sizes, per-token and per-tensor), tensor-core W8/W4/W2, and
+per-block activation intervals, with both constant and runtime weights.
+
+`benchmark_dynamic_quantize_matmul_nbits.py --cuda-graph` replays the ORT
+graph. A trace shows the quantizer-to-GEMM gap falling from about 4.5 us to
+0.29 us. Complete-operator H200 medians, FP16 per-token, M=1536,
+non-graph -> graph: W8 K/N 2048/6144 50.45 -> 46.26 us, 6144/2048
+63.16 -> 61.15 us, 2048/4096 38.91 -> 32.87 us, 2048/2048 32.67 -> 27.79 us;
+W4 K=N=1024 39.99 -> 36.48 us; W2 42.84 -> 37.91 us. At M=16, K/N=2048/6144
+it falls from 27.67 to 19.04 us. The remaining inter-replay time is ORT
+per-run overhead outside the operator.
+
 ## 9. Delivery Plan and Acceptance
 
 | Priority | Delivery | Required outcome |
