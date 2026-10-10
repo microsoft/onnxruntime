@@ -45,6 +45,7 @@ struct ApiPtrs {
 namespace detail {
 inline std::optional<ApiPtrs> g_api_ptrs{};
 inline uint32_t g_current_ort_api_version{};
+inline uint32_t g_current_ort_patch_version{};
 
 // Strictly parse a "MAJOR.MINOR.PATCH" version string. Each component must be a non-empty sequence of decimal digits.
 // Returns false for null/empty input, missing or extra components, non-numeric components, or any trailing characters
@@ -165,6 +166,7 @@ inline void ApiInit(const OrtApiBase* ort_api_base, const char* min_ort_version 
     // Initialize globals
     detail::g_api_ptrs.emplace(*ort_api, *ep_api, *model_editor_api);
     detail::g_current_ort_api_version = current_ort_api_version;
+    detail::g_current_ort_patch_version = runtime_patch;
   });
 }
 
@@ -178,6 +180,16 @@ inline uint32_t CurrentOrtApiVersion() {
     throw std::logic_error("onnxruntime::ep::CurrentOrtApiVersion() called before ApiInit().");
   }
   return detail::g_current_ort_api_version;
+}
+
+/// <summary>
+/// Get the runtime patch version parsed by ApiInit().
+/// </summary>
+inline uint32_t CurrentOrtPatchVersion() {
+  if (!detail::g_api_ptrs.has_value()) {
+    throw std::logic_error("onnxruntime::ep::CurrentOrtPatchVersion() called before ApiInit().");
+  }
+  return detail::g_current_ort_patch_version;
 }
 
 }  // namespace ep

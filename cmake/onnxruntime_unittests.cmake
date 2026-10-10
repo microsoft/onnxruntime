@@ -1379,7 +1379,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS onnxruntime_provider_bridge_valid_fixture onnxruntime_provider_bridge_missing_export_fixture)
     set_target_properties(${bridge_test_target} PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${bridge_test_target}/$<CONFIG>")
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${bridge_test_target}")
     target_compile_definitions(${bridge_test_target} PRIVATE
       ORT_PROVIDER_BRIDGE_VALID_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_valid_fixture>"
       ORT_PROVIDER_BRIDGE_MISSING_EXPORT_TEST_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_provider_bridge_missing_export_fixture>")
@@ -1430,7 +1430,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       DEPENDS onnxruntime_optional_probe_shared_fixture onnxruntime_optional_probe_valid_fixture
               onnxruntime_optional_probe_missing_export_fixture)
     set_target_properties(${probe_target} PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${probe_target}/$<CONFIG>")
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${probe_target}")
     foreach(fixture IN ITEMS shared valid missing_export)
       target_compile_definitions(${probe_target} PRIVATE
         ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_optional_probe_${fixture}_fixture>")
@@ -1659,6 +1659,11 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
+  # Match the non-plugin WebGPU test-source selection above.
+  if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+    target_include_directories(${onnxruntime_provider_test_target} PRIVATE ${WGSL_GENERATED_ROOT})
+  endif()
+
   if (NOT onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
     # Keep the public build target responsible for both runtime artifacts without
     # making the executable depend on the module that imports its symbols.
@@ -1671,6 +1676,53 @@ block()
 
   onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
+
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND
+      NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND
+      NOT IOS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # Run legacy-safe regressions separately; concurrent-success tests require modern mode.
+    string(JOIN ":" webgpu_legacy_test_filter
+      "WebGpuPluginRecordingModeTest.*"
+      "WebGpuPluginSharedAllocatorRegistrationTest.*"
+      "WebGpuPluginSharedAllocatorTest.*"
+      "WebGpuSessionAllocatorDeathTest.*"
+      "PluginEpWebGpuConcurrency.DeferredProducerThen*"
+      "PluginEpWebGpuConcurrency.CpuInputAndOutputRun"
+      "PluginEpWebGpuConcurrency.MixedCpuAndGpuFeeds"
+      "PluginEpWebGpuConcurrency.MixedCpuAndGpuFeedsReversed"
+      "PluginEpWebGpuConcurrency.CpuFeedsWithCpuPartition"
+      "PluginEpWebGpuConcurrency.CpuOutputBoundToGpu"
+      "PluginEpWebGpuConcurrency.CpuOutputBoundToGpuFirst"
+      "PluginEpWebGpuConcurrency.PreallocatedGpuInputWithMixedOutputBindings"
+      "PluginEpWebGpuConcurrency.PreallocatedGpuInputWithMixedOutputBindingsReversed"
+      "PluginEpWebGpuConcurrency.CpuOnlyGraphOutputBoundToGpu"
+      "PluginEpWebGpuConcurrency.RepeatedKernelScratchBufferReuse"
+      "PluginEpWebGpuConcurrency.CpuPartitionBetweenGpuKernels"
+      "PluginEpWebGpuConcurrency.CpuInputAndGpuOutputRun"
+      "PluginEpWebGpuConcurrency.CpuBindInputReusesDirtyGpuBuffer"
+      "PluginEpWebGpuConcurrency.Serial*"
+      "PluginEpWebGpuConcurrency.GraphCaptureReplayInterleavedWithIdleSessionCpuBindInput"
+      "PluginEpWebGpuConcurrency.GpuInputAndCpuOutputRun"
+      "PluginEpWebGpuConcurrency.SharedGpuCopyIsSubmittedBeforeSessionRun"
+    )
+    set(webgpu_legacy_test_args "--gtest_filter=${webgpu_legacy_test_filter}")
+    if (onnxruntime_GENERATE_TEST_REPORTS)
+      list(APPEND webgpu_legacy_test_args
+        "--gtest_output=xml:onnxruntime_webgpu_legacy_test.$<CONFIG>.results.xml")
+    endif()
+    add_test(NAME onnxruntime_webgpu_legacy_test
+      COMMAND ${onnxruntime_provider_test_target} ${webgpu_legacy_test_args}
+      WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>
+    )
+    set_tests_properties(onnxruntime_webgpu_legacy_test PROPERTIES
+      TIMEOUT 10800
+      FAIL_REGULAR_EXPRESSION
+        "0 tests from 0 test suites"
+    )
+    onnxruntime_set_plugin_ep_test_environment(onnxruntime_webgpu_legacy_test)
+    set_property(TEST onnxruntime_webgpu_legacy_test APPEND PROPERTY
+      ENVIRONMENT "ORT_WEBGPU_EP_FORCE_LEGACY=1")
+  endif()
 
   # The CUDA EP internal unit tests (onnxruntime_providers_cuda_ut) are built as a shared-library
   # module that is dlopen'd at runtime by this binary (see CUDA_EP_Unittest.All -> TestAll()). Some
@@ -3041,15 +3093,16 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::da
   if (onnxruntime_BUILD_SHARED_LIB)
     AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-            LIBS dawn::dawn_native
+            LIBS dawn::dawn_native dawn::dawn_proc
             DEPENDS ${all_dependencies})
   else()
     AddTest(TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-            LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+            LIBS dawn::dawn_native dawn::dawn_proc ${onnxruntime_test_providers_libs}
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+  target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
 endif()
 
 if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
