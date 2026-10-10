@@ -243,6 +243,8 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         quant_axes: tuple[tuple[str, int], ...] | None = None,
         bits: int = 4,
         channel_wised_quantize: bool = False,
+        activation_quantization: str | None = None,
+        activation_block_size: int | None = None,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -266,6 +268,12 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
             bits (int, optional):
                 number of bits per element after quantization. Default 4.
+            activation_quantization (str, optional):
+                Explicit CUDA DynamicQuantizeMatMulNBits opt-in for selected MatMul nodes.
+                Requires symmetric QOperator weights and FP16/BF16 activations.
+                None preserves weight-only MatMulNBits behavior.
+            activation_block_size (int, optional):
+                Positive K block size, required only for dynamic_per_block.
         """
         super().__init__(
             algorithm="DEFAULT",
@@ -278,6 +286,28 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self.bits = bits
         self.accuracy_level = accuracy_level
         self.channel_wised_quantize = channel_wised_quantize
+        self.activation_quantization = activation_quantization
+        self.activation_block_size = activation_block_size
+        if activation_quantization is not None:
+            if activation_quantization not in ("dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"):
+                raise ValueError("Unrecognized activation_quantization")
+            if quant_format != QuantFormat.QOperator or not is_symmetric:
+                raise ValueError("DynamicQuantizeMatMulNBits requires symmetric QOperator quantization")
+            if self.op_types_to_quantize != {"MatMul"}:
+                raise ValueError("DynamicQuantizeMatMulNBits opt-in supports only MatMul")
+            if bits not in (2, 4, 8) or block_size < 16 or block_size & (block_size - 1):
+                raise ValueError("DynamicQuantizeMatMulNBits requires bits 2/4/8 and a power-of-two block_size >= 16")
+            if bits == 2 and block_size > 256:
+                raise ValueError("DynamicQuantizeMatMulNBits INT2 block_size must not exceed 256")
+            if accuracy_level:
+                raise ValueError("accuracy_level does not apply to DynamicQuantizeMatMulNBits")
+            if activation_quantization == "dynamic_per_block":
+                if activation_block_size is None or activation_block_size <= 0:
+                    raise ValueError("dynamic_per_block requires a positive activation_block_size")
+            elif activation_block_size is not None:
+                raise ValueError("activation_block_size is valid only for dynamic_per_block")
+        elif activation_block_size is not None:
+            raise ValueError("activation_block_size requires activation_quantization")
         if channel_wised_quantize and quant_format == QuantFormat.QOperator:
             raise NotImplementedError("QuantFormat.QOperator is not supported channel_wised_quantize yet")
 
@@ -1075,6 +1105,48 @@ class DefaultWeightOnlyQuantizer:
         else:
             b_original_shape = None  # already 2-D, no reshape needed
 
+        dynamic = self.config.activation_quantization is not None
+        if dynamic:
+            activation_type = None
+            activation_shape = None
+            output_type = None
+            for graph in reversed(graph_stack):
+                for value in list(graph.input) + list(graph.value_info) + list(graph.output):
+                    if value.name == node.input[0]:
+                        activation_type = value.type.tensor_type.elem_type
+                        if value.type.tensor_type.HasField("shape"):
+                            activation_shape = value.type.tensor_type.shape
+                        break
+                if activation_type is not None:
+                    break
+            if activation_type not in (TensorProto.FLOAT16, TensorProto.BFLOAT16):
+                raise ValueError(
+                    f"DynamicQuantizeMatMulNBits requires known FP16/BF16 activation type for {node.name or node.output[0]}"
+                )
+            for graph in reversed(graph_stack):
+                for value in list(graph.value_info) + list(graph.output):
+                    if value.name == node.output[0]:
+                        output_type = value.type.tensor_type.elem_type
+                        break
+                if output_type is not None:
+                    break
+            if output_type not in (None, TensorProto.UNDEFINED, activation_type):
+                raise ValueError("DynamicQuantizeMatMulNBits output type must match the activation type")
+            rows = b_ndarray.shape[0]
+            if activation_shape is not None:
+                if len(activation_shape.dim) == 0:
+                    raise ValueError("DynamicQuantizeMatMulNBits activation must have rank at least 1")
+                last_dim = activation_shape.dim[-1]
+                if last_dim.HasField("dim_value") and last_dim.dim_value != rows:
+                    raise ValueError("DynamicQuantizeMatMulNBits activation K must match the weight K")
+            if b_ndarray.dtype not in (np.dtype(np.float16), np.dtype(np.float32), np.dtype(ml_dtypes.bfloat16)):
+                raise ValueError("DynamicQuantizeMatMulNBits weights must use FP16, BF16, or FP32")
+            activation_block = (
+                self.config.activation_block_size if self.config.activation_block_size is not None else rows
+            )
+            if min(rows, self.config.block_size, activation_block) > (2**31 - 1) // (127 * (1 << (bits - 1))):
+                raise ValueError("Common scale interval exceeds the INT32 accumulator bound")
+
         bfloat16 = b_ndarray.dtype == "bfloat16"
         if bfloat16:
             b_ndarray = b_ndarray.astype(np.float32)
@@ -1082,6 +1154,8 @@ class DefaultWeightOnlyQuantizer:
         packed, scales, zero_points = self.qbits_block_quant(b_ndarray)
         if bfloat16:
             scales = scales.astype(ml_dtypes.bfloat16)
+        if dynamic and not np.isfinite(scales).all():
+            raise ValueError("DynamicQuantizeMatMulNBits weight scales must contain only finite values")
 
         if self.config.quant_format == QuantFormat.QOperator:
             b_quant = ir.serde.serialize_tensor(ir.Tensor(packed, name=b_tensor.name + f"_Q{bits}"))
@@ -1128,6 +1202,12 @@ class DefaultWeightOnlyQuantizer:
             kwargs["N"] = cols
             kwargs["bits"] = bits
             kwargs["block_size"] = self.config.block_size
+            if dynamic:
+                del kwargs["K"]
+                del kwargs["N"]
+                kwargs["activation_quantization"] = self.config.activation_quantization
+                if self.config.activation_block_size is not None:
+                    kwargs["activation_block_size"] = self.config.activation_block_size
 
             # Do not output accuracy_level if it is 0 since the attribute is optional and is not supported by most EPs.
             if self.config.accuracy_level:
@@ -1140,7 +1220,7 @@ class DefaultWeightOnlyQuantizer:
             needs_reshape = b_original_shape is not None and (a_static_rank is None or a_static_rank < rank_b_orig)
             qop_output = node.output[0] if not needs_reshape else node.output[0] + "_pre_reshape"
             matmul_qbit_node = onnx.helper.make_node(
-                "MatMulNBits",
+                "DynamicQuantizeMatMulNBits" if dynamic else "MatMulNBits",
                 inputs=input_names,
                 outputs=[qop_output],
                 name=node.name + f"_Q{bits}" if node.name else "",
@@ -1720,6 +1800,12 @@ set of 4b integers with a scaling factor and an optional offset.
     )
     parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
     parser.add_argument(
+        "--activation_quantization",
+        choices=("dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"),
+        help="Explicit CUDA INT8 activation opt-in; requires default method, symmetric QOperator, and FP16/BF16 A",
+    )
+    parser.add_argument("--activation_block_size", type=int, help="K block size required only for dynamic_per_block")
+    parser.add_argument(
         "--symmetric",
         required=False,
         default=True,
@@ -1829,6 +1915,10 @@ if __name__ == "__main__":
         args.symmetric = False
 
     model = onnx.load(input_model_path)
+    if (
+        args.activation_quantization is not None or args.activation_block_size is not None
+    ) and args.quant_method != "default":
+        raise ValueError("Dynamic activation quantization requires the default quantization method")
     if args.quant_method == "hqq":
         quant_config = HQQWeightOnlyQuantConfig(
             block_size=args.block_size, bits=args.bits, op_types_to_quantize=op_types_to_quantize, quant_axes=quant_axes
@@ -1842,6 +1932,8 @@ if __name__ == "__main__":
             op_types_to_quantize=op_types_to_quantize,
             quant_axes=quant_axes,
             bits=args.bits,
+            activation_quantization=args.activation_quantization,
+            activation_block_size=args.activation_block_size,
         )
     elif args.quant_method == "rtn":
         quant_config = RTNWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)

@@ -13,6 +13,11 @@
 function(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
   set(_list "${${CU_SRC_LIST}}")
 
+  # Dynamic INT8 quantization promises exact rounding and gradual underflow in both EP builds.
+  set_source_files_properties(
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/math/dynamic_quantize_matmul_nbits.cu"
+    PROPERTIES COMPILE_OPTIONS "--ftz=false;--prec-div=true;--fmad=false")
+
   # Quick build mode: Filter flash attention kernels for faster development iteration.
   #   - We keep only hdim128 fp16 and bf16 flash attention kernels in quick build mode.
   #   - All other listed head dimensions are excluded (e.g., 32, 64, 96, 192, 256).

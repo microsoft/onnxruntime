@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include "core/graph/onnx_protobuf.h"
 
 #include "onnx/defs/shape_inference.h"
@@ -3221,6 +3222,134 @@ The output has shape [..., N] and the same element type as A.)DOC")
           }
           *output_shape.add_dim() = b_shape.dim(0);
           updateOutputShape(ctx, 0, output_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DynamicQuantizeMatMulNBits, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Matrix multiplication with dynamic symmetric INT8 activations and MatMulNBits weights.
+
+A has shape [..., K]. B contains unsigned offset codes in standard MatMulNBits layout
+[N, ceil(K/block_size), block_size*bits/8]. Codes are packed low bits first within each byte;
+subtract 2^(bits-1) to obtain signed weights. Codes beyond K are ignored. Weight scales have
+shape [N, ceil(K/block_size)] or its flattened equivalent and must be finite; signed and zero
+scales are supported. No zero points, group indices, or prepacked layouts are accepted.
+
+Activation scales are computed over the entire tensor, each row, or each row's consecutive
+activation_block_size values according to activation_quantization. For each domain, sA is
+FP32(absmax(A)/127); all-zero domains use 1 and nonzero underflow uses the smallest positive
+FP32 subnormal. Codes are round-to-nearest-even(A/sA), clamped to [-127,127]. A domain containing
+NaN or infinity has zero codes and a NaN scale, propagating NaN to every affected output row.
+
+Partition K at the union of activation and weight scale boundaries. Each interval is an exact
+INT32 dot product. Convert its accumulator to FP32, multiply by sA, then by the weight scale.
+If the accumulator is nonzero and the first product is not finite and normal, instead multiply
+the FP32-converted accumulator and both scales in FP64, then round to FP32. A NaN activation
+scale always produces NaN, including for zero accumulators. Sum interval terms in increasing
+K order, starting with the first term; add optional bias (zero if absent) in FP32 and cast once
+to A's type. Operations use round-to-nearest-even, gradual underflow, and no FMA contraction.
+NaN payloads are unspecified. K=0 produces zero plus bias; empty outputs require no computation.
+
+For S_A = activation_block_size in block mode and K otherwise, inputs must satisfy
+min(K, block_size, S_A)*127*2^(bits-1) <= INT32_MAX. Longer intervals are rejected.
+Output Y has shape [..., N] and the same type as A. CUDA graph capture requires validated,
+non-overridable constant weight scales. This operator always quantizes A and is an explicit
+accuracy choice, not a semantics-preserving replacement for weight-only MatMulNBits.)DOC")
+        .Attr("bits", "Weight bit width: 2, 4, or 8.", AttributeProto::INT, int64_t{8})
+        .Attr("block_size", "Weight block size: power of two, at least 16; at most 256 for INT2.",
+              AttributeProto::INT, int64_t{128})
+        .Attr("activation_quantization", "dynamic_per_tensor, dynamic_per_token, or dynamic_per_block.",
+              AttributeProto::STRING, std::string("dynamic_per_token"))
+        .Attr("activation_block_size", "Positive K block size, required only for dynamic_per_block.",
+              AttributeProto::INT, false)
+        .Input(0, "A", "Floating activation of shape [..., K], rank at least 1.", "T")
+        .Input(1, "B", "Standard unsigned MatMulNBits block blobs of shape [N, G, block_size*bits/8].", "T1")
+        .Input(2, "scales", "Finite weight scales of shape [N, G] or [N*G], G=ceil(K/block_size).", "T2")
+        .Input(3, "bias", "Optional bias of shape [N], with A's element type.", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output of shape [..., N].", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Activation, bias, and output type.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed unsigned weight codes.")
+        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Weight scale type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t bits = getAttribute(ctx, "bits", 8);
+          const int64_t block = getAttribute(ctx, "block_size", 128);
+          const auto* mode_attr = ctx.getAttribute("activation_quantization");
+          const std::string mode = mode_attr ? mode_attr->s() : "dynamic_per_token";
+          const auto* activation_block_attr = ctx.getAttribute("activation_block_size");
+          if (bits != 2 && bits != 4 && bits != 8) fail_shape_inference("bits must be 2, 4, or 8.");
+          if (block < 16 || (block & (block - 1)) != 0) {
+            fail_shape_inference("block_size must be a power of two and at least 16.");
+          }
+          if (bits == 2 && block > 256) fail_shape_inference("INT2 block_size must not exceed 256.");
+          if (mode != "dynamic_per_tensor" && mode != "dynamic_per_token" && mode != "dynamic_per_block") {
+            fail_shape_inference("Unrecognized activation_quantization.");
+          }
+          if (mode == "dynamic_per_block" ? !activation_block_attr || activation_block_attr->i() <= 0
+                                          : activation_block_attr != nullptr) {
+            fail_shape_inference("activation_block_size must be positive and present exactly for dynamic_per_block.");
+          }
+          const auto* a = hasInputShape(ctx, 0) ? &getInputShape(ctx, 0) : nullptr;
+          const auto* b = hasInputShape(ctx, 1) ? &getInputShape(ctx, 1) : nullptr;
+          if ((a && a->dim_size() < 1) || (b && b->dim_size() != 3)) {
+            fail_shape_inference("A must have rank at least 1 and B must have rank 3.");
+          }
+          const int64_t k = a && a->dim(a->dim_size() - 1).has_dim_value() ? a->dim(a->dim_size() - 1).dim_value() : -1;
+          const int64_t n = b && b->dim(0).has_dim_value() ? b->dim(0).dim_value() : -1;
+          const int64_t groups = k >= 0                           ? k / block + (k % block != 0)
+                                 : b && b->dim(1).has_dim_value() ? b->dim(1).dim_value()
+                                                                  : -1;
+          const auto check_dim = [](const auto& dim, int64_t expected, const char* message) {
+            if (dim.has_dim_value() && (dim.dim_value() < 0 || (expected >= 0 && dim.dim_value() != expected))) {
+              fail_shape_inference(message);
+            }
+          };
+          if (a) {
+            for (const auto& dim : a->dim()) check_dim(dim, -1, "A dimensions must be nonnegative.");
+          }
+          if (b) {
+            check_dim(b->dim(0), -1, "N must be nonnegative.");
+            check_dim(b->dim(1), groups, "B has incorrect weight block count.");
+            check_dim(b->dim(2), block / (8 / bits), "B has incorrect blob size.");
+          }
+          int64_t scale_count = -1;
+          if (n >= 0 && groups >= 0) {
+            if (groups && n > std::numeric_limits<int64_t>::max() / groups) {
+              fail_shape_inference("Weight scale count overflows int64.");
+            }
+            scale_count = n * groups;
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& scales = getInputShape(ctx, 2);
+            if (scales.dim_size() == 1) {
+              check_dim(scales.dim(0), scale_count, "scales must have N*G elements.");
+            } else if (scales.dim_size() == 2) {
+              check_dim(scales.dim(0), n, "scales has incorrect N.");
+              check_dim(scales.dim(1), groups, "scales has incorrect block count.");
+            } else {
+              fail_shape_inference("scales must have shape [N, G] or [N * G].");
+            }
+          }
+          if (ctx.hasInput(3) && hasInputShape(ctx, 3)) {
+            const auto& bias = getInputShape(ctx, 3);
+            if (bias.dim_size() != 1) fail_shape_inference("bias must have rank 1.");
+            check_dim(bias.dim(0), n, "bias must have shape [N].");
+          }
+          if (k >= 0) {
+            const int64_t activation_block = activation_block_attr ? activation_block_attr->i() : k;
+            if (std::min({k, block, activation_block}) > std::numeric_limits<int32_t>::max() / (127 * (int64_t{1} << (bits - 1)))) {
+              fail_shape_inference("Common scale interval exceeds the INT32 accumulator bound.");
+            }
+          }
+          if (a) {
+            TensorShapeProto output = *a;
+            auto* last = output.mutable_dim(output.dim_size() - 1);
+            if (b)
+              *last = b->dim(0);
+            else
+              last->Clear();
+            updateOutputShape(ctx, 0, output);
+          }
         }));
 
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,

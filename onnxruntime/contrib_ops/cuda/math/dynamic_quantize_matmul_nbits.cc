@@ -1,0 +1,178 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "contrib_ops/cuda/math/dynamic_quantize_matmul_nbits.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+
+#include "core/common/safeint.h"
+
+namespace onnxruntime::contrib::cuda {
+using namespace onnxruntime::cuda;
+
+ONNX_OPERATOR_KERNEL_EX(
+    DynamicQuantizeMatMulNBits, kMSDomain, 1, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, BFloat16>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<float, MLFloat16, BFloat16>()),
+    DynamicQuantizeMatMulNBits);
+
+namespace {
+Status CheckInput(bool valid, const char* message) {
+  return valid ? Status::OK() : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+}
+
+template <typename T>
+Status ValidateConstantScales(const Tensor& scales) {
+  // Initialization only. Chunking bounds host scratch even for very large initializers.
+  std::array<T, 4096> host;
+  const T* data = scales.Data<T>();
+  const int64_t count = scales.Shape().Size();
+  for (int64_t offset = 0; offset < count;) {
+    const auto size = static_cast<size_t>(std::min<int64_t>(host.size(), count - offset));
+    const T* values = data + offset;
+    if (scales.Location().device.Type() != OrtDevice::CPU) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(host.data(), values, size * sizeof(T), cudaMemcpyDeviceToHost));
+      values = host.data();
+    }
+    for (size_t i = 0; i < size; ++i) {
+      ORT_RETURN_IF_ERROR(CheckInput(std::isfinite(static_cast<float>(values[i])), "scales must contain only finite values."));
+    }
+    offset += size;
+  }
+  return Status::OK();
+}
+}  // namespace
+
+DynamicQuantizeMatMulNBits::DynamicQuantizeMatMulNBits(const OpKernelInfo& info)
+    : CudaKernel(info),
+      bits_(info.GetAttrOrDefault<int64_t>("bits", 8)),
+      block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)),
+      activation_block_size_(0) {
+  ORT_ENFORCE(bits_ == 2 || bits_ == 4 || bits_ == 8, "bits must be 2, 4, or 8.");
+  ORT_ENFORCE(block_size_ >= 16 && (block_size_ & (block_size_ - 1)) == 0,
+              "block_size must be a power of two and at least 16.");
+  ORT_ENFORCE(bits_ != 2 || block_size_ <= 256, "INT2 block_size must not exceed 256.");
+  const auto mode = info.GetAttrOrDefault<std::string>("activation_quantization", "dynamic_per_token");
+  const bool has_block_size = info.GetAttr<int64_t>("activation_block_size", &activation_block_size_).IsOK();
+  ORT_ENFORCE(mode == "dynamic_per_tensor" || mode == "dynamic_per_token" || mode == "dynamic_per_block",
+              "Unrecognized activation_quantization.");
+  mode_ = mode == "dynamic_per_tensor"  ? DynamicQuantizationMode::PerTensor
+          : mode == "dynamic_per_token" ? DynamicQuantizationMode::PerToken
+                                        : DynamicQuantizationMode::PerBlock;
+  ORT_ENFORCE(mode_ == DynamicQuantizationMode::PerBlock ? has_block_size && activation_block_size_ > 0
+                                                         : !has_block_size,
+              "activation_block_size must be positive and present exactly for dynamic_per_block.");
+
+  const Tensor* scales = nullptr;
+  if (info.TryGetConstantInput(2, &scales)) {
+    if (scales->IsDataType<float>()) {
+      ORT_THROW_IF_ERROR(ValidateConstantScales<float>(*scales));
+    } else if (scales->IsDataType<MLFloat16>()) {
+      ORT_THROW_IF_ERROR(ValidateConstantScales<MLFloat16>(*scales));
+    } else {
+      ORT_THROW_IF_ERROR(ValidateConstantScales<BFloat16>(*scales));
+    }
+    constant_scales_validated_ = true;
+  }
+}
+
+Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) const {
+  const auto* a = context->Input<Tensor>(0);
+  const auto* b = context->Input<Tensor>(1);
+  const auto* scales = context->Input<Tensor>(2);
+  const auto* bias = context->Input<Tensor>(3);
+  const auto& as = a->Shape();
+  const auto& bs = b->Shape();
+  const auto& ss = scales->Shape();
+  ORT_RETURN_IF_ERROR(CheckInput(as.NumDimensions() >= 1 && bs.NumDimensions() == 3,
+                                 "A must have rank at least 1 and B must have rank 3."));
+  const int64_t k = as[as.NumDimensions() - 1];
+  const int64_t n = bs[0];
+  const int64_t groups = k / block_size_ + (k % block_size_ != 0);
+  const int64_t blob_size = block_size_ / (8 / bits_);
+  const int64_t scale_count = SafeInt<int64_t>(n) * groups;
+  ORT_RETURN_IF_ERROR(CheckInput(bs[1] == groups && bs[2] == blob_size, "B must have shape [N, ceil(K/block_size), blob_size]."));
+  ORT_RETURN_IF_ERROR(CheckInput((ss.NumDimensions() == 1 && ss[0] == scale_count) ||
+                                     (ss.NumDimensions() == 2 && ss[0] == n && ss[1] == groups),
+                                 "scales must have shape [N, G] or [N * G]."));
+  if (bias) {
+    ORT_RETURN_IF_ERROR(CheckInput(bias->Shape().NumDimensions() == 1 && bias->Shape()[0] == n,
+                                   "bias must have shape [N]."));
+  }
+  const int64_t activation_block = mode_ == DynamicQuantizationMode::PerBlock ? activation_block_size_ : k;
+  const int64_t interval_bound = std::min({k, block_size_, activation_block});
+  ORT_RETURN_IF_ERROR(CheckInput(interval_bound <= std::numeric_limits<int32_t>::max() / (127 * (int64_t{1} << (bits_ - 1))),
+                                 "Common scale interval exceeds the INT32 accumulator bound."));
+
+  TensorShapeVector output_shape(as.GetDims().begin(), as.GetDims().end());
+  output_shape.back() = n;
+  auto* y = context->Output(0, output_shape);
+  const int64_t output_count = y->Shape().Size();
+  if (output_count == 0) {
+    return Status::OK();
+  }
+  const int64_t m = output_count / n;
+  const bool bf16 = a->IsDataType<BFloat16>();
+  const auto stream = Stream(context);
+  const void* bias_data = bias ? bias->DataRaw() : nullptr;
+  if (k == 0) {
+    return LaunchDynamicQuantizedEmpty(y->MutableDataRaw(), bias_data, bf16, output_count, n, stream);
+  }
+  const auto scale_type = scales->IsDataType<float>()       ? DynamicWeightScaleType::Float
+                          : scales->IsDataType<MLFloat16>() ? DynamicWeightScaleType::Half
+                                                            : DynamicWeightScaleType::BFloat16;
+  if (!constant_scales_validated_) {
+    cudaStreamCaptureStatus capture;
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
+    ORT_RETURN_IF_ERROR(CheckInput(capture == cudaStreamCaptureStatusNone,
+                                   "CUDA graph capture requires non-overridable constant scales."));
+    auto invalid = GetScratchBuffer<int>(1, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(LaunchValidateDynamicWeightScales(scales->DataRaw(), scale_type, scale_count,
+                                                          invalid.get(), stream));
+    int host_invalid = 0;
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&host_invalid, invalid.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    ORT_RETURN_IF_ERROR(CheckInput(host_invalid == 0, "scales must contain only finite values."));
+  }
+
+  const int64_t activation_groups = k / activation_block + (k % activation_block != 0);
+  const bool per_tensor = mode_ == DynamicQuantizationMode::PerTensor;
+  // Bound scratch by a row tile, retaining at least one complete activation row.
+  constexpr int64_t scratch_budget = 16 * 1024 * 1024;
+  const size_t tensor_partial_count = per_tensor ? DynamicTensorScaleScratchSize(a->Shape().Size()) : 0;
+  const int64_t reduction_bytes = (SafeInt<int64_t>(tensor_partial_count) + (per_tensor ? 1 : 0)) * sizeof(float);
+  const int64_t row_bytes = SafeInt<int64_t>(k) + SafeInt<int64_t>(per_tensor ? 0 : activation_groups) * sizeof(float);
+  const int64_t tile_m = std::min(m, std::max<int64_t>(1, (scratch_budget - reduction_bytes) / row_bytes));
+  auto quantized = GetScratchBuffer<int8_t>(SafeInt<size_t>(tile_m) * k, GetComputeStream(context));
+  const size_t activation_scale_count = SafeInt<size_t>(tile_m) * (per_tensor ? 0 : activation_groups);
+  auto activation_scales = GetScratchBuffer<float>(activation_scale_count, GetComputeStream(context));
+  auto tensor_scale = GetScratchBuffer<float>(per_tensor ? 1 : 0, GetComputeStream(context));
+  auto tensor_partials = GetScratchBuffer<float>(tensor_partial_count, GetComputeStream(context));
+  if (per_tensor) {
+    ORT_RETURN_IF_ERROR(LaunchDynamicTensorScale(a->DataRaw(), bf16, a->Shape().Size(), tensor_scale.get(),
+                                                 tensor_partials.get(), stream));
+  }
+  for (int64_t row = 0; row < m;) {
+    const int64_t rows = std::min(tile_m, m - row);
+    const size_t a_offset = SafeInt<size_t>(row) * k;
+    const size_t y_offset = SafeInt<size_t>(row) * n;
+    const auto* a_tile = static_cast<const uint16_t*>(a->DataRaw()) + a_offset;
+    auto* y_tile = static_cast<uint16_t*>(y->MutableDataRaw()) + y_offset;
+    ORT_RETURN_IF_ERROR(LaunchDynamicQuantizeRows(a_tile, bf16, rows, k, activation_block,
+                                                  per_tensor ? tensor_scale.get() : nullptr,
+                                                  quantized.get(), activation_scales.get(), stream));
+    ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedMatMul(quantized.get(), per_tensor ? tensor_scale.get() : activation_scales.get(), b->Data<uint8_t>(),
+                                                     scales->DataRaw(), scale_type, bias_data, y_tile, bf16,
+                                                     per_tensor, rows, n, k, static_cast<int>(bits_), block_size_, activation_block,
+                                                     GetDeviceProp().major * 10 + GetDeviceProp().minor, stream));
+    row += rows;
+  }
+  return Status::OK();
+}
+
+}  // namespace onnxruntime::contrib::cuda

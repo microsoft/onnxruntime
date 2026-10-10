@@ -1,0 +1,629 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "contrib_ops/cuda/math/dynamic_quantize_matmul_nbits.h"
+
+#include <algorithm>
+#include <cfloat>
+#include <limits>
+#include <math_constants.h>
+
+#include "core/common/safeint.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
+
+namespace onnxruntime::contrib::cuda {
+namespace {
+constexpr int kThreads = onnxruntime::cuda::GridDim::maxThreadsPerBlock;
+constexpr int kTensorReductionMaxBlocks = 1024;
+constexpr int kTensorReductionElementsPerBlock = 4096;
+
+int Blocks(int64_t count, int work_per_block = kThreads) {
+  return static_cast<int>(std::min<int64_t>(65535, count / work_per_block + (count % work_per_block != 0)));
+}
+
+__device__ float LoadScale(const void* scales, DynamicWeightScaleType type, int64_t index) {
+  if (type == DynamicWeightScaleType::Float) return static_cast<const float*>(scales)[index];
+  if (type == DynamicWeightScaleType::Half) return to_float(static_cast<const half*>(scales)[index]);
+  return to_float(static_cast<const __nv_bfloat16*>(scales)[index]);
+}
+
+__global__ void ValidateScales(const void* scales, DynamicWeightScaleType type, int64_t count, int* invalid) {
+  for (int64_t i = int64_t{blockIdx.x} * blockDim.x + threadIdx.x; i < count;
+       i += int64_t{gridDim.x} * blockDim.x) {
+    if (!isfinite(LoadScale(scales, type, i))) atomicExch(invalid, 1);
+  }
+}
+
+__device__ float ReduceMaximum(float maximum, float* shared) {
+  for (int delta = 16; delta > 0; delta /= 2) {
+    maximum = fmaxf(maximum, __shfl_down_sync(0xffffffff, maximum, delta));
+  }
+  if (threadIdx.x % 32 == 0) shared[threadIdx.x / 32] = maximum;
+  __syncthreads();
+  if (threadIdx.x < 32) {
+    maximum = threadIdx.x < blockDim.x / 32 ? shared[threadIdx.x] : 0.0f;
+    for (int delta = 16; delta > 0; delta /= 2) {
+      maximum = fmaxf(maximum, __shfl_down_sync(0xffffffff, maximum, delta));
+    }
+    if (threadIdx.x == 0) shared[0] = maximum;
+  }
+  __syncthreads();
+  return shared[0];
+}
+
+__device__ float ScaleFromMaximum(float maximum) {
+  if (!isfinite(maximum)) return CUDART_NAN_F;
+  if (maximum == 0) return 1.0f;
+  return fmaxf(__fdiv_rn(maximum, 127.0f), __uint_as_float(1));
+}
+
+// Infinity marks either infinity or NaN; max reduction then preserves the marker.
+template <typename T>
+__device__ float DomainScale(const T* a, int64_t count, float* shared) {
+  float maximum = 0;
+  for (int64_t i = threadIdx.x; i < count; i += blockDim.x) {
+    const float value = to_float(a[i]);
+    maximum = fmaxf(maximum, isfinite(value) ? fabsf(value) : CUDART_INF_F);
+  }
+  return ScaleFromMaximum(ReduceMaximum(maximum, shared));
+}
+
+template <typename T>
+__global__ void TensorScale(const T* a, int64_t count, float* scale) {
+  __shared__ float shared[kThreads / 32];
+  const float value = DomainScale(a, count, shared);
+  if (threadIdx.x == 0) *scale = value;
+}
+
+template <typename T>
+__global__ void TensorMaximumPartials(const T* a, int64_t count, float* partials) {
+  __shared__ float shared[kThreads / 32];
+  float maximum = 0.0f;
+  for (int64_t i = int64_t{blockIdx.x} * blockDim.x + threadIdx.x; i < count;
+       i += int64_t{gridDim.x} * blockDim.x) {
+    const float value = to_float(a[i]);
+    maximum = fmaxf(maximum, isfinite(value) ? fabsf(value) : CUDART_INF_F);
+  }
+  maximum = ReduceMaximum(maximum, shared);
+  if (threadIdx.x == 0) partials[blockIdx.x] = maximum;
+}
+
+__global__ void TensorScaleFromPartials(const float* partials, int count, float* scale) {
+  __shared__ float shared[kThreads / 32];
+  float maximum = 0.0f;
+  for (int i = threadIdx.x; i < count; i += blockDim.x) maximum = fmaxf(maximum, partials[i]);
+  maximum = ReduceMaximum(maximum, shared);
+  if (threadIdx.x == 0) *scale = ScaleFromMaximum(maximum);
+}
+
+template <typename T>
+__global__ void QuantizeRows(const T* a, int64_t rows, int64_t k, int64_t block_size,
+                             const float* tensor_scale, int8_t* quantized, float* scales) {
+  __shared__ float shared[kThreads / 32];
+  const int64_t groups = k / block_size + (k % block_size != 0);
+  for (int64_t domain = blockIdx.x; domain < rows * groups; domain += gridDim.x) {
+    const int64_t row = domain / groups;
+    const int64_t start = (domain % groups) * block_size;
+    const int64_t count = min(block_size, k - start);
+    const float scale = tensor_scale ? *tensor_scale : DomainScale(a + row * k + start, count, shared);
+    if (threadIdx.x == 0 && scales) scales[domain] = scale;
+    for (int64_t i = threadIdx.x; i < count; i += blockDim.x) {
+      const int64_t index = row * k + start + i;
+      const int code = isnan(scale) ? 0 : __float2int_rn(__fdiv_rn(to_float(a[index]), scale));
+      quantized[index] = static_cast<int8_t>(max(-127, min(127, code)));
+    }
+    __syncthreads();
+  }
+}
+
+__device__ float ScaleProduct(int32_t acc, float a, float b) {
+  if (isnan(a)) return CUDART_NAN_F;
+  const float v = __int2float_rn(acc);
+  const float t = __fmul_rn(v, a);
+  if (acc == 0 || (isfinite(t) && fabsf(t) >= FLT_MIN)) return __fmul_rn(t, b);
+  return __double2float_rn(__dmul_rn(__dmul_rn(static_cast<double>(v), static_cast<double>(a)),
+                                     static_cast<double>(b)));
+}
+
+template <int Bits>
+__device__ __forceinline__ int DecodeWeight(const uint8_t* blob, int64_t j) {
+  constexpr int pack = 8 / Bits;
+  return ((blob[j / pack] >> (Bits * (j % pack))) & ((1 << Bits) - 1)) - (1 << (Bits - 1));
+}
+
+// Four consecutive centered codes. The caller guarantees they belong to one blob.
+template <int Bits>
+__device__ __forceinline__ uint32_t DecodeWeight4(const uint8_t* blob, int64_t j) {
+  if constexpr (Bits == 8) {
+    if (j % 4 == 0) return *reinterpret_cast<const uint32_t*>(blob + j) ^ 0x80808080u;
+  }
+  uint32_t codes = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    codes |= static_cast<uint32_t>(static_cast<uint8_t>(DecodeWeight<Bits>(blob, j + i))) << (8 * i);
+  }
+  return codes;
+}
+
+__device__ __forceinline__ int32_t Dot4(uint32_t a, uint32_t b, int32_t acc) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 610
+  return __dp4a(static_cast<int>(a), static_cast<int>(b), acc);
+#else
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    acc += static_cast<int8_t>(a >> (8 * i)) * static_cast<int8_t>(b >> (8 * i));
+  }
+  return acc;
+#endif
+}
+
+template <typename T, int Bits>
+__global__ void IntegerMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
+                              const void* b_scales, DynamicWeightScaleType scale_type,
+                              const T* bias, T* y, bool per_tensor, int64_t rows, int64_t n, int64_t k,
+                              int64_t block_size, int64_t activation_block_size) {
+  constexpr int warp_size = 32;
+  const int lane = threadIdx.x % warp_size;
+  const int64_t groups = k / block_size + (k % block_size != 0);
+  const int64_t activation_groups = per_tensor ? 0 : k / activation_block_size + (k % activation_block_size != 0);
+  constexpr int pack = 8 / Bits;
+  const int64_t blob_size = block_size / pack;
+  for (int64_t output = (int64_t{blockIdx.x} * blockDim.x + threadIdx.x) / warp_size;
+       output < rows * n; output += int64_t{gridDim.x} * (blockDim.x / warp_size)) {
+    const int64_t row = output / n;
+    const int64_t column = output % n;
+    float total = 0;
+    for (int64_t start = 0; start < k;) {
+      const int64_t weight_group = start / block_size;
+      const int64_t activation_group = start / activation_block_size;
+      const int64_t length = min(k - start, min(block_size - start % block_size,
+                                                activation_block_size - start % activation_block_size));
+      int32_t acc = 0;
+      const uint8_t* blob = b + (column * groups + weight_group) * blob_size;
+      for (int64_t offset = lane * 4; offset < length; offset += warp_size * 4) {
+        const int64_t pos = start + offset;
+        const int64_t j = pos % block_size;
+        if (offset + 4 <= length) {
+          const int8_t* activation = a + row * k + pos;
+          uint32_t codes = 0;
+          if ((row * k + pos) % 4 == 0) {
+            codes = *reinterpret_cast<const uint32_t*>(activation);
+          } else {
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+              codes |= static_cast<uint32_t>(static_cast<uint8_t>(activation[i])) << (8 * i);
+            }
+          }
+          acc = Dot4(codes, DecodeWeight4<Bits>(blob, j), acc);
+        } else {
+          for (int i = 0; i < length - offset; ++i) {
+            acc += static_cast<int32_t>(a[row * k + pos + i]) * DecodeWeight<Bits>(blob, j + i);
+          }
+        }
+      }
+      for (int delta = 16; delta > 0; delta /= 2) {
+        const int32_t other = __shfl_down_sync(0xffffffff, acc, delta);
+        if (lane < delta) acc += other;
+      }
+      if (lane == 0) {
+        const float term = ScaleProduct(acc, a_scales[row * activation_groups + activation_group],
+                                        LoadScale(b_scales, scale_type, column * groups + weight_group));
+        total = start == 0 ? term : __fadd_rn(total, term);
+      }
+      start += length;
+    }
+    if (lane == 0) y[output] = from_float<T>(__fadd_rn(total, bias ? to_float(bias[column]) : 0.0f));
+  }
+}
+
+constexpr int kNativeM = 32;
+constexpr int kNativeN = 64;
+constexpr int kNativeK = 64;
+constexpr int kNativeThreads = 128;
+// An odd word stride distributes the register-fragment loads across shared banks.
+constexpr int kNativeStride = kNativeK / 4 + 1;
+
+__device__ __forceinline__ void MmaInt8(int32_t* acc, const uint32_t* a, uint32_t b0, uint32_t b1) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile(
+      "mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32 "
+      "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};"
+      : "+r"(acc[0]), "+r"(acc[1]), "+r"(acc[2]), "+r"(acc[3])
+      : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
+#endif
+}
+
+// One common interval permits keeping only INT32 fragments until the epilogue.
+// The aligned W8 tile also avoids per-code division, byte loads, and decoding.
+template <typename T, int TileM>
+__global__ void NativeSingleIntervalMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                           const void* b_scales, DynamicWeightScaleType scale_type,
+                                           const T* bias, T* y, bool per_tensor, int64_t rows, int64_t n,
+                                           int k, int64_t block_size) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  constexpr int tile_n = 128;
+  constexpr int tile_k = 64;
+  constexpr int threads = 256;
+  // Four-word padding keeps uint4 stores aligned and makes the eight rows x
+  // four words in each MMA register load hit all 32 shared banks.
+  constexpr int stride = tile_k / 4 + 4;
+  constexpr int m_fragments = TileM / 32;
+  __shared__ __align__(16) uint32_t shared_a[TileM][stride];
+  __shared__ __align__(16) uint32_t shared_b[tile_n][stride];
+  const int lane = threadIdx.x % 32;
+  const int warp = threadIdx.x / 32;
+  const int warp_row = (warp / 4) * (TileM / 2);
+  const int warp_column = (warp % 4) * 32;
+  const int64_t column_tiles = n / tile_n + (n % tile_n != 0);
+  const int64_t row_tiles = rows / TileM + (rows % TileM != 0);
+  for (int64_t tile = blockIdx.x; tile < row_tiles * column_tiles; tile += gridDim.x) {
+    const int64_t tile_row = (tile / column_tiles) * TileM;
+    const int64_t tile_column = (tile % column_tiles) * tile_n;
+    int32_t acc[m_fragments][4][4] = {};
+    for (int pos = 0; pos < k; pos += tile_k) {
+      const int valid_k = min(tile_k, k - pos);
+#pragma unroll
+      for (int i = threadIdx.x; i < TileM * (tile_k / 16); i += threads) {
+        const int local_row = i / (tile_k / 16);
+        const int vector = i % (tile_k / 16);
+        const int64_t row = tile_row + local_row;
+        uint4 codes = {};
+        if (row < rows && vector * 16 < valid_k) {
+          codes = *reinterpret_cast<const uint4*>(a + row * k + pos + vector * 16);
+        }
+        *reinterpret_cast<uint4*>(&shared_a[local_row][vector * 4]) = codes;
+      }
+#pragma unroll
+      for (int i = threadIdx.x; i < tile_n * (tile_k / 16); i += threads) {
+        const int local_column = i / (tile_k / 16);
+        const int vector = i % (tile_k / 16);
+        const int64_t column = tile_column + local_column;
+        uint4 codes = {};
+        if (column < n && vector * 16 < valid_k) {
+          codes = *reinterpret_cast<const uint4*>(b + column * block_size + pos + vector * 16);
+          codes.x ^= 0x80808080u;
+          codes.y ^= 0x80808080u;
+          codes.z ^= 0x80808080u;
+          codes.w ^= 0x80808080u;
+        }
+        *reinterpret_cast<uint4*>(&shared_b[local_column][vector * 4]) = codes;
+      }
+      __syncthreads();
+#pragma unroll
+      for (int half_k = 0; half_k < 2; ++half_k) {
+        if (half_k * 32 < valid_k) {
+          const int word = half_k * 8 + lane % 4;
+          uint32_t fragment_b[4][2];
+#pragma unroll
+          for (int cf = 0; cf < 4; ++cf) {
+            const int column = warp_column + cf * 8 + lane / 4;
+            fragment_b[cf][0] = shared_b[column][word];
+            fragment_b[cf][1] = shared_b[column][word + 4];
+          }
+#pragma unroll
+          for (int mf = 0; mf < m_fragments; ++mf) {
+            const int row = warp_row + mf * 16 + lane / 4;
+            const uint32_t fragment_a[4] = {
+                shared_a[row][word], shared_a[row + 8][word],
+                shared_a[row][word + 4], shared_a[row + 8][word + 4]};
+#pragma unroll
+            for (int cf = 0; cf < 4; ++cf) {
+              MmaInt8(acc[mf][cf], fragment_a, fragment_b[cf][0], fragment_b[cf][1]);
+            }
+          }
+        }
+      }
+      __syncthreads();
+    }
+#pragma unroll
+    for (int mf = 0; mf < m_fragments; ++mf) {
+#pragma unroll
+      for (int cf = 0; cf < 4; ++cf) {
+#pragma unroll
+        for (int element = 0; element < 4; ++element) {
+          const int64_t row = tile_row + warp_row + mf * 16 + lane / 4 + (element / 2) * 8;
+          const int64_t column = tile_column + warp_column + cf * 8 + (lane % 4) * 2 + element % 2;
+          if (row < rows && column < n) {
+            const float scaled = ScaleProduct(acc[mf][cf][element], a_scales[per_tensor ? 0 : row],
+                                              LoadScale(b_scales, scale_type, column));
+            y[row * n + column] = from_float<T>(__fadd_rn(scaled, bias ? to_float(bias[column]) : 0.0f));
+          }
+        }
+      }
+    }
+  }
+#endif
+}
+
+template <typename T, int Bits>
+__global__ void NativeIntegerMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                    const void* b_scales, DynamicWeightScaleType scale_type,
+                                    const T* bias, T* y, bool per_tensor, int64_t rows, int64_t n, int64_t k,
+                                    int64_t block_size, int64_t activation_block_size) {
+// The host checks both the runtime architecture and the loaded image's PTX
+// target. In particular, JIT of a pre-SM80 image must not select this body.
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  __shared__ uint32_t shared_a[kNativeM][kNativeStride];
+  __shared__ uint32_t shared_b[kNativeN][kNativeStride];
+  const int lane = threadIdx.x % 32;
+  const int warp = threadIdx.x / 32;
+  const int fragment_row = (warp / 2) * 16 + lane / 4;
+  const int fragment_column = (warp % 2) * 32 + (lane % 4) * 2;
+  const int64_t groups = k / block_size + (k % block_size != 0);
+  const int64_t activation_groups = per_tensor ? 0 : k / activation_block_size + (k % activation_block_size != 0);
+  const int64_t blob_size = block_size / (8 / Bits);
+  const int64_t column_tiles = n / kNativeN + (n % kNativeN != 0);
+  const int64_t row_tiles = rows / kNativeM + (rows % kNativeM != 0);
+  for (int64_t tile = blockIdx.x; tile < row_tiles * column_tiles; tile += gridDim.x) {
+    const int64_t tile_row = (tile / column_tiles) * kNativeM;
+    const int64_t tile_column = (tile % column_tiles) * kNativeN;
+    float total[4][4];
+    for (int64_t start = 0; start < k;) {
+      const int64_t weight_group = start / block_size;
+      const int64_t activation_group = start / activation_block_size;
+      const int64_t length = min(k - start, min(block_size - start % block_size,
+                                                activation_block_size - start % activation_block_size));
+      int32_t acc[4][4] = {};
+      for (int64_t offset = 0; offset < length; offset += kNativeK) {
+        const int valid_k = static_cast<int>(min(int64_t{kNativeK}, length - offset));
+        const int64_t pos = start + offset;
+        // Cooperative four-byte loads, with no expanded global weight matrix.
+        // Predication excludes serialized padding, including unused packed bits.
+        for (int i = threadIdx.x; i < kNativeM * (kNativeK / 4); i += kNativeThreads) {
+          const int local_row = i / (kNativeK / 4);
+          const int word = i % (kNativeK / 4);
+          const int64_t row = tile_row + local_row;
+          const int local_k = word * 4;
+          uint32_t codes = 0;
+          if (row < rows && local_k < valid_k) {
+            const int8_t* input = a + row * k + pos + local_k;
+            if (local_k + 4 <= valid_k && (row * k + pos + local_k) % 4 == 0) {
+              codes = *reinterpret_cast<const uint32_t*>(input);
+            } else {
+#pragma unroll
+              for (int j = 0; j < 4; ++j) {
+                if (local_k + j < valid_k) {
+                  codes |= static_cast<uint32_t>(static_cast<uint8_t>(input[j])) << (8 * j);
+                }
+              }
+            }
+          }
+          shared_a[local_row][word] = codes;
+        }
+        for (int i = threadIdx.x; i < kNativeN * (kNativeK / 4); i += kNativeThreads) {
+          const int local_column = i / (kNativeK / 4);
+          const int word = i % (kNativeK / 4);
+          const int64_t column = tile_column + local_column;
+          const int local_k = word * 4;
+          uint32_t codes = 0;
+          if (column < n && local_k < valid_k) {
+            const uint8_t* blob = b + (column * groups + weight_group) * blob_size;
+            const int64_t j = pos % block_size + local_k;
+            if (local_k + 4 <= valid_k) {
+              codes = DecodeWeight4<Bits>(blob, j);
+            } else {
+#pragma unroll
+              for (int t = 0; t < 4; ++t) {
+                if (local_k + t < valid_k) {
+                  codes |= static_cast<uint32_t>(static_cast<uint8_t>(DecodeWeight<Bits>(blob, j + t))) << (8 * t);
+                }
+              }
+            }
+          }
+          shared_b[local_column][word] = codes;
+        }
+        __syncthreads();
+#pragma unroll
+        for (int half_k = 0; half_k < 2; ++half_k) {
+          if (half_k * 32 < valid_k) {
+            const int word = half_k * 8 + lane % 4;
+            const uint32_t fragment_a[4] = {
+                shared_a[fragment_row][word],
+                shared_a[fragment_row + 8][word],
+                shared_a[fragment_row][word + 4],
+                shared_a[fragment_row + 8][word + 4]};
+#pragma unroll
+            for (int column_fragment = 0; column_fragment < 4; ++column_fragment) {
+              const int column = (warp % 2) * 32 + column_fragment * 8 + lane / 4;
+              MmaInt8(acc[column_fragment], fragment_a, shared_b[column][word], shared_b[column][word + 4]);
+            }
+          }
+        }
+        __syncthreads();
+      }
+      // Reset INT32 at every common boundary, then add terms strictly in K
+      // order. Equal adjacent scales do not permit merging interval dots.
+#pragma unroll
+      for (int column_fragment = 0; column_fragment < 4; ++column_fragment) {
+#pragma unroll
+        for (int element = 0; element < 4; ++element) {
+          const int64_t row = tile_row + fragment_row + (element / 2) * 8;
+          const int64_t column = tile_column + fragment_column + column_fragment * 8 + element % 2;
+          if (row < rows && column < n) {
+            const float term = ScaleProduct(acc[column_fragment][element],
+                                            a_scales[per_tensor ? 0 : row * activation_groups + activation_group],
+                                            LoadScale(b_scales, scale_type, column * groups + weight_group));
+            total[column_fragment][element] = start == 0 ? term : __fadd_rn(total[column_fragment][element], term);
+          }
+        }
+      }
+      start += length;
+    }
+#pragma unroll
+    for (int column_fragment = 0; column_fragment < 4; ++column_fragment) {
+#pragma unroll
+      for (int element = 0; element < 4; ++element) {
+        const int64_t row = tile_row + fragment_row + (element / 2) * 8;
+        const int64_t column = tile_column + fragment_column + column_fragment * 8 + element % 2;
+        if (row < rows && column < n) {
+          y[row * n + column] = from_float<T>(__fadd_rn(total[column_fragment][element],
+                                                        bias ? to_float(bias[column]) : 0.0f));
+        }
+      }
+    }
+  }
+#endif
+}
+
+template <typename Kernel>
+Status NativeKernelAvailable(Kernel kernel, bool& available) {
+  available = false;
+  cudaFuncAttributes attributes{};
+  const auto error = cudaFuncGetAttributes(&attributes, kernel);
+  if (error == cudaErrorNoKernelImageForDevice || error == cudaErrorInvalidDeviceFunction) {
+    // Availability failure is not a compute failure. Clear it before generic launch.
+    (void)cudaGetLastError();
+    return Status::OK();
+  }
+  CUDA_RETURN_IF_ERROR(error);
+  // A pre-SM80 PTX image can JIT to SM80+, but its source was compiled without
+  // the guarded MMA body. Check the source target as well as the loaded binary.
+  available = attributes.binaryVersion >= 80 && attributes.ptxVersion >= 80;
+  return Status::OK();
+}
+
+template <typename T, int Bits>
+Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
+                    const void* b_scales, DynamicWeightScaleType scale_type, const void* bias, void* y,
+                    bool per_tensor, int64_t rows, int64_t n, int64_t k, int64_t block_size,
+                    int64_t activation_block_size, int compute_capability, cudaStream_t stream) {
+  if constexpr (Bits == 8) {
+    // CUDA allocations are aligned; K divisible by 16 makes every raw qA row
+    // uint4-aligned without padding or additional activation scratch.
+    if (compute_capability >= 80 && rows >= 16 && n >= 8 && k >= 32 && k % 16 == 0 &&
+        k <= std::numeric_limits<int>::max() && block_size >= k && activation_block_size >= k) {
+      bool available;
+      ORT_RETURN_IF_ERROR(NativeKernelAvailable(NativeSingleIntervalMatMul<T, 64>, available));
+      if (available) {
+        const int64_t row_tiles = rows / 64 + (rows % 64 != 0);
+        const int64_t column_tiles = n / 128 + (n % 128 != 0);
+        const size_t tiles = SafeInt<size_t>(row_tiles) * column_tiles;
+        const int blocks = static_cast<int>(std::min<size_t>(65535, tiles));
+        NativeSingleIntervalMatMul<T, 64><<<blocks, 256, 0, stream>>>(
+            a, a_scales, b, b_scales, scale_type, static_cast<const T*>(bias), static_cast<T*>(y),
+            per_tensor, rows, n, static_cast<int>(k), block_size);
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        return Status::OK();
+      }
+    }
+  }
+  const bool aligned_intervals = (block_size >= k || block_size % 32 == 0) &&
+                                 (activation_block_size >= k || activation_block_size % 32 == 0);
+  if (compute_capability >= 80 && rows >= 32 && n >= 8 && k >= 32 && aligned_intervals) {
+    bool available;
+    ORT_RETURN_IF_ERROR(NativeKernelAvailable(NativeIntegerMatMul<T, Bits>, available));
+    if (available) {
+      const int64_t row_tiles = rows / kNativeM + (rows % kNativeM != 0);
+      const int64_t column_tiles = n / kNativeN + (n % kNativeN != 0);
+      const size_t tiles = SafeInt<size_t>(row_tiles) * column_tiles;
+      const int blocks = static_cast<int>(std::min<size_t>(65535, tiles));
+      NativeIntegerMatMul<T, Bits><<<blocks, kNativeThreads, 0, stream>>>(
+          a, a_scales, b, b_scales, scale_type, static_cast<const T*>(bias), static_cast<T*>(y),
+          per_tensor, rows, n, k, block_size, activation_block_size);
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
+      return Status::OK();
+    }
+  }
+  const int blocks = Blocks(SafeInt<int64_t>(rows) * n, kThreads / 32);
+  IntegerMatMul<T, Bits><<<blocks, kThreads, 0, stream>>>(
+      a, a_scales, b, b_scales, scale_type, static_cast<const T*>(bias), static_cast<T*>(y),
+      per_tensor, rows, n, k, block_size, activation_block_size);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  return Status::OK();
+}
+
+template <typename T>
+__global__ void EmptyOutput(T* y, const T* bias, int64_t count, int64_t n) {
+  for (int64_t i = int64_t{blockIdx.x} * blockDim.x + threadIdx.x; i < count;
+       i += int64_t{gridDim.x} * blockDim.x) {
+    y[i] = from_float<T>(__fadd_rn(0.0f, bias ? to_float(bias[i % n]) : 0.0f));
+  }
+}
+}  // namespace
+
+Status LaunchValidateDynamicWeightScales(const void* scales, DynamicWeightScaleType type,
+                                         int64_t count, int* invalid, cudaStream_t stream) {
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(invalid, 0, sizeof(int), stream));
+  ValidateScales<<<Blocks(count), kThreads, 0, stream>>>(scales, type, count, invalid);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+size_t DynamicTensorScaleScratchSize(int64_t count) {
+  if (count <= kTensorReductionElementsPerBlock) return 0;
+  return static_cast<size_t>(std::min<int64_t>(kTensorReductionMaxBlocks,
+                                               count / kTensorReductionElementsPerBlock +
+                                                   (count % kTensorReductionElementsPerBlock != 0)));
+}
+
+Status LaunchDynamicTensorScale(const void* a, bool bf16, int64_t count,
+                                float* scale, float* partials, cudaStream_t stream) {
+  const int blocks = static_cast<int>(DynamicTensorScaleScratchSize(count));
+  if (blocks == 0) {
+    if (bf16)
+      TensorScale<<<1, kThreads, 0, stream>>>(static_cast<const __nv_bfloat16*>(a), count, scale);
+    else
+      TensorScale<<<1, kThreads, 0, stream>>>(static_cast<const half*>(a), count, scale);
+  } else {
+    ORT_RETURN_IF_NOT(partials, "Tensor scale reduction requires partial-maxima scratch.");
+    if (bf16)
+      TensorMaximumPartials<<<blocks, kThreads, 0, stream>>>(static_cast<const __nv_bfloat16*>(a), count, partials);
+    else
+      TensorMaximumPartials<<<blocks, kThreads, 0, stream>>>(static_cast<const half*>(a), count, partials);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    TensorScaleFromPartials<<<1, kThreads, 0, stream>>>(partials, blocks, scale);
+  }
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  return Status::OK();
+}
+
+Status LaunchDynamicQuantizeRows(const void* a, bool bf16, int64_t rows, int64_t k,
+                                 int64_t block_size, const float* tensor_scale,
+                                 int8_t* quantized, float* scales, cudaStream_t stream) {
+  const int blocks = Blocks(SafeInt<int64_t>(rows) * (k / block_size + (k % block_size != 0)), 1);
+  if (bf16) {
+    QuantizeRows<<<blocks, kThreads, 0, stream>>>(static_cast<const __nv_bfloat16*>(a), rows, k, block_size,
+                                                  tensor_scale, quantized, scales);
+  } else {
+    QuantizeRows<<<blocks, kThreads, 0, stream>>>(static_cast<const half*>(a), rows, k, block_size,
+                                                  tensor_scale, quantized, scales);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchDynamicQuantizedMatMul(const int8_t* a, const float* a_scales,
+                                    const uint8_t* b, const void* b_scales, DynamicWeightScaleType scale_type,
+                                    const void* bias, void* y, bool bf16, bool per_tensor,
+                                    int64_t rows, int64_t n, int64_t k,
+                                    int bits, int64_t block_size, int64_t activation_block_size,
+                                    int compute_capability, cudaStream_t stream) {
+#define LAUNCH_DYNAMIC_MATMUL(Bits)                                                                                      \
+  return bf16 ? LaunchMatMul<__nv_bfloat16, Bits>(a, a_scales, b, b_scales, scale_type, bias, y, per_tensor, rows, n, k, \
+                                                  block_size, activation_block_size, compute_capability, stream)         \
+              : LaunchMatMul<half, Bits>(a, a_scales, b, b_scales, scale_type, bias, y, per_tensor, rows, n, k,          \
+                                         block_size, activation_block_size, compute_capability, stream)
+  switch (bits) {
+    case 8:
+      LAUNCH_DYNAMIC_MATMUL(8);
+    case 4:
+      LAUNCH_DYNAMIC_MATMUL(4);
+    case 2:
+      LAUNCH_DYNAMIC_MATMUL(2);
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "bits must be 2, 4, or 8.");
+  }
+#undef LAUNCH_DYNAMIC_MATMUL
+}
+
+Status LaunchDynamicQuantizedEmpty(void* y, const void* bias, bool bf16,
+                                   int64_t count, int64_t n, cudaStream_t stream) {
+  if (bf16) {
+    EmptyOutput<<<Blocks(count), kThreads, 0, stream>>>(static_cast<__nv_bfloat16*>(y),
+                                                        static_cast<const __nv_bfloat16*>(bias), count, n);
+  } else {
+    EmptyOutput<<<Blocks(count), kThreads, 0, stream>>>(static_cast<half*>(y), static_cast<const half*>(bias), count, n);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
+}  // namespace onnxruntime::contrib::cuda
