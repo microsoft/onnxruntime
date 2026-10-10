@@ -83,6 +83,7 @@ struct MatMulAlgorithmPrerequisites {
   bool can_use_subgroup_matrix = false;
   bool can_run_gemv = false;
   bool has_subgroup_capability = false;
+  uint32_t subgroup_size = 0;
   bool has_nonzero_k = false;
   bool split_k_configured = false;
   bool deterministic_compute = false;

@@ -509,6 +509,8 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
   prerequisites.can_run_gemv = can_run_gemv;
   prerequisites.has_subgroup_capability = has_subgroup_capability;
+  prerequisites.subgroup_size =
+      subgroup_configuration != nullptr ? subgroup_configuration->subgroup_size : 0;
   prerequisites.has_nonzero_k = helper.K() > 0;
   prerequisites.split_k_configured =
       packed_configuration != nullptr && packed_configuration->split_dim_inner > 1;

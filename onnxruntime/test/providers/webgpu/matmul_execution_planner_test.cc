@@ -560,11 +560,26 @@ TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThre
 TEST(MatMulAlgorithmPrerequisiteTest, SubgroupRejectsZeroContractionDimension) {
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.has_subgroup_capability = true;
+  prerequisites.subgroup_size = 16;
 
   EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
 
   prerequisites.has_nonzero_k = true;
   EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
+}
+
+TEST(MatMulAlgorithmPrerequisiteTest, SubgroupRejectsUnsupportedConfiguredSize) {
+  MatMulAlgorithmPrerequisites prerequisites{};
+  prerequisites.has_subgroup_capability = true;
+  prerequisites.has_nonzero_k = true;
+
+  for (uint32_t subgroup_size : {8u, 16u, 32u}) {
+    prerequisites.subgroup_size = subgroup_size;
+    EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
+  }
+
+  prerequisites.subgroup_size = 64;
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
 }
 
 }  // namespace test

@@ -87,6 +87,9 @@ bool MeetsMatMulAlgorithmPrerequisites(
       return prerequisites.can_run_gemv;
     case MatMulAlgorithm::Subgroup:
       return prerequisites.has_subgroup_capability &&
+             (prerequisites.subgroup_size == 8 ||
+              prerequisites.subgroup_size == 16 ||
+              prerequisites.subgroup_size == 32) &&
              prerequisites.has_nonzero_k;
     case MatMulAlgorithm::PackedSplitK:
       return prerequisites.has_nonzero_k &&
