@@ -881,7 +881,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     return std::shared_ptr<IExecutionProviderFactory>(std::move(ep_factory));
   };
 
-  if (type == kCudaExecutionProvider) {
+  if (type == kCudaExecutionProvider || type == kWebGpuExecutionProvider) {
     if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
       return ep_factory;
     }
@@ -1474,7 +1474,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
         cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
 #endif
   } else if (type == kWebGpuExecutionProvider) {
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
     return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
 #endif
   } else if (type == kCannExecutionProvider) {

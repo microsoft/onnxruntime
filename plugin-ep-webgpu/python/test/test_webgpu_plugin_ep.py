@@ -169,6 +169,15 @@ def test_registration_and_inference():
             del sess
             print("OK: Session released")
 
+            # Exercise the Python provider-name factory path as well as device selection.
+            named_options = ort.SessionOptions()
+            named_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+            named_session = ort.InferenceSession(model_path, sess_options=named_options, providers=[ep_name])
+            assert ep_name in named_session.get_providers(), "Registered WebGPU provider was not selected"
+            np.testing.assert_allclose(named_session.run(None, {"x": x, "y": y})[0], expected, rtol=1e-5, atol=1e-5)
+            del named_session
+            print("OK: Registered plugin inference via provider name (CPU fallback disabled)")
+
     finally:
         ort.unregister_execution_provider_library(registration_name)
         print(f"OK: Unregistered EP library '{registration_name}'")
