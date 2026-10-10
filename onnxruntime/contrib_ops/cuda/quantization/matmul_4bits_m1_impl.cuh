@@ -37,7 +37,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
   int offset = n_block_id * kColsPerThreadBlock * blocks_per_K;
   for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * blocks_per_K;
        i += kColsPerThreadBlock * kWarpSize) {
-    b_scale_vec[i] = scales_data[offset + i];
+    const int column = n_block_id * kColsPerThreadBlock + i / blocks_per_K;
+    b_scale_vec[i] = column < n ? scales_data[offset + i] : T{};
   }
 
   uint8_t* b_zp_vec;
@@ -48,12 +49,18 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
     int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
     for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k;
          i += kColsPerThreadBlock * kWarpSize) {
-      b_zp_vec[2 * i] = (zero_points[zp_offset + i] & 0x0f);
-      b_zp_vec[2 * i + 1] = (zero_points[zp_offset + i] >> 4);
+      const int column = n_block_id * kColsPerThreadBlock + i / b_zp_k;
+      const uint8_t packed_zero_point = column < n ? zero_points[zp_offset + i] : 0;
+      b_zp_vec[2 * i] = packed_zero_point & 0x0f;
+      b_zp_vec[2 * i + 1] = packed_zero_point >> 4;
     }
     b_zp_vec += warp_id * b_zp_k * 2;
   }
   __syncthreads();
+
+  if (n_id >= n) {
+    return;
+  }
 
   a_data += m_id * k + (lane_id << 3);
   b_scale_vec += warp_id * blocks_per_K;
@@ -120,7 +127,7 @@ bool TryMatMul4BitsM1(
     int block_size,
     size_t shared_mem_per_block,
     cudaStream_t stream) {
-  if (n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
+  if (k % kElementsPerThreadPerIteration != 0) {
     return false;
   }
 

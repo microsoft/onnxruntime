@@ -5022,7 +5022,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   [total_tokens, ...] axis instead of a dense [batch_size, sequence_length, ...] axis. It selects, for
   every packed query token, the sparse-attention candidates that a following SparsePagedAttention (or
   similar) operator is allowed to read.
-  
+
   Unlike SparseAttentionIndexer, this operator:
     * takes packed query/key tensors plus cumulative_sequence_lengths (request boundaries) and
       past_sequence_lengths (per-request past length) instead of a dense batch and a dense mask;
@@ -5033,10 +5033,10 @@ This version of the operator has been available since version 1 of the 'com.micr
       rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
-  
+
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
-  
+
     policy_mode = "qsa" ("query sparse attention" token indexer)
       Processes each request's new tokens sequentially: appends raw indexer keys to the generic
       pending buffer, and whenever it reaches compress_ratio tokens, mean-pools it, applies RMSNorm
@@ -5048,7 +5048,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
       incomplete block. QSA positions are the request-local logical cache positions derived from
       past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
-  
+
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
       count) independently per request, using that request's own buffer_length and new token count;
@@ -5056,7 +5056,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       rotated and appended to key_state. Queries are scored against every causally visible compressed
       entry with sum_h w_h * ReLU(q_h . k) and the index_topk highest scoring entry indices are
       emitted.
-  
+
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
       token_budget + compress_ratio - 1 for "qsa" (values are request-local token positions into the
@@ -5077,7 +5077,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     * cumulative_sequence_lengths, past_sequence_lengths and past_state_lengths are read directly by
       the device kernel; a zero-token request row (a repeated cumulative offset) is valid and simply
       contributes no query rows for that request.
-  
+
   OgaEngine integration note: this operator only defines the ORT contrib op; wiring
   past_key_state / past_kv_buffer / past_gate_buffer / past_state_lengths as Engine-managed,
   per-request fixed-size state (analogous to a paged auxiliary cache) is expected to happen in the
@@ -6121,6 +6121,10 @@ This version of the operator has been available since version 1 of the 'com.micr
         Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+        These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+        Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
+        Other activation types and unsupported routing sizes retain the fallback.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
         that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
@@ -6182,7 +6186,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
-<dd>Only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
+<dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
 </dl>
 
 #### Inputs (6 - 21)

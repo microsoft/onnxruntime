@@ -9,6 +9,7 @@
 #pragma once
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -428,6 +429,7 @@ class MatMulNBits final : public CudaKernel {
   WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
   mutable GemmProfilerPtr gemmProfiler_{nullptr};
   GemmIdCore gemmId_{};
+  std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> sm120_decode_tactic_;
 
   IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;

@@ -1920,7 +1920,9 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
                                               bool expect_scratch_failure = true,
                                               bool use_initializers = false,
                                               int64_t num_rows = 1,
-                                              int64_t row_tile_size = 0) {
+                                              int64_t row_tile_size = 0,
+                                              const char* skip_profiling_config = nullptr,
+                                              const char* expected_config_failure = nullptr) {
   constexpr int64_t num_experts = 1;
 
   auto make_identity = [block_size](int64_t bits, int64_t rows, int64_t columns,
@@ -2048,11 +2050,40 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         "ep.cuda.qmoe_row_tile_size", std::to_string(row_tile_size).c_str()));
   }
+  if (skip_profiling_config != nullptr) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.qmoe_skip_nvfp4_gemv_profiling", skip_profiling_config));
+  }
   tester.Run(session_options,
-             max_scratch_bytes > 0 && expect_scratch_failure ? OpTester::ExpectResult::kExpectFailure
-                                                             : OpTester::ExpectResult::kExpectSuccess,
-             max_scratch_bytes > 0 && expect_scratch_failure ? "exceeding the configured limit" : "",
+             expected_config_failure != nullptr || (max_scratch_bytes > 0 && expect_scratch_failure)
+                 ? OpTester::ExpectResult::kExpectFailure
+                 : OpTester::ExpectResult::kExpectSuccess,
+             expected_config_failure != nullptr                ? expected_config_failure
+             : max_scratch_bytes > 0 && expect_scratch_failure ? "exceeding the configured limit"
+                                                               : "",
              {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETest_CudaSkipNvfp4GemvProfilingSessionOption) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  const auto run = [](const char* config_value, const char* expected_error = nullptr) {
+    RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, false, false, false, 32, 64, 64,
+                                      false, false, 1, 0, config_value, expected_error);
+  };
+  for (const char* env_value : {"", "0", "1", "invalid"}) {
+    SCOPED_TRACE(env_value);
+    ScopedEnvironmentVariables env({{"ORT_QMOE_SKIP_NVFP4_GEMV_PROFILING", env_value}});
+    run("0");
+    run("1");
+    run(nullptr, std::string(env_value) == "invalid" ? "Failed to parse environment variable" : nullptr);
+  }
+  ScopedEnvironmentVariables env({{"ORT_QMOE_SKIP_NVFP4_GEMV_PROFILING", "0"}});
+  for (const char* config_value : {"", "2", "true", "-1"}) {
+    SCOPED_TRACE(config_value);
+    run(config_value, "ep.cuda.qmoe_skip_nvfp4_gemv_profiling must be 0 or 1");
+  }
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {

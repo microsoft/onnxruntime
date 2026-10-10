@@ -32,6 +32,8 @@ class SparsePagedAttention final : public onnxruntime::cuda::CudaKernel {
   SparseAttentionMode attention_mode_;
   SelectedKvSource selected_kv_source_;
   bool auxiliary_kv_shared_;
+  bool enable_grouped_;
+  bool enable_grouped_vectorized_{false};
 };
 
 }  // namespace cuda

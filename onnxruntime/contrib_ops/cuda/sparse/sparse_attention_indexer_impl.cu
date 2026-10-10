@@ -1531,8 +1531,10 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
               block_scores, radix_histogram, params);
         }
       } else {
-        ORT_RETURN_IF_ERROR(
-            ConfigureDynamicSharedMemory(QsaBlockScoreKernel<T>, score_shared_bytes, "QsaBlockScoreKernel"));
+        if (score_shared_bytes > 48 * 1024) {
+          CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(QsaBlockScoreKernel<T>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                                    static_cast<int>(score_shared_bytes)));
+        }
         QsaBlockScoreKernel<T><<<score_blocks, kThreads, score_shared_bytes, stream>>>(
             query_rotated, present_key, key_norm_weight, cos_cache, sin_cache, visible_indices, visible_count,
             block_scores, params);

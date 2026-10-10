@@ -230,6 +230,63 @@ __global__ void VarlenCausalConvKernel(
   }
 }
 
+constexpr int kVarlenConvPrefillTokenTile = 32;
+
+template <typename T>
+__global__ void VarlenCausalConvPrefillKernel(
+    const T* __restrict__ input, const T* __restrict__ weight, const T* __restrict__ bias,
+    const T* initial_state, T* __restrict__ output, T* state_update,
+    const int32_t* __restrict__ cu_seqlens, const int32_t* __restrict__ capture_count,
+    int total_tokens, int channels, int dilation,
+    bool apply_silu, int state_update_capacity) {
+  const int64_t channel_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (channel_index >= channels || cu_seqlens[0] != 0 || cu_seqlens[1] != total_tokens) {
+    return;
+  }
+  const int c = static_cast<int>(channel_index);
+  const int pad = 3 * dilation;
+  const T* channel_state = initial_state + static_cast<int64_t>(c) * pad;
+  float weights[4];
+#pragma unroll
+  for (int k = 0; k < 4; ++k) {
+    weights[k] = to_float(weight[static_cast<int64_t>(c) * 4 + k]);
+  }
+  const float bias_value = bias != nullptr ? to_float(bias[c]) : 0.0f;
+  const int captured = state_update == nullptr || capture_count == nullptr
+                           ? 0
+                           : max(0, min(min(capture_count[0], state_update_capacity), total_tokens));
+  const int token_begin = blockIdx.y * kVarlenConvPrefillTokenTile;
+  const int token_end = min(total_tokens, token_begin + kVarlenConvPrefillTokenTile);
+  for (int t = token_begin; t < token_end; ++t) {
+    float sum = bias_value;
+#pragma unroll
+    for (int k = 0; k < 4; ++k) {
+      sum += weights[k] * to_float(ReadStateOrInput(
+                              input, channel_state, 0, channels, c, pad, t - pad + k * dilation));
+    }
+    const int64_t offset = static_cast<int64_t>(t) * channels + c;
+    output[offset] = from_float<T>(apply_silu ? VarlenSilu(sum) : sum);
+    if (t < captured) {
+      state_update[offset] = input[offset];
+    }
+  }
+}
+
+// Launch after every temporal tile has read the old state, preserving initial/final-state aliasing.
+template <typename T>
+__global__ void VarlenCausalConvPrefillStateKernel(
+    const T* __restrict__ input, T* final_state, const int32_t* __restrict__ cu_seqlens,
+    int total_tokens, int channels, int pad) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= static_cast<int64_t>(channels) * pad ||
+      cu_seqlens[0] != 0 || cu_seqlens[1] != total_tokens) {
+    return;
+  }
+  const int c = static_cast<int>(index / pad);
+  const int position = static_cast<int>(index % pad);
+  final_state[index] = input[static_cast<int64_t>(total_tokens - pad + position) * channels + c];
+}
+
 }  // namespace
 
 template <typename T>
@@ -264,6 +321,27 @@ Status LaunchVarlenCausalConvWithStateKernel(
         cu_seqlens, capture_count, static_cast<int>(batch_channels), batch_size, total_tokens,
         channels, kernel_size, dilation, apply_silu, state_update_capacity);
     return CUDA_CALL(cudaGetLastError());
+  }
+
+  if (batch_size == 1 && total_tokens >= 256 && kernel_size == 4 &&
+      (dilation == 1 || dilation == 3) && max_threads_per_block >= 256) {
+    constexpr int threads = 128;
+    const dim3 grid(
+        static_cast<unsigned int>((static_cast<int64_t>(channels) + threads - 1) / threads),
+        static_cast<unsigned int>((static_cast<int64_t>(total_tokens) + kVarlenConvPrefillTokenTile - 1) /
+                                  kVarlenConvPrefillTokenTile));
+    // CUDA grid Y is limited to 65,535; longer inputs retain the general path.
+    if (grid.y <= 65535) {
+      VarlenCausalConvPrefillKernel<T><<<grid, threads, 0, stream>>>(
+          input, weight, bias, initial_state, output, state_update, cu_seqlens, capture_count,
+          total_tokens, channels, dilation, apply_silu, state_update_capacity);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+      const int64_t state_elements = static_cast<int64_t>(channels) * 3 * dilation;
+      const unsigned int state_blocks = static_cast<unsigned int>((state_elements + 255) / 256);
+      VarlenCausalConvPrefillStateKernel<T><<<state_blocks, 256, 0, stream>>>(
+          input, final_state, cu_seqlens, total_tokens, channels, 3 * dilation);
+      return CUDA_CALL(cudaGetLastError());
+    }
   }
 
   constexpr size_t kMaxStagedStateBytes = 48 * 1024;

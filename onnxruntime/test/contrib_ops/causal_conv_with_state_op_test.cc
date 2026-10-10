@@ -1846,6 +1846,28 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SingleRequestPrefill) {
   RunVarlenCausalConvCase(c);
 }
 
+TEST(ContribOpVarlenCausalConvWithStateTest, Cuda_TiledPrefillWithStateUpdate) {
+  for (int length : {255, 256, 257}) {
+    for (int dilation : {1, 3}) {
+      for (int32_t active : {0, 1}) {
+        SCOPED_TRACE(length);
+        SCOPED_TRACE(dilation);
+        SCOPED_TRACE(active);
+        VarlenCausalConvCase c;
+        c.seq_lens = {length};
+        c.channels = 129;
+        c.kernel_size = 4;
+        c.dilation = dilation;
+        c.with_initial_state = true;
+        c.use_fp16 = true;
+        c.state_update_capacity = 7;
+        c.capture_count = {active ? 99 : 0};
+        RunVarlenCausalConvCase(c);
+      }
+    }
+  }
+}
+
 TEST(ContribOpVarlenCausalConvWithStateTest, WithInitialState) {
   VarlenCausalConvCase c;
   c.seq_lens = {3, 1, 2};

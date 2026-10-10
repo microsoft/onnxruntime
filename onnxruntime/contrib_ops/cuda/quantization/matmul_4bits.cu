@@ -39,6 +39,10 @@ static bool IsRouterGemvSpecializationDisabled() {
   return ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", false);
 }
 
+static bool IsM1PartialBlockDisabled() {
+  return ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_MATMULNBITS_M1_PARTIAL_BLOCK", false);
+}
+
 // The router GEMV kernel handles any symmetric (no zero point) M=1 shape with an int4 group size of
 // 32 or 64 (whichever quantizes best) and N divisible by kColsPerThreadBlock. We gate on the exact
 // GPT-OSS-20B router shape to avoid changing the dispatch for general MatMulNBits cases. K must be a
@@ -703,7 +707,9 @@ bool TryMatMul4Bits(
     int block_size,
     size_t shared_mem_per_block,
     cudaStream_t stream) {
-  if (n % kColsPerThreadBlock != 0 || k % 8 != 0 || m > SmallMCap<T>()) {
+  const bool partial_m1_block = m == 1 && n % kColsPerThreadBlock != 0;
+  if ((partial_m1_block && IsM1PartialBlockDisabled()) ||
+      (m != 1 && n % kColsPerThreadBlock != 0) || k % 8 != 0 || m > SmallMCap<T>()) {
     return false;
   }
 

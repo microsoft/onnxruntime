@@ -1521,6 +1521,28 @@ TEST(MatMulNBits, Fp16_Int4_BlockSize32_FpAIntB) {
   }
 }
 
+TEST(MatMulNBits, Fp16_Int4_BlockSize32_GB10DecodeShapes) {
+  if (!HasCudaEnvironment(1200)) {
+    GTEST_SKIP() << "Skipping GB10 decode-shape tests on CUDA < 12.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  RunTest<MLFloat16>(1, 320, 10240, 32, has_zeropoint, zp_is_4bit, abs_error);
+  RunTest<MLFloat16>(1, 324, 10240, 32, has_zeropoint, zp_is_4bit, abs_error);
+  RunTest<MLFloat16>(1, 324, 10240, 32, has_zeropoint, zp_is_4bit, abs_error, false, true);
+  RunTest<MLFloat16>(1, 1, 2560, 32, has_zeropoint, zp_is_4bit, abs_error);
+  RunTest<MLFloat16>(1, 1, 2560, 32, has_zeropoint, zp_is_4bit, abs_error, false, true);
+  RunTest<MLFloat16>(1, 10240, 320, 32, has_zeropoint, zp_is_4bit, abs_error);
+  RunTest<MLFloat16>(1, 1792, 2560, 32, has_zeropoint, zp_is_4bit, abs_error);
+  RunTest<MLFloat16>(1, 512, 2560, 32, has_zeropoint, zp_is_4bit, abs_error);
+  RunTest<MLFloat16>(1, 2560, 6144, 32, has_zeropoint, zp_is_4bit, abs_error);
+}
+
 TEST(MatMulNBits, BFloat16_Int4_BlockSize32_FpAIntB) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "Skipping BFloat16 MatMul tests on CUDA < 8.0";
@@ -1565,7 +1587,7 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias) {
 
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
-  for (auto block_size : {64, 128}) {
+  for (auto block_size : {32, 64, 128}) {
     RunTest<MLFloat16>(1, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
     RunTest<MLFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
   }

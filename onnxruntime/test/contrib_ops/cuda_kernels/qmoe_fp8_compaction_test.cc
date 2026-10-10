@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -157,6 +159,127 @@ TEST(CUDA_EP_Unittest, QMoEFp8DequantizesOnlySelectedExpertsAndGathersBias) {
     SCOPED_TRACE(layout);
     TestSelectedDequantization<half>(layout);
     TestSelectedDequantization<__nv_bfloat16>(layout);
+  }
+}
+
+template <typename T>
+void TestAllFp8Codes() {
+  std::array<uint8_t, 256> codes{};
+  for (int i = 0; i < 256; ++i) {
+    codes[i] = static_cast<uint8_t>(i);
+  }
+  const float scale = 1.0f;
+  CudaBuffer weights(codes.size());
+  CudaBuffer scales(sizeof(scale));
+  CudaBuffer output(codes.size() * sizeof(T));
+  weights.Upload(codes.data());
+  scales.Upload(&scale);
+  qmoe::LaunchQMoEDequantizeFp8Weights(weights.As<uint8_t>(), scales.As<float>(), output.As<T>(),
+                                       1, 1, 256, nullptr);
+  std::array<T, 256> actual{};
+  output.Download(actual.data());
+  for (int code = 0; code < 256; ++code) {
+    SCOPED_TRACE(code);
+    const float value = static_cast<float>(actual[code]);
+    if ((code & 127) == 127) {
+      EXPECT_TRUE(std::isnan(value));
+      continue;
+    }
+    const int exponent = (code >> 3) & 15;
+    const int mantissa = code & 7;
+    const float magnitude = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), -9)
+                                          : std::ldexp(1.0f + static_cast<float>(mantissa) / 8.0f, exponent - 7);
+    const float expected = code & 128 ? -magnitude : magnitude;
+    EXPECT_EQ(value, expected);
+    EXPECT_EQ(std::signbit(value), std::signbit(expected));
+  }
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp8AllCodesPreserveFiniteValuesSignedZerosAndNaNs) {
+  TestAllFp8Codes<half>();
+  TestAllFp8Codes<__nv_bfloat16>();
+}
+
+template <typename T>
+void TestNvfp4RowMajorDequantization(int k, bool compact, bool with_bias) {
+  constexpr int source_experts = 5;
+  constexpr int n = 3;
+  const std::array<int, 3> selected{4, 1, -1};
+  const int capacity = compact ? static_cast<int>(selected.size()) : source_experts;
+  constexpr std::array<float, 8> magnitudes{0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f};
+  constexpr std::array<uint8_t, 8> scale_codes{0x00, 0x01, 0x20, 0x38, 0x41, 0x7e, 0x80, 0xb8};
+  constexpr std::array<float, 8> scale_values{0.0f, 1.0f / 512.0f, 0.125f, 1.0f, 2.25f, 448.0f, -0.0f, -1.0f};
+  std::vector<uint8_t> weights(source_experts * n * k / 2);
+  std::vector<uint8_t> scales(source_experts * n * k / 16);
+  std::vector<float> globals(source_experts);
+  std::vector<T> bias(source_experts * n);
+  for (int expert = 0; expert < source_experts; ++expert) {
+    globals[expert] = 0.37f * (expert + 1);
+    for (int row = 0; row < n; ++row) {
+      const int source_row = expert * n + row;
+      bias[source_row] = T(static_cast<float>(source_row));
+      for (int col = 0; col < k; col += 2) {
+        const int low = (col + row + expert) % 16;
+        const int high = (low + 1) % 16;
+        weights[source_row * (k / 2) + col / 2] = static_cast<uint8_t>(low | (high << 4));
+      }
+      for (int group = 0; group < k / 16; ++group) {
+        scales[source_row * (k / 16) + group] = scale_codes[(group + source_row) % scale_codes.size()];
+      }
+    }
+  }
+  std::vector<T> output(capacity * n * k, T(-123.0f));
+  std::vector<T> output_bias(capacity * n, T(-123.0f));
+  CudaBuffer device_weights(weights.size());
+  CudaBuffer device_scales(scales.size());
+  CudaBuffer device_globals(globals.size() * sizeof(float));
+  CudaBuffer device_bias(bias.size() * sizeof(T));
+  CudaBuffer device_output(output.size() * sizeof(T));
+  CudaBuffer device_output_bias(output_bias.size() * sizeof(T));
+  CudaBuffer device_selected(selected.size() * sizeof(int));
+  device_weights.Upload(weights.data());
+  device_scales.Upload(scales.data());
+  device_globals.Upload(globals.data());
+  device_bias.Upload(bias.data());
+  device_output.Upload(output.data());
+  device_output_bias.Upload(output_bias.data());
+  device_selected.Upload(selected.data());
+  qmoe::LaunchQMoEDequantizeNvfp4Weights(
+      device_weights.As<uint8_t>(), device_scales.As<uint8_t>(), device_globals.As<float>(),
+      device_output.As<T>(), capacity, n, k, nullptr,
+      compact ? device_selected.As<int>() : nullptr,
+      with_bias ? device_bias.As<T>() : nullptr,
+      with_bias ? device_output_bias.As<T>() : nullptr, true);
+  device_output.Download(output.data());
+  device_output_bias.Download(output_bias.data());
+  for (int slot = 0; slot < capacity; ++slot) {
+    const int expert = compact ? selected[slot] : slot;
+    for (int row = 0; row < n; ++row) {
+      const T expected_bias = with_bias && expert >= 0 ? bias[expert * n + row] : T(-123.0f);
+      EXPECT_EQ(std::memcmp(&output_bias[slot * n + row], &expected_bias, sizeof(T)), 0);
+      for (int col = 0; col < k; ++col) {
+        T expected(-123.0f);
+        if (expert >= 0) {
+          const int code = (col + row + expert) % 16;
+          const float value = code < 8 ? magnitudes[code] : -magnitudes[code - 8];
+          expected = T(value * scale_values[(col / 16 + expert * n + row) % scale_values.size()] * globals[expert]);
+        }
+        ASSERT_EQ(std::memcmp(&output[(slot * n + row) * k + col], &expected, sizeof(T)), 0)
+            << "slot=" << slot << " row=" << row << " col=" << col;
+      }
+    }
+  }
+}
+
+TEST(CUDA_EP_Unittest, QMoENvfp4RowMajorVectorDequantizationPreservesValuesAndBias) {
+  for (int k : {16, 48, 1280, 2560}) {
+    for (bool compact : {false, true}) {
+      for (bool with_bias : {false, true}) {
+        SCOPED_TRACE(::testing::Message() << "k=" << k << " compact=" << compact << " bias=" << with_bias);
+        TestNvfp4RowMajorDequantization<half>(k, compact, with_bias);
+        TestNvfp4RowMajorDequantization<__nv_bfloat16>(k, compact, with_bias);
+      }
+    }
   }
 }
 
