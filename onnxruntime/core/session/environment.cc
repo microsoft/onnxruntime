@@ -294,8 +294,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-      const auto domain_version_ranges = domainToVersionRangeInstance.MapSnapshot();
-      if (domain_version_ranges.find(onnxruntime::kMSDomain) == domain_version_ranges.end()) {
+      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
         // External shared providers may have already added kMSDomain
         domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       }
@@ -304,7 +303,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
       // we have static registrations for NHWC versions of ONNX operators so this domain needs to extend to the
       // latest ONNX version
-      auto onnx_version = domainToVersionRangeInstance.LastReleaseVersionMapSnapshot()
+      auto onnx_version = domainToVersionRangeInstance.LastReleaseVersionMap()
                               .find(ONNX_NAMESPACE::ONNX_DOMAIN)
                               ->second;
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, onnx_version);

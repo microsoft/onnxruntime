@@ -1171,28 +1171,39 @@ TEST(PluginExecutionProviderTest, RegisterOpaqueDataType) {
         reinterpret_cast<OrtKernelContext*>(&context), 0, type, &output_value));
     ASSERT_NE(output_value, nullptr);
     EXPECT_EQ(*static_cast<const int*>(output_value), 42);
+
+    const auto* expected_type = reinterpret_cast<MLDataType>(type);
+    const auto* input = context.GetInputOrtValue(0);
+    auto* output = context.GetOrCreateOutputOrtValue(0);
+    EXPECT_EQ(input->GetOpaqueData(expected_type), input_value);
+    EXPECT_EQ(output->GetMutableOpaqueData(expected_type), output_value);
+    *static_cast<int*>(output->GetMutableOpaqueData(expected_type)) = 43;
+    EXPECT_EQ(*static_cast<const int*>(output->GetOpaqueData(expected_type)), 43);
+
+#if !defined(ORT_NO_EXCEPTIONS)
+    EXPECT_THROW(input->GetOpaqueData(nullptr), OnnxRuntimeException);
+    EXPECT_THROW(output->GetMutableOpaqueData(nullptr), OnnxRuntimeException);
+    const auto tensor_type = DataTypeImpl::GetType<Tensor>();
+    EXPECT_THROW(input->GetOpaqueData(tensor_type), OnnxRuntimeException);
+    EXPECT_THROW(output->GetMutableOpaqueData(tensor_type), OnnxRuntimeException);
+
+    OrtValue empty;
+    EXPECT_THROW(empty.GetOpaqueData(expected_type), OnnxRuntimeException);
+    EXPECT_THROW(empty.GetMutableOpaqueData(expected_type), OnnxRuntimeException);
+    empty.Init(nullptr, expected_type, static_cast<DeleteFunc>([](void*) {}));
+    EXPECT_THROW(empty.GetOpaqueData(expected_type), OnnxRuntimeException);
+    EXPECT_THROW(empty.GetMutableOpaqueData(expected_type), OnnxRuntimeException);
+
+    OrtValue tensor;
+    tensor.Init(nullptr, tensor_type, static_cast<DeleteFunc>([](void*) {}));
+    EXPECT_THROW(tensor.GetOpaqueData(tensor_type), OnnxRuntimeException);
+    EXPECT_THROW(tensor.GetMutableOpaqueData(tensor_type), OnnxRuntimeException);
+#endif
   }
   EXPECT_EQ(callback_state.released, 2);
 
   ASSERT_ORTSTATUS_OK(ep_api.UnregisterOpaqueDataType(type));
   EXPECT_EQ(DataTypeImpl::GetDataType(type_string), nullptr);
-}
-
-TEST(PluginExecutionProviderTest, RegisterAndUnregisterOperatorSchemaWithOpaqueType) {
-  const auto& ep_api = Ort::GetEpApi();
-  constexpr char domain[] = "com.microsoft.onnxruntime.test.plugin.schema";
-  constexpr char opaque_type[] = "opaque(com.microsoft.onnxruntime.test.plugin.schema,OpaqueValue)";
-  constexpr char op_type[] = "OpaquePassThrough";
-  const OrtEpSchemaFormalParameter input{"state", opaque_type};
-  const OrtEpSchemaFormalParameter output{"next_state", opaque_type};
-
-  ASSERT_ORTSTATUS_OK(ep_api.RegisterOperatorSchema(op_type, domain, 1, &input, 1, &output, 1, nullptr));
-  ASSERT_NE(ONNX_NAMESPACE::OpSchemaRegistry::Schema(op_type, 1, domain), nullptr);
-  ASSERT_ORTSTATUS_OK(ep_api.UnregisterOperatorSchema(op_type, domain, 1));
-  EXPECT_EQ(ONNX_NAMESPACE::OpSchemaRegistry::Schema(op_type, 1, domain), nullptr);
-
-  const auto domain_ranges = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().MapSnapshot();
-  EXPECT_EQ(domain_ranges.count(domain), 0u);
 }
 
 // Tests for the Ort::OpSchema C++ wrapper API and Ort::GetOpSchema free function.

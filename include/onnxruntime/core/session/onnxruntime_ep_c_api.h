@@ -124,18 +124,6 @@ typedef void*(ORT_API_CALL* OrtEpOpaqueTypeCreateFunc)(_In_opt_ void* user_data)
  */
 typedef void(ORT_API_CALL* OrtEpOpaqueTypeReleaseFunc)(_In_opt_ void* user_data, _In_ void* value);
 
-/** \brief A named input or output in a plugin-registered operator schema.
- *
- * The strings are copied during RegisterOperatorSchema and need only remain valid
- * for that call.
- *
- * \since Version 1.32.
- */
-typedef struct OrtEpSchemaFormalParameter {
-  const char* name;  ///< Non-empty parameter name.
-  const char* type;  ///< ONNX type constraint, such as "tensor(float)" or "opaque(domain,name)".
-} OrtEpSchemaFormalParameter;
-
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
  * \since Version 1.23.
@@ -2222,33 +2210,6 @@ struct OrtEpApi {
                   _In_ OrtEpOpaqueTypeReleaseFunc release, _In_opt_ void* user_data,
                   _Outptr_ const OrtDataType** out);
 
-  /** \brief Register an operator schema for an operator implemented by a plugin EP.
-   *
-   * The operator is registered with the ONNX schema registry and can declare opaque
-   * parameters using the ONNX type string `opaque(domain,name)`. The parameter arrays
-   * and their strings are copied during this call. Schemas are global to the process;
-   * register them before loading models that use them, and unregister only after sessions
-   * using them have been destroyed. Do not race registration or unregistration with session
-   * loading or execution.
-   *
-   * \param[in] op_type Non-empty operator type.
-   * \param[in] domain Non-empty operator domain.
-   * \param[in] since_version Positive ONNX schema version.
-   * \param[in] inputs Input parameters, or NULL when `input_count` is zero.
-   * \param[in] input_count Number of input parameters.
-   * \param[in] outputs Output parameters, or NULL when `output_count` is zero.
-   * \param[in] output_count Number of output parameters.
-   * \param[in] doc Optional operator documentation.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.32.
-   */
-  ORT_API2_STATUS(RegisterOperatorSchema, _In_z_ const char* op_type, _In_z_ const char* domain,
-                  _In_ int since_version,
-                  _In_reads_(input_count) const OrtEpSchemaFormalParameter* inputs, _In_ size_t input_count,
-                  _In_reads_(output_count) const OrtEpSchemaFormalParameter* outputs, _In_ size_t output_count,
-                  _In_opt_z_ const char* doc);
-
   /** \brief Get a pointer to an opaque kernel input value.
    *
    * The returned pointer is owned by ORT and remains valid while the input OrtValue
@@ -2293,21 +2254,6 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(UnregisterOpaqueDataType, _In_ const OrtDataType* type);
 
-  /** \brief Unregister a plugin-owned operator schema.
-   *
-   * The operator type, domain, and version must exactly match a schema registered by
-   * RegisterOperatorSchema. Ensure no active sessions rely on the schema and no session is
-   * being loaded with it.
-   *
-   * \param[in] op_type Operator type.
-   * \param[in] domain Operator domain.
-   * \param[in] since_version Operator schema version.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.32.
-   */
-  ORT_API2_STATUS(UnregisterOperatorSchema, _In_z_ const char* op_type, _In_z_ const char* domain,
-                  _In_ int since_version);
 };
 
 /**

@@ -5080,8 +5080,7 @@ Return true if all elements are true and false otherwise.
 
 void RegisterOrtOpSchemas() {
   auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-  const auto domain_version_ranges = domainToVersionRangeInstance.MapSnapshot();
-  if (domain_version_ranges.find(onnxruntime::kMSDomain) == domain_version_ranges.end()) {
+  if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
     // External shared providers may have already added kMSDomain
     domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   }

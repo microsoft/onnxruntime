@@ -191,7 +191,7 @@ TEST(OptimizerTest, AllocateOpaqueOutputThroughType) {
     OrtValue* value = nullptr;
     ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(static_cast<int>(node.Index()), 0, nullptr, value, node));
     ASSERT_NE(value, nullptr);
-    EXPECT_EQ(*static_cast<const int*>(value->DataRaw()), 42);
+    EXPECT_EQ(*static_cast<const int*>(value->GetOpaqueData(&opaque_type)), 42);
   }
 
   DataTypeImpl::UnregisterDataType(&opaque_type);

@@ -75,13 +75,9 @@ struct OrtValue {
     return type_;
   }
 
-  const void* DataRaw() const noexcept {
-    return data_.get();
-  }
-
-  void* MutableDataRaw() noexcept {
-    return data_.get();
-  }
+  // Require an allocated opaque value with the exact expected runtime type.
+  const void* GetOpaqueData(onnxruntime::MLDataType expected_type) const;
+  void* GetMutableOpaqueData(onnxruntime::MLDataType expected_type);
 
  private:
   std::shared_ptr<void> data_;
