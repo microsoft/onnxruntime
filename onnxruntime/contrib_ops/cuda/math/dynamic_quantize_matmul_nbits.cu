@@ -125,6 +125,85 @@ __global__ void QuantizeRows(const T* a, int64_t rows, int64_t k, int64_t block_
   }
 }
 
+constexpr int kVectorMaxChunks = 4;
+constexpr int kVectorElements = 8;
+
+// One group of G threads quantizes one domain whose values stay in registers (one global read).
+// Each thread owns up to Chunks 16-byte chunks, so a domain holds at most G * Chunks * 8 elements.
+// Arithmetic is identical to QuantizeRows: max is order independent and codes use the same rounding.
+template <typename T, int G, int Chunks>
+__global__ void QuantizeRowsVector(const T* a, int64_t domains, int64_t k, int64_t block_size, int64_t groups,
+                                   const float* tensor_scale, int8_t* quantized, float* scales) {
+  __shared__ float shared[kThreads / 32];
+  constexpr int kDomainsPerBlock = kThreads / G;
+  const int64_t domain = int64_t{blockIdx.x} * kDomainsPerBlock + threadIdx.x / G;
+  const bool active = domain < domains;
+  const int lane = threadIdx.x % G;
+  const int64_t row = active ? domain / groups : 0;
+  const int64_t start = active ? (domain % groups) * block_size : 0;
+  const int64_t count = active ? min(block_size, k - start) : 0;
+  const int64_t base = row * k + start;
+  const int chunks = static_cast<int>(count / kVectorElements);
+
+  uint4 raw[Chunks];
+  float maximum = 0.0f;
+#pragma unroll
+  for (int i = 0; i < Chunks; ++i) {
+    const int c = lane + i * G;
+    if (c < chunks) {
+      raw[i] = reinterpret_cast<const uint4*>(a + base)[c];
+      if (!tensor_scale) {
+        const T* e = reinterpret_cast<const T*>(&raw[i]);
+#pragma unroll
+        for (int j = 0; j < kVectorElements; ++j) {
+          const float value = to_float(e[j]);
+          maximum = fmaxf(maximum, isfinite(value) ? fabsf(value) : CUDART_INF_F);
+        }
+      }
+    }
+  }
+
+  float scale;
+  if (tensor_scale) {
+    scale = *tensor_scale;
+  } else {
+    for (int delta = 16; delta > 0; delta /= 2) {
+      maximum = fmaxf(maximum, __shfl_xor_sync(0xffffffff, maximum, delta));
+    }
+    if constexpr (G > 32) {
+      if (threadIdx.x % 32 == 0) shared[threadIdx.x / 32] = maximum;
+      __syncthreads();
+      const float* group_shared = shared + (threadIdx.x / G) * (G / 32);
+      maximum = group_shared[0];
+#pragma unroll
+      for (int w = 1; w < G / 32; ++w) maximum = fmaxf(maximum, group_shared[w]);
+    }
+    scale = ScaleFromMaximum(maximum);
+  }
+  if (!active) return;
+  if (lane == 0 && scales) scales[domain] = scale;
+
+#pragma unroll
+  for (int i = 0; i < Chunks; ++i) {
+    const int c = lane + i * G;
+    if (c < chunks) {
+      const T* e = reinterpret_cast<const T*>(&raw[i]);
+      uint32_t packed[2];
+#pragma unroll
+      for (int j = 0; j < kVectorElements; j += 4) {
+        uint32_t word = 0;
+#pragma unroll
+        for (int q = 0; q < 4; ++q) {
+          const int code = isnan(scale) ? 0 : __float2int_rn(__fdiv_rn(to_float(e[j + q]), scale));
+          word |= static_cast<uint32_t>(static_cast<uint8_t>(static_cast<int8_t>(max(-127, min(127, code))))) << (8 * q);
+        }
+        packed[j / 4] = word;
+      }
+      reinterpret_cast<uint2*>(quantized + base)[c] = make_uint2(packed[0], packed[1]);
+    }
+  }
+}
+
 __device__ __noinline__ float ScaleProductSlow(int32_t acc, float a, float b) {
   return __double2float_rn(__dmul_rn(__dmul_rn(static_cast<double>(__int2float_rn(acc)), static_cast<double>(a)),
                                      static_cast<double>(b)));
@@ -888,14 +967,55 @@ Status LaunchDynamicTensorScale(const void* a, bool bf16, int64_t count,
   return Status::OK();
 }
 
+// Pick the narrowest group that keeps every thread within one, two, or four chunks.
+template <typename T>
+void LaunchQuantizeVector(const T* a, int64_t domains, int64_t k, int64_t block_size, int64_t groups,
+                          int64_t domain_size, const float* tensor_scale, int8_t* quantized, float* scales,
+                          cudaStream_t stream) {
+  auto launch = [&](auto kernel, int group) {
+    const int64_t per_block = kThreads / group;
+    kernel<<<static_cast<int>((domains + per_block - 1) / per_block), kThreads, 0, stream>>>(
+        a, domains, k, block_size, groups, tensor_scale, quantized, scales);
+  };
+  if (domain_size <= 32 * kVectorElements) {
+    launch(QuantizeRowsVector<T, 32, 1>, 32);
+  } else if (domain_size <= 64 * kVectorElements) {
+    launch(QuantizeRowsVector<T, 64, 1>, 64);
+  } else if (domain_size <= 128 * kVectorElements) {
+    launch(QuantizeRowsVector<T, 128, 1>, 128);
+  } else if (domain_size <= 256 * kVectorElements) {
+    launch(QuantizeRowsVector<T, 256, 1>, 256);
+  } else if (domain_size <= 256 * kVectorElements * 2) {
+    launch(QuantizeRowsVector<T, 256, 2>, 256);
+  } else {
+    launch(QuantizeRowsVector<T, 256, kVectorMaxChunks>, 256);
+  }
+}
+
 Status LaunchDynamicQuantizeRows(const void* a, bool bf16, int64_t rows, int64_t k,
                                  int64_t block_size, const float* tensor_scale,
                                  int8_t* quantized, float* scales, cudaStream_t stream) {
-  const int blocks = Blocks(SafeInt<int64_t>(rows) * (k / block_size + (k % block_size != 0)), 1);
-  if (bf16) {
+  const int64_t groups = k / block_size + (k % block_size != 0);
+  const int64_t domain_size = std::min(block_size, k);
+  const bool vector_ok = k % kVectorElements == 0 && (block_size >= k || block_size % kVectorElements == 0) &&
+                         domain_size <= int64_t{kThreads} * kVectorElements * kVectorMaxChunks &&
+                         rows * groups <= std::numeric_limits<int>::max() / 2 &&
+                         reinterpret_cast<uintptr_t>(a) % 16 == 0 && reinterpret_cast<uintptr_t>(quantized) % 8 == 0;
+  if (vector_ok) {
+    const int64_t domains = rows * groups;
+    if (bf16) {
+      LaunchQuantizeVector(static_cast<const __nv_bfloat16*>(a), domains, k, block_size, groups, domain_size,
+                           tensor_scale, quantized, scales, stream);
+    } else {
+      LaunchQuantizeVector(static_cast<const half*>(a), domains, k, block_size, groups, domain_size,
+                           tensor_scale, quantized, scales, stream);
+    }
+  } else if (bf16) {
+    const int blocks = Blocks(SafeInt<int64_t>(rows) * groups, 1);
     QuantizeRows<<<blocks, kThreads, 0, stream>>>(static_cast<const __nv_bfloat16*>(a), rows, k, block_size,
                                                   tensor_scale, quantized, scales);
   } else {
+    const int blocks = Blocks(SafeInt<int64_t>(rows) * groups, 1);
     QuantizeRows<<<blocks, kThreads, 0, stream>>>(static_cast<const half*>(a), rows, k, block_size,
                                                   tensor_scale, quantized, scales);
   }

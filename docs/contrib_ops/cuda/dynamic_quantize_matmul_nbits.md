@@ -1490,6 +1490,52 @@ hazards. Generated SASS for all six tile/scale-type variants contains
 no FFMA instructions. No-native SM75/SM80 stubs compile. Windows,
 Ada/Blackwell execution and model-level performance remain unverified.
 
+### 8.10 Register-resident activation quantizer
+
+After the Hopper path, activation quantization was the largest non-GEMM
+kernel (12.97 us at M/K=1536/2048). The scalar quantizer read each domain
+twice from global memory with one thread per element. The replacement
+(`QuantizeRowsVector`) is used when `K % 8 == 0`, the activation block is a
+multiple of 8 (or covers K), a domain has at most 8192 elements, and the
+activation and scratch pointers are 16/8-byte aligned. A group of 32 to 256
+threads owns one domain, keeps its 16-byte loads in registers, reduces the
+maximum with warp shuffles (plus shared memory for groups wider than one
+warp), and writes eight codes per store. Other geometries use the unchanged
+scalar kernel. The per-tensor scale is read directly and skips the
+reduction.
+
+The arithmetic is unchanged: nonfinite values mark the domain as infinite
+before the order-independent maximum, the scale uses the same correctly
+rounded division and denormal floor, and each code uses `__fdiv_rn`,
+`__float2int_rn`, and the same clamp. NaN domains still produce NaN scales
+and zero codes.
+
+Quantizer kernel time, M=1536: 12.97 -> 7.1 us at K=2048 (group 256, one
+chunk per thread) and 15.3 us at K=6144. Complete-operator H200 medians
+(CUDA events, FP16 per-token, W8 Hopper path), before -> after:
+
+| K/N | Before (us) | After (us) |
+|-----|-------------|------------|
+| 2048/6144 | 56.09 | 50.45 |
+| 6144/2048 | 80.50 | 63.16 |
+| 2048/4096 | 41.99 | 38.91 |
+| 2048/2048 | 34.76 | 32.67 |
+
+Per-tensor 2048/6144 improves from 63.19 to 59.82 us. The grouped W4/W2
+M=1536, K=N=1024 per-token operator improves from 43.22 to 39.99 us and
+45.51 to 42.84 us.
+
+The remaining time between kernels is mostly host launch overhead. Building
+the CUTLASS parameters costs about 2.7 us and launching the cluster kernel
+about 6 us on the host. Building them before launching the quantizer did not
+reduce end-to-end latency (the benchmark is host-bound), so it was not kept.
+
+New coverage `RegisterResidentActivationQuantizer` exercises each group
+width and chunk count, the 8192-element limit, the scalar fallback,
+per-token, per-tensor, and per-block domains with tails, and infinite/NaN
+rows against the exact CPU reference. Compute Sanitizer reports zero memory
+errors and zero race hazards on the full operator test set.
+
 ## 9. Delivery Plan and Acceptance
 
 | Priority | Delivery | Required outcome |

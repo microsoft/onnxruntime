@@ -317,6 +317,29 @@ TEST(DynamicQuantizeMatMulNBitsTest, SingleIntervalVectorizedTails) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, RegisterResidentActivationQuantizer) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t m = 5;
+  constexpr int64_t n = 3;
+  // Domain sizes cover each cooperative group width, the 8192-element limit, and the scalar fallback.
+  for (const int64_t k : {8, 136, 256, 520, 1024, 1032, 2048, 4104, 8192, 8200}) {
+    for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token"}) {
+      SCOPED_TRACE(std::to_string(k) + " " + mode);
+      RunCase<MLFloat16>({m, k}, n, 8, 16, mode, 0, true, false, true);
+      std::vector<float> values(m * k);
+      for (size_t i = 0; i < values.size(); ++i) values[i] = static_cast<float>(static_cast<int>(i * 29 % 113) - 56) / 7.0f;
+      values[k + 5] = std::numeric_limits<float>::infinity();
+      values[3 * k + k - 1] = std::numeric_limits<float>::quiet_NaN();
+      RunCase<BFloat16>({m, k}, n, 8, 16, mode, 0, true, false, false, values);
+    }
+  }
+  for (const auto& [k, block] : std::vector<std::pair<int64_t, int64_t>>{{2048, 200}, {1040, 48}, {520, 64}, {1032, 1032}, {130, 24}}) {
+    SCOPED_TRACE(std::to_string(k) + " " + std::to_string(block));
+    RunCase<MLFloat16>({m, k}, n, 8, 16, "dynamic_per_block", block, true, false, true);
+    RunCase<BFloat16>({m, k}, n, 8, 16, "dynamic_per_block", block, true, false, false);
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, PipelinedTilesAndScaleIntervals) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {
