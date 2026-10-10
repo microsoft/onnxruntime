@@ -105,6 +105,28 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
         feeds["scales"][:] = -1
         np.testing.assert_array_equal(session.run(None, feeds)[0], np.full((2, 3), -17, dtype=np.float16))
 
+    def test_grouped_packed_weights_match_exact_reference(self):
+        rng = np.random.default_rng(0)
+        block = 128
+        activation_block = 192
+        for m, k, n in ((65, 320, 137), (961, 192, 961)):
+            groups = (k + block - 1) // block
+            a = rng.normal(size=(m, k)).astype(np.float16)
+            a[0] = 0
+            scales = rng.uniform(-0.01, 0.01, size=(n, groups)).astype(np.float32)
+            for bits in (2, 4, 8):
+                packed = rng.integers(0, 256, size=(n, groups, block * bits // 8), dtype=np.uint8)
+                for mode in ("dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"):
+                    with self.subTest(bits=bits, mode=mode, m=m):
+                        model = make_model(scales, bits=bits, m=m, k=k, n=n, block=block)
+                        node = model.graph.node[0]
+                        node.attribute.append(helper.make_attribute("activation_quantization", mode))
+                        if mode == "dynamic_per_block":
+                            node.attribute.append(helper.make_attribute("activation_block_size", activation_block))
+                        result = make_session(model).run(None, {"A": a, "B": packed})[0]
+                        expected = reference(a, packed, scales, bits, block, mode, activation_block)
+                        np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
+
     def test_capture_replays_changed_activations_and_weights(self):
         for m, k, n, block in ((2, 17, 3, 16), (33, 64, 37, 128), (129, 272, 137, 512), (65, 320, 137, 128)):
             with self.subTest(m=m, k=k):

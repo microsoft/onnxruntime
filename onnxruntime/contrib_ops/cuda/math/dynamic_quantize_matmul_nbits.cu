@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <limits>
+#include <type_traits>
 #include <math_constants.h>
 
 #include "core/common/safeint.h"
@@ -122,9 +123,13 @@ __device__ __noinline__ float ScaleProductSlow(int32_t acc, float a, float b) {
                                      static_cast<double>(b)));
 }
 
+template <bool NormalActivationProduct = false>
 __device__ __forceinline__ float ScaleProduct(int32_t acc, float a, float b) {
   if (isnan(a)) return CUDART_NAN_F;
   const float t = __fmul_rn(__int2float_rn(acc), a);
+  // Finite FP16 domain scales are in [2^-24 / 127, 65504 / 127].
+  // A nonzero INT32 accumulator times such a scale is always normal FP32.
+  if constexpr (NormalActivationProduct) return __fmul_rn(t, b);
   if (acc == 0 || (isfinite(t) && fabsf(t) >= FLT_MIN)) return __fmul_rn(t, b);
   return ScaleProductSlow(acc, a, b);
 }
@@ -144,8 +149,8 @@ __device__ __forceinline__ uint32_t DecodeWeight4(const uint8_t* blob, int64_t j
     uint32_t codes;
     if constexpr (Bits == 4) {
       const uint32_t packed = *reinterpret_cast<const uint16_t*>(blob + j / 2);
-      codes = (packed & 0x000fu) | ((packed & 0x00f0u) << 4) |
-              ((packed & 0x0f00u) << 8) | ((packed & 0xf000u) << 12);
+      const uint32_t spaced = __byte_perm(packed, 0, 0x4140);
+      codes = (spaced & 0x000f000fu) | ((spaced & 0x00f000f0u) << 4);
     } else {
       const uint32_t packed = blob[j / 4];
       codes = (packed & 0x03u) | ((packed & 0x0cu) << 6) |
@@ -224,8 +229,8 @@ __global__ void IntegerMatMul(const int8_t* a, const float* a_scales, const uint
         if (lane < delta) acc += other;
       }
       if (lane == 0) {
-        const float term = ScaleProduct(acc, a_scales[row * activation_groups + activation_group],
-                                        LoadScale(b_scales, scale_type, column * groups + weight_group));
+        const float term = ScaleProduct<std::is_same_v<T, half>>(acc, a_scales[row * activation_groups + activation_group],
+                                                                 LoadScale(b_scales, scale_type, column * groups + weight_group));
         total = start == 0 ? term : __fadd_rn(total, term);
       }
       start += length;
@@ -395,7 +400,7 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
   constexpr int TileN = 64;
   constexpr int tile_n = TileN;
   constexpr int pack = 8 / Bits;
-  constexpr int Stages = 2;
+  constexpr int Stages = 3;
   constexpr int tile_k = 64;
   constexpr int threads = 128;
   // Four-word padding keeps uint4 stores aligned and makes the eight rows x
@@ -419,8 +424,14 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
     const int tile_column = (tile % column_tiles) * tile_n;
     int32_t acc[m_fragments][n_fragments][4] = {};
     float total[m_fragments][n_fragments][4];
+    float row_scales[m_fragments];
+    int cached_activation_group = -1;
+    int weight_group = 0;
+    int activation_group = 0;
+    int weight_end = min(k, block_size);
+    int activation_end = min(k, activation_block_size);
     int interval_start = 0;
-    int interval_end = min(k, min(block_size, activation_block_size));
+    int interval_end = min(weight_end, activation_end);
     auto load = [&](int pos, int stage) {
 #pragma unroll
       for (int i = threadIdx.x; i < TileM * (tile_k / 16); i += threads) {
@@ -478,28 +489,36 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
         }
       }
       if (pos + tile_k == interval_end) {
-        const int weight_group = interval_start / block_size;
-        const int activation_group = interval_start / activation_block_size;
+        const int scale_column = tile_column + warp_column + lane;
+        const float weight_scale = scale_column < n
+                                       ? LoadScale(b_scales, scale_type,
+                                                   int64_t{scale_column} * groups + weight_group)
+                                       : 0.0f;
         float weight_scales[n_fragments][2];
 #pragma unroll
         for (int cf = 0; cf < n_fragments; ++cf) {
 #pragma unroll
           for (int c = 0; c < 2; ++c) {
-            const int column = tile_column + warp_column + cf * 8 + (lane % 4) * 2 + c;
-            weight_scales[cf][c] = column < n ? LoadScale(b_scales, scale_type,
-                                                          int64_t{column} * groups + weight_group)
-                                              : 0.0f;
+            weight_scales[cf][c] = __shfl_sync(0xffffffff, weight_scale, cf * 8 + (lane % 4) * 2 + c);
           }
+        }
+        if (activation_group != cached_activation_group) {
+#pragma unroll
+          for (int mf = 0; mf < m_fragments; ++mf) {
+            const int scale_row = tile_row + warp_row + mf * 16 + lane % 16;
+            row_scales[mf] =
+                scale_row < rows
+                    ? a_scales[per_tensor ? 0 : int64_t{scale_row} * activation_groups + activation_group]
+                    : 1.0f;
+          }
+          cached_activation_group = activation_group;
         }
 #pragma unroll
         for (int mf = 0; mf < m_fragments; ++mf) {
           float activation_scales[2];
 #pragma unroll
           for (int r = 0; r < 2; ++r) {
-            const int row = tile_row + warp_row + mf * 16 + lane / 4 + r * 8;
-            activation_scales[r] = row < rows
-                                       ? a_scales[per_tensor ? 0 : int64_t{row} * activation_groups + activation_group]
-                                       : 1.0f;
+            activation_scales[r] = __shfl_sync(0xffffffff, row_scales[mf], lane / 4 + r * 8);
           }
 #pragma unroll
           for (int cf = 0; cf < n_fragments; ++cf) {
@@ -508,19 +527,25 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
               const int row = tile_row + warp_row + mf * 16 + lane / 4 + (element / 2) * 8;
               const int column = tile_column + warp_column + cf * 8 + (lane % 4) * 2 + element % 2;
               if (row < rows && column < n) {
-                const float term = ScaleProduct(acc[mf][cf][element],
-                                                activation_scales[element / 2],
-                                                weight_scales[cf][element % 2]);
+                const float term = ScaleProduct<std::is_same_v<T, half>>(acc[mf][cf][element],
+                                                                         activation_scales[element / 2],
+                                                                         weight_scales[cf][element % 2]);
                 total[mf][cf][element] = interval_start == 0 ? term : __fadd_rn(total[mf][cf][element], term);
               }
               acc[mf][cf][element] = 0;
             }
           }
         }
+        if (interval_end == weight_end) {
+          ++weight_group;
+          weight_end = interval_end + min(k - interval_end, block_size);
+        }
+        if (interval_end == activation_end) {
+          ++activation_group;
+          activation_end = interval_end + min(k - interval_end, activation_block_size);
+        }
         interval_start = interval_end;
-        interval_end = interval_start + min(k - interval_start,
-                                            min(block_size - interval_start % block_size,
-                                                activation_block_size - interval_start % activation_block_size));
+        interval_end = min(weight_end, activation_end);
       }
       __syncthreads();
     }
@@ -650,9 +675,9 @@ __global__ void NativeIntegerMatMul(const int8_t* a, const float* a_scales, cons
           const int64_t row = tile_row + fragment_row + (element / 2) * 8;
           const int64_t column = tile_column + fragment_column + column_fragment * 8 + element % 2;
           if (row < rows && column < n) {
-            const float term = ScaleProduct(acc[column_fragment][element],
-                                            a_scales[per_tensor ? 0 : row * activation_groups + activation_group],
-                                            LoadScale(b_scales, scale_type, column * groups + weight_group));
+            const float term = ScaleProduct<std::is_same_v<T, half>>(acc[column_fragment][element],
+                                                                     a_scales[per_tensor ? 0 : row * activation_groups + activation_group],
+                                                                     LoadScale(b_scales, scale_type, column * groups + weight_group));
             total[column_fragment][element] = start == 0 ? term : __fadd_rn(total[column_fragment][element], term);
           }
         }

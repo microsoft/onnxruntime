@@ -355,6 +355,28 @@ TEST(DynamicQuantizeMatMulNBitsTest, PipelinedNonfiniteAndExtremeScales) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, Fp16ScaleProductBounds) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t m = 33;
+  constexpr int64_t k = 192;
+  constexpr int64_t n = 37;
+  for (int bits : {2, 4, 8}) {
+    const int64_t block = bits == 8 ? 256 : 128;
+    const int64_t groups = (k + block - 1) / block;
+    std::vector<float> scales(n * groups);
+    const float scale_values[] = {0, 1, -1, std::numeric_limits<float>::denorm_min(),
+                                  std::numeric_limits<float>::max()};
+    for (size_t i = 0; i < scales.size(); ++i) scales[i] = scale_values[i % 5];
+    for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {
+      for (float value : {float(MLFloat16::FromBits(1)), 65504.0f, std::numeric_limits<float>::quiet_NaN()}) {
+        SCOPED_TRACE(std::to_string(bits) + " " + mode + " " + std::to_string(value));
+        RunCase<MLFloat16>({m, k}, n, bits, block, mode, 128, true, false, false,
+                           std::vector<float>(m * k, value), scales);
+      }
+    }
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, NonfiniteDomainsAndExtremeScales) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {

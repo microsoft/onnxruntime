@@ -3,8 +3,9 @@
 **Status:** Implementation in progress: schema, generic DP4A path, native
 INT8 tensor-core dispatch with direct INT8/INT4/INT2 decoding, all three
 activation granularities, and explicit default-quantizer export opt-in.
-Aligned native paths use two-stage asynchronous packed-weight/activation
-staging. Further crossover tuning and full cross-platform/model-level
+Aligned native paths use asynchronous packed-weight/activation staging:
+two stages for single-interval W8 and three for grouped weights.
+Further crossover tuning and full cross-platform/model-level
 performance acceptance remain follow-up work.
 This is not yet the completed version-1 delivery described below.
 
@@ -1206,6 +1207,88 @@ activations, extreme scales, unequal scale boundaries, packed-code ranges,
 and partial tiles. Integrated Compute Sanitizer reports zero memory errors
 and zero race hazards. These local results do not establish performance
 or runtime portability on other GPU architectures.
+
+### 8.6 Profile-guided grouped-kernel tuning
+
+Measurements use the same H200 and source-build environment as section 8.5.
+Before/after per-token measurements were taken on the same GPU with the
+same benchmark inputs, 10 warmups, 50 repetitions, and five trials. These
+are complete operator CUDA-event medians, including quantization and
+host/launch gaps, not isolated GEMM timings.
+
+For M/K/N=1536/1024/1024, weight block=128, constant scales, FP16 A/Y,
+and no bias:
+
+| Weight bits | Remeasured pipelined baseline (us) | Profile-guided operator (us) | Speedup |
+|-------------|-----------------------------------|------------------------------|---------|
+| 2 | 69.15 | 54.72 | 1.26x |
+| 4 | 69.27 | 53.20 | 1.30x |
+
+Final measurements for all supported widths and activation modes:
+
+| Weight bits | Per-token (us) | Per-block A128 (us) | Per-tensor (us) |
+|-------------|----------------|---------------------|----------------|
+| 2 | 54.72 | 72.44 | 60.86 |
+| 4 | 53.20 | 71.72 | 59.72 |
+| 8 | 52.64 | 71.56 | 58.67 |
+
+FP16 GEMM remains faster, at approximately 8 us for this geometry.
+It does not have equivalent dynamic activation semantics.
+
+Nsight Systems confirms `NativeAlignedGroupedMatMul<half, 4, 64>`.
+For the per-token W4 case above, native GEMM decreases from 50.61 to
+34.94 us; activation quantization is essentially unchanged at 6.74
+versus 6.71 us. Nsight Compute identifies underutilized compute pipelines,
+low eligible-warp counts, and register pressure rather than DRAM
+saturation. A matched grouped test geometry, M/K/N=961/192/961 with
+weight block=128 and activation block=64, reduces W4 register use from
+166 to 135 per thread and kernel duration from 20.42 to 15.68 us.
+
+The retained changes:
+
+- Advance common scale intervals with independent weight/activation group
+  counters instead of repeated integer division and remainder operations.
+  Interval order and INT32 accumulator reset boundaries are unchanged.
+- Cache activation scales until their group changes and distribute
+  row/column scales with warp shuffles instead of redundant global loads.
+- Use three asynchronous staging buffers for grouped packed weights/A.
+- Expand W4 bytes with a byte permutation and two nibble masks, retaining
+  the same centered signed codes.
+- Specialize repeated FP16 scale products without the BF16 exceptional
+  first-product path. Finite FP16 activation scales lie between
+  `2^-24 / 127` and `65504 / 127`; multiplying a nonzero INT32 accumulator
+  by such a scale always produces a normal finite FP32 first product.
+  NaN propagation, the second multiplication, and FP32 rounding order
+  are preserved. BF16 retains the gradual-underflow/overflow helper.
+  Single-interval W8 retains its original low-register scaling code.
+
+The kernels still execute `mma.sync.m16n8k32`, use `ldmatrix` for A
+fragments (and B on the single-interval W8 path), and fuse scaling,
+bias, and FP16/BF16 conversion into the output kernel. Grouped weights
+must scale each common K interval before adding its FP32 register
+contribution; a single per-channel epilogue is valid only when there
+is one common interval. Neither path writes a global INT32 intermediate
+or launches a separate dequantization pass. Expanded-weight scratch
+and prepack memory remain zero.
+
+Three-stage 128x128x64 and 128x128x128 single-interval tiles, cooperative
+shared-weight expansion, wider grouped tiles, and maximum shared-memory
+carveout were tested but not retained because they did not improve the
+measured cases. The four W8 single-interval prefill cases in section 8.5
+remain essentially unchanged at 159.46, 163.26, 110.24, and 66.59 us.
+This is H200 evidence, not an Ada performance claim.
+
+Validation: 18 focused C++ tests pass in both standard and plugin CUDA
+builds. Ten Python tests pass, including capture/replay, concurrency,
+initializer compatibility, and 18 new randomized exact-bit comparisons
+covering W2/W4/W8, all activation modes, unequal scale boundaries, and
+partial/small/large grouped tiles. New C++ cases cover the smallest
+subnormal and largest finite FP16 activations, nonfinite domains, and
+extreme signed/zero weight scales. Integrated Compute Sanitizer reports
+zero memory errors and zero race hazards. Standalone SM75/80/90
+compilation, changed-line C++ formatting, and Python lint/format checks
+pass. Runtime behavior on Ada/Blackwell, Windows, and model-level
+accuracy/performance remain unverified.
 
 ## 9. Delivery Plan and Acceptance
 
