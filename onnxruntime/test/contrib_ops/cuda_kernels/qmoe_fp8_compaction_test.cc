@@ -175,7 +175,7 @@ void TestAllFp8Codes() {
   weights.Upload(codes.data());
   scales.Upload(&scale);
   qmoe::LaunchQMoEDequantizeFp8Weights(weights.As<uint8_t>(), scales.As<float>(), output.As<T>(),
-                                     1, 1, 256, nullptr);
+                                       1, 1, 256, nullptr);
   std::array<T, 256> actual{};
   output.Download(actual.data());
   for (int code = 0; code < 256; ++code) {
@@ -188,7 +188,7 @@ void TestAllFp8Codes() {
     const int exponent = (code >> 3) & 15;
     const int mantissa = code & 7;
     const float magnitude = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), -9)
-                                         : std::ldexp(1.0f + static_cast<float>(mantissa) / 8.0f, exponent - 7);
+                                          : std::ldexp(1.0f + static_cast<float>(mantissa) / 8.0f, exponent - 7);
     const float expected = code & 128 ? -magnitude : magnitude;
     EXPECT_EQ(value, expected);
     EXPECT_EQ(std::signbit(value), std::signbit(expected));

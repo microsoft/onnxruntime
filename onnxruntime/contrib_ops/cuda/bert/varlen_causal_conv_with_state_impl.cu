@@ -262,7 +262,7 @@ __global__ void VarlenCausalConvPrefillKernel(
 #pragma unroll
     for (int k = 0; k < 4; ++k) {
       sum += weights[k] * to_float(ReadStateOrInput(
-                             input, channel_state, 0, channels, c, pad, t - pad + k * dilation));
+                              input, channel_state, 0, channels, c, pad, t - pad + k * dilation));
     }
     const int64_t offset = static_cast<int64_t>(t) * channels + c;
     output[offset] = from_float<T>(apply_silu ? VarlenSilu(sum) : sum);

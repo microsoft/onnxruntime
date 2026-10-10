@@ -77,9 +77,9 @@ __device__ __forceinline__ float SparsePagedAttentionBlockReduce(float value, fl
   const int lane = threadIdx.x % 32;
   // Preserve the shared-memory tree's 64, 32, 16, ... reduction order.
   const float first = IsMax ? fmaxf(scratch[lane], scratch[lane + 64])
-                           : scratch[lane] + scratch[lane + 64];
+                            : scratch[lane] + scratch[lane + 64];
   const float second = IsMax ? fmaxf(scratch[lane + 32], scratch[lane + 96])
-                            : scratch[lane + 32] + scratch[lane + 96];
+                             : scratch[lane + 32] + scratch[lane + 96];
   value = IsMax ? fmaxf(first, second) : first + second;
 #pragma unroll
   for (int offset = 16; offset > 0; offset >>= 1) {

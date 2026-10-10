@@ -1474,7 +1474,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
       const int64_t tile_work =
           static_cast<int64_t>(params.total_tokens) * std::min(tile_count, kHierarchicalScoreMaxBlocksPerRow);
       QsaScoreTileTopKKernel<T><<<static_cast<int>(std::min<int64_t>(tile_work, kSaiMaxGridDimX)),
-                                kHierarchicalScoreThreads, 0, stream>>>(
+                                  kHierarchicalScoreThreads, 0, stream>>>(
           present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
           present_state_lengths, overflow_flags, merge_input, tile_count, params);
     }

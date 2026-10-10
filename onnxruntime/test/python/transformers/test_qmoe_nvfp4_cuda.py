@@ -419,9 +419,7 @@ class TestQMoENVFP4(unittest.TestCase):
             provider_name, provider_options = provider if isinstance(provider, tuple) else (provider, {})
             provider = (provider_name, {**provider_options, "enable_cuda_graph": "1"})
         try:
-            session = onnxruntime.InferenceSession(
-                onnx_model, opts, providers=[provider]
-            )
+            session = onnxruntime.InferenceSession(onnx_model, opts, providers=[provider])
         except Exception as e:
             if "ENABLE_FP4" in str(e) or "requires USE_FP4_QMOE" in str(e):
                 self.skipTest(f"NVFP4 not supported in this build: {e}")
@@ -922,8 +920,11 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
     @parameterized.expand(
-        [(onnx_dtype, disable_prepacking) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
-         for disable_prepacking in (False, True)]
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
     )
     def test_nvfp4_offline_row_major_fallback(self, onnx_dtype, disable_prepacking):
         self._run_nvfp4_moe_test(
@@ -941,8 +942,11 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
     @parameterized.expand(
-        [(onnx_dtype, disable_prepacking) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
-         for disable_prepacking in (False, True)]
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
     )
     def test_nvfp4_offline_row_major_gemv(self, onnx_dtype, disable_prepacking):
         self._run_nvfp4_moe_test(
@@ -960,8 +964,12 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
     @parameterized.expand(
-        [(onnx_dtype, num_tokens, use_bias) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
-         for num_tokens in (1, 6) for use_bias in (False, True)]
+        [
+            (onnx_dtype, num_tokens, use_bias)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for num_tokens in (1, 6)
+            for use_bias in (False, True)
+        ]
     )
     def test_nvfp4_offline_row_major_gemv_partial_k_blocks(self, onnx_dtype, num_tokens, use_bias):
         shape = dict(
@@ -986,8 +994,11 @@ class TestQMoENVFP4(unittest.TestCase):
         torch.testing.assert_close(packed, fallback, atol=tolerance, rtol=tolerance)
 
     @parameterized.expand(
-        [(onnx_dtype, disable_prepacking) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
-         for disable_prepacking in (False, True)]
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
     )
     def test_nvfp4_offline_row_major_prefill(self, onnx_dtype, disable_prepacking):
         self._run_nvfp4_moe_test(
