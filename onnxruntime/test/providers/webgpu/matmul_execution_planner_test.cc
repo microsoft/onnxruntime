@@ -545,6 +545,7 @@ TEST(MatMulAlgorithmPrerequisiteTest, IntelAVec4RequiresCompatibleRowsPerThread)
 TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThresholds) {
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.has_subgroup_capability = true;
+  prerequisites.subgroup_size = 16;
   prerequisites.has_nonzero_k = true;
   EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
 
