@@ -39,6 +39,23 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
   return kTileSizes.back();
 }
 
+// `tile_m` must match the fixed subgroup size as required by the subgroup path of `im2col_matmul`.
+uint32_t GetFixedSubgroupSize(const ComputeContextBase& context, uint32_t tile_m) {
+  if (!context.HasFeature(wgpu::FeatureName::Subgroups) ||
+      !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    return 0;
+  }
+
+  const auto& adapter_info = context.AdapterInfo();
+  for (uint32_t size = adapter_info.subgroupMinSize; size <= adapter_info.subgroupMaxSize; size *= 2) {
+    if (size == tile_m) {
+      return tile_m;
+    }
+  }
+
+  return 0;
+}
+
 // Add support for more devices.
 bool IsDeviceSupported(const ComputeContextBase& context) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
@@ -173,15 +190,14 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   const auto [tile_m, tile_n] = ChooseTileSize(im2col_m, im2col_n);
   const uint32_t workgroup_size = tile_n;
 
-  // Check the device's subgroup size before shader compilation to avoid potential performance penalties
-  // associated with conditional checks in the shader runtime.
-  //
-  // Ensure the subgroup size must be greater than or equal to `tile_m` to safely enable `use_subgroup`.
-  // If the status of this condition is uncertain, the feature must be disabled.
-  const bool use_subgroup = false;
+  const uint32_t subgroup_size = GetFixedSubgroupSize(context, tile_m);
+  const bool use_subgroup = subgroup_size > 0;
   const uint32_t vec_size = channel_input % 4 == 0 ? 4 : (channel_input % 2 == 0 ? 2 : 1);
   Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup, activation};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
+  if (use_subgroup) {
+    im2col_mm_program.SetSubgroupSize(subgroup_size);
+  }
 
   const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
   const uint32_t N_tiles = CeilDiv(im2col_n, tile_n);

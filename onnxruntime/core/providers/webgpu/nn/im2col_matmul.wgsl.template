@@ -127,7 +127,11 @@ $MAIN {
 #if use_subgroup
       let src_data = src_tile[inner_k_idx][sg_id];
       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
+#if vec_size == 1
+        results[m_idx] += output_element_t(weight_data * subgroupShuffle(src_data, m_idx));
+#else
         results[m_idx] += output_element_t(dot(weight_data, subgroupShuffle(src_data, m_idx)));
+#endif
       }
 #else
       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
