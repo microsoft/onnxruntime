@@ -912,28 +912,55 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
   ORT_RETURN_IF(fbs_node_edges.node_index() != index_,
                 "input index: ", fbs_node_edges.node_index(), " is not the same as this node's index:", index_);
 
-  auto add_edges = [&graph](const flatbuffers::Vector<const onnxruntime::fbs::EdgeEnd*>* fbs_edges,
-                            EdgeSet& edge_set, const std::string& dst_name) -> Status {
+  auto add_edges = [this, &graph](
+                       const flatbuffers::Vector<const onnxruntime::fbs::EdgeEnd*>* fbs_edges,
+                       bool input_edges) -> Status {
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
-        ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
+        ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing.");
         const auto edge_node_index = fbs_edge->node_index();
         const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
         ORT_RETURN_IF(static_cast<size_t>(edge_node_index) >= node_slot_count,
-                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " has out-of-range node index ",
+                      "Node::LoadEdgesFromOrtFormat, edge has out-of-range node index ",
                       edge_node_index, ". Invalid ORT format model.");
         const auto* edge_node = graph.GetNode(edge_node_index);
         ORT_RETURN_IF(edge_node == nullptr,
-                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " references missing node ",
+                      "Node::LoadEdgesFromOrtFormat, edge references missing node ",
                       edge_node_index, ". Invalid ORT format model.");
-        edge_set.emplace(*edge_node, fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
+
+        const int src_arg_index = fbs_edge->src_arg_index();
+        const int dst_arg_index = fbs_edge->dst_arg_index();
+        ORT_RETURN_IF(src_arg_index == INT_MAX || dst_arg_index == INT_MAX,
+                      "Node::LoadEdgesFromOrtFormat, control edges are not supported.");
+
+        const Node& src_node = input_edges ? *edge_node : *this;
+        const Node& dst_node = input_edges ? *this : *edge_node;
+        ORT_RETURN_IF(src_arg_index < 0 ||
+                          static_cast<size_t>(src_arg_index) >= src_node.OutputDefs().size(),
+                      "Node::LoadEdgesFromOrtFormat, edge has out-of-range src_arg_index.");
+        const size_t explicit_input_count = dst_node.InputDefs().size();
+        const size_t input_count = explicit_input_count + dst_node.ImplicitInputDefs().size();
+        ORT_RETURN_IF(dst_arg_index < 0 || static_cast<size_t>(dst_arg_index) >= input_count,
+                      "Node::LoadEdgesFromOrtFormat, edge has out-of-range dst_arg_index.");
+
+        const NodeArg* src_arg = src_node.OutputDefs()[src_arg_index];
+        const NodeArg* dst_arg = static_cast<size_t>(dst_arg_index) < explicit_input_count
+                                     ? dst_node.InputDefs()[dst_arg_index]
+                                     : dst_node.ImplicitInputDefs()[dst_arg_index - explicit_input_count];
+        ORT_RETURN_IF(!src_arg->Exists() || !dst_arg->Exists(),
+                      "Node::LoadEdgesFromOrtFormat, edge references a missing optional NodeArg.");
+        ORT_RETURN_IF(src_arg != dst_arg,
+                      "Node::LoadEdgesFromOrtFormat, edge connects mismatched NodeArgs.");
+
+        auto& edge_set = input_edges ? relationships_.input_edges : relationships_.output_edges;
+        edge_set.emplace(*edge_node, src_arg_index, dst_arg_index);
       }
     }
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.input_edges(), relationships_.input_edges, "input edges"));
-  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.output_edges(), relationships_.output_edges, "output edges"));
+  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.input_edges(), true));
+  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.output_edges(), false));
 
   return Status::OK();
 }

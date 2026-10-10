@@ -88,6 +88,40 @@ Status LoadOrtBuffer(const std::vector<uint8_t>& buffer, bool use_buffer_for_ini
   return session_object.Load(buffer.data(), static_cast<int>(buffer.size()));
 }
 
+std::vector<uint8_t> BuildOrtModelWithEdge(int32_t src_arg_index, int32_t dst_arg_index,
+                                           bool input_edge = true, bool mismatched_args = false) {
+  return BuildOrtModelBuffer([&](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "input", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "other", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{builder.CreateSharedString("input")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{
+        builder.CreateSharedString(mismatched_args ? "other" : "x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("y")};
+    std::vector<int32_t> arg_counts{1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "source", "", "", 1, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
+                              nullptr, &arg_counts, &empty_args),
+        fbs::CreateNodeDirect(builder, "destination", "", "", 1, 1, "Identity",
+                              fbs::NodeType::Primitive, nullptr, &destination_inputs, &destination_outputs,
+                              nullptr, &arg_counts, &empty_args)};
+    std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, src_arg_index, dst_arg_index)};
+    std::vector<fbs::EdgeEnd> output_edges{fbs::EdgeEnd(1, src_arg_index, dst_arg_index)};
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
+        input_edge ? fbs::CreateNodeEdgeDirect(builder, 1, &input_edges)
+                   : fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges)};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("input")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
+    return fbs::CreateGraphDirect(
+        builder, nullptr, &node_args, &nodes, 2, &node_edges, &graph_inputs, &graph_outputs);
+  });
+}
+
 }  // namespace
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
@@ -220,6 +254,24 @@ TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
   const auto status = LoadOrtBuffer(buffer, true);
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw data size mismatch"));
+}
+
+TEST(OrtModelTest, RejectsInvalidSerializedEdges) {
+  for (const bool input_edge : {false, true}) {
+    for (const auto& [src_arg_index, dst_arg_index, error] : {
+             std::tuple{1, 0, "out-of-range src_arg_index"},
+             std::tuple{0, 1, "out-of-range dst_arg_index"},
+             std::tuple{INT_MAX, INT_MAX, "control edges are not supported"}}) {
+      const auto status = LoadOrtBuffer(
+          BuildOrtModelWithEdge(src_arg_index, dst_arg_index, input_edge));
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(error));
+    }
+
+    const auto status = LoadOrtBuffer(BuildOrtModelWithEdge(0, 0, input_edge, true));
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("mismatched NodeArgs"));
+  }
 }
 
 TEST(OrtModelTest, RejectsDanglingNodeEdge) {
