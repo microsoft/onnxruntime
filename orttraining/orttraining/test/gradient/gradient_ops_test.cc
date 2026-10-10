@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <bitset>
 #include <cmath>
+#include <numeric>
 #include <random>
 #include <thread>
 
@@ -101,6 +102,13 @@ static void RunReductionTests(const OpDef& op_def, bool axes_as_input = false,
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};
     x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, 5.f));
+    if (op_def.type == "ReduceMax") {
+      // Keep maxima separated by more than GradientChecker's 1e-3 perturbation.
+      auto& x_data = x_datas.back();
+      std::iota(x_data.begin(), x_data.end(), -static_cast<float>(x_data.size()) / 2.f);
+      std::default_random_engine generator{GetTestRandomSeed()};
+      std::shuffle(x_data.begin(), x_data.end(), generator);
+    }
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
     if (keepdims_ip[i] != -1) attributes.push_back(MakeAttribute("keepdims", keepdims_ip[i]));
