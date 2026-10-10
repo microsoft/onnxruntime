@@ -1290,6 +1290,118 @@ compilation, changed-line C++ formatting, and Python lint/format checks
 pass. Runtime behavior on Ada/Blackwell, Windows, and model-level
 accuracy/performance remain unverified.
 
+### 8.7 Register pipelining and common-interval specialization
+
+The follow-up retains register-fragment ping-pong and a specialized grouped
+path for weight block=128 with one activation scale interval. The latter
+requires K divisible by 128, N divisible by 64, and complete M tiles
+(32 or 64 rows according to the existing tile-selection rule). Other
+geometry continues through the general grouped or fallback paths.
+Neither optimization changes the selected activation quantization domain.
+
+The same H200, FP16 inputs/output, constant weights/scales, no bias,
+10 warmups, 50 repetitions and five trials as section 8.6 were used.
+For K=N=1024 and weight block=128:
+
+| Weight bits | M | Remeasured section 8.6 baseline (us) | Follow-up per-token operator (us) | Speedup |
+|-------------|---|-------------------------------------|----------------------------------|---------|
+| 2 | 128 | 34.40 | 29.85 | 1.15x |
+| 2 | 1536 | 54.69 | 45.51 | 1.20x |
+| 4 | 128 | 33.79 | 27.20 | 1.24x |
+| 4 | 1536 | 53.22 | 43.22 | 1.23x |
+
+These are complete operator CUDA-event medians, not bare GEMM timings.
+Register ping-pong alone improved the measured per-token cases by about
+1-2%; most of the improvement comes from eliminating dynamic interval
+tracking, repeated activation-scale checks, and output-tail checks when
+the specialized path's full-tile conditions hold. INT32 accumulators
+still reset every 128 K elements, and FP32 scale products and interval
+additions keep their original order.
+
+Nsight Systems confirms `NativeAlignedGroupedMatMul<half, 4, 64, true>`.
+For M/K/N=1536/1024/1024, native GEMM is 24.82 us versus 34.94 us in
+section 8.6, while activation quantization remains 6.72 us.
+The four W8 single-interval prefill cases remain essentially unchanged
+at 159.31, 162.67, 109.96 and 66.65 us. FP16 GEMM remains faster.
+
+A lossless lane-major W2/W4 weight layout and group-major scale layout
+were also implemented and tested. They preserve all packed codes and
+the raw FP16/BF16/FP32 scale bits; initialization produces additional
+packed weights rather than an expanded INT8 matrix. Exact constant-weight
+and fallback tests pass. However, neither tested layout version improves
+the measured cases, so production prepacking was not retained.
+For W4, M=1536, K=N=4096, the packed layout takes 333.53 us versus
+324.20 us with the standard format and runtime weights. The benchmark's
+`--runtime-weights` option permits reproducing the no-prepack comparison
+with byte-identical weight input. Expanded-weight scratch, prepack memory,
+and global INT32 output remain zero in the retained implementation.
+
+Validation: 21 focused C++ tests pass in both standard and plugin builds.
+Ten Python tests pass, including 36 randomized exact-bit cases,
+capture/replay with changed inputs on the common-interval path, and
+concurrent execution. New C++ coverage checks constant weights, both
+tile sizes, FP16/BF16, unequal boundaries, tails, nonfinite activations,
+and extreme scales on the specialized path. Integrated Compute Sanitizer
+reports zero memory errors and zero race hazards. SM75/80/90 compilation
+and changed-line C++/Python formatting and lint checks pass.
+These results do not establish Ada/Blackwell runtime performance.
+
+### 8.8 Standalone Hopper W8 prototype
+
+A separate SM90a CUTLASS/CuTe prototype uses a strict fused INT8 GEMM
+epilogue and a CuTe-AOT per-token CUDA quantizer. The quantizer runs
+256 threads per row, implements rounded FP32 division and ties-to-even
+INT8 conversion, and emits NaN scales/all-zero codes for nonfinite rows.
+The timed path executes one quantization kernel and one GEMM kernel;
+it contains no eager PyTorch quantization operations or allocations.
+
+On H200, with 15 warmed samples of 100 repetitions, CUDA-event medians
+in native C++ launch loops are:
+
+| M | K | N | Selected tile | Quantize (us) | Bare GEMM (us) | Quantize + GEMM (us) |
+|---|---|---|---------------|---------------|----------------|---------------------|
+| 1536 | 2048 | 6144 | 128x128x128 | 8.17 | 57.04 | 66.67 |
+| 1536 | 6144 | 2048 | 64x128x128 | 18.54 | 57.63 | 78.93 |
+| 1536 | 2048 | 4096 | 128x128x128 | 8.17 | 35.94 | 44.34 |
+| 1536 | 2048 | 2048 | 64x128x128 | 8.17 | 22.65 | 30.74 |
+
+For M=128, the smaller tile wins among the two tested configurations,
+with quantize+GEMM medians of 14.28-29.73 us across these K/N geometries.
+These are prototype native-launch measurements, not integrated ORT
+operator timings. They exclude allocations, transfers, constant weight
+preparation, TMA descriptor setup, and warmup, and must not be interpreted
+as direct end-to-end ORT speedup ratios against the Python I/O-binding
+measurements in sections 8.4-8.7.
+
+The prototype prepares signed INT8 B[N,K] losslessly from offset-packed
+W8 and FP32 column scales before timing. Its CUDA quantization scratch
+is qA plus row scales, at most 9,443,328 bytes for the measured shapes.
+CUTLASS workspace is zero. The strict epilogue applies activation and
+weight scales in the specified order, adds bias separately, and writes
+FP16 directly without a global INT32 output or separate dequantization.
+Binary checks report no fused multiply-add instructions.
+
+An independent CPU integer-dot oracle verifies 47,710,208 main output
+encodings, including quantized activation codes and FP32 scales.
+Additional quantizer checks cover all 63,488 finite FP16 encodings,
+rounding ties, NaN/Inf domains, signaling NaNs, signed zeros, and extreme
+finite weight scales. This prototype validates FP16/per-token only;
+BF16 and native per-tensor CUDA quantization remain unvalidated.
+
+The reusable handle holds fixed shapes and qA/scale/weight/output pointers,
+while raw A may change. GEMM/TMA initialization costs 2.12-2.34 us once;
+complete handle creation costs 15.43-17.00 us and stores 1,792 host bytes
+of kernel parameters. Run does not initialize descriptors. Image
+availability is checked against the actual SM90a GEMM and quantizer
+kernels, not just the device capability.
+
+The prototype is not wired into the production operator. ORT integration
+must handle varying output/scratch bindings, independent concurrent runs,
+capture/replay lifetimes, per-device state, and constant signed-weight
+storage before adopting the measured fast path. A ptxas C7510 warning
+about WGMMA serialization across a function boundary remains in the
+measured build and is another tuning opportunity.
+
 ## 9. Delivery Plan and Acceptance
 
 | Priority | Delivery | Required outcome |

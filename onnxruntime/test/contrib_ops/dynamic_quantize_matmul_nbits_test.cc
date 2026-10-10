@@ -146,7 +146,8 @@ template <typename T, typename S = float>
 void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t block,
              const std::string& mode, int64_t activation_block = 0,
              bool constant_scales = false, bool flattened_scales = false, bool with_bias = true,
-             std::vector<float> input_values = {}, std::vector<float> scale_values = {}, bool identity = false) {
+             std::vector<float> input_values = {}, std::vector<float> scale_values = {}, bool identity = false,
+             bool constant_weights = false) {
   const int64_t k = shape.back();
   const int64_t m = std::accumulate(shape.begin(), shape.end() - 1, int64_t{1}, std::multiplies<int64_t>());
   const int64_t groups = k / block + (k % block != 0);
@@ -226,7 +227,7 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t blo
   test.AddAttribute<std::string>("activation_quantization", mode);
   if (mode == "dynamic_per_block") test.AddAttribute<int64_t>("activation_block_size", activation_block);
   test.AddInput<T>("A", shape, a);
-  test.AddInput<uint8_t>("B", {n, groups, blob}, b);
+  test.AddInput<uint8_t>("B", {n, groups, blob}, b, constant_weights);
   test.AddInput<S>("scales", flattened_scales ? std::vector<int64_t>{n * groups} : std::vector<int64_t>{n, groups}, scales, constant_scales);
   if (with_bias) test.AddInput<T>("bias", {n}, bias);
   test.AddOutput<T>("Y", output_shape, expected);
@@ -336,6 +337,49 @@ TEST(DynamicQuantizeMatMulNBitsTest, PipelinedLargeGroupedTile) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (int bits : {2, 4, 8}) {
     RunCase<MLFloat16>({961, 192}, 961, bits, 128, "dynamic_per_block", 64, true, false, false);
+  }
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, Common128ScaleIntervals) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (int bits : {2, 4, 8}) {
+    for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token"}) {
+      RunCase<MLFloat16>({64, 256}, 64, bits, 128, mode, 0, true, false, true, {}, {}, false, true);
+      RunCase<BFloat16, MLFloat16>({1024, 256}, 1024, bits, 128, mode, 0, true, true, false, {}, {}, false, true);
+    }
+  }
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, ConstantWeightsAndFallbacks) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (int bits : {2, 4}) {
+    for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {
+      for (int64_t k : {192, 256, 320, 257}) {
+        RunCase<MLFloat16>({65, k}, 128, bits, 128, mode, 192, true, false, true, {}, {}, false, true);
+        RunCase<BFloat16, BFloat16>({65, k}, 128, bits, 128, mode, 192, true, true, false, {}, {}, false, true);
+      }
+    }
+  }
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, Common128NonfiniteAndScaleBounds) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t m = 64;
+  constexpr int64_t k = 256;
+  constexpr int64_t n = 64;
+  std::vector<float> scales(n * 2);
+  const float values[] = {0, -1, 1, 1e-38f, std::numeric_limits<float>::max()};
+  for (size_t i = 0; i < scales.size(); ++i) scales[i] = values[i % 5];
+  for (int bits : {2, 4, 8}) {
+    for (float value : {std::numeric_limits<float>::quiet_NaN(), float(BFloat16::FromBits(1)),
+                        float(BFloat16::FromBits(0x7f7f))}) {
+      RunCase<BFloat16>({m, k}, n, bits, 128, "dynamic_per_token", 0, true, false, false,
+                        std::vector<float>(m * k, value), scales);
+    }
+    for (float value : {float(MLFloat16::FromBits(1)), 65504.0f}) {
+      RunCase<MLFloat16>({m, k}, n, bits, 128, "dynamic_per_token", 0, true, false, false,
+                         std::vector<float>(m * k, value), scales);
+    }
   }
 }
 

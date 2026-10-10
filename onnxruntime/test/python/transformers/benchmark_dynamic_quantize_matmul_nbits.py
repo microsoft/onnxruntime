@@ -22,11 +22,27 @@ import onnxruntime as ort
 
 
 def make_session(
-    m, k, n, bits, block, packed, scales, dtype, mode, activation_block, runtime_scales, weight_only=False
+    m,
+    k,
+    n,
+    bits,
+    block,
+    packed,
+    scales,
+    dtype,
+    mode,
+    activation_block,
+    runtime_scales,
+    weight_only=False,
+    runtime_weights=False,
 ):
     onnx_type = TensorProto.FLOAT16 if dtype == "fp16" else TensorProto.BFLOAT16
-    initializers = [numpy_helper.from_array(packed, "B")]
+    initializers = []
     inputs = [helper.make_tensor_value_info("A", onnx_type, [m, k])]
+    if runtime_weights:
+        inputs.append(helper.make_tensor_value_info("B", TensorProto.UINT8, list(packed.shape)))
+    else:
+        initializers.append(numpy_helper.from_array(packed, "B"))
     if runtime_scales:
         inputs.append(helper.make_tensor_value_info("scales", onnx_type, list(scales.shape)))
     else:
@@ -119,6 +135,7 @@ def run_case(args, m, k, n):
         "mode": args.mode,
         "activation_block_size": args.activation_block_size,
         "runtime_scales": args.runtime_scales,
+        "runtime_weights": args.runtime_weights,
         "packed_weight_bytes": packed.nbytes,
         "weight_padding_bytes": packed.nbytes - (n * k * args.bits + 7) // 8,
         "weight_scale_bytes": scales.nbytes,
@@ -132,6 +149,7 @@ def run_case(args, m, k, n):
         "prepack_bytes": 0,
     }
     scale_tensor = torch.from_numpy(scales.astype(np.float32)).cuda().to(torch_dtype)
+    weight_tensor = torch.from_numpy(packed).cuda() if args.runtime_weights else None
     outputs = {}
     for weight_only, label in ((False, "dynamic"), (True, "matmul_nbits")):
         if weight_only and args.skip_matmul_nbits:
@@ -150,10 +168,13 @@ def run_case(args, m, k, n):
             args.activation_block_size,
             args.runtime_scales,
             weight_only,
+            args.runtime_weights,
         )
         y = torch.empty((m, n), device="cuda", dtype=torch_dtype)
         binding = session.io_binding()
         binding.bind_input("A", "cuda", 0, onnx_type, list(a.shape), a.data_ptr())
+        if args.runtime_weights:
+            binding.bind_input("B", "cuda", 0, TensorProto.UINT8, list(packed.shape), weight_tensor.data_ptr())
         if args.runtime_scales:
             binding.bind_input("scales", "cuda", 0, onnx_type, list(scales.shape), scale_tensor.data_ptr())
         binding.bind_output("Y", "cuda", 0, onnx_type, list(y.shape), y.data_ptr())
@@ -253,6 +274,7 @@ def main():
     )
     parser.add_argument("--activation-block-size", type=int, default=128)
     parser.add_argument("--runtime-scales", action="store_true")
+    parser.add_argument("--runtime-weights", action="store_true", help="Disable constant-weight prepacking")
     parser.add_argument(
         "--skip-matmul-nbits",
         action="store_true",

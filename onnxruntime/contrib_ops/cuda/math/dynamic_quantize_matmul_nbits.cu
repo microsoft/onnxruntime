@@ -391,12 +391,14 @@ __global__ void NativeSingleIntervalMatMul(const int8_t* a, const float* a_scale
 #endif
 }
 
-template <typename T, int Bits, int TileM>
+template <typename T, int Bits, int TileM, bool Common128 = false>
 __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
                                            const void* b_scales, DynamicWeightScaleType scale_type,
                                            const T* bias, T* y, bool per_tensor, int rows, int n,
-                                           int k, int block_size, int activation_block_size) {
+                                           int k, int runtime_block_size, int runtime_activation_block_size) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  const int block_size = Common128 ? 128 : runtime_block_size;
+  const int activation_block_size = Common128 ? k : runtime_activation_block_size;
   constexpr int TileN = 64;
   constexpr int tile_n = TileN;
   constexpr int pack = 8 / Bits;
@@ -432,13 +434,20 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
     int activation_end = min(k, activation_block_size);
     int interval_start = 0;
     int interval_end = min(weight_end, activation_end);
+    if constexpr (Common128) {
+#pragma unroll
+      for (int mf = 0; mf < m_fragments; ++mf) {
+        const int scale_row = tile_row + warp_row + mf * 16 + lane % 16;
+        row_scales[mf] = a_scales[per_tensor ? 0 : scale_row];
+      }
+    }
     auto load = [&](int pos, int stage) {
 #pragma unroll
       for (int i = threadIdx.x; i < TileM * (tile_k / 16); i += threads) {
         const int local_row = i / (tile_k / 16);
         const int offset = (i % (tile_k / 16)) * 16;
         const int row = tile_row + local_row;
-        const bool valid = row < rows && pos + offset < k;
+        const bool valid = (Common128 || row < rows) && pos + offset < k;
         CopyAsync16(&shared_a[stage][local_row][offset / 4],
                     valid ? a + int64_t{row} * k + pos + offset : a, valid);
       }
@@ -447,7 +456,7 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
         const int local_column = i / (tile_k / (16 * pack));
         const int offset = (i % (tile_k / (16 * pack))) * 16;
         const int column = tile_column + local_column;
-        const bool valid = column < n && pos + offset * pack < k;
+        const bool valid = (Common128 || column < n) && pos + offset * pack < k;
         CopyAsync16(&shared_b[stage][local_column][offset / 4],
                     valid ? b + int64_t{column} * groups * (block_size / pack) + pos / pack + offset : b, valid);
       }
@@ -461,38 +470,47 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
       load(pos + (Stages - 1) * tile_k, (stage + Stages - 1) % Stages);
       asm volatile("cp.async.wait_group %0;" ::"n"(Stages - 1) : "memory");
       __syncthreads();
+      uint32_t fragment_a[2][m_fragments][4];
+      uint32_t fragment_b[2][n_fragments][2];
+      auto load_fragments = [&](int half_k, int buffer) {
+#pragma unroll
+        for (int cf = 0; cf < n_fragments; ++cf) {
+          const int column = warp_column + cf * 8 + lane / 4;
+          const auto* packed = reinterpret_cast<const uint8_t*>(&shared_b[stage][column][0]);
+          fragment_b[buffer][cf][0] = DecodeWeight4<Bits>(packed, half_k * 32 + (lane % 4) * 4);
+          fragment_b[buffer][cf][1] = DecodeWeight4<Bits>(packed, half_k * 32 + (lane % 4) * 4 + 16);
+        }
+#pragma unroll
+        for (int mf = 0; mf < m_fragments; ++mf) {
+          const int row = warp_row + mf * 16 + lane % 16;
+          const uint32_t address = static_cast<uint32_t>(__cvta_generic_to_shared(
+              &shared_a[stage][row][half_k * 8 + (lane / 16) * 4]));
+          asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
+                       : "=r"(fragment_a[buffer][mf][0]), "=r"(fragment_a[buffer][mf][1]),
+                         "=r"(fragment_a[buffer][mf][2]), "=r"(fragment_a[buffer][mf][3]) : "r"(address));
+        }
+      };
+      load_fragments(0, 0);
 #pragma unroll
       for (int half_k = 0; half_k < tile_k / 32; ++half_k) {
         if (half_k * 32 < valid_k) {
-          uint32_t fragment_b[n_fragments][2];
-#pragma unroll
-          for (int cf = 0; cf < n_fragments; ++cf) {
-            const int column = warp_column + cf * 8 + lane / 4;
-            const auto* packed = reinterpret_cast<const uint8_t*>(&shared_b[stage][column][0]);
-            fragment_b[cf][0] = DecodeWeight4<Bits>(packed, half_k * 32 + (lane % 4) * 4);
-            fragment_b[cf][1] = DecodeWeight4<Bits>(packed, half_k * 32 + (lane % 4) * 4 + 16);
-          }
+          if (half_k + 1 < tile_k / 32) load_fragments(half_k + 1, (half_k + 1) % 2);
 #pragma unroll
           for (int mf = 0; mf < m_fragments; ++mf) {
-            const int row = warp_row + mf * 16 + lane % 16;
-            const uint32_t address = static_cast<uint32_t>(__cvta_generic_to_shared(
-                &shared_a[stage][row][half_k * 8 + (lane / 16) * 4]));
-            uint32_t fragment_a[4];
-            asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
-                         : "=r"(fragment_a[0]), "=r"(fragment_a[1]),
-                           "=r"(fragment_a[2]), "=r"(fragment_a[3]) : "r"(address));
 #pragma unroll
             for (int cf = 0; cf < n_fragments; ++cf) {
-              MmaInt8(acc[mf][cf], fragment_a, fragment_b[cf][0], fragment_b[cf][1]);
+              MmaInt8(acc[mf][cf], fragment_a[half_k % 2][mf],
+                      fragment_b[half_k % 2][cf][0], fragment_b[half_k % 2][cf][1]);
             }
           }
         }
       }
-      if (pos + tile_k == interval_end) {
+      if (Common128 ? pos % 128 == 64 : pos + tile_k == interval_end) {
         const int scale_column = tile_column + warp_column + lane;
-        const float weight_scale = scale_column < n
+        const int current_weight_group = Common128 ? pos / 128 : weight_group;
+        const float weight_scale = (Common128 || scale_column < n)
                                        ? LoadScale(b_scales, scale_type,
-                                                   int64_t{scale_column} * groups + weight_group)
+                                                   int64_t{scale_column} * groups + current_weight_group)
                                        : 0.0f;
         float weight_scales[n_fragments][2];
 #pragma unroll
@@ -502,7 +520,7 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
             weight_scales[cf][c] = __shfl_sync(0xffffffff, weight_scale, cf * 8 + (lane % 4) * 2 + c);
           }
         }
-        if (activation_group != cached_activation_group) {
+        if (!Common128 && activation_group != cached_activation_group) {
 #pragma unroll
           for (int mf = 0; mf < m_fragments; ++mf) {
             const int scale_row = tile_row + warp_row + mf * 16 + lane % 16;
@@ -526,21 +544,23 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
             for (int element = 0; element < 4; ++element) {
               const int row = tile_row + warp_row + mf * 16 + lane / 4 + (element / 2) * 8;
               const int column = tile_column + warp_column + cf * 8 + (lane % 4) * 2 + element % 2;
-              if (row < rows && column < n) {
+              if (Common128 || (row < rows && column < n)) {
                 const float term = ScaleProduct<std::is_same_v<T, half>>(acc[mf][cf][element],
                                                                          activation_scales[element / 2],
                                                                          weight_scales[cf][element % 2]);
-                total[mf][cf][element] = interval_start == 0 ? term : __fadd_rn(total[mf][cf][element], term);
+                total[mf][cf][element] = (Common128 ? pos == 64 : interval_start == 0)
+                                             ? term
+                                             : __fadd_rn(total[mf][cf][element], term);
               }
               acc[mf][cf][element] = 0;
             }
           }
         }
-        if (interval_end == weight_end) {
+        if (!Common128 && interval_end == weight_end) {
           ++weight_group;
           weight_end = interval_end + min(k - interval_end, block_size);
         }
-        if (interval_end == activation_end) {
+        if (!Common128 && interval_end == activation_end) {
           ++activation_group;
           activation_end = interval_end + min(k - interval_end, activation_block_size);
         }
@@ -559,7 +579,7 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
         for (int element = 0; element < 4; ++element) {
           const int row = tile_row + warp_row + mf * 16 + lane / 4 + (element / 2) * 8;
           const int column = tile_column + warp_column + cf * 8 + (lane % 4) * 2 + element % 2;
-          if (row < rows && column < n) {
+          if (Common128 || (row < rows && column < n)) {
             y[int64_t{row} * n + column] = from_float<T>(__fadd_rn(total[mf][cf][element],
                                                                    bias ? to_float(bias[column]) : 0.0f));
           }
@@ -764,25 +784,23 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
     const int64_t column_tiles = n / 64 + (n % 64 != 0);
     const size_t large_tiles = SafeInt<size_t>(rows / 64 + (rows % 64 != 0)) * column_tiles;
     const bool large_m_tile = large_tiles >= 256;
+    const int tile_m = large_m_tile ? 64 : 32;
+    const bool common128 = block_size == 128 && k % 128 == 0 && activation_block_size >= k &&
+                           rows % tile_m == 0 && n % 64 == 0;
+    auto kernel = large_m_tile
+                      ? (common128 ? NativeAlignedGroupedMatMul<T, Bits, 64, true>
+                                   : NativeAlignedGroupedMatMul<T, Bits, 64>)
+                      : (common128 ? NativeAlignedGroupedMatMul<T, Bits, 32, true>
+                                   : NativeAlignedGroupedMatMul<T, Bits, 32>);
     bool available;
-    ORT_RETURN_IF_ERROR(NativeKernelAvailable(large_m_tile ? NativeAlignedGroupedMatMul<T, Bits, 64>
-                                                           : NativeAlignedGroupedMatMul<T, Bits, 32>,
-                                              available));
+    ORT_RETURN_IF_ERROR(NativeKernelAvailable(kernel, available));
     if (available) {
-      const int tile_m = large_m_tile ? 64 : 32;
       const size_t tiles = SafeInt<size_t>(rows / tile_m + (rows % tile_m != 0)) * column_tiles;
       const int blocks = static_cast<int>(std::min<size_t>(65535, tiles));
-      if (large_m_tile) {
-        NativeAlignedGroupedMatMul<T, Bits, 64><<<blocks, 128, 0, stream>>>(
-            a, a_scales, b, b_scales, scale_type, static_cast<const T*>(bias), static_cast<T*>(y),
-            per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k),
-            static_cast<int>(block_size), static_cast<int>(activation_block_size));
-      } else {
-        NativeAlignedGroupedMatMul<T, Bits, 32><<<blocks, 128, 0, stream>>>(
-            a, a_scales, b, b_scales, scale_type, static_cast<const T*>(bias), static_cast<T*>(y),
-            per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k),
-            static_cast<int>(block_size), static_cast<int>(activation_block_size));
-      }
+      kernel<<<blocks, 128, 0, stream>>>(
+          a, a_scales, b, b_scales, scale_type, static_cast<const T*>(bias), static_cast<T*>(y),
+          per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k),
+          static_cast<int>(block_size), static_cast<int>(activation_block_size));
       CUDA_RETURN_IF_ERROR(cudaGetLastError());
       return Status::OK();
     }
