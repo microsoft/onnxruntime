@@ -54,6 +54,14 @@ The test validates import, EP registration, device discovery, and inference (req
 inference portion). Set the environment variable `ORT_TEST_VERBOSE=1` to print additional diagnostic information
 (environment, available providers, discovered devices, etc.).
 
+By default, inference uses `SessionOptions.add_provider_for_devices`, which is supported by the minimum core runtime.
+To also test plugin selection through `InferenceSession(..., providers=[("WebGpuExecutionProvider", options)])`, install
+a host wheel built from this checkout with `--use_webgpu shared_lib --build_wheel` and set
+`ORT_WEBGPU_TEST_PROVIDER_NAME=1`. The Windows WebGPU plugin PR job runs this check in its existing `Run tests` step,
+using the locally built host and plugin wheels and reusing the dependencies installed for the job.
+The minimum-runtime package tests leave it disabled.
+Set `ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE=1` to fail instead of skipping inference when no WebGPU device is available.
+
 ## Versioning
 
 The package version is derived from [`../VERSION_NUMBER`](../VERSION_NUMBER) by the packaging pipeline (see
