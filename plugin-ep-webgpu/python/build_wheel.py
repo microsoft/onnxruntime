@@ -28,27 +28,53 @@ sys.path.insert(0, str(SCRIPT_DIR.parent))
 from _packaging_utils import gen_file_from_template  # noqa: E402, I001  (path setup must precede import)
 
 
-# Patterns for binaries to include in the package
-BINARY_PATTERNS = [
-    "onnxruntime_providers_webgpu.dll",
-    "libonnxruntime_providers_webgpu.so",
-    "libonnxruntime_providers_webgpu.dylib",
-    # DXC dependencies (Windows)
-    "dxcompiler.dll",
-    # Dawn shared library (if built as shared)
-    "webgpu_dawn.dll",
-    "libwebgpu_dawn.so",
-    "libwebgpu_dawn.dylib",
-]
+REQUIRED_BINARIES = {
+    "Windows": ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll"),
+    "Linux": ("libonnxruntime_providers_webgpu.so",),
+    "Darwin": ("libonnxruntime_providers_webgpu.dylib",),
+}
+
+OPTIONAL_BINARIES = {
+    "Windows": ("webgpu_dawn.dll",),
+    "Linux": ("libwebgpu_dawn.so",),
+    "Darwin": ("libwebgpu_dawn.dylib",),
+}
 
 # Libraries to exclude from auditwheel bundling (user-provided drivers)
 AUDITWHEEL_EXCLUDE = [
     "libvulkan.so.1",
 ]
 
+WINDOWS_AGILITY_SDK_BINARIES = [
+    Path("D3D12/D3D12Core.dll"),
+    Path("D3D12/d3d12SDKLayers.dll"),
+]
 
-def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
+
+def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, *, require_agility_sdk: bool = False):
     """Copy the package source tree into staging_dir, copy binaries, and stamp the version."""
+    target_platform = platform.system()
+    if target_platform not in REQUIRED_BINARIES:
+        raise ValueError(f"Unsupported wheel platform: {target_platform}")
+    if require_agility_sdk and target_platform != "Windows":
+        raise ValueError("--require-agility-sdk is only supported for Windows wheels")
+
+    required_binaries = [Path(filename) for filename in REQUIRED_BINARIES[target_platform]]
+    optional_binaries = [Path(filename) for filename in OPTIONAL_BINARIES[target_platform]]
+    if target_platform == "Windows":
+        if require_agility_sdk or any(
+            (binary_dir / relative_path).is_file() for relative_path in WINDOWS_AGILITY_SDK_BINARIES
+        ):
+            required_binaries.extend(WINDOWS_AGILITY_SDK_BINARIES)
+
+    missing_binaries = [
+        str(relative_path) for relative_path in required_binaries if not (binary_dir / relative_path).is_file()
+    ]
+    if missing_binaries:
+        raise FileNotFoundError(
+            f"Missing required {target_platform} wheel binaries from {binary_dir}: {', '.join(missing_binaries)}"
+        )
+
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy only the files needed to build the wheel
@@ -64,18 +90,16 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
             raise FileNotFoundError(f"Expected license file not found: {src}")
         shutil.copy2(src, staging_dir / license_filename)
 
-    # Copy plugin binaries into the package directory
-    # Note: The binaries are assumed to be directly under `binary_dir`.
     package_dir = staging_dir / "onnxruntime_ep_webgpu"
-    copied = []
-    for pattern in BINARY_PATTERNS:
-        for src in binary_dir.glob(pattern):
-            dst = package_dir / src.name
-            print(f"Copying {src} -> {dst}")
-            shutil.copy2(src, dst)
-            copied.append(dst)
-    if not copied:
-        raise FileNotFoundError(f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}")
+    binaries = required_binaries + [
+        relative_path for relative_path in optional_binaries if (binary_dir / relative_path).is_file()
+    ]
+    for relative_path in binaries:
+        src = binary_dir / relative_path
+        dst = package_dir / relative_path
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Copying {src} -> {dst}")
+        shutil.copy2(src, dst)
 
     # Substitute the minimum ORT version into the staged README in place.
     min_ort_version = MIN_ONNXRUNTIME_VERSION_FILE.read_text(encoding="utf-8").strip()
@@ -166,6 +190,11 @@ def main():
     )
     parser.add_argument("--version", required=True, help="Package version string (PEP 440 format)")
     parser.add_argument("--output_dir", required=True, type=Path, help="Directory to place the built wheel")
+    parser.add_argument(
+        "--require-agility-sdk",
+        action="store_true",
+        help="Require both D3D12 Agility SDK DLLs in the pre-built input (used by Windows release pipelines).",
+    )
     args = parser.parse_args()
 
     if not args.binary_dir.is_dir():
@@ -175,7 +204,7 @@ def main():
         staging_dir = Path(tmp) / "package"
         wheel_dir = Path(tmp) / "wheels"
 
-        prepare_staging_dir(staging_dir, args.binary_dir, args.version)
+        prepare_staging_dir(staging_dir, args.binary_dir, args.version, require_agility_sdk=args.require_agility_sdk)
         build_wheel(staging_dir, wheel_dir)
         auditwheel_repair(wheel_dir)
         collect_wheels(wheel_dir, args.output_dir)

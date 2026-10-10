@@ -62,6 +62,7 @@ stages:
         --output-dir "$(Build.ArtifactStagingDirectory)\nuget"
         --staging-dir "$(WebGpuPackStagingDir)"
         --configuration Release
+        --require-agility-sdk
         --nuget-config "$(Build.SourcesDirectory)\NuGet.config"
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml

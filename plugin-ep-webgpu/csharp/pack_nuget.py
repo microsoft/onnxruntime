@@ -32,12 +32,23 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 # Platform name -> (RID, list of native binary filenames expected in the source dir).
+WINDOWS_BINARIES = (
+    "onnxruntime_providers_webgpu.dll",
+    "dxcompiler.dll",
+)
+
+WINDOWS_AGILITY_SDK_BINARIES = (
+    "D3D12/D3D12Core.dll",
+    "D3D12/d3d12SDKLayers.dll",
+)
+
 PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll")),
-    "win_arm64": ("win-arm64", ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll")),
+    "win_x64": ("win-x64", WINDOWS_BINARIES),
+    "win_arm64": ("win-arm64", WINDOWS_BINARIES),
     "linux_x64": ("linux-x64", ("libonnxruntime_providers_webgpu.so",)),
     "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_webgpu.so",)),
     "macos_arm64": ("osx-arm64", ("libonnxruntime_providers_webgpu.dylib",)),
@@ -79,6 +90,11 @@ def parse_args() -> argparse.Namespace:
         help="Directory for the .nupkg / .snupkg output (default: ./nuget_output).",
     )
     p.add_argument("--configuration", default="Release", help="Build configuration (default: Release).")
+    p.add_argument(
+        "--require-agility-sdk",
+        action="store_true",
+        help="Require both Agility SDK DLLs for each Windows platform, including in --pack-only mode.",
+    )
 
     # CI mode: a single root containing per-platform subdirectories.
     p.add_argument(
@@ -205,15 +221,24 @@ def stage_binaries(
         if not source_dir.is_dir():
             raise PackError(f"binary directory does not exist: {source_dir}")
 
+        platform_files = list(files)
+        if rid.startswith("win-") and (
+            args.require_agility_sdk
+            or any((source_dir / filename).is_file() for filename in WINDOWS_AGILITY_SDK_BINARIES)
+        ):
+            platform_files.extend(WINDOWS_AGILITY_SDK_BINARIES)
+
         target_dir = staging_dir / "runtimes" / rid / "native"
         target_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"Staging {name} -> runtimes/{rid}/native/")
-        for filename in files:
+        for filename in platform_files:
             src = source_dir / filename
             if not src.is_file():
                 raise PackError(f"expected binary not found: {src}")
-            shutil.copy2(src, target_dir / filename)
+            destination = target_dir / filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, destination)
             print(f"  {filename}")
         staged.add(name)
 
@@ -262,6 +287,28 @@ def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace) -
     print("Staging directory preserved for subsequent --pack-only invocation.")
 
 
+def verify_package(package: Path, staging_dir: Path, *, require_agility_sdk: bool = False) -> None:
+    with zipfile.ZipFile(package) as archive:
+        actual = set(archive.namelist())
+    expected = set()
+    for rid, files in PLATFORMS.values():
+        native_dir = Path("runtimes") / rid / "native"
+        if (staging_dir / native_dir).is_dir():
+            expected.update((native_dir / filename).as_posix() for filename in files)
+            if rid.startswith("win-"):
+                expected.add("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets")
+                sdk_entries = {(native_dir / filename).as_posix() for filename in WINDOWS_AGILITY_SDK_BINARIES}
+                if (
+                    require_agility_sdk
+                    or sdk_entries.intersection(actual)
+                    or any((staging_dir / entry).is_file() for entry in sdk_entries)
+                ):
+                    expected.update(sdk_entries)
+    missing = expected.difference(actual)
+    if missing:
+        raise PackError(f"missing package entries in {package}: {', '.join(sorted(missing))}")
+
+
 def do_pack(
     staged_csproj: Path,
     output_dir: Path,
@@ -269,26 +316,31 @@ def do_pack(
 ) -> None:
     print()
     print(f"Running dotnet pack (Version={args.version}, Configuration={args.configuration})...")
-    pack_args = [
-        "dotnet",
-        "pack",
-        *dotnet_common_args(staged_csproj, args),
-        "--output",
-        str(output_dir),
-    ]
-    if args.pack_only:
-        pack_args.append("--no-build")
-    print("+ " + " ".join(pack_args))
-    subprocess.run(pack_args, check=True)
+    with tempfile.TemporaryDirectory(prefix="ort_webgpu_nuget_") as temporary:
+        pack_output_dir = Path(temporary)
+        pack_args = [
+            "dotnet",
+            "pack",
+            *dotnet_common_args(staged_csproj, args),
+            "--output",
+            str(pack_output_dir),
+        ]
+        if args.pack_only:
+            pack_args.append("--no-build")
+        print("+ " + " ".join(pack_args))
+        subprocess.run(pack_args, check=True)
 
-    print()
-    nupkgs = sorted(output_dir.glob("*.nupkg"))
-    if not nupkgs:
-        raise PackError(f"no .nupkg files found in {output_dir}")
-    for pkg in nupkgs:
-        print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
-    for pkg in sorted(output_dir.glob("*.snupkg")):
-        print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
+        print()
+        nupkgs = sorted(pack_output_dir.glob("*.nupkg"))
+        if not nupkgs:
+            raise PackError(f"no .nupkg files found in {pack_output_dir}")
+        for pkg in nupkgs:
+            verify_package(pkg, staged_csproj.parent, require_agility_sdk=args.require_agility_sdk)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for pkg in nupkgs + sorted(pack_output_dir.glob("*.snupkg")):
+            shutil.copy2(pkg, output_dir / pkg.name)
+            print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
 
 
 def render_readme(staging_dir: Path, min_ort_version: str) -> None:
