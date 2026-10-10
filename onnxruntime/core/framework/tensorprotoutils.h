@@ -58,6 +58,8 @@ inline constexpr std::array<uint8_t, ONNX_NAMESPACE::TensorProto_DataType_DataTy
         sizeof(uint8_t),   // FLOAT8E8M0
         sizeof(uint8_t),   // UINT2
         sizeof(uint8_t),   // INT2
+        sizeof(uint8_t),   // FLOAT6E2M3: packed 6-bit elements
+        sizeof(uint8_t),   // FLOAT6E3M2: packed 6-bit elements
     };
 
 consteval bool IsTensorProtoDataTypeElementSizeMapComplete() {

@@ -7802,6 +7802,12 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
   auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
     const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
+    if (graph.DomainToVersionMap().at(kOnnxDomain) >= 28) {
+      ASSERT_EQ(get_op_count(op_to_count, "Slice"), 4);
+      ASSERT_EQ(get_op_count(op_to_count, "Concat"), 1);
+      ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 0);
+      return;
+    }
     ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
     ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
     ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
@@ -7814,14 +7820,17 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
     }
   };
 
-  TransformerTester(build_test_case,
-                    check_transformed_graph,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    13,
-                    0.0,
-                    0.0,
-                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
+  for (int opset : {13, 27, 28}) {
+    SCOPED_TRACE(opset);
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      opset,
+                      0.0,
+                      0.0,
+                      std::make_unique<SliceConcatToSpaceToDepthFusion>());
+  }
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNodesTest) {

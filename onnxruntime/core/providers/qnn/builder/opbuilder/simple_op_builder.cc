@@ -48,6 +48,12 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
                                         const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
 
+  if (op_type == "SpaceToDepth") {
+    NodeAttrHelper node_helper(node_unit);
+    ORT_RETURN_IF_NOT(node_helper.Get("mode", "DCR") == "DCR",
+                      "QNN EP only supports SpaceToDepth with DCR mode.");
+  }
+
   if (op_type == "GridSample") {
     NodeAttrHelper node_helper(node_unit);
     std::string mode = node_helper.Get("mode", "linear");

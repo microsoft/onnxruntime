@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include <cassert>
+#include <limits>
 #include <string>
 
 #include "test/providers/qnn/qnn_test_utils.h"
@@ -37,6 +38,25 @@ static void RunModTest(const std::vector<TestInputDef<DataType>>& input_defs,
 //
 // CPU tests:
 //
+
+TEST_F(QnnCPUBackendTests, Mod_float_Floor_Opset28_Fallback) {
+  const float inf = std::numeric_limits<float>::infinity();
+  RunModTest<float>({TestInputDef<float>({8}, false, {-5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 5.0f}),
+                     TestInputDef<float>({8}, false, {3.0f, 3.0f, -3.0f, -3.0f, inf, inf, -inf, -inf})},
+                    {utils::MakeAttribute("fmod", static_cast<int64_t>(0))},
+                    ExpectedEPNodeAssignment::None,
+                    "cpu",
+                    28);
+}
+
+TEST_F(QnnCPUBackendTests, Mod_integer_Floor_Opset28) {
+  RunModTest<int32_t>({TestInputDef<int32_t>({4}, false, {-5, 5, -5, 5}),
+                       TestInputDef<int32_t>({4}, false, {3, 3, -3, -3})},
+                      {utils::MakeAttribute("fmod", static_cast<int64_t>(0))},
+                      ExpectedEPNodeAssignment::All,
+                      "cpu",
+                      28);
+}
 
 // Test that Mod with dynamic divisor.
 TEST_F(QnnCPUBackendTests, Mod_dynamic_Divisor) {

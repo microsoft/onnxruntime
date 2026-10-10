@@ -1249,7 +1249,9 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    ModelOptions model_opts{true, strict_shape_type_inference, check_load_cancellation_fn_};
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
+    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
 
     // When set, the external initializers folder overrides the model's own directory as the
     // base for resolving external data. The model bytes are still read from model_uri.
@@ -1345,6 +1347,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1353,7 +1357,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
+                                    ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
+                                                 check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_array");
@@ -1409,6 +1414,8 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1418,7 +1425,8 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     // This call will move model_proto to the constructed model instance
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
+                                    ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
+                                                 check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_proto");
@@ -1516,12 +1524,15 @@ common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
 
   const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+  const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                              kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
   // need to go from unique_ptr to shared_ptr when moving into model_
   std::unique_ptr<Model> tmp_model;
   ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
                                                          HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                                         ModelOptions{true, strict_shape_type_inference,
+                                                         ModelOptions{allow_released_opsets_only,
+                                                                      strict_shape_type_inference,
                                                                       check_load_cancellation_fn_},
                                                          *session_logger_, tmp_model));
 

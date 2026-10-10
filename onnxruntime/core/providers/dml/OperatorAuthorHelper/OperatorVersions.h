@@ -457,6 +457,11 @@ namespace OperatorHelper
         static const int sc_sinceVer_GroupNorm = 21;
     }
 
+    namespace OnnxOperatorSet28
+    {
+        static const int sc_sinceVer_Cast = 28;
+    }
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_DmlFusedConv = 1;

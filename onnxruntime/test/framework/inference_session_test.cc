@@ -5245,7 +5245,7 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
       if (buffer_destination && has_main_initializer) continue;
 #endif
 #if defined(__EMSCRIPTEN__)
-      // The WASM test module does not provide Module.MountedFiles for file-backed external data.
+      // File-backed subgraph tensors require a Module.MountedFiles mapping in WASM.
       if (!buffer_destination) continue;
 #endif
       {
@@ -5295,7 +5295,7 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
   }
 }
 
-// The WASM test module cannot load host filesystem external data without Module.MountedFiles.
+// Subgraph and attribute external tensors in this test load from the host filesystem.
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(__EMSCRIPTEN__)
 TEST(InferenceSessionTests, ExternalInitializerInjectionIsMainGraphOnly) {
   const std::filesystem::path model_dir = ORT_TSTR("external_buffers_attribute_model_dir");
