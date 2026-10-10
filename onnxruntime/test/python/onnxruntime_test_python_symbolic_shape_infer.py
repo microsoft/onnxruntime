@@ -893,6 +893,62 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_split_to_sequence(self):
+        def infer(split_to_sequence_node, initializers, nodes=()):
+            graph = helper.make_graph(
+                [
+                    *nodes,
+                    split_to_sequence_node,
+                    helper.make_node("SequenceAt", ["sequence", "position"], ["output"]),
+                ],
+                "SplitToSequence_Test",
+                [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["b", 3, 5])],
+                [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                [helper.make_tensor("position", TensorProto.INT64, [], [0]), *initializers],
+            )
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+            inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+            return self._tensor_shape(unique_element(inferred.graph.output))
+
+        node = helper.make_node("SplitToSequence", ["input"], ["sequence"], axis=1, keepdims=0)
+        self.assertEqual(infer(node, []), ["b", 5])
+
+        node = helper.make_node("SplitToSequence", ["input"], ["sequence"], axis=1)
+        self.assertEqual(infer(node, []), ["b", 1, 5])
+
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=-1)
+        split = helper.make_tensor("split", TensorProto.INT64, [2], [2, 3])
+        output_shape = infer(node, [split])
+        self.assertEqual(output_shape[:2], ["b", 3])
+        self.assertIsInstance(output_shape[2], str)
+
+        # equal 1-D split
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=1)
+        split = helper.make_tensor("split", TensorProto.INT64, [3], [1, 1, 1])
+        self.assertEqual(infer(node, [split]), ["b", 1, 5])
+
+        # scalar split that divides the axis, and one that does not
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=1)
+        split = helper.make_tensor("split", TensorProto.INT64, [], [3])
+        self.assertEqual(infer(node, [split]), ["b", 3, 5])
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=-1)
+        split = helper.make_tensor("split", TensorProto.INT64, [], [2])
+        output_shape = infer(node, [split])
+        self.assertEqual(output_shape[:2], ["b", 3])
+        self.assertIsInstance(output_shape[2], str)
+
+        # symbolic split computed from the input shape
+        nodes = [
+            helper.make_node("Shape", ["input"], ["input_shape"]),
+            helper.make_node("Slice", ["input_shape", "starts", "ends"], ["split"]),
+        ]
+        initializers = [
+            helper.make_tensor("starts", TensorProto.INT64, [1], [0]),
+            helper.make_tensor("ends", TensorProto.INT64, [1], [1]),
+        ]
+        node = helper.make_node("SplitToSequence", ["input", "split"], ["sequence"], axis=0)
+        self.assertEqual(infer(node, initializers, nodes), ["b", 3, 5])
+
     def test_shape_start_end(self):
         graph = helper.make_graph(
             [
