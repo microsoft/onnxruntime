@@ -5,9 +5,9 @@
 
 #include <cmath>
 #include <limits>
-#include <type_traits>
 
 #include "contrib_ops/cpu/bert/paged_attention_helper.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -109,6 +109,31 @@ SparsePagedAttention<T, TCACHE>::SparsePagedAttention(const OpKernelInfo& info)
           "contiguous",
       "Only auxiliary_cache_layout='contiguous' is supported.");
   auxiliary_kv_shared_ = get_boolean_attribute("auxiliary_kv_shared", 0);
+  constexpr const char* kGroupedConfig = "ep.cuda.sparse_paged_attention_grouped";
+  const auto configured_grouped = info.GetConfigOptions().GetConfigEntry(kGroupedConfig);
+  if (configured_grouped.has_value()) {
+    ORT_ENFORCE(*configured_grouped == "0" || *configured_grouped == "1",
+                kGroupedConfig, " must be 0 or 1, got '", *configured_grouped, "'.");
+    enable_grouped_ = *configured_grouped == "1";
+  } else {
+    enable_grouped_ = ParseEnvironmentVariableWithDefault<bool>("ORT_SPARSE_PAGED_ATTENTION_GROUPED", false);
+  }
+  constexpr const char* kTileConfig = "ep.cuda.sparse_paged_attention_grouped_tile_size";
+  const auto tile = info.GetConfigOptions().GetConfigOrDefault(kTileConfig, "8");
+  ORT_ENFORCE(tile == "8", kTileConfig, " only supports 8; the tile-16 experiment was removed.");
+  const char* removed_configs[] = {
+      "ep.cuda.sparse_paged_attention_grouped_decode",
+      "ep.cuda.sparse_paged_attention_grouped_decode_splits",
+      "ep.cuda.sparse_paged_attention_warp_reduction"};
+  for (const auto* config : removed_configs) {
+    ORT_ENFORCE(info.GetConfigOptions().GetConfigOrDefault(config, "0") == "0",
+                config, " only supports 0; the experimental optimization was removed.");
+  }
+  constexpr const char* kVectorizedConfig = "ep.cuda.sparse_paged_attention_grouped_vectorized";
+  const auto vectorized = info.GetConfigOptions().GetConfigOrDefault(kVectorizedConfig, "0");
+  ORT_ENFORCE(vectorized == "0" || vectorized == "1", kVectorizedConfig,
+              " must be 0 or 1, got '", vectorized, "'.");
+  enable_grouped_vectorized_ = vectorized == "1";
 }
 
 template <typename T, typename TCACHE>
@@ -293,12 +318,10 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
   const int64_t max_candidate_entries =
       std::min<int64_t>(static_cast<int64_t>(max_selected_entries) + max_local_entries,
                         std::numeric_limits<int>::max());
-  const int heads_per_block = SparsePagedAttentionHeadsPerBlock(
-      parameters, attention_mode_, selected_kv_source_, std::is_same<T, TCACHE>::value,
-      device_prop.sharedMemPerBlock);
   const int num_splits = ComputeSparsePagedAttentionSplits(
-      parameters.token_count, parameters.num_heads, static_cast<int>(max_candidate_entries),
-      device_prop.multiProcessorCount, heads_per_block);
+      parameters.token_count, parameters.num_heads,
+      static_cast<int>(max_candidate_entries),
+      device_prop.multiProcessorCount);
   const size_t partial_rows = num_splits > 1
                                   ? static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads
                                   : 0;
@@ -361,7 +384,7 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
                                    : auxiliary_lengths->Data<int32_t>(),
       auxiliary_capacity, auxiliary_num_heads, attention_mode_,
       selected_kv_source_, auxiliary_kv_shared_, partial_out.get(),
-      partial_max.get(), partial_sum.get(), num_splits);
+      partial_max.get(), partial_sum.get(), num_splits, enable_grouped_, enable_grouped_vectorized_);
 }
 
 }  // namespace cuda

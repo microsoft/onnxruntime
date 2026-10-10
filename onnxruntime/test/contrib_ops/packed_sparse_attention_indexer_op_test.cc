@@ -684,6 +684,8 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
       out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
       out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       key_len_after[static_cast<size_t>(b)] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       continue;
     }
     const int new_block_count = full_new_block_count;
@@ -1355,6 +1357,8 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
       out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
       out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       key_len_after[static_cast<size_t>(b)] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       continue;
     }
     const int new_window_count = full_new_window_count;

@@ -22,17 +22,11 @@ enum class SelectedKvSource {
   kAuxiliary,
 };
 
-int SparsePagedAttentionHeadsPerBlock(
-    const contrib::PagedAttentionParameters& parameters,
-    SparseAttentionMode attention_mode, SelectedKvSource selected_kv_source,
-    bool matching_cache_type, size_t shared_memory_per_block);
-
 int ComputeSparsePagedAttentionSplits(
     int token_count,
     int num_heads,
     int max_candidate_count,
-    int multi_processor_count,
-    int heads_per_block = 1);
+    int multi_processor_count);
 
 template <typename T, typename TCACHE>
 Status SparseQkvToContext(
@@ -54,7 +48,9 @@ Status SparseQkvToContext(
     float* partial_out,
     float* partial_max,
     float* partial_sum,
-    int num_splits);
+    int num_splits,
+    bool enable_grouped,
+    bool enable_grouped_vectorized);
 
 }  // namespace cuda
 }  // namespace contrib

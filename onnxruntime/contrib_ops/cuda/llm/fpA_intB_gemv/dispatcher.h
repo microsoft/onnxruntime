@@ -435,9 +435,12 @@ void check_pointer(Params& params, cudaStream_t s) {
   assert(!params.apply_alpha_in_advance);  // apply_alpha_in_advance is not supported for now.
 
 #if USE_COMPACT_FPA_INTB_GEMM
-  ORT_ENFORCE(!params.zeros && !params.bias,
-              "Compact fpA_intB GEMV does not support zero points or bias");
-  dispatcher<Details, GroupSize, false, false, false, false>(params, s);
+  ORT_ENFORCE(!params.zeros, "Compact fpA_intB GEMV does not support zero points");
+  if (params.bias) {
+    dispatcher<Details, GroupSize, false, false, true, false>(params, s);
+  } else {
+    dispatcher<Details, GroupSize, false, false, false, false>(params, s);
+  }
 #else
   if (params.zeros && params.bias) {
     dispatcher<Details, GroupSize, false, true, true, false>(params, s);

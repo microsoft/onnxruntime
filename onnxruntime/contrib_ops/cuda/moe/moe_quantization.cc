@@ -265,6 +265,16 @@ REGISTER_KERNEL_TYPED(BFloat16)
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
   enable_kernel_debug_info_ =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
+  constexpr const char* kSkipProfilingConfig = "ep.cuda.qmoe_skip_nvfp4_gemv_profiling";
+  const auto configured_skip_profiling = op_kernel_info.GetConfigOptions().GetConfigEntry(kSkipProfilingConfig);
+  if (configured_skip_profiling.has_value()) {
+    ORT_ENFORCE(*configured_skip_profiling == "0" || *configured_skip_profiling == "1",
+                kSkipProfilingConfig, " must be 0 or 1, got '", *configured_skip_profiling, "'.");
+    skip_nvfp4_gemv_profiling_ = *configured_skip_profiling == "1";
+  } else {
+    skip_nvfp4_gemv_profiling_ =
+        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_QMOE_SKIP_NVFP4_GEMV_PROFILING", false);
+  }
   const auto configured_row_tile_size =
       op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoERowTileSizeConfig);
   const char* row_tile_size_source = kQMoERowTileSizeConfig;
@@ -1314,8 +1324,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   std::array<RunnerTileConfig, 2> runner_tile_configs{};
   size_t runner_tile_config_count = 0;
   size_t workspace_size = 0;
-  // Standalone FP4 GEMV returns before runMoe and does not consume grouped-GEMM tactics or workspace.
-  if (!use_fp8_fused && !use_packed_int && !run_fp4_gemv) {
+  const bool skip_direct_nvfp4_profiling =
+      skip_nvfp4_gemv_profiling_ && is_nvfp4 && run_fp4_gemv;
+  if (!use_fp8_fused && !use_packed_int && !skip_direct_nvfp4_profiling) {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
 
     // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and

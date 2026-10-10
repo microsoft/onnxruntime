@@ -72,6 +72,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
  public:
   using Config = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
+  std::optional<Config> getDeterministicConfig(int m) const;
+
   // Parses a comma-separated list of M buckets (e.g. "1,8,64,512") into a sorted, de-duplicated,
   // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
   // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
@@ -97,9 +99,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mGroupSize = groupSize;
   }
 
-  void setCudaKernelType(KernelType cudaKernelType, int arch) {
+  void setCudaKernelType(KernelType cudaKernelType, int kernelArch, int deviceArch) {
     mCudaKernelType = cudaKernelType;
-    mArch = arch;
+    mKernelArch = kernelArch;
+    mDeviceArch = deviceArch;
   }
 
   void setL2CacheBytes(size_t l2CacheBytes) {
@@ -126,7 +129,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mQuantBits;
   int mGroupSize;
   KernelType mCudaKernelType;
-  int mArch;
+  int mKernelArch;
+  int mDeviceArch;
   size_t mL2CacheBytes = 0;
   std::vector<int> mProfileMOverride;
 };

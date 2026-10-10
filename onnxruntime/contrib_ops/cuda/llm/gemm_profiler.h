@@ -19,7 +19,6 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -96,15 +95,22 @@ class GemmIdCore {
   int n;
   int k;
   nvinfer::DataType dtype;
-  int sm;
+  int packing_sm;
+  int device_sm;
+  // Distinguishes tactic candidate sets (for example with an optional GEMV variant) for the same shape.
+  int tag;
+  bool wave_aware = false;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0)
-      : n(n_), k(k_), dtype(dtype_), sm(sm_) {
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int packing_sm_ = 0, int device_sm_ = 0,
+             bool wave_aware_ = false, int tag_ = 0)
+      : n(n_), k(k_), dtype(dtype_), packing_sm(packing_sm_), device_sm(device_sm_), tag(tag_), wave_aware(wave_aware_) {
   }
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
-        sm(0) {
+        packing_sm(0),
+        device_sm(0),
+        tag(0) {
   }
 
   bool operator==(GemmIdCore const& id) const {
@@ -114,13 +120,18 @@ class GemmIdCore {
   friend std::ostream& operator<<(std::ostream& out, GemmIdCore const& id) {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
-    out << " sm=" << id.sm;
+    out << " packing_sm=" << id.packing_sm;
+    out << " device_sm=" << id.device_sm;
+    out << " tag=" << id.tag;
+    out << " wave_aware=" << id.wave_aware;
     return out;
   }
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm;
+    return n == id.n && k == id.k && dtype == id.dtype &&
+           packing_sm == id.packing_sm && device_sm == id.device_sm && tag == id.tag &&
+           wave_aware == id.wave_aware;
   }
 };
 
@@ -130,8 +141,11 @@ struct GemmIdCoreHash {
     auto h1 = std::hash<int>{}(id.n);
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
-    auto h4 = std::hash<int>{}(id.sm);
-    return h1 ^ h2 ^ h3 ^ h4;
+    auto h4 = std::hash<int>{}(id.packing_sm);
+    auto h5 = std::hash<int>{}(id.device_sm);
+    auto h6 = std::hash<int>{}(id.tag);
+    auto h7 = std::hash<bool>{}(id.wave_aware);
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7;
   }
 };
 
@@ -196,6 +210,10 @@ class GemmPluginProfiler {
 
   void setAllocator(onnxruntime::AllocatorPtr allocator) {
     mAllocator = std::move(allocator);
+  }
+
+  void setRunner(RunnerPtr const& runner) {
+    mRunner = runner;
   }
 
   std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
@@ -393,7 +411,6 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   }
 
   int const mRounded = RoundUpProfileM(std::max(1, m), getMaxProfileM());
-  fflush(stdout);
 
   if (mMNKProfileMap->getMProfileMap(gemmId)->count(m) > 0) {
     return mMNKProfileMap->getMProfileMap(gemmId)->at(m);

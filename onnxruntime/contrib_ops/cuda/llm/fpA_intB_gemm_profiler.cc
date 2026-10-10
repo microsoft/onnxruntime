@@ -100,7 +100,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
-    onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
+    onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mKernelArch, params, stream);
   } else {
     // run CUTLASS kernel
     int const wsSize = static_cast<int>(mRunner->getWorkspaceSize(m, originalN, k));
@@ -138,6 +138,24 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
     return m < 16;
   }
   return true;
+}
+
+std::optional<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config>
+WeightOnlyGroupwiseQuantGemmPluginProfiler::getDeterministicConfig(int m) const {
+  const auto configs = mRunner->getConfigs();
+  if (m < 16) {
+    for (const auto& config : configs) {
+      if (config.enableCudaKernel) {
+        return config;
+      }
+    }
+  }
+  for (const auto& config : configs) {
+    if (!config.enableCudaKernel && config.split_k_style == cutlass_extensions::SplitKStyle::NO_SPLIT_K) {
+      return config;
+    }
+  }
+  return std::nullopt;
 }
 
 float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,

@@ -3,18 +3,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <numeric>
+#include <tuple>
+#include <sstream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
 
+#include "core/graph/model.h"
+#include "core/session/IOBinding.h"
+#include "core/session/inference_session.h"
 #include "default_providers.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -114,12 +124,12 @@ std::vector<MLFloat16> AddQuantizedInputs(OpTester& tester,
   return expected;
 }
 
-void RunCuda(OpTester& tester) {
+void RunCuda(OpTester& tester, const SessionOptions& options = {}) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   ASSERT_NE(cuda_ep, nullptr);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 void AddCommonInputs(OpTester& tester, float current_value,
@@ -211,6 +221,444 @@ float JointSoftmax(const std::vector<float>& logits, const std::vector<float>& v
 }
 
 }  // namespace
+
+TEST(SparsePagedAttention, Cuda_GroupedSessionOption) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  const auto run = [](const char* config_value, const char* expected_error = nullptr,
+                      const char* config_key = "ep.cuda.sparse_paged_attention_grouped") {
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    AddSingleTokenPrefix(tester, HalfVector(0.0f), HalfVector(0.0f), HalfVector(1.0f), {0}, 1);
+    tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(1.0f));
+    SessionOptions options;
+    if (config_value != nullptr) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(config_key, config_value));
+    }
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options,
+               expected_error != nullptr ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+               expected_error != nullptr ? expected_error : "", {}, nullptr, &providers);
+  };
+  for (const char* env_value : {"", "0", "1", "invalid"}) {
+    SCOPED_TRACE(env_value);
+    ScopedEnvironmentVariables env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", env_value}});
+    run("0");
+    run("1");
+    run(nullptr, std::string(env_value) == "invalid" ? "Failed to parse environment variable" : nullptr);
+  }
+  ScopedEnvironmentVariables env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", "0"}});
+  for (const char* config_value : {"", "2", "true", "-1"}) {
+    SCOPED_TRACE(config_value);
+    run(config_value, "ep.cuda.sparse_paged_attention_grouped must be 0 or 1");
+  }
+  constexpr const char* kTileConfig = "ep.cuda.sparse_paged_attention_grouped_tile_size";
+  run("8", nullptr, kTileConfig);
+  for (const char* tile : {"16", "", "0", "32", "eight"}) {
+    run(tile, "only supports 8", kTileConfig);
+  }
+  for (const char* config : {"ep.cuda.sparse_paged_attention_grouped_decode",
+                             "ep.cuda.sparse_paged_attention_grouped_decode_splits",
+                             "ep.cuda.sparse_paged_attention_warp_reduction"}) {
+    run("0", nullptr, config);
+    for (const char* value : {"1", "8", "32", "", "-1", "33", "1suffix", "999999999999"}) {
+      run(value, "only supports 0", config);
+    }
+  }
+  constexpr const char* kVectorizedConfig = "ep.cuda.sparse_paged_attention_grouped_vectorized";
+  run("0", nullptr, kVectorizedConfig);
+  run("1", nullptr, kVectorizedConfig);
+  run("2", "must be 0 or 1", kVectorizedConfig);
+}
+
+TEST(SparsePagedAttention, Cuda_GroupedProductionGeometryMatchesReference) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  constexpr int kHeads = 24;
+  constexpr int kKvHeads = 2;
+  constexpr int kChannels = 256;
+  constexpr int kBlocks = 5;
+  constexpr int kSelected = 257;
+  constexpr int kAuxiliaryCapacity = 259;
+  std::vector<std::vector<MLFloat16>> baseline_outputs;
+  for (const int arm : {0, 1, 2, 3, 4}) {
+    SCOPED_TRACE(arm);
+    ScopedEnvironmentVariables scoped_env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", arm == 1 || arm == 3 ? "1" : "0"}});
+    SessionOptions options;
+    if (arm >= 2) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.sparse_paged_attention_grouped", arm == 3 ? "0" : "1"));
+    }
+    if (arm == 4) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.sparse_paged_attention_grouped_vectorized", "1"));
+    }
+    size_t case_index = 0;
+    for (const int rows : {1, 2, 3, 4, 6, 8, 32}) {
+      for (const bool auxiliary : {false, true}) {
+        for (const bool shared_auxiliary : {false, true}) {
+          if (!auxiliary && shared_auxiliary) {
+            continue;
+          }
+          for (const bool local : {false, true}) {
+            const int batches = rows == 1 ? 1 : 2;
+            const std::vector<int32_t> cumulative = rows == 1 ? std::vector<int32_t>{0, 1}
+                                                              : std::vector<int32_t>{0, rows - 1, rows};
+            const std::vector<int32_t> past(batches, 15);
+            const std::vector<int32_t> table = rows == 1 ? std::vector<int32_t>{2, 0, 4}
+                                                         : std::vector<int32_t>{2, 0, 4, 1, 3, -1};
+            std::vector<int32_t> slots(rows);
+            std::vector<int32_t> indices(rows * kSelected, -1);
+            std::vector<int32_t> counts(rows, kSelected);
+            std::vector<MLFloat16> query(rows * kHeads * kChannels);
+            std::vector<MLFloat16> key(rows * kKvHeads * kChannels);
+            std::vector<MLFloat16> value(key.size());
+            std::vector<MLFloat16> cached_key(kBlocks * kBlockSize * kKvHeads * kChannels);
+            std::vector<MLFloat16> cached_value(cached_key.size());
+            std::vector<MLFloat16> auxiliary_key(batches * kAuxiliaryCapacity * kKvHeads * kChannels);
+            std::vector<MLFloat16> auxiliary_value(auxiliary_key.size());
+            const auto fill = [](std::vector<MLFloat16>& data, int modulus, float scale) {
+              for (size_t element = 0; element < data.size(); ++element) {
+                data[element] = MLFloat16((static_cast<int>(element % modulus) - modulus / 2) * scale);
+              }
+            };
+            fill(query, 17, 0.0625f);
+            fill(key, 13, 0.125f);
+            fill(value, 23, 0.125f);
+            fill(cached_key, 19, 0.0625f);
+            fill(cached_value, 29, 0.125f);
+            fill(auxiliary_key, 31, 0.0625f);
+            fill(auxiliary_value, 37, 0.125f);
+            for (int row = 0; row < rows; ++row) {
+              const int batch = batches == 2 && row == rows - 1 ? 1 : 0;
+              const int position = past[batch] + row - cumulative[batch];
+              slots[row] = table[batch * 3 + position / kBlockSize] * kBlockSize + position % kBlockSize;
+              for (int selected = 0; selected < kSelected; ++selected) {
+                indices[row * kSelected + selected] = auxiliary ? (selected * 67 + row) % kAuxiliaryCapacity
+                                                                : (selected * 7 + row) % (position + 2);
+              }
+              indices[row * kSelected] = -1;
+              indices[row * kSelected + 1] = 1000000;
+              if (row % 3 == 1) {
+                counts[row] = 9;
+              }
+              if (row % 3 == 2) {
+                counts[row] = 0;
+              }
+            }
+            std::vector<MLFloat16> expected(query.size());
+            for (int row = 0; row < rows; ++row) {
+              const int batch = batches == 2 && row == rows - 1 ? 1 : 0;
+              const int position = past[batch] + row - cumulative[batch];
+              const int local_begin = std::max(0, position - 3);
+              for (int head = 0; head < kHeads; ++head) {
+                const int kv_head = head / 12;
+                std::vector<float> logits;
+                std::vector<const MLFloat16*> values;
+                const auto add_candidate = [&](int logical, bool from_auxiliary) {
+                  if (logical < 0 || (from_auxiliary ? logical >= kAuxiliaryCapacity - 2 : logical > position)) {
+                    return;
+                  }
+                  const MLFloat16* key_row;
+                  const MLFloat16* value_row;
+                  if (from_auxiliary) {
+                    const int base = ((batch * kAuxiliaryCapacity + logical) * kKvHeads + kv_head) * kChannels;
+                    key_row = auxiliary_key.data() + base;
+                    value_row = shared_auxiliary ? key_row : auxiliary_value.data() + base;
+                  } else if (logical >= past[batch]) {
+                    const int base = ((cumulative[batch] + logical - past[batch]) * kKvHeads + kv_head) * kChannels;
+                    key_row = key.data() + base;
+                    value_row = value.data() + base;
+                  } else {
+                    const int slot = table[batch * 3 + logical / kBlockSize] * kBlockSize + logical % kBlockSize;
+                    const int base = (slot * kKvHeads + kv_head) * kChannels;
+                    key_row = cached_key.data() + base;
+                    value_row = cached_value.data() + base;
+                  }
+                  float dot = 0.0f;
+                  for (int channel = 0; channel < kChannels; ++channel) {
+                    dot += query[(row * kHeads + head) * kChannels + channel].ToFloat() * key_row[channel].ToFloat();
+                  }
+                  logits.push_back(std::tanh(dot * 0.0625f / 2.0f) * 2.0f);
+                  values.push_back(value_row);
+                };
+                if (local) {
+                  for (int logical = local_begin; logical <= position; ++logical) {
+                    add_candidate(logical, false);
+                  }
+                }
+                for (int selected = 0; selected < counts[row]; ++selected) {
+                  const int logical = indices[row * kSelected + selected];
+                  if (!auxiliary && local && logical >= local_begin && logical <= position) {
+                    continue;
+                  }
+                  add_candidate(logical, auxiliary);
+                }
+                float max_logit = 0.25f;
+                for (const float logit : logits) {
+                  max_logit = std::max(max_logit, logit);
+                }
+                double denominator = std::exp(0.25f - max_logit);
+                for (const float logit : logits) {
+                  denominator += std::exp(logit - max_logit);
+                }
+                for (int channel = 0; channel < kChannels; ++channel) {
+                  double numerator = 0.0;
+                  for (size_t candidate = 0; candidate < logits.size(); ++candidate) {
+                    numerator += std::exp(logits[candidate] - max_logit) * values[candidate][channel].ToFloat();
+                  }
+                  expected[(row * kHeads + head) * kChannels + channel] = MLFloat16(static_cast<float>(numerator / denominator));
+                }
+              }
+            }
+            OpTester tester("SparsePagedAttention", 1, kMSDomain);
+            tester.AddAttribute<int64_t>("num_heads", kHeads);
+            tester.AddAttribute<int64_t>("kv_num_heads", kKvHeads);
+            tester.AddAttribute<float>("softcap", 2.0f);
+            if (local) {
+              tester.AddAttribute<std::string>("attention_mode", "local_plus_selected");
+              tester.AddAttribute<int64_t>("local_window_size", 4);
+            }
+            if (auxiliary) {
+              tester.AddAttribute<std::string>("selected_kv_source", "auxiliary");
+              tester.AddAttribute<int64_t>("auxiliary_kv_shared", shared_auxiliary ? 1 : 0);
+            }
+            tester.AddInput<MLFloat16>("query", {rows, kHeads * kChannels}, query);
+            tester.AddInput<MLFloat16>("key", {rows, kKvHeads * kChannels}, key);
+            tester.AddInput<MLFloat16>("value", {rows, kKvHeads * kChannels}, value);
+            tester.AddInput<MLFloat16>("key_cache", {kBlocks, kBlockSize, kKvHeads, kChannels}, cached_key);
+            tester.AddInput<MLFloat16>("value_cache", {kBlocks, kBlockSize, kKvHeads, kChannels}, cached_value);
+            tester.AddInput<int32_t>("cumulative_sequence_length", {batches + 1}, cumulative);
+            tester.AddInput<int32_t>("past_seqlens", {batches}, past);
+            tester.AddInput<int32_t>("block_table", {batches, 3}, table);
+            tester.AddInput<int32_t>("slot_mapping", {rows}, slots);
+            tester.AddInput<int32_t>("selected_indices", {rows, kSelected}, indices);
+            tester.AddInput<int32_t>("selected_counts", {rows}, counts);
+            if (auxiliary) {
+              tester.AddInput<MLFloat16>("auxiliary_key", {batches, kAuxiliaryCapacity, kKvHeads, kChannels}, auxiliary_key);
+              if (shared_auxiliary) {
+                tester.AddOptionalInputEdge<MLFloat16>();
+              } else {
+                tester.AddInput<MLFloat16>("auxiliary_value", {batches, kAuxiliaryCapacity, kKvHeads, kChannels}, auxiliary_value);
+              }
+              tester.AddInput<int32_t>("auxiliary_lengths", {batches}, std::vector<int32_t>(batches, kAuxiliaryCapacity - 2));
+            } else {
+              tester.AddOptionalInputEdge<MLFloat16>();
+              tester.AddOptionalInputEdge<MLFloat16>();
+              tester.AddOptionalInputEdge<int32_t>();
+            }
+            tester.AddOptionalInputEdge<MLFloat16>();
+            tester.AddOptionalInputEdge<MLFloat16>();
+            tester.AddInput<MLFloat16>("head_sink", {kHeads}, HalfVector(0.25f, kHeads));
+            tester.AddOutput<MLFloat16>("output", {rows, kHeads * kChannels}, expected);
+            tester.SetOutputTolerance(0.002f, 0.002f);
+            bool verified = false;
+            tester.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
+              verified = true;
+              ASSERT_EQ(fetches.size(), 1u);
+              const auto* actual = fetches[0].Get<Tensor>().Data<MLFloat16>();
+              for (size_t channel = 0; channel < expected.size(); ++channel) {
+                ASSERT_NEAR(actual[channel].ToFloat(), expected[channel].ToFloat(),
+                            0.002f + 0.002f * std::abs(expected[channel].ToFloat()));
+              }
+              if (arm == 0) {
+                baseline_outputs.emplace_back(actual, actual + expected.size());
+              } else {
+                ASSERT_LT(case_index, baseline_outputs.size());
+                for (size_t channel = 0; channel < expected.size(); ++channel) {
+                  ASSERT_EQ(actual[channel].val, baseline_outputs[case_index][channel].val)
+                      << "case=" << case_index << " output element=" << channel;
+                }
+              }
+            });
+            RunCuda(tester, options);
+            ASSERT_TRUE(verified);
+            ASSERT_FALSE(::testing::Test::HasFailure());
+            ++case_index;
+          }
+        }
+      }
+    }
+  }
+}
+
+static void RunGroupedAliasedCacheAppendTest(int rows, bool unaligned = false) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  const int kRows = rows;
+  constexpr int kHeads = 24;
+  constexpr int kKvHeads = 2;
+  constexpr int kChannels = 256;
+  constexpr int kBlocks = 4;
+  constexpr int kPast = 15;
+  const std::vector<int32_t> table{2, 0, 3};
+  const std::vector<int64_t> cache_shape{kBlocks, kBlockSize, kKvHeads, kChannels};
+  const std::vector<MLFloat16> query(kRows * kHeads * kChannels, MLFloat16(0.0f));
+  std::vector<MLFloat16> key(kRows * kKvHeads * kChannels);
+  std::vector<MLFloat16> value(key.size());
+  std::vector<MLFloat16> expected_output(query.size());
+  const std::vector<MLFloat16> cached_key(kBlocks * kBlockSize * kKvHeads * kChannels, MLFloat16(-0.5f));
+  const std::vector<MLFloat16> cached_value(cached_key.size(), MLFloat16(-0.25f));
+  auto expected_key = cached_key;
+  auto expected_value = cached_value;
+  std::vector<int32_t> slots(kRows);
+  const int selected_count = unaligned ? 2 : 1;
+  std::vector<int32_t> selected(kRows * selected_count);
+  for (int row = 0; row < kRows; ++row) {
+    const int position = kPast + row;
+    slots[row] = table[position / kBlockSize] * kBlockSize + position % kBlockSize;
+    selected[row * selected_count] = position;
+    if (unaligned) {
+      selected[row * selected_count + 1] = kPast - 1;
+    }
+    for (int head = 0; head < kKvHeads; ++head) {
+      for (int channel = 0; channel < kChannels; ++channel) {
+        const int source = (row * kKvHeads + head) * kChannels + channel;
+        const int destination = (slots[row] * kKvHeads + head) * kChannels + channel;
+        key[source] = MLFloat16(0.5f + row * 0.03125f + channel * 0.00390625f);
+        value[source] = MLFloat16(1.0f + row * 0.03125f + head * 0.25f);
+        expected_key[destination] = key[source];
+        expected_value[destination] = value[source];
+      }
+    }
+    for (int head = 0; head < kHeads; ++head) {
+      std::copy_n(value.begin() + (row * kKvHeads + head / 12) * kChannels, kChannels,
+                  expected_output.begin() + (row * kHeads + head) * kChannels);
+      if (unaligned) {
+        for (int channel = 0; channel < kChannels; ++channel) {
+          auto& element = expected_output[(row * kHeads + head) * kChannels + channel];
+          element = MLFloat16((element.ToFloat() - 0.25f) * 0.5f);
+        }
+      }
+    }
+  }
+  for (const auto& [grouped, vectorized] :
+       std::vector<std::tuple<bool, bool>>{{false, false}, {true, false}, {true, true}}) {
+    ScopedEnvironmentVariables scoped_env({{"ORT_SPARSE_PAGED_ATTENTION_GROUPED", grouped ? "1" : "0"}});
+    OpTester tester("SparsePagedAttention", 1, kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", kHeads);
+    tester.AddAttribute<int64_t>("kv_num_heads", kKvHeads);
+    tester.AddInput<MLFloat16>("query", {kRows, kHeads * kChannels}, query);
+    tester.AddInput<MLFloat16>("key", {kRows, kKvHeads * kChannels}, key);
+    tester.AddInput<MLFloat16>("value", {kRows, kKvHeads * kChannels}, value);
+    tester.AddInput<MLFloat16>("key_cache", cache_shape, cached_key);
+    tester.AddInput<MLFloat16>("value_cache", cache_shape, cached_value);
+    tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, kRows});
+    tester.AddInput<int32_t>("past_seqlens", {1}, {kPast});
+    tester.AddInput<int32_t>("block_table", {1, 3}, table);
+    tester.AddInput<int32_t>("slot_mapping", {kRows}, slots);
+    tester.AddInput<int32_t>("selected_indices", {kRows, selected_count}, selected);
+    tester.AddInput<int32_t>("selected_counts", {kRows}, std::vector<int32_t>(kRows, selected_count));
+    tester.AddOutput<MLFloat16>("output", {kRows, kHeads * kChannels}, expected_output);
+    tester.AddOutput<MLFloat16>("key_cache_out", cache_shape, expected_key);
+    tester.AddOutput<MLFloat16>("value_cache_out", cache_shape, expected_value);
+    std::string serialized;
+    auto& model = tester.BuildModel();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+    std::stringstream model_stream(serialized);
+    SessionOptions options;
+    options.session_logid = "SparsePagedAttentionAliasedCacheTest";
+    if (vectorized) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.sparse_paged_attention_grouped_vectorized", "1"));
+    }
+    InferenceSession session(options, GetEnvironment());
+    auto provider = DefaultCudaExecutionProvider();
+    ASSERT_NE(provider, nullptr);
+    auto* provider_ptr = provider.get();
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+    const auto allocators = provider_ptr->CreatePreferredAllocators();
+    const OrtMemoryInfo* device_info = nullptr;
+    for (const auto& allocator : allocators) {
+      if (allocator->Info().device.Type() == OrtDevice::GPU && allocator->Info().mem_type == OrtMemTypeDefault) {
+        device_info = &allocator->Info();
+      }
+    }
+    ASSERT_NE(device_info, nullptr);
+    ASSERT_STATUS_OK(session.Load(model_stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    auto device_allocator = session.GetAllocator(*device_info);
+    ASSERT_NE(device_allocator, nullptr);
+    auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+    std::vector<OrtValue> backing_allocations;
+    auto make_gpu = [&](const auto& data, const TensorShape& shape) {
+      using Element = typename std::decay_t<decltype(data)>::value_type;
+      if constexpr (std::is_same_v<Element, MLFloat16>) {
+        if (unaligned) {
+          std::vector<Element> padded(data.size() + 1, MLFloat16(-8.0f));
+          std::copy(data.begin(), data.end(), padded.begin() + 1);
+          const TensorShape allocation_shape({shape.Size() + 1});
+          Tensor cpu_tensor(DataTypeImpl::GetType<Element>(), allocation_shape, padded.data(), cpu_allocator->Info());
+          Tensor gpu_tensor(DataTypeImpl::GetType<Element>(), allocation_shape, device_allocator);
+          ORT_THROW_IF_ERROR(provider_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+          auto* pointer = gpu_tensor.MutableData<Element>() + 1;
+          ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(pointer) % 4 == 2);
+          Tensor view(DataTypeImpl::GetType<Element>(), shape, pointer, device_allocator->Info());
+          OrtValue allocation;
+          Tensor::InitOrtValue(std::move(gpu_tensor), allocation);
+          backing_allocations.push_back(std::move(allocation));
+          OrtValue result;
+          Tensor::InitOrtValue(std::move(view), result);
+          return result;
+        }
+      }
+      Tensor cpu_tensor(DataTypeImpl::GetType<Element>(), shape, const_cast<Element*>(data.data()), cpu_allocator->Info());
+      Tensor gpu_tensor(DataTypeImpl::GetType<Element>(), shape, device_allocator);
+      ORT_THROW_IF_ERROR(provider_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+      OrtValue result;
+      Tensor::InitOrtValue(std::move(gpu_tensor), result);
+      return result;
+    };
+    std::unique_ptr<IOBinding> binding;
+    ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+    auto key_cache = make_gpu(cached_key, TensorShape(cache_shape));
+    auto value_cache = make_gpu(cached_value, TensorShape(cache_shape));
+    ASSERT_STATUS_OK(binding->BindInput("query", make_gpu(query, TensorShape({kRows, kHeads * kChannels}))));
+    ASSERT_STATUS_OK(binding->BindInput("key", make_gpu(key, TensorShape({kRows, kKvHeads * kChannels}))));
+    ASSERT_STATUS_OK(binding->BindInput("value", make_gpu(value, TensorShape({kRows, kKvHeads * kChannels}))));
+    ASSERT_STATUS_OK(binding->BindInput("key_cache", key_cache));
+    ASSERT_STATUS_OK(binding->BindInput("value_cache", value_cache));
+    ASSERT_STATUS_OK(binding->BindInput("cumulative_sequence_length", make_gpu(std::vector<int32_t>{0, kRows}, TensorShape({2}))));
+    ASSERT_STATUS_OK(binding->BindInput("past_seqlens", make_gpu(std::vector<int32_t>{kPast}, TensorShape({1}))));
+    ASSERT_STATUS_OK(binding->BindInput("block_table", make_gpu(table, TensorShape({1, 3}))));
+    ASSERT_STATUS_OK(binding->BindInput("slot_mapping", make_gpu(slots, TensorShape({kRows}))));
+    ASSERT_STATUS_OK(binding->BindInput("selected_indices", make_gpu(selected, TensorShape({kRows, selected_count}))));
+    ASSERT_STATUS_OK(binding->BindInput("selected_counts", make_gpu(std::vector<int32_t>(kRows, selected_count), TensorShape({kRows}))));
+    ASSERT_STATUS_OK(binding->BindOutput("output", device_info->device));
+    ASSERT_STATUS_OK(binding->BindOutput("key_cache_out", key_cache));
+    ASSERT_STATUS_OK(binding->BindOutput("value_cache_out", value_cache));
+    ASSERT_STATUS_OK(session.Run(RunOptions(), *binding));
+    ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+    const auto& outputs = binding->GetOutputs();
+    ASSERT_EQ(outputs.size(), 3u);
+    ASSERT_EQ(outputs[1].Get<Tensor>().Data<MLFloat16>(), key_cache.Get<Tensor>().Data<MLFloat16>());
+    ASSERT_EQ(outputs[2].Get<Tensor>().Data<MLFloat16>(), value_cache.Get<Tensor>().Data<MLFloat16>());
+    const std::vector<const std::vector<MLFloat16>*> expected{&expected_output, &expected_key, &expected_value};
+    for (size_t output_index = 0; output_index < outputs.size(); ++output_index) {
+      const auto& actual = outputs[output_index].Get<Tensor>();
+      Tensor host(DataTypeImpl::GetType<MLFloat16>(), actual.Shape(), cpu_allocator);
+      ASSERT_STATUS_OK(provider_ptr->GetDataTransfer()->CopyTensor(actual, host));
+      ASSERT_EQ(host.Shape().Size(), static_cast<int64_t>(expected[output_index]->size()));
+      for (size_t element = 0; element < expected[output_index]->size(); ++element) {
+        ASSERT_EQ(host.Data<MLFloat16>()[element].val, (*expected[output_index])[element].val)
+            << "grouped=" << grouped << " vectorized=" << vectorized
+            << " output=" << output_index << " element=" << element;
+      }
+    }
+  }
+}
+
+TEST(SparsePagedAttention, Cuda_GroupedAliasedCacheAppendMatchesReference) {
+  for (const int rows : {1, 2, 3, 4, 6, 8, 32}) {
+    SCOPED_TRACE(rows);
+    RunGroupedAliasedCacheAppendTest(rows);
+  }
+}
+
+TEST(SparsePagedAttention, Cuda_GroupedUnalignedAliasedCacheAppendMatchesReference) {
+  RunGroupedAliasedCacheAppendTest(32, true);
+}
 
 TEST(SparsePagedAttention, Cuda_SelectedMainWritesAndReadsPagedCache) {
   if (DefaultCudaExecutionProvider() == nullptr) {
