@@ -870,6 +870,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       return AllocateTensorSequence(ort_value);
     }
   } else {
+    if (ml_type->GetTypeProto()->has_opaque_type() && per_alloc_plan.alloc_kind == AllocKind::kReuse) {
+      const int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+      ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
+      // Share ownership of the object, not just its address, so it is destroyed exactly once.
+      ort_value = GetMutableMLValue(reuse_mlvalue_index);
+      return Status::OK();
+    }
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
 }

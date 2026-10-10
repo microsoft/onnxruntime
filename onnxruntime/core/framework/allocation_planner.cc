@@ -582,6 +582,16 @@ class PlannerImpl {
 
   bool SameSize(const onnxruntime::NodeArg& arg1, const onnxruntime::NodeArg& arg2) {
     if ((!arg1.Exists()) || (!arg2.Exists())) return false;
+    const auto* type1 = arg1.TypeAsProto();
+    const auto* type2 = arg2.TypeAsProto();
+    if (type1 && type2 && (type1->has_opaque_type() || type2->has_opaque_type())) {
+      // Opaque objects have no tensor shape. This only establishes compatibility;
+      // MayInplace and the caller's liveness checks still authorize mutation.
+      return type1->has_opaque_type() && type2->has_opaque_type() &&
+             type1->opaque_type().domain() == type2->opaque_type().domain() &&
+             type1->opaque_type().name() == type2->opaque_type().name() &&
+             AllocPlan(arg1.Name()).location == AllocPlan(arg2.Name()).location;
+    }
     auto p_shape1 = context_->GetShape(arg1);
     auto p_shape2 = context_->GetShape(arg2);
     // If the shapes are unknown, we conservatively assume they may be of different size.
@@ -1708,7 +1718,7 @@ class PlannerImpl {
         } else if (!context_->IsParallelExecutionEnabled() &&
                    FindReusableInput(graph_viewer_, *pnode, static_cast<int>(output_arg_def_index),
                                      &reused, &is_strided_tensor)) {
-          // Re-using inputs is applicable for tensors, sequence tensors,
+          // Re-using inputs is applicable for tensors, sequence tensors, opaque objects,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
