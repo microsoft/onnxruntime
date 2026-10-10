@@ -156,14 +156,14 @@ def run_case(args, m, k, n):
         else tile_m * activation_groups * 4,
         "tensor_reduction_scratch_upper_bound_bytes": 4096 if args.mode == "dynamic_per_tensor" and m * k > 4096 else 0,
         "expanded_weight_scratch_bytes": 0,
-        "prepack_upper_bound_bytes": packed.nbytes
-        if args.bits == 8
-        and args.dtype == "fp16"
-        and groups == 1
-        and n >= 512
-        and n % 8 == 0
-        and block >= 128
-        and not args.runtime_weights
+        "prepack_upper_bound_bytes": (
+            packed.nbytes
+            if args.bits == 8 and groups == 1 and n >= 512 and n % 8 == 0 and block >= 128
+            else n * groups * 128
+            if block == 128 and groups >= 2 and n >= 256 and n % 8 == 0
+            else 0
+        )
+        if not args.runtime_weights
         and torch.cuda.get_device_capability() == (9, 0)
         and os.environ.get("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", "0") == "0"
         else 0,
@@ -337,7 +337,7 @@ def main():
         "matmul_nbits_baseline": "explicitly disabled" if args.skip_matmul_nbits else "enabled",
         "sm90_gemm_disabled": os.environ.get("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", "0"),
         "cuda_graph": args.cuda_graph,
-        "prepack_memory": "Upper bound for the optional SM90 signed-W8 copy; availability depends on compiled images",
+        "prepack_memory": "Upper bound for the optional SM90 signed-INT8 copy (N*K bytes for block-128 W2/W4/W8); availability depends on compiled images",
     }
     print(json.dumps(metadata), flush=True)
     results = [run_case(args, m, k, n) for k, n in cases for m in args.m]

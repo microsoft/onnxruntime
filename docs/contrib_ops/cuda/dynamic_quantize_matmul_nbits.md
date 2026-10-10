@@ -1467,7 +1467,7 @@ Initialization makes a lossless signed INT8 copy of constant W8 bytes
 by XORing their symmetric offset. It retains the serialized weights
 for fallback geometry, so this adds 12/16/8/4 MiB of persistent weight
 memory in the four cases above, including serialized block padding.
-No persistent copy is made for W4/W2. Initialization
+W2/W4 and block-128 W8 use the grouped path of section 8.13, which keeps its own signed copy. Initialization
 finishes on the per-thread default stream before the copy is published.
 Quantized activation scratch remains within the existing row-tile
 budget and CUTLASS workspace is zero.
@@ -1590,6 +1590,68 @@ H200, BF16, M=1536, per-token, complete operator, previous path -> Hopper
 (35.69), 2048/2048 62.73 -> 32.66 (19.24). Standard and plugin builds pass
 25 focused tests each, the 15 Python tests pass, and Compute Sanitizer
 reports zero memcheck errors and zero racecheck hazards.
+
+### 8.13 Hopper grouped-scale path for block-128 W2/W4/W8
+
+The remaining gap for W2/W4 (about 40 us against 8 us for FP16 at M=1536,
+K=N=1024) came from the `mma.sync` grouped kernel running at roughly 7%
+of INT8 peak. A standalone prototype (kernel authored in a separate
+session, CuTe/CUTLASS 3 with hand-scheduled warp specialization) is now
+integrated into `dynamic_quantize_matmul_nbits_sm90.cu`.
+
+Design: weight block exactly 128 (one K tile per scale block), K a
+multiple of 128, one activation interval covering K, constant weights.
+One producer warpgroup issues TMA for A and B and gathers the native
+`[N, G]` weight scales (any of FP32/FP16/BF16 storage), and BM/64 consumer
+warpgroups issue INT8 WGMMA. Every K tile accumulates into a fresh INT32
+accumulator that is promoted to the FP32 running sum as
+`sum += (float(acc) * a_scale) * b_scale`, in K order with no FMA (the
+running sum starts at -0.0f so the first term needs no special case). Two
+accumulators let the MMA of tile k+1 overlap the promotion of tile k.
+There is no split-K because it would reassociate the sum. The epilogue adds
+the optional bias, converts to FP16 or BF16, and stores 16 bytes per
+thread through shared memory. BF16 activations reuse the section 8.12
+scale-range test: rows whose activation scale leaves the FP32 normal range
+take the FP64 first-product rule. Tile choice is 64x32 for at most 128
+rows or N <= 512, 128x96 for N <= 1024, otherwise 128x128, all with four
+stages; there is no workspace and the TMA descriptors are built per run.
+
+Weights: `PrePack` expands the codes to centered signed INT8 `[N, K]`
+(W4 code - 8, W2 code - 2, W8 XOR 0x80); this is lossless but costs N*K
+bytes of persistent memory in addition to the serialized weights (2x the
+packed size for W4 and 4x for W2). Use `ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM=1`
+to avoid it. The benchmark reports the bound as `prepack_upper_bound_bytes`.
+Eligibility also needs rows >= 16, N a multiple of 8 and at least 256, and
+16-byte aligned output and bias.
+
+H200, FP16 per-token, previous path -> Hopper grouped (M, K, N, bits):
+
+| Shape | Previous (us) | Hopper (us) |
+|-------|---------------|-------------|
+| 1536, 1024, 1024, W4 | 39.91 | 23.65 |
+| 1536, 1024, 1024, W2 | 42.13 | 23.50 |
+| 1536, 4096, 4096, W4 | 314.19 | 100.84 |
+| 128, 4096, 4096, W4 | 66.34 | 25.77 |
+| 16, 4096, 4096, W4 | 758.67 | 28.27 |
+| 1536, 1024, 1024, W4 BF16 | 51.50 | 35.62 |
+
+With CUDA graph replay the first row is 19.4 us. The GEMM kernel itself
+takes about 8-9 us in the first case (24.9 us before); the rest is
+activation quantization and launches. `HopperGroupedScaleIntervals` and
+`HopperGroupedExceptionalDomains` compare bitwise with the exact reference
+across all widths, modes, activation and scale types, tile configurations,
+ragged shapes, bias, and NaN/Inf/subnormal/near-overflow domains. The
+capture test covers a W4 constant-weight graph. Memcheck reports no errors.
+Racecheck reports hazards on the scale-staging stores of the 64x32 tile; it
+does not model the mbarrier release/acquire that orders them (the stores
+precede a `__syncwarp` and a `mbarrier.arrive` that carries the compiler
+memory clobber, and consumers read after the barrier wait), and results
+are exact across all tests. The same tools report nothing for the TMA-only
+W8 CUTLASS kernel.
+
+Not done: persistent or multicast scheduling (the prototype's main
+remaining lever for large shapes), multiple activation intervals, weight
+blocks other than 128, and Ada/Blackwell.
 
 ## 9. Delivery Plan and Acceptance
 

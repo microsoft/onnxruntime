@@ -254,6 +254,15 @@ __device__ __forceinline__ uint32_t DecodeWeight4(const uint8_t* blob, int64_t j
   return codes;
 }
 
+// Lossless signed-INT8 expansion of centered codes for the Hopper grouped-scale GEMM.
+template <int Bits>
+__global__ void DynamicExpandWeights(const uint8_t* weights, int8_t* expanded, int64_t count) {
+  for (int64_t i = int64_t{blockIdx.x} * blockDim.x + threadIdx.x; i < count / 4;
+       i += int64_t{gridDim.x} * blockDim.x) {
+    reinterpret_cast<uint32_t*>(expanded)[i] = DecodeWeight4<Bits>(weights, i * 4);
+  }
+}
+
 __device__ __forceinline__ int32_t Dot4(uint32_t a, uint32_t b, int32_t acc) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 610
   return __dp4a(static_cast<int>(a), static_cast<int>(b), acc);
@@ -936,6 +945,22 @@ Status LaunchDynamicSignedWeights(const uint8_t* weights, int8_t* signed_weights
                                   cudaStream_t stream) {
   ORT_RETURN_IF_NOT(count % 4 == 0, "Dynamic signed-weight preparation requires a multiple of four bytes.");
   DynamicSignedWeights<<<Blocks(count / 4), kThreads, 0, stream>>>(weights, signed_weights, count);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchDynamicExpandedWeights(const uint8_t* weights, int8_t* expanded, int bits, int64_t count,
+                                    cudaStream_t stream) {
+  ORT_RETURN_IF_NOT(count % 4 == 0, "Dynamic weight expansion requires a multiple of four codes.");
+  const int blocks = Blocks(count / 4);
+  if (bits == 8) {
+    DynamicExpandWeights<8><<<blocks, kThreads, 0, stream>>>(weights, expanded, count);
+  } else if (bits == 4) {
+    DynamicExpandWeights<4><<<blocks, kThreads, 0, stream>>>(weights, expanded, count);
+  } else if (bits == 2) {
+    DynamicExpandWeights<2><<<blocks, kThreads, 0, stream>>>(weights, expanded, count);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported weight width.");
+  }
   return CUDA_CALL(cudaGetLastError());
 }
 

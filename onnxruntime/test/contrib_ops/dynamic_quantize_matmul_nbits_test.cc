@@ -440,6 +440,53 @@ TEST(DynamicQuantizeMatMulNBitsTest, HopperExceptionalDomains) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, HopperGroupedScaleIntervals) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (int bits : {2, 4, 8}) {
+    for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {
+      SCOPED_TRACE(std::to_string(bits) + " " + mode);
+      // Covers each tile configuration, ragged rows, row tiles, and K from two to eight scale blocks.
+      RunCase<MLFloat16>({17, 256}, 264, bits, 128, mode, 256, true, false, true, {}, {}, false, true);
+      RunCase<MLFloat16, MLFloat16>({129, 384}, 264, bits, 128, mode, 384, true, true, false, {}, {}, false, true);
+      RunCase<BFloat16, BFloat16>({64, 1024}, 256, bits, 128, mode, 1024, true, false, true, {}, {}, false, true);
+      RunCase<BFloat16, MLFloat16>({300, 256}, 1032, bits, 128, mode, 4096, true, false, false, {}, {}, false, true);
+      RunCase<MLFloat16>({161, 640}, 1032, bits, 128, mode, 640, false, false, true, {}, {}, false, true);
+    }
+  }
+  // Large enough for the 128x96 and 128x128 tiles and several K blocks.
+  RunCase<MLFloat16>({1536, 512}, 1024, 4, 128, "dynamic_per_token", 0, true, false, true, {}, {}, false, true);
+  RunCase<BFloat16, MLFloat16>({256, 256}, 2056, 2, 128, "dynamic_per_tensor", 0, true, false, false, {}, {}, false,
+                               true);
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, HopperGroupedExceptionalDomains) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t m = 64;
+  constexpr int64_t k = 256;
+  constexpr int64_t n = 256;
+  std::vector<float> scales(n * 2);
+  const float values[] = {0, -1, 1, 1e-38f, std::numeric_limits<float>::max()};
+  for (size_t i = 0; i < scales.size(); ++i) scales[i] = values[i % 5];
+  std::vector<float> mixed(m * k);
+  const float row_values[] = {float(BFloat16::FromBits(1)), 1e-30f, 1.0f, 3e5f, 1e30f,
+                              float(BFloat16::FromBits(0x7f7f)), std::numeric_limits<float>::quiet_NaN(),
+                              std::numeric_limits<float>::infinity()};
+  for (int64_t i = 0; i < m * k; ++i) mixed[i] = row_values[(i / k) % 8] * (static_cast<float>(i % 7) - 3.0f);
+  for (int bits : {2, 4, 8}) {
+    SCOPED_TRACE(bits);
+    for (float value : row_values) {
+      RunCase<BFloat16>({m, k}, n, bits, 128, "dynamic_per_token", 0, true, false, false,
+                        std::vector<float>(m * k, value), scales, false, true);
+    }
+    RunCase<BFloat16>({m, k}, n, bits, 128, "dynamic_per_token", 0, true, false, true, mixed, scales, false, true);
+    RunCase<BFloat16>({m, k}, n, bits, 128, "dynamic_per_tensor", 0, true, false, true, mixed, scales, false, true);
+    for (float value : {float(MLFloat16::FromBits(1)), 65504.0f, std::numeric_limits<float>::quiet_NaN()}) {
+      RunCase<MLFloat16>({m, k}, n, bits, 128, "dynamic_per_token", 0, true, false, false,
+                         std::vector<float>(m * k, value), scales, false, true);
+    }
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, HopperBFloat16Domains) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   constexpr int64_t m = 129;
