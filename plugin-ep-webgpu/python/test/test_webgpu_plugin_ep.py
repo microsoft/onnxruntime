@@ -129,8 +129,14 @@ def test_registration_and_inference():
             print("\n--- ORT EP devices ---")
             print_ep_devices(all_ep_devices)
 
-        webgpu_ep_devices = [d for d in all_ep_devices if d.ep_name == ep_name]
-        print(f"Found {len(webgpu_ep_devices)} WebGPU EP device(s)")
+        webgpu_ep_devices = [
+            d
+            for d in all_ep_devices
+            if d.ep_name == ep_name
+            and d.ep_metadata.get("library_path")
+            and Path(d.ep_metadata["library_path"]).resolve() == Path(lib_path).resolve()
+        ]
+        print(f"Found {len(webgpu_ep_devices)} WebGPU plugin EP device(s)")
 
         if not webgpu_ep_devices:
             if REQUIRE_EP_DEVICE:
@@ -142,9 +148,10 @@ def test_registration_and_inference():
         webgpu_ep_device = webgpu_ep_devices[0]
 
         # Create session with WebGPU EP
+        provider_options = {"validationMode": "disabled"}
         sess_options = ort.SessionOptions()
         sess_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-        sess_options.add_provider_for_devices([webgpu_ep_device], {})
+        sess_options.add_provider_for_devices([webgpu_ep_device], provider_options)
         assert sess_options.has_providers(), "SessionOptions should have providers after add_provider_for_devices"
         print("OK: Session options configured with WebGPU EP")
 
@@ -160,22 +167,33 @@ def test_registration_and_inference():
             y = np.array([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], dtype=np.float32)
             expected = x * y
 
-            outputs = sess.run(None, {"x": x, "y": y})
-            result = outputs[0]
+            try:
+                assert sess.get_provider_options()[ep_name] == provider_options
+                outputs = sess.run(None, {"x": x, "y": y})
+                result = outputs[0]
 
-            np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
-            print("OK: Inference result matches expected output")
-
-            del sess
+                np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+                print("OK: Inference result matches expected output")
+            finally:
+                del sess
             print("OK: Session released")
 
             # Exercise the Python provider-name factory path as well as device selection.
             named_options = ort.SessionOptions()
             named_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-            named_session = ort.InferenceSession(model_path, sess_options=named_options, providers=[ep_name])
-            assert ep_name in named_session.get_providers(), "Registered WebGPU provider was not selected"
-            np.testing.assert_allclose(named_session.run(None, {"x": x, "y": y})[0], expected, rtol=1e-5, atol=1e-5)
-            del named_session
+            named_session = ort.InferenceSession(
+                model_path, sess_options=named_options, providers=[(ep_name, provider_options)]
+            )
+            try:
+                assert ep_name in named_session.get_providers(), "Registered WebGPU provider was not selected"
+                # The plugin wrapper reports EP-scoped options; built-in WebGPU reports an empty map.
+                # Checking the EP name alone would also pass when the built-in factory shadows the plugin.
+                assert named_session.get_provider_options()[ep_name] == provider_options, (
+                    "Provider-name selection did not use the WebGPU plugin with its requested options"
+                )
+                np.testing.assert_allclose(named_session.run(None, {"x": x, "y": y})[0], expected, rtol=1e-5, atol=1e-5)
+            finally:
+                del named_session
             print("OK: Registered plugin inference via provider name (CPU fallback disabled)")
 
     finally:
