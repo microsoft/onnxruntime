@@ -1,5 +1,27 @@
 [
   {
+    "name": "Attention with explicit scale",
+    "operator": "Attention",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      { "name": "num_heads", "data": 1, "type": "int" },
+      { "name": "scale", "data": 0.5, "type": "float" }
+    ],
+    "cases": [
+      {
+        "name": "scale=0.5",
+        "inputs": [
+          { "data": [1, 0, 0, 1], "dims": [1, 2, 2], "type": "float32" },
+          { "data": [1, 0, 1, 0, 10, 0, 0, 1, 0, 2, 0, 20], "dims": [2, 6], "type": "float32" },
+          { "data": [0, 0, 0, 0, 0, 0], "dims": [6], "type": "float32" }
+        ],
+        "outputs": [
+          { "data": [6.224593, 7.550813, 2.689414, 14.621172], "dims": [1, 2, 2], "type": "float32" }
+        ]
+      }
+    ]
+  },
+  {
     "name": "Attention Basic",
     "operator": "Attention",
     "opset": { "domain": "com.microsoft", "version": 1 },
