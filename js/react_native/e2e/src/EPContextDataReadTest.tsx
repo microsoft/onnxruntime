@@ -6,6 +6,7 @@ import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, View, Platform
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { Buffer } from 'buffer';
 import RNFS from 'react-native-fs';
+import { runEncryptedEpContextWorkflow } from './EncryptedEpContextWorkflow';
 
 interface CallbackTestWorker {
   abort(): void;
@@ -39,6 +40,7 @@ interface TestResult {
 interface State {
   testResults: TestResult[];
   isRunning: boolean;
+  encryptedResult: string;
 }
 
 // A plain (non-EPContext) model. Registering the read callback must not disturb a session that
@@ -165,6 +167,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     this.state = {
       testResults: CHECK_NAMES.map((name) => ({ name, status: 'pending' })),
       isRunning: false,
+      encryptedResult: 'Encrypted workflow requires a test-enabled native build and device configuration',
     };
   }
 
@@ -523,6 +526,19 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     this.setState({ isRunning: false });
   };
 
+  runEncryptionTest = async (): Promise<void> => {
+    this.setState({ isRunning: true, encryptedResult: 'Running encrypted workflow...' });
+    try {
+      this.setState({ encryptedResult: await runEncryptedEpContextWorkflow() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Encrypted EPContext workflow failed:', message);
+      this.setState({ encryptedResult: `FAILED: ${message}` });
+    } finally {
+      this.setState({ isRunning: false });
+    }
+  };
+
   render(): React.JSX.Element {
     const { testResults, isRunning } = this.state;
     const successCount = testResults.filter((result) => result.status === 'success').length;
@@ -552,6 +568,13 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
         <Text style={styles.summary} accessibilityLabel="ep-context-data-read-summary">
           {summary}
         </Text>
+        <Button
+          title="Run Encrypted EPContext Workflow"
+          onPress={this.runEncryptionTest}
+          disabled={isRunning}
+          accessibilityLabel="run-encrypted-ep-context"
+        />
+        <Text accessibilityLabel="encrypted-ep-context-result">{this.state.encryptedResult}</Text>
 
         <ScrollView style={styles.resultsContainer}>
           {testResults.map((result) => (

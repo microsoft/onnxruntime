@@ -228,6 +228,30 @@ jobs:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
 
+      - name: Build encrypted-context plugin for the iOS simulator
+        run: |
+          set -e -x
+          cmake -S js/react_native/cpp/test -B "${{ runner.temp }}/encryption-plugin" \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.1 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DORT_RN_BUILD_ENCRYPTION_PLUGIN=ON
+          cmake --build "${{ runner.temp }}/encryption-plugin" --target example_plugin_ep --parallel
+          mkdir -p "${{ runner.temp }}/encryption-fixture"
+          cp "${{ runner.temp }}/encryption-plugin/example_plugin_ep.dylib" "${{ runner.temp }}/encryption-fixture/"
+          cp onnxruntime/test/testdata/encrypted_ep_context_mul.onnx "${{ runner.temp }}/encryption-fixture/model.onnx"
+          printf '%s\n' '{"plugin":"example_plugin_ep.dylib","sourceModel":"model.onnx"}' \
+            > "${{ runner.temp }}/encryption-fixture/config.json"
+
+      - name: Upload encrypted iOS test fixture
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-encryption-fixture
+          path: ${{ runner.temp }}/encryption-fixture
+          if-no-files-found: error
+
   react_native_ci_ios_e2e_tests:
     name: React Native CI iOS E2E Tests
     needs: react_native_ci_ios_build
@@ -242,6 +266,12 @@ jobs:
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
+
+      - name: Download encrypted iOS test fixture
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ios-encryption-fixture
+          path: ${{ runner.temp }}/encryption-fixture
 
       - name: Use Xcode 15.3.0
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
@@ -286,12 +316,23 @@ jobs:
         run: |
           set -e -x
           ls ${{ runner.temp }}/ios_pod/onnxruntime-c
-          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
+          ORT_RN_TEST_EP_CONTEXT=1 ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
       - name: Build Detox iOS e2e Tests
         run: detox build --configuration ios.sim.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
+
+      - name: Bundle and sign the encrypted-context simulator fixture
+        working-directory: ${{ github.workspace }}/js/react_native/e2e
+        run: |
+          set -e -x
+          APP=ios/build/Build/Products/Release-iphonesimulator/OnnxruntimeModuleExample.app
+          test -d "$APP"
+          mkdir -p "$APP/ort-encryption"
+          cp "${{ runner.temp }}/encryption-fixture/"* "$APP/ort-encryption/"
+          codesign --force --sign - "$APP/ort-encryption/example_plugin_ep.dylib"
+          codesign --force --sign - --preserve-metadata=identifier,entitlements "$APP"
 
       - name: Reset iOS Simulators before Detox
         run: |
@@ -302,6 +343,8 @@ jobs:
           killall com.apple.CoreSimulator.CoreSimulatorService || true
 
       - name: Run Detox iOS e2e Tests
+        env:
+          ORT_RN_ENCRYPTION_E2E: '1'
         run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml \
             detox test --record-logs all \
