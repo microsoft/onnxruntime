@@ -1083,6 +1083,38 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def test_einsum_transpose(self):
         self._test_einsum_one_input_impl(["a", "b"], ["b", "a"], "ij -> ji")
 
+    def test_einsum_implicit_output_is_sorted(self):
+        self._test_einsum_one_input_impl([2, 3], [3, 2], "ji")
+
+    def test_einsum_ellipsis(self):
+        self._test_einsum_two_inputs_impl([5, 2, 3], [3, 4], [5, 2, 4], "...j, jk -> ...k")
+
+    def test_einsum_ellipsis_broadcast(self):
+        self._test_einsum_two_inputs_impl([5, 2, 3], [1, 3, 4], [5, 2, 4], "...ij, ...jk")
+
+    def test_einsum_letters_before_ellipsis(self):
+        self._test_einsum_one_input_impl([2, 3, 4, 5, 6], [2, 3, 4, 6, 5], "b...ij -> b...ji")
+
+    def test_einsum_ellipsis_symbolic_broadcast(self):
+        # Different symbolic ellipsis dims may broadcast (e.g. A=1, B=5), so they are
+        # neither merged nor assumed equal: the output gets a new symbolic dim.
+        input_shapes = [["A", 4], ["B", 4], ["C", 4]]
+        nodes = [
+            helper.make_node("Einsum", ["input_0", "input_1", "input_2"], ["output_0"], equation="...i,...i,...i->...i")
+        ]
+        inputs = [
+            helper.make_tensor_value_info(f"input_{i}", TensorProto.FLOAT, shape)
+            for i, shape in enumerate(input_shapes)
+        ]
+        outputs = [helper.make_tensor_value_info("output_0", TensorProto.FLOAT, None)]
+        model = helper.make_model(helper.make_graph(nodes, "Einsum_Test", inputs, outputs, []))
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        output_shape = self._tensor_shape(unique_element(inferred.graph.output))
+        self.assertEqual(output_shape[1], 4)
+        self.assertNotIn(output_shape[0], ("A", "B", "C"))
+        for graph_input, shape in zip(inferred.graph.input, input_shapes, strict=True):
+            self.assertEqual(self._tensor_shape(graph_input), shape)
+
     def test_mul_precision(self):
         graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [1024])
         graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
