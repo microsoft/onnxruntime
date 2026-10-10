@@ -18,6 +18,7 @@
 #include "core/providers/webgpu/data_transfer.h"
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
 #include "core/providers/webgpu/ep/sync_stream.h"
 #endif
 
@@ -620,6 +621,14 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         WebGpuContextFactory::RetainContext(context_id);
         auto release_context = gsl::finally([context_id]() { WebGpuContextFactory::ReleaseContext(context_id); });
         auto& context = WebGpuContextFactory::GetContext(context_id);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+        if (webgpu::ep::UseSerializedExecutionMode()) {
+          // Old hosts can drop the stream on framework copies. Submit the active Session first.
+          if (auto* active_recording = context.ActiveSerializedRecording()) {
+            ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), *active_recording));
+          }
+        }
+#endif
         CommandRecordingState recording;
         DataTransferImpl data_transfer{context.BufferManager(), recording};
         status = data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);

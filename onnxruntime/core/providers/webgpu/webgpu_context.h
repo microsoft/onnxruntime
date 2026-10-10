@@ -330,6 +330,9 @@ class WebGpuContext final {
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
+  CommandRecordingState* ActiveSerializedRecording() const { return serialized_active_recording_; }
+  void SetActiveSerializedRecording(CommandRecordingState* recording) { serialized_active_recording_ = recording; }
+
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
   }
@@ -492,6 +495,11 @@ class WebGpuContext final {
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
   std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
+
+  // Old plugin hosts cannot reliably associate framework copies with a Session.
+  // The active recording is borrowed from the running Session, never owned by the context.
+  // All operations on this device must be serialized in compatibility mode, including across Sessions.
+  CommandRecordingState* serialized_active_recording_ = nullptr;
 
   uint32_t max_num_pending_dispatches_ = 16;
 
