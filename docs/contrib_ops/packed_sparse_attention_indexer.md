@@ -263,8 +263,15 @@ mechanics with no packed equivalent):
 
 - The reference CUDA/WebGPU kernels prioritize correctness over throughput (see the top-of-file
   comments in the `.cu`/`.cc` implementations). CUDA QSA fuses query rotation into scoring and
-  uses a single-read deterministic block TopK for up to 32 selected blocks; larger TopK values
-  retain the correctness-first repeated-scan fallback.
+  uses a single-read deterministic block TopK for up to 32 selected blocks. Eligible short QSA
+  calls with four 128-channel heads, compression ratio four and up to 512 selected blocks use
+  hierarchical scoring/selection. Other bounded cases use radix selection.
+- Experimental CUDA flag `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=1` replaces the eligible short-QSA
+  merge tree with live-key radix selection and a bounded sort. It preserves the scored keys,
+  ascending-index tie ordering, selected counts and state update semantics; no host readback is
+  introduced. The default is off and preserves hierarchical merging. Set the flag before the
+  first eligible call in a process; dispatch is cached. Long-context performance is not
+  established, so this is not a general throughput recommendation.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.

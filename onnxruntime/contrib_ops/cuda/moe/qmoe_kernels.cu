@@ -1536,8 +1536,15 @@ void LaunchQMoECompactExperts(
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-template <typename T>
-__device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params, int expert, int row, int col) {
+struct QMoEFp8WeightRow {
+  const uint8_t* weights;
+  const void* scales;
+  int scale_type;
+  int64_t scale_offset;
+};
+
+__device__ __forceinline__ QMoEFp8WeightRow ResolveQMoEFp8WeightRow(
+    const QMoEFp8ProjectionParams& params, int expert, int row) {
   const uint8_t* weights = params.weights;
   const void* scales = params.scales;
   int scale_type = params.scale_type;
@@ -1555,13 +1562,23 @@ __device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params
   }
   const int scale_n = (source_n + params.block_size - 1) / params.block_size;
   const int scale_k = (params.k + params.block_size - 1) / params.block_size;
-  const int64_t scale_index = (static_cast<int64_t>(expert) * scale_n + row / params.block_size) * scale_k +
-                             col / params.block_size;
-  const int64_t weight_index = (static_cast<int64_t>(expert) * source_n + row) * params.k + col;
-  const float scale = scale_type == 0 ? static_cast<const float*>(scales)[scale_index]
-                     : scale_type == 1 ? __half2float(static_cast<const half*>(scales)[scale_index])
-                                       : __bfloat162float(static_cast<const __nv_bfloat16*>(scales)[scale_index]);
-  return static_cast<T>(DecodeFloat8E4M3FN(weights[weight_index]) * scale);
+  const int64_t scale_offset = (static_cast<int64_t>(expert) * scale_n + row / params.block_size) * scale_k;
+  const int64_t weight_offset = (static_cast<int64_t>(expert) * source_n + row) * params.k;
+  return {weights + weight_offset, scales, scale_type, scale_offset};
+}
+
+__device__ __forceinline__ float QMoEFp8RowScale(const QMoEFp8WeightRow& row, int block) {
+  const int64_t index = row.scale_offset + block;
+  return row.scale_type == 0 ? static_cast<const float*>(row.scales)[index]
+         : row.scale_type == 1 ? __half2float(static_cast<const half*>(row.scales)[index])
+                              : __bfloat162float(static_cast<const __nv_bfloat16*>(row.scales)[index]);
+}
+
+template <typename T>
+__device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params, int expert, int row, int col) {
+  const auto weight_row = ResolveQMoEFp8WeightRow(params, expert, row);
+  const float scale = QMoEFp8RowScale(weight_row, col / params.block_size);
+  return static_cast<T>(DecodeFloat8E4M3FN(weight_row.weights[col]) * scale);
 }
 
 template <typename T>
@@ -1573,10 +1590,27 @@ __global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input
     return;
   }
   const int input_row = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows : row;
+  const auto weight_row = ResolveQMoEFp8WeightRow(params, expert, output_col);
+  const T* activation = input + static_cast<int64_t>(input_row) * params.k;
   float sum = 0.0f;
-  for (int col = threadIdx.x % 32; col < params.k; col += 32) {
-    sum = fmaf(static_cast<float>(input[static_cast<int64_t>(input_row) * params.k + col]),
-               static_cast<float>(QMoEFp8Weight<T>(params, expert, output_col, col)), sum);
+  if (params.block_size == 128) {
+    for (int block_begin = 0; block_begin < params.k; block_begin += 128) {
+      const float scale = QMoEFp8RowScale(weight_row, block_begin / 128);
+#pragma unroll
+      for (int offset = 0; offset < 128; offset += 32) {
+        const int col = block_begin + threadIdx.x % 32 + offset;
+        if (col < params.k) {
+          const T weight = static_cast<T>(DecodeFloat8E4M3FN(weight_row.weights[col]) * scale);
+          sum = fmaf(static_cast<float>(activation[col]), static_cast<float>(weight), sum);
+        }
+      }
+    }
+  } else {
+    for (int col = threadIdx.x % 32; col < params.k; col += 32) {
+      const T weight = static_cast<T>(DecodeFloat8E4M3FN(weight_row.weights[col]) *
+                                      QMoEFp8RowScale(weight_row, col / params.block_size));
+      sum = fmaf(static_cast<float>(activation[col]), static_cast<float>(weight), sum);
+    }
   }
   sum = WarpReduceSum(sum);
   if (threadIdx.x % 32 == 0) {

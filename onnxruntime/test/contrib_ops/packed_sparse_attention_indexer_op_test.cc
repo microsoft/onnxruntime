@@ -1096,7 +1096,7 @@ TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTileBoundariesPreserveStableTies) {
-  for (int live_blocks : {0, 31, 32, 33, 511, 512, 513, 1023, 1024, 1025, 2048}) {
+  for (int live_blocks : {0, 31, 32, 33, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 2051}) {
     SCOPED_TRACE(live_blocks);
     QsaPackedProblem problem;
     problem.batch_size = 2;
@@ -1119,7 +1119,7 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTileBoundariesPreserveStab
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPackedRowsWithLargeCapacity) {
-  for (int tokens : {2, 8, 64}) {
+  for (int tokens : {1, 2, 3, 8, 64}) {
     SCOPED_TRACE(tokens);
     QsaPackedProblem problem;
     problem.batch_size = 1;
