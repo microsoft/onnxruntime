@@ -8696,7 +8696,9 @@ struct OrtCompileApi {
    *
    * Applications can inspect the "weightless_supported_modes" EP metadata entry
    * (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) of each OrtEpDevice to discover the modes supported by an EP
-   * and choose the one that best fits the use case.
+   * and choose the one that best fits the use case. If that entry is not present, e.g., for EPs built for versions 1.29
+   * to 1.31, applications must inspect the "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport)
+   * instead.
    *
    * This is equivalent to setting the "ep.enable_weightless_mode" session option
    * (kOrtSessionOptionEpEnableWeightlessMode) to the given value. Refer to that option for the checks ORT performs.

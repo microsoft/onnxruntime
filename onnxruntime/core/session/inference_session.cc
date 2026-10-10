@@ -2713,7 +2713,6 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 // Validates the "ep.enable_weightless_mode" session option before the model is partitioned. Plugin EPs check it again
 // when they are created and when they compile nodes, but those checks don't run if the session uses no plugin EP or
 // compiles no nodes.
@@ -2729,6 +2728,7 @@ static Status ValidateWeightlessMode(const SessionOptions& session_options) {
   return epctx::ParseWeightlessMode(*weightless_mode_entry, weightless_mode);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Warns if a model compiled with OrtWeightlessSupport_ALL is loaded without a source model. The EP may still
 // locate the source model via the "onnx_model_filename" EPContext node attribute, so this is not an error.
 static void CheckWeightlessSourceModel(const SessionOptions& session_options, const Model& model,
@@ -2804,8 +2804,8 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
-#if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(ValidateWeightlessMode(session_options_));
+#if !defined(ORT_MINIMAL_BUILD)
     CheckWeightlessSourceModel(session_options_, *model_, *session_logger_);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 #if defined(ORT_MINIMAL_BUILD)
