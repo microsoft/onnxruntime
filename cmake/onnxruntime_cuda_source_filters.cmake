@@ -16,6 +16,7 @@ function(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
   # Dynamic INT8 quantization promises exact rounding and gradual underflow in both EP builds.
   set_source_files_properties(
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/math/dynamic_quantize_matmul_nbits.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/math/dynamic_quantize_matmul_nbits_sm90.cu"
     PROPERTIES COMPILE_OPTIONS "--ftz=false;--prec-div=true;--fmad=false")
 
   # Quick build mode: Filter flash attention kernels for faster development iteration.
@@ -89,6 +90,11 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
   set(_sm90_srcs)
   if(ORT_HAS_SM90_OR_LATER)
     foreach(_src IN LISTS _list)
+      if(_src MATCHES "dynamic_quantize_matmul_nbits_sm90\\.cu$" AND
+         NOT MSVC AND NOT onnxruntime_CUDA_MINIMAL)
+        list(APPEND _sm90_srcs "${_src}")
+        set_property(SOURCE "${_src}" APPEND PROPERTY COMPILE_DEFINITIONS ORT_DYNAMIC_QUANTIZED_SM90_IMPL)
+      endif()
       if(_src MATCHES "moe_gemm_tma_ws_sm90_.*\\.generated\\.cu$")
         list(APPEND _sm90_srcs "${_src}")
       endif()

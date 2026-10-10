@@ -5,6 +5,8 @@ INT8 tensor-core dispatch with direct INT8/INT4/INT2 decoding, all three
 activation granularities, and explicit default-quantizer export opt-in.
 Aligned native paths use asynchronous packed-weight/activation staging:
 two stages for single-interval W8 and three for grouped weights.
+Hopper additionally has an integrated strict FP16 W8 TMA/WGMMA fast path
+for eligible constant single-block weights.
 Further crossover tuning and full cross-platform/model-level
 performance acceptance remain follow-up work.
 This is not yet the completed version-1 delivery described below.
@@ -1401,6 +1403,92 @@ capture/replay lifetimes, per-device state, and constant signed-weight
 storage before adopting the measured fast path. A ptxas C7510 warning
 about WGMMA serialization across a function boundary remains in the
 measured build and is another tuning opportunity.
+
+### 8.9 Integrated Hopper W8 fast path
+
+The SM90a CUTLASS fast path is now integrated into the ORT operator for
+FP16 A/Y with constant W8 weights and one common scale interval.
+It uses TMA warp-specialized ping-pong, INT8 WGMMA, a persistent tile
+scheduler, and a strict fused epilogue. Scale storage may be FP16,
+BF16, or FP32, and bias may be absent or FP16. The epilogue preserves
+INT32-to-FP32 conversion, activation-scale multiplication, weight-scale
+multiplication, and separate bias addition before FP16 conversion.
+Nonfinite activation domains retain their NaN output semantics.
+No global INT32 output or separate dequantization pass is introduced.
+
+Eligibility requires a built SM90a kernel image on a CC9.0 device,
+constant standard W8 B with a single block, K divisible by 16 and at
+least 128, N divisible by 8 and at least 512, and M at least 16.
+The measured crossover additionally requires either K/N at least 1024
+or M at least 128. Device pointers used by the GEMM must meet its
+16-byte alignment requirements. A per-block activation mode can use
+the path only when its one block covers all K. Runtime weights,
+multiple scale intervals, BF16 activations, smaller geometries, and
+unsupported builds/images retain existing dispatch. Invalid mutable
+scales still fail validation rather than being silently accepted.
+Set `ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM=1` before session creation
+to retain the previous path for comparison.
+
+Standard and plugin builds share SM90a source extraction and strict
+floating-point compile flags. Unsupported architectures, CUDA-minimal
+builds, and MSVC use a no-native availability stub, avoiding compilation
+of unsupported TMA launchers. An actual GEMM initialization or launch
+failure is returned to ORT, not hidden by retrying another kernel.
+
+Before/after measurements below use the same H200, source build, FP16
+A/Y, constant weights/scales, absent bias, stream, benchmark input,
+10 warmups, 50 repetitions, and five trials. M=1536; weight block is
+2048 except K=6144, which uses 8192. Values are complete ORT operator
+CUDA-event medians including quantization, launch/host gaps, and the
+per-call GEMM parameter setup, not standalone native-loop measurements.
+
+| K | N | Previous per-token ORT (us) | Hopper per-token ORT (us) | Speedup | FP16 GEMM (us) |
+|---|---|----------------------------|--------------------------|---------|----------------|
+| 2048 | 6144 | 159.35 | 56.09 | 2.84x | 55.83 |
+| 6144 | 2048 | 163.06 | 80.50 | 2.03x | 54.72 |
+| 2048 | 4096 | 109.65 | 41.99 | 2.61x | 36.95 |
+| 2048 | 2048 | 66.75 | 34.76 | 1.92x | 19.90 |
+
+Per-tensor activation quantization improves from 168.25/170.48/116.84/73.50
+to 63.19/87.38/49.30/41.60 us for the same ordered K/N cases.
+M=16/128 cases also improve for these geometries. Small K/N crossover
+measurements identified regressions for M=16/32, K=128, N=128 and
+K=256, N=512; the retained gates exclude those cases.
+FP16 GEMM remains faster, although the largest measured per-token case
+is now close. The baselines do not have equivalent activation semantics.
+
+Nsight Systems confirms the INT8 SM90 TMA/WGMMA kernel. At
+M/K/N=1536/2048/6144 it averages 30.49 us; activation quantization
+averages 12.97 us. Nsight Compute reports 32.22 us kernel duration,
+62.76% compute throughput and 11.55% DRAM throughput for its profiled
+run. These counters are not used as end-to-end timing measurements.
+
+Initialization makes a lossless signed INT8 copy of constant W8 bytes
+by XORing their symmetric offset. It retains the serialized weights
+for fallback geometry, so this adds 12/16/8/4 MiB of persistent weight
+memory in the four cases above, including serialized block padding.
+No persistent copy is made for BF16 activations or W4/W2. Initialization
+finishes on the per-thread default stream before the copy is published.
+Quantized activation scratch remains within the existing row-tile
+budget and CUTLASS workspace is zero.
+
+Each Run prepares stack-local TMA/GEMM parameters for its current
+scratch and output bindings. There is no shared mutable descriptor
+cache, fixed-output assumption, device-wide synchronization, or
+additional hot-path allocation. The readonly signed weights are
+shared across runs. Capture/replay, changed activation values, output
+rebinding, concurrent dynamic shapes, and mutable scale validation
+are covered by session tests.
+
+Validation: 23 focused C++ tests pass in both standard and plugin
+builds, and 14 Python tests pass, including 12 new randomized
+single-interval exact-bit cases across all three scale storage types
+and per-token/per-tensor modes. Tests also cover both tile sizes,
+padding, bias, nonfinite domains, extreme scales, and fallback geometry.
+Integrated Compute Sanitizer reports zero memory errors and zero race
+hazards. Generated SASS for all six tile/scale-type variants contains
+no FFMA instructions. No-native SM75/SM80 stubs compile. Windows,
+Ada/Blackwell execution and model-level performance remain unverified.
 
 ## 9. Delivery Plan and Acceptance
 

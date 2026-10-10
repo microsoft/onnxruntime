@@ -9,6 +9,7 @@ run under nsys with CUDA/NVTX tracing and inspect the named benchmark ranges.
 
 import argparse
 import json
+import os
 import time
 from functools import partial
 from pathlib import Path
@@ -146,7 +147,17 @@ def run_case(args, m, k, n):
         else tile_m * activation_groups * 4,
         "tensor_reduction_scratch_upper_bound_bytes": 4096 if args.mode == "dynamic_per_tensor" and m * k > 4096 else 0,
         "expanded_weight_scratch_bytes": 0,
-        "prepack_bytes": 0,
+        "prepack_upper_bound_bytes": packed.nbytes
+        if args.bits == 8
+        and args.dtype == "fp16"
+        and groups == 1
+        and n >= 512
+        and n % 8 == 0
+        and block >= 128
+        and not args.runtime_weights
+        and torch.cuda.get_device_capability() == (9, 0)
+        and os.environ.get("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", "0") == "0"
+        else 0,
     }
     scale_tensor = torch.from_numpy(scales.astype(np.float32)).cuda().to(torch_dtype)
     weight_tensor = torch.from_numpy(packed).cuda() if args.runtime_weights else None
@@ -307,6 +318,8 @@ def main():
         "timing": "Same user compute stream; CUDA events include inter-launch host gaps",
         "baselines": "FP GEMM uses decoded/scaled weights; MatMulNBits reuses byte-identical B/scales; no accuracy equivalence claimed",
         "matmul_nbits_baseline": "explicitly disabled" if args.skip_matmul_nbits else "enabled",
+        "sm90_gemm_disabled": os.environ.get("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", "0"),
+        "prepack_memory": "Upper bound for the optional SM90 signed-W8 copy; availability depends on compiled images",
     }
     print(json.dumps(metadata), flush=True)
     results = [run_case(args, m, k, n) for k, n in cases for m in args.m]

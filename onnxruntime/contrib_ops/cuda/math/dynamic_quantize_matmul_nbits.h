@@ -17,6 +17,8 @@ enum class DynamicWeightScaleType { Float,
 class DynamicQuantizeMatMulNBits final : public onnxruntime::cuda::CudaKernel {
  public:
   explicit DynamicQuantizeMatMulNBits(const OpKernelInfo& info);
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
@@ -27,8 +29,21 @@ class DynamicQuantizeMatMulNBits final : public onnxruntime::cuda::CudaKernel {
   int64_t activation_block_size_;
   DynamicQuantizationMode mode_;
   bool constant_scales_validated_{false};
+  bool enable_sm90_{true};
+  IAllocatorUniquePtr<int8_t> signed_weights_;
+  int64_t signed_n_{0};
+  int64_t signed_stride_{0};
+  int sm90_device_id_{0};
+  int sm90_sm_count_{0};
 };
 
+Status DynamicQuantizedSm90Available(bool& available);
+Status LaunchDynamicSignedWeights(const uint8_t* weights, int8_t* signed_weights, int64_t count,
+                                  cudaStream_t stream);
+Status LaunchDynamicQuantizedSm90(const int8_t* a, const float* a_scales, const int8_t* b,
+                                  const void* b_scales, DynamicWeightScaleType scale_type,
+                                  const void* bias, void* y, bool per_tensor, int rows, int n, int k,
+                                  int64_t b_stride, int device_id, int sm_count, cudaStream_t stream);
 Status LaunchValidateDynamicWeightScales(const void* scales, DynamicWeightScaleType type,
                                          int64_t count, int* invalid, cudaStream_t stream);
 // Number of float partial maxima needed by the bounded tensor-wide reduction.

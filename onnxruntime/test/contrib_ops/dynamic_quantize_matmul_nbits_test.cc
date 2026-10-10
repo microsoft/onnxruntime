@@ -383,6 +383,40 @@ TEST(DynamicQuantizeMatMulNBitsTest, Common128NonfiniteAndScaleBounds) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, HopperSingleIntervalWeights) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {
+    for (int64_t k : {144, 272}) {
+      RunCase<MLFloat16>({17, k}, 136, 8, 512, mode, 512, true, false, true, {}, {}, false, true);
+      RunCase<MLFloat16, MLFloat16>({129, k}, 512, 8, 512, mode, 512, true, true, false, {}, {}, false, true);
+      RunCase<MLFloat16, BFloat16>({65, k}, 136, 8, 512, mode, 512, false, false, true, {}, {}, false, true);
+    }
+    RunCase<BFloat16>({65, 256}, 136, 8, 512, mode, 512, true, false, false, {}, {}, false, true);
+    RunCase<MLFloat16>({15, 256}, 136, 8, 512, mode, 128, true, false, false, {}, {}, false, true);
+    RunCase<MLFloat16>({65, 257}, 136, 8, 512, mode, 192, true, false, false, {}, {}, false, true);
+  }
+  RunCase<MLFloat16, MLFloat16>({129, 256}, 4096, 8, 512, "dynamic_per_token", 0,
+                                true, false, true, {}, {}, false, true);
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, HopperExceptionalDomains) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t m = 129;
+  constexpr int64_t k = 144;
+  constexpr int64_t n = 512;
+  std::vector<float> scales(n);
+  const float scale_values[] = {0, -1, 1, std::numeric_limits<float>::denorm_min(),
+                                std::numeric_limits<float>::max()};
+  for (size_t i = 0; i < scales.size(); ++i) scales[i] = scale_values[i % 5];
+  for (const std::string mode : {"dynamic_per_token", "dynamic_per_tensor"}) {
+    for (float value : {float(MLFloat16::FromBits(1)), 65504.0f, std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::infinity()}) {
+      RunCase<MLFloat16>({m, k}, n, 8, 512, mode, 0, true, false, false,
+                         std::vector<float>(m * k, value), scales, false, true);
+    }
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, PipelinedNonfiniteAndExtremeScales) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   constexpr int64_t m = 129;

@@ -36,6 +36,13 @@ __global__ void ValidateScales(const void* scales, DynamicWeightScaleType type, 
   }
 }
 
+__global__ void DynamicSignedWeights(const uint8_t* weights, int8_t* signed_weights, int64_t count) {
+  for (int64_t i = int64_t{blockIdx.x} * blockDim.x + threadIdx.x; i < count / 4;
+       i += int64_t{gridDim.x} * blockDim.x) {
+    reinterpret_cast<uint32_t*>(signed_weights)[i] = reinterpret_cast<const uint32_t*>(weights)[i] ^ 0x80808080u;
+  }
+}
+
 __device__ float ReduceMaximum(float maximum, float* shared) {
   for (int delta = 16; delta > 0; delta /= 2) {
     maximum = fmaxf(maximum, __shfl_down_sync(0xffffffff, maximum, delta));
@@ -843,6 +850,13 @@ Status LaunchValidateDynamicWeightScales(const void* scales, DynamicWeightScaleT
                                          int64_t count, int* invalid, cudaStream_t stream) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(invalid, 0, sizeof(int), stream));
   ValidateScales<<<Blocks(count), kThreads, 0, stream>>>(scales, type, count, invalid);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchDynamicSignedWeights(const uint8_t* weights, int8_t* signed_weights, int64_t count,
+                                  cudaStream_t stream) {
+  ORT_RETURN_IF_NOT(count % 4 == 0, "Dynamic signed-weight preparation requires a multiple of four bytes.");
+  DynamicSignedWeights<<<Blocks(count / 4), kThreads, 0, stream>>>(weights, signed_weights, count);
   return CUDA_CALL(cudaGetLastError());
 }
 

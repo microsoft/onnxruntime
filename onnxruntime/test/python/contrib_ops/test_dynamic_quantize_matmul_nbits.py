@@ -6,6 +6,7 @@
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
+import ml_dtypes
 import numpy as np
 from onnx import TensorProto, helper, numpy_helper
 
@@ -57,6 +58,20 @@ def make_session(model, capture=False):
     )
 
 
+def constant_weight_model(m=33, k=144, n=136, block=512, runtime_scales=False, dynamic_shape=False):
+    scales = None if runtime_scales else np.ones((n, 1), dtype=np.float32)
+    model = make_model(scales, bits=8, m=m, k=k, n=n, block=block)
+    model.graph.input.remove(model.graph.input[1])
+    model.graph.initializer.append(numpy_helper.from_array(np.full((n, 1, block), 129, dtype=np.uint8), "B"))
+    if dynamic_shape:
+        for value in (model.graph.input[0], model.graph.output[0]):
+            value.type.tensor_type.shape.dim[0].ClearField("dim_value")
+            value.type.tensor_type.shape.dim[0].dim_param = "M"
+        model.graph.input[0].type.tensor_type.shape.dim[1].ClearField("dim_value")
+        model.graph.input[0].type.tensor_type.shape.dim[1].dim_param = "K"
+    return model
+
+
 def reference(a, packed, scales, bits, block, mode, activation_block):
     a = a.astype(np.float32)
     m, k = a.shape
@@ -104,6 +119,71 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
             session.run(None, feeds)
         feeds["scales"][:] = -1
         np.testing.assert_array_equal(session.run(None, feeds)[0], np.full((2, 3), -17, dtype=np.float16))
+
+    def test_hopper_constant_weights_capture_and_rebinding(self):
+        m, k, n = 129, 272, 512
+        model = constant_weight_model(m, k, n)
+        for capture in (False, True):
+            with self.subTest(capture=capture):
+                session = make_session(model, capture=capture)
+                a = ort.OrtValue.ortvalue_from_numpy(np.ones((m, k), dtype=np.float16), "cuda", 0)
+                y = ort.OrtValue.ortvalue_from_shape_and_type((m, n), np.float16, "cuda", 0)
+                binding = session.io_binding()
+                binding.bind_ortvalue_input("A", a)
+                for value in range(1, 5):
+                    if not capture:
+                        y = ort.OrtValue.ortvalue_from_shape_and_type((m, n), np.float16, "cuda", 0)
+                    a.update_inplace(np.full((m, k), value, dtype=np.float16))
+                    binding.bind_ortvalue_output("Y", y)
+                    session.run_with_iobinding(binding)
+                    binding.synchronize_outputs()
+                    np.testing.assert_array_equal(y.numpy(), np.full((m, n), value * k, dtype=np.float16))
+
+    def test_hopper_random_weights_and_scale_types_match_exact_reference(self):
+        rng = np.random.default_rng(42)
+        for m, k, n in ((33, 144, 136), (129, 272, 512)):
+            a = rng.normal(size=(m, k)).astype(np.float16)
+            a[0] = 0
+            packed = rng.integers(0, 256, size=(n, 1, 512), dtype=np.uint8)
+            for dtype in (np.float16, np.float32, ml_dtypes.bfloat16):
+                scales = rng.uniform(-0.02, 0.02, size=(n, 1)).astype(dtype)
+                for mode in ("dynamic_per_tensor", "dynamic_per_token"):
+                    with self.subTest(m=m, dtype=dtype, mode=mode):
+                        model = make_model(scales, bits=8, m=m, k=k, n=n, block=512)
+                        model.graph.input.remove(model.graph.input[1])
+                        model.graph.initializer.append(numpy_helper.from_array(packed, "B"))
+                        model.graph.node[0].attribute.append(helper.make_attribute("activation_quantization", mode))
+                        expected = reference(a, packed, scales, 8, 512, mode, k)
+                        result = make_session(model).run(None, {"A": a})[0]
+                        np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
+
+    def test_hopper_constant_weights_concurrent_dynamic_shapes(self):
+        n = 512
+        session = make_session(constant_weight_model(n=n, dynamic_shape=True))
+        shapes = ((17, 144), (65, 272), (129, 256), (15, 257))
+
+        def run(index):
+            m, k = shapes[index % len(shapes)]
+            value = index + 1
+            result = session.run(None, {"A": np.full((m, k), value, dtype=np.float16)})[0]
+            np.testing.assert_array_equal(result, np.full((m, n), value * k, dtype=np.float16))
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            list(executor.map(run, range(12)))
+
+    def test_hopper_constant_weights_revalidate_runtime_scales(self):
+        m, k, n = 129, 272, 512
+        session = make_session(constant_weight_model(m, k, n, runtime_scales=True))
+        feeds = {
+            "A": np.ones((m, k), dtype=np.float16),
+            "scales": np.ones((n, 1), dtype=np.float32),
+        }
+        np.testing.assert_array_equal(session.run(None, feeds)[0], np.full((m, n), k, dtype=np.float16))
+        feeds["scales"][0, 0] = np.nan
+        with self.assertRaisesRegex(ort_capi.InvalidArgument, "scales must contain only finite values"):
+            session.run(None, feeds)
+        feeds["scales"][:] = -1
+        np.testing.assert_array_equal(session.run(None, feeds)[0], np.full((m, n), -k, dtype=np.float16))
 
     def test_grouped_packed_weights_match_exact_reference(self):
         rng = np.random.default_rng(0)

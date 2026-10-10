@@ -7,8 +7,10 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::contrib::cuda {
 using namespace onnxruntime::cuda;
@@ -53,6 +55,14 @@ DynamicQuantizeMatMulNBits::DynamicQuantizeMatMulNBits(const OpKernelInfo& info)
       bits_(info.GetAttrOrDefault<int64_t>("bits", 8)),
       block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)),
       activation_block_size_(0) {
+  enable_sm90_ = !ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", false);
+#if defined(BUILD_CUDA_EP_AS_PLUGIN)
+  const auto input_type = info.GetKernelInfo().GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType();
+  enable_sm90_ = enable_sm90_ && input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+#else
+  const auto* input_type = info.node().InputDefs()[0]->TypeAsProto();
+  enable_sm90_ = enable_sm90_ && input_type && input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+#endif
   ORT_ENFORCE(bits_ == 2 || bits_ == 4 || bits_ == 8, "bits must be 2, 4, or 8.");
   ORT_ENFORCE(block_size_ >= 16 && (block_size_ & (block_size_ - 1)) == 0,
               "block_size must be a power of two and at least 16.");
@@ -79,6 +89,40 @@ DynamicQuantizeMatMulNBits::DynamicQuantizeMatMulNBits(const OpKernelInfo& info)
     }
     constant_scales_validated_ = true;
   }
+}
+
+Status DynamicQuantizeMatMulNBits::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                           bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  const auto& shape = tensor.Shape();
+  if (!enable_sm90_ || input_idx != 1 || bits_ != 8 || GetDeviceProp().major != 9 ||
+      GetDeviceProp().minor != 0 || shape.NumDimensions() != 3 || shape[0] < 512 ||
+      shape[0] % 8 != 0 || shape[1] != 1 || shape[2] != block_size_ || block_size_ < 128) {
+    return Status::OK();
+  }
+  bool available;
+  ORT_RETURN_IF_ERROR(DynamicQuantizedSm90Available(available));
+  if (!available) return Status::OK();
+  auto signed_weights = IAllocator::MakeUniquePtr<int8_t>(alloc, tensor.SizeInBytes(), true);
+  IAllocatorUniquePtr<uint8_t> staging;
+  const uint8_t* source = tensor.Data<uint8_t>();
+  const auto stream = cudaStreamPerThread;
+  if (tensor.Location().device.Type() != OrtDevice::GPU) {
+    staging = IAllocator::MakeUniquePtr<uint8_t>(alloc, tensor.SizeInBytes(), true);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(staging.get(), source, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
+    source = staging.get();
+  }
+  const auto status = LaunchDynamicSignedWeights(source, signed_weights.get(), shape.Size(), stream);
+  // Initialization must finish before source/staging release or another Run stream reads the buffer.
+  const auto sync = cudaStreamSynchronize(stream);
+  ORT_RETURN_IF_ERROR(status);
+  CUDA_RETURN_IF_ERROR(sync);
+  CUDA_RETURN_IF_ERROR(cudaGetDevice(&sm90_device_id_));
+  sm90_sm_count_ = GetDeviceProp().multiProcessorCount;
+  signed_n_ = shape[0];
+  signed_stride_ = block_size_;
+  signed_weights_ = std::move(signed_weights);
+  return Status::OK();
 }
 
 Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) const {
@@ -157,6 +201,9 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
     ORT_RETURN_IF_ERROR(LaunchDynamicTensorScale(a->DataRaw(), bf16, a->Shape().Size(), tensor_scale.get(),
                                                  tensor_partials.get(), stream));
   }
+  const bool sm90_shape_ok = signed_weights_ && !bf16 && groups == 1 && n == signed_n_ && k >= 128 &&
+                             k % 16 == 0 && activation_block >= k && m <= std::numeric_limits<int>::max() &&
+                             n <= std::numeric_limits<int>::max() && k <= std::numeric_limits<int>::max();
   for (int64_t row = 0; row < m;) {
     const int64_t rows = std::min(tile_m, m - row);
     const size_t a_offset = SafeInt<size_t>(row) * k;
@@ -166,10 +213,22 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
     ORT_RETURN_IF_ERROR(LaunchDynamicQuantizeRows(a_tile, bf16, rows, k, activation_block,
                                                   per_tensor ? tensor_scale.get() : nullptr,
                                                   quantized.get(), activation_scales.get(), stream));
-    ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedMatMul(quantized.get(), per_tensor ? tensor_scale.get() : activation_scales.get(), b->Data<uint8_t>(),
-                                                     scales->DataRaw(), scale_type, bias_data, y_tile, bf16,
-                                                     per_tensor, rows, n, k, static_cast<int>(bits_), block_size_, activation_block,
-                                                     GetDeviceProp().major * 10 + GetDeviceProp().minor, stream));
+    const float* a_scales = per_tensor ? tensor_scale.get() : activation_scales.get();
+    const bool sm90_geometry = (k >= 1024 && n >= 1024) || (rows >= 128 && n >= 512);
+    const bool aligned16 = reinterpret_cast<uintptr_t>(y_tile) % 16 == 0 &&
+                           reinterpret_cast<uintptr_t>(scales->DataRaw()) % 16 == 0 &&
+                           (!bias_data || reinterpret_cast<uintptr_t>(bias_data) % 16 == 0);
+    if (sm90_shape_ok && sm90_geometry && rows >= 16 && aligned16) {
+      ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedSm90(
+          quantized.get(), a_scales, signed_weights_.get(), scales->DataRaw(), scale_type,
+          bias_data, y_tile, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k),
+          signed_stride_, sm90_device_id_, sm90_sm_count_, stream));
+    } else {
+      ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedMatMul(quantized.get(), a_scales, b->Data<uint8_t>(),
+                                                       scales->DataRaw(), scale_type, bias_data, y_tile, bf16,
+                                                       per_tensor, rows, n, k, static_cast<int>(bits_), block_size_, activation_block,
+                                                       GetDeviceProp().major * 10 + GetDeviceProp().minor, stream));
+    }
     row += rows;
   }
   return Status::OK();
