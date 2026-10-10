@@ -94,16 +94,20 @@ Params<T> QuantizeLinear(const float* data,
 
   T T_min = std::numeric_limits<T>::min();
   T T_max = std::numeric_limits<T>::max();
-  // NOTE: ORT currently clamps signed quantization values to -127,127 instead
-  //       of -128/127. This is done to ensure that forced symmetric
-  //       quantization results in a zero point of exactly 0 for signed 8 bit
-  //       ints.
-  // TODO(kreeger): Consider adjusting this clamping to enable more precision
-  //                for signed 8 bit ints.
-  //                See quant_utils.py - get_qmin_qmax_for_qType() for impl.
-  if constexpr (std::is_same<T, int8_t>::value) {
-    T_min = -127;
+
+  // Get quantization range based on type and symmetric flag.
+  // Implementation matches quant_utils.py - get_qmin_qmax_for_qType():
+  // - For symmetric quantization: use symmetric range (excludes -128 for int8_t)
+  // - For non-symmetric: use full range (includes all values)
+  // See quant_utils.py - ONNX_INT_TYPE_RANGE and ONNX_INT_TYPE_SYMMETRIC_RANGE
+  if (force_symmetric) {
+    if constexpr (std::is_same<T, int8_t>::value) {
+      // Symmetric range for int8_t: [-127, 127] (excludes -128 to ensure zero_point = 0)
+      T_min = -127;
+    }
+    // For uint8_t, symmetric flag doesn't change the range
   }
+  // For non-symmetric quantization, use full range: int8_t [-128, 127]
 
   auto min_max_pair = std::minmax_element(data, data + size);
   float min = *min_max_pair.first;
