@@ -160,6 +160,22 @@ class TestSwiGLU(unittest.TestCase):
         )[0]
         np.testing.assert_array_equal(fused, split)
 
+    def test_float32_negative_gate_large_up(self):
+        gate = torch.tensor([[-17.0, -20.0, -30.0]], dtype=torch.float32)
+        up = torch.full_like(gate, 1e8)
+        want = swiglu_reference(gate, up, 0.0).numpy()
+        self.assertTrue(bool((want < 0.0).all()))
+        for fused in (False, True):
+            with self.subTest(fused=fused):
+                if fused:
+                    feeds = {"gate": torch.cat((gate, up), dim=-1).numpy()}
+                    shape = [1, 6]
+                else:
+                    feeds = {"gate": gate.numpy(), "up": up.numpy()}
+                    shape = [1, 3]
+                got = run(build_swiglu(TP.FLOAT, 0.0, fused, shape), feeds)[0]
+                np.testing.assert_allclose(got, want, rtol=2e-6, atol=0.0)
+
     def test_rejects_mismatched_shapes(self):
         model = build_swiglu(TP.FLOAT, 0.0, False, [2, 8])
         model.graph.input[1].type.tensor_type.shape.dim[0].dim_value = 1

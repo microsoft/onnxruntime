@@ -12,7 +12,7 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 // Clamped SwiGLU on a gate/up pair given either as two tensors or as the two halves of one
-// `[.., 2 * inter]` projection.  Same alpha/beta/limit contract MoE and QMoE apply internally.
+// `[.., 2 * inter]` projection. Same alpha/beta formula as MoE/QMoE, but non-positive limit disables clamping.
 template <typename T>
 class SwiGLU final : public CudaKernel {
  public:

@@ -7856,7 +7856,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
   with the arithmetic done in float regardless of T. A `limit` of zero or less disables both clamps.
   
-  This is the same activation, with the same attribute contract, that MoE and QMoE apply internally via their `swiglu_limit` / `activation_alpha` / `activation_beta` attributes. With `up` supplied and the default `limit` and `activation_beta`, it equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.
+  This uses the same activation_alpha / activation_beta formula and positive-limit clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` is omitted and clamp finite values, including an explicit zero.
+  With `up` supplied and the default `limit` and `activation_beta`, it equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.
   
   `up` is optional. When it is omitted, `gate` carries both halves of one `[.., 2 * inter]` projection -- gate first, then up -- and the split is done internally, so a fused sibling GEMM needs no `Split` node.
 

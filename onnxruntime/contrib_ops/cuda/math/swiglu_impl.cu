@@ -17,7 +17,7 @@ constexpr int kThreads = 256;
 
 // The gated activation of a feed-forward or MoE expert block. The graph spells this as two
 // casts, two clips, a sigmoid, two multiplies and a cast back -- eight passes over the same
-// buffer.  Matches the activation MoE/QMoE apply internally (same alpha/beta/limit contract).
+// buffer. Matches MoE/QMoE's alpha/beta formula and positive-limit clamping rule.
 // With `Fused`, gate and up are the two halves of one `[.., 2 * cols]` row, so the source
 // index skips the half that the other operand owns.
 template <typename CudaT, bool Fused>

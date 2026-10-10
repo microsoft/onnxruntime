@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "core/graph/graph_utils.h"
+#include "core/graph/model.h"
 #include "core/optimizer/swiglu_fusion.h"
 
 #include "test/util/include/asserts.h"
@@ -145,6 +146,68 @@ TEST_F(GraphTransformationTests, SwiGluFusionFusesWhenUpIsFirstMulInput) {
   BuildOptions opts;
   opts.up_first = true;
   RunFusionTest(opts, /*expect_fused=*/true, *logger_);
+}
+
+TEST_F(GraphTransformationTests, SwiGluFusionPreservesProducedUpEdge) {
+  std::string gate_name;
+  std::string up_name;
+  NodeIndex producer_index = 0;
+  auto build = [&](ModelTestBuilder& builder) {
+    const std::vector<int64_t> shape{kRows, kCols};
+    NodeArg* gate = builder.MakeInput<float>(shape, -3.0f, 3.0f);
+    NodeArg* raw_up = builder.MakeInput<float>(shape, -3.0f, 3.0f);
+    NodeArg* up = builder.MakeIntermediate<float>(shape);
+    NodeArg* activated = builder.MakeIntermediate<float>(shape);
+    Node& producer = builder.AddNode("Identity", {raw_up}, {up});
+    producer_index = producer.Index();
+    Node& quick_gelu = builder.AddNode("QuickGelu", {gate}, {activated}, kMSDomain);
+    quick_gelu.AddAttribute("alpha", kAlpha);
+    builder.AddNode("Mul", {activated, up}, {builder.MakeOutput<float>(shape)});
+    gate_name = gate->Name();
+    up_name = up->Name();
+    for (auto& node : builder.graph_.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+  };
+  auto before = [&](Graph& graph) {
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Mul") continue;
+      const auto* edge = graph_utils::GetInputEdge(node, 1);
+      ORT_RETURN_IF_NOT(edge != nullptr && edge->GetNode().Index() == producer_index,
+                        "The up producer edge must exist before fusion.");
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected a Mul node.");
+  };
+  auto after = [&](Graph& graph) {
+    ORT_RETURN_IF_ERROR(CheckFused(graph, gate_name, up_name));
+    const Node* producer = graph.GetNode(producer_index);
+    ORT_RETURN_IF_NOT(producer != nullptr && producer->OpType() == "Identity",
+                      "The up producer must not be eliminated.");
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "SwiGLU") continue;
+      const auto* edge = graph_utils::GetInputEdge(node, 1);
+      ORT_RETURN_IF_NOT(edge != nullptr && edge->GetNode().Index() == producer_index &&
+                            edge->GetSrcArgIndex() == 0 && edge->GetDstArgIndex() == 1,
+                        "The producer must stay connected to SwiGLU input 1.");
+    }
+    return Status::OK();
+  };
+  Model model("ProducedUp", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 14}, {kMSDomain, 1}}, {}, *logger_);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  build(builder);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(before(graph));
+  bool modified = false;
+  // Check explicit rewiring before Resolve can rebuild edges; do not run Identity elimination.
+  ASSERT_STATUS_OK(MakeCudaTransformer()->ApplyImpl(graph, modified, 0, *logger_));
+  ASSERT_TRUE(modified);
+  ASSERT_STATUS_OK(after(graph));
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(after(graph));
 }
 
 TEST_F(GraphTransformationTests, SwiGluFusionSkipsBroadcastMul) {
