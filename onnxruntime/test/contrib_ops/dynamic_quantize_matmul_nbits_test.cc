@@ -316,6 +316,45 @@ TEST(DynamicQuantizeMatMulNBitsTest, SingleIntervalVectorizedTails) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, PipelinedTilesAndScaleIntervals) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {
+    for (int64_t k : {144, 272, 528}) {
+      // Exercise both pipeline buffers, zero-filled K tails and partial M/N tiles.
+      RunCase<MLFloat16>({129, k}, 137, 8, 1024, mode, 1024, true);
+      RunCase<BFloat16, MLFloat16>({129, k}, 137, 8, 1024, mode, 1024, true, true, false);
+    }
+    for (int bits : {2, 4, 8}) {
+      // Unequal aligned boundaries must reset INT32 and add FP32 terms in K order.
+      RunCase<MLFloat16, BFloat16>({65, 320}, 137, bits, 128, mode, 192, true);
+      RunCase<BFloat16>({33, 256}, 73, bits, 64, mode, 128, true, false, false);
+    }
+  }
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, PipelinedLargeGroupedTile) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (int bits : {2, 4, 8}) {
+    RunCase<MLFloat16>({961, 192}, 961, bits, 128, "dynamic_per_block", 64, true, false, false);
+  }
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, PipelinedNonfiniteAndExtremeScales) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t m = 129;
+  constexpr int64_t k = 192;
+  constexpr int64_t n = 137;
+  for (int bits : {2, 4, 8}) {
+    const int64_t block = bits == 8 ? 256 : 128;
+    const int64_t groups = (k + block - 1) / block;
+    for (float value : {std::numeric_limits<float>::quiet_NaN(), float(BFloat16::FromBits(1)),
+                        float(BFloat16::FromBits(0x7f7f))}) {
+      RunCase<BFloat16>({m, k}, n, bits, block, "dynamic_per_token", 0, true, false, false,
+                        std::vector<float>(m * k, value), std::vector<float>(n * groups, 1e-38f));
+    }
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, NonfiniteDomainsAndExtremeScales) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (const std::string mode : {"dynamic_per_tensor", "dynamic_per_token", "dynamic_per_block"}) {

@@ -106,7 +106,7 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
         np.testing.assert_array_equal(session.run(None, feeds)[0], np.full((2, 3), -17, dtype=np.float16))
 
     def test_capture_replays_changed_activations_and_weights(self):
-        for m, k, n, block in ((2, 17, 3, 16), (33, 64, 37, 128)):
+        for m, k, n, block in ((2, 17, 3, 16), (33, 64, 37, 128), (129, 272, 137, 512), (65, 320, 137, 128)):
             with self.subTest(m=m, k=k):
                 groups = (k + block - 1) // block
                 session = make_session(
@@ -128,7 +128,7 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
                     np.testing.assert_array_equal(y.numpy(), expected)
 
     def test_concurrent_runs_use_independent_activation_scratch(self):
-        for m, k, n, block in ((2, 17, 3, 16), (33, 64, 37, 128)):
+        for m, k, n, block in ((2, 17, 3, 16), (33, 64, 37, 128), (129, 272, 137, 512), (65, 320, 137, 128)):
             with self.subTest(m=m, k=k):
                 groups = (k + block - 1) // block
                 session = make_session(make_model(np.ones((n, groups), dtype=np.float32), m=m, k=k, n=n, block=block))

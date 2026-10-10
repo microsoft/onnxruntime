@@ -3,8 +3,9 @@
 **Status:** Implementation in progress: schema, generic DP4A path, native
 INT8 tensor-core dispatch with direct INT8/INT4/INT2 decoding, all three
 activation granularities, and explicit default-quantizer export opt-in.
-Native staging is synchronous; pipelining, measured crossover tuning, and
-full cross-platform/model-level performance acceptance remain follow-up work.
+Aligned native paths use two-stage asynchronous packed-weight/activation
+staging. Further crossover tuning and full cross-platform/model-level
+performance acceptance remain follow-up work.
 This is not yet the completed version-1 delivery described below.
 
 **Motivation:** [ONNX Runtime issue #33200](https://github.com/microsoft/onnxruntime/issues/33200)
@@ -488,11 +489,21 @@ Native dispatch requires runtime compute capability at least 80 and loaded
 kernel binary/PTX versions at least 80. All native kernels use signed INT8
 `mma.sync.aligned.m16n8k32`, with fused scaling, bias, and output conversion:
 
-- Single-interval W8A8: `64 x 128 x 64` CTA tile, vectorized 16-byte staging,
-  offset-code XOR decoding, and bank-distributed shared storage. Requires
+- Single-interval W8A8: `64 x 128 x 64` CTA tile, two-stage `cp.async` staging,
+  `ldmatrix` fragment loads, register XOR decoding, and bank-distributed shared storage. Requires
   M at least 16, N at least 8, K at least 32 and divisible by 16, K fitting
-  `int`, and both block sizes at least K.
-- General W8A8/W4A8/W2A8: `32 x 64 x 64` CTA tile with direct shared-memory
+  a bounded `int` loop counter, and both block sizes at least K. SM90+ uses
+  a K tile of 128 when M and K are at least 128. Dynamic shared storage is
+  30,720 or 55,296 bytes per CTA, respectively.
+- Aligned grouped W8A8/W4A8/W2A8: `32 x 64 x 64` or `64 x 64 x 64` CTA tile,
+  with two-stage asynchronous copies of still-packed weights. Four codes
+  are decoded together in registers. Requires M at least 32, N at least 8,
+  K and weight blocks divisible by 64, and activation blocks at least K or
+  divisible by 64. Loop dimensions must fit bounded `int` counters; address
+  products remain 64-bit. The larger M tile is selected when its grid has
+  at least 256 CTAs. Scales are reused across fragments, and INT32 dots are
+  reset at each common scale boundary before ordered FP32 accumulation.
+- Other native W8A8/W4A8/W2A8: `32 x 64 x 64` CTA tile with direct shared-memory
   weight decoding. Requires M at least 32, N at least 8, K at least 32,
   and every interior activation/weight block boundary 32-aligned: each
   block size must be at least K or divisible by 32.
@@ -502,10 +513,9 @@ uses the one-warp-per-output DP4A/scalar path; all paths accumulate common
 intervals in the same ordered FP32 sequence.
 
 The single-interval M threshold was checked against DP4A on the measured
-H200 shapes, but is not universally tuned. General eligibility thresholds
-are initial rules, not benchmark-established optimal crossovers. Shared
-staging is synchronous, without a `cp.async` pipeline. The larger tile
-and pipeline below remain the tuning roadmap.
+H200 shapes, but is not universally tuned. Aligned pipeline tile choices
+were measured on H200; cross-architecture crossovers remain unverified.
+The remaining native geometry uses synchronous shared staging.
 
 Dispatch selects an implementation, never the activation-quantization mode.
 Using the new operator is the model's W8A8/W4A8/W2A8 opt-in; the serialized attribute
@@ -1051,12 +1061,12 @@ speedups are motivation, not verified performance guarantees for this proposal.
 Model-level accuracy must be checked with the chosen per-node configuration,
 including an outlier-sensitive case with and without offline smoothing.
 
-### 8.4 Local implementation benchmark (2026-10-10)
+### 8.4 Baseline implementation benchmark (2026-10-10 UTC)
 
 Measured on an idle NVIDIA H200 (SM90), driver 580.105.08, CUDA 13.0.48,
 cuDNN 9.19, PyTorch 2.13.0+cu130, and an ORT 1.31.0 Release source build
-with SM86/SM90a kernels. These results validate the current implementation,
-not version-1 performance acceptance.
+with SM86/SM90a kernels. These results describe the synchronous baseline;
+the pipelined follow-up is measured in section 8.5.
 
 The reproducible
 [benchmark script](../../../onnxruntime/test/python/transformers/benchmark_dynamic_quantize_matmul_nbits.py)
@@ -1147,8 +1157,55 @@ including capture/replay, concurrency, initializer compatibility, and
 export validation. Targeted integrated Compute Sanitizer checks reported
 zero memory errors and zero race hazards. Standalone SM75/80/90 compilation
 and 1,406 CPU/generic/native parity cases also passed.
-Windows, Ada/Blackwell execution, model-level accuracy, and a pipelined
-native implementation remain unverified/follow-up work.
+Windows, Ada/Blackwell execution and model-level accuracy were not verified.
+
+### 8.5 Pipelined implementation benchmark
+
+The same H200, source build, benchmark script, input generation, stream,
+warmup, repeat and trial settings as section 8.4 were used. Baselines were
+remeasured before modifying the kernels. These are complete operator
+CUDA-event medians, including activation quantization and host/launch gaps.
+
+| M | K | N | Remeasured baseline (us) | Pipelined operator (us) | Speedup |
+|---|---|---|-------------------------|------------------------|---------|
+| 1536 | 2048 | 6144 | 281.75 | 158.21 | 1.78x |
+| 1536 | 6144 | 2048 | 362.41 | 162.52 | 2.23x |
+| 1536 | 2048 | 4096 | 172.50 | 109.70 | 1.57x |
+| 1536 | 2048 | 2048 | 120.36 | 66.87 | 1.80x |
+
+FP16 GEMM remains faster on all four shapes. The benchmark's exact
+single-interval INT8 reference passes with zero tolerance. M=16 and M=128
+latencies also improve across these four K/N geometries; M=1 continues
+using the generic path.
+
+For grouped weights, M/K/N=1536/1024/1024 and block=128, with five warmups,
+20 repetitions and three trials:
+
+| Weight bits | Remeasured per-token baseline (us) | Pipelined per-token (us) | Pipelined per-block A128 (us) | Pipelined per-tensor (us) |
+|-------------|-----------------------------------|-------------------------|-----------------------------|-------------------------|
+| 2 | 224.64 | 69.61 | 86.96 | 75.74 |
+| 4 | 236.79 | 70.12 | 87.54 | 76.48 |
+| 8 | 215.14 | 67.14 | 84.71 | 72.73 |
+
+Per-token grouped execution improves 3.2–3.4x. Expanded-weight scratch,
+prepack memory and global INT32 output remain zero. The activation scratch
+budget and serialized input representation are unchanged. Weight-only
+MatMulNBits remains faster, with different activation semantics.
+
+The optimization overlaps tile copies with MMA, loads matrix fragments
+directly from shared memory, decodes four low-bit codes together, and
+reuses row/column scales across accumulator fragments. Exceptional scaling
+uses an out-of-line helper that preserves the original INT32-to-FP32
+rounding and gradual-underflow behavior.
+
+Validation: 17 focused C++ tests pass in both standard and plugin CUDA
+builds; nine Python tests plus 36 subtests pass, including replay with
+changed inputs and concurrent execution of both pipelined paths. Tests
+compare exact output bits for FP16/BF16, signed/zero scales, nonfinite
+activations, extreme scales, unequal scale boundaries, packed-code ranges,
+and partial tiles. Integrated Compute Sanitizer reports zero memory errors
+and zero race hazards. These local results do not establish performance
+or runtime portability on other GPU architectures.
 
 ## 9. Delivery Plan and Acceptance
 
