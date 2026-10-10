@@ -1158,6 +1158,7 @@ class CudaKernel : public OpKernel {
 
     return device_prop_;
   }
+  inline int GetDeviceId() const { return device_id_; }
   int GetCudnnConvAlgo() const { return runtime_config_->cudnn_conv_algo; }
   bool GetCudnnConvUseMaxWorkspace() const { return runtime_config_->cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return runtime_config_->cudnn_conv1d_pad_to_nc1d; }

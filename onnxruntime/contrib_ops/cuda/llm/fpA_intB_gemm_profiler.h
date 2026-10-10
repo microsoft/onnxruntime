@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <cassert>
 #include <cutlass/numeric_types.h>
 #include <memory>
@@ -62,9 +64,13 @@ constexpr int kDefaultProfileMaxM = 2048;
 float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
                                      bool is_cuda_kernel, float time);
 
+std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes = 0);
+
 std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,
-    size_t group_size, size_t runner_workspace_bytes);
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes = 0);
 
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
@@ -99,6 +105,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mGroupSize = groupSize;
   }
 
+  void setDecodeInterleave(int interleave) {
+    mDecodeInterleave = interleave;
+  }
+
   void setCudaKernelType(KernelType cudaKernelType, int kernelArch, int deviceArch) {
     mCudaKernelType = cudaKernelType;
     mKernelArch = kernelArch;
@@ -109,11 +119,31 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mL2CacheBytes = l2CacheBytes;
   }
 
+  // Paired-K fp16 int4 GEMV tactic for the M = 8 bucket (M = 5..8 at run time). Mode 1 adds it as an extra
+  // candidate, so it is kept only where it beats the default GEMV and the CUTLASS kernels; mode 2 offers
+  // only that tactic (testing and benchmarking); mode 0 disables it.
+  void setPairedGemvMode(int mode) {
+    mPairedGemvMode = mode;
+  }
+
+  void setWaveAwareGemv(bool enabled) {
+    mWaveAwareGemv = enabled;
+  }
+
  protected:
+  bool canProfileInt4Decode(int m) const {
+    return m == 1 && mDecodeInterleave == 4 && mQuantBits == INT4_BITS && mGroupSize == 32 &&
+           !mHasBiases && !mHasZeros &&
+           (mCudaKernelType == KernelType::FP16Int4Groupwise ||
+            mCudaKernelType == KernelType::BF16Int4Groupwise);
+  }
+
   void runTactic(int m, int n, int k, Config const& tactic,
                  char* workspace, cudaStream_t const& stream) override;
 
   size_t computeTmpSize(size_t maxM, size_t n, size_t k) override;
+
+  void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream) override;
 
   std::vector<Config> getTactics(int m, int n, int k) const override;
 
@@ -124,14 +154,18 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const override;
 
  private:
-  bool mHasBiases;
-  bool mHasZeros;
-  int mQuantBits;
-  int mGroupSize;
-  KernelType mCudaKernelType;
-  int mKernelArch;
-  int mDeviceArch;
+  bool mHasBiases = false;
+  bool mHasZeros = false;
+  int mQuantBits = 0;
+  int mGroupSize = 0;
+  KernelType mCudaKernelType = KernelType::FP16Int4Groupwise;
+  int mKernelArch = 0;
+  int mDeviceArch = 0;
+  int mDecodeInterleave = 0;
   size_t mL2CacheBytes = 0;
+  std::atomic<size_t> mProfileWeightIndex{0};
+  int mPairedGemvMode = 0;
+  bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
 };
 

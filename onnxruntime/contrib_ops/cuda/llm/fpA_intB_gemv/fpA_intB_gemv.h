@@ -16,6 +16,9 @@
 
 #pragma once
 #include <cuda_runtime.h>
+#include <utility>
+
+#include <initializer_list>
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -36,6 +39,66 @@ enum class KernelType {
   BF16Int2PerChannel
 };
 
+inline std::pair<int, int> GetInt4DecodeGeometry(int variant) {
+  switch (variant) {
+    case 2:
+      return {2, 128};
+    case 3:
+      return {2, 256};
+    case 4:
+      return {4, 128};
+    case 5:
+      return {4, 256};
+    case 6:
+      return {8, 128};
+    case 7:
+      return {8, 256};
+    default:
+      return {0, 0};
+  }
+}
+
+inline bool IsInt4DecodeGeometryLegal(int variant, int n, int k, int interleave) {
+  const auto [tile, threads] = GetInt4DecodeGeometry(variant);
+  return tile != 0 && threads != 0 && interleave == 4 && n >= 64 && n % 64 == 0 &&
+         k >= 64 && k % 64 == 0 && n % (tile * interleave) == 0 && n / (tile * interleave) <= 65535;
+}
+
+// Picks the dense GEMV column tile (CtaN) that fills the GPU's block slots best.
+//
+// The M = 8 kernel is register-limited to 4 / 3 / 2 resident 128-thread blocks per SM for
+// CtaN = 2 / 4 / 8 (fp16 int4 on sm_120: 110 / 140 / 250 registers), and a decode projection
+// launches only n / (CtaN * interleave) blocks, so the last wave is often mostly empty (for
+// example N = 10240 at CtaN = 4 runs 640 blocks on the 510 slots of an RTX 5090). Returns the
+// candidate with the highest wave efficiency, and only leaves `base_cta_n` when the gain is clear.
+// The slot counts and the gain were measured on sm_120 only, so `sm_count` is 0 elsewhere.
+inline int PickGemvCtaN(bool wave_aware, int m, int n, int interleave, int base_cta_n, int sm_count) {
+  if (!wave_aware || m != 8 || sm_count <= 0) {
+    return base_cta_n;
+  }
+  auto efficiency = [&](int cta_n, int blocks_per_sm) {
+    int const cols = cta_n * interleave;
+    if (n % cols != 0) {
+      return 0.0;
+    }
+    long long const blocks = n / cols;
+    long long const slots = static_cast<long long>(sm_count) * blocks_per_sm;
+    long long const waves = (blocks + slots - 1) / slots;
+    return static_cast<double>(blocks) / static_cast<double>(waves * slots);
+  };
+  auto blocks_per_sm = [](int cta_n) { return cta_n <= 2 ? 4 : (cta_n <= 4 ? 3 : 2); };
+  int best = base_cta_n;
+  double best_eff = efficiency(base_cta_n, blocks_per_sm(base_cta_n)) * 1.05;
+  for (int cta_n : {base_cta_n / 2, base_cta_n * 2}) {
+    double const eff = efficiency(cta_n, blocks_per_sm(cta_n));
+    if (eff > best_eff) {
+      best = cta_n;
+      best_eff = eff;
+    }
+  }
+  return best;
+}
+
 struct Params {
   using Pointer = void*;
   using ConstPointer = void const*;
@@ -53,6 +116,11 @@ struct Params {
   int groupsize;
   KernelType type;
   bool apply_alpha_in_advance;
+  // Selects the paired-K fp16 int4 kernel (M = 5..8). Ignored when the kernel does not support it.
+  bool paired_k = false;
+  bool wave_aware = false;
+  bool debug = false;
+  int decode_variant = 0;
 
   Params(ConstPointer _act, ConstPointer _act_scale, ConstPointer _weight, ConstPointer _scales, ConstPointer _zeros,
          ConstPointer _bias, Pointer _out, float _alpha, int _m, int _n, int _k, int _groupsize, KernelType _type,

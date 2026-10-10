@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/session/allocator_adapters.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #include "core/session/model_compilation_options.h"
@@ -179,6 +180,78 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
   ORT_UNUSED_PARAMETER(external_initializer_size_threshold);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ const ORTCHAR_T* logical_file_name,
+                    size_t external_initializer_size_threshold,
+                    _Inout_ OrtAllocator* ort_allocator,
+                    _Outptr_ void** output_buffer_ptr,
+                    _Out_ size_t* output_buffer_size_ptr) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_API_RETURN_IF(ort_model_compile_options == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtModelCompilationOptions is null");
+  ORT_API_RETURN_IF(logical_file_name == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer logical file name is null");
+  const std::filesystem::path logical_path{onnxruntime::ExternalDataInfo::NormalizeFileName(logical_file_name)};
+  ORT_API_RETURN_IF(logical_path.empty() || logical_path.is_absolute(), ORT_INVALID_ARGUMENT,
+                    "External initializer logical file name must be a non-empty relative path");
+  ORT_API_RETURN_IF(ort_allocator == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer buffer allocator is null");
+  ORT_API_RETURN_IF(ort_allocator->Info == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer buffer allocator has no memory info callback");
+  const OrtMemoryInfo* memory_info = ort_allocator->Info(ort_allocator);
+  ORT_API_RETURN_IF(memory_info == nullptr || !memory_info->device.UsesCpuMemory(), ORT_INVALID_ARGUMENT,
+                    "External initializer buffer allocator must provide host-accessible memory");
+  ORT_API_RETURN_IF(output_buffer_ptr == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer output buffer pointer is null");
+  ORT_API_RETURN_IF(output_buffer_size_ptr == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer output buffer size pointer is null");
+
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  auto allocator = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(ort_allocator);
+  model_compile_options->SetOutputModelExternalInitializersBuffer(
+      logical_path, external_initializer_size_threshold, std::move(allocator),
+      output_buffer_ptr, output_buffer_size_ptr);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(logical_file_name);
+  ORT_UNUSED_PARAMETER(external_initializer_size_threshold);
+  ORT_UNUSED_PARAMETER(ort_allocator);
+  ORT_UNUSED_PARAMETER(output_buffer_ptr);
+  ORT_UNUSED_PARAMETER(output_buffer_size_ptr);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    size_t alignment,
+                    size_t minimum_size) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_API_RETURN_IF(ort_model_compile_options == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtModelCompilationOptions is null");
+  ORT_API_RETURN_IF(alignment != 0 && (alignment & (alignment - 1)) != 0, ORT_INVALID_ARGUMENT,
+                    "External initializer alignment must be zero or a power of two");
+  ORT_API_RETURN_IF(alignment > static_cast<size_t>(std::numeric_limits<int64_t>::max()), ORT_INVALID_ARGUMENT,
+                    "External initializer alignment exceeds the ONNX signed 64-bit offset limit");
+  ORT_API_RETURN_IF(minimum_size > static_cast<size_t>(std::numeric_limits<int64_t>::max()), ORT_INVALID_ARGUMENT,
+                    "External initializer alignment threshold exceeds the ONNX signed 64-bit limit");
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  model_compile_options->SetOutputModelExternalInitializersAlignment(alignment, minimum_size);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(alignment);
+  ORT_UNUSED_PARAMETER(minimum_size);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif
   API_IMPL_END
 }
 
@@ -410,6 +483,8 @@ static constexpr OrtCompileApi ort_compile_api = {
     // End of Version 29 - DO NOT MODIFY ABOVE
 
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -423,7 +498,7 @@ static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetWeightlessEnabl
               "Size of version 29 of Api cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.31.0",
+static_assert(std::string_view(ORT_VERSION) == "1.32.0",
               "ORT_Version change detected, please follow below steps to ensure OrtCompileApi is updated properly");
 
 ORT_API(const OrtCompileApi*, OrtCompileAPI::GetCompileApi) {
