@@ -30,6 +30,7 @@
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 
 using WeightOnlyGemmRunner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
@@ -54,16 +55,15 @@ constexpr const char* kEnvProfileM = "ORT_FPA_INTB_PROFILE_M";
 // M values are handled by lazy single-bucket profiling.
 constexpr int kDefaultProfileMaxM = 2048;
 
-// Computes the single temporary CUDA allocation used while profiling tactics.
-// `packed_n` is the number of 16-bit elements that hold one packed weight row.
-// This pure-math helper is shared by the runtime profiler and partition-time
-// memory estimation so their allocation formulas cannot drift.
 // Maps a measured tactic time to the value compared during tactic selection. For small M, CUTLASS
 // must beat the CUDA GEMV by 10% when the weight fits in L2, because the profiler then times it
 // L2-resident while decode streams it from DRAM.
 float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
                                      bool is_cuda_kernel, float time);
 
+// Computes the single temporary CUDA allocation used while profiling tactics.
+// `packed_n` is the number of 16-bit elements that hold one packed weight row.
+// Shared with partition-time memory estimation so the allocation formulas cannot drift.
 std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,
     size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes = 0);
@@ -116,6 +116,16 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mL2CacheBytes = l2CacheBytes;
   }
 
+  // Attaches the process-global persistent tactic cache. A nullptr keeps the
+  // in-process-only behavior (no disk reads/writes).
+  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+    mCache = std::move(cache);
+  }
+
+  void setTuningResultsCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+    mTuningResultsCache = std::move(cache);
+  }
+
   // Paired-K fp16 int4 GEMV tactic for the M = 8 bucket (M = 5..8 at run time). Mode 1 adds it as an extra
   // candidate, so it is kept only where it beats the default GEMV and the CUTLASS kernels; mode 2 offers
   // only that tactic (testing and benchmarking); mode 0 disables it.
@@ -150,7 +160,21 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const override;
 
+  void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
+                           bool hasWeightOnlyCudaKernel) override;
+
+  void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel) override;
+
  private:
+  onnxruntime::llm::gemm_cache::MatMulNBitsKey makeCacheKey(GemmIdCore const& gemmId,
+                                                            bool hasWeightOnlyCudaKernel) const;
+
+  // Populates the in-memory cache with any buckets in `map` not already recorded (no disk write).
+  // Returns true if at least one new bucket was staged.
+  bool stageProfiledTactics(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel);
+
   bool mHasBiases = false;
   bool mHasZeros = false;
   int mQuantBits = 0;
@@ -161,6 +185,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   size_t mL2CacheBytes = 0;
   std::atomic<size_t> mProfileWeightIndex{0};
   int mPairedGemvMode = 0;
+  std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
+  std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
   bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
 };

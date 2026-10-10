@@ -30,6 +30,18 @@
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
+namespace {
+// Compares tactics by their persisted representation, which is exactly what a cache hit stores.
+bool SameConfigColumns(const std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& a,
+                       const std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& b) {
+  std::vector<std::string> columns_a;
+  std::vector<std::string> columns_b;
+  onnxruntime::llm::gemm_cache::AppendConfigColumns(columns_a, a);
+  onnxruntime::llm::gemm_cache::AppendConfigColumns(columns_b, b);
+  return columns_a == columns_b;
+}
+}  // namespace
+
 namespace onnxruntime::llm::kernels::weight_only {
 
 std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
@@ -214,8 +226,14 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int n, int k
              fpA_intB_gemv::IsInt4DecodeGeometryLegal(tactic.cudaKernelVariant,
                                                       SafeInt<int>(n) * (FP16_BITS / mQuantBits), k, mDecodeInterleave);
     }
-    return m < 16 && (tactic.cudaKernelVariant == 0 ||
-                      (tactic.cudaKernelVariant == 1 && m >= 5 && m <= 8));
+    const bool paired_bucket = m >= 5 && m <= 8;
+    if (tactic.cudaKernelVariant == 1) {
+      return mPairedGemvMode != 0 && paired_bucket;
+    }
+    return tactic.cudaKernelVariant == 0 && m < 16 && !(mPairedGemvMode == 2 && paired_bucket);
+  }
+  if (mPairedGemvMode == 2 && m >= 5 && m <= 8) {
+    return false;
   }
   return true;
 }
@@ -296,5 +314,122 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMB
   return std::vector<int>(buckets.begin(), buckets.end());
 }
 
+onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginProfiler::makeCacheKey(
+    GemmIdCore const& gemmId, bool hasWeightOnlyCudaKernel) const {
+  onnxruntime::llm::gemm_cache::MatMulNBitsKey key;
+  key.n_16b = gemmId.n;
+  key.k = gemmId.k;
+  key.activation_dtype = (gemmId.dtype == onnxruntime::llm::nvinfer::DataType::kBF16) ? "bfloat16" : "half";
+  key.weight_type = (mQuantBits == INT8_BITS)   ? "uint8_t"
+                    : (mQuantBits == INT2_BITS) ? "uint2b_t"
+                                                : "uint4b_t";
+  key.bits = mQuantBits;
+  key.block_size = mGroupSize;
+  key.has_zero_points = mHasZeros;
+  key.zero_point_dtype = mHasZeros ? key.weight_type : "none";
+  key.gemv_enabled = hasWeightOnlyCudaKernel;
+  key.has_bias = mHasBiases;
+  key.packing_sm = mArch;
+  key.paired_gemv_mode = gemmId.tag;
+  key.wave_aware_gemv = gemmId.wave_aware;
+  return key;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
+    GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr) {
+    return;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  auto buckets = mCache->GetAll(key);
+  if (buckets.empty()) {
+    return;
+  }
+
+  // Validate tactics loaded from disk against the tactics this runner can actually dispatch. A
+  // parseable-but-incompatible cache row (e.g. hand-edited, or written by a build whose signature
+  // happens to match but whose tactic set differs) would otherwise be handed straight to the kernel.
+  // Rejected rows are dropped so the bucket is re-profiled (and the stale row overwritten on staging).
+  // The CUDA-GEMV tactic is only dispatchable when this runner has a GEMV kernel, so it is rejected
+  // otherwise, regardless of what the row's key claims.
+  auto const valid_configs = getTactics(0, gemmId.n, gemmId.k);
+  auto is_valid_cutlass = [&valid_configs](Config const& c) {
+    for (auto const& v : valid_configs) {
+      if (v.sm_version == c.sm_version && v.is_tma_warp_specialized == c.is_tma_warp_specialized &&
+          v.tile_config_sm80 == c.tile_config_sm80 && v.tile_config_sm90 == c.tile_config_sm90 &&
+          v.tile_config_sm100 == c.tile_config_sm100 && v.tile_config_sm120 == c.tile_config_sm120 &&
+          v.split_k_style == c.split_k_style && v.split_k_factor == c.split_k_factor &&
+          v.stages == c.stages && v.cluster_shape == c.cluster_shape &&
+          v.mainloop_schedule == c.mainloop_schedule && v.epilogue_schedule == c.epilogue_schedule) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  size_t accepted = 0;
+  for (auto const& [m, config] : buckets) {
+    if (!config.has_value() || m <= 0 || m > getMaxProfileM() || map.count(m) != 0) {
+      continue;
+    }
+    if (!checkTactic(m, gemmId.n, gemmId.k, *config)) {
+      ORT_LLM_LOG_WARNING("Dropping unsupported cached fpA_intB tactic from the tactic cache; re-profiling.");
+      continue;
+    }
+    if (config->enableCudaKernel && !hasWeightOnlyCudaKernel) {
+      ORT_LLM_LOG_WARNING("Dropping cached fpA_intB CUDA-GEMV tactic: no GEMV kernel is available; re-profiling.");
+      continue;
+    }
+    if (!config->enableCudaKernel && !is_valid_cutlass(*config)) {
+      ORT_LLM_LOG_WARNING("Dropping incompatible cached fpA_intB tactic from the tactic cache; re-profiling.");
+      continue;
+    }
+    if (!validatePersistentTactic(m, gemmId.n, gemmId.k, *config)) {
+      continue;
+    }
+    // Do not clobber tactics already selected in-process this session.
+    map.emplace(m, config);
+    ++accepted;
+  }
+  if (accepted != 0) {
+    ORT_LLM_LOG_INFO("Loaded " + std::to_string(accepted) + " validated fpA_intB tactics from " + mCache->FilePath());
+  }
+}
+
+bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr && mTuningResultsCache == nullptr) {
+    return false;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  bool added = false;
+  for (auto const& [m, config] : map) {
+    if (!config.has_value()) {
+      continue;
+    }
+    if (mTuningResultsCache != nullptr) {
+      mTuningResultsCache->Put(key, m, config);
+    }
+    if (mCache == nullptr) {
+      continue;
+    }
+    // Skip buckets already recorded with the same tactic (cache hits). A row rejected on load is still
+    // in the cache, so it must be overwritten by the freshly profiled tactic.
+    auto const cached = mCache->Get(key, m);
+    if (cached.has_value() && SameConfigColumns(*cached, config)) {
+      continue;
+    }
+    mCache->Put(key, m, config);
+    added = true;
+  }
+  return added;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  // Construction and lazy/shared-hit paths stage only. The staged tactics are written to disk at
+  // CUDA EP teardown (FlushMatMulNBitsTacticCaches in matmul_nbits.cc).
+  stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
+}
 }  // namespace onnxruntime::llm::kernels::weight_only
 #endif

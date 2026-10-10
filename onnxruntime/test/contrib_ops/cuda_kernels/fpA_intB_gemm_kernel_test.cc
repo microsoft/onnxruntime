@@ -675,7 +675,7 @@ TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
 TEST(FpAIntBGemvTest, TacticCacheSeparatesDeviceAndQuantization) {
   using TacticCache = std::unordered_map<wo_profile::GemmIdCore, int, wo_profile::GemmIdCoreHash>;
   const wo_profile::GemmIdCore base(384, 1536, onnxruntime::llm::nvinfer::DataType::kHALF,
-                                    80, false, 0, 0, 4, 32, false, false);
+                                    80, 4, 32, false, true);
   std::vector<wo_profile::GemmIdCore> ids{base};
   for (int field = 0; field < 7; ++field) {
     auto id = base;
@@ -858,8 +858,10 @@ TEST(FpAIntBGemvTest, WaveAwareDispatchUsesSyntheticSmCount) {
 // Keep upstream wave-aware and default tactic caches distinct after extending the key.
 TEST(FpAIntBGemvTest, TacticCacheSeparatesWaveAwareMode) {
   using TacticCache = std::unordered_map<wo_profile::GemmIdCore, int, wo_profile::GemmIdCoreHash>;
-  wo_profile::GemmIdCore const default_id(10240, 4096, onnxruntime::llm::nvinfer::DataType::kHALF, 80, false);
-  wo_profile::GemmIdCore const wave_aware_id(10240, 4096, onnxruntime::llm::nvinfer::DataType::kHALF, 80, true);
+  wo_profile::GemmIdCore const default_id(10240, 4096, onnxruntime::llm::nvinfer::DataType::kHALF,
+                                          80, 4, 128, false, true, false, "", false);
+  wo_profile::GemmIdCore const wave_aware_id(10240, 4096, onnxruntime::llm::nvinfer::DataType::kHALF,
+                                             80, 4, 128, false, true, false, "", true);
   TacticCache cache{{default_id, 4}, {wave_aware_id, 2}};
 
   ASSERT_EQ(cache.size(), 2u);
@@ -877,7 +879,9 @@ TEST(FpAIntBGemvTest, TacticCacheSeparatesPairedAndWaveAwareModes) {
   for (bool wave_aware : {false, true}) {
     for (int mode : {0, 1, 2}) {
       wo_profile::GemmIdCore const id(512, 1024, onnxruntime::llm::nvinfer::DataType::kHALF,
-                                      80, wave_aware, mode);
+                                      80, 4, 128, false, true, false, "", wave_aware, mode);
+      EXPECT_EQ(id.wave_aware, wave_aware);
+      EXPECT_EQ(id.tag, mode);
       cache->createMProfileMap(id);
       CutlassGemmConfig tactic;
       tactic.enableCudaKernel = true;
@@ -891,7 +895,7 @@ TEST(FpAIntBGemvTest, TacticCacheSeparatesPairedAndWaveAwareModes) {
   for (bool wave_aware : {false, true}) {
     for (int mode : {0, 1, 2}) {
       wo_profile::GemmIdCore const id(512, 1024, onnxruntime::llm::nvinfer::DataType::kHALF,
-                                      80, wave_aware, mode);
+                                      80, 4, 128, false, true, false, "", wave_aware, mode);
       for (int m : {5, 6, 7, 8}) {
         auto const tactic = profiler.getBestConfig(m, id);
         ASSERT_TRUE(tactic.has_value());
