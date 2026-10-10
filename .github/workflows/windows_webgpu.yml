@@ -130,7 +130,6 @@ jobs:
             --build_nodejs `
             --build_java `
             --use_webgpu `
-            ${{ matrix.vcpkg_option == 'novcpkg' && '--enable_pybind' || '' }} `
             --wgsl_template static `
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
@@ -157,15 +156,6 @@ jobs:
           path: |
             ${{ github.workspace }}/RelWithDebInfo
             ${{ github.workspace }}/js/node/bin
-          if-no-files-found: error
-
-      - name: Upload built-in WebGPU Python package
-        if: matrix.vcpkg_option == 'novcpkg'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: webgpu-builtin-python
-          # Use the staged package, including the shared Dawn DLL copied by CMake.
-          path: ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime
           if-no-files-found: error
 
       - name: Validate C# native delegates
@@ -390,9 +380,7 @@ jobs:
   webgpu_plugin_test_x64_RelWithDebInfo:
     # Preserve the legacy required-check name so branch protection waits for GPU tests.
     name: webgpu_plugin_build_x64_RelWithDebInfo
-    needs:
-      - webgpu_plugin_compile_x64_RelWithDebInfo
-      - webgpu_compile_x64_RelWithDebInfo
+    needs: webgpu_plugin_compile_x64_RelWithDebInfo
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
@@ -484,24 +472,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           & $python -u "${{ github.workspace }}\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Download built-in WebGPU Python package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: webgpu-builtin-python
-          path: ${{ runner.temp }}/webgpu-builtin-python/onnxruntime
-
-      - name: Test Python precedence with built-in and external WebGPU
-        shell: pwsh
-        working-directory: ${{ runner.temp }}
-        env:
-          PYTHONPATH: ${{ runner.temp }}/webgpu-builtin-python
-          ORT_WEBGPU_TEST_BUILTIN_PRECEDENCE: '1'
-        run: |
-          # Reuse the plugin and dependencies installed above, with the staged built-in host on PYTHONPATH.
-          & "${{ runner.temp }}\webgpu-python-test\venv\Scripts\python.exe" -u `
-            "${{ github.workspace }}\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary

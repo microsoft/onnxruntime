@@ -47,7 +47,6 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/abi_graph_types.h"
 #include "core/session/abi_devices.h"
-#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
@@ -789,7 +788,6 @@ static const OrtEpDevice* FindRegisteredPluginEpDevice(
     }
   }
 
-  const OrtEpDevice* fallback_device = nullptr;
   for (const OrtEpDevice* ep_device : ep_devices) {
     if (!ep_device || ep_device->ep_name != ep_name) {
       continue;
@@ -823,20 +821,10 @@ static const OrtEpDevice* FindRegisteredPluginEpDevice(
       }
     }
 
-    // Internal/static WebGPU devices are registered before dynamically loaded plugins.
-    // Retain the first matching fallback, but prefer a device from a loaded library.
-    if (ep_name == kWebGpuExecutionProvider &&
-        ep_device->ep_metadata.Entries().count(kOrtEpDevice_EpMetadataKey_LibraryPath) == 0) {
-      if (fallback_device == nullptr) {
-        fallback_device = ep_device;
-      }
-      continue;
-    }
-
     return ep_device;
   }
 
-  return fallback_device;
+  return nullptr;
 }
 #endif
 
@@ -893,7 +881,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     return std::shared_ptr<IExecutionProviderFactory>(std::move(ep_factory));
   };
 
-  if (type == kCudaExecutionProvider || type == kWebGpuExecutionProvider) {
+  if (type == kCudaExecutionProvider) {
     if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
       return ep_factory;
     }
@@ -1488,6 +1476,8 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
   } else if (type == kWebGpuExecutionProvider) {
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
     return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
+#elif !defined(ORT_MINIMAL_BUILD)
+    return try_create_registered_plugin_factory();
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN

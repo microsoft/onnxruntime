@@ -56,15 +56,10 @@ inference portion). Set the environment variable `ORT_TEST_VERBOSE=1` to print a
 
 By default, inference uses `SessionOptions.add_provider_for_devices`, which is supported by the minimum core runtime.
 To also test plugin selection through `InferenceSession(..., providers=[("WebGpuExecutionProvider", options)])`, install
-a host wheel built from this checkout and set `ORT_WEBGPU_TEST_PROVIDER_NAME=1`. The Windows WebGPU plugin PR job builds
-and installs that host wheel and enables this regression check. The minimum-runtime package tests leave it disabled.
+a host wheel built from this checkout with `--use_webgpu shared_lib --build_wheel` and set
+`ORT_WEBGPU_TEST_PROVIDER_NAME=1`. The Windows WebGPU plugin PR job builds and installs that host wheel and enables
+this regression check. The minimum-runtime package tests leave it disabled.
 Set `ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE=1` to fail instead of skipping inference when no WebGPU device is available.
-
-Set `ORT_WEBGPU_TEST_BUILTIN_PRECEDENCE=1` to test a built-in WebGPU host with the external plugin. This mode requires
-both internal and external WebGPU devices, enables provider-name testing, and checks built-in inference before plugin
-registration and after unregistration. The Windows plugin PR job also runs this mode against the staged Python package
-from the built-in WebGPU build, including its shared Dawn DLL. It fails if the wrong host is used or a required device
-is unavailable.
 
 ## Versioning
 
