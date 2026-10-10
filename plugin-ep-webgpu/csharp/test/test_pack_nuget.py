@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import pack_nuget  # noqa: E402
+import pack_nuget
 
 
 class PackNugetTest(unittest.TestCase):
@@ -25,9 +25,9 @@ class PackNugetTest(unittest.TestCase):
 
     def stage_platform(self, platform, missing=None, *, include_agility_sdk=True, require_agility_sdk=False):
         source = Path(tempfile.mkdtemp(dir=self.root))
-        files = pack_nuget.PLATFORMS[platform][1]
+        files = list(pack_nuget.PLATFORMS[platform][1])
         if platform.startswith("win_") and include_agility_sdk:
-            files += pack_nuget.WINDOWS_AGILITY_SDK_BINARIES
+            files.extend(pack_nuget.WINDOWS_AGILITY_SDK_BINARIES)
         for filename in files:
             if filename != missing:
                 path = source / filename
@@ -36,10 +36,7 @@ class PackNugetTest(unittest.TestCase):
         args = argparse.Namespace(
             artifacts_dir=None,
             require_agility_sdk=require_agility_sdk,
-            **{
-                f"binary_dir_{name}": source if name == platform else None
-                for name in pack_nuget.PLATFORMS
-            },
+            **{f"binary_dir_{name}": source if name == platform else None for name in pack_nuget.PLATFORMS},
         )
         with contextlib.redirect_stdout(io.StringIO()):
             pack_nuget.stage_binaries(self.staging, args, [platform])
@@ -55,9 +52,10 @@ class PackNugetTest(unittest.TestCase):
         for platform, (rid, files) in pack_nuget.PLATFORMS.items():
             with self.subTest(platform=platform):
                 self.stage_platform(platform)
+                expected_files = list(files)
                 if rid.startswith("win-"):
-                    files += pack_nuget.WINDOWS_AGILITY_SDK_BINARIES
-                for filename in files:
+                    expected_files.extend(pack_nuget.WINDOWS_AGILITY_SDK_BINARIES)
+                for filename in expected_files:
                     destination = self.staging / "runtimes" / rid / "native" / filename
                     self.assertEqual(destination.read_bytes(), filename.encode())
 
@@ -65,9 +63,11 @@ class PackNugetTest(unittest.TestCase):
         for platform in ("win_x64", "win_arm64"):
             for missing in pack_nuget.WINDOWS_AGILITY_SDK_BINARIES:
                 for required in (False, True):
-                    with self.subTest(platform=platform, missing=missing, required=required):
-                        with self.assertRaises(pack_nuget.PackError):
-                            self.stage_platform(platform, missing, require_agility_sdk=required)
+                    with (
+                        self.subTest(platform=platform, missing=missing, required=required),
+                        self.assertRaises(pack_nuget.PackError),
+                    ):
+                        self.stage_platform(platform, missing, require_agility_sdk=required)
 
     def test_parse_agility_requirement(self):
         for required in (False, True):
@@ -88,9 +88,7 @@ class PackNugetTest(unittest.TestCase):
                             with self.assertRaises(pack_nuget.PackError):
                                 self.stage_platform(platform, include_agility_sdk=False, require_agility_sdk=True)
                         else:
-                            self.stage_platform(
-                                platform, include_agility_sdk=include_sdk, require_agility_sdk=required
-                            )
+                            self.stage_platform(platform, include_agility_sdk=include_sdk, require_agility_sdk=required)
                             rid = pack_nuget.PLATFORMS[platform][0]
                             sdk_dir = self.staging / "runtimes" / rid / "native" / "D3D12"
                             self.assertEqual(sdk_dir.is_dir(), platform.startswith("win_") and include_sdk)
@@ -166,7 +164,10 @@ class PackNugetTest(unittest.TestCase):
             pack_only=True, require_agility_sdk=True,
         )
         log = io.StringIO()
-        with mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package), contextlib.redirect_stdout(log):
+        with (
+            mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package),
+            contextlib.redirect_stdout(log),
+        ):
             pack_nuget.do_pack(self.staging / "test.csproj", output, args)
 
         pack_nuget.verify_package(current_package, self.staging, require_agility_sdk=True)
@@ -187,19 +188,18 @@ class PackNugetTest(unittest.TestCase):
             version="0.2.0", configuration="Release", nuget_config=None,
             pack_only=True, require_agility_sdk=True,
         )
-        with mock.patch.object(pack_nuget.subprocess, "run"), contextlib.redirect_stdout(io.StringIO()):
-            with self.assertRaisesRegex(pack_nuget.PackError, "no .nupkg files found"):
-                pack_nuget.do_pack(self.staging / "test.csproj", self.root, args)
+        with (
+            mock.patch.object(pack_nuget.subprocess, "run"),
+            contextlib.redirect_stdout(io.StringIO()),
+            self.assertRaisesRegex(pack_nuget.PackError, "no .nupkg files found"),
+        ):
+            pack_nuget.do_pack(self.staging / "test.csproj", self.root, args)
         self.assertEqual(package.read_bytes(), original)
 
     def test_verify_package_checks_sdk_layout_and_targets(self):
         for platform in ("win_x64", "win_arm64"):
             self.stage_platform(platform)
-        entries = {
-            path.relative_to(self.staging).as_posix()
-            for path in self.staging.rglob("*")
-            if path.is_file()
-        }
+        entries = {path.relative_to(self.staging).as_posix() for path in self.staging.rglob("*") if path.is_file()}
         entries.add("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets")
         package = self.root / "test.nupkg"
         for missing in (None, *sorted(entries)):
@@ -227,6 +227,7 @@ class PackNugetTest(unittest.TestCase):
         def run_dotnet(*arguments):
             result = subprocess.run(
                 ["dotnet", *map(str, arguments)],
+                check=False,
                 cwd=self.root,
                 env=environment,
                 capture_output=True,

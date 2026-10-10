@@ -221,16 +221,18 @@ def stage_binaries(
         if not source_dir.is_dir():
             raise PackError(f"binary directory does not exist: {source_dir}")
 
+        platform_files = list(files)
         if rid.startswith("win-") and (
-            args.require_agility_sdk or any((source_dir / filename).is_file() for filename in WINDOWS_AGILITY_SDK_BINARIES)
+            args.require_agility_sdk
+            or any((source_dir / filename).is_file() for filename in WINDOWS_AGILITY_SDK_BINARIES)
         ):
-            files += WINDOWS_AGILITY_SDK_BINARIES
+            platform_files.extend(WINDOWS_AGILITY_SDK_BINARIES)
 
         target_dir = staging_dir / "runtimes" / rid / "native"
         target_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"Staging {name} -> runtimes/{rid}/native/")
-        for filename in files:
+        for filename in platform_files:
             src = source_dir / filename
             if not src.is_file():
                 raise PackError(f"expected binary not found: {src}")
