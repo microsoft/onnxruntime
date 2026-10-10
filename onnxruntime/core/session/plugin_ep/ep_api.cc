@@ -1253,8 +1253,8 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length) {
   API_IMPL_BEGIN
-  *source_model_data = session_options->weightless_source_model_data;
-  *source_model_data_length = session_options->weightless_source_model_data_size;
+  *source_model_data = session_options->value.weightless_source_model_data;
+  *source_model_data_length = session_options->value.weightless_source_model_data_size;
   return nullptr;
   API_IMPL_END
 }

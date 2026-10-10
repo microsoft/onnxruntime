@@ -198,6 +198,13 @@ class ModelCompilationOptions {
   Status SetWeightlessEnabled(bool use_weightless);
 
   /// <summary>
+  /// Selects the weightless mode for model compilation by setting "ep.enable_weightless_mode".
+  /// </summary>
+  /// <param name="weightless_mode">A single OrtWeightlessSupport value</param>
+  /// <returns>Status indicating potential error</returns>
+  Status SetWeightlessMode(OrtWeightlessSupport weightless_mode);
+
+  /// <summary>
   /// Checks if the compilation options described by this object are valid.
   /// </summary>
   /// <returns>An error status if the compilation options are invalid</returns>

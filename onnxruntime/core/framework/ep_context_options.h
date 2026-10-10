@@ -132,5 +132,13 @@ struct ModelGenOptions {
   const InitializerHandler* TryGetInitializerHandler() const;
 };
 
+/// <summary>
+/// Parses a value of the "ep.enable_weightless_mode" session config entry.
+/// </summary>
+/// <param name="value">Exactly "0", "1" or "2". An empty value is invalid.</param>
+/// <param name="mode">Output parameter set to the parsed mode.</param>
+/// <returns>An INVALID_ARGUMENT status if the value is not a valid OrtWeightlessSupport value.</returns>
+Status ParseWeightlessMode(const std::string& value, OrtWeightlessSupport& mode);
+
 }  // namespace epctx
 }  // namespace onnxruntime

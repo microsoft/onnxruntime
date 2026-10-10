@@ -2194,26 +2194,6 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
 } OrtGraphCaptureNodeAssignmentPolicy;
 
 /**
- * \brief Describes the scope of an EP's weightless mode support.
- *
- * Returned by OrtEp::GetWeightlessSupport() to indicate which types of initializers
- * the EP can operate on without copying.
- *
- * \since Version 1.29.
- */
-typedef enum OrtWeightlessSupport {
-  /** EP does not support weightless mode. */
-  OrtWeightlessSupport_NONE = 0,
-
-  /** EP supports weightless mode for external initializers only.
-   *  Internal initializers are still copied by the EP during compilation. */
-  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
-
-  /** EP supports weightless mode for all initializers (internal and external). */
-  OrtWeightlessSupport_ALL = 2,
-} OrtWeightlessSupport;
-
-/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -2743,18 +2723,37 @@ struct OrtEp {
 
   /** \brief Query the execution provider's weightless mode support.
    *
-   * When weightless mode is enabled (via the "ep.enable_weightless" session option), ORT calls this function
-   * to determine the scope of the EP's weightless support. The EP returns an OrtWeightlessSupport value
-   * indicating whether it supports weightless mode for all initializers, external initializers only, or not
-   * at all.
+   * When weightless mode is enabled (via the "ep.enable_weightless_mode" or the deprecated "ep.enable_weightless"
+   * session option), ORT calls this function to determine the weightless modes supported by the EP. The EP returns
+   * the OrtWeightlessSupport value that describes all the modes it supports: a single mode, a value that covers
+   * several modes such as OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, or OrtWeightlessSupport_NONE if it does not
+   * support weightless mode at all. ORT returns an error if the mode requested by the application is not among the
+   * supported modes.
+   *
+   * \note ORT versions before 1.32 only check that the returned value is not OrtWeightlessSupport_NONE, so an EP can
+   *       return OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY to them as well.
+   *
+   * The EP reads the mode requested by the application from the "ep.enable_weightless_mode"
+   * (kOrtSessionOptionEpEnableWeightlessMode) session config entry. An EP that supports several modes (e.g., reports
+   * OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) must honor that entry. When it is not set but the deprecated
+   * "ep.enable_weightless" entry is "1", the EP keeps the behavior it had before version 1.32.
    *
    * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
    * support weightless mode for all initializers on newer hardware but only for external initializers on
-   * older hardware that requires weight transformation.
+   * older hardware that requires weight transformation. The response must match the "weightless_supported_modes" EP
+   * metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) reported for the device, or the
+   * "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport) if the former is not reported, since
+   * applications use these entries to choose a mode. ORT logs a warning if they differ, and includes the difference
+   * in the error it returns when the requested mode is not supported.
    *
-   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
-   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
-   * these initializers at Compute() time via KernelContext_GetInput().
+   * A weightless EP obtains the initializer data in one of two ways:
+   * - ORT-provided: the EP sets drop_constant_initializers to false in OrtNodeFusionOptions so that ORT provides
+   *   the initializer data as inputs to the compiled/fused node. The EP accesses these initializers at Compute()
+   *   time via KernelContext_GetInput().
+   * - EP-managed: the EP sets drop_constant_initializers to true, keeps references to the initializers in its
+   *   EPContext data, and loads the data itself when a session is created from the compiled model. The data is
+   *   located via the "session.model_external_initializers_file_folder_path" and, for OrtWeightlessSupport_ALL,
+   *   "ep.context_source_model_path" session options.
    *
    * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
    *       Compile() so that the EP can cache and reuse data pointers directly (without going through
@@ -2762,7 +2761,7 @@ struct OrtEp {
    *       only supported way to access initializer data at Compute() time.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[out] support Output parameter set to the EP's weightless support scope.
+   * \param[out] support Output parameter set to the weightless modes supported by the EP.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

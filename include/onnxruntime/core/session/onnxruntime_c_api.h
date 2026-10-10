@@ -8260,6 +8260,44 @@ typedef enum OrtCompileApiFlags {
 } OrtCompileApiFlags;
 
 /**
+ * \brief Describes the weightless modes.
+ *
+ * - An application selects a single mode (OrtWeightlessSupport_NONE, OrtWeightlessSupport_EXTERNAL_ONLY or
+ *   OrtWeightlessSupport_ALL) with OrtCompileApi::ModelCompilationOptions_SetWeightlessMode() or the
+ *   "ep.enable_weightless_mode" session option (kOrtSessionOptionEpEnableWeightlessMode).
+ * - An EP reports the modes it supports, both in OrtEp::GetWeightlessSupport() and in the
+ *   "weightless_supported_modes" EP metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes). Values that
+ *   cover several modes, such as OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, describe EP capabilities only and can't
+ *   be requested by an application.
+ *
+ * \note Future versions may add values. Applications should expect values they don't recognize and ignore them.
+ *
+ * \since Version 1.29.
+ */
+typedef enum OrtWeightlessSupport {
+  /** Weightless mode is not supported (EP) or not enabled (application). */
+  OrtWeightlessSupport_NONE = 0,
+
+  /** Weightless mode for external initializers only.
+   *  Internal initializers are still copied by the EP during compilation. */
+  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
+
+  /** Weightless mode for all initializers (internal and external).
+   *  When creating a session from an EPContext model compiled in this mode, the EP needs the source model at runtime.
+   *  The EP looks for it in this order:
+   *  - the buffer set with OrtApi::SessionOptionsSetWeightlessSourceModelBuffer(),
+   *  - the path in the "ep.context_source_model_path" session option (kOrtSessionOptionEpContextSourceModelPath),
+   *  - the "onnx_model_filename" attribute of the EPContext node, resolved against the directory of the compiled
+   *    model if relative. */
+  OrtWeightlessSupport_ALL = 2,
+
+  /** EP capability only: the EP supports both OrtWeightlessSupport_EXTERNAL_ONLY and OrtWeightlessSupport_ALL.
+   *  Applications can't request it.
+   *  \since Version 1.32. */
+  OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY = 3,
+} OrtWeightlessSupport;
+
+/**
  * \brief The OrtCompileApi struct provides functions to compile ONNX models.
  *
  * Execution providers that support compilation fuse a subgraph into an EPContext node that wraps a provider-specific
@@ -8566,6 +8604,9 @@ struct OrtCompileApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
+   * \deprecated Since version 1.32. Use ModelCompilationOptions_SetWeightlessMode instead, which selects a
+   *             specific OrtWeightlessSupport mode.
+   *
    * \since Version 1.29.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
@@ -8646,6 +8687,37 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t alignment,
                   size_t minimum_size);
+
+  /** \brief Select the weightless mode for model compilation.
+   *
+   * When a mode other than OrtWeightlessSupport_NONE is selected, the compiled EPContext model will not embed the
+   * constant initializer data covered by that mode in the EP's compiled binary. Instead, the initializer data must be
+   * provided when creating a session from the compiled model.
+   *
+   * Applications can inspect the "weightless_supported_modes" EP metadata entry
+   * (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) of each OrtEpDevice to discover the modes supported by an EP
+   * and choose the one that best fits the use case. If that entry is not present, e.g., for EPs built for versions 1.29
+   * to 1.31, applications must inspect the "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport)
+   * instead.
+   *
+   * This is equivalent to setting the "ep.enable_weightless_mode" session option
+   * (kOrtSessionOptionEpEnableWeightlessMode) to the given value. Refer to that option for the checks ORT performs.
+   *
+   * ORT verifies that the target EP supports the selected mode during CompileModel() by calling
+   * OrtEp::GetWeightlessSupport(). If the EP does not support it, CompileModel() returns an error.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] weightless_mode A single OrtWeightlessSupport value. OrtWeightlessSupport_NONE disables weightless
+   *                            mode (default behavior). Combined values such as
+   *                            OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY are not allowed.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessMode,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtWeightlessSupport weightless_mode);
 };
 
 /**
