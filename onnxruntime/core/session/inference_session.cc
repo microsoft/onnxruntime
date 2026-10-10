@@ -3571,6 +3571,109 @@ common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> ou
   return ValidateInputsOutputs(output_names, fetches, output_def_map_, ArgType::kOutput);
 }
 
+namespace {
+
+bool IsOpaqueValue(const OrtValue& value) {
+  const auto* type = value.Type();
+  const auto* type_proto = type == nullptr ? nullptr : type->GetTypeProto();
+  return type_proto != nullptr &&
+         type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kOpaqueType;
+}
+
+bool HasMayInplace(const KernelDef& kernel_def, size_t input_index, size_t output_index) {
+  const auto& may_inplace = kernel_def.MayInplace();
+  return std::find(may_inplace.begin(), may_inplace.end(),
+                   std::pair<int, int>{narrow<int>(input_index), narrow<int>(output_index)}) != may_inplace.end();
+}
+
+}  // namespace
+
+common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
+    gsl::span<const std::string> feed_names,
+    gsl::span<const OrtValue> feeds,
+    gsl::span<const std::string> output_names,
+    const std::vector<OrtValue>* p_fetches) const {
+  if (p_fetches == nullptr || p_fetches->empty()) {
+    return Status::OK();
+  }
+
+  const auto& fetches = *p_fetches;
+  InlinedHashSet<size_t> aliased_feed_indices;
+
+  for (size_t output_idx = 0; output_idx < fetches.size(); ++output_idx) {
+    const auto& fetch = fetches[output_idx];
+    if (!fetch.IsAllocated() || !IsOpaqueValue(fetch)) {
+      continue;
+    }
+
+    std::optional<size_t> matched_feed_idx;
+    for (size_t feed_idx = 0; feed_idx < feeds.size(); ++feed_idx) {
+      if (!IsOpaqueValue(feeds[feed_idx]) || !fetch.SharesDataWith(feeds[feed_idx])) {
+        continue;
+      }
+
+      if (matched_feed_idx.has_value()) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT, "Opaque output '", output_names[output_idx],
+            "' aliases multiple model inputs. A mutable opaque output must alias exactly one input.");
+      }
+      matched_feed_idx = feed_idx;
+    }
+
+    if (!matched_feed_idx.has_value()) {
+      continue;
+    }
+
+    const size_t feed_idx = *matched_feed_idx;
+    const auto& input_name = feed_names[feed_idx];
+    const auto& output_name = output_names[output_idx];
+
+    // A graph value may be both an input and output without passing through a mutating kernel.
+    if (input_name == output_name) {
+      continue;
+    }
+
+    if (!aliased_feed_indices.insert(feed_idx).second) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name,
+          "' aliases multiple model outputs. A mutable opaque input must alias exactly one output.");
+    }
+
+    InlinedVector<SessionState::NodeInfo> input_node_info;
+    InlinedVector<SessionState::NodeInfo> output_node_info;
+    ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(input_name, input_node_info));
+    ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(output_name, output_node_info));
+
+    if (input_node_info.size() != 1 || output_node_info.size() != 1) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name, "' and output '", output_name,
+          "' may share an object only for a direct linear input-to-output kernel path.");
+    }
+
+    const auto& input_info = input_node_info.front();
+    const auto& output_info = output_node_info.front();
+    if (input_info.p_node == nullptr || input_info.p_node != output_info.p_node ||
+        input_info.kci == nullptr || input_info.kci != output_info.kci) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name, "' and output '", output_name,
+          "' are not connected by the same kernel.");
+    }
+    if (*input_info.device != *output_info.device) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name, "' and output '", output_name,
+          "' must have the same planned device when sharing an object.");
+    }
+    if (!HasMayInplace(*input_info.kci->kernel_def, input_info.index, output_info.index)) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, "Kernel '", input_info.p_node->Name(), "' (", input_info.p_node->OpType(),
+          ") does not declare MayInplace for opaque input '", input_name,
+          "' and output '", output_name, "'.");
+    }
+  }
+
+  return Status::OK();
+}
+
 #ifdef ENABLE_TRAINING
 Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     std::vector<OrtValue>& feeds,
@@ -3811,6 +3914,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          ValidateOpaqueInputOutputAliases(feed_names, feeds, output_names, p_fetches));
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =

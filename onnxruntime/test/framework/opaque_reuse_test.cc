@@ -11,6 +11,7 @@
 #include "core/framework/session_state.h"
 #include "core/graph/model.h"
 #include "core/optimizer/optimizer_execution_frame.h"
+#include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
@@ -228,6 +229,14 @@ class OpaqueReuseTest : public testing::Test {
     return values;
   }
 
+  static OrtValue PrngValue(uint64_t seed) {
+    const auto* type = DataTypeImpl::GetType<TestPrng>();
+    OrtValue value;
+    value.Init(type->AsNonTensorType()->GetCreateFunc()(), type, type->GetDeleteFunc());
+    value.GetMutable<TestPrng>()->Seed(seed);
+    return value;
+  }
+
   static void ExpectSamples(const std::vector<OrtValue>& values) {
     // SplitMix64 seed 42: the upper 24 bits of its first two outputs.
     EXPECT_EQ(values[0].Get<Tensor>().Shape().NumDimensions(), 0u);
@@ -324,6 +333,87 @@ TEST_F(OpaqueReuseTest, GraphInputRemainsObservableAcrossRuns) {
     EXPECT_NE(&input.Get<TestPrng>(), &values[2].Get<TestPrng>());
   }
   EXPECT_EQ(TestPrng::reused.load(), 0);
+}
+
+TEST_F(OpaqueReuseTest, GraphInputOutputAliasMutatesCallerObject) {
+  AddGenerate("s0", "v1", "s1");
+  auto session = Initialize({"v1", "s1"});
+  OrtValue state = PrngValue(42);
+  const auto* object = &state.Get<TestPrng>();
+  std::unique_ptr<IOBinding> binding;
+  ASSERT_STATUS_OK(session->NewIOBinding(&binding));
+  ASSERT_STATUS_OK(binding->BindInput("s0", state));
+  ASSERT_STATUS_OK(binding->BindOutput("v1"));
+  ASSERT_STATUS_OK(binding->BindOutput("s1", state));
+
+  uint64_t expected_state = 42;
+  for (int run = 0; run < 3; ++run) {
+    ASSERT_STATUS_OK(session->Run(RunOptions{}, *binding));
+    expected_state += 0x9e3779b97f4a7c15ULL;
+
+    ASSERT_EQ(binding->GetOutputs().size(), 2u);
+    EXPECT_EQ(&binding->GetOutputs()[1].Get<TestPrng>(), object);
+    EXPECT_EQ(&state.Get<TestPrng>(), object);
+    EXPECT_EQ(state.Get<TestPrng>().State(), expected_state);
+    EXPECT_EQ(TestPrng::reused.load(), run + 1);
+  }
+
+  EXPECT_EQ(TestPrng::copied.load(), 0);
+  EXPECT_EQ(TestPrng::created.load(), 1);
+}
+
+TEST_F(OpaqueReuseTest, DistinctGraphInputOutputPreservesCallerObject) {
+  AddGenerate("s0", "v1", "s1");
+  auto session = Initialize({"v1", "s1"});
+  OrtValue state = PrngValue(42);
+  std::vector<OrtValue> fetches;
+  const NameMLValMap feeds{{"s0", state}};
+  const std::vector<std::string> outputs{"v1", "s1"};
+
+  ASSERT_STATUS_OK(session->Run(RunOptions{}, feeds, outputs, &fetches));
+
+  EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+  EXPECT_NE(&state.Get<TestPrng>(), &fetches[1].Get<TestPrng>());
+  EXPECT_EQ(fetches[1].Get<TestPrng>().State(), 42u + 0x9e3779b97f4a7c15ULL);
+  EXPECT_EQ(TestPrng::reused.load(), 0);
+  EXPECT_EQ(TestPrng::copied.load(), 1);
+}
+
+TEST_F(OpaqueReuseTest, GraphInputOutputAliasRequiresMayInplace) {
+  AddGenerate("s0", "v1", "s1", "GenerateCopy");
+  auto session = Initialize({"v1", "s1"});
+  OrtValue state = PrngValue(42);
+  std::vector<OrtValue> fetches(2);
+  fetches[1] = state;
+  const NameMLValMap feeds{{"s0", state}};
+  const std::vector<std::string> outputs{"v1", "s1"};
+
+  const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
+
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("does not declare MayInplace"));
+  EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+  EXPECT_EQ(TestPrng::reused.load(), 0);
+  EXPECT_EQ(TestPrng::copied.load(), 0);
+}
+
+TEST_F(OpaqueReuseTest, GraphInputOutputAliasRequiresLinearUse) {
+  AddGenerate("s0", "v1", "s1");
+  AddGenerate("s0", "v2", "s2");
+  auto session = Initialize({"v1", "v2", "s1"});
+  OrtValue state = PrngValue(42);
+  std::vector<OrtValue> fetches(3);
+  fetches[2] = state;
+  const NameMLValMap feeds{{"s0", state}};
+  const std::vector<std::string> outputs{"v1", "v2", "s1"};
+
+  const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
+
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("direct linear input-to-output kernel path"));
+  EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+  EXPECT_EQ(TestPrng::reused.load(), 0);
+  EXPECT_EQ(TestPrng::copied.load(), 0);
 }
 
 TEST_F(OpaqueReuseTest, MatchingTypeWithoutMayInplaceDoesNotReuse) {
