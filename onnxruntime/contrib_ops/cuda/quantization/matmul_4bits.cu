@@ -13,6 +13,7 @@
 #include "contrib_ops/cuda/quantization/matmul_4bits_common.cuh"
 #include "contrib_ops/cuda/quantization/matmul_4bits_m1.cuh"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 // Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
 // which defines SHARED_PROVIDER. That guard suppresses env_var_utils.h's own logging.h include and
@@ -66,13 +67,15 @@ __device__ __forceinline__ void RouterUnrollReduction(
     int k,
     int& k_id,
     int& scale_id,
-    T (&sums)[8]) {
+    T (&sums)[8], bool l2_prefetch) {
   constexpr int kPerIter = kWarpSize * kElementsPerThreadPerIteration;
   constexpr int kUnrollStep = kUnroll * kPerIter;
   const int k_unroll_bound = k - k % kUnrollStep;
   for (; k_id < k_unroll_bound; k_id += kUnrollStep) {
 #pragma unroll
     for (int i = 0; i < kUnroll; i++) {
+      PrefetchQuantizedDecodeL2(b_data_quant, kPerIter / 2 * i, kPerIter / 2,
+                                (k - k_id - static_cast<int>(threadIdx.x) * 8) / 2, l2_prefetch);
       uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + kPerIter / 2 * i));
       T scale = scales_data[scale_id + kPerIter / BlockSize * i];
       AccumulateEightElements4b(value, scale, 8, a_data + k_id + i * kPerIter, sums);
@@ -96,7 +99,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
     const T* scales_data,
     const T* bias_data,
     int n,
-    int k) {
+    int k, bool l2_prefetch) {
   constexpr int kPerIter = kWarpSize * kElementsPerThreadPerIteration;
   static_assert(kPerIter % BlockSize == 0, "kPerIter must be a multiple of BlockSize for exact scale stride");
 
@@ -113,9 +116,9 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   int k_id = 0;
   int scale_id = lane_id * 8 / BlockSize;
 
-  RouterUnrollReduction<T, BlockSize, 16>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
-  RouterUnrollReduction<T, BlockSize, 4>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
-  RouterUnrollReduction<T, BlockSize, 1>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
+  RouterUnrollReduction<T, BlockSize, 16>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums, l2_prefetch);
+  RouterUnrollReduction<T, BlockSize, 4>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums, l2_prefetch);
+  RouterUnrollReduction<T, BlockSize, 1>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums, l2_prefetch);
 
   if (k_id + lane_id * 8 < k) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
@@ -527,7 +530,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
     int m,
     int n,
     int k,
-    int blocks_per_K) {
+    int blocks_per_K, bool l2_prefetch) {
   const int n_block_id = blockIdx.x;
   const int m_base = blockIdx.y * CtaM;
   const int lane_id = threadIdx.x;
@@ -584,6 +587,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
     const int k_unroll_bound = k - k % kUnrollStep;                                               \
     for (; k_id < k_unroll_bound; k_id += kUnrollStep) {                                          \
       _Pragma("unroll") for (int i = 0; i < kUnroll; i++) {                                       \
+        PrefetchQuantizedDecodeL2(b_data_quant, k_per_iter / 2 * i, k_per_iter / 2,               \
+                                  (k - k_id - lane_id * 8) / 2, l2_prefetch);                     \
         uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i)); \
         T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];                            \
         uint8_t zp = 8;                                                                           \
@@ -656,14 +661,15 @@ bool TryMatMulSmallM4Bits(
   const int cta_m = (m <= 2) ? 2 : 4;
   dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, (m + cta_m - 1) / cta_m);
+  const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
 
-#define SmallMDispatch(BS, CM)                                                                   \
-  if (nullptr != zero_points) {                                                                  \
-    MatMulFloatInt4KernelSmallM<T, BS, true, CM><<<blocks, threads, shared_mem_size, stream>>>(  \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);     \
-  } else {                                                                                       \
-    MatMulFloatInt4KernelSmallM<T, BS, false, CM><<<blocks, threads, shared_mem_size, stream>>>( \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);     \
+#define SmallMDispatch(BS, CM)                                                                            \
+  if (nullptr != zero_points) {                                                                           \
+    MatMulFloatInt4KernelSmallM<T, BS, true, CM><<<blocks, threads, shared_mem_size, stream>>>(           \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS, l2_prefetch); \
+  } else {                                                                                                \
+    MatMulFloatInt4KernelSmallM<T, BS, false, CM><<<blocks, threads, shared_mem_size, stream>>>(          \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS, l2_prefetch); \
   }
 #define SmallMDispatchBlock(CM)   \
   if (16 == block_size) {         \
@@ -711,12 +717,13 @@ bool TryMatMul4Bits(
       !IsRouterGemvSpecializationDisabled()) {
     const dim3 blocks(n / kColsPerThreadBlock, 1);
     const dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
+    const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
     if (block_size == 32) {
       MatMulFloatInt4RouterKernel<T, 32><<<blocks, threads, 0, stream>>>(
-          output, a_data, b_data_quant, scales_data, bias_data, n, k);
+          output, a_data, b_data_quant, scales_data, bias_data, n, k, l2_prefetch);
     } else {
       MatMulFloatInt4RouterKernel<T, 64><<<blocks, threads, 0, stream>>>(
-          output, a_data, b_data_quant, scales_data, bias_data, n, k);
+          output, a_data, b_data_quant, scales_data, bias_data, n, k, l2_prefetch);
     }
     return true;
   }

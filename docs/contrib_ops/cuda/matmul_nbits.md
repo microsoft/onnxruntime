@@ -554,10 +554,65 @@ present. `ComputeInternal` then:
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic, and bypass the fpA_intB M-chunking size condition (§6.2). |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 | `ORT_MATMULNBITS_M_CHUNK_SIZE` | int, `0` | Max rows of `A` per fpA_intB launch (§6.2). `0` disables M chunking. Overridden by the `ep.cuda.matmul_nbits_m_chunk_size` session config entry. Also applies to the CUDA plugin EP. |
+| `ORT_QUANTIZED_DECODE_L2_PREFETCH` | bool, `0` | Experimental SM121-only weight prefetching in CUDA quantized decode kernels. See below. |
 
 > Environment variables are read with ORT's cross-platform
 > `ParseEnvironmentVariableWithDefault` helper (safe on Windows), not
 > `std::getenv`.
+
+### Experimental SM121 L2 prefetching
+
+Set `ORT_QUANTIZED_DECODE_L2_PREFETCH=1` before the first quantized decode launch
+to request weight cache lines with `prefetch.global.L2` two loop iterations ahead.
+The switch is cached per process and checked against the **actual current CUDA
+device**: only compute capability 12.1 (SM121) enables the hints. SM120 and other
+devices remain disabled, even with the switch set.
+
+The shared policy covers ORT-owned INT2/INT4/INT8 MatMulNBits GEMV and small-M
+kernels (including the router and fpA_intB paths), Bnb4 GEMV, block-scaled FP4/FP8
+GEMV, and INT/FP4 MoE GEMV, including fused SwiGLU, finalize, and split-K paths.
+It does not modify cuBLAS or CUTLASS library GEMM mainloops, dequantization-only
+kernels, activations, or scale loads. Look-ahead addresses are bounded by the
+weight row or iterator's remaining iterations, including split-K strides and
+ragged tails. Arithmetic, layouts, dispatch, and fallback selection are unchanged.
+
+This is opt-in until benchmarked on SM121; no latency improvement is guaranteed.
+Additional cache requests can increase traffic and hurt performance. Measure
+end-to-end decode latency as well as kernel latency, using separate processes for
+each setting, identical inputs, and the same warmup/repeat counts.
+
+With a CUDA build, run the existing operator references under each setting:
+
+```bash
+export ORT_BUILD="$PWD/build/cu130/Release"
+for prefetch in 0 1; do
+  ORT_QUANTIZED_DECODE_L2_PREFETCH=$prefetch "$ORT_BUILD/onnxruntime_provider_test" \
+    --gtest_filter='*MatMulNBits*:MatMulBnb4.*:MatMulBlockQuantizedFp4WeightOpTest.*:MatMulBlockQuantizedFp8WeightOpTest.*:MoETest.*:CUDA_EP_Unittest.*'
+done
+```
+
+The CUDA internal test `QuantizedDecodeL2PrefetchParity` compares enabled and
+disabled INT2/INT4/INT8 kernels directly on SM121 against a value reference,
+covering short reductions, look-ahead boundaries, and ragged loop tails in FP32
+and FP16. Configure CUDA EP internal tests as described in §9. Run the same test
+wrapper under `compute-sanitizer --tool memcheck --error-exitcode 1` to check
+device memory accesses. Also run the QMoE Python reference suites listed in
+[moe_qmoe.md](moe_qmoe.md#13-testing) in separate processes under both settings.
+
+For example, benchmark block-scaled FP4 decode and CUDA graph replay:
+
+```bash
+export ORT_REPO=$(git rev-parse --show-toplevel)
+for prefetch in 0 1; do
+  (cd /tmp && PYTHONPATH="$ORT_BUILD" ORT_QUANTIZED_DECODE_L2_PREFETCH=$prefetch \
+    python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
+      --op fp4 --activation-dtype fp16 --m 1 --n 4096 --k 4096 \
+      --warmup 100 --repeat 500 --cuda-graph)
+done
+```
+
+Repeat with `--op fp8`, representative model shapes, and both activation dtypes.
+Graph capture records the kernel flag; use a fresh process/capture for each setting.
 
 ---
 

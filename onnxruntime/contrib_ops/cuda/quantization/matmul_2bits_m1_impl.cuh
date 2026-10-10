@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/quantization/matmul_2bits_common.cuh"
 #include "contrib_ops/cuda/quantization/matmul_2bits_m1.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,7 +27,7 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b) MatMulFloa
     const uint8_t* zero_points,
     int n,
     int k,
-    int blocks_per_K) {
+    int blocks_per_K, bool l2_prefetch) {
   const int lane_id = threadIdx.x;
   const int warp_id = threadIdx.y;
   const int n_block_id = blockIdx.x;
@@ -65,6 +66,8 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b) MatMulFloa
   int k_id = 0;
   for (; k_id + k_per_iter <= k; k_id += k_per_iter) {
     const int k_offset = lane_offset + k_id;
+    PrefetchQuantizedDecodeL2(b_column, k_offset / kElementsPerByte2b,
+                              k_per_iter / kElementsPerByte2b, k / kElementsPerByte2b, l2_prefetch);
     const int blk = k_offset / block_size;
     typename Traits2b<T>::Weights w;
     typename Traits2b<T>::Acts av;
@@ -124,14 +127,15 @@ bool TryMatMul2BitsM1(
 
   dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, kColsPerThreadBlock2b);
   dim3 blocks(n / kColsPerThreadBlock2b, 1);
+  const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
 
-#define MATMUL_FLOAT2B_M1_DISPATCH(bs)                                                 \
-  if (zero_points != nullptr) {                                                        \
-    MatMulFloat2bKernelM1<T, bs, true><<<blocks, threads, shared_mem_size, stream>>>(  \
-        output, a_data, b_data_quant, scales_data, zero_points, n, k, blocks_per_K);   \
-  } else {                                                                             \
-    MatMulFloat2bKernelM1<T, bs, false><<<blocks, threads, shared_mem_size, stream>>>( \
-        output, a_data, b_data_quant, scales_data, nullptr, n, k, blocks_per_K);       \
+#define MATMUL_FLOAT2B_M1_DISPATCH(bs)                                                            \
+  if (zero_points != nullptr) {                                                                   \
+    MatMulFloat2bKernelM1<T, bs, true><<<blocks, threads, shared_mem_size, stream>>>(             \
+        output, a_data, b_data_quant, scales_data, zero_points, n, k, blocks_per_K, l2_prefetch); \
+  } else {                                                                                        \
+    MatMulFloat2bKernelM1<T, bs, false><<<blocks, threads, shared_mem_size, stream>>>(            \
+        output, a_data, b_data_quant, scales_data, nullptr, n, k, blocks_per_K, l2_prefetch);     \
   }
 
   if (block_size == 16) {

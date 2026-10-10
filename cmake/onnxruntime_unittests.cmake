@@ -1040,7 +1040,8 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
 
   if (onnxruntime_DISABLE_CONTRIB_OPS OR onnxruntime_CUDA_MINIMAL)
     list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
-      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc")
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc"
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/quantized_decode_l2_prefetch_test.cu")
   endif()
 
   # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
