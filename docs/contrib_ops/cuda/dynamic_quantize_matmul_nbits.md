@@ -1407,12 +1407,12 @@ measured build and is another tuning opportunity.
 ### 8.9 Integrated Hopper W8 fast path
 
 The SM90a CUTLASS fast path is now integrated into the ORT operator for
-FP16 A/Y with constant W8 weights and one common scale interval.
+FP16 or BF16 A/Y (section 8.12) with constant W8 weights and one common scale interval.
 It uses TMA warp-specialized ping-pong, INT8 WGMMA, a persistent tile
 scheduler, and a strict fused epilogue. Scale storage may be FP16,
-BF16, or FP32, and bias may be absent or FP16. The epilogue preserves
+BF16, or FP32, and bias may be absent or have the activation type. The epilogue preserves
 INT32-to-FP32 conversion, activation-scale multiplication, weight-scale
-multiplication, and separate bias addition before FP16 conversion.
+multiplication, and separate bias addition before output conversion.
 Nonfinite activation domains retain their NaN output semantics.
 No global INT32 output or separate dequantization pass is introduced.
 
@@ -1423,7 +1423,7 @@ The measured crossover additionally requires either K/N at least 1024
 or M at least 128. Device pointers used by the GEMM must meet its
 16-byte alignment requirements. A per-block activation mode can use
 the path only when its one block covers all K. Runtime weights,
-multiple scale intervals, BF16 activations, smaller geometries, and
+multiple scale intervals, smaller geometries, and
 unsupported builds/images retain existing dispatch. Invalid mutable
 scales still fail validation rather than being silently accepted.
 Set `ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM=1` before session creation
@@ -1467,7 +1467,7 @@ Initialization makes a lossless signed INT8 copy of constant W8 bytes
 by XORing their symmetric offset. It retains the serialized weights
 for fallback geometry, so this adds 12/16/8/4 MiB of persistent weight
 memory in the four cases above, including serialized block padding.
-No persistent copy is made for BF16 activations or W4/W2. Initialization
+No persistent copy is made for W4/W2. Initialization
 finishes on the per-thread default stream before the copy is published.
 Quantized activation scratch remains within the existing row-tile
 budget and CUTLASS workspace is zero.
@@ -1559,6 +1559,37 @@ non-graph -> graph: W8 K/N 2048/6144 50.45 -> 46.26 us, 6144/2048
 W4 K=N=1024 39.99 -> 36.48 us; W2 42.84 -> 37.91 us. At M=16, K/N=2048/6144
 it falls from 27.67 to 19.04 us. The remaining inter-replay time is ORT
 per-run overhead outside the operator.
+
+### 8.12 BF16 activations on the Hopper path
+
+BF16 activations now use the same SM90a kernel. Only the epilogue differs:
+BF16 activation scales span the FP32 range, so INT32-accumulator times
+scale can overflow or become subnormal, and the operator contract forms such
+products in FP64 from the original inputs. The first two multiplications are
+a single custom CUTLASS epilogue node (`StrictScaleProductOp`) over the
+accumulator, activation scale, and weight scale. For a fragment whose scales
+all satisfy 2^-126 <= |scale| < 2^96 (so any nonzero accumulator, at most
+2^31, gives a normal finite product), the node issues the two plain
+multiplies. Otherwise it calls a non-inlined routine with the full rule.
+The range test is one integer subtract and compare per element, evaluated as
+one branch per fragment. Per-element variants cost 9-31 us extra (an inlined or
+called slow path, or always computing the FP64 result, were all slower);
+the fragment-level test leaves GEMM time at 30.9 us versus 30.5 us for the
+unchecked FP16 tree at M/K/N=1536/2048/6144.
+
+`HopperBFloat16Domains` compares bitwise against the exact reference with
+rows spanning subnormal, ordinary, near-overflow, NaN and infinite
+activations, zero/denormal/maximum weight scales, all three scale storage
+types, bias, per-token and per-tensor modes, and a large tile case.
+Removing the slow path makes it fail. Because the node needs no FP16-only
+assumption, the constructor no longer inspects the input type.
+
+H200, BF16, M=1536, per-token, complete operator, previous path -> Hopper
+(FP16 FP GEMM reference in parentheses): K/N 2048/6144 151.76 -> 49.62
+(53.65) us, 6144/2048 145.97 -> 63.52 (52.31), 2048/4096 103.82 -> 39.70
+(35.69), 2048/2048 62.73 -> 32.66 (19.24). Standard and plugin builds pass
+25 focused tests each, the 15 Python tests pass, and Compute Sanitizer
+reports zero memcheck errors and zero racecheck hazards.
 
 ## 9. Delivery Plan and Acceptance
 

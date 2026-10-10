@@ -440,6 +440,37 @@ TEST(DynamicQuantizeMatMulNBitsTest, HopperExceptionalDomains) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, HopperBFloat16Domains) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t m = 129;
+  constexpr int64_t k = 144;
+  constexpr int64_t n = 512;
+  std::vector<float> scales(n);
+  const float scale_values[] = {0, -1, 1, std::numeric_limits<float>::denorm_min(),
+                                std::numeric_limits<float>::max(), 1e-30f, 3e-3f};
+  for (size_t i = 0; i < scales.size(); ++i) scales[i] = scale_values[i % 7];
+  // Rows span tiny, ordinary, and near-overflow magnitudes so activation scales cover normal and non-normal products.
+  const float row_values[] = {float(BFloat16::FromBits(1)), 1e-30f, 1.0f, 3e5f, 1e30f,
+                              float(BFloat16::FromBits(0x7f7f)), std::numeric_limits<float>::quiet_NaN(),
+                              std::numeric_limits<float>::infinity()};
+  std::vector<float> mixed(m * k);
+  for (int64_t i = 0; i < m * k; ++i) {
+    mixed[i] = row_values[(i / k) % 8] * (static_cast<float>(i % 7) - 3.0f);
+  }
+  for (const std::string mode : {"dynamic_per_token", "dynamic_per_tensor"}) {
+    SCOPED_TRACE(mode);
+    for (float value : row_values) {
+      RunCase<BFloat16>({m, k}, n, 8, 512, mode, 0, true, false, false,
+                        std::vector<float>(m * k, value), scales, false, true);
+    }
+    RunCase<BFloat16>({m, k}, n, 8, 512, mode, 0, true, false, true, mixed, scales, false, true);
+    RunCase<BFloat16, MLFloat16>({m, k}, n, 8, 512, mode, 0, true, false, true, mixed, {}, false, true);
+    RunCase<BFloat16, BFloat16>({m, k}, n, 8, 512, mode, 0, true, true, false, {}, {}, false, true);
+  }
+  RunCase<BFloat16, MLFloat16>({1536, 1024}, 2048, 8, 1024, "dynamic_per_token", 0, true, false, true,
+                               {}, {}, false, true);
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, PipelinedNonfiniteAndExtremeScales) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   constexpr int64_t m = 129;

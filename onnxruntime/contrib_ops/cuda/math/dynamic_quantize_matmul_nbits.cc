@@ -56,13 +56,6 @@ DynamicQuantizeMatMulNBits::DynamicQuantizeMatMulNBits(const OpKernelInfo& info)
       block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)),
       activation_block_size_(0) {
   enable_sm90_ = !ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", false);
-#if defined(BUILD_CUDA_EP_AS_PLUGIN)
-  const auto input_type = info.GetKernelInfo().GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType();
-  enable_sm90_ = enable_sm90_ && input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-#else
-  const auto* input_type = info.node().InputDefs()[0]->TypeAsProto();
-  enable_sm90_ = enable_sm90_ && input_type && input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-#endif
   ORT_ENFORCE(bits_ == 2 || bits_ == 4 || bits_ == 8, "bits must be 2, 4, or 8.");
   ORT_ENFORCE(block_size_ >= 16 && (block_size_ & (block_size_ - 1)) == 0,
               "block_size must be a power of two and at least 16.");
@@ -201,7 +194,7 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
     ORT_RETURN_IF_ERROR(LaunchDynamicTensorScale(a->DataRaw(), bf16, a->Shape().Size(), tensor_scale.get(),
                                                  tensor_partials.get(), stream));
   }
-  const bool sm90_shape_ok = signed_weights_ && !bf16 && groups == 1 && n == signed_n_ && k >= 128 &&
+  const bool sm90_shape_ok = signed_weights_ && groups == 1 && n == signed_n_ && k >= 128 &&
                              k % 16 == 0 && activation_block >= k && m <= std::numeric_limits<int>::max() &&
                              n <= std::numeric_limits<int>::max() && k <= std::numeric_limits<int>::max();
   for (int64_t row = 0; row < m;) {
@@ -221,7 +214,7 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
     if (sm90_shape_ok && sm90_geometry && rows >= 16 && aligned16) {
       ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedSm90(
           quantized.get(), a_scales, signed_weights_.get(), scales->DataRaw(), scale_type,
-          bias_data, y_tile, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k),
+          bias_data, y_tile, bf16, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k),
           signed_stride_, sm90_device_id_, sm90_sm_count_, stream));
     } else {
       ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedMatMul(quantized.get(), a_scales, b->Data<uint8_t>(),
