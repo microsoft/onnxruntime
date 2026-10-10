@@ -19,7 +19,8 @@ class MatMulProgram final : public Program<MatMulProgram> {
                 const gsl::span<int64_t>& elements_per_thread,
                 bool is_channels_last = false,
                 uint32_t split_dim_inner = 1,
-                uint32_t tile_inner = 32)
+                uint32_t tile_inner = 32,
+                bool use_f32_accumulation = false)
       : Program{"MatMul"},
         activation_(activation),
         has_bias_{bias},
@@ -27,7 +28,8 @@ class MatMulProgram final : public Program<MatMulProgram> {
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
         is_channels_last_(is_channels_last),
         split_dim_inner_(split_dim_inner),
-        tile_inner_(tile_inner) {}
+        tile_inner_(tile_inner),
+        use_f32_accumulation_(use_f32_accumulation) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
@@ -49,6 +51,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
   bool is_channels_last_ = false;
   uint32_t split_dim_inner_ = 1;
   uint32_t tile_inner_ = 32;
+  bool use_f32_accumulation_ = false;
 };
 
 // The program to initialize the output with 0 or bias before doing MatMul with Split-K. In Split-K,

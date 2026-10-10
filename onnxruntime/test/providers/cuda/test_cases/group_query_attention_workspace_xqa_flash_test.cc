@@ -9,6 +9,7 @@
 #include <tuple>
 
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace_bounds.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
 
 #if defined(USE_FLASH_ATTENTION)
@@ -102,7 +103,7 @@ TEST(GroupQueryAttentionXqaWorkspaceTest, HandCalculatedMultiBlockLayoutAndExtra
   EXPECT_EQ(recipe.internal_scratch_bytes, 5248U);
 
   // Runtime retains these in the XQA allocation even though the separate
-  // GQABufferRequirements Q allocation is also requested for RoPE.
+  // QKV preparation Q allocation is also requested for RoPE.
   EXPECT_EQ(recipe.rotary_q_offset_bytes, 5248U);
   EXPECT_EQ(recipe.rotary_q_bytes, 1024U);
   EXPECT_EQ(recipe.rotary_k_offset_bytes, 6272U);
@@ -129,6 +130,64 @@ TEST(GroupQueryAttentionXqaWorkspaceTest, SingleBlockAndPersistentHeadSinkHaveNo
   EXPECT_EQ(result.recipe.rotary_k_bytes, 0U);
   // Persistent xqa_head_sink_ is intentionally outside the transient recipe.
   EXPECT_EQ(result.recipe.total_backend_bytes, result.recipe.internal_scratch_bytes);
+}
+
+// Verify split-KV scratch offsets, rotary/sink extras, and workspace bounds against runtime sizing.
+TEST(GroupQueryAttentionXqaWorkspaceTest, H512LayoutAndExtrasMatchRuntime) {
+  for (int group : {1, 3, 8, 33}) {
+    auto problem = XqaProblem();
+    problem.batch_size = 2;
+    problem.num_heads = 2 * group;
+    problem.head_size = 512;
+    problem.do_rotary = true;
+    auto config = XqaConfig();
+    config.head_sink_storage = GQAXqaHeadSinkStorage::DynamicConversion;
+    const auto result = GetGQAXqaWorkspaceRecipe(problem, config);
+    ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+    const auto& recipe = result.recipe;
+    const size_t row_bytes = 2 * problem.num_heads * 32 * sizeof(float);
+    EXPECT_TRUE(recipe.is_h512);
+    EXPECT_EQ(recipe.semaphore_bytes, 0U);
+    EXPECT_EQ(recipe.row_max_offset_bytes, 0U);
+    EXPECT_EQ(recipe.row_max_bytes, row_bytes);
+    EXPECT_EQ(recipe.row_sum_offset_bytes, row_bytes);
+    EXPECT_EQ(recipe.output_accumulator_offset_bytes, 2 * row_bytes);
+    EXPECT_EQ(recipe.internal_scratch_bytes, row_bytes * 514);
+    cudaDeviceProp device{};
+    device.major = 8;
+    device.multiProcessorCount = 80;
+    EXPECT_EQ(recipe.internal_scratch_bytes, contrib::cuda::GetXQAScratchSize(
+                                                 device, 2, static_cast<int>(problem.num_heads), 2, 512, 512,
+                                                 XqaQuantType::kNone));
+    EXPECT_EQ(recipe.total_backend_bytes, recipe.internal_scratch_bytes + recipe.rotary_q_bytes +
+                                              recipe.rotary_k_bytes + recipe.dynamic_head_sink_bytes);
+    contrib::cuda::GQAWorkspaceBounds bounds;
+    bounds.qkv_element_size = problem.qkv_element_size;
+    bounds.cache_element_size = problem.cache_element_size;
+    bounds.batch_size_bound = problem.batch_size;
+    bounds.sequence_length_bound = problem.sequence_length;
+    bounds.num_heads = problem.num_heads;
+    bounds.kv_num_heads = problem.kv_num_heads;
+    bounds.head_size_bound = problem.head_size;
+    bounds.present_kv_cache_capacity_bound = problem.present_kv_cache_capacity;
+    bounds.do_rotary = true;
+    bounds.decode_reachable = true;
+    bounds.device_major = config.device_major;
+    bounds.multi_processor_count = config.multi_processor_count;
+    bounds.xqa_head_sink_storage = config.head_sink_storage;
+    bounds.reachable_backends = contrib::cuda::GQAReachableBackend::Xqa;
+    const auto aggregate = contrib::cuda::GetGQAWorkspaceAggregateForBounds(bounds);
+    ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
+    EXPECT_GE(aggregate.total_workspace_bytes, recipe.total_backend_bytes);
+    auto invalid = recipe;
+    ++invalid.row_sum_offset_bytes;
+    EXPECT_FALSE(ValidateGQAXqaWorkspaceRecipe(invalid).IsOK());
+    problem.cache_element_size = 1;
+    problem.kv_cache_bit_width = 8;
+    problem.k_quantization = problem.v_quantization = GQAKvQuantizationType::PerTensor;
+    config.kv_type = GQAXqaKvType::Int8;
+    EXPECT_FALSE(GetGQAXqaWorkspaceRecipe(problem, config).status.IsOK());
+  }
 }
 
 TEST(GroupQueryAttentionXqaWorkspaceTest, MatchesLegacyHelperAcrossSupportedFiniteDomain) {

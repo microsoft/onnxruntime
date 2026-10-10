@@ -1677,6 +1677,53 @@ block()
   onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND
+      NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND
+      NOT IOS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # Run legacy-safe regressions separately; concurrent-success tests require modern mode.
+    string(JOIN ":" webgpu_legacy_test_filter
+      "WebGpuPluginRecordingModeTest.*"
+      "WebGpuPluginSharedAllocatorRegistrationTest.*"
+      "WebGpuPluginSharedAllocatorTest.*"
+      "WebGpuSessionAllocatorDeathTest.*"
+      "PluginEpWebGpuConcurrency.DeferredProducerThen*"
+      "PluginEpWebGpuConcurrency.CpuInputAndOutputRun"
+      "PluginEpWebGpuConcurrency.MixedCpuAndGpuFeeds"
+      "PluginEpWebGpuConcurrency.MixedCpuAndGpuFeedsReversed"
+      "PluginEpWebGpuConcurrency.CpuFeedsWithCpuPartition"
+      "PluginEpWebGpuConcurrency.CpuOutputBoundToGpu"
+      "PluginEpWebGpuConcurrency.CpuOutputBoundToGpuFirst"
+      "PluginEpWebGpuConcurrency.PreallocatedGpuInputWithMixedOutputBindings"
+      "PluginEpWebGpuConcurrency.PreallocatedGpuInputWithMixedOutputBindingsReversed"
+      "PluginEpWebGpuConcurrency.CpuOnlyGraphOutputBoundToGpu"
+      "PluginEpWebGpuConcurrency.RepeatedKernelScratchBufferReuse"
+      "PluginEpWebGpuConcurrency.CpuPartitionBetweenGpuKernels"
+      "PluginEpWebGpuConcurrency.CpuInputAndGpuOutputRun"
+      "PluginEpWebGpuConcurrency.CpuBindInputReusesDirtyGpuBuffer"
+      "PluginEpWebGpuConcurrency.Serial*"
+      "PluginEpWebGpuConcurrency.GraphCaptureReplayInterleavedWithIdleSessionCpuBindInput"
+      "PluginEpWebGpuConcurrency.GpuInputAndCpuOutputRun"
+      "PluginEpWebGpuConcurrency.SharedGpuCopyIsSubmittedBeforeSessionRun"
+    )
+    set(webgpu_legacy_test_args "--gtest_filter=${webgpu_legacy_test_filter}")
+    if (onnxruntime_GENERATE_TEST_REPORTS)
+      list(APPEND webgpu_legacy_test_args
+        "--gtest_output=xml:onnxruntime_webgpu_legacy_test.$<CONFIG>.results.xml")
+    endif()
+    add_test(NAME onnxruntime_webgpu_legacy_test
+      COMMAND ${onnxruntime_provider_test_target} ${webgpu_legacy_test_args}
+      WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>
+    )
+    set_tests_properties(onnxruntime_webgpu_legacy_test PROPERTIES
+      TIMEOUT 10800
+      FAIL_REGULAR_EXPRESSION
+        "0 tests from 0 test suites"
+    )
+    onnxruntime_set_plugin_ep_test_environment(onnxruntime_webgpu_legacy_test)
+    set_property(TEST onnxruntime_webgpu_legacy_test APPEND PROPERTY
+      ENVIRONMENT "ORT_WEBGPU_EP_FORCE_LEGACY=1")
+  endif()
+
   # The CUDA EP internal unit tests (onnxruntime_providers_cuda_ut) are built as a shared-library
   # module that is dlopen'd at runtime by this binary (see CUDA_EP_Unittest.All -> TestAll()). Some
   # of those tests (e.g. the MatMulNBits two-level workspace end-to-end test) run a full

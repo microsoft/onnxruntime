@@ -5,14 +5,18 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "contrib_ops/webgpu/moe/block_fp8_expert_matmul.h"
 #include "contrib_ops/webgpu/moe/qmoe.h"
+#include "contrib_ops/webgpu/moe/gate_1token.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #if !defined(DISABLE_FLOAT8_TYPES)
 #include "core/common/float8.h"
 #endif
 
+#include <atomic>
 #include <cstring>
 #include <limits>
 #include <optional>
@@ -24,6 +28,14 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
+
+namespace {
+std::atomic<uint64_t> block_fp8_matrix_dispatch_count{0};
+}
+
+uint64_t BlockFp8MatrixDispatchCount() {
+  return block_fp8_matrix_dispatch_count.load(std::memory_order_relaxed);
+}
 
 namespace {
 
@@ -52,11 +64,12 @@ const std::string& Fp8E4M3DequantLutWgsl() {
 
 class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulProgram> {
  public:
-  BlockFp8ExpertMatMulProgram(bool has_bias, bool has_indirect_experts, bool broadcast_input)
+  BlockFp8ExpertMatMulProgram(bool has_bias, bool has_indirect_experts, bool broadcast_input, bool use_matrix)
       : Program<BlockFp8ExpertMatMulProgram>{"QMoEBlockFp8ExpertMatMul"},
         has_bias_{has_bias},
         has_indirect_experts_{has_indirect_experts},
-        broadcast_input_{broadcast_input} {}
+        broadcast_input_{broadcast_input},
+        use_matrix_{use_matrix} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
@@ -76,6 +89,7 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
                                WGSL_TEMPLATE_PARAMETER(broadcast_input, broadcast_input_),
                                WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                                WGSL_TEMPLATE_PARAMETER(has_indirect_experts, has_indirect_experts_),
+                               WGSL_TEMPLATE_PARAMETER(use_matrix, use_matrix_),
                                WGSL_TEMPLATE_VARIABLE(bias, *bias),
                                WGSL_TEMPLATE_VARIABLE(indirect_experts, *indirect_experts),
                                WGSL_TEMPLATE_VARIABLE(input, input),
@@ -96,6 +110,7 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
   bool has_bias_;
   bool has_indirect_experts_;
   bool broadcast_input_;
+  bool use_matrix_;
 };
 
 Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
@@ -120,7 +135,15 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   const uint32_t scale_n_blocks = (cols - 1) / 128 + 1;
   const uint32_t scale_k_blocks = (inner - 1) / 128 + 1;
   uint32_t byte_offset = 0;
-  BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input};
+  const bool use_matrix = !indirect_experts && rows >= 128 && cols >= 256 && inner >= 256 &&
+                          BlockFp8MatrixDispatchFits(rows, cols,
+                                                     context.DeviceLimits().maxComputeWorkgroupsPerDimension) &&
+                          input->DataType() == DataTypeImpl::GetType<MLFloat16>() &&
+                          SelectSubgroupMatrixConfig(context, {{wgpu::SubgroupMatrixComponentType::F16,
+                                                                wgpu::SubgroupMatrixComponentType::F32,
+                                                                16, 16, 16, 32, false}})
+                              .has_value();
+  BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input, use_matrix};
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type}});
   if (indirect_experts) {
     program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
@@ -152,14 +175,21 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
                                                   expert_idx * cols)});
     }
   }
-  constexpr uint32_t workgroup_size = 64;
   program.AddOutput({output, ProgramTensorMetadataDependency::None})
-      .SetWorkgroupSize(workgroup_size)
-      .SetDispatchGroupSize((cols - 1) / workgroup_size + 1, rows)
+      .SetWorkgroupSize(use_matrix ? 128 : 64)
+      .SetDispatchGroupSize(use_matrix ? (cols - 1) / 16 + 1 : (cols - 1) / 64 + 1,
+                            use_matrix ? (rows - 1) / 64 + 1 : rows)
       .AddUniformVariables({rows, cols, inner, byte_offset,
                             scale_n_blocks, scale_k_blocks})
       .CacheHint(bias != nullptr, indirect_experts != nullptr, broadcast_input);
-  return context.RunProgram(program);
+  if (use_matrix && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    program.SetSubgroupSize(32);
+  }
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  if (use_matrix) {
+    block_fp8_matrix_dispatch_count.fetch_add(1, std::memory_order_relaxed);
+  }
+  return Status::OK();
 }
 
 Status ValidateBlockFp8Projection(const Tensor* weights, const Tensor* scales, const Tensor* bias,
@@ -237,45 +267,32 @@ class GateProgram final : public Program<GateProgram> {
   bool normalize_routing_weights_;
 };
 
-class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
- public:
-  Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
-      : Program<Gate1TokenProgram>{"QmoeGate1Token"},
-        k_{k},
-        is_fp16_{is_fp16},
-        has_router_weights_{has_router_weights},
-        normalize_routing_weights_{normalize_routing_weights} {}
+Gate1TokenProgram::Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
+    : Program<Gate1TokenProgram>{"QmoeGate1Token"},
+      k_{k},
+      is_fp16_{is_fp16},
+      has_router_weights_{has_router_weights},
+      normalize_routing_weights_{normalize_routing_weights} {}
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
-    const ShaderVariableHelper* router_weights = &router_logits;
-    if (has_router_weights_) {
-      router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
-    }
-    const auto& topk_values = shader.AddOutput("topk_values");
-    const auto& indirect_experts = shader.AddOutput("indirect_experts");
+Status Gate1TokenProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* router_weights = &router_logits;
+  if (has_router_weights_) {
+    router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+  }
+  const auto& topk_values = shader.AddOutput("topk_values");
+  const auto& indirect_experts = shader.AddOutput("indirect_experts");
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
-                               WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                               WGSL_TEMPLATE_PARAMETER(k, k_),
-                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
-                               WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
-                               WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
-                               WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
-                               WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
-  };
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int k_;
-  bool is_fp16_;
-  bool has_router_weights_;
-  bool normalize_routing_weights_;
-};
+  return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
+                             WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
+                             WGSL_TEMPLATE_PARAMETER(k, k_),
+                             WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                             WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
+                             WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
+                             WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
+                             WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
+}
 
 class HiddenStateGatherProgram final : public Program<HiddenStateGatherProgram> {
  public:

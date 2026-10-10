@@ -7,6 +7,17 @@
 
   add_compile_definitions(USE_WEBGPU=1)
 
+  if(onnxruntime_ENABLE_D3D12_FILE_LOADING)
+    if(NOT WIN32 OR NOT MSVC OR NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+      message(FATAL_ERROR "D3D12 accelerated weight loading requires native Windows MSVC and the Dawn D3D12 backend.")
+    endif()
+    if(onnxruntime_USE_EP_API_ADAPTERS)
+      message(FATAL_ERROR "D3D12 accelerated weight loading is not supported with EP API adapter/plugin builds.")
+    endif()
+
+    include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_d3d12_file_loader.cmake")
+  endif()
+
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
   endif()
@@ -150,6 +161,7 @@
     # plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION) into the EP so it can be enforced at runtime.
     # Format is strict "MAJOR.MINOR.PATCH".
     set(_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}")
     file(STRINGS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION LIMIT_COUNT 1)
     if(NOT _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
       message(FATAL_ERROR "WebGPU plugin EP minimum ORT version file is missing or empty: "
@@ -176,6 +188,12 @@
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
+
+  if(onnxruntime_ENABLE_D3D12_FILE_LOADING)
+    target_link_libraries(
+      onnxruntime_providers_webgpu
+      PRIVATE onnxruntime_d3d12_file_loader)
+  endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # target "emdawnwebgpu_c" is created by Dawn, including "-fno-exceptions" in its compile options by default.
