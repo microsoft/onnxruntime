@@ -2226,7 +2226,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>block_size</tt> : int (default is 1024)</dt>
+<dt><tt>block_size</tt> : int</dt>
 <dd>Size of each contiguous Hadamard block. Must be a power of two no greater than 1024. The last dimension of X must be a positive multiple of block_size.</dd>
 </dl>
 
