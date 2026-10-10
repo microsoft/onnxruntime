@@ -126,8 +126,11 @@ class PackNugetTest(unittest.TestCase):
         for required in (False, True):
             with self.subTest(required=required):
                 args = argparse.Namespace(
-                    version="0.1.0", configuration="Release", nuget_config=None,
-                    pack_only=True, require_agility_sdk=required,
+                    version="0.1.0",
+                    configuration="Release",
+                    nuget_config=None,
+                    pack_only=True,
+                    require_agility_sdk=required,
                 )
                 with (
                     mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package) as run,
@@ -160,8 +163,11 @@ class PackNugetTest(unittest.TestCase):
             (temporary_output / current_symbols.name).write_bytes(b"current symbols")
 
         args = argparse.Namespace(
-            version="0.2.0", configuration="Release", nuget_config=None,
-            pack_only=True, require_agility_sdk=True,
+            version="0.2.0",
+            configuration="Release",
+            nuget_config=None,
+            pack_only=True,
+            require_agility_sdk=True,
         )
         log = io.StringIO()
         with (
@@ -185,8 +191,11 @@ class PackNugetTest(unittest.TestCase):
         self.write_staged_package(package)
         original = package.read_bytes()
         args = argparse.Namespace(
-            version="0.2.0", configuration="Release", nuget_config=None,
-            pack_only=True, require_agility_sdk=True,
+            version="0.2.0",
+            configuration="Release",
+            nuget_config=None,
+            pack_only=True,
+            require_agility_sdk=True,
         )
         with (
             mock.patch.object(pack_nuget.subprocess, "run"),
