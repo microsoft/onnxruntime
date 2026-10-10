@@ -893,6 +893,19 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_split_num_outputs_uneven(self):
+        graph = helper.make_graph(
+            [helper.make_node("Split", ["input"], ["out0", "out1", "out2"], axis=1, num_outputs=3)],
+            "Split_Test",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["b", 5])],
+            [helper.make_tensor_value_info(name, TensorProto.FLOAT, None) for name in ["out0", "out1", "out2"]],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        output_shapes = [self._tensor_shape(output) for output in inferred.graph.output]
+        self.assertEqual(output_shapes, [["b", 2], ["b", 2], ["b", 1]])
+
     def test_shape_start_end(self):
         graph = helper.make_graph(
             [

@@ -2049,8 +2049,14 @@ class SymbolicShapeInference:
 
         if split is None:
             num_outputs = len(node.output)
-            split = [input_sympy_shape[axis] / sympy.Integer(num_outputs)] * num_outputs
-            self._update_computed_dims(split)
+            if is_literal(input_sympy_shape[axis]):
+                # When the dim is not evenly divisible, all chunks get ceil(dim / num_outputs) and the last one is smaller.
+                dim = int(input_sympy_shape[axis])
+                chunk = -(-dim // num_outputs)
+                split = [sympy.Integer(max(0, min(chunk, dim - i * chunk))) for i in range(num_outputs)]
+            else:
+                split = [input_sympy_shape[axis] / sympy.Integer(num_outputs)] * num_outputs
+                self._update_computed_dims(split)
         else:
             split = [sympy.Integer(s) for s in split]
 
