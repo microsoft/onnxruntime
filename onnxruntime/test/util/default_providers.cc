@@ -201,6 +201,17 @@ std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCU
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const ProviderOptions& provider_options) {
+#ifdef USE_CUDA
+  Ort::CUDAProviderOptions cuda_options;
+  cuda_options.Update(provider_options);
+  return CudaExecutionProviderWithOptions(&*cuda_options);
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider() {
 #ifdef USE_DNNL
   OrtDnnlProviderOptions dnnl_options;

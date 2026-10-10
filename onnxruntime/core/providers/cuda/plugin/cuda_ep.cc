@@ -212,10 +212,15 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.cudnn_conv1d_pad_to_nc1d = config_.cudnn_conv1d_pad_to_nc1d;
   adapter_config.enable_cudnn = config_.enable_cudnn;
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
+  adapter_config.enable_cuda_graph = config_.enable_cuda_graph;
+  // Initializer-only CPU placement was introduced with the current EP API. Older compatible
+  // runtimes treat its internal memory-type marker as ordinary device memory, so retain the
+  // persistent device-copy path there.
+  adapter_config.enable_host_pageable_gather =
+      config_.enable_host_pageable_gather && ort_version >= ORT_API_VERSION;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
   adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
-  adapter_config.enable_cuda_graph = config_.enable_cuda_graph;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
 

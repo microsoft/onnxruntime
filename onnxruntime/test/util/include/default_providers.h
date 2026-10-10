@@ -39,6 +39,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider();
 #endif
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options);
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const ProviderOptions& provider_options);
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider();
 std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDnnlProviderOptions* provider_options);
 // std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider();

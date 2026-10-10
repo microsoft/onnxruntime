@@ -7,6 +7,7 @@
 #include "cuda_plugin_kernels.h"
 #include "core/common/string_utils.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "ep/api.h"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -68,6 +69,9 @@ CudaEpFactory::~CudaEpFactory() {
   if (kernel_registry_ != nullptr) {
     ep_api_.ReleaseKernelRegistry(kernel_registry_);
   }
+  if (host_pageable_gather_kernel_registry_ != nullptr) {
+    ep_api_.ReleaseKernelRegistry(host_pageable_gather_kernel_registry_);
+  }
 
   for (const auto& entry : runtime_discovered_hardware_devices_) {
     ep_api_.ReleaseHardwareDevice(entry.second);
@@ -80,14 +84,35 @@ OrtStatus* CudaEpFactory::GetKernelRegistryForEp(CudaEp& ep,
 
   std::lock_guard<std::mutex> lock(registry_mutex_);
 
-  if (kernel_registry_ == nullptr) {
+  bool enable_host_pageable_gather = false;
+  if (ep.GetConfig().enable_host_pageable_gather &&
+      ::onnxruntime::ep::CurrentOrtApiVersion() >= ORT_API_VERSION) {
+    int pageable_memory_access = 0;
+    int uses_host_page_tables = 0;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10020
+    const bool attributes_available =
+        cudaDeviceGetAttribute(&pageable_memory_access, cudaDevAttrPageableMemoryAccess,
+                               ep.GetConfig().device_id) == cudaSuccess &&
+        cudaDeviceGetAttribute(&uses_host_page_tables, cudaDevAttrPageableMemoryAccessUsesHostPageTables,
+                               ep.GetConfig().device_id) == cudaSuccess;
+    if (!attributes_available) {
+      cudaGetLastError();
+    }
+#endif
+    enable_host_pageable_gather = pageable_memory_access != 0 && uses_host_page_tables != 0;
+  }
+
+  OrtKernelRegistry*& kernel_registry =
+      enable_host_pageable_gather ? host_pageable_gather_kernel_registry_ : kernel_registry_;
+  if (kernel_registry == nullptr) {
     const char* ep_name = ep.GetEpName();
     // CreateCudaKernelRegistry dispatches between legacy/generated registrations
     // and adapter-mode registration path based on build configuration.
-    RETURN_IF_ERROR(CreateCudaKernelRegistry(ep_api_, ep_name, nullptr, &kernel_registry_));
+    RETURN_IF_ERROR(CreateCudaKernelRegistry(
+        ep_api_, ep_name, &enable_host_pageable_gather, &kernel_registry));
   }
 
-  *out_kernel_registry = kernel_registry_;
+  *out_kernel_registry = kernel_registry;
   return nullptr;
 }
 
@@ -654,6 +679,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string fuse_conv_bias_key = ep_options_prefix + "fuse_conv_bias";
   const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
   const std::string enable_cuda_graph_key = ep_options_prefix + "enable_cuda_graph";
+  const std::string enable_host_pageable_gather_key = ep_options_prefix + "enable_host_pageable_gather";
   const std::string min_runs_key = ep_options_prefix + "min_num_runs_before_cuda_graph_capture";
   const std::string has_user_compute_stream_key = ep_options_prefix + "has_user_compute_stream";
   const std::string user_compute_stream_key = ep_options_prefix + "user_compute_stream";
@@ -690,6 +716,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_bool(
       {enable_cuda_graph_key, "ep.cuda.enable_cuda_graph", "enable_cuda_graph"},
       config.enable_cuda_graph);
+  read_session_config_bool(
+      {enable_host_pageable_gather_key, "ep.cuda.enable_host_pageable_gather", "enable_host_pageable_gather"},
+      config.enable_host_pageable_gather);
   read_session_config_non_negative_int(
       {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
       config.min_num_runs_before_cuda_graph_capture);

@@ -7,7 +7,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-Status RegisterCudaContribKernels(KernelRegistry& kernel_registry);
+Status RegisterCudaContribKernels(KernelRegistry& kernel_registry,
+                                  bool enable_host_pageable_gather = false);
 
 }  // namespace cuda
 }  // namespace contrib
