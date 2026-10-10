@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "contrib_ops/cuda/quantization/matmul_8bits_batched.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -79,7 +80,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat
     int m,
     int n,
     int k,
-    int blocks_per_K) {
+    int blocks_per_K, bool l2_prefetch) {
   const int lane_id = threadIdx.x;
   const int warp_id = threadIdx.y;
   const int col_base = (blockIdx.x * kColsPerThreadBlock + warp_id) * CtaN;
@@ -115,6 +116,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat
     float dq[CtaN][8];                                                                                \
     const int bk = t_meta_k + k_per_iter / block_size * (i);                                          \
     _Pragma("unroll") for (int c = 0; c < CtaN; ++c) {                                                \
+      PrefetchQuantizedDecodeL2(b_ptr[c], k_per_iter * (i), k_per_iter,                               \
+                                k - k_id - lane_offset, l2_prefetch);                                 \
       uint64_t value = *reinterpret_cast<const uint64_t*>(b_ptr[c] + k_per_iter * (i));               \
       T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];                   \
       uint8_t zp = kDefaultZeroPoint;                                                                 \
@@ -226,14 +229,15 @@ bool TryMatMul8BitsBatched(
   const int blocks_per_K = k / block_size;
   dim3 threads(kWarpSize, kColsPerThreadBlock);
   dim3 blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
+  const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
 
-#define MatMulFloat8bBatchedDispatch(bs, cm, cn)                                        \
-  if (nullptr != zero_points) {                                                         \
-    MatMulFloat8bKernelBatched<T, bs, true, cm, cn><<<blocks, threads, 0, stream>>>(    \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K); \
-  } else {                                                                              \
-    MatMulFloat8bKernelBatched<T, bs, false, cm, cn><<<blocks, threads, 0, stream>>>(   \
-        output, a_data, b_data_quant, scales_data, nullptr, m, n, k, blocks_per_K);     \
+#define MatMulFloat8bBatchedDispatch(bs, cm, cn)                                                     \
+  if (nullptr != zero_points) {                                                                      \
+    MatMulFloat8bKernelBatched<T, bs, true, cm, cn><<<blocks, threads, 0, stream>>>(                 \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K, l2_prefetch); \
+  } else {                                                                                           \
+    MatMulFloat8bKernelBatched<T, bs, false, cm, cn><<<blocks, threads, 0, stream>>>(                \
+        output, a_data, b_data_quant, scales_data, nullptr, m, n, k, blocks_per_K, l2_prefetch);     \
   }
 #define MatMulFloat8bBatchedDispatchN(cm, cn) \
   if (16 == block_size) {                     \

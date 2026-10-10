@@ -8,6 +8,7 @@
 #include "contrib_ops/cuda/quantization/dequantize_blockwise_bnb4.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "matmul_bnb4.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -58,7 +59,7 @@ __global__ void kgemm_4bit_inference_naive(
     int lda,
     int ldb,
     int ldc,
-    int block_size) {
+    int block_size, bool l2_prefetch) {
   // per threadblock:
   // load step-by-step in chunks of [32,warps]: 1x32 * [32,warps] -> [1,warps]
   // 4 warps -> 4 loads per iter
@@ -84,6 +85,10 @@ __global__ void kgemm_4bit_inference_naive(
   // A: [1, K]
   // B: [N, K]
   for (int inner_idx = warp_lane * num_values_4bit; inner_idx < K; inner_idx += 32 * num_values_4bit) {
+    if (row_B < N) {
+      PrefetchQuantizedDecodeL2(B + static_cast<int64_t>(ldb) * row_B,
+                                inner_idx / 2, 32 * num_values_4bit / 2, K / 2, l2_prefetch);
+    }
     int inner_idx_halved = inner_idx / 2;
     int offset_B = ldb * row_B;
     int absidx = ((2 * offset_B) + inner_idx) / block_size;
@@ -178,7 +183,8 @@ void Callkgemm_4bit_inference_naive(
 
   constexpr int bits = std::is_same_v<T, float> ? 32 : 16;
   kgemm_4bit_inference_naive<T, 128, bits><<<num_blocks, 128, 0, stream>>>(
-      m, n, k, a_data, b_data_quant, absmax, quant_map, output, lda, ldb, ldc, block_size);
+      m, n, k, a_data, b_data_quant, absmax, quant_map, output, lda, ldb, ldc, block_size,
+      QuantizedDecodeL2PrefetchEnabled());
 }
 
 template <class T>

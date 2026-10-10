@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "contrib_ops/cuda/quantization/matmul_8bits_m1.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -88,7 +89,7 @@ __device__ __forceinline__ void AccumulateEightElements8b(uint64_t values_quant,
 template <class T, int block_size, bool has_zero_point>
 __global__ void __launch_bounds__(kM1WarpSize8Bits* kM1ColsPerThreadBlock8Bits) MatMulFloat8bKernelM1(
     T* output, const T* a_data, const uint8_t* b_data_quant, const T* scales_data, const uint8_t* zero_points,
-    int n, int k, int blocks_per_K) {
+    int n, int k, int blocks_per_K, bool l2_prefetch) {
   const int lane_id = threadIdx.x;
   const int warp_id = threadIdx.y;
   const int n_id = blockIdx.x * kM1ColsPerThreadBlock8Bits + warp_id;
@@ -123,6 +124,7 @@ __global__ void __launch_bounds__(kM1WarpSize8Bits* kM1ColsPerThreadBlock8Bits) 
   constexpr int k_per_iter = kM1WarpSize8Bits * kM1ElementsPerThreadPerIteration8Bits;
   int k_id = 0;
   for (; k_id + k_per_iter <= k; k_id += k_per_iter) {
+    PrefetchQuantizedDecodeL2(b_column, static_cast<int64_t>(lane_offset) + k_id, k_per_iter, k, l2_prefetch);
     const int block = (lane_offset + k_id) / block_size;
     const uint8_t* b = b_column + lane_offset + k_id;
     const uint8_t zp = has_zero_point ? zp_thread[block] : kM1DefaultZeroPoint8Bits;
@@ -162,13 +164,14 @@ bool TryMatMul8BitsM1(T* output, const T* a_data, const uint8_t* b_data_quant, c
 
   dim3 threads(kM1WarpSize8Bits, kM1ColsPerThreadBlock8Bits);
   dim3 blocks((n + kM1ColsPerThreadBlock8Bits - 1) / kM1ColsPerThreadBlock8Bits, 1);
-#define MATMUL_FLOAT8B_M1_DISPATCH(bs)                                                  \
-  if (zero_points != nullptr) {                                                         \
-    MatMulFloat8bKernelM1<T, bs, true><<<blocks, threads, total_shared_mem, stream>>>(  \
-        output, a_data, b_data_quant, scales_data, zero_points, n, k, blocks_per_K);    \
-  } else {                                                                              \
-    MatMulFloat8bKernelM1<T, bs, false><<<blocks, threads, total_shared_mem, stream>>>( \
-        output, a_data, b_data_quant, scales_data, nullptr, n, k, blocks_per_K);        \
+  const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
+#define MATMUL_FLOAT8B_M1_DISPATCH(bs)                                                            \
+  if (zero_points != nullptr) {                                                                   \
+    MatMulFloat8bKernelM1<T, bs, true><<<blocks, threads, total_shared_mem, stream>>>(            \
+        output, a_data, b_data_quant, scales_data, zero_points, n, k, blocks_per_K, l2_prefetch); \
+  } else {                                                                                        \
+    MatMulFloat8bKernelM1<T, bs, false><<<blocks, threads, total_shared_mem, stream>>>(           \
+        output, a_data, b_data_quant, scales_data, nullptr, n, k, blocks_per_K, l2_prefetch);     \
   }
 
   if (block_size == 16) {

@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/quantization/matmul_4bits_common.cuh"
 #include "contrib_ops/cuda/quantization/matmul_4bits_m1.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,7 +25,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
     int m,
     int n,
     int k,
-    int blocks_per_K) {
+    int blocks_per_K, bool l2_prefetch) {
   const int n_block_id = blockIdx.x;
   const int m_id = blockIdx.y;
   const int lane_id = threadIdx.x;
@@ -70,6 +71,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
     const int k_unroll_bound = k - k % kUnrollStep;                                               \
     for (; k_id < k_unroll_bound; k_id += kUnrollStep) {                                          \
       _Pragma("unroll") for (int i = 0; i < kUnroll; i++) {                                       \
+        PrefetchQuantizedDecodeL2(b_data_quant, k_per_iter / 2 * i, k_per_iter / 2,               \
+                                  (k - k_id - lane_id * 8) / 2, l2_prefetch);                     \
         uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i)); \
         T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];                            \
         uint8_t zp = 8;                                                                           \
@@ -134,13 +137,14 @@ bool TryMatMul4BitsM1(
 
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, 1);
   dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
-#define MATMUL_FLOAT4B_M1_DISPATCH(bs)                                                    \
-  if (zero_points != nullptr) {                                                           \
-    MatMulFloat4BitsKernelM1<T, bs, true><<<blocks, threads, shared_mem_size, stream>>>(  \
-        output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K);   \
-  } else {                                                                                \
-    MatMulFloat4BitsKernelM1<T, bs, false><<<blocks, threads, shared_mem_size, stream>>>( \
-        output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);       \
+  const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
+#define MATMUL_FLOAT4B_M1_DISPATCH(bs)                                                               \
+  if (zero_points != nullptr) {                                                                      \
+    MatMulFloat4BitsKernelM1<T, bs, true><<<blocks, threads, shared_mem_size, stream>>>(             \
+        output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K, l2_prefetch); \
+  } else {                                                                                           \
+    MatMulFloat4BitsKernelM1<T, bs, false><<<blocks, threads, shared_mem_size, stream>>>(            \
+        output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K, l2_prefetch);     \
   }
 
   if (block_size == 16) {

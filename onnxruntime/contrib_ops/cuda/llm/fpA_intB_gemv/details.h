@@ -21,6 +21,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -68,6 +69,25 @@ class GMemIterator {
 #pragma unroll
       for (int jj = 0; jj < Continuous; ++jj) {
         reinterpret_cast<TVec*>(dst)[jj] = reinterpret_cast<TVec*>(addr_ + iter * step_ + ii * stride_)[jj];
+      }
+    }
+  }
+
+  __device__ __forceinline__ void prefetch(int iter, int64_t num_iters, bool enabled, int iteration_stride = 1) {
+    if constexpr (Enable) {
+      if (!enabled) {
+        return;
+      }
+      const int64_t next = contrib::cuda::QuantizedDecodeL2PrefetchOffset(iter, iteration_stride, num_iters);
+      if (next >= 0) {
+#pragma unroll
+        for (int ii = 0; ii < Strided; ++ii) {
+#pragma unroll
+          for (int jj = 0; jj < Continuous; ++jj) {
+            contrib::cuda::PrefetchQuantizedDecodeL2Address(
+                reinterpret_cast<const TVec*>(addr_ + next * step_ + static_cast<int64_t>(ii) * stride_) + jj);
+          }
+        }
       }
     }
   }

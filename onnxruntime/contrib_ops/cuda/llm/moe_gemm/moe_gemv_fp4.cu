@@ -187,7 +187,7 @@ __global__ void MoeGemvFp4RawNPackedKernel(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
     cutlass_kernels::ActivationParams activation_params,
-    const int* permuted_row_to_source_row, int num_rows) {
+    const int* permuted_row_to_source_row, int num_rows, bool l2_prefetch) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   constexpr int kWarpSize = 32;
   constexpr int kWarpsPerBlock = 4;
@@ -228,6 +228,11 @@ __global__ void MoeGemvFp4RawNPackedKernel(
   for (int k_tile = 0; k_tile < k; k_tile += kKLanes * 16) {
     for (int tile_row = threadIdx.x; tile_row < kKLanes * 16; tile_row += kWarpSize * kWarpsPerBlock) {
       const int tile_n = static_cast<int>(blockIdx.y) * kNLanes * kColsPerThread;
+      const int64_t next_k = contrib::cuda::QuantizedDecodeL2PrefetchOffset(
+          static_cast<int64_t>(k_tile) + tile_row, kKLanes * 16, k);
+      if (l2_prefetch && next_k >= 0) {
+        contrib::cuda::PrefetchQuantizedDecodeL2Address(expert_weight + next_k * (n / 2) + tile_n / 2);
+      }
       uint2 packed = {};
       if (k_tile + tile_row < k) {
         const uint8_t* weights = expert_weight + static_cast<int64_t>(k_tile + tile_row) * (n / 2);
@@ -361,13 +366,13 @@ void LaunchMoeGemvFp4RawNPacked(
         act, weight, block_scales, global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+        permuted_row_to_source_row, static_cast<int>(num_rows), contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   } else {
     MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, false><<<grid, kThreads, 0, stream>>>(
         act, weight, block_scales, global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+        permuted_row_to_source_row, static_cast<int>(num_rows), contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   }
 }
 
