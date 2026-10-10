@@ -173,13 +173,10 @@ ORT_API_STATUS_IMPL(ModelPackage_GetVariantNames,
                                  "ctx, component_name, out_variant_names, and out_count must be non-null");
   }
 
-  gsl::span<const std::string> variant_names;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantNames(component_name, variant_names));
-
   const char* const* ptrs = nullptr;
   size_t count = 0;
-  reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantNamePtrs(component_name, ptrs, count);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantNamePtrs(component_name, ptrs, count));
   *out_variant_names = ptrs;
   *out_count = count;
   return nullptr;
@@ -294,7 +291,7 @@ ORT_API_STATUS_IMPL(CreateSession,
   // 2) Pick the OrtSessionOptions per precedence rules:
   //    - session_options == nullptr (default path): start from a clean OrtSessionOptions,
   //      and merge variant-specific session + provider options from the package metadata.
-  //    - session_options != nullptr (advanced path): use caller-supplied as-is, no metadata merge.
+  //    - session_options != nullptr (advanced path): preserve caller options, adding missing package paths.
   const OrtSessionOptions* effective_options = nullptr;
   std::optional<OrtSessionOptions> effective_options_storage;
 
@@ -332,27 +329,24 @@ ORT_API_STATUS_IMPL(CreateSession,
                       ORT_FAIL, "Provider option keys/values size mismatch.");
 
     if (!provider_option_keys.empty()) {
-      // Use ep_devices from the captured EP info for applying provider options.
-      // DevicesSelected() is only populated for the policy path, but ep_infos[0].ep_devices
-      // is populated for both factory and policy paths.
       const auto& ep_infos = mp_ctx.EpInfos();
-      if (!ep_infos.empty() && !ep_infos[0].ep_devices.empty()) {
-        std::vector<const char*> provider_option_key_ptrs;
-        std::vector<const char*> provider_option_value_ptrs;
-        provider_option_key_ptrs.reserve(provider_option_keys.size());
-        provider_option_value_ptrs.reserve(provider_option_values.size());
+      ORT_API_RETURN_IF(ep_infos.empty() || ep_infos[0].ep_devices.empty(), ORT_NOT_IMPLEMENTED,
+                        "Cannot apply package provider_options: the selected EP does not expose OrtEpDevices.");
+      std::vector<const char*> provider_option_key_ptrs;
+      std::vector<const char*> provider_option_value_ptrs;
+      provider_option_key_ptrs.reserve(provider_option_keys.size());
+      provider_option_value_ptrs.reserve(provider_option_values.size());
 
-        for (size_t i = 0; i < provider_option_keys.size(); ++i) {
-          provider_option_key_ptrs.push_back(provider_option_keys[i].c_str());
-          provider_option_value_ptrs.push_back(provider_option_values[i].c_str());
-        }
-
-        ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::AddEpOptionsToSessionOptions(
-            gsl::span<const OrtEpDevice* const>(ep_infos[0].ep_devices.data(), ep_infos[0].ep_devices.size()),
-            gsl::span<const char* const>(provider_option_key_ptrs.data(), provider_option_key_ptrs.size()),
-            gsl::span<const char* const>(provider_option_value_ptrs.data(), provider_option_value_ptrs.size()),
-            effective_options_storage->value));
+      for (size_t i = 0; i < provider_option_keys.size(); ++i) {
+        provider_option_key_ptrs.push_back(provider_option_keys[i].c_str());
+        provider_option_value_ptrs.push_back(provider_option_values[i].c_str());
       }
+
+      ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::AddEpOptionsToSessionOptions(
+          gsl::span<const OrtEpDevice* const>(ep_infos[0].ep_devices.data(), ep_infos[0].ep_devices.size()),
+          gsl::span<const char* const>(provider_option_key_ptrs.data(), provider_option_key_ptrs.size()),
+          gsl::span<const char* const>(provider_option_value_ptrs.data(), provider_option_value_ptrs.size()),
+          effective_options_storage->value));
     }
 
     effective_options = &*effective_options_storage;
@@ -383,6 +377,9 @@ ORT_API_STATUS_IMPL(CreateSession,
     }
     effective_options = &*effective_options_storage;
   }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      mp_ctx.ConfigureSessionOptions(env->GetEnvironment(), *effective_options_storage));
 
   // 3) Create session with the resolved file and effective session options.
   std::unique_ptr<onnxruntime::InferenceSession> sess;
@@ -483,7 +480,7 @@ ORT_API_STATUS_IMPL(ModelPackage_GetSchemaVersion,
   }
 
   const auto& package_info = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetModelPackageInfo();
-  *out_version = package_info.schema_version;
+  *out_version = package_info.schema_version_major;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);

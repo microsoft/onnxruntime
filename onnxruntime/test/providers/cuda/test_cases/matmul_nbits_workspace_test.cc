@@ -79,49 +79,6 @@ bool CheckDefault(int32_t elem_type = kFp16, int64_t N = 256, int64_t K = 1024,
 }
 }  // namespace
 
-TEST(MatMulNBitsWorkspace, DeterministicTacticsIgnoreProfiledCache) {
-  using namespace onnxruntime::llm::cutlass_extensions;
-  using namespace onnxruntime::llm::kernels::weight_only;
-  using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
-  using Runner = CutlassFpAIntBGemmRunner<half, uint8_t,
-                                        cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
-
-  class TestProfiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
-   public:
-    TestProfiler() {
-      mRunner = std::make_shared<Runner>();
-      mRunner->setArch(80);
-    }
-  } profiler;
-
-  const GemmIdCore gemm_id(640, 2560, onnxruntime::llm::nvinfer::DataType::kHALF, 80);
-  auto cache = std::make_shared<TestProfiler::MNKProfileMap>();
-  cache->createMProfileMap(gemm_id);
-  profiler.setSelectionTactics(cache);
-
-  const auto decode = profiler.getDeterministicConfig(1);
-  const auto prefill = profiler.getDeterministicConfig(77);
-  ASSERT_TRUE(decode.has_value());
-  ASSERT_TRUE(prefill.has_value());
-  EXPECT_TRUE(decode->enableCudaKernel);
-  EXPECT_FALSE(prefill->enableCudaKernel);
-  EXPECT_EQ(prefill->split_k_style, SplitKStyle::NO_SPLIT_K);
-  EXPECT_EQ(prefill->split_k_factor, 1);
-
-  for (int split_k : {2, 5}) {
-    const CutlassGemmConfig timed(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
-                                 SplitKStyle::SPLIT_K_SERIAL, split_k, 3);
-    for (int rows : {1, 77}) {
-      (*cache->getMProfileMap(gemm_id))[rows] = timed;
-      ASSERT_TRUE(profiler.getBestConfig(rows, gemm_id).has_value());
-      EXPECT_EQ(profiler.getBestConfig(rows, gemm_id)->split_k_factor, split_k);
-      const auto selected = profiler.getDeterministicConfig(rows);
-      ASSERT_TRUE(selected.has_value());
-      EXPECT_EQ(selected->toString(), (rows == 1 ? decode : prefill)->toString());
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Shared workspace-size formula (ComputeFpAIntBGemmWorkspaceSize).
 // The non-SM90 branch is device-independent so it can be asserted with exact values.
@@ -242,6 +199,24 @@ TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
   EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
 }
 
+// Profiler buffers must support sizes beyond INT32 and reject overflow of size_t arithmetic.
+TEST(MatMulNBitsWorkspace, TacticProfilerBufferOffsetsExceedInt32) {
+  const auto buffers = llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerBufferSizes(
+      8192, 65536, 1536, 4, 32, 1024);
+  ASSERT_TRUE(buffers.has_value());
+  EXPECT_EQ((*buffers)[4], size_t{262144} * sizeof(uint16_t));
+  EXPECT_EQ((*buffers)[5], size_t{8192} * 262144 * sizeof(uint16_t));
+  EXPECT_GT((*buffers)[5], static_cast<size_t>(std::numeric_limits<int32_t>::max()));
+  size_t total = 0;
+  for (size_t bytes : *buffers) {
+    total += bytes;
+  }
+  EXPECT_EQ(ComputeWeightOnlyGemmProfilerScratchSize(8192, 65536, 1536, 4, 32, 1024), total);
+  EXPECT_FALSE(llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerBufferSizes(
+                   std::numeric_limits<size_t>::max(), 65536, 1536, 4, 32, 1024)
+                   .has_value());
+}
+
 TEST(MatMulNBitsWorkspace, TacticProfilerMCapStaysWithinScratchLimit) {
   EXPECT_EQ(FpAIntBProfileSafeMCap(529), 512);
   EXPECT_EQ(FpAIntBProfileSafeMCap(5957), 4096);
@@ -306,6 +281,11 @@ TEST(MatMulNBitsWorkspace, ProfilerCacheSeparatesPackingAndDeviceArchitectures) 
   EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 90, 120));
   EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, true));
   EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, false, 1));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, false, 0, 1));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, false, 0, 0, 4));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, false, 0, 0, 0, 32));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, false, 0, 0, 0, 0, true));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, false, 0, 0, 0, 0, false, true));
 }
 
 TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {

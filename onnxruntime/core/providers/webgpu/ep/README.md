@@ -22,6 +22,54 @@ To ensure both static library and dynamic library builds work, we need to make a
 
   - use a bridge to connect EP ABI and the internal classes
 
+### Runtime compatibility
+
+The plugin supports ORT 1.24.4 and later. Both execution modes use Session-owned recordings.
+Concurrent independent Sessions are enabled on 1.28.x starting at 1.28.3, on 1.30.x starting
+at 1.30.1, and on 1.31 and later. Other supported versions, including all 1.29.x hosts, use
+serialized compatibility mode, selected by `UseSerializedExecutionMode()` in
+`runtime_compatibility.h` and `runtime_compatibility.cc`. There is no shared
+legacy recording. Cached-buffer clearing remains enabled, and kernels still batch their
+dispatches; there is no per-kernel submission and no traversal of other Sessions.
+
+Serialized-mode callers must serialize **all WebGPU operations on the same device**, including Session
+creation/destruction, Run, I/O binding, allocator use, and Env transfers. Use sequential graph
+execution. Multiple Sessions may be used sequentially; overlapping operations are unsupported and
+are not detected or serialized by the plugin. This is not a restriction to one fixed CPU thread,
+but operations must not overlap or reenter from callbacks.
+The plugin's same-Session Run concurrency flag alone cannot serialize separate Sessions or Env calls.
+
+In serialized mode, Session ordinary `Alloc` uses its owning Session's recording and a
+`!IsRunActive()` submission-policy callback: submit cached-buffer clears outside Run, defer them
+during Run. `AllocOnStream` uses the same policy after validating the stream's Session.
+Kernel scratch uses ordinary Tensor allocation through that same allocator, without
+`KernelContext_GetSyncStream`, which is unavailable on 1.24. Under the required serial,
+non-reentrant calling contract, application allocations occur outside Run and submit before
+returning. `OnRunEnd` cleanup resets the active flag on success and failure.
+Env allocations and concurrent-mode ordinary allocations continue to submit independent clears,
+including during Run. Submission does not wait for GPU completion. Other plugin allocators
+without this explicit submission callback retain the independent-clear policy.
+
+The context tracks a non-owning pointer to the active Session's recording during a serialized
+Run or replay. Framework copies with a stream use that stream's Session recording. If an old host
+drops the stream, the copy first flushes the active Session's recording, then uses a local recording.
+This preserves `clear -> upload -> compute -> readback` ordering without sharing command state.
+Framework/Env copies and Env allocations use the default context buffer manager; graph execution
+keeps its per-graph buffer manager. Capture/replay boundaries drain pending Session work.
+BufferManager tracks deferred releases by recording, and Session teardown discards only that
+Session's pending entries. Env allocations retain no Session recording and can survive Session teardown.
+Run/replay callbacks clear the active pointer on their cleanup paths; Run cleanup also resets the
+Session's graph-manager selection. There is no context-wide Run gate, so a host error that skips
+`OnRunEnd` cannot permanently reject subsequent Runs. Such errors can still leave pre-existing
+Run/capture state, and complete recovery from host-side or partially recorded replay failures
+is not guaranteed.
+
+The execution mode is selected once at plugin registration using the host's minor and patch
+versions. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` **before loading the plugin** to exercise serialized
+mode on a host that supports concurrent Sessions. The existing override name is retained for
+compatibility; it does not enable a legacy recording. The setting is process-wide and only forces
+the safe compatibility direction; it cannot enable concurrency on an unsupported host.
+
 ### Session streams
 
 Concurrent use of independent Sessions is supported only by the plugin WebGPU EP.
@@ -40,7 +88,7 @@ internally created devices; callers supplying an external device must include it
 `DeviceDescriptor.requiredFeatures` when creating that device. Initialization rejects native
 devices without this feature, even for serial use. This requirement does not apply to WASM.
 
-Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
+In concurrent mode, Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
 that the stream belongs to the same Session. Allocations with a matching stream defer cached-buffer
 clears. Plugin kernel scratch tensors created through `CreateGPUTensor` use the kernel's explicit
 sync stream, so cached-buffer clears stay ordered with kernel work without submitting each scratch
@@ -140,7 +188,18 @@ are covered by the tests in
 The tests also cover initial graph capture and replay across independent Sessions, and concurrent
 Run calls for different graph IDs within one Session, serialized by ORT. Initial-capture tests use
 preallocated bindings; they do not cover external Session allocator calls overlapping capture.
-Concurrent profiling, cross-device transfer, and arbitrary foreign stream overrides are not
+The compatibility regressions additionally exercise single-input CPU BindInput with dirty-buffer
+reuse, interleaved bindings across serialized Sessions, Env tensors surviving Session destruction,
+and serial graph capture/replay with multiple graph IDs. A regression verifies that a rejected
+device-mismatched stream override does not block subsequent serial Runs on either the failed
+Session or another Session on the same device. Run serial tests with
+`ORT_WEBGPU_EP_FORCE_LEGACY=1`; the concurrent-success tests apply only to modern mode.
+The `onnxruntime_webgpu_legacy_test` CTest entry sets this environment variable before loading
+the plugin and runs a serial-safe allowlist in normal PR CI. The existing CTest name is retained.
+Public allocation tests verify dirty-buffer reuse and read the raw buffer with an independent
+Dawn command encoder, so ORT's readback path cannot hide an unsubmitted clear. Submission counts
+are also checked before that external readback, including after a cancelled Run.
+Concurrent profiling, cross-device transfer, and successful arbitrary foreign stream overrides are not
 established by these tests. Performance must be measured separately.
 
 ### Missing parts
