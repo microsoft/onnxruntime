@@ -17,6 +17,10 @@ The inference test is skipped gracefully if no WebGPU device is available
 Set ORT_WEBGPU_TEST_PROVIDER_NAME=1 when testing a host built from this checkout to
 also exercise provider-name selection. The minimum supported runtime only needs
 to support the device-selection API.
+
+Set ORT_WEBGPU_TEST_BUILTIN_PRECEDENCE=1 to require a built-in WebGPU host and test
+that an external plugin takes precedence. It checks built-in inference before
+registration and after unregistration, and requires both device kinds during plugin inference.
 """
 
 import os
@@ -35,6 +39,11 @@ import onnxruntime as ort
 VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
 REQUIRE_EP_DEVICE = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE", "").strip().lower() in ("1", "true", "yes")
 TEST_PROVIDER_NAME = os.environ.get("ORT_WEBGPU_TEST_PROVIDER_NAME", "").strip().lower() in ("1", "true", "yes")
+TEST_BUILTIN_PRECEDENCE = os.environ.get("ORT_WEBGPU_TEST_BUILTIN_PRECEDENCE", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def debug_print(*args, **kwargs):
@@ -112,6 +121,30 @@ def test_import_and_library_path():
     print(f"OK: EP names: {ep_names}")
 
 
+def check_builtin_inference():
+    """Require internal WebGPU devices and verify inference without an external plugin."""
+    ep_name = "WebGpuExecutionProvider"
+    assert ep_name in ort.get_available_providers(), "Precedence testing requires a built-in WebGPU host"
+    devices = [d for d in ort.get_ep_devices() if d.ep_name == ep_name]
+    assert devices, "No internal WebGPU devices found"
+    assert all("library_path" not in d.ep_metadata for d in devices), "An external WebGPU plugin is still registered"
+
+    options = ort.SessionOptions()
+    options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+    with tempfile.TemporaryDirectory() as model_dir:
+        model_path = create_mul_model(Path(model_dir))
+        session = ort.InferenceSession(model_path, sess_options=options, providers=[ep_name])
+        try:
+            assert ep_name in session.get_providers(), "Built-in WebGPU was not selected"
+            values = np.arange(6, dtype=np.float32).reshape(2, 3)
+            np.testing.assert_allclose(
+                session.run(None, {"x": values, "y": values})[0], values * values, rtol=1e-5, atol=1e-5
+            )
+        finally:
+            del session
+    print("OK: Built-in WebGPU inference (CPU fallback disabled)")
+
+
 def test_registration_and_inference():
     """Test EP registration, device discovery, and inference."""
     import onnxruntime_ep_webgpu as webgpu_ep  # noqa: PLC0415  # `import` should be at the top-level of a file.
@@ -144,10 +177,16 @@ def test_registration_and_inference():
         print(f"Found {len(webgpu_ep_devices)} WebGPU plugin EP device(s)")
 
         if not webgpu_ep_devices:
-            if REQUIRE_EP_DEVICE:
-                raise RuntimeError("No WebGPU EP devices available, but ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled")
+            if REQUIRE_EP_DEVICE or TEST_BUILTIN_PRECEDENCE:
+                raise RuntimeError("No WebGPU plugin EP devices available, but this test requires them")
             print("SKIP: No WebGPU EP devices available — skipping inference test")
             return
+
+        if TEST_BUILTIN_PRECEDENCE:
+            assert any(d.ep_name == ep_name and "library_path" not in d.ep_metadata for d in all_ep_devices), (
+                "Precedence testing requires internal and external WebGPU devices in the same environment"
+            )
+            print("OK: Internal and external WebGPU devices coexist")
 
         # WebGPU selects the GPU independently, so any non-virtual WebGPU EP device is sufficient here.
         webgpu_ep_device = webgpu_ep_devices[0]
@@ -183,7 +222,7 @@ def test_registration_and_inference():
                 del sess
             print("OK: Session released")
 
-            if TEST_PROVIDER_NAME:
+            if TEST_PROVIDER_NAME or TEST_BUILTIN_PRECEDENCE:
                 # This binding path is not available in the minimum supported host runtime.
                 named_options = ort.SessionOptions()
                 named_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
@@ -211,6 +250,7 @@ def test_registration_and_inference():
 
 def main():
     print("=== WebGPU Plugin EP Python Package Test ===")
+    print(f"Host ONNX Runtime: {ort.__version__} at {ort.__file__}")
 
     if VERBOSE:
         # Set verbose ORT logging so ORT internals are visible in CI logs
@@ -222,8 +262,16 @@ def main():
     print("\n--- Test 1: Import and library path ---")
     test_import_and_library_path()
 
+    if TEST_BUILTIN_PRECEDENCE:
+        print("\n--- Built-in inference before plugin registration ---")
+        check_builtin_inference()
+
     print("\n--- Test 2: Registration and inference ---")
     test_registration_and_inference()
+
+    if TEST_BUILTIN_PRECEDENCE:
+        print("\n--- Built-in inference after plugin unregistration ---")
+        check_builtin_inference()
 
     print("\n=== All tests passed ===")
 

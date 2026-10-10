@@ -60,6 +60,12 @@ a host wheel built from this checkout and set `ORT_WEBGPU_TEST_PROVIDER_NAME=1`.
 and installs that host wheel and enables this regression check. The minimum-runtime package tests leave it disabled.
 Set `ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE=1` to fail instead of skipping inference when no WebGPU device is available.
 
+Set `ORT_WEBGPU_TEST_BUILTIN_PRECEDENCE=1` to test a built-in WebGPU host with the external plugin. This mode requires
+both internal and external WebGPU devices, enables provider-name testing, and checks built-in inference before plugin
+registration and after unregistration. The Windows plugin PR job also runs this mode against the staged Python package
+from the built-in WebGPU build, including its shared Dawn DLL. It fails if the wrong host is used or a required device
+is unavailable.
+
 ## Versioning
 
 The package version is derived from [`../VERSION_NUMBER`](../VERSION_NUMBER) by the packaging pipeline (see
