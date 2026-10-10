@@ -343,9 +343,9 @@ jobs:
             --cmake_generator "Visual Studio 17 2022" `
             --enable_onnx_tests `
             --use_webgpu shared_lib `
+            --build_wheel `
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 `
-            --disable_rtti `
             --enable_lto
 
           if ($lastExitCode -ne 0) {
@@ -442,6 +442,37 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+
+      - name: Test Python provider-name selection with source-built host
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        env:
+          ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE: '1'
+          ORT_WEBGPU_TEST_PROVIDER_NAME: '1'
+        run: |
+          $testDir = "${{ runner.temp }}\webgpu-python-test"
+          python -m venv "$testDir\venv"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $python = "$testDir\venv\Scripts\python.exe"
+          & $python -m pip install -r "${{ github.workspace }}\plugin-ep-webgpu\python\requirements-build-wheel.txt" onnx numpy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $binaryDir = "${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo"
+          & $python "${{ github.workspace }}\plugin-ep-webgpu\python\build_wheel.py" `
+            --binary_dir $binaryDir --version 0.0.0 --output_dir "$testDir\wheels"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          # Install the host from this PR, not the minimum-runtime wheel used by package compatibility CI.
+          $hostWheels = @(Get-ChildItem "$binaryDir\dist\onnxruntime_webgpu-*.whl")
+          $pluginWheels = @(Get-ChildItem "$testDir\wheels\onnxruntime_ep_webgpu-*.whl")
+          if ($hostWheels.Count -ne 1 -or $pluginWheels.Count -ne 1) {
+            throw "Expected exactly one source-built host wheel and one plugin wheel"
+          }
+          & $python -m pip install $hostWheels[0].FullName $pluginWheels[0].FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          & $python -u "${{ github.workspace }}\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
   # instead of built as a separate shared library.

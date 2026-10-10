@@ -13,6 +13,10 @@ Tests:
 
 The inference test is skipped gracefully if no WebGPU device is available
 (e.g., on CPU-only build agents), unless ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled.
+
+Set ORT_WEBGPU_TEST_PROVIDER_NAME=1 when testing a host built from this checkout to
+also exercise provider-name selection. The minimum supported runtime only needs
+to support the device-selection API.
 """
 
 import os
@@ -30,6 +34,7 @@ import onnxruntime as ort
 
 VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
 REQUIRE_EP_DEVICE = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE", "").strip().lower() in ("1", "true", "yes")
+TEST_PROVIDER_NAME = os.environ.get("ORT_WEBGPU_TEST_PROVIDER_NAME", "").strip().lower() in ("1", "true", "yes")
 
 
 def debug_print(*args, **kwargs):
@@ -178,23 +183,26 @@ def test_registration_and_inference():
                 del sess
             print("OK: Session released")
 
-            # Exercise the Python provider-name factory path as well as device selection.
-            named_options = ort.SessionOptions()
-            named_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-            named_session = ort.InferenceSession(
-                model_path, sess_options=named_options, providers=[(ep_name, provider_options)]
-            )
-            try:
-                assert ep_name in named_session.get_providers(), "Registered WebGPU provider was not selected"
-                # The plugin wrapper reports EP-scoped options; built-in WebGPU reports an empty map.
-                # Checking the EP name alone would also pass when the built-in factory shadows the plugin.
-                assert named_session.get_provider_options()[ep_name] == provider_options, (
-                    "Provider-name selection did not use the WebGPU plugin with its requested options"
+            if TEST_PROVIDER_NAME:
+                # This binding path is not available in the minimum supported host runtime.
+                named_options = ort.SessionOptions()
+                named_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                named_session = ort.InferenceSession(
+                    model_path, sess_options=named_options, providers=[(ep_name, provider_options)]
                 )
-                np.testing.assert_allclose(named_session.run(None, {"x": x, "y": y})[0], expected, rtol=1e-5, atol=1e-5)
-            finally:
-                del named_session
-            print("OK: Registered plugin inference via provider name (CPU fallback disabled)")
+                try:
+                    assert ep_name in named_session.get_providers(), "Registered WebGPU provider was not selected"
+                    # The plugin wrapper reports EP-scoped options; built-in WebGPU reports an empty map.
+                    # Checking the EP name alone would also pass when the built-in factory shadows the plugin.
+                    assert named_session.get_provider_options()[ep_name] == provider_options, (
+                        "Provider-name selection did not use the WebGPU plugin with its requested options"
+                    )
+                    np.testing.assert_allclose(
+                        named_session.run(None, {"x": x, "y": y})[0], expected, rtol=1e-5, atol=1e-5
+                    )
+                finally:
+                    del named_session
+                print("OK: Registered plugin inference via provider name (CPU fallback disabled)")
 
     finally:
         ort.unregister_execution_provider_library(registration_name)
