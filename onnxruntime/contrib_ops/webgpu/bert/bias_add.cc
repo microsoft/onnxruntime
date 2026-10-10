@@ -61,7 +61,7 @@ Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
 
   BiasAddProgram program{};
   program
-      .AddInputs({{input, ProgramTensorMetadataDependency::None, components},
+      .AddInputs({{input, ProgramTensorMetadataDependency::Type, components},
                   {bias, ProgramTensorMetadataDependency::None, components},
                   {residual, ProgramTensorMetadataDependency::None, components}})
       .AddOutput({output, ProgramTensorMetadataDependency::None, components})
