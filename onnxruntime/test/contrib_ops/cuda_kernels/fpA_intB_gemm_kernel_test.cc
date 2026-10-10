@@ -675,30 +675,33 @@ TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
 TEST(FpAIntBGemvTest, TacticCacheSeparatesDeviceAndQuantization) {
   using TacticCache = std::unordered_map<wo_profile::GemmIdCore, int, wo_profile::GemmIdCoreHash>;
   const wo_profile::GemmIdCore base(384, 1536, onnxruntime::llm::nvinfer::DataType::kHALF,
-                                    80, false, 0, 0, 4, 32, false, false);
+                                    80, 80, false, 0, 0, 4, 32, false, false);
   std::vector<wo_profile::GemmIdCore> ids{base};
-  for (int field = 0; field < 7; ++field) {
+  for (int field = 0; field < 8; ++field) {
     auto id = base;
     switch (field) {
       case 0:
         id.device_id = 1;
         break;
       case 1:
-        id.sm = 90;
+        id.packing_sm = 90;
         break;
       case 2:
-        id.dtype = onnxruntime::llm::nvinfer::DataType::kBF16;
+        id.device_sm = 90;
         break;
       case 3:
-        id.quant_bits = 8;
+        id.dtype = onnxruntime::llm::nvinfer::DataType::kBF16;
         break;
       case 4:
-        id.group_size = 64;
+        id.quant_bits = 8;
         break;
       case 5:
-        id.has_bias = true;
+        id.group_size = 64;
         break;
       case 6:
+        id.has_bias = true;
+        break;
+      case 7:
         id.has_zeros = true;
         break;
     }
@@ -766,7 +769,7 @@ TEST(Int4DecodeTileTest, ProfilerEligibilityAndFallback) {
   profiler.setDecodeInterleave(4);
   for (auto type : {wo::KernelType::FP16Int4Groupwise, wo::KernelType::BF16Int4Groupwise}) {
     for (int arch : {75, 80, 86, 89, 90, 100, 120}) {
-      profiler.setCudaKernelType(type, arch);
+      profiler.setCudaKernelType(type, 80, arch);
       std::set<int> variants;
       for (const auto& tactic : profiler.getTactics(1, 384, 1536)) {
         if (tactic.enableCudaKernel) variants.insert(tactic.cudaKernelVariant);
@@ -808,7 +811,7 @@ TEST(Int4DecodeTileTest, ProfilerEligibilityAndFallback) {
   }
 
   // Upstream opt-in modes must not suppress M=1 candidates or admit them at M=5..8.
-  profiler.setCudaKernelType(wo::KernelType::FP16Int4Groupwise, 80);
+  profiler.setCudaKernelType(wo::KernelType::FP16Int4Groupwise, 80, 80);
   for (bool wave_aware : {false, true}) {
     profiler.setWaveAwareGemv(wave_aware);
     for (int mode : {0, 1, 2}) {

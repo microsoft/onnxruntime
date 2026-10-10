@@ -46,9 +46,9 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
   if constexpr (has_zero_point) {
     b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
     const int b_zp_k = (blocks_per_K + 1) / 2;
-     int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
-     for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k;
-        i += kColsPerThreadBlock * kWarpSize) {
+    int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
+    for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k;
+         i += kColsPerThreadBlock * kWarpSize) {
       const int column = n_block_id * kColsPerThreadBlock + i / b_zp_k;
       const uint8_t packed_zero_point = column < n ? zero_points[zp_offset + i] : 0;
       b_zp_vec[2 * i] = packed_zero_point & 0x0f;
@@ -133,8 +133,8 @@ bool TryMatMul4BitsM1(
 
   const int blocks_per_K = (k + block_size - 1) / block_size;
   const size_t shared_mem_size =
-        sizeof(T) * blocks_per_K * kColsPerThreadBlock +
-        static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
+      sizeof(T) * blocks_per_K * kColsPerThreadBlock +
+      static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
   if (shared_mem_size > shared_mem_per_block) {
     return false;
   }
