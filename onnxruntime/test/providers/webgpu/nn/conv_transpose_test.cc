@@ -191,8 +191,52 @@ TEST_P(ConvTransposePrepackWebGpuTest, PrepackingDisabled) {
   Run1DAnd2D(4, 2, 2, true, false, true);
 }
 
+TEST_P(ConvTransposePrepackWebGpuTest, HeightOne2DKernel) {
+  // This packs to the same shape as 1D weights, but must retain its 2D semantics.
+  Run({2, 8, 3, 4}, {8, 4, 1, 3}, {2, 4, 3, 6});
+}
+
 INSTANTIATE_TEST_SUITE_P(WebGPU, ConvTransposePrepackWebGpuTest,
                          testing::Combine(testing::Bool(), testing::Bool(), testing::Bool(), testing::Values(10, 11)));
+
+TEST(ConvTransposeWebGpuTest, InputWeightRankMismatch) {
+  for (bool initializer : {false, true}) {
+    SCOPED_TRACE(initializer);
+    for (size_t input_rank : {3U, 4U, 5U}) {
+      SCOPED_TRACE(input_rank);
+      for (size_t weight_rank : {3U, 4U, 5U}) {
+        if (input_rank == weight_rank) {
+          continue;
+        }
+        SCOPED_TRACE(weight_rank);
+        auto ep = DefaultWebGpuExecutionProvider(false);
+        if (!ep) {
+          GTEST_SKIP() << "WebGPU execution provider is not available.";
+        }
+        TensorShapeVector input_shape{1, 2};
+        input_shape.insert(input_shape.end(), input_rank - 2, 1);
+        TensorShapeVector weight_shape{2, 3};
+        weight_shape.insert(weight_shape.end(), weight_rank - 2, 1);
+
+        OpTester test("ConvTranspose", 11);
+        // Leave ranks unknown to graph inference so the kernel validates them at runtime.
+        test.AddShapeToTensorData(false);
+        test.AddInput<float>("X", input_shape, {1.0f, 2.0f});
+        test.AddInput<float>("W", weight_shape, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}, initializer);
+        test.AddOutput<float>("Y", {1}, {0.0f});
+        SessionOptions options;
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+        size_t prepacked_weights = 0;
+        ASSERT_NO_FATAL_FAILURE(test.Config(options)
+                                    .Config(OpTester::ExpectResult::kExpectFailure,
+                                            "X num_dims does not match W num_dims.")
+                                    .ConfigEp(std::move(ep))
+                                    .RunWithConfig(&prepacked_weights));
+        EXPECT_EQ(prepacked_weights, initializer ? 1U : 0U);
+      }
+    }
+  }
+}
 
 TEST(ConvTransposeWebGpuTest, UnsupportedSpatialRank) {
   auto ep = DefaultWebGpuExecutionProvider();

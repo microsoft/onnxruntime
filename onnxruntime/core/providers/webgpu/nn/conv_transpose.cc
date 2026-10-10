@@ -19,22 +19,8 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   const auto* input = context.Input<Tensor>(0);
   const auto* filter = prepacked_filter_ ? prepacked_filter_.get() : context.Input<Tensor>(1);
   TensorShape input_shape = input->Shape();
-  TensorShape filter_shape = filter->Shape();
   const bool is_prepacked = weight_layout_ != WeightLayout::ONNX;
-  // Recover the logical ONNX shape before validating channels or inferring output dimensions.
-  switch (weight_layout_) {
-    case WeightLayout::ONNX:
-      break;
-    case WeightLayout::HWIO1D:
-      filter_shape = TensorShape{filter_shape[2], filter_shape[3], filter_shape[1]};
-      break;
-    case WeightLayout::HWIO:
-      filter_shape = TensorShape{filter_shape[2], filter_shape[3], filter_shape[0], filter_shape[1]};
-      break;
-    case WeightLayout::DHWOI:
-      filter_shape = TensorShape{filter_shape[4], filter_shape[3], filter_shape[0], filter_shape[1], filter_shape[2]};
-      break;
-  }
+  TensorShape filter_shape = is_prepacked ? original_filter_shape_ : filter->Shape();
 
   const auto rank = input_shape.NumDimensions();
   if (rank < 3) {
@@ -215,7 +201,6 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
   if (rank == 3) {
     // The 1D compute path uses the 2D shader with a synthetic height of one.
     unpacked_shape.insert(unpacked_shape.begin() + 2, 1);
-    packed_layout = WeightLayout::HWIO1D;
   } else if (rank == 5) {
     perm = {2, 3, 4, 1, 0};
     packed_layout = WeightLayout::DHWOI;
@@ -228,6 +213,7 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
   auto packed = std::make_unique<Tensor>(tensor.DataType(), packed_shape, alloc);
   const Tensor unpacked = CreateTensorView(tensor, unpacked_shape);
   ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, unpacked, *packed));
+  original_filter_shape_ = tensor.Shape();
   prepacked_filter_ = std::move(packed);
   weight_layout_ = packed_layout;
   is_packed = true;

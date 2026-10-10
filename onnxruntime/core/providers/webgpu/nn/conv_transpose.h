@@ -29,13 +29,13 @@ class ConvTranspose final : public WebGpuKernel {
 
  private:
   enum class WeightLayout {
-    ONNX,    // Unpacked weights: [C_in, C_out/group, spatial kernel dimensions...].
-    HWIO1D,  // Prepacked 1D weights: [1, kW, C_in, C_out/group].
-    HWIO,    // Prepacked 2D weights: [kH, kW, C_in, C_out/group].
-    DHWOI,   // Prepacked 3D weights: [kD, kH, kW, C_out/group, C_in].
+    ONNX,   // Unpacked weights: [C_in, C_out/group, spatial kernel dimensions...].
+    HWIO,   // Prepacked 1D/2D weights: [kH, kW, C_in, C_out/group]; kH is 1 for 1D.
+    DHWOI,  // Prepacked 3D weights: [kD, kH, kW, C_out/group, C_in].
   };
 
   std::unique_ptr<Tensor> prepacked_filter_;
+  TensorShape original_filter_shape_;
   WeightLayout weight_layout_{WeightLayout::ONNX};
 };
 
