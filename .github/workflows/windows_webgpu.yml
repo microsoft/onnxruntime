@@ -410,7 +410,7 @@ jobs:
           architecture: x64
 
       - name: Install python modules
-        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt -r plugin-ep-webgpu\python\requirements-build-wheel.txt
         shell: cmd
         working-directory: ${{ github.workspace }}
 
@@ -426,6 +426,7 @@ jobs:
 
       - name: Run tests
         shell: pwsh
+        working-directory: ${{ runner.temp }}
         run: |
           python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py `
             "${{ github.workspace }}\RelWithDebInfo\CTestTestfile.cmake" `
@@ -443,35 +444,25 @@ jobs:
             exit $lastExitCode
           }
 
-      - name: Test Python provider-name selection with source-built host
-        shell: pwsh
-        working-directory: ${{ runner.temp }}
-        env:
-          ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE: '1'
-          ORT_WEBGPU_TEST_PROVIDER_NAME: '1'
-        run: |
-          $testDir = "${{ runner.temp }}\webgpu-python-test"
-          python -m venv "$testDir\venv"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $python = "$testDir\venv\Scripts\python.exe"
-          & $python -m pip install -r "${{ github.workspace }}\plugin-ep-webgpu\python\requirements-build-wheel.txt" onnx numpy
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
           $binaryDir = "${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo"
-          & $python "${{ github.workspace }}\plugin-ep-webgpu\python\build_wheel.py" `
-            --binary_dir $binaryDir --version 0.0.0 --output_dir "$testDir\wheels"
+          $pluginWheelDir = "${{ runner.temp }}\webgpu-plugin-wheels"
+          python "${{ github.workspace }}\plugin-ep-webgpu\python\build_wheel.py" `
+            --binary_dir $binaryDir --version 0.0.0 --output_dir $pluginWheelDir
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           # Install the host from this PR, not the minimum-runtime wheel used by package compatibility CI.
           $hostWheels = @(Get-ChildItem "$binaryDir\dist\onnxruntime_webgpu-*.whl")
-          $pluginWheels = @(Get-ChildItem "$testDir\wheels\onnxruntime_ep_webgpu-*.whl")
+          $pluginWheels = @(Get-ChildItem "$pluginWheelDir\onnxruntime_ep_webgpu-*.whl")
           if ($hostWheels.Count -ne 1 -or $pluginWheels.Count -ne 1) {
             throw "Expected exactly one source-built host wheel and one plugin wheel"
           }
-          & $python -m pip install $hostWheels[0].FullName $pluginWheels[0].FullName
+          # Dependencies were installed once for this job in Install python modules.
+          python -m pip install --no-deps --force-reinstall $hostWheels[0].FullName $pluginWheels[0].FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          & $python -u "${{ github.workspace }}\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+          $env:ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE = '1'
+          $env:ORT_WEBGPU_TEST_PROVIDER_NAME = '1'
+          python -u "${{ github.workspace }}\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
