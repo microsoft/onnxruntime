@@ -60,8 +60,25 @@ if ! command -v qemu-aarch64 >/dev/null 2>&1; then
     echo "Distro packages unavailable; falling back to static qemu-aarch64 from Debian..."
     QEMU_TMP="$(mktemp -d)"
     df -h "${QEMU_TMP}"  # debug: check disk space
-    QEMU_DEB_FILENAME="$(curl -fsSL --retry 3 http://ftp.debian.org/debian/dists/stable/main/binary-arm64/Packages.gz \
-      | gzip -dc | awk '/^Package: qemu-user-static$/{found=1} found && /^Filename: /{print $2; exit}')"
+    # NOTE: the Packages index is downloaded to a file first, then parsed.
+    # Piping curl directly into 'gzip -dc | awk ... { exit }' is broken: awk's
+    # early exit closes the pipe while curl is still writing, and with
+    # 'set -o pipefail' the resulting SIGPIPE (curl error 23, exit 141)
+    # aborts the script via 'set -e'. Reproduced 2026-10-10: the pipeline
+    # prints the right filename yet exits 141 every time (deterministic, not
+    # flaky -- qemu-user-static sits ~75% through the index, so curl always
+    # has data left to write when awk closes the pipe).
+    PACKAGES_URL="http://ftp.debian.org/debian/dists/stable/main/binary-arm64/Packages.gz"
+    QEMU_DEB_FILENAME=""
+    if curl -fsSL --retry 3 -o "${QEMU_TMP}/Packages.gz" "${PACKAGES_URL}"; then
+      # No early 'exit' in awk: it must consume the whole stream so no
+      # pipeline stage gets SIGPIPE; 'found=0' keeps it to a single Filename.
+      QEMU_DEB_FILENAME="$(gzip -dc "${QEMU_TMP}/Packages.gz" \
+        | awk '/^Package: qemu-user-static$/{found=1} found && /^Filename: /{print $2; found=0}')" \
+        || QEMU_DEB_FILENAME=""
+    else
+      echo "WARNING: failed to download Debian Packages index from ${PACKAGES_URL}" >&2
+    fi
     echo "Deb filename: ${QEMU_DEB_FILENAME}"  # debug
     if [[ -n "${QEMU_DEB_FILENAME}" ]]; then
       for i in 1 2 3; do
@@ -72,6 +89,8 @@ if ! command -v qemu-aarch64 >/dev/null 2>&1; then
         sleep 5
       done
       if [[ -f "${QEMU_TMP}/qemu.deb" ]]; then
+        # 'ar' comes from binutils; ensure it exists before extracting.
+        command -v ar >/dev/null 2>&1 || dnf install -y binutils || true
         ( cd "${QEMU_TMP}" && ar x qemu.deb data.tar.xz && tar -xf data.tar.xz ./usr/bin/qemu-aarch64-static ) && \
           install -m 755 "${QEMU_TMP}/usr/bin/qemu-aarch64-static" /usr/local/bin/qemu-aarch64 || true
       else
