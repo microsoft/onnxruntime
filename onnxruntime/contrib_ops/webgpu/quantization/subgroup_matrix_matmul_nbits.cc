@@ -189,23 +189,29 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   uint32_t tile_n = 64;
   uint32_t workgroup_size = 128;
   if (config.Is(8, 16, 16)) {
+    // Default: 64x64 tile size, 256 thread.
     tile_m = 64;
+    tile_n = 64;
     workgroup_size = 256;
     // Bias output uses a scratch tile, so keep it at 64x64 for workgroup memory limits.
     if (!has_bias) {
       if (M >= 2048 && N % 256 == 0) {
+        // Large M (M>=2048): 128x256 tile size, 512 threads.
         tile_m = 128;
         tile_n = 256;
         workgroup_size = 512;
       } else if (M >= 256 && N % 128 == 0) {
+        // Mid-sized M (256<=M<2048): 128x128 tile size, 512 threads.
         tile_m = 128;
         tile_n = 128;
         workgroup_size = 512;
       }
     }
   } else if (config.Is(16, 16, 16)) {
+    // 16x16x16 config: 4 subgroups, 128 threads, 128x128 tiles
     tile_m = 128;
     tile_n = 128;
+    workgroup_size = 128;
   }
   ORT_ENFORCE(workgroup_size <= context.DeviceLimits().maxComputeWorkgroupSizeX &&
                   workgroup_size <= context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
