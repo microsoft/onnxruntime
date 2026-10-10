@@ -1501,8 +1501,7 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
               block_scores, radix_histogram, params);
         }
       } else {
-        ORT_RETURN_IF_ERROR(
-            ConfigureDynamicSharedMemory(QsaBlockScoreKernel<T>, score_shared_bytes, "QsaBlockScoreKernel"));
+        const size_t score_shared_bytes = 2 * value_bytes + kThreads * sizeof(float);
         QsaBlockScoreKernel<T><<<score_blocks, kThreads, score_shared_bytes, stream>>>(
             query_rotated, present_key, key_norm_weight, cos_cache, sin_cache, visible_indices, visible_count,
             block_scores, params);

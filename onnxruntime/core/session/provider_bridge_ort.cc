@@ -2211,11 +2211,11 @@ std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
 }
 
 std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options) try {
-  return GetProviderInfo_CUDA().CreateExecutionProviderFactory(provider_options);
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    const ProviderOptions& provider_options) {
+  ORT_TRY {
+    return GetProviderInfo_CUDA().CreateExecutionProviderFactory(provider_options);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory>
