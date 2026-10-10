@@ -10,6 +10,7 @@
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
+#include "core/framework/tuning_context.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
@@ -125,12 +126,12 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t nbits, int64_t block_size,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option) {
+  ORT_UNUSED_PARAMETER(has_bias);
 #if USE_COMPACT_FPA_INTB_GEMM
   const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
                         input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 #else
   ORT_UNUSED_PARAMETER(has_zero_points);
-  ORT_UNUSED_PARAMETER(has_bias);
   // The fpA_intB path consumes FP16 or BF16 input A only. CUDA also registers an FP32 MatMulNBits
   // variant that must never be reported as fpA_intB-eligible.
   const bool dtype_ok = (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
@@ -610,7 +611,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   }
 #endif
 
-  gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
+  gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm, sm_);
   gemmProfiler_->setWaveAwareGemv(wave_aware_gemv_);
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
@@ -625,21 +626,24 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // Number of 16-bit elements after casting int2/int4/int8 to fp16.
   int n_16b = static_cast<int>(N_ / (16 / nbits_));
 
-  // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
-  // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
+  // Include both the packing/kernel SM and physical device SM so compatible weight layouts can
+  // still select different tactics on different GPU generations.
   const int kernel_sm = FpAIntBPackingSmForKernel();
   // The tag keeps profiled results with and without the optional paired-K tactic apart.
   const int tactic_set_tag = paired_gemv_mode_;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF,
-                         kernel_sm, wave_aware_gemv_, tactic_set_tag);
+                         kernel_sm, sm_, wave_aware_gemv_, tactic_set_tag);
   } else if constexpr (std::is_same_v<T, BFloat16>) {
     gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16,
-                         kernel_sm, wave_aware_gemv_, tactic_set_tag);
+                         kernel_sm, sm_, wave_aware_gemv_, tactic_set_tag);
   }
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
+  if (sm_ >= 120) {
+    sm120_decode_tactic_ = gemmProfiler_->getBestConfig(1, gemmId_);
+  }
 }
 
 template <typename T>
@@ -943,9 +947,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       // and synchronizes events, and allocates/frees scratch, all of which are illegal while the
       // compute stream is being captured. Fall back to a lookup of an already-profiled bucket
       // (warmup runs before capture populate these); only outside capture do we allow lazy
-      // single-bucket profiling. Note: a null cudaStream_t is the default stream (a valid capture
-      // target under per-thread default streams), so query the capture status unconditionally.
-      const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
+      // single-bucket profiling. SM120+ caches the eagerly profiled M=1 tactic, avoiding both the
+      // capture query and shared profile-map lookup on the non-deterministic decode path.
+      const bool use_deterministic_compute = ctx->GetUseDeterministicCompute();
+      const bool has_cached_decode_tactic = m == 1 && sm120_decode_tactic_.has_value();
+      const bool stream_is_capturing = !use_deterministic_compute && !has_cached_decode_tactic &&
+                                       onnxruntime::llm::common::isCapturing(stream);
 
       // Env-gated diagnostics (ORT_FPA_INTB_DEBUG=1): dump the selected tactic, the kernel path
       // (GEMV CUDA kernel vs CUTLASS GEMM), the weight format, and the device/packing SM so that
@@ -979,10 +986,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         const int rows = std::min(chunk_m, m - row_start);
         // Only a trailing partial chunk can change rows, so this looks up at most two tactics.
         if (rows != tactic_m) {
-          bestTactic = ctx->GetUseDeterministicCompute()
+          bestTactic = use_deterministic_compute
                            ? gemmProfiler_->getDeterministicConfig(rows)
-                           : (stream_is_capturing ? gemmProfiler_->getBestConfig(rows, gemmId_)
-                                                  : gemmProfiler_->getBestConfigOrProfile(rows, gemmId_));
+                           : (rows == 1 && sm120_decode_tactic_.has_value()
+                                  ? sm120_decode_tactic_
+                                  : (stream_is_capturing ? gemmProfiler_->getBestConfig(rows, gemmId_)
+                                                         : gemmProfiler_->getBestConfigOrProfile(rows, gemmId_)));
           if (!bestTactic.has_value()) {
             return ORT_MAKE_STATUS(
                 ONNXRUNTIME, FAIL,

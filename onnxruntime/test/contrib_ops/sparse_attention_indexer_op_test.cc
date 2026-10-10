@@ -1315,14 +1315,13 @@ TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKBFloat16) 
   RunQsaQwenSpecializedScoreAndPartialTopK<BFloat16>(2.0e-2f);
 }
 
-TEST(SparseAttentionIndexerTest, QsaQwenFixedCapacityRawCacheDistributedTopK) {
+TEST(SparseAttentionIndexerTest, QsaQwenRawCacheDistributedTopK) {
   QsaProblem problem;
   problem.batch_size = 1;
   problem.sequence_length = 1;
   problem.num_heads = 4;
   problem.head_size = 128;
   problem.past_sequence_length = 8191;
-  problem.key_cache_capacity = 8192;
   problem.rotary_width = 32;
   problem.compress_ratio = 4;
   problem.token_budget = 2048;

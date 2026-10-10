@@ -294,6 +294,20 @@ TEST(MatMulNBitsWorkspace, TacticSelectionPenalizesCutlassOnlyForSmallMAndL2Resi
 // Test A: EffectiveFpAIntBWorkspaceSm drift guard.
 // Native SM90 arch only when device is SM90 AND weights were prepacked for the Hopper layout.
 // ---------------------------------------------------------------------------
+TEST(MatMulNBitsWorkspace, ProfilerCacheSeparatesPackingAndDeviceArchitectures) {
+  using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+  using onnxruntime::llm::kernels::weight_only::GemmIdCoreHash;
+  const auto dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+  const GemmIdCore baseline(128, 512, dtype, 80, 120);
+  const GemmIdCore identical(128, 512, dtype, 80, 120);
+  EXPECT_TRUE(baseline == identical);
+  EXPECT_EQ(GemmIdCoreHash{}(baseline), GemmIdCoreHash{}(identical));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 121));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 90, 120));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, true));
+  EXPECT_FALSE(baseline == GemmIdCore(128, 512, dtype, 80, 120, false, 1));
+}
+
 TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(90, kMatMulNBitsWeightPrepackedSm90), 90);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(90, kMatMulNBitsWeightPrepackedSm80), 80);
@@ -378,8 +392,8 @@ TEST(MatMulNBitsWorkspace, CompactEligibilityMatchesRcContract) {
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightPrepackedSm90));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
                             false, 80, 1, /*zero_points*/ true));
-  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
-                            false, 80, 1, false, /*bias*/ true));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                           false, 80, 1, false, /*bias*/ true));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
                             false, /*sm*/ 70));
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,

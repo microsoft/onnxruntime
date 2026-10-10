@@ -99,9 +99,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mGroupSize = groupSize;
   }
 
-  void setCudaKernelType(KernelType cudaKernelType, int arch) {
+  void setCudaKernelType(KernelType cudaKernelType, int kernelArch, int deviceArch) {
     mCudaKernelType = cudaKernelType;
-    mArch = arch;
+    mKernelArch = kernelArch;
+    mDeviceArch = deviceArch;
   }
 
   void setL2CacheBytes(size_t l2CacheBytes) {
@@ -140,7 +141,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mQuantBits;
   int mGroupSize;
   KernelType mCudaKernelType;
-  int mArch;
+  int mKernelArch;
+  int mDeviceArch;
   size_t mL2CacheBytes = 0;
   bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
