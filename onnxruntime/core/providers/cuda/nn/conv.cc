@@ -436,7 +436,11 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
 
     const auto use_tf32 = this->UseTF32();
     // fuse if this op is part of a FusedConv or if the EP is set to fuse ops
-    const auto fuse_bias = this->IsFuseConvBias() || is_fused_node_;
+    // cuDNN's fused FP16 NHWC Conv+bias can interpret NCHW weights as NHWC despite their strides.
+    // Keep dynamic NCHW weights on the unfused-bias path; prepacked NHWC weights can still fuse.
+    const bool can_fuse_bias = !channels_last || w_in_nhwc ||
+                               CudnnFeTensor::GetDataType<CudaT>() != cudnn_frontend::DataType_t::HALF;
+    const auto fuse_bias = (this->IsFuseConvBias() || is_fused_node_) && can_fuse_bias;
     const auto fuse_act = is_fused_node_;
 
     TensorShapeVector plan_key;

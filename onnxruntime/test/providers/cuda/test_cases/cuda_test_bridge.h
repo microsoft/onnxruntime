@@ -32,8 +32,12 @@ struct ConvPlanCacheSnapshot {
   size_t workspace_bytes = 0;
   size_t plan_workspace_bytes = 0;
   std::vector<int64_t> last_x_dims;
+  std::vector<int64_t> prepacked_weight_dims;
   bool conv_plan_matches_inputs = false;
   bool bias_fused = false;
+  bool channels_last = false;
+  bool weights_in_nhwc = false;
+  const void* prepacked_weight_data = nullptr;
   const void* x_binding = nullptr;
   const void* w_binding = nullptr;
   const void* b_binding = nullptr;
@@ -41,7 +45,7 @@ struct ConvPlanCacheSnapshot {
   const void* z_binding = nullptr;
 };
 
-ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t element_type);
+ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t element_type, bool channels_last = false);
 #endif
 
 // Node and Tensor are borrowed core objects. The provider-side accessors forward

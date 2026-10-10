@@ -11,10 +11,18 @@
 namespace onnxruntime::cuda {
 
 struct ConvPlanCacheTestPeer {
-  template <typename T>
+  template <typename T, bool Layout = false>
   static test::ConvPlanCacheSnapshot Snapshot(const void* kernel) {
-    const auto& state = static_cast<const Conv<T, false>*>(kernel)->s_;
+    const auto& conv = *static_cast<const Conv<T, Layout>*>(kernel);
+    const auto& state = conv.s_;
     test::ConvPlanCacheSnapshot snapshot;
+    snapshot.channels_last = Layout;
+    snapshot.weights_in_nhwc = conv.W_ != nullptr || conv.W_already_nhwc;
+    if (conv.W_) {
+      const auto dims = conv.W_->Shape().GetDims();
+      snapshot.prepacked_weight_dims.assign(dims.begin(), dims.end());
+      snapshot.prepacked_weight_data = conv.W_->DataRaw();
+    }
     snapshot.conv_plan = state.conv_plan;
     snapshot.cached_plan_count = state.cached_conv_plans.size();
     snapshot.last_x_dims.assign(state.last_x_dims.GetDims().begin(), state.last_x_dims.GetDims().end());
@@ -43,7 +51,21 @@ struct ConvPlanCacheTestPeer {
 namespace onnxruntime::test {
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(BUILD_CUDA_EP_AS_PLUGIN) && CUDNN_MAJOR >= 9
-ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t element_type) {
+ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t element_type, bool channels_last) {
+#ifdef ENABLE_CUDA_NHWC_OPS
+  if (channels_last) {
+    switch (element_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        return cuda::ConvPlanCacheTestPeer::Snapshot<float, true>(kernel);
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        return cuda::ConvPlanCacheTestPeer::Snapshot<MLFloat16, true>(kernel);
+      default:
+        ORT_THROW("Unsupported NHWC Conv plan cache test element type: ", element_type);
+    }
+  }
+#else
+  ORT_ENFORCE(!channels_last, "NHWC Conv kernels are not enabled.");
+#endif
   switch (element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return cuda::ConvPlanCacheTestPeer::Snapshot<float>(kernel);
