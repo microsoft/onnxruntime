@@ -1982,6 +1982,55 @@ activation.)DOC")
                                   ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ResizeArgMax, 1,
+    OpSchema()
+        .SetDoc("Apply spatial linear Resize to an NCHW tensor, then ArgMax on axis 1. "
+                "Batch and channel sizes must not change. Exactly one of scales and sizes must be non-empty. "
+                "This operator avoids the full Resize output tensor.")
+        .Input(0, "X", "Input tensor in NCHW order.", "T")
+        .Input(1, "scales", "Four positive Resize scales. Batch and channel scales must be one.",
+               "tensor(float)", OpSchema::Optional)
+        .Input(2, "sizes", "Four positive Resize output sizes. Batch and channel sizes must match X.",
+               "tensor(int64)", OpSchema::Optional)
+        .Output(0, "Y", "Class indices after Resize. Shape is [N, 1, H, W] or [N, H, W].", "tensor(int64)")
+        .TypeConstraint("T", {"tensor(float)"}, "Input data must be float32.")
+        .Attr("coordinate_transformation_mode",
+              "Resize coordinate mode: half_pixel, align_corners, asymmetric, or pytorch_half_pixel.",
+              AttributeProto::STRING, std::string("half_pixel"))
+        .Attr("keepdims", "Keep the channel axis with length one.", AttributeProto::INT, int64_t{1})
+        .Attr("select_last_index", "Select the last index when maximum values are equal.",
+              AttributeProto::INT, int64_t{0})
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          updateOutputElemType(ctx, 0, TensorProto::INT64);
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& input = getInputShape(ctx, 0);
+          if (input.dim_size() != 4) fail_shape_inference("X must have four dimensions");
+          auto* output = getOutputShape(ctx, 0);
+          *output->add_dim() = input.dim(0);
+          if (getAttribute(ctx, "keepdims", 1) != 0) output->add_dim()->set_dim_value(1);
+          std::vector<int64_t> sizes;
+          std::vector<float> scales;
+          if (ctx.getNumInputs() > 2 && ctx.getInputData(2)) sizes = ParseData<int64_t>(ctx.getInputData(2));
+          if (ctx.getNumInputs() > 1 && ctx.getInputData(1)) scales = ParseData<float>(ctx.getInputData(1));
+          if ((!sizes.empty() && sizes.size() != 4) || (!scales.empty() && scales.size() != 4)) {
+            fail_shape_inference("scales and sizes must have four values");
+          }
+          for (int i = 2; i < 4; ++i) {
+            auto* dim = output->add_dim();
+            if (!sizes.empty()) {
+              if (sizes[i] <= 0) fail_shape_inference("sizes must be positive");
+              dim->set_dim_value(sizes[i]);
+            } else if (!scales.empty() && input.dim(i).has_dim_value()) {
+              const double length = std::floor(scales[i] * static_cast<float>(input.dim(i).dim_value()));
+              if (!std::isfinite(length) || length < 1 || length >= static_cast<double>(INT64_MAX)) {
+                fail_shape_inference("Invalid output dimension");
+              }
+              dim->set_dim_value(static_cast<int64_t>(length));
+            }
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(FusedGemm, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
