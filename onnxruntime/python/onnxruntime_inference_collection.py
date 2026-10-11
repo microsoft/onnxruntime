@@ -1297,6 +1297,33 @@ class OrtValue:
         return self._ortvalue
 
     @classmethod
+    def kv_cache(
+        cls,
+        batch_size: int,
+        num_kv_heads: int,
+        key_head_size: int,
+        value_head_size: int,
+        backend: str = "contiguous",
+        page_size: int = 16,
+        sliding_window: int = 0,
+    ) -> OrtValue:
+        """Create an experimental CPU float32 cache for run_with_ort_values.
+
+        Backends are contiguous, paged, or ring. Ring requires a positive logical
+        sliding window matching the model. Cache outputs are immutable versions;
+        feed them to the next invocation without converting them to numpy.
+        """
+        return cls(
+            C.OrtValue.kv_cache(
+                batch_size, num_kv_heads, key_head_size, value_head_size, backend, page_size, sliding_window
+            )
+        )
+
+    def kv_cache_describe(self) -> dict:
+        """Return computed_tokens, retained_begin, and physical backend."""
+        return self._ortvalue.kv_cache_describe()
+
+    @classmethod
     def ortvalue_from_numpy(
         cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0, vendor_id: int | OrtDeviceVendorId = -1
     ) -> OrtValue:

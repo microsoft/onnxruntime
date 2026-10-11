@@ -3,6 +3,7 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+#include "core/framework/kv_cache.h"
 
 #include <charconv>
 #include <memory>
@@ -3438,6 +3439,10 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
     }
 
     auto expected_type = iter->second.ml_data_type;
+    if (!is_inputs && expected_type == DataTypeImpl::GetType<KVCacheValue>()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "KV cache outputs must be unallocated placeholders, not preallocated cache objects: ", name);
+    }
 
     if (input_output_ml_value.IsTensor()) {
       if (!expected_type->IsTensorType()
@@ -3529,6 +3534,12 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
     } else {
       auto input_output_type = input_output_ml_value.Type();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_output_type, expected_type, "", input_output_moniker));
+      if (input_output_type == DataTypeImpl::GetType<KVCacheValue>()) {
+        const auto& payload = input_output_ml_value.Get<KVCacheValue>();
+        ORT_RETURN_IF_NOT(payload.cache, "Uninitialized KV cache: ", name);
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            ValidateKVCacheType(*payload.cache, *iter->second.node_arg->TypeAsProto()));
+      }
     }
   }
 

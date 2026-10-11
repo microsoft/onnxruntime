@@ -1221,4 +1221,14 @@ ONNX_CPU_OPERATOR_KERNEL(
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
+// Opset 28 adds FLOAT6 payloads, which remain outside the supported type lists.
+ONNX_CPU_OPERATOR_KERNEL(
+    Cast,
+    28,
+    KernelDefBuilder()
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .MayInplace(0, 0),
+    Cast);
+
 }  // namespace onnxruntime

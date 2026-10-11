@@ -13,12 +13,30 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/kv_cache.h"
 namespace onnxruntime {
 namespace python {
 
 namespace py = pybind11;
 
 namespace {
+std::unique_ptr<OrtValue> CreatePythonKVCache(int64_t batch, int64_t heads, int64_t key_width, int64_t value_width,
+                                            const std::string& backend, int64_t page_size, int64_t window) {
+  auto value = std::make_unique<OrtValue>();
+  CreateKVCacheOrtValue({batch, heads, key_width, value_width, ParseKVCacheStorage(backend), page_size, window}, *value);
+  return value;
+}
+
+py::dict DescribePythonKVCache(const OrtValue& value) {
+  const auto& payload = value.Get<KVCacheValue>();
+  ORT_ENFORCE(payload.cache, "Uninitialized KV cache");
+  py::dict result;
+  result["computed_tokens"] = payload.cache->End();
+  result["retained_begin"] = payload.cache->Begin();
+  result["backend"] = KVCacheStorageName(payload.cache->Options().storage);
+  return result;
+}
+
 bool IsWebGpuBuffer(const OrtValue& ort_value) {
   return ort_value.IsTensor() &&
          ort_value.Get<Tensor>().Location().name == WEBGPU_BUFFER;
@@ -107,6 +125,10 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndTypeWithMemoryInfo(const std::vect
 void addOrtValueMethods(pybind11::module& m) {
   py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
   ortvalue_binding
+      .def_static("kv_cache", &CreatePythonKVCache,
+                  py::arg("batch_size"), py::arg("num_kv_heads"), py::arg("key_head_size"), py::arg("value_head_size"),
+                  py::arg("backend") = "contiguous", py::arg("page_size") = 16, py::arg("sliding_window") = 0)
+      .def("kv_cache_describe", &DescribePythonKVCache)
       // Factory method to create an OrtValue (Tensor) from the given Numpy object
       // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
       .def_static("ortvalue_from_numpy", [](const py::object& array_on_cpu, const OrtDevice& device) {

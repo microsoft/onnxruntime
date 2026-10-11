@@ -224,6 +224,9 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
   // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
+  // Experimental fork metadata only; execution of these payload types is unsupported.
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -234,7 +237,9 @@ typedef enum ONNXType {
   ONNX_TYPE_MAP,
   ONNX_TYPE_OPAQUE,
   ONNX_TYPE_SPARSETENSOR,
-  ONNX_TYPE_OPTIONAL
+  ONNX_TYPE_OPTIONAL,
+  /** Experimental fork-only runtime-owned KV cache; not an opaque or tensor value. */
+  ONNX_TYPE_KV_CACHE
 } ONNXType;
 
 // These types are synced with internal

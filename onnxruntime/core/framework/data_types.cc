@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_types.h"
+#include "core/framework/kv_cache.h"
 
 #include "boost/mp11.hpp"
 
@@ -25,6 +26,24 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
+
+namespace {
+class KVCacheType final : public NonTensorType<KVCacheValue> {
+ public:
+  KVCacheType() {
+    MutableTypeProto().mutable_kv_cache_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+  }
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& proto) const override {
+    return proto.has_kv_cache_type() && proto.kv_cache_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT;
+  }
+};
+}  // namespace
+
+template <>
+MLDataType DataTypeImpl::GetType<KVCacheValue>() {
+  static KVCacheType type;
+  return &type;
+}
 
 // Return the MLDataType used for a generic Tensor
 template <>
@@ -196,6 +215,9 @@ static bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto_1,
 #endif
       case TypeProto::ValueCase::kOpaqueType:
         result = IsCompatible(type_proto_1.opaque_type(), type_proto_2.opaque_type());
+        break;
+      case TypeProto::ValueCase::kKvCacheType:
+        result = type_proto_1.kv_cache_type().elem_type() == type_proto_2.kv_cache_type().elem_type();
         break;
 #if !defined(DISABLE_SPARSE_TENSORS)
       case TypeProto::ValueCase::kSparseTensorType:
@@ -814,6 +836,7 @@ ORT_REGISTER_OPTIONAL_ORT_TYPE(TensorSeq)
 namespace data_types_internal {
 
 void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
+  reg_fn(DataTypeImpl::GetType<KVCacheValue>());
   REGISTER_TENSOR_PROTO(int32_t, reg_fn);
   REGISTER_TENSOR_PROTO(float, reg_fn);
   REGISTER_TENSOR_PROTO(bool, reg_fn);

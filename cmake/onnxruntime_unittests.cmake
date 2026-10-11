@@ -1352,6 +1352,16 @@ AddTest(
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
 
+if(NOT onnxruntime_MINIMAL_BUILD)
+  AddTest(
+    TARGET onnxruntime_kvcache_test
+    SOURCES "${TEST_SRC_DIR}/framework/kv_cache_test.cc" ${onnxruntime_unittest_main_src}
+    LIBS ${onnx_test_runner_common_lib} ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+         onnx_test_data_proto
+    DEPENDS ${all_dependencies}
+  )
+endif()
+
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING

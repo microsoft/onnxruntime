@@ -204,6 +204,9 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::FromOrtValue(const OrtValue& value) {
   if (type_proto != nullptr) {
     // Place Opaque first as tensors will be mostly handled above and maps and sequences are not common
     switch (type_proto->value_case()) {
+      case on::TypeProto::kKvCacheType:
+        result = MakePtr(ONNX_TYPE_KV_CACHE);
+        break;
       case on::TypeProto::kOpaqueType: {
         result = MakePtr(ONNX_TYPE_OPAQUE);
       } break;
@@ -248,6 +251,10 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::Ty
 
   auto value_case = input.value_case();
   switch (value_case) {
+    case on::TypeProto::kKvCacheType: {
+      result = MakePtr(ONNX_TYPE_KV_CACHE);
+      result->denotation = input.denotation();
+    } break;
     case on::TypeProto::kSparseTensorType:
 #if !defined(DISABLE_SPARSE_TENSORS)
       [[fallthrough]];
@@ -376,6 +383,7 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::Clone() const {
       result = MakePtr(std::move(opt_clone));
       result->denotation = denotation;
     } break;
+    case ONNX_TYPE_KV_CACHE:
     case ONNX_TYPE_OPAQUE: {
       result = MakePtr(type);
       result->denotation = denotation;

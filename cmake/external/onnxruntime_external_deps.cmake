@@ -512,6 +512,25 @@ endif()
 endif()
 
 # ONNX
+file(STRINGS "${PROJECT_SOURCE_DIR}/kvcache_onnx_revision.txt" kvcache_onnx_revision LIMIT_COUNT 1)
+if(NOT FETCHCONTENT_SOURCE_DIR_ONNX)
+  message(FATAL_ERROR "The experimental KV-cache fork requires a pinned ONNX source checkout. "
+                      "Use tools/kvcache/build.py --onnx-source <ONNX fork repository>; stock ONNX is unsupported.")
+endif()
+find_package(Git REQUIRED)
+execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${FETCHCONTENT_SOURCE_DIR_ONNX}" rev-parse HEAD
+                OUTPUT_VARIABLE kvcache_actual_revision OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE kvcache_git_result)
+if(NOT kvcache_git_result EQUAL 0 OR NOT kvcache_actual_revision STREQUAL kvcache_onnx_revision)
+  message(FATAL_ERROR "Experimental KV-cache ONNX revision mismatch. Expected ${kvcache_onnx_revision}, "
+                      "got ${kvcache_actual_revision}. No stock protobuf fallback is allowed.")
+endif()
+execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${FETCHCONTENT_SOURCE_DIR_ONNX}" diff --exit-code HEAD
+                RESULT_VARIABLE kvcache_dirty_result OUTPUT_QUIET)
+if(NOT kvcache_dirty_result EQUAL 0)
+  message(FATAL_ERROR "The pinned KV-cache ONNX source has tracked modifications.")
+endif()
+set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
 if (NOT onnxruntime_USE_FULL_PROTOBUF)
   set(ONNX_USE_LITE_PROTO ON CACHE BOOL "" FORCE)
 else()

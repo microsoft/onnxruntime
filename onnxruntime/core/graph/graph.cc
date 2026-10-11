@@ -407,6 +407,33 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
                            current_type_case, " Input=", input_type_case);
 
   switch (input_type_case) {
+    case TypeProto::kKvCacheType: {
+      const auto& source = input_type.kv_cache_type();
+      auto* target = current_type.mutable_kv_cache_type();
+      ORT_RETURN_IF(source.has_elem_type() && target->has_elem_type() &&
+                        source.elem_type() != target->elem_type(),
+                    "KV cache element type mismatch for ", Name());
+      ORT_RETURN_IF(source.has_sliding_window() && target->has_sliding_window() &&
+                        source.sliding_window() != target->sliding_window(),
+                    "KV cache retention mismatch for ", Name());
+      if (source.has_elem_type()) target->set_elem_type(source.elem_type());
+      if (source.has_sliding_window()) target->set_sliding_window(source.sliding_window());
+      const ONNX_NAMESPACE::TensorShapeProto_Dimension* sources[]{
+          &source.batch_size(), &source.num_kv_heads(), &source.key_head_size(), &source.value_head_size()};
+      ONNX_NAMESPACE::TensorShapeProto_Dimension* targets[]{
+          target->mutable_batch_size(), target->mutable_num_kv_heads(),
+          target->mutable_key_head_size(), target->mutable_value_head_size()};
+      for (size_t i = 0; i < 4; ++i) {
+        ORT_RETURN_IF(sources[i]->has_dim_value() && targets[i]->has_dim_value() &&
+                          sources[i]->dim_value() != targets[i]->dim_value(),
+                      "KV cache geometry mismatch for ", Name(), " at dimension ", i);
+        if (sources[i]->has_dim_value() ||
+            (sources[i]->has_dim_param() && !targets[i]->has_dim_value())) {
+          *targets[i] = *sources[i];
+        }
+      }
+      break;
+    }
     case TypeProto::kTensorType: {
       const auto& input_tensor_type = input_type.tensor_type();
       const auto& input_tensor_elem_type = input_tensor_type.elem_type();
@@ -2653,6 +2680,8 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
 
 bool FullyDefinedType(const TypeProto& type_proto) {
   switch (type_proto.value_case()) {
+    case TypeProto::kKvCacheType:
+      return type_proto.kv_cache_type().elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
     case TypeProto::kTensorType: {
       auto& tensor_type = type_proto.tensor_type();
       return utils::HasElemType(tensor_type);
