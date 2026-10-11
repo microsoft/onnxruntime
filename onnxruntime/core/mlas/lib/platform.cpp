@@ -303,7 +303,8 @@ MlasAMXProbeThread(void* arg)
 bool
 MlasAMXCheckOSSupport(unsigned long bitmask, bool (*probe)(int, void*), void* context)
 {
-    if ((bitmask & XFEATURE_MASK_XTILE) != XFEATURE_MASK_XTILE) {
+    // Older kernels report only TILEDATA after granting permission.
+    if ((bitmask & XFEATURE_MASK_XTILEDATA) == 0) {
         return false;
     }
     // Only change affinity in a temporary thread, never in the caller.
@@ -361,7 +362,7 @@ MlasInitAMX()
 #if defined(MLAS_TARGET_AMD64)
     return MlasAMXCheckOSSupport(bitmask, MlasAMXTileDataRoundTrip, nullptr);
 #else
-    return (bitmask & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE;
+    return (bitmask & XFEATURE_MASK_XTILEDATA) != 0;
 #endif
 #else
     return true;

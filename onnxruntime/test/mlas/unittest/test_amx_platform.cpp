@@ -34,14 +34,22 @@ bool TestTileDataRoundTrip(int cpu, void* arg) {
   return rc == 0 && context.PreserveData;
 }
 
-void TestProbeResult(bool preserve_data) {
+void TestProbeResult(bool preserve_data, unsigned long bitmask = kTilePermissionMask) {
   cpu_set_t before;
-  ASSERT_EQ(sched_getaffinity(0, sizeof(before), &before), 0);
+  if (sched_getaffinity(0, sizeof(before), &before) != 0) {
+    GTEST_SKIP() << "CPU affinity is unavailable";
+  }
   if (CPU_COUNT(&before) < 2) {
     GTEST_SKIP() << "Migration probe requires two allowed CPUs";
   }
+  if (sched_setaffinity(0, sizeof(before), &before) != 0) {
+    ProbeContext context{true};
+    EXPECT_FALSE(MlasAMXCheckOSSupportForTesting(bitmask, TestTileDataRoundTrip, &context));
+    EXPECT_EQ(context.Calls, 0);
+    GTEST_SKIP() << "CPU affinity changes are unavailable";
+  }
   ProbeContext context{preserve_data};
-  EXPECT_EQ(MlasAMXCheckOSSupportForTesting(kTilePermissionMask, TestTileDataRoundTrip, &context), preserve_data);
+  EXPECT_EQ(MlasAMXCheckOSSupportForTesting(bitmask, TestTileDataRoundTrip, &context), preserve_data);
   EXPECT_EQ(context.Calls, 1);
   cpu_set_t after;
   ASSERT_EQ(sched_getaffinity(0, sizeof(after), &after), 0);
@@ -58,12 +66,16 @@ TEST(AmxPlatform, LostTileData) {
   TestProbeResult(false);
 }
 
-TEST(AmxPlatform, BothTilePermissionsRequired) {
-  for (unsigned long permission : {0ul, 1ul << 17, 1ul << 18}) {
+TEST(AmxPlatform, TileDataPermissionRequired) {
+  for (unsigned long permission : {0ul, 1ul << 17}) {
     ProbeContext context{true};
     EXPECT_FALSE(MlasAMXCheckOSSupportForTesting(permission, TestTileDataRoundTrip, &context));
     EXPECT_EQ(context.Calls, 0);
   }
+}
+
+TEST(AmxPlatform, OlderKernelTileDataPermission) {
+  TestProbeResult(true, 1ul << 18);
 }
 
 TEST(AmxPlatform, CancellationStateUnchanged) {
@@ -102,7 +114,9 @@ TEST(AmxPlatform, DetachedThreadDefaults) {
 
 TEST(AmxPlatform, UnverifiableMigrationDisablesAmx) {
   cpu_set_t before;
-  ASSERT_EQ(sched_getaffinity(0, sizeof(before), &before), 0);
+  if (sched_getaffinity(0, sizeof(before), &before) != 0) {
+    GTEST_SKIP() << "CPU affinity is unavailable";
+  }
   int cpu = 0;
   while (cpu < CPU_SETSIZE && !CPU_ISSET(cpu, &before)) {
     ++cpu;
@@ -112,7 +126,9 @@ TEST(AmxPlatform, UnverifiableMigrationDisablesAmx) {
     cpu_set_t target;
     CPU_ZERO(&target);
     CPU_SET(cpu, &target);
-    ASSERT_EQ(sched_setaffinity(0, sizeof(target), &target), 0);
+    if (sched_setaffinity(0, sizeof(target), &target) != 0) {
+      GTEST_SKIP() << "CPU affinity changes are unavailable";
+    }
     ProbeContext context{true};
     EXPECT_FALSE(MlasAMXCheckOSSupportForTesting(kTilePermissionMask, TestTileDataRoundTrip, &context));
     EXPECT_EQ(context.Calls, 0);
