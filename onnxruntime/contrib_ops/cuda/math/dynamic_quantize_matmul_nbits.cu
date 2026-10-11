@@ -841,7 +841,8 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
     // K divisible by 16 keeps every qA row and packed-weight vector aligned.
     if (compute_capability >= 80 && rows >= 16 && n >= 8 && k >= 32 && k % 16 == 0 &&
         k <= std::numeric_limits<int>::max() - 256 && block_size >= k && activation_block_size >= k) {
-      const bool large_k_tile = compute_capability >= 90 && rows >= 128 && k >= 128;
+      const bool large_k_tile = compute_capability >= 120 ||
+                                (compute_capability >= 90 && rows >= 128 && k >= 128);
       bool available;
       ORT_RETURN_IF_ERROR(NativeKernelAvailable(large_k_tile ? NativeSingleIntervalMatMul<T, 128>
                                                              : NativeSingleIntervalMatMul<T, 64>,
@@ -871,14 +872,17 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
   }
   // Whole 64-code intervals permit aligned asynchronous copies even for W2.
   // Keep address products wide, while bounding the fast path's loop counters.
-  if (compute_capability >= 80 && rows >= 32 && n >= 8 && k >= 64 && k % 64 == 0 &&
+  // Consumer Blackwell's measured crossover is eight rows; earlier architectures retain 32.
+  const int64_t minimum_rows = compute_capability >= 120 ? 8 : 32;
+  if (compute_capability >= 80 && rows >= minimum_rows && n >= 8 && k >= 64 && k % 64 == 0 &&
       rows <= std::numeric_limits<int>::max() - 128 && n <= std::numeric_limits<int>::max() - 128 &&
       k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
       activation_block_size <= std::numeric_limits<int>::max() && block_size % 64 == 0 &&
       (activation_block_size >= k || activation_block_size % 64 == 0)) {
     const int64_t column_tiles = n / 64 + (n % 64 != 0);
     const size_t large_tiles = SafeInt<size_t>(rows / 64 + (rows % 64 != 0)) * column_tiles;
-    const bool large_m_tile = large_tiles >= 256;
+    const size_t large_tile_threshold = compute_capability >= 120 ? 128 : 256;
+    const bool large_m_tile = large_tiles >= large_tile_threshold;
     const int tile_m = large_m_tile ? 64 : 32;
     const bool common128 = block_size == 128 && k % 128 == 0 && activation_block_size >= k &&
                            rows % tile_m == 0 && n % 64 == 0;

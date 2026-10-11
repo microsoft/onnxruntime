@@ -190,7 +190,15 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
         rng = np.random.default_rng(0)
         block = 128
         activation_block = 192
-        for m, k, n in ((65, 320, 137), (961, 192, 961), (128, 256, 128), (1024, 256, 1024)):
+        shapes = (
+            (8, 256, 64),
+            (16, 128, 512),
+            (65, 320, 137),
+            (961, 192, 961),
+            (128, 256, 128),
+            (1024, 256, 1024),
+        )
+        for m, k, n in shapes:
             groups = (k + block - 1) // block
             a = rng.normal(size=(m, k)).astype(np.float16)
             a[0] = 0

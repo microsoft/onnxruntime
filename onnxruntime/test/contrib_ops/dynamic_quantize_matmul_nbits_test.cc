@@ -373,6 +373,16 @@ TEST(DynamicQuantizeMatMulNBitsTest, Common128ScaleIntervals) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, BlackwellPortableKernelDispatch) {
+  if (!HasCudaEnvironment(1200)) GTEST_SKIP();
+  for (int bits : {2, 4, 8}) {
+    RunCase<MLFloat16>({8, 256}, 64, bits, 128, "dynamic_per_token", 0, true, false, true);
+    RunCase<BFloat16>({8, 256}, 64, bits, 128, "dynamic_per_tensor", 0, true, false, false);
+    RunCase<MLFloat16>({128, 128}, 4096, bits, 64, "dynamic_per_token", 0, true, false, false);
+  }
+  RunCase<MLFloat16>({16, 128}, 512, 8, 128, "dynamic_per_token", 0, true, false, false);
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, ConstantWeightsAndFallbacks) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (int bits : {2, 4}) {

@@ -1750,8 +1750,86 @@ the 15 Python tests pass, memcheck is clean, and the sm90 translation unit
 still compiles as a stub for sm_89 and sm_100a. Ptxas reports no WGMMA
 serialization warning for any grouped instantiation.
 
-Not done: Ada/Blackwell tuning and execution, Windows execution, and the
-split-interval variants.
+The Hopper-specific work did not cover Ada/Blackwell tuning, Windows
+execution, or the split-interval variants. Section 8.15 covers the portable
+kernel on SM120.
+
+### 8.15 RTX 5090 portable-kernel tuning
+
+Measured on an NVIDIA GeForce RTX 5090 (SM120), driver 610.88, CUDA 13.4,
+PyTorch 2.14.1+cu130, and an ORT 1.32.0 Release CUDA-plugin build with native
+SM120 SASS on Windows. The SM90 TMA implementation is intentionally a stub
+under MSVC, so these measurements exercise the portable SM80+ `mma.sync`
+kernels. The results were rechecked after commit `4a889f4722`, which
+generalizes the SM90 WGMMA path but does not change SM120 dispatch.
+
+The W8 single-interval TileK=64/128 alternatives and grouped TileM=32/64
+alternatives were measured by alternating both candidates in one session
+against the same inputs. Temporary per-kernel CUDA events exclude ORT and
+host-launch gaps; every pair produced bit-identical output.
+
+SM120 consistently prefers TileK=128 for the W8 single-interval kernel,
+including row counts below the H200 crossover:
+
+| M | K | N | TileK=64 (us) | TileK=128 (us) | K128 speedup |
+|---|---|---|---------------|----------------|--------------|
+| 16 | 2048 | 6144 | 21.09 | 18.80 | 1.12x |
+| 32 | 2048 | 4096 | 42.58 | 40.30 | 1.06x |
+| 64 | 6144 | 2048 | 68.66 | 61.01 | 1.13x |
+| 1536 | 2048 | 4096 | 116.96 | 99.68 | 1.17x |
+
+For grouped weights, TileM=32 remains better through 64 candidate tiles,
+while TileM=64 wins at 128 or more. Representative K=N=4096 results:
+
+| Bits | M | TileM=64 candidate tiles | TileM=32 (us) | TileM=64 (us) | M64 speedup |
+|------|---|--------------------------|----------------|----------------|-------------|
+| 2 | 64 | 64 | 47.18 | 52.93 | 0.89x |
+| 2 | 128 | 128 | 54.75 | 52.75 | 1.04x |
+| 4 | 64 | 64 | 25.78 | 31.82 | 0.81x |
+| 4 | 128 | 128 | 59.34 | 53.02 | 1.12x |
+| 8 | 64 | 64 | 27.63 | 31.25 | 0.88x |
+| 8 | 128 | 128 | 44.03 | 35.50 | 1.24x |
+
+Dispatch therefore uses TileK=128 for every eligible SM120 W8
+single-interval shape and lowers the grouped large-tile threshold from 256
+to 128 on SM120. Earlier architectures retain the H200 choices.
+
+The other useful difference was the grouped kernel's minimum M: the kernel
+already supports partial row tiles, but the portable dispatch required at
+least 32 rows. Isolated kernel CUDA-event timings for block-128, FP16
+per-token, K=N=4096 show the crossover clearly:
+
+| Bits | M | Previous fallback (us) | Aligned grouped (us) | Speedup |
+|------|---|------------------------|----------------------|---------|
+| 2 | 8 | 198.30 | 48.90 | 4.06x |
+| 2 | 16 | 372.19 | 30.08 | 12.37x |
+| 4 | 8 | 218.11 | 52.18 | 4.18x |
+| 4 | 16 | 380.14 | 30.30 | 12.55x |
+| 8 | 8 | 182.69 | 35.74 | 5.11x |
+| 8 | 16 | 343.52 | 29.98 | 11.46x |
+
+At M=1 the result is mixed by width (0.75-1.18x), while all three widths
+win at M=8. Dispatch therefore lowers the portable aligned-grouped minimum
+from 32 to 8 only on SM120 or later; earlier architectures retain the
+measured 32-row crossover.
+
+Complete-operator CUDA-event medians after the change, with 20 warmups,
+50 repetitions, seven trials, constant weights/scales, no bias, and the
+same K=N=4096 geometry:
+
+| Bits | M=1 (us) | M=8 (us) | M=16 (us) | M=32 (us) |
+|------|----------|----------|-----------|-----------|
+| 2 | 74.56 | 44.07 | 43.19 | 39.05 |
+| 4 | 73.73 | 43.15 | 66.28 | 37.32 |
+| 8 | 72.54 | 65.11 | 42.70 | 38.90 |
+
+Windows host scheduling and GPU clock transitions make complete-operator
+small-M timings visibly noisier than isolated kernel events, so the
+per-kernel measurements determine the crossover. The grouped Python
+reference test checks the M=8 path exactly for every weight width and
+activation mode, and `BlackwellPortableKernelDispatch` adds exact FP16/BF16
+coverage for the SM120 small-M, TileK=128, and grouped TileM=64 choices.
+
 
 ## 9. Delivery Plan and Acceptance
 
