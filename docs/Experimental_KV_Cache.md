@@ -64,6 +64,24 @@ on function expansion for Swish; lifted graphs require the explicit kernel.
 Real pretrained model parity is performed by the coordinated Mobius driver;
 these focused tests alone do not establish model-level parity.
 
+The coordinated driver completed real pretrained CPU float32 comparisons:
+
+| Model | Prefill / decode | Runtime-selected storage | Maximum absolute logit error |
+| --- | --- | --- | --- |
+| Qwen3-0.6B | 8 tokens / 3 single-token steps | contiguous, paged | 9.6321106e-5 |
+| Gemma-3-270m | chunks 500,24,3 / 3 single-token steps | contiguous, paged, mixed ring/paged | 5.531311e-5 |
+
+All steps passed `atol=rtol=1e-4` with matching greedy tokens. Qwen used model
+revision `c1899de289a04d12100db370d81485cdf75e47ca`; Gemma used
+`9b0cfec892e2bc2afd938c98eabe4e4a7b1e0ca1`. Gemma has 15 window-512
+sliding layers and 3 full layers. Its computed ends were
+`500,524,527,528,529,530`, sliding retained begins were `0,12,15,16,17,18`,
+and full-layer retained begins remained zero. Thus the 24-token chunk crosses
+the physical ring boundary without changing logical attention. Qwen's real
+run does not cover multi-chunk prefill; Gemma and native tests provide that
+coverage. The model owner persists per-backend machine-readable run records,
+including model/wheel hashes, exact token IDs, and per-step cache states.
+
 The wheel is `onnxruntime-1.32.0-cp313-cp313-win_amd64.whl`, SHA256
 `ab1fc5ef214e69ce17ee566fec58ffe1a4a8bf4d0965cc97513cc1c9cd0205d4`.
 The matching ONNX wheel is `onnx-1.24.0-cp312-abi3-win_amd64.whl`, SHA256
