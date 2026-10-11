@@ -5,6 +5,8 @@
 #include <Windows.h>
 #include <stdlib.h>
 #include <filesystem>
+#include <stdexcept>
+#include <string_view>
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -23,6 +25,7 @@
 //    └── onnxruntime_webgpu_delay_load_test.exe (this binary)
 //
 //    This folder structure ensures no DLLs are in the same folder as the executable (test.exe).
+//    Shared plugin builds also place onnxruntime_providers_webgpu.dll in dlls/.
 //
 // 2. Launch the test binary from the root folder of the above structure.
 //
@@ -62,6 +65,9 @@ int prepare_main() {
 
   // copy the required DLLs to the dlls folder
   fs::copy_file(L"onnxruntime.dll", dlls_folder / L"onnxruntime.dll");
+#if defined(ORT_USE_EP_API_ADAPTERS) && !defined(ORT_WEBGPU_STATIC_PLUGIN)
+  fs::copy_file(L"onnxruntime_providers_webgpu.dll", dlls_folder / L"onnxruntime_providers_webgpu.dll");
+#endif
   fs::copy_file(L"dxcompiler.dll", dlls_folder / L"dxcompiler.dll");
   if (fs::exists(L"webgpu_dawn.dll")) {
     fs::copy_file(L"webgpu_dawn.dll", dlls_folder / L"webgpu_dawn.dll");
@@ -95,9 +101,28 @@ int run() {
 
     Ort::SessionOptions session_options;
     session_options.DisableMemPattern();
+    session_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#if !defined(ORT_WEBGPU_STATIC_PLUGIN)
+    // Relative plugin paths are resolved beside onnxruntime.dll, already in dlls/.
+    env.RegisterExecutionProviderLibrary("webgpu_delay_load_test", L"onnxruntime_providers_webgpu.dll");
+#endif
+    Ort::ConstEpDevice webgpu_device{nullptr};
+    for (const auto& device : env.GetEpDevices()) {
+      if (std::string_view(device.EpName()) == "WebGpuExecutionProvider") {
+        webgpu_device = device;
+        break;
+      }
+    }
+    if (!webgpu_device) {
+      throw std::runtime_error("No WebGPU plugin device found.");
+    }
+    session_options.AppendExecutionProvider_V2(env, {webgpu_device}, Ort::KeyValuePairs{});
+#else
     std::unordered_map<std::string, std::string> provider_options{
         {"weightLoadAcceleration", "preferred"}};
     session_options.AppendExecutionProvider("WebGPU", provider_options);
+#endif
     Ort::Session session{env, MODEL_DATA, sizeof(MODEL_DATA), session_options};
 
     // successfully initialized

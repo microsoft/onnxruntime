@@ -135,6 +135,7 @@ jobs:
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
             onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON `
+            onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY=ON `
             onnxruntime_ENABLE_D3D12_FILE_LOADING=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
@@ -266,6 +267,7 @@ jobs:
     needs:
       - webgpu_compile_x64_RelWithDebInfo
       - webgpu_test_x64_RelWithDebInfo
+      - webgpu_plugin_test_x64_RelWithDebInfo
     if: always()
     runs-on: ubuntu-latest
     strategy:
@@ -275,6 +277,7 @@ jobs:
         env:
           COMPILE_RESULT: ${{ needs.webgpu_compile_x64_RelWithDebInfo.result }}
           TEST_RESULT: ${{ needs.webgpu_test_x64_RelWithDebInfo.result }}
+          PLUGIN_RESULT: ${{ needs.webgpu_plugin_test_x64_RelWithDebInfo.result }}
         shell: bash
         run: |
           if [[ "$COMPILE_RESULT" != "success" ]]; then
@@ -284,6 +287,11 @@ jobs:
 
           if [[ "$TEST_RESULT" != "success" ]]; then
             echo "::error::WebGPU test result: $TEST_RESULT"
+            exit 1
+          fi
+
+          if [[ "$PLUGIN_RESULT" != "success" ]]; then
+            echo "::error::WebGPU shared-plugin coverage result: $PLUGIN_RESULT"
             exit 1
           fi
 
@@ -323,6 +331,13 @@ jobs:
           key: windows-x64-webgpu-plugin-relwithdebinfo
           path: ${{ runner.temp }}/vcpkg-binary-cache
 
+      - name: Setup Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          architecture: x64
+
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
@@ -343,6 +358,8 @@ jobs:
             --cmake_generator "Visual Studio 17 2022" `
             --enable_onnx_tests `
             --use_webgpu shared_lib `
+            --build_shared_lib `
+            --build_java `
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 `
             --disable_rtti `
@@ -407,6 +424,13 @@ jobs:
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
+          architecture: x64
+
+      - name: Setup Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: "temurin"
+          java-version: "17"
           architecture: x64
 
       - name: Install python modules
@@ -507,9 +531,20 @@ jobs:
             --cmake_generator "Visual Studio 17 2022" `
             --enable_onnx_tests `
             --use_webgpu static_plugin `
+            --build_shared_lib `
+            --skip_tests `
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY=ON
 
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+      - name: Run static-plugin integration tests
+        shell: pwsh
+        run: |
+          ctest --test-dir "${{ github.workspace }}\RelWithDebInfo" -C RelWithDebInfo --output-on-failure --no-tests=error `
+            -R '^onnxruntime_(provider_test|webgpu_legacy_test|test_all|autoep_test)$'
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

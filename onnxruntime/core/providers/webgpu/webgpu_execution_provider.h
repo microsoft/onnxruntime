@@ -54,6 +54,10 @@ struct CapturedCommandInfo;
 std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, bool enable_int64);
 }  // namespace webgpu
 
+namespace test {
+struct WebGpuTestAccess;
+}
+
 struct WebGpuExecutionProviderConfig {
   DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
   bool enable_graph_capture{false};          // graph capture feature is disabled by default
@@ -146,6 +150,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 #endif
 
  private:
+  friend struct test::WebGpuTestAccess;
   bool IsGraphCaptureAllowed() const;
   void IncrementRegularRunCountBeforeGraphCapture();
 

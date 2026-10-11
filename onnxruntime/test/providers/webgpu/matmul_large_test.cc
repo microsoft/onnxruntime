@@ -15,7 +15,9 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
-#if !defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "test/providers/webgpu/test_plugin.h"
+#else
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -93,16 +95,9 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
     const IExecutionProvider& ep,
     webgpu::MatMulAlgorithm algorithm) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  ORT_UNUSED_PARAMETER(ep);
-  switch (algorithm) {
-    case webgpu::MatMulAlgorithm::Subgroup:
-    case webgpu::MatMulAlgorithm::PackedSplitK:
-    case webgpu::MatMulAlgorithm::SubgroupMatrix:
-      return "hardware-specific forced MatMul tests require direct adapter capability inspection.";
-    case webgpu::MatMulAlgorithm::Gemv:
-    case webgpu::MatMulAlgorithm::Naive:
-    case webgpu::MatMulAlgorithm::Packed:
-      return std::nullopt;
+  const auto capabilities = GetWebGpuTestPlugin().Inspect(ep);
+  if (const auto* reason = capabilities.matmul_unavailable[static_cast<int>(algorithm)]) {
+    return reason;
   }
   return std::nullopt;
 #else

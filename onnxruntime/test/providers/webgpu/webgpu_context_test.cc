@@ -32,14 +32,17 @@
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/asserts.h"
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
+#endif
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 #include "core/session/inference_session.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
-#include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/temp_dir.h"
-
-#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 #include "core/platform/windows/d3d12_file_loader/d3d12_file_buffer_loader.h"
 #include "core/providers/webgpu/d3d12_external_data_loader.h"
 #endif
@@ -1051,7 +1054,17 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
-  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), nonzero_data);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  // Modern plugin Alloc is streamless and submits its clear immediately. The separate
+  // serialized-mode CTest retains the deferred-clear assertion from the built-in EP.
+  if (!webgpu::ep::UseSerializedExecutionMode()) {
+    const std::array<uint32_t, 16> cleared_data{};
+    EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), cleared_data);
+  } else
+#endif
+  {
+    EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), nonzero_data);
+  }
 
   ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
   const std::array<uint32_t, 16> expected_data{};
@@ -2165,6 +2178,21 @@ TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
 
     ASSERT_NE(ep, nullptr);
     EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+  },
+                             /*compile_only_parent=*/true);
+}
+
+TEST(WebGpuContextTest, CompileOnlyUsesNoOpAllocator) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    const auto allocators = ep->CreatePreferredAllocators();
+    ASSERT_FALSE(allocators.empty());
+    for (const auto& allocator : allocators) {
+      EXPECT_THROW(allocator->Alloc(16), OnnxRuntimeException);
+      allocator->Free(nullptr);
+    }
   },
                              /*compile_only_parent=*/true);
 }

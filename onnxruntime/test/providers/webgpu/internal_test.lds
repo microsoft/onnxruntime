@@ -1,0 +1,12 @@
+{
+  global:
+    RunWebGpuInternalTests;
+    CreateEpFactories;
+    ReleaseEpFactory;
+    BeginWebGpuTestContext;
+    EndWebGpuTestContext;
+    ConfigureWebGpuTestEp;
+    InspectWebGpuTestEp;
+  local:
+    *;
+};

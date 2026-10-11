@@ -2283,7 +2283,7 @@ TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize3TwoCallCont
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, WebGpuSegmentedBuffers) {
-#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(USE_WEBGPU)
   constexpr uint64_t limit = webgpu::WebGpuContext::kMinConfigurableStorageBufferBindingSize;
 
   VarlenCausalConvCase output_case;

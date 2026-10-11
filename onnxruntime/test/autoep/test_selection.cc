@@ -212,7 +212,8 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
                   const Ort::KeyValuePairs& provider_options,
                   const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices,
                   bool test_auto_select,
-                  bool disable_cpu_ep_fallback) {
+                  bool disable_cpu_ep_fallback,
+                  std::optional<EpSelectionDelegate> delegate) {
   const auto run_test = [&](bool auto_select) {
     std::vector<Input<float>> inputs(1);
     auto& input = inputs.back();
@@ -233,7 +234,7 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
                          auto_select,
                          select_devices,
                          /*policy*/ std::nullopt,
-                         /*delegate*/ std::nullopt,
+                         delegate,
                          /*test_session_creation_only*/ false,
                          disable_cpu_ep_fallback);
   };
@@ -300,11 +301,35 @@ TEST(AutoEpSelection, DmlEP) {
 }
 #endif
 
-#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(USE_WEBGPU)
 TEST(AutoEpSelection, WebGpuEP) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#if !defined(ORT_WEBGPU_STATIC_PLUGIN)
+  const auto path = std::filesystem::path{GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu"))};
+  Utils::ExamplePluginInfo plugin_info(path, "webgpu_selection_test", kWebGpuExecutionProvider);
+  RegisteredEpDeviceUniquePtr device_holder;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, plugin_info, device_holder));
+#endif
+  EpSelectionDelegate select_webgpu = [](const OrtEpDevice** devices, size_t num_devices,
+                                         const OrtKeyValuePairs*, const OrtKeyValuePairs*,
+                                         const OrtEpDevice** selected, size_t max_selected,
+                                         size_t* num_selected, void*) -> OrtStatus* {
+    *num_selected = 0;
+    for (size_t i = 0; i < num_devices && max_selected > 0; ++i) {
+      if (std::strcmp(Ort::GetApi().EpDevice_EpName(devices[i]), kWebGpuExecutionProvider) == 0) {
+        selected[0] = devices[i];
+        *num_selected = 1;
+        return nullptr;
+      }
+    }
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "No WebGPU plugin device selected");
+  };
+  RunBasicTest(kWebGpuExecutionProvider, std::nullopt, Ort::KeyValuePairs{}, nullptr, true, true, select_webgpu);
+#else
   RunBasicTest(kWebGpuExecutionProvider, std::nullopt);
+#endif
 }
-#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#endif  // defined(USE_WEBGPU)
 
 // tests for AutoEP selection related things in the API that aren't covered by the other tests.
 TEST(AutoEpSelection, MiscApiTests) {

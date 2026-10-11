@@ -204,6 +204,7 @@ test {
 		'USE_VITISAI',
 		'USE_VSINPU',
 		'USE_WEBGPU',
+		'WEBGPU_PLUGIN_LIBRARY',
 		'USE_WEBNN',
 		'USE_XNNPACK',
 		])
