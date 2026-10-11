@@ -4,7 +4,8 @@
     "rootDir": "lib",
     "outDir": "dist",
     "declaration": true,
-    "types": ["node"]
+    "types": ["node"],
+    "lib": ["ES2020", "ESNext.BigInt", "dom"]
   },
   "include": ["lib"]
 }

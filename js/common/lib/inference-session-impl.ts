@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import { resolveBackendAndExecutionProviders } from './backend-impl.js';
-import { Backend, InferenceSessionHandler, LoraAdapterHandler } from './backend.js';
+import { Backend, InferenceSessionHandler, LoraAdapterHandler, SessionHandler } from './backend.js';
 import { InferenceSession as InferenceSessionInterface } from './inference-session.js';
 import { LoraAdapter } from './lora-adapter-impl.js';
 import { OnnxValue } from './onnx-value.js';
@@ -25,6 +25,35 @@ export class InferenceSession implements InferenceSessionInterface {
   async run(feeds: FeedsType, arg1?: FetchesType | RunOptions, arg2?: RunOptions): Promise<ReturnType> {
     TRACE_FUNC_BEGIN();
     TRACE_EVENT_BEGIN('InferenceSession.run');
+    const { fetches, options, activeLoraAdapters } = this.prepareRun(feeds, arg1, arg2);
+    const results = await this.handler.run(feeds, fetches, options, activeLoraAdapters);
+    const returnValue = this.toReturnValue(results);
+    TRACE_EVENT_END('InferenceSession.run');
+    TRACE_FUNC_END();
+    return returnValue;
+  }
+
+  runSync(feeds: FeedsType, options?: RunOptions): ReturnType;
+  runSync(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): ReturnType;
+  runSync(feeds: FeedsType, arg1?: FetchesType | RunOptions, arg2?: RunOptions): ReturnType {
+    TRACE_FUNC_BEGIN();
+    TRACE_EVENT_BEGIN('InferenceSession.runSync');
+    if (typeof this.handler.runSync !== 'function') {
+      throw new Error("'runSync' is not supported by the backend of this session.");
+    }
+    const { fetches, options, activeLoraAdapters } = this.prepareRun(feeds, arg1, arg2);
+    const results = this.handler.runSync(feeds, fetches, options, activeLoraAdapters);
+    const returnValue = this.toReturnValue(results);
+    TRACE_EVENT_END('InferenceSession.runSync');
+    TRACE_FUNC_END();
+    return returnValue;
+  }
+
+  private prepareRun(
+    feeds: FeedsType,
+    arg1?: FetchesType | RunOptions,
+    arg2?: RunOptions,
+  ): { fetches: { [name: string]: OnnxValue | null }; options: RunOptions; activeLoraAdapters?: LoraAdapterHandler[] } {
     const fetches: { [name: string]: OnnxValue | null } = {};
     let options: RunOptions = {};
     // check inputs
@@ -126,9 +155,10 @@ export class InferenceSession implements InferenceSessionInterface {
       });
     }
 
-    // feeds, fetches and options are prepared
+    return { fetches, options, activeLoraAdapters };
+  }
 
-    const results = await this.handler.run(feeds, fetches, options, activeLoraAdapters);
+  private toReturnValue(results: SessionHandler.ReturnType): ReturnType {
     const returnValue: { [name: string]: OnnxValue } = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
@@ -140,8 +170,6 @@ export class InferenceSession implements InferenceSessionInterface {
         }
       }
     }
-    TRACE_EVENT_END('InferenceSession.run');
-    TRACE_FUNC_END();
     return returnValue;
   }
 
