@@ -54,12 +54,17 @@ DynamicQuantizeMatMulNBits::DynamicQuantizeMatMulNBits(const OpKernelInfo& info)
     : CudaKernel(info),
       bits_(info.GetAttrOrDefault<int64_t>("bits", 8)),
       block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)),
+      weight_prepacked_(info.GetAttrOrDefault<int64_t>("weight_prepacked", 0)),
       activation_block_size_(0) {
   enable_sm90_ = !ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM", false);
   ORT_ENFORCE(bits_ == 2 || bits_ == 4 || bits_ == 8, "bits must be 2, 4, or 8.");
   ORT_ENFORCE(block_size_ >= 16 && (block_size_ & (block_size_ - 1)) == 0,
               "block_size must be a power of two and at least 16.");
   ORT_ENFORCE(bits_ != 2 || block_size_ <= 256, "INT2 block_size must not exceed 256.");
+  ORT_ENFORCE(weight_prepacked_ == 0 ||
+                  (weight_prepacked_ == 1 && bits_ == 4 && block_size_ == 32 &&
+                   GetDeviceProp().major >= 8),
+              "weight_prepacked=1 requires INT4 block-32 weights on an SM80+ device.");
   const auto mode = info.GetAttrOrDefault<std::string>("activation_quantization", "dynamic_per_token");
   const bool has_block_size = info.GetAttr<int64_t>("activation_block_size", &activation_block_size_).IsOK();
   ORT_ENFORCE(mode == "dynamic_per_tensor" || mode == "dynamic_per_token" || mode == "dynamic_per_block",
@@ -88,7 +93,8 @@ Status DynamicQuantizeMatMulNBits::PrePack(const Tensor& tensor, int input_idx, 
                                            bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   const auto& shape = tensor.Shape();
-  if (!enable_sm90_ || input_idx != 1 || GetDeviceProp().major != 9 || GetDeviceProp().minor != 0 ||
+  if (weight_prepacked_ != 0 || !enable_sm90_ || input_idx != 1 ||
+      GetDeviceProp().major != 9 || GetDeviceProp().minor != 0 ||
       shape.NumDimensions() != 3 || shape[0] % 8 != 0 || shape[2] != block_size_ * bits_ / 8) {
     return Status::OK();
   }
@@ -241,6 +247,7 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
       ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedMatMul(quantized.get(), a_scales, b->Data<uint8_t>(),
                                                        scales->DataRaw(), scale_type, bias_data, y_tile, bf16,
                                                        per_tensor, rows, n, k, static_cast<int>(bits_), block_size_, activation_block,
+                                                       weight_prepacked_,
                                                        GetDeviceProp().major * 10 + GetDeviceProp().minor, stream));
     }
     row += rows;

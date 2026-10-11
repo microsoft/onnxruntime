@@ -3229,11 +3229,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(R"DOC(Matrix multiplication with dynamic symmetric INT8 activations and MatMulNBits weights.
 
-A has shape [..., K]. B contains unsigned offset codes in standard MatMulNBits layout
+A has shape [..., K]. With weight_prepacked=0, B contains unsigned offset codes in standard MatMulNBits layout
 [N, ceil(K/block_size), block_size*bits/8]. Codes are packed low bits first within each byte;
 subtract 2^(bits-1) to obtain signed weights. Codes beyond K are ignored. Weight scales have
 shape [N, ceil(K/block_size)] or its flattened equivalent and must be finite; signed and zero
-scales are supported. No zero points, group indices, or prepacked layouts are accepted.
+scales are supported. weight_prepacked=1 selects the SM80 fpA_intB W4 layout for the specialized
+CUDA SM80+ block-32 path; the tensor shape and byte count are unchanged. No zero points or group
+indices are accepted.
 
 Activation scales are computed over the entire tensor, each row, or each row's consecutive
 activation_block_size values according to activation_quantization. For each domain, sA is
@@ -3258,6 +3260,11 @@ accuracy choice, not a semantics-preserving replacement for weight-only MatMulNB
         .Attr("bits", "Weight bit width: 2, 4, or 8.", AttributeProto::INT, int64_t{8})
         .Attr("block_size", "Weight block size: power of two, at least 16; at most 256 for INT2.",
               AttributeProto::INT, int64_t{128})
+        .Attr("weight_prepacked",
+              "Weight layout selector. 0 uses standard MatMulNBits blobs. 1 uses the SM80 fpA_intB "
+              "layout and requires the CUDA SM80+ INT4 block-32 path with K divisible by 128, "
+              "N divisible by 64, and one activation-scale interval.",
+              AttributeProto::INT, int64_t{0})
         .Attr("activation_quantization", "dynamic_per_tensor, dynamic_per_token, or dynamic_per_block.",
               AttributeProto::STRING, std::string("dynamic_per_token"))
         .Attr("activation_block_size", "Positive K block size, required only for dynamic_per_block.",
@@ -3274,6 +3281,7 @@ accuracy choice, not a semantics-preserving replacement for weight-only MatMulNB
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           const int64_t bits = getAttribute(ctx, "bits", 8);
           const int64_t block = getAttribute(ctx, "block_size", 128);
+          const int64_t weight_prepacked = getAttribute(ctx, "weight_prepacked", 0);
           const auto* mode_attr = ctx.getAttribute("activation_quantization");
           const std::string mode = mode_attr ? mode_attr->s() : "dynamic_per_token";
           const auto* activation_block_attr = ctx.getAttribute("activation_block_size");
@@ -3282,6 +3290,12 @@ accuracy choice, not a semantics-preserving replacement for weight-only MatMulNB
             fail_shape_inference("block_size must be a power of two and at least 16.");
           }
           if (bits == 2 && block > 256) fail_shape_inference("INT2 block_size must not exceed 256.");
+          if (weight_prepacked != 0 && weight_prepacked != 1) {
+            fail_shape_inference("weight_prepacked must be 0 or 1.");
+          }
+          if (weight_prepacked == 1 && (bits != 4 || block != 32)) {
+            fail_shape_inference("weight_prepacked=1 requires INT4 block-32 weights.");
+          }
           if (mode != "dynamic_per_tensor" && mode != "dynamic_per_token" && mode != "dynamic_per_block") {
             fail_shape_inference("Unrecognized activation_quantization.");
           }
@@ -3296,6 +3310,9 @@ accuracy choice, not a semantics-preserving replacement for weight-only MatMulNB
           }
           const int64_t k = a && a->dim(a->dim_size() - 1).has_dim_value() ? a->dim(a->dim_size() - 1).dim_value() : -1;
           const int64_t n = b && b->dim(0).has_dim_value() ? b->dim(0).dim_value() : -1;
+          if (weight_prepacked == 1 && ((k >= 0 && k % 128 != 0) || (n >= 0 && n % 64 != 0))) {
+            fail_shape_inference("weight_prepacked=1 requires K divisible by 128 and N divisible by 64.");
+          }
           const int64_t groups = k >= 0                           ? k / block + (k % block != 0)
                                  : b && b->dim(1).has_dim_value() ? b->dim(1).dim_value()
                                                                   : -1;

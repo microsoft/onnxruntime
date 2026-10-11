@@ -56,8 +56,9 @@ Non-goals for the initial implementation:
 - UINT8 activation quantization, asymmetric weight quantization, explicit
   zero points, or arbitrary group indices. Stored weights use MatMulNBits
   unsigned codes centered at the fixed symmetric midpoint.
-- Reusing architecture-specific `weight_prepacked=1/2` MatMulNBits layouts;
-  version 1 consumes its standard, non-prepacked representation only.
+- Reusing `weight_prepacked=2` or arbitrary architecture-specific layouts.
+  The only prepacked exception is SM80 `weight_prepacked=1` for the explicitly
+  gated SM80+ W4 block-32 path.
 - Weight-only W8A16/W4A16/W2A16 execution, static activation scales, or externally
   quantized activation inputs.
 - FP32 activation/output support or quantized output.
@@ -96,7 +97,7 @@ The proposed schema supports `bits = 8`, `bits = 4`, and `bits = 2`.
 | Input | Index | Type | Shape and meaning |
 |-------|-------|------|-------------------|
 | `A` | 0 | FP16 or BF16 (`T`) | Row-major activation, `[..., K]`, rank at least 1. |
-| `B` | 1 | UINT8 (`T1`) | Standard MatMulNBits blobs, `[N, G, blob_size]`, where `G = ceil(K / block_size)` and `blob_size = block_size * bits / 8`. |
+| `B` | 1 | UINT8 (`T1`) | Standard MatMulNBits blobs when `weight_prepacked=0`, or the same-sized SM80 fpA_intB buffer for the supported `weight_prepacked=1` path; shape `[N, G, blob_size]`, where `G = ceil(K / block_size)` and `blob_size = block_size * bits / 8`. |
 | `scales` | 2 | FP16, BF16, or FP32 (`T2`) | MatMulNBits weight scales, `[N, G]` or flattened `[N * G]`, in output-channel/block order. |
 | `bias` | 3 | Optional `T` | Per-output-channel bias, `[N]`. |
 
@@ -104,6 +105,7 @@ The proposed schema supports `bits = 8`, `bits = 4`, and `bits = 2`.
 |-----------|------|---------|---------|
 | `bits` | INT | `8` | Integer weight bit width; `8`, `4`, and `2` are supported by the proposed contract. Other widths are rejected. |
 | `block_size` | INT | `128` | Number of logical K elements sharing a weight scale; power of two and at least 16, as in MatMulNBits. For `bits = 2`, at most 256. |
+| `weight_prepacked` | INT | `0` | `0` uses standard blobs. `1` selects the SM80 fpA_intB layout and requires CUDA SM80+, W4 block 32, K divisible by 128, N divisible by 64, and one activation-scale interval. |
 | `activation_quantization` | STRING | `"dynamic_per_token"` | `"dynamic_per_tensor"`, `"dynamic_per_token"`, or `"dynamic_per_block"`. All modes dynamically quantize A to symmetric INT8. |
 | `activation_block_size` | INT | No default | Required and positive for `"dynamic_per_block"`; must be absent for the other modes. |
 
@@ -260,10 +262,12 @@ the size-safety requirement in section 2.3.
 The existing [offline block quantizer](../../../onnxruntime/python/tools/quantization/matmul_nbits_quantizer.py)
 can supply standard `is_symmetric=True` QOperator weight/scales initializers
 for bits 2, 4, or 8 without repacking or requantization.
-This does not include asymmetric zero points, `g_idx`, or CUDA
-`weight_prepacked=1/2` layouts. QServe, GGUF, and Marlin formats are not
-implicitly accepted. Internal prepacking must preserve the decoded
-logical codes and scale values.
+This does not include asymmetric zero points, `g_idx`, or CUDA prepacked
+layouts. An exporter may instead opt into the separately validated SM80
+`weight_prepacked=1` contract for the supported SM80+ W4 geometry. The
+`weight_prepacked=2`, QServe, GGUF, and Marlin formats are not implicitly
+accepted. Internal prepacking must preserve the decoded logical codes and
+scale values.
 This is initializer compatibility, not equivalence to weight-only
 MatMulNBits output: the new operator always quantizes A.
 
@@ -864,7 +868,8 @@ non-overridable constants verified to equal the fixed symmetric midpoint
 before omitting that input. Decode packed zero points and check only valid
 block entries; unused padding lanes need not equal the midpoint. Reject
 runtime or overridable zero points, even if their current values match.
-Reject nondefault zero points, `g_idx`, and prepacked layouts rather than
+Reject nondefault zero points, `g_idx`, and prepacked layouts other than the
+explicitly supported `weight_prepacked=1` W4 block-32 geometry rather than
 silently dropping their meaning. Check that source A/output and optional bias
 use the supported FP16/BF16 type, and that source `K`/`N` attributes agree
 with A and the canonical B/scales shapes before removing those attributes.
@@ -1829,6 +1834,71 @@ per-kernel measurements determine the crossover. The grouped Python
 reference test checks the M=8 path exactly for every weight width and
 activation mode, and `BlackwellPortableKernelDispatch` adds exact FP16/BF16
 coverage for the SM120 small-M, TileK=128, and grouped TileM=64 choices.
+
+#### 8.15.1 MatMulNBits comparison on RTX 5090
+
+A byte-identical weight-only comparison used FP16 A/Y, per-token activation
+quantization, constant symmetric B/scales, K=N=4096, block size 128, no bias,
+20 warmups, 100 repetitions, and nine trials. ORT CUDA Graph replay removes
+most Windows host-launch variation. Each cell reports
+`DynamicQuantizeMatMulNBits / MatMulNBits` CUDA-event median latency followed
+by `MatMulNBits / DynamicQuantizeMatMulNBits` speedup:
+
+| M | W2 us (speedup) | W4 us (speedup) | W8 us (speedup) |
+|---|-----------------|-----------------|-----------------|
+| 1 | 44.23 / 14.89 (0.34x) | 44.05 / 13.71 (0.31x) | 41.98 / 15.00 (0.36x) |
+| 8 | 36.33 / 27.92 (0.77x) | 36.38 / 24.42 (0.67x) | 56.00 / 46.40 (0.83x) |
+| 16 | 36.68 / 37.88 (1.03x) | 36.51 / 58.45 (1.60x) | 35.98 / 32.61 (0.91x) |
+| 32 | 31.88 / 40.33 (1.27x) | 30.41 / 33.15 (1.09x) | 31.43 / 34.09 (1.08x) |
+| 64 | 32.54 / 38.47 (1.18x) | 31.05 / 34.11 (1.10x) | 32.17 / 34.58 (1.08x) |
+| 128 | 38.35 / 50.43 (1.32x) | 38.11 / 45.52 (1.19x) | 39.54 / 46.32 (1.17x) |
+| 256 | 52.44 / 73.00 (1.39x) | 56.77 / 67.78 (1.19x) | 58.45 / 68.74 (1.18x) |
+| 512 | 94.91 / 119.62 (1.26x) | 95.86 / 113.99 (1.19x) | 107.62 / 114.13 (1.06x) |
+| 1536 | 227.30 / 270.45 (1.19x) | 247.67 / 267.54 (1.08x) | 266.60 / 267.62 (1.00x) |
+
+The dynamic operator is not a decode replacement: MatMulNBits is 1.2-3.2x
+faster at M=1/8. At block 128 the useful SM120 range begins around M=32,
+where the dynamic operator wins for every tested width; its largest measured
+gain is 1.39x for W2 at M=256. W8 becomes approximately tied by M=1536.
+A host-inclusive W4 sweep over K/N of 2048/6144, 6144/2048, 2048/4096, and
+2048/2048 won 15 of the 16 M=16/32/128/512 cases, confirming that the
+mid-batch result is not limited to a square projection.
+
+This plugin uses the compact fpA_intB MatMulNBits tactic set. Its optimized
+path requires block size 32 for W4/W8 and 64 for W2, so enabling
+`ORT_FPA_INTB_GEMM=1` does not change the block-128 baseline. A W4
+K=N=4096, M=128, block-32 control did activate the profiled
+CUTLASS non-Hopper GEMM with runtime-prepacked SM80 weights. Under the same
+CUDA Graph protocol it measured 596.62 us for the dynamic operator and
+37.89 us for MatMulNBits, making the dynamic operator 15.75x slower. The
+standard-layout dynamic path is therefore not a replacement for optimized
+MatMulNBits geometries.
+
+The SM80+ W4 block-32 path also accepts `weight_prepacked=1`, the existing
+SM80 fpA_intB layout. It reads that layout directly, retains canonical
+`[N, G]` scales, and preserves the same interval arithmetic as standard
+DynamicQuantizeMatMulNBits. Eligibility requires K divisible by 128, N
+divisible by 64, and one activation-scale interval. Fixed M=8/M=9 variants
+serve drafting, while a 16-row tiled variant covers prefill. Real BF16 qkv
+weights from the Qwen drafter (K=5120, N=6144) measured:
+
+| M | Standard-layout Dynamic (us) | Prepacked Dynamic (us) | Dynamic speedup | Prepacked MatMulNBits (us) |
+|---|------------------------------|------------------------|-----------------|----------------------------|
+| 8 | 1379.43 | 37.49 | 36.80x | 21.82 |
+| 9 | 1540.54 | 64.42 | 23.91x | 36.27 |
+
+Thus, prepacked dispatch is a substantial Dynamic operator optimization but
+does not make activation quantization faster than the already memory-bound
+fpA_intB MatMulNBits path. Model conversion remains an explicit accuracy and
+performance decision rather than an automatic rewrite.
+
+The performance gain also trades accuracy for activation quantization. Across
+the block-128 matrix, relative RMSE versus decoded/scaled FP16 GEMM was about
+0.8-1.0% for the dynamic operator and at most 0.12% for MatMulNBits. Model-level
+accuracy remains a separate acceptance criterion. Large one-interval W8
+weights are not a valid common benchmark in this checkout: MatMulNBits
+terminates with integer divide-by-zero for the first K=2048, block=2048 case,
+matching the limitation already observed on H200.
 
 
 ## 9. Delivery Plan and Acceptance

@@ -147,7 +147,7 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t blo
              const std::string& mode, int64_t activation_block = 0,
              bool constant_scales = false, bool flattened_scales = false, bool with_bias = true,
              std::vector<float> input_values = {}, std::vector<float> scale_values = {}, bool identity = false,
-             bool constant_weights = false) {
+             bool constant_weights = false, int64_t weight_prepacked = 0) {
   const int64_t k = shape.back();
   const int64_t m = std::accumulate(shape.begin(), shape.end() - 1, int64_t{1}, std::multiplies<int64_t>());
   const int64_t groups = k / block + (k % block != 0);
@@ -170,6 +170,25 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t blo
       auto& byte = b[(column * groups + pos / block) * blob + (pos % block) / (8 / bits)];
       byte = static_cast<uint8_t>((byte & ~(((1 << bits) - 1) << shift)) | ((code + (1 << (bits - 1))) << shift));
     }
+  }
+  if (weight_prepacked == 1) {
+    ORT_ENFORCE(bits == 4 && block == 32 && k % 128 == 0 && n % 64 == 0);
+    std::vector<uint8_t> prepacked(b.size(), 0);
+    for (int64_t column = 0; column < n; ++column) {
+      for (int64_t group = 0; group < groups; ++group) {
+        const int64_t chunk =
+            (column / 4) * (k / 8) + (group / 2) * 8 + (column % 4) * 2 + group % 2;
+        auto* packed = prepacked.data() + chunk * 16;
+        for (int logical = 0; logical < 32; ++logical) {
+          const int permuted = logical % 2 + (logical % 8) / 2 * 8 + logical / 8 * 2;
+          const int within = permuted % 8;
+          const int physical = permuted / 8 * 8 + (within % 2) * 4 + within / 2;
+          const int code = weights[(column * groups + group) * 32 + logical] + 8;
+          packed[physical / 2] |= static_cast<uint8_t>(code << (4 * (physical % 2)));
+        }
+      }
+    }
+    b = std::move(prepacked);
   }
   std::vector<T> bias(n);
   for (int64_t column = 0; column < n; ++column) bias[column] = T(float(column) / 4.0f);
@@ -224,6 +243,7 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t blo
   OpTester test("DynamicQuantizeMatMulNBits", 1, kMSDomain);
   test.AddAttribute<int64_t>("bits", bits);
   test.AddAttribute<int64_t>("block_size", block);
+  test.AddAttribute<int64_t>("weight_prepacked", weight_prepacked);
   test.AddAttribute<std::string>("activation_quantization", mode);
   if (mode == "dynamic_per_block") test.AddAttribute<int64_t>("activation_block_size", activation_block);
   test.AddInput<T>("A", shape, a);
@@ -381,6 +401,16 @@ TEST(DynamicQuantizeMatMulNBitsTest, BlackwellPortableKernelDispatch) {
     RunCase<MLFloat16>({128, 128}, 4096, bits, 64, "dynamic_per_token", 0, true, false, false);
   }
   RunCase<MLFloat16>({16, 128}, 512, 8, 128, "dynamic_per_token", 0, true, false, false);
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedInt4Dispatch) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  RunCase<MLFloat16>({8, 128}, 64, 4, 32, "dynamic_per_token", 0,
+                     true, false, true, {}, {}, false, true, 1);
+  RunCase<BFloat16, BFloat16>({9, 128}, 64, 4, 32, "dynamic_per_token", 0,
+                              true, false, false, {}, {}, false, true, 1);
+  RunCase<BFloat16, MLFloat16>({33, 128}, 64, 4, 32, "dynamic_per_tensor", 0,
+                               true, false, true, {}, {}, false, true, 1);
 }
 
 TEST(DynamicQuantizeMatMulNBitsTest, ConstantWeightsAndFallbacks) {

@@ -26,6 +26,7 @@ class DynamicQuantizeMatMulNBits final : public onnxruntime::cuda::CudaKernel {
 
   int64_t bits_;
   int64_t block_size_;
+  int64_t weight_prepacked_;
   int64_t activation_block_size_;
   DynamicQuantizationMode mode_;
   bool constant_scales_validated_{false};
@@ -66,6 +67,7 @@ Status LaunchDynamicQuantizedMatMul(const int8_t* a, const float* a_scales,
                                     const void* bias, void* y, bool bf16, bool per_tensor,
                                     int64_t rows, int64_t n, int64_t k,
                                     int bits, int64_t block_size, int64_t activation_block_size,
+                                    int64_t weight_prepacked,
                                     int compute_capability, cudaStream_t stream);
 Status LaunchDynamicQuantizedEmpty(void* y, const void* bias, bool bf16,
                                    int64_t count, int64_t n, cudaStream_t stream);
