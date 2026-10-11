@@ -3,7 +3,9 @@
 
 #include "contrib_ops/cuda/math/dynamic_quantize_matmul_nbits.h"
 
+#include <algorithm>
 #include <cfloat>
+#include <limits>
 
 #if defined(ORT_DYNAMIC_QUANTIZED_SM90_IMPL)
 #include "cutlass/epilogue/collective/collective_builder.hpp"
@@ -159,9 +161,29 @@ __device__ __forceinline__ __nv_bfloat162 GroupedPack(__nv_bfloat16*, float x, f
   return __floats2bfloat162_rn(x, y);
 }
 
-template <int BM_, int BN_, int ST_, class SbT_, class OutT_, int MINB_>
+template <int BK>
+struct GroupedSwizzleAtom;
+template <>
+struct GroupedSwizzleAtom<128> {
+  using type = GMMA::Layout_K_SW128_Atom<int8_t>;
+};
+template <>
+struct GroupedSwizzleAtom<64> {
+  using type = GMMA::Layout_K_SW64_Atom<int8_t>;
+};
+template <>
+struct GroupedSwizzleAtom<32> {
+  using type = GMMA::Layout_K_SW32_Atom<int8_t>;
+};
+
+// BK is the K tile (128, 64 or 32), chosen so that every interval boundary (weight block or activation interval)
+// is a tile boundary. UNIT1 means every interval is exactly one tile (weight block == BK), which removes all
+// interval bookkeeping.
+template <int BM_, int BN_, int ST_, class SbT_, class OutT_, int MINB_, int BK_, bool UNIT1_>
 struct GroupedCfg {
-  static constexpr int BM = BM_, BN = BN_, ST = ST_, BK = 128;
+  static constexpr int BM = BM_, BN = BN_, ST = ST_, BK = BK_;
+  static constexpr bool UNIT1 = UNIT1_;
+  static constexpr int S = BK / 32;  // k32 slices per tile
   static constexpr int MINB = MINB_;
   static constexpr int NWG = BM / 64;
   static constexpr int NTHREADS = (NWG + 1) * 128;
@@ -170,10 +192,9 @@ struct GroupedCfg {
   static constexpr bool kStrict = !cute::is_same_v<OutT_, __half>;
   static constexpr bool kRegRealloc = (MINB_ == 1);
 
-  using SmemLayoutA = decltype(tile_to_shape(GMMA::Layout_K_SW128_Atom<int8_t>{},
-                                             make_shape(Int<BM>{}, Int<BK>{}, Int<ST>{})));
-  using SmemLayoutB = decltype(tile_to_shape(GMMA::Layout_K_SW128_Atom<int8_t>{},
-                                             make_shape(Int<BN>{}, Int<BK>{}, Int<ST>{})));
+  using Atom = typename GroupedSwizzleAtom<BK>::type;
+  using SmemLayoutA = decltype(tile_to_shape(Atom{}, make_shape(Int<BM>{}, Int<BK>{}, Int<ST>{})));
+  using SmemLayoutB = decltype(tile_to_shape(Atom{}, make_shape(Int<BN>{}, Int<BK>{}, Int<ST>{})));
   // Per-stage scale rows are padded to 128 bytes.
   static constexpr int SBS = int(((size_t(BN) * sizeof(SbT_) + 127) / 128) * 128 / sizeof(SbT_));
   using MmaOp = decltype(GMMA::ss_op_selector<int8_t, int8_t, int32_t, Shape<Int<64>, Int<BN>, _32>>());
@@ -190,17 +211,36 @@ struct GroupedCfg {
   static constexpr uint32_t kTxBytes = uint32_t(BM * BK + BN * BK);
 };
 
+struct GroupedParams {
+  int M, N, K;
+  int tiles;      // number of K tiles
+  int wsh;        // log2(weight block in tiles)
+  int wsh_slice;  // log2(weight block in 32-wide slices), used by the scale gather
+  int act_tiles;  // activation block in tiles (only meaningful when multi_a)
+  int multi_a;    // several activation intervals
+  int Ga, Gw;     // activation / weight intervals along K (Ga == 0: one scalar activation scale)
+};
+
+// Grouped-scale INT8 WGMMA GEMM. An interval is a maximal run of K tiles with the same weight block and activation
+// interval. Each interval accumulates into a fresh INT32 register accumulator that is promoted into the FP32 running
+// sum as sum += (float(acc) * a_scale) * b_scale, in K order and without FMA, so the result is the operator's exact
+// interval semantics. One producer warpgroup issues TMA for A and B and gathers the [N, Gw] weight scales;
+// BM / 64 consumer warpgroups run the WGMMAs. There is no split-K (it would reassociate the sum), and the running
+// sum starts at -0.0f so the first term needs no special case ((-0.0f) + x == x).
+// Every WGMMA region (fence to commit) is straight-line code with a statically known in-flight accumulator;
+// otherwise ptxas serializes the WGMMAs (warnings C7514 / C7519).
 template <class C, class TmaA, class TmaB>
 __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
     GroupedInt8Kernel(__grid_constant__ TmaA const tma_a, __grid_constant__ TmaB const tma_b,
-                      const float* __restrict__ sa, bool per_tensor,
-                      const typename C::SbT* __restrict__ sb,  // [N, G]
+                      const float* __restrict__ sa,            // [M, Ga], or one scalar when Ga == 0
+                      const typename C::SbT* __restrict__ sb,  // [N, Gw]
                       const typename C::OutT* __restrict__ bias, typename C::OutT* __restrict__ Y,
-                      int M, int N, int K) {
-  constexpr int BM = C::BM, BN = C::BN, ST = C::ST, NWG = C::NWG;
+                      const GroupedParams P) {
+  constexpr int BM = C::BM, BN = C::BN, BK = C::BK, ST = C::ST, NWG = C::NWG, S = C::S;
+  constexpr bool UNIT1 = C::UNIT1;
   using SbT = typename C::SbT;
   using OutT = typename C::OutT;
-  const int G = K / 128;
+  const int M = P.M, N = P.N, K = P.K;
   const int m0 = blockIdx.y * BM;
   const int n0 = blockIdx.x * BN;
 
@@ -234,20 +274,22 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
   }
   __syncthreads();
 
+  const int NT = P.tiles;
   if (wg == 0) {
     if constexpr (C::kRegRealloc) cutlass::arch::warpgroup_reg_dealloc<40>();
     if (warp_in_wg == 0 && cute::elect_one_sync()) {
       auto mA = tma_a.get_tma_tensor(make_shape(M, K));
       auto mB = tma_b.get_tma_tensor(make_shape(N, K));
-      auto gA = local_tile(mA, make_shape(Int<BM>{}, Int<128>{}), make_coord(blockIdx.y, _));
-      auto gB = local_tile(mB, make_shape(Int<BN>{}, Int<128>{}), make_coord(blockIdx.x, _));
+      auto gA = local_tile(mA, make_shape(Int<BM>{}, Int<BK>{}), make_coord(blockIdx.y, _));
+      auto gB = local_tile(mB, make_shape(Int<BN>{}, Int<BK>{}), make_coord(blockIdx.x, _));
       auto tA = tma_partition(tma_a, Int<0>{}, Layout<_1>{}, group_modes<0, 2>(sA), group_modes<0, 2>(gA));
       auto tB = tma_partition(tma_b, Int<0>{}, Layout<_1>{}, group_modes<0, 2>(sB), group_modes<0, 2>(gB));
       auto tAgA = get<0>(tA);
       auto tAsA = get<1>(tA);
       auto tBgB = get<0>(tB);
       auto tBsB = get<1>(tB);
-      for (int kt = 0; kt < G; ++kt) {
+      // The last tile may be partial: TMA zero-fills it, and zeros add exactly 0 to the INT32 accumulator.
+      for (int kt = 0; kt < NT; ++kt) {
         const int s = kt % ST;
         const uint32_t ph = (kt / ST) & 1;
         EmptyBar::wait(&empty_bar[s], ph ^ 1);
@@ -257,15 +299,16 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
       }
     }
     if (warp_in_wg == 1) {
-      for (int kt = 0; kt < G; ++kt) {
+      for (int kt = 0; kt < NT; ++kt) {
         const int s = kt % ST;
         const uint32_t ph = (kt / ST) & 1;
         EmptyBar::wait(&empty_bar[s], ph ^ 1);
+        const int gw = (kt * S) >> P.wsh_slice;  // weight block of the tile
 #pragma unroll
         for (int i = 0; i < (BN + 31) / 32; ++i) {
           const int nl = i * 32 + lane;
           const int n = n0 + nl;
-          if (nl < BN) smemS[s * C::SBS + nl] = (n < N) ? sb[size_t(n) * G + kt] : SbT(0.f);
+          if (nl < BN) smemS[s * C::SBS + nl] = (n < N && gw < P.Gw) ? sb[size_t(n) * P.Gw + gw] : SbT(0.f);
         }
         __syncwarp();
         if (lane == 0) FullBar::arrive(&full_bar[s]);
@@ -280,7 +323,8 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
     auto tCsB = thr_mma.partition_B(sB);
     auto tCrA = thr_mma.make_fragment_A(tCsA);
     auto tCrB = thr_mma.make_fragment_B(tCsB);
-    // Two INT32 accumulators: the MMA of tile kt + 1 overlaps the FP32 promotion of tile kt.
+    // Two INT32 accumulators alternate between consecutive intervals: the MMA of the next interval overlaps the
+    // FP32 promotion of the previous one.
     auto acc0 = partition_fragment_C(tiled_mma, Shape<Int<BM>, Int<BN>>{});
     auto acc1 = partition_fragment_C(tiled_mma, Shape<Int<BM>, Int<BN>>{});
     constexpr int NACC = BN / 2;
@@ -289,37 +333,70 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
 #pragma unroll
     for (int i = 0; i < NACC; ++i) sum[i] = -0.0f;
 
-    // Accumulator layout of wgmma m64nNk32 per thread: index i = 4 * j + 2 * h + e,
-    // row = 16 * warp + lane / 4 + 8 * h, column = 8 * j + 2 * (lane % 4) + e.
     const int wg_c = ctid / 128;
     const int row_base = wg_c * 64 + warp_in_wg * 16 + lane / 4;
     const int col_base = 2 * (lane % 4);
-    float sa_r[2];
+    const int wsh = P.wsh, act_tiles = P.act_tiles;
+    const bool multi_a = P.multi_a != 0;
+    // Rows beyond M read a clamped (valid) row; their outputs are never stored.
+    const float* sa_h[2];
 #pragma unroll
     for (int h = 0; h < 2; ++h) {
       const int r = m0 + row_base + 8 * h;
-      sa_r[h] = per_tensor ? sa[0] : (r < M ? sa[r] : 1.0f);
+      sa_h[h] = sa + size_t(min(r, M - 1)) * P.Ga;
     }
-    // BF16 scales can leave the FP32 normal range: such rows take the contract's FP64 rule.
-    const bool plain = !C::kStrict || __all_sync(0xffffffffu, PlainScaleProduct(sa_r[0]) && PlainScaleProduct(sa_r[1]));
+    int ga = 0;                                 // current activation interval
+    int na = multi_a ? act_tiles : 0x7fffffff;  // next activation boundary, in tiles
+    auto load_sa = [&](float (&sa_r)[2]) {
+#pragma unroll
+      for (int h = 0; h < 2; ++h) sa_r[h] = __ldg(sa_h[h] + ga);
+    };
+    // Called at the start of every interval: enters the next activation interval when the interval starts exactly on
+    // its boundary (intervals never straddle one).
+    auto start_interval = [&](float (&sa_c)[2], float (&sa_p)[2], int pos) {
+      if (multi_a) {
+        if (pos == na) {
+          ++ga;
+          na += act_tiles;
+          load_sa(sa_c);
+        } else {
+          sa_c[0] = sa_p[0];
+          sa_c[1] = sa_p[1];
+        }
+      }
+    };
+    auto interval_end = [&](int pos) {
+      int e = min(NT, ((pos >> wsh) + 1) << wsh);
+      if (multi_a) e = min(e, na);
+      return e;
+    };
 
-    auto issue = [&](int kt, auto& acc) {
-      const int s = kt % ST;
-      const uint32_t ph = (kt / ST) & 1;
+    int pv_stage = 0;  // stage of the previous (not yet retired) tile
+    int p = 0;         // next tile to issue
+    float sa0[2], sa1[2];
+
+    auto release = [&](int s) {
+      __syncwarp();
+      if (lane == 0) EmptyBar::arrive(&empty_bar[s]);
+    };
+    // One tile = S k32 WGMMAs into `acc`, a single straight-line region from fence to commit.
+    auto issue = [&](auto& acc, int t, auto zero_first) {
+      const int s = t % ST;
+      const uint32_t ph = (t / ST) & 1;
       FullBar::wait(&full_bar[s], ph);
       warpgroup_fence_operand(acc);
       warpgroup_arrive();
-      tiled_mma.accumulate_ = GMMA::ScaleOut::Zero;
+      tiled_mma.accumulate_ = decltype(zero_first)::value ? GMMA::ScaleOut::Zero : GMMA::ScaleOut::One;
 #pragma unroll
-      for (int k = 0; k < 4; ++k) {
-        cute::gemm(tiled_mma, tCrA(_, _, k, s), tCrB(_, _, k, s), acc);
+      for (int i = 0; i < S; ++i) {
+        cute::gemm(tiled_mma, tCrA(_, _, i, s), tCrB(_, _, i, s), acc);
         tiled_mma.accumulate_ = GMMA::ScaleOut::One;
       }
       warpgroup_commit_batch();
       warpgroup_fence_operand(acc);
     };
-    auto promote = [&](int kt, auto& acc) {
-      const int s = kt % ST;
+    // Promotes a completed interval accumulator and releases its last stage.
+    auto promote = [&](auto& acc, const float (&sa_r)[2], int s) {
       warpgroup_fence_operand(acc);
       float sbv[BN / 4];
       const SbT* sp = smemS + s * C::SBS + col_base;
@@ -328,10 +405,10 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
         sbv[2 * j] = GroupedToFloat(sp[8 * j]);
         sbv[2 * j + 1] = GroupedToFloat(sp[8 * j + 1]);
       }
-      // The MMA has completed and the scales are in registers, so this stage can be refilled.
-      __syncwarp();
-      if (lane == 0) EmptyBar::arrive(&empty_bar[s]);
-      // The branch is outside the element loops so the common path stays free of calls.
+      release(s);
+      // BF16 scales can leave the FP32 normal range: such rows take the contract's FP64 rule.
+      const bool plain =
+          !C::kStrict || __all_sync(0xffffffffu, PlainScaleProduct(sa_r[0]) && PlainScaleProduct(sa_r[1]));
       auto accumulate = [&](auto fast) {
 #pragma unroll
         for (int j = 0; j < BN / 8; ++j) {
@@ -358,28 +435,49 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
         accumulate(cute::false_type{});
       }
     };
+    // One interval on `acc`. With has_prev the previous interval (on acc_p, retired through the wait) is promoted
+    // once the first tile of this interval is in flight.
+    auto step = [&](auto has_prev, auto& acc, float (&sa_c)[2], auto& acc_p, float (&sa_p)[2]) {
+      constexpr bool kHasPrev = decltype(has_prev)::value;
+      start_interval(sa_c, sa_p, p);
+      [[maybe_unused]] const int e = UNIT1 ? p + 1 : interval_end(p);
+      {
+        const int t = p;
+        issue(acc, t, cute::true_type{});
+        warpgroup_wait<1>();
+        if constexpr (kHasPrev) promote(acc_p, sa_p, pv_stage);
+        pv_stage = t % ST;
+        p = t + 1;
+      }
+      if constexpr (!UNIT1) {
+        while (p < e) {
+          const int t = p;
+          issue(acc, t, cute::false_type{});
+          warpgroup_wait<1>();
+          release(pv_stage);
+          pv_stage = t % ST;
+          p = t + 1;
+        }
+      }
+    };
 
-    // All waits are compile-time constants in straight-line code so ptxas can prove which accumulator is
-    // in flight; otherwise it serializes the WGMMAs (warning C7514).
-    issue(0, acc0);
-    int kt = 0;
-    for (; kt + 2 < G; kt += 2) {
-      issue(kt + 1, acc1);
-      warpgroup_wait<1>();
-      promote(kt, acc0);
-      issue(kt + 2, acc0);
-      warpgroup_wait<1>();
-      promote(kt + 1, acc1);
-    }
-    if (kt + 1 < G) {
-      issue(kt + 1, acc1);
-      warpgroup_wait<1>();
-      promote(kt, acc0);
-      warpgroup_wait<0>();
-      promote(kt + 1, acc1);
-    } else {
-      warpgroup_wait<0>();
-      promote(kt, acc0);
+    load_sa(sa0);
+    sa1[0] = sa0[0];
+    sa1[1] = sa0[1];
+    step(cute::false_type{}, acc0, sa0, acc1, sa1);
+    while (true) {
+      if (p >= NT) {
+        warpgroup_wait<0>();
+        promote(acc0, sa0, pv_stage);
+        break;
+      }
+      step(cute::true_type{}, acc1, sa1, acc0, sa0);
+      if (p >= NT) {
+        warpgroup_wait<0>();
+        promote(acc1, sa1, pv_stage);
+        break;
+      }
+      step(cute::true_type{}, acc0, sa0, acc1, sa1);
     }
 
     // y = convert(sum + bias) staged through shared memory for coalesced 16-byte stores.
@@ -414,22 +512,63 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
   }
 }
 
-template <int BM, int BN, int ST, int MINB, class SbT, class OutT>
+// Geometry of one grouped GEMM: weight block, activation block (>= K or == K for one interval) and K.
+struct GroupedGeometry {
+  int rows, n, k;
+  int64_t ldb;  // row stride of the signed weights [N, ldb]
+  int wblock;   // weight scale block, a power of two >= 32
+  int ablock;   // activation scale block; ablock >= k (or per_tensor) means one interval
+  bool per_tensor;
+};
+
+inline int GroupedLog2Ceil(int v) {
+  int r = 0;
+  while ((1 << r) < v) ++r;
+  return r;
+}
+
+// Largest K tile in {128, 64, 32} that divides the weight block and, with several activation intervals, the
+// activation block, so every interval boundary is a tile boundary.
+inline int GroupedTile(const GroupedGeometry& g) {
+  const bool multi_a = !g.per_tensor && g.ablock < g.k;
+  int bk = 128;
+  while (bk > 32 && (g.wblock % bk != 0 || (multi_a && g.ablock % bk != 0))) bk >>= 1;
+  return bk;
+}
+
+template <int BM, int BN, int ST128, int MINB, int BK, bool UNIT1, class SbT, class OutT>
 Status RunGrouped(const int8_t* a, const float* a_scales, const int8_t* b, const void* b_scales,
-                  const void* bias, void* y, bool per_tensor, int rows, int n, int k, cudaStream_t stream) {
-  using C = GroupedCfg<BM, BN, ST, SbT, OutT, MINB>;
-  auto mA = make_tensor(a, make_shape(rows, k), make_stride(int64_t(k), _1{}));
-  auto mB = make_tensor(b, make_shape(n, k), make_stride(int64_t(k), _1{}));
-  auto tma_a = make_tma_atom(SM90_TMA_LOAD{}, mA, typename C::SmemLayoutA{}(_, _, 0), make_shape(Int<BM>{}, Int<128>{}));
-  auto tma_b = make_tma_atom(SM90_TMA_LOAD{}, mB, typename C::SmemLayoutB{}(_, _, 0), make_shape(Int<BN>{}, Int<128>{}));
+                  const void* bias, void* y, const GroupedGeometry& g, cudaStream_t stream) {
+  using C = GroupedCfg<BM, BN, ST128 * 128 / BK, SbT, OutT, MINB, BK, UNIT1>;
+  auto mA = make_tensor(a, make_shape(g.rows, g.k), make_stride(int64_t(g.k), _1{}));
+  auto mB = make_tensor(b, make_shape(g.n, g.k), make_stride(g.ldb, _1{}));
+  auto tma_a = make_tma_atom(SM90_TMA_LOAD{}, mA, typename C::SmemLayoutA{}(_, _, 0), make_shape(Int<BM>{}, Int<BK>{}));
+  auto tma_b = make_tma_atom(SM90_TMA_LOAD{}, mB, typename C::SmemLayoutB{}(_, _, 0), make_shape(Int<BN>{}, Int<BK>{}));
   using TmaA = decltype(tma_a);
   using TmaB = decltype(tma_b);
   auto kernel = &GroupedInt8Kernel<C, TmaA, TmaB>;
   CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, int(C::kSmem)));
-  const dim3 grid((n + BN - 1) / BN, (rows + BM - 1) / BM, 1);
-  kernel<<<grid, C::NTHREADS, C::kSmem, stream>>>(
-      tma_a, tma_b, a_scales, per_tensor, static_cast<const SbT*>(b_scales), static_cast<const OutT*>(bias),
-      static_cast<OutT*>(y), rows, n, k);
+
+  GroupedParams p{};
+  p.M = g.rows;
+  p.N = g.n;
+  p.K = g.k;
+  p.tiles = (g.k + BK - 1) / BK;
+  constexpr int kSlicesLog2 = BK == 128 ? 2 : (BK == 64 ? 1 : 0);
+  const int wlog2 = GroupedLog2Ceil(g.wblock / 32);  // log2(weight block in 32-wide slices)
+  // A block wider than K behaves as one block: clamp the shifts so the boundary arithmetic cannot overflow.
+  const int slice_cap = GroupedLog2Ceil((g.k + 31) / 32);
+  const int tile_cap = GroupedLog2Ceil(p.tiles);
+  p.wsh_slice = std::min(wlog2, slice_cap);
+  p.wsh = std::min(wlog2 - kSlicesLog2, tile_cap);
+  p.multi_a = (!g.per_tensor && g.ablock < g.k) ? 1 : 0;
+  p.act_tiles = p.multi_a ? g.ablock / BK : p.tiles;
+  p.Ga = g.per_tensor ? 0 : (g.k + g.ablock - 1) / g.ablock;
+  p.Gw = (g.k + g.wblock - 1) / g.wblock;
+
+  const dim3 grid((g.n + BN - 1) / BN, (g.rows + BM - 1) / BM, 1);
+  kernel<<<grid, C::NTHREADS, C::kSmem, stream>>>(tma_a, tma_b, a_scales, static_cast<const SbT*>(b_scales),
+                                                  static_cast<const OutT*>(bias), static_cast<OutT*>(y), p);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -778,26 +917,74 @@ Status RunPersistent(const int8_t* a, const float* a_scales, const int8_t* b, co
   return CUDA_CALL(cudaGetLastError());
 }
 
+enum class GroupedTileChoice { k64x32,
+                               k64x64,
+                               k128x96,
+                               k128x128 };
+
+// Tile choice from the measured H200 sweeps: the CTA count against the SM count decides between wide and narrow
+// tiles. Narrower K tiles (BK 64/32) have no 128x128 or 64x64 instantiation.
+inline GroupedTileChoice ChooseGroupedTile(const GroupedGeometry& g, bool has_128x128, bool has_64x64) {
+  const int64_t m128 = (g.rows + 127) / 128;
+  const int64_t ctas128 = m128 * ((g.n + 127) / 128);
+  const int64_t ctas96 = m128 * ((g.n + 95) / 96);
+  if (g.rows <= 128) {
+    return (g.n > 4096 && has_64x64) ? GroupedTileChoice::k64x64 : GroupedTileChoice::k64x32;
+  }
+  if (ctas128 >= 132) return has_128x128 ? GroupedTileChoice::k128x128 : GroupedTileChoice::k128x96;
+  if (ctas96 >= 129) return GroupedTileChoice::k128x96;
+  return GroupedTileChoice::k64x32;
+}
+
+template <int BK, bool UNIT1, class SbT, class OutT>
+Status DispatchGroupedVariant(const int8_t* a, const float* a_scales, const int8_t* b, const void* b_scales,
+                              const void* bias, void* y, const GroupedGeometry& g, cudaStream_t stream) {
+  constexpr bool kHas128 = BK == 128;
+  constexpr bool kHas64 = BK == 128 && UNIT1;
+  switch (ChooseGroupedTile(g, kHas128, kHas64)) {
+    case GroupedTileChoice::k64x64:
+      if constexpr (kHas64) {
+        return RunGrouped<64, 64, 4, 2, BK, UNIT1, SbT, OutT>(a, a_scales, b, b_scales, bias, y, g, stream);
+      }
+      break;
+    case GroupedTileChoice::k128x128:
+      if constexpr (kHas128) {
+        return RunGrouped<128, 128, 4, 1, BK, UNIT1, SbT, OutT>(a, a_scales, b, b_scales, bias, y, g, stream);
+      }
+      break;
+    case GroupedTileChoice::k128x96:
+      return RunGrouped<128, 96, 4, 1, BK, UNIT1, SbT, OutT>(a, a_scales, b, b_scales, bias, y, g, stream);
+    case GroupedTileChoice::k64x32:
+      break;
+  }
+  return RunGrouped<64, 32, 4, 2, BK, UNIT1, SbT, OutT>(a, a_scales, b, b_scales, bias, y, g, stream);
+}
+
 template <class SbT, class OutT>
 Status DispatchGrouped(const int8_t* a, const float* a_scales, const int8_t* b, const void* b_scales,
-                       const void* bias, void* y, bool per_tensor, int rows, int n, int k, int sm_count,
-                       cudaStream_t stream) {
-  // Tile choice from the measured H200 sweep: narrow tiles for few rows or columns, wide non-persistent tiles
-  // for one wave at M <= 2048 and N <= 1024, and the persistent 128x128 kernel for everything larger.
-  if (rows <= 128 && n <= 4096) {
-    return RunGrouped<64, 32, 4, 2, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+                       const void* bias, void* y, const GroupedGeometry& g, int sm_count, cudaStream_t stream) {
+  const int bk = GroupedTile(g);
+  const bool unit1 = g.wblock == bk;
+  const bool multi_a = !g.per_tensor && g.ablock < g.k;
+  // The persistent kernel covers weight block 128 with one activation interval and K a multiple of 128 (ldb == k).
+  if (bk == 128 && unit1 && !multi_a && g.k % 128 == 0 && g.ldb == g.k && g.rows > 128 &&
+      (g.n > 1024 || g.rows > 2048)) {
+    return RunPersistent<128, 128, 5, 8, SbT, OutT>(a, a_scales, b, b_scales, bias, y, g.per_tensor, g.rows, g.n,
+                                                    g.k, sm_count, stream);
   }
-  if (rows <= 128) {
-    return RunGrouped<64, 64, 4, 2, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+#define ORT_GROUPED_VARIANT(BK_, UNIT1_) \
+  return DispatchGroupedVariant<BK_, UNIT1_, SbT, OutT>(a, a_scales, b, b_scales, bias, y, g, stream)
+  if (bk == 128) {
+    if (unit1) ORT_GROUPED_VARIANT(128, true);
+    ORT_GROUPED_VARIANT(128, false);
   }
-  if (rows <= 512 && n <= 1024) {
-    return RunGrouped<64, 32, 4, 2, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+  if (bk == 64) {
+    if (unit1) ORT_GROUPED_VARIANT(64, true);
+    ORT_GROUPED_VARIANT(64, false);
   }
-  if (rows <= 2048 && n <= 1024) {
-    return RunGrouped<128, 96, 4, 1, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
-  }
-  return RunPersistent<128, 128, 5, 8, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, sm_count,
-                                                  stream);
+  if (unit1) ORT_GROUPED_VARIANT(32, true);
+  ORT_GROUPED_VARIANT(32, false);
+#undef ORT_GROUPED_VARIANT
 }
 }  // namespace
 #endif
@@ -863,13 +1050,21 @@ Status LaunchDynamicQuantizedSm90(const int8_t* a, const float* a_scales, const 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DynamicQuantizeMatMulNBits SM90 GEMM was not built.");
 #endif
 }
-Status LaunchDynamicQuantizedSm90Grouped(const int8_t* a, const float* a_scales, const int8_t* b,
-                                         const void* b_scales, DynamicWeightScaleType scale_type,
-                                         const void* bias, void* y, bool bf16, bool per_tensor, int rows, int n,
-                                         int k, int sm_count, cudaStream_t stream) {
+Status LaunchDynamicQuantizedSm90Grouped(const int8_t* a, const float* a_scales, const int8_t* b, int64_t ldb,
+                                         const void* b_scales, DynamicWeightScaleType scale_type, const void* bias,
+                                         void* y, bool bf16, bool per_tensor, int rows, int n, int k,
+                                         int64_t weight_block, int64_t activation_block, int sm_count,
+                                         cudaStream_t stream) {
 #if defined(ORT_DYNAMIC_QUANTIZED_SM90_IMPL)
-#define DISPATCH_GROUPED(SbT, OutT) \
-  return DispatchGrouped<SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, sm_count, stream)
+  GroupedGeometry g{};
+  g.rows = rows;
+  g.n = n;
+  g.k = k;
+  g.ldb = ldb;
+  g.wblock = static_cast<int>(std::min<int64_t>(weight_block, std::numeric_limits<int>::max() / 2));
+  g.ablock = static_cast<int>(std::min<int64_t>(activation_block, std::numeric_limits<int>::max() / 2));
+  g.per_tensor = per_tensor;
+#define DISPATCH_GROUPED(SbT, OutT) return DispatchGrouped<SbT, OutT>(a, a_scales, b, b_scales, bias, y, g, sm_count, stream)
   switch (scale_type) {
     case DynamicWeightScaleType::Float:
       if (bf16) DISPATCH_GROUPED(float, __nv_bfloat16);
@@ -887,6 +1082,7 @@ Status LaunchDynamicQuantizedSm90Grouped(const int8_t* a, const float* a_scales,
   ORT_UNUSED_PARAMETER(a);
   ORT_UNUSED_PARAMETER(a_scales);
   ORT_UNUSED_PARAMETER(b);
+  ORT_UNUSED_PARAMETER(ldb);
   ORT_UNUSED_PARAMETER(b_scales);
   ORT_UNUSED_PARAMETER(scale_type);
   ORT_UNUSED_PARAMETER(bias);
@@ -896,6 +1092,8 @@ Status LaunchDynamicQuantizedSm90Grouped(const int8_t* a, const float* a_scales,
   ORT_UNUSED_PARAMETER(rows);
   ORT_UNUSED_PARAMETER(n);
   ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(weight_block);
+  ORT_UNUSED_PARAMETER(activation_block);
   ORT_UNUSED_PARAMETER(sm_count);
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DynamicQuantizeMatMulNBits SM90 grouped GEMM was not built.");

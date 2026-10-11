@@ -469,6 +469,38 @@ TEST(DynamicQuantizeMatMulNBitsTest, HopperGroupedScaleIntervals) {
                               true);
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, HopperGroupedWeightBlocksAndActivationIntervals) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  // Weight blocks from 32 to 4096 (including a block wider than K), K tails that are multiples of 16 but not of the
+  // block, and activation intervals that are, are not, or cannot be (1000, 24) multiples of the K tile.
+  for (int bits : {2, 4, 8}) {
+    for (int64_t wblock : {32, 64, 256, 512}) {
+      if (bits == 2 && wblock > 256) continue;
+      SCOPED_TRACE(std::to_string(bits) + " wblock " + std::to_string(wblock));
+      RunCase<MLFloat16>({33, 1040}, 264, bits, wblock, "dynamic_per_token", 0, true, false, true, {}, {}, false,
+                         true);
+      RunCase<BFloat16, MLFloat16>({17, 1040}, 264, bits, wblock, "dynamic_per_tensor", 0, true, false, false, {}, {},
+                                   false, true);
+      for (int64_t ablock : {32, 96, 192, 256, 1000, 24}) {
+        SCOPED_TRACE("ablock " + std::to_string(ablock));
+        RunCase<MLFloat16>({33, 1040}, 264, bits, wblock, "dynamic_per_block", ablock, true, false, true, {}, {},
+                           false, true);
+      }
+    }
+    SCOPED_TRACE(bits);
+    RunCase<BFloat16, BFloat16>({129, 400}, 520, bits, 128, "dynamic_per_block", 128, true, true, false, {}, {}, false,
+                                true);
+    RunCase<MLFloat16, BFloat16>({65, 384}, 264, bits, 128, "dynamic_per_block", 256, false, false, true, {}, {}, false,
+                                 true);
+  }
+  // Blocks wider than K and a single weight block spanning all of K (W4 per channel).
+  RunCase<MLFloat16>({33, 272}, 264, 4, 4096, "dynamic_per_token", 0, true, false, true, {}, {}, false, true);
+  RunCase<BFloat16>({129, 1040}, 264, 8, 128, "dynamic_per_block", 96, true, false, true, {}, {}, false, true);
+  // Large tiles with several activation intervals.
+  RunCase<MLFloat16>({1030, 512}, 1032, 4, 128, "dynamic_per_block", 256, true, false, false, {}, {}, false, true);
+  RunCase<BFloat16>({1030, 512}, 520, 4, 256, "dynamic_per_block", 64, true, false, true, {}, {}, false, true);
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, HopperGroupedExceptionalDomains) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   constexpr int64_t m = 64;

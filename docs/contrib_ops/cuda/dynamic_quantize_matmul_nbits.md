@@ -1591,7 +1591,7 @@ H200, BF16, M=1536, per-token, complete operator, previous path -> Hopper
 25 focused tests each, the 15 Python tests pass, and Compute Sanitizer
 reports zero memcheck errors and zero racecheck hazards.
 
-### 8.13 Hopper grouped-scale path for block-128 W2/W4/W8
+### 8.13 Hopper grouped-scale path for W2/W4/W8
 
 The remaining gap for W2/W4 (about 40 us against 8 us for FP16 at M=1536,
 K=N=1024) came from the `mma.sync` grouped kernel running at roughly 7%
@@ -1599,8 +1599,9 @@ of INT8 peak. A standalone prototype (kernel authored in a separate
 session, CuTe/CUTLASS 3 with hand-scheduled warp specialization) is now
 integrated into `dynamic_quantize_matmul_nbits_sm90.cu`.
 
-Design: weight block exactly 128 (one K tile per scale block), K a
-multiple of 128, one activation interval covering K, constant weights.
+Design (first iteration): weight block exactly 128 (one K tile per scale
+block), K a multiple of 128, one activation interval covering K, constant
+weights. Section 8.14 generalizes these limits.
 One producer warpgroup issues TMA for A and B and gathers the native
 `[N, G]` weight scales (any of FP32/FP16/BF16 storage), and BM/64 consumer
 warpgroups issue INT8 WGMMA. Every K tile accumulates into a fresh INT32
@@ -1692,10 +1693,65 @@ BF16 remains 10-20% slower than FP16 on the large persistent shapes because
 of the range test and BF16 scale conversion; the plain-multiply BF16 variant
 is within about 10% of FP16.
 
-Not done: multiple activation intervals, weight blocks other than 128, and
-Ada/Blackwell or Windows execution (the operator and stub translation units
-only compile for sm_75/80/89/100a/120a here).
+### 8.14 Weight blocks 32-4096+ and several activation intervals on Hopper
 
+The grouped kernel now handles any power-of-two weight block of at least 32,
+K any multiple of 16, N a multiple of 8 and at least 256, and per-block
+activation modes whose activation block is at least K or a multiple of 32.
+Weight block 16 and activation blocks that are not multiples of 32 (including
+below 32) keep the `mma.sync` kernels, since INT8 WGMMA is k32. The design was
+prototyped separately and validated against an extended exact CPU reference
+(129,792 bitwise comparisons, no mismatches) before integration.
+
+An interval is a maximal K range with one weight block and one activation
+interval. The K tile BK is the largest of 128, 64 and 32 that divides the
+weight block and, with several activation intervals, the activation block,
+so every interval boundary is a tile boundary (SW128/SW64/SW32 swizzle for the
+three tile widths; a partial last tile is zero-filled by TMA, and zeros add
+exactly 0 to the INT32 accumulator). An interval of R tiles accumulates in one
+INT32 register accumulator (`ScaleOut::Zero` on its first tile), and two
+accumulators alternate between consecutive intervals. After each tile is
+issued, `warpgroup_wait<1>` retires the previous one and releases its shared-
+memory stage immediately, so the producer never waits behind a promotion. The
+accumulator is promoted when its interval ends, with the same
+`sum += (float(acc) * a_scale) * b_scale` rule. Activation scales `[M, Ga]` are
+read per interval from global memory (one load when a single interval covers
+K). Weight scales keep the native `[N, G]` layout and the same signed INT8
+expansion as before; the row stride is `G * block`, so padded last blocks cost
+N * G * block bytes. Variants are the weight block equal to BK (one tile per
+interval, no bookkeeping) or a multiple of BK, for BK 128/64/32, with the
+64x32, 128x96 and (BK 128 only) 128x128 tiles; the persistent kernel still
+serves weight block 128 with one activation interval. Tile choice compares CTA
+counts with the SM count. Intervals that start inside a tile ("split" variants
+for activation blocks such as 96) were prototyped but are not integrated:
+they were faster only in a few cases (8-22%) and need extra kernels.
+
+H200, M=1536, K=N=4096, W4, FP16 per-token unless noted, complete operator,
+previous `mma.sync` path -> Hopper:
+
+| Geometry | Previous (us) | Hopper (us) |
+|----------|---------------|-------------|
+| weight block 128, per-block activation 128 | 495.8 | 112.1 |
+| weight block 64 | 666.4 | 159.1 |
+| weight block 32 | 4705.8 | 248.5 |
+| weight block 256 | 371.0 | 83.3 |
+| weight block 4096 (one block per channel) | 282.2 | 66.7 |
+| M=16, weight block 64 | 1491.9 | 30.8 |
+
+Coarser blocks are faster than block 128 because promotions are amortized over
+several tiles; finer blocks are slower (block 64 is 1.7x and block 32 3.1x the
+block-128 time) because promotion work per 32 or 64 K dominates. The new
+`HopperGroupedWeightBlocksAndActivationIntervals` test compares bitwise with the
+exact reference across widths 2/4/8, weight blocks 32-512 and 4096, K tails,
+activation blocks 24/32/96/192/256/1000 (including the unsupported ones that
+fall back), per-token and per-tensor modes, bias, all scale types and both
+activation types. All 28 focused tests pass in the standard and plugin builds,
+the 15 Python tests pass, memcheck is clean, and the sm90 translation unit
+still compiles as a stub for sm_89 and sm_100a. Ptxas reports no WGMMA
+serialization warning for any grouped instantiation.
+
+Not done: Ada/Blackwell tuning and execution, Windows execution, and the
+split-interval variants.
 
 ## 9. Delivery Plan and Acceptance
 

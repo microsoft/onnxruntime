@@ -95,12 +95,13 @@ Status DynamicQuantizeMatMulNBits::PrePack(const Tensor& tensor, int input_idx, 
   // Single-interval W8 (one large block) uses the CUTLASS path; block-128 weights with several groups use the
   // grouped-scale path, which needs lossless signed INT8 codes for W2/W4 as well.
   const bool single_interval = bits_ == 8 && shape[0] >= 512 && shape[1] == 1 && block_size_ >= 128;
-  const bool grouped = block_size_ == 128 && shape[1] >= 2 && shape[0] >= 256;
+  const bool grouped = block_size_ >= 32 && shape[0] >= 256;
   if (!single_interval && !grouped) return Status::OK();
   bool available;
   ORT_RETURN_IF_ERROR(DynamicQuantizedSm90Available(available));
   if (!available) return Status::OK();
-  const int64_t expanded_size = single_interval ? shape.Size() : static_cast<int64_t>(SafeInt<int64_t>(shape[0]) * shape[1] * 128);
+  const int64_t expanded_size =
+      single_interval ? shape.Size() : static_cast<int64_t>(SafeInt<int64_t>(shape[0]) * shape[1] * block_size_);
   auto signed_weights = IAllocator::MakeUniquePtr<int8_t>(alloc, static_cast<size_t>(expanded_size), true);
   IAllocatorUniquePtr<uint8_t> staging;
   const uint8_t* source = tensor.Data<uint8_t>();
@@ -121,7 +122,7 @@ Status DynamicQuantizeMatMulNBits::PrePack(const Tensor& tensor, int input_idx, 
   CUDA_RETURN_IF_ERROR(cudaGetDevice(&sm90_device_id_));
   sm90_sm_count_ = GetDeviceProp().multiProcessorCount;
   signed_n_ = shape[0];
-  signed_stride_ = block_size_;
+  signed_stride_ = single_interval ? block_size_ : static_cast<int64_t>(SafeInt<int64_t>(shape[1]) * block_size_);
   signed_grouped_ = !single_interval;
   signed_weights_ = std::move(signed_weights);
   return Status::OK();
@@ -203,12 +204,14 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
     ORT_RETURN_IF_ERROR(LaunchDynamicTensorScale(a->DataRaw(), bf16, a->Shape().Size(), tensor_scale.get(),
                                                  tensor_partials.get(), stream));
   }
-  const bool sm90_dims_ok = signed_weights_ && n == signed_n_ && activation_block >= k &&
-                            m <= std::numeric_limits<int>::max() && n <= std::numeric_limits<int>::max() &&
-                            k <= std::numeric_limits<int>::max();
-  const bool sm90_shape_ok = sm90_dims_ok && !signed_grouped_ && !bf16 && groups == 1 && k >= 128 && k % 16 == 0;
-  // The grouped kernel covers exactly one 128-wide scale block per K tile.
-  const bool sm90_grouped_ok = sm90_dims_ok && signed_grouped_ && k % 128 == 0 && groups == k / 128;
+  const bool sm90_dims_ok = signed_weights_ && n == signed_n_ && m <= std::numeric_limits<int>::max() &&
+                            n <= std::numeric_limits<int>::max() && k <= std::numeric_limits<int>::max();
+  const bool sm90_shape_ok = sm90_dims_ok && !signed_grouped_ && !bf16 && groups == 1 && k >= 128 && k % 16 == 0 &&
+                             activation_block >= k;
+  // The grouped kernel needs whole 32-wide slices: K a multiple of 16 (TMA zero-fills the last slice) and, with
+  // several activation intervals, an activation block that is a multiple of 32.
+  const bool sm90_grouped_ok = sm90_dims_ok && signed_grouped_ && k % 16 == 0 && k >= 16 &&
+                               (per_tensor || activation_block >= k || activation_block % 32 == 0);
   for (int64_t row = 0; row < m;) {
     const int64_t rows = std::min(tile_m, m - row);
     const size_t a_offset = SafeInt<size_t>(row) * k;
@@ -230,8 +233,10 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
           signed_stride_, sm90_device_id_, sm90_sm_count_, stream));
     } else if (sm90_grouped_ok && aligned16) {
       ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedSm90Grouped(
-          quantized.get(), a_scales, signed_weights_.get(), scales->DataRaw(), scale_type, bias_data, y_tile,
-          bf16, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k), sm90_sm_count_, stream));
+          quantized.get(), a_scales, signed_weights_.get(), signed_stride_, scales->DataRaw(), scale_type, bias_data,
+          y_tile,
+          bf16, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k), block_size_,
+          activation_block, sm90_sm_count_, stream));
     } else {
       ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedMatMul(quantized.get(), a_scales, b->Data<uint8_t>(),
                                                        scales->DataRaw(), scale_type, bias_data, y_tile, bf16,
