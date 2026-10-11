@@ -1,6 +1,7 @@
 package onnxruntime
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -70,7 +71,17 @@ func TestSessionOptionsExecutionMode(t *testing.T) {
 
 func TestSessionOptionsGetExecutionMode(t *testing.T) {
 	if APIVersion() < 27 {
-		t.Skipf("GetExecutionMode requires ORT >= 1.27 (have API version %d)", APIVersion())
+		opts, err := NewSessionOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer opts.Close()
+		_, err = opts.GetExecutionMode()
+		var native *OrtError
+		if !errors.As(err, &native) || native.Code != ErrorCodeNotImplemented {
+			t.Fatalf("expected typed unsupported error, got %v", err)
+		}
+		return
 	}
 	opts, err := NewSessionOptions()
 	if err != nil {
@@ -99,7 +110,17 @@ func TestSessionOptionsGetExecutionMode(t *testing.T) {
 
 func TestSessionOptionsIsMemPatternEnabled(t *testing.T) {
 	if APIVersion() < 27 {
-		t.Skipf("IsMemPatternEnabled requires ORT >= 1.27 (have API version %d)", APIVersion())
+		opts, err := NewSessionOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer opts.Close()
+		_, err = opts.IsMemPatternEnabled()
+		var native *OrtError
+		if !errors.As(err, &native) || native.Code != ErrorCodeNotImplemented {
+			t.Fatalf("expected typed unsupported error, got %v", err)
+		}
+		return
 	}
 	opts, err := NewSessionOptions()
 	if err != nil {

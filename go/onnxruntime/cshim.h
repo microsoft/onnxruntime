@@ -3,16 +3,22 @@
 
 #include "onnxruntime_c_api.h"
 
-// Preferred API version (ORT >= 1.27.0, includes getter APIs).
-// Falls back to ORT_GO_API_VERSION_MIN for older libraries.
-#define ORT_GO_API_VERSION_MAX 27
+// Negotiate the highest supported API within the binding's loader range.
+#ifndef ORT_GO_API_VERSION_MAX
+#define ORT_GO_API_VERSION_MAX ORT_API_VERSION
+#endif
 #define ORT_GO_API_VERSION_MIN 17
+#if ORT_GO_API_VERSION_MAX < ORT_GO_API_VERSION_MIN || ORT_GO_API_VERSION_MAX > ORT_API_VERSION
+#error "ORT_GO_API_VERSION_MAX must be between 17 and ORT_API_VERSION"
+#endif
 
 // Initialize the global OrtApi pointer from a resolved OrtGetApiBase function.
-// Tries ORT_GO_API_VERSION_MAX first, falls back to ORT_GO_API_VERSION_MIN.
+// Starts at min(runtime minor, MAX) for version 1.N.x, otherwise MAX.
+// Falls back downward to ORT_GO_API_VERSION_MIN after rejected requests.
 // Returns 0 on success, 1 if apiBase is NULL, 2 if even min version unsupported.
 // Sets *actual_version to the version that was loaded.
 int ort_init_api(void* get_api_base_fn, int* actual_version);
+void ort_reset_api(void);
 
 // Environment
 OrtStatusPtr ort_CreateEnv(OrtLoggingLevel level, const char* logid, OrtEnv** out);
@@ -175,6 +181,7 @@ OrtStatusPtr ort_SessionEndProfiling(OrtSession* session, OrtAllocator* allocato
 
 // Version
 const char* ort_GetVersionString(void);
+OrtStatusPtr ort_GetBuildInfoString(const char** out);
 
 // Session options getters (since 1.27)
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions* opts, int* out);
