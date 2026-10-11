@@ -35,6 +35,7 @@ Abstract:
 
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <thread>
 
@@ -208,6 +209,119 @@ MlasReadExtendedControlRegister(
 
 #if defined(__linux__)
 #include <sys/syscall.h>
+#if defined(MLAS_TARGET_AMD64)
+#include <pthread.h>
+#include <sched.h>
+#endif
+#endif
+
+#if defined(__linux__) && defined(MLAS_TARGET_AMD64)
+namespace {
+
+bool
+MlasAMXTileDataRoundTrip(int cpu, void*)
+{
+    cpu_set_t target;
+    CPU_ZERO(&target);
+    CPU_SET(cpu, &target);
+
+    alignas(64) uint8_t config[64] = {};
+    alignas(64) uint32_t source[256];
+    alignas(64) uint32_t destination[256] = {};
+    config[0] = 1;   // Palette 1.
+    config[16] = 64; // Bytes per row in tmm0.
+    config[48] = 16; // Rows in tmm0.
+    for (uint32_t i = 0; i < 256; ++i) {
+        source[i] = 0x9E3779B9u * (i + 1);
+    }
+
+    // Keep the tile live across a forced migration, without any library calls.
+    // Use instruction bytes, as in amx_common.h, for older assemblers.
+    int64_t rc;
+    __asm__ volatile(
+        "movq %[config], %%rax\n\t"
+        ".byte 0xC4, 0xE2, 0x78, 0x49, 0x00\n\t"       // ldtilecfg [rax]
+        "movq %[source], %%rax\n\t"
+        ".byte 0xC4, 0xE2, 0x7B, 0x4B, 0x04, 0x18\n\t" // tileloadd tmm0, [rax+rbx]
+        "movl %[syscall], %%eax\n\t"
+        "syscall\n\t"
+        "movq %%rax, %[rc]\n\t"
+        "movq %[destination], %%rax\n\t"
+        ".byte 0xC4, 0xE2, 0x7A, 0x4B, 0x04, 0x18\n\t" // tilestored [rax+rbx], tmm0
+        ".byte 0xC4, 0xE2, 0x78, 0x49, 0xC0\n\t"       // tilerelease
+        : [rc] "=&r" (rc)
+        : [config] "r" (config), [source] "r" (source), [destination] "r" (destination),
+          [syscall] "i" (SYS_sched_setaffinity), "b" (int64_t{64}),
+          "D" (int64_t{0}), "S" (sizeof(target)), "d" (&target)
+        : "rax", "rcx", "r11", "memory", "cc");
+
+    return rc == 0 && std::memcmp(source, destination, sizeof(source)) == 0;
+}
+
+struct MlasAMXProbeContext {
+    bool (*Probe)(int, void*);
+    void* Context;
+    bool Result = false;
+};
+
+void*
+MlasAMXProbeThread(void* arg)
+{
+    auto& probe = *static_cast<MlasAMXProbeContext*>(arg);
+    cpu_set_t allowed;
+    if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) {
+        return nullptr;
+    }
+
+    int first = -1;
+    int second = -1;
+    for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+        if (CPU_ISSET(cpu, &allowed)) {
+            if (first < 0) {
+                first = cpu;
+            } else {
+                second = cpu;
+                break;
+            }
+        }
+    }
+    // A sleep/yield need not restore FPU state. Fail closed if migration cannot
+    // be tested, since preemption can also lose tile data on a single CPU.
+    if (second < 0) {
+        return nullptr;
+    }
+
+    cpu_set_t target;
+    CPU_ZERO(&target);
+    CPU_SET(first, &target);
+    if (sched_setaffinity(0, sizeof(target), &target) == 0) {
+        probe.Result = probe.Probe(second, probe.Context);
+    }
+    return nullptr;
+}
+
+bool
+MlasAMXTileDataIsPreserved(bool (*probe)(int, void*), void* context)
+{
+    // Only change affinity in a temporary thread, never in the caller.
+    MlasAMXProbeContext probe_context{probe, context};
+    pthread_t thread;
+    if (pthread_create(&thread, nullptr, MlasAMXProbeThread, &probe_context) != 0) {
+        return false;
+    }
+    pthread_join(thread, nullptr);
+    return probe_context.Result;
+}
+
+} // namespace
+
+#if defined(MLAS_ENABLE_TEST_HOOKS)
+bool
+MlasAMXTileDataIsPreservedForTesting(bool (*probe)(int, void*), void* context)
+{
+    return MlasAMXTileDataIsPreserved(probe, context);
+}
+#endif
 #endif
 
 bool
@@ -227,10 +341,14 @@ MlasInitAMX()
     if (rc) {
         return false;
     }
-    if (bitmask & XFEATURE_MASK_XTILE) {
-        return true;
+    if ((bitmask & XFEATURE_MASK_XTILE) != XFEATURE_MASK_XTILE) {
+        return false;
     }
-    return false;
+#if defined(MLAS_TARGET_AMD64)
+    return MlasAMXTileDataIsPreserved(MlasAMXTileDataRoundTrip, nullptr);
+#else
+    return true;
+#endif
 #else
     return true;
 #endif
