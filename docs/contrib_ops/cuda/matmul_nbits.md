@@ -571,6 +571,37 @@ present. `ComputeInternal` then:
   ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.*
   ```
 
+  For the non-plugin CUDA EP, configure with `onnxruntime_USE_CUDA=ON`,
+  `onnxruntime_BUILD_UNIT_TESTS=ON`, and `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON`.
+  Building the provider-test target also builds the internal-test module:
+
+  ```bash
+  cmake --build <build-directory> --config Release --target onnxruntime_provider_test
+  ```
+
+  On Windows, this is an aggregate build target: it compiles the internal-test
+  objects, exports only the host symbols they require from the executable's static
+  libraries, then links the executable. Generated `/INCLUDE` directives ensure MSVC
+  extracts those symbols even when only the module references them.
+  The module links against its import library.
+  The tests remain in the module; there is no additional runtime interface. The executable
+  remains named `onnxruntime_provider_test.exe`, and the CTest name remains
+  `onnxruntime_provider_test`. The default build also includes both artifacts.
+
+  Tests using core `Node` and `Tensor` objects call provider implementations through
+  statically linked test adapters with opaque, borrowed pointers. The adapters use
+  the existing provider-host accessors, avoiding the distinct core/provider C++ types
+  in cross-translation-unit signatures. The module uses manual C++ API initialization
+  consistently and imports host test utilities instead of linking a second copy that
+  depends on the executable's `ort_env` global. On Windows it links `onnx_proto` directly.
+
+  Before the full build, Windows CUDA CI builds only `onnxruntime_provider_test`
+  and requires the executable, its import library, and the internal-test DLL to be produced from
+  fresh outputs. It then runs `CUDA_EP_Unittest.All` explicitly on the GPU runner.
+  Its XML report must contain the completed wrapper test. The wrapper also requires
+  at least one successful internal test after execution; an empty or entirely skipped
+  internal run fails the check.
+
   This wrapper executes the internal CUDA-UT shared library and covers the
   fpA_intB / MatMulNBits groupwise GEMM tests under
   [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc)

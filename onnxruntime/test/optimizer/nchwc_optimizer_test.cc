@@ -4,6 +4,7 @@
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/nchwc_transformer.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
@@ -12,6 +13,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include <array>
 #include <cmath>
 
 #include "gtest/gtest.h"
@@ -235,6 +237,61 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 }
 
 #ifndef DISABLE_CONTRIB_OPS
+
+TEST(NchwcOptimizerTests, BinaryInputsWithUnexpectedRankAreNotTransformed) {
+  if (MlasNchwcGetBlockSize() <= 1) {
+    return;
+  }
+
+  const auto run_case = [](bool mutate_first_operand) {
+    SCOPED_TRACE(mutate_first_operand ? "unexpected rank on first operand" : "unexpected rank on later operand");
+    std::unordered_map<std::string, int> domain_to_version{
+        {kOnnxDomain, 14}, {kMSDomain, 1}, {kMSNchwcDomain, 1}};
+    Model model("nchwc_rank_mismatch", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    NchwcTestHelper helper(model.MainGraph());
+
+    auto* first_input = helper.MakeInput<float>({1, 3, 3, 3});
+    auto* first_conv = helper.MakeIntermediate();
+    helper.AddConvNode(first_input, first_conv, {3, 3, 1, 1});
+
+    auto* later_input = helper.MakeInput<float>({1, 3, 3, 3});
+    auto* later_conv = helper.MakeIntermediate();
+    helper.AddConvNode(later_input, later_conv, {3, 3, 1, 1});
+
+    Node& add_node = helper.AddNode("Add", {first_conv, later_conv}, {helper.MakeOutput()});
+    const NodeIndex add_node_index = add_node.Index();
+    const std::array<std::string, 2> original_add_inputs{
+        add_node.InputDefs()[0]->Name(), add_node.InputDefs()[1]->Name()};
+
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+    ONNX_NAMESPACE::TensorShapeProto unexpected_rank_shape;
+    for (const int64_t dim : {1, 3, 3}) {
+      unexpected_rank_shape.add_dim()->set_dim_value(dim);
+    }
+    (mutate_first_operand ? first_conv : later_conv)->SetShape(unexpected_rank_shape);
+
+    for (auto& node : model.MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+
+    NchwcTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(model.MainGraph(), modified, DefaultLoggingManager().DefaultLogger()));
+    ASSERT_TRUE(modified);
+
+    const Node* untransformed_add = model.MainGraph().GetNode(add_node_index);
+    ASSERT_NE(untransformed_add, nullptr);
+    EXPECT_EQ(untransformed_add->OpType(), "Add");
+    ASSERT_EQ(untransformed_add->InputDefs().size(), 2u);
+    EXPECT_EQ(untransformed_add->InputDefs()[0]->Name(), original_add_inputs[0]);
+    EXPECT_EQ(untransformed_add->InputDefs()[1]->Name(), original_add_inputs[1]);
+  };
+
+  run_case(true);
+  run_case(false);
+}
 
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {

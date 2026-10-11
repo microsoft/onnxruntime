@@ -111,16 +111,38 @@ std::pair<int, std::string> GetErrnoInfo();
 /**
  * An owned open file supporting concurrent positional reads.
  *
- * Reads and length queries refer to the same file even if its pathname is replaced.
+ * Reads, mappings, length queries, and canonical-path queries refer to the same file even if its pathname is replaced.
  * This is not a snapshot: callers must not modify the file in place while reading it.
  * Keep the object alive until all callers have finished. Its destruction closes the file.
  */
 class RandomAccessFile {
  public:
+  struct MappedMemoryDeleter {
+    using UnmapFn = void (*)(void* mapped_base, size_t mapped_length) noexcept;
+
+    void* mapped_base{};
+    size_t mapped_length{};
+    UnmapFn unmap{};
+
+    void operator()(char*) const noexcept {
+      if (unmap != nullptr) {
+        unmap(mapped_base, mapped_length);
+      }
+    }
+  };
+
+  using MappedMemoryPtr = std::unique_ptr<char[], MappedMemoryDeleter>;
+
   virtual ~RandomAccessFile() = default;
 
   // Query the open file, leaving length unchanged on failure.
-  virtual common::Status GetLength(size_t& length) const = 0;
+  virtual common::Status GetLength(uint64_t& length) const = 0;
+
+  // Return the canonical path of this open file handle.
+  virtual common::Status GetCanonicalPath(PathString& path) const = 0;
+
+  // Map bytes from this open file without reopening its pathname.
+  virtual common::Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const = 0;
 
   /**
    * Fill buffer starting at offset without changing a shared file position.

@@ -17,6 +17,7 @@ import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
 @RequiresApi(api = Build.VERSION_CODES.N)
 public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   private static ReactApplicationContext reactContext;
+  private long nativeEnvHandle;
 
   public OnnxruntimeModule(ReactApplicationContext context) {
     super(context);
@@ -29,27 +30,34 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     return "Onnxruntime";
   }
 
-  native void nativeInstall(long jsiPointer, CallInvokerHolderImpl jsCallInvokerHolder);
+  native long nativeInstall(long jsiPointer, CallInvokerHolderImpl jsCallInvokerHolder);
 
-  native void nativeCleanup();
+  native void nativeCleanup(long envHandle);
 
   @Override
-  public void invalidate() {
+  public synchronized void invalidate() {
     super.invalidate();
-    nativeCleanup();
+    if (nativeEnvHandle != 0) {
+      nativeCleanup(nativeEnvHandle);
+      nativeEnvHandle = 0;
+    }
   }
 
   /**
    * Install onnxruntime JSI API
    */
   @ReactMethod(isBlockingSynchronousMethod = true)
-  public boolean install() {
+  public synchronized boolean install() {
     try {
       System.loadLibrary("onnxruntimejsi");
       JavaScriptContextHolder jsContext = getReactApplicationContext().getJavaScriptContextHolder();
       CallInvokerHolderImpl jsCallInvokerHolder =
         (CallInvokerHolderImpl) getReactApplicationContext().getCatalystInstance().getJSCallInvokerHolder();
-      nativeInstall(jsContext.get(), jsCallInvokerHolder);
+      long newEnvHandle = nativeInstall(jsContext.get(), jsCallInvokerHolder);
+      if (nativeEnvHandle != 0) {
+        nativeCleanup(nativeEnvHandle);
+      }
+      nativeEnvHandle = newEnvHandle;
       return true;
     } catch (Exception e) {
       return false;

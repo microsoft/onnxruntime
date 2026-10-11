@@ -7,6 +7,7 @@ VERS_1.0.0 {
   ExampleEpTestHooks_ResetPreallocatedOutputQuery;
   ExampleEpTestHooks_GetPreallocatedOutputQueryResult;
   ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected;
+  ExampleEpTestHooks_SetCreateDataTransferFailure;
  local:
     *;
 };

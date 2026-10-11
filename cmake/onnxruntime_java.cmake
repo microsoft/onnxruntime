@@ -234,6 +234,23 @@ else()
   endif()
 endif()
 
+if (onnxruntime_BUILD_UNIT_TESTS AND NOT ANDROID AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
+  onnxruntime_add_shared_library_module(onnxruntime4j_jni_test
+    "${JAVA_ROOT}/src/test/native/ep_context_callback_test.cc"
+    "${JAVA_ROOT}/src/main/native/OrtJniUtil.c")
+  set_property(TARGET onnxruntime4j_jni_test PROPERTY C_STANDARD 11)
+  onnxruntime_add_include_to_target(onnxruntime4j_jni_test onnxruntime_session)
+  target_include_directories(onnxruntime4j_jni_test PRIVATE
+    ${REPO_ROOT}/include ${JAVA_ROOT}/src/main/native ${JNI_INCLUDE_DIRS})
+  target_link_libraries(onnxruntime4j_jni_test PRIVATE onnxruntime Threads::Threads)
+  add_dependencies(onnxruntime4j_jni_test onnxruntime4j_jni)
+  add_custom_command(TARGET onnxruntime4j_jni_test POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${JAVA_OUTPUT_DIR}/native-test
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      $<TARGET_FILE:onnxruntime4j_jni_test>
+      ${JAVA_OUTPUT_DIR}/native-test/$<TARGET_FILE_NAME:onnxruntime4j_jni_test>)
+endif()
+
 # run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
 set(GRADLE_ARGS cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
 

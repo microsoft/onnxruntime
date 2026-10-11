@@ -199,6 +199,24 @@ TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
   EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
 }
 
+// Profiler buffers must support sizes beyond INT32 and reject overflow of size_t arithmetic.
+TEST(MatMulNBitsWorkspace, TacticProfilerBufferOffsetsExceedInt32) {
+  const auto buffers = llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerBufferSizes(
+      8192, 65536, 1536, 4, 32, 1024);
+  ASSERT_TRUE(buffers.has_value());
+  EXPECT_EQ((*buffers)[4], size_t{262144} * sizeof(uint16_t));
+  EXPECT_EQ((*buffers)[5], size_t{8192} * 262144 * sizeof(uint16_t));
+  EXPECT_GT((*buffers)[5], static_cast<size_t>(std::numeric_limits<int32_t>::max()));
+  size_t total = 0;
+  for (size_t bytes : *buffers) {
+    total += bytes;
+  }
+  EXPECT_EQ(ComputeWeightOnlyGemmProfilerScratchSize(8192, 65536, 1536, 4, 32, 1024), total);
+  EXPECT_FALSE(llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerBufferSizes(
+                   std::numeric_limits<size_t>::max(), 65536, 1536, 4, 32, 1024)
+                   .has_value());
+}
+
 TEST(MatMulNBitsWorkspace, TacticProfilerMCapStaysWithinScratchLimit) {
   EXPECT_EQ(FpAIntBProfileSafeMCap(529), 512);
   EXPECT_EQ(FpAIntBProfileSafeMCap(5957), 4096);

@@ -50,6 +50,7 @@ using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutla
 // Environment variable to enable/disable the fpA_intB path: unset/0/off to disable, other value to enable.
 // This only affects nodes whose weights are NOT prepacked (see the constructor).
 constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
+constexpr const char* kFpAIntBGemvPairedKOption = "ORT_FPA_INTB_GEMV_PAIRED_K";
 
 // Env fallback for kOrtSessionOptionsCudaMatMulNBitsMChunkSize (max rows of A per fpA_intB launch).
 constexpr const char* kMChunkSizeEnvVar = "ORT_MATMULNBITS_M_CHUNK_SIZE";
@@ -192,27 +193,10 @@ class MatMulNBits final : public CudaKernel {
     constexpr int kInputIndexGroupIndex = 4;
     constexpr int kInputIndexBias = 5;
 
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-    // PLUGIN BUILD ADAPTATION: The adapter Node does not expose InputDefs(),
-    // so we cannot check whether optional inputs (zero_points, g_idx, bias)
-    // truly exist at construction time. Instead, we check input count here
-    // and verify actual tensor presence in ComputeInternal.
-    ORT_UNUSED_PARAMETER(kInputIndexScale);  // only used in non-plugin path for type checking
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints;
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex;
-    has_bias_ = info.GetInputCount() > kInputIndexBias;
-    // is_zero_points_scale_same_type_ defaults to false; checked at runtime in plugin path.
-#else
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
-    has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
-
-    if (has_zero_points_) {
-      int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
-      int32_t scale_type = info.node().InputDefs()[kInputIndexScale]->TypeAsProto()->tensor_type().elem_type();
-      is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
-    }
-#endif
+    has_zero_points_ = InputExists(info, kInputIndexZeroPoints);
+    has_g_idx_ = InputExists(info, kInputIndexGroupIndex);
+    has_bias_ = InputExists(info, kInputIndexBias);
+    is_zero_points_scale_same_type_ = has_zero_points_ && GetInputElementType(info, kInputIndexZeroPoints) == GetInputElementType(info, kInputIndexScale);
 
     const Tensor* group_index_initializer = nullptr;
     group_index_is_initializer_ = has_g_idx_ &&
@@ -232,6 +216,13 @@ class MatMulNBits final : public CudaKernel {
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
                 "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
+    const std::string wave_aware = info.GetConfigOptions()
+                                       .GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemvWaveAware)
+                                       .value_or("0");
+    ORT_ENFORCE(wave_aware == "0" || wave_aware == "1",
+                "Invalid MatMulNBits wave-aware GEMV option '", wave_aware, "': expected 0 or 1.");
+    wave_aware_gemv_ = wave_aware == "1" && std::is_same_v<T, MLFloat16> && sm_ / 10 == 12 &&
+                       nbits_ == 4 && !has_zero_points_ && FpAIntBPackingSmForKernel() == 80;
     m_chunk_size_ = ParseMatMulNBitsMChunkSize(ResolveFpAIntBConfigOrEnv(
         info, kOrtSessionOptionsCudaMatMulNBitsMChunkSize, kMChunkSizeEnvVar));
     m_chunk_size_ = static_cast<int>(FpAIntBProfileSafeMCap(m_chunk_size_));
@@ -282,6 +273,21 @@ class MatMulNBits final : public CudaKernel {
         }
 
         InitGemmProfiler(FpAIntBPackingSmForKernel());
+
+        // Opt-in: let the tactic profiler also try the paired-K fp16 int4 GEMV for M = 5..8 ("1"), or use
+        // only it ("force", for testing). Only the SM80-interleaved layout has this kernel.
+        if constexpr (std::is_same<T, MLFloat16>::value) {
+          const int packing_sm = FpAIntBPackingSmForKernel();
+          const std::string paired_option = ResolveFpAIntBConfigOrEnv(
+              info, kOrtSessionOptionsCudaFpAIntBGemvPairedK, kFpAIntBGemvPairedKOption);
+          const bool paired_eligible = has_fpA_intB_gemv_ && nbits_ == 4 && block_size_ == 32 &&
+                                       !has_zero_points_ && !has_bias_ && !(packing_sm >= 90 && packing_sm < 100);
+          if (paired_eligible && ParseFpAIntBEnabled(paired_option)) {
+            paired_gemv_mode_ =
+                onnxruntime::utils::GetLowercaseString(onnxruntime::utils::TrimString(paired_option)) == "force" ? 2 : 1;
+          }
+          gemmProfiler_->setPairedGemvMode(paired_gemv_mode_);
+        }
 
         // Initial profile M buckets from session config (ep.cuda.fpa_intb_profile_m) with
         // ORT_FPA_INTB_PROFILE_M env fallback; empty -> profiler uses its default bucket set.
@@ -405,7 +411,10 @@ class MatMulNBits final : public CudaKernel {
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
+  // 0 = off, 1 = paired-K GEMV is an extra profiler tactic, 2 = it is the only GEMV/GEMM tactic for M = 8.
+  int paired_gemv_mode_{0};
   bool has_fpA_intB_gemm_{false};
+  bool wave_aware_gemv_{false};
   int64_t weight_prepacked_{kMatMulNBitsWeightNotPrepacked};
   // Max rows of A per fpA_intB launch; 0 disables M chunking.
   int m_chunk_size_{0};
