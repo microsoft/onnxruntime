@@ -151,7 +151,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"unsafe"
 )
 
@@ -178,16 +177,11 @@ func nativeSourceBuffer(o *SessionOptions) (uintptr, []byte, error) {
 	return uintptr(data), bytes.Clone(unsafe.Slice((*byte)(data), int(size))), nil
 }
 
-func buildBufferObserver(directory string) (string, error) {
+func buildBufferObserver(directory string, compiler []string) (string, error) {
 	if runtime.GOOS != "linux" {
 		return "", fmt.Errorf("observer compiler flags are validated only on Linux")
 	}
-	compiler, err := exec.Command("go", "env", "CC").Output()
-	if err != nil {
-		return "", fmt.Errorf("get cgo C compiler: %w", err)
-	}
-	parts := strings.Fields(strings.TrimSpace(string(compiler)))
-	if len(parts) == 0 {
+	if len(compiler) == 0 {
 		return "", fmt.Errorf("cgo C compiler unavailable")
 	}
 	headers, err := filepath.Abs(".")
@@ -199,9 +193,9 @@ func buildBufferObserver(directory string) (string, error) {
 	if err := os.WriteFile(source, []byte(bufferObserverSource), 0600); err != nil {
 		return "", err
 	}
-	args := append([]string{}, parts[1:]...)
+	args := append([]string{}, compiler[1:]...)
 	args = append(args, "-std=c11", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror", "-I", headers, source, "-o", library)
-	output, err := exec.Command(parts[0], args...).CombinedOutput()
+	output, err := exec.Command(compiler[0], args...).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("compile buffer observer: %w\n%s", err, output)
 	}

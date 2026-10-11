@@ -174,7 +174,15 @@ func TestWeightlessSourceModelBufferProvider(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("observer compiler flags validated only on Linux")
 	}
-	library, err := buildBufferObserver(t.TempDir())
+	ccOutput, err := exec.Command("go", "env", "CC").Output()
+	if err != nil {
+		t.Fatalf("get cgo C compiler: %v", err)
+	}
+	compiler, err := splitCompilerCommand(string(ccOutput))
+	if err != nil {
+		t.Fatalf("parse cgo C compiler: %v", err)
+	}
+	library, err := buildBufferObserver(t.TempDir(), compiler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,8 +431,15 @@ func TestEPContextReaderReentry(t *testing.T) {
 	marker := os.Getenv("ORT_GO_REENTRY_CHILD")
 	library := os.Getenv("ORT_GO_REENTRY_LIBRARY")
 	if marker == "" {
-		var err error
-		library, err = buildBufferObserver(t.TempDir())
+		ccOutput, err := exec.Command("go", "env", "CC").Output()
+		if err != nil {
+			t.Fatalf("get cgo C compiler: %v", err)
+		}
+		compiler, err := splitCompilerCommand(string(ccOutput))
+		if err != nil {
+			t.Fatalf("parse cgo C compiler: %v", err)
+		}
+		library, err = buildBufferObserver(t.TempDir(), compiler)
 		if err != nil {
 			t.Fatal(err)
 		}
