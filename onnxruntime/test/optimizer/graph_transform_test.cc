@@ -11296,6 +11296,33 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsLossyCombinedDoubleScal
       TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
 }
 
+TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsCancellingLossyDoubleScales) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<double>({{1, 1}});
+    auto* input_b = builder.MakeInput<double>({{1, 1}});
+    auto* scale1 = builder.MakeScalarInitializer<double>(1e300);
+    auto* scale2 = builder.MakeScalarInitializer<double>(1e-300);
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* matmul_output = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {input_a, scale1}, {scaled_a});
+    builder.AddNode("MatMul", {scaled_a, input_b}, {matmul_output});
+    builder.AddNode("Mul", {matmul_output, scale2}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Mul") == 2);
+    TEST_RETURN_IF_NOT(op_to_count.at("MatMul") == 1);
+    TEST_RETURN_IF(op_to_count.count("com.microsoft.FusedMatMul") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatMulScaleFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
 TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsLossyIntegerScale) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input_a = builder.MakeInput<int64_t>({{2, 2}});

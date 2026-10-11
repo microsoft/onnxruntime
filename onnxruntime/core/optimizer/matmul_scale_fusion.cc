@@ -57,7 +57,9 @@ struct ExtractScalarDispatchTarget {
     T scalar;
     ORT_RETURN_IF_ERROR(utils::UnpackTensor(tensor_proto, model_path, &scalar, 1));
     const float scalar_float = static_cast<float>(scalar);
-    if constexpr (std::is_integral_v<T>) {
+    if constexpr (std::is_same_v<T, double>) {
+      lossless = static_cast<double>(scalar_float) == scalar;
+    } else if constexpr (std::is_integral_v<T>) {
       lossless = IsIntegralExactlyRepresentableAsFloat(scalar);
     } else {
       lossless = true;
