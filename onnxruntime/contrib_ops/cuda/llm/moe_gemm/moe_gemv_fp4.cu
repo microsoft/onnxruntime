@@ -524,18 +524,27 @@ __device__ __forceinline__ uint32_t RoundedScalePair(uint32_t scale_code, float 
   }
 }
 
+// Operands of one weight vector per column, passed by value to the out-of-line generic decode so the
+// caller's register-resident arrays are never address-taken.
+template <int Cols>
+struct DecodeVectorState {
+  uint4 packed[Cols];
+  uint32_t scale_codes[Cols];
+  float chain_a[Cols];
+  float chain_b[Cols];
+};
+
 // Generic decode (any T, any block scale): the Fp4I2FConverter path of the baseline kernel.
 template <typename T, int Cols>
-__device__ __noinline__ void AccumulateWeightVectorsGeneric(
-    const uint4 (&packed)[Cols], const uint32_t (&scale_codes)[Cols], float global_scale, const float* act,
-    float (&chain_a)[Cols], float (&chain_b)[Cols]) {
+__device__ __noinline__ DecodeVectorState<Cols> AccumulateWeightVectorsGeneric(
+    DecodeVectorState<Cols> state, float global_scale, const float* act) {
   uint32_t scale_rounded[Cols];
 #pragma unroll
   for (int c = 0; c < Cols; ++c) {
-    scale_rounded[c] = RoundedScalePair<T>(scale_codes[c], global_scale);
+    scale_rounded[c] = RoundedScalePair<T>(state.scale_codes[c], global_scale);
   }
-  FmaWeightVector<T, Cols>(act, chain_a, chain_b, [&](int c, int w, uint32_t (&decoded_pairs)[4]) {
-    uint32_t word_copy = (&packed[c].x)[w];
+  FmaWeightVector<T, Cols>(act, state.chain_a, state.chain_b, [&](int c, int w, uint32_t (&decoded_pairs)[4]) {
+    uint32_t word_copy = (&state.packed[c].x)[w];
     alignas(4) T decoded[8];
     fiv::Fp4I2FConverter<T>::template convert<8>(&word_copy, decoded);
     const uint32_t scale_splat = __byte_perm(scale_rounded[c], scale_rounded[c], (w / 2) ? 0x3232 : 0x1010);
@@ -550,6 +559,7 @@ __device__ __noinline__ void AccumulateWeightVectorsGeneric(
       decoded_pairs[j] = static_cast<uint32_t>(bits[j]) | (static_cast<uint32_t>(bits[j + 4]) << 16);
     }
   });
+  return state;
 }
 
 // bf16 fast path: valid when every block scale is below 4 (global_scale * 448 < 3.98), so that
@@ -583,7 +593,20 @@ __device__ __forceinline__ void AccumulateWeightVectors(
       return;
     }
   }
-  AccumulateWeightVectorsGeneric<T, Cols>(packed, scale_codes, global_scale, act, chain_a, chain_b);
+  DecodeVectorState<Cols> state;
+#pragma unroll
+  for (int c = 0; c < Cols; ++c) {
+    state.packed[c] = packed[c];
+    state.scale_codes[c] = scale_codes[c];
+    state.chain_a[c] = chain_a[c];
+    state.chain_b[c] = chain_b[c];
+  }
+  state = AccumulateWeightVectorsGeneric<T, Cols>(state, global_scale, act);
+#pragma unroll
+  for (int c = 0; c < Cols; ++c) {
+    chain_a[c] = state.chain_a[c];
+    chain_b[c] = state.chain_b[c];
+  }
 }
 
 template <typename T, bool FusedSwiGlu, bool EnableBias, int Warps, int Cols, int MinBlocks>
