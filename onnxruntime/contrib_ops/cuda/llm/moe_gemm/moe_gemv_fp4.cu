@@ -407,7 +407,7 @@ __global__ void MoeGemvFp4RawNPackedKernel(
 // It reproduces the baseline floating-point summation order exactly so results are bit-identical:
 // the baseline reduces over K as 64 "lanes" L = (k / 16) % 64, each lane accumulating its 16-element
 // groups sequentially across 1024-wide K tiles, then a butterfly over the 16 lanes of a warp and a
-// sequential sum over the 4 warps. Here a thread owns one output column and the lane pair
+// sequential sum over the 4 warps. Here a thread owns 1-2 output columns and the lane pair
 // L = 16w + 2j, 2j + 1 (one 16-byte load per K tile); adding the two chains is the baseline's first
 // butterfly step, shuffles over j are the remaining three, and the four partials w = 0..3 are summed
 // in order by the same thread, so no cross-warp reduction or barrier is needed after the main loop.
