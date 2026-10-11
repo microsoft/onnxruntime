@@ -453,10 +453,20 @@ TEST(DynamicQuantizeMatMulNBitsTest, HopperGroupedScaleIntervals) {
       RunCase<MLFloat16>({161, 640}, 1032, bits, 128, mode, 640, false, false, true, {}, {}, false, true);
     }
   }
+  // Decode-sized row counts use the same kernel; TMA zero-fills the missing rows.
+  for (int64_t m : {1, 3, 15}) {
+    RunCase<MLFloat16>({m, 256}, 264, 4, 128, "dynamic_per_token", 0, true, false, true, {}, {}, false, true);
+    RunCase<BFloat16, MLFloat16>({m, 384}, 520, 2, 128, "dynamic_per_tensor", 0, true, false, false, {}, {}, false,
+                                 true);
+  }
   // Large enough for the 128x96 and 128x128 tiles and several K blocks.
   RunCase<MLFloat16>({1536, 512}, 1024, 4, 128, "dynamic_per_token", 0, true, false, true, {}, {}, false, true);
   RunCase<BFloat16, MLFloat16>({256, 256}, 2056, 2, 128, "dynamic_per_tensor", 0, true, false, false, {}, {}, false,
                                true);
+  // More output tiles than SMs, so persistent CTAs walk several tiles with odd and even K-block counts.
+  RunCase<MLFloat16>({1030, 128 * 3}, 2056, 4, 128, "dynamic_per_token", 0, true, false, true, {}, {}, false, true);
+  RunCase<BFloat16, BFloat16>({1030, 256}, 2056, 2, 128, "dynamic_per_tensor", 0, true, false, false, {}, {}, false,
+                              true);
 }
 
 TEST(DynamicQuantizeMatMulNBitsTest, HopperGroupedExceptionalDomains) {

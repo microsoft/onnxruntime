@@ -228,10 +228,10 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
           quantized.get(), a_scales, signed_weights_.get(), scales->DataRaw(), scale_type,
           bias_data, y_tile, bf16, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k),
           signed_stride_, sm90_device_id_, sm90_sm_count_, stream));
-    } else if (sm90_grouped_ok && rows >= 16 && aligned16) {
+    } else if (sm90_grouped_ok && aligned16) {
       ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedSm90Grouped(
           quantized.get(), a_scales, signed_weights_.get(), scales->DataRaw(), scale_type, bias_data, y_tile,
-          bf16, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k), stream));
+          bf16, per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k), sm90_sm_count_, stream));
     } else {
       ORT_RETURN_IF_ERROR(LaunchDynamicQuantizedMatMul(quantized.get(), a_scales, b->Data<uint8_t>(),
                                                        scales->DataRaw(), scale_type, bias_data, y_tile, bf16,

@@ -40,6 +40,16 @@ __device__ __noinline__ float StrictScaleProductSlow(float value, float a, float
                                      static_cast<double>(b)));
 }
 
+// Same rule as StrictScaleProductSlow, inlined so the grouped kernels' rare path has no call (a call forces the
+// register allocator to reserve ABI registers across the whole kernel).
+__device__ __forceinline__ float StrictScaleProductInline(float value, float a, float b) {
+  if (isnan(a)) return a;
+  const float first = __fmul_rn(value, a);
+  if (value == 0.0f || (isfinite(first) && fabsf(first) >= FLT_MIN)) return __fmul_rn(first, b);
+  return __double2float_rn(__dmul_rn(__dmul_rn(static_cast<double>(value), static_cast<double>(a)),
+                                     static_cast<double>(b)));
+}
+
 template <class T>
 struct StrictScaleProductOp {};
 
@@ -288,10 +298,10 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
 #pragma unroll
     for (int h = 0; h < 2; ++h) {
       const int r = m0 + row_base + 8 * h;
-      sa_r[h] = per_tensor ? sa[0] : (r < M ? sa[r] : 0.f);
+      sa_r[h] = per_tensor ? sa[0] : (r < M ? sa[r] : 1.0f);
     }
     // BF16 scales can leave the FP32 normal range: such rows take the contract's FP64 rule.
-    const bool plain = !C::kStrict || (PlainScaleProduct(sa_r[0]) && PlainScaleProduct(sa_r[1]));
+    const bool plain = !C::kStrict || __all_sync(0xffffffffu, PlainScaleProduct(sa_r[0]) && PlainScaleProduct(sa_r[1]));
 
     auto issue = [&](int kt, auto& acc) {
       const int s = kt % ST;
@@ -321,23 +331,31 @@ __global__ void __launch_bounds__(C::NTHREADS, C::MINB)
       // The MMA has completed and the scales are in registers, so this stage can be refilled.
       __syncwarp();
       if (lane == 0) EmptyBar::arrive(&empty_bar[s]);
+      // The branch is outside the element loops so the common path stays free of calls.
+      auto accumulate = [&](auto fast) {
 #pragma unroll
-      for (int j = 0; j < BN / 8; ++j) {
+        for (int j = 0; j < BN / 8; ++j) {
 #pragma unroll
-        for (int h = 0; h < 2; ++h) {
+          for (int h = 0; h < 2; ++h) {
 #pragma unroll
-          for (int e = 0; e < 2; ++e) {
-            const int i = 4 * j + 2 * h + e;
-            const float f = __int2float_rn(acc(i));
-            float term;
-            if (plain) {
-              term = __fmul_rn(__fmul_rn(f, sa_r[h]), sbv[2 * j + e]);
-            } else {
-              term = StrictScaleProductSlow(f, sa_r[h], sbv[2 * j + e]);
+            for (int e = 0; e < 2; ++e) {
+              const int i = 4 * j + 2 * h + e;
+              const float f = __int2float_rn(acc(i));
+              float term;
+              if constexpr (decltype(fast)::value) {
+                term = __fmul_rn(__fmul_rn(f, sa_r[h]), sbv[2 * j + e]);
+              } else {
+                term = StrictScaleProductInline(f, sa_r[h], sbv[2 * j + e]);
+              }
+              sum[i] = __fadd_rn(sum[i], term);
             }
-            sum[i] = __fadd_rn(sum[i], term);
           }
         }
+      };
+      if (__builtin_expect(plain, 1)) {
+        accumulate(cute::true_type{});
+      } else {
+        accumulate(cute::false_type{});
       }
     };
 
@@ -415,17 +433,371 @@ Status RunGrouped(const int8_t* a, const float* a_scales, const int8_t* b, const
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Cluster tile id -> (m tile, n tile). With group > 0, tiles are visited m-first within groups of `group` N tiles so
+// the B panel stays in L2 while the A rows are reused.
+template <int Group>
+__device__ __forceinline__ void PersistentTileCoords(int t, int m_tiles, int n_tiles, int& tm, int& tn) {
+  if constexpr (Group == 0) {
+    tn = t % n_tiles;
+    tm = t / n_tiles;
+  } else {
+    const int per_group = Group * m_tiles;
+    const int group = t / per_group;
+    const int first_n = group * Group;
+    const int width = min(Group, n_tiles - first_n);
+    const int r = t - group * per_group;
+    tn = first_n + r % width;
+    tm = r / width;
+  }
+}
+
+template <int BM_, int BN_, int ST_, int GS_, class SbT_, class OutT_>
+struct PersistentCfg {
+  static constexpr int BM = BM_, BN = BN_, ST = ST_, BK = 128, GS = GS_;
+  static constexpr int NWG = BM / 64;
+  static constexpr int NTHREADS = (NWG + 1) * 128;
+  using SbT = SbT_;
+  using OutT = OutT_;
+  static constexpr bool kStrict = !cute::is_same_v<OutT_, __half>;
+  static constexpr int kProdRegs = 40;
+  static constexpr int kConsRegs = 232;
+  // Scales are read in chunks of JC column groups to bound register pressure.
+  static constexpr int JC = ((BN / 8) % 4 == 0) ? 4 : 1;
+
+  using SmemLayoutA = decltype(tile_to_shape(GMMA::Layout_K_SW128_Atom<int8_t>{},
+                                             make_shape(Int<BM>{}, Int<BK>{}, Int<ST>{})));
+  using SmemLayoutB = decltype(tile_to_shape(GMMA::Layout_K_SW128_Atom<int8_t>{},
+                                             make_shape(Int<BN>{}, Int<BK>{}, Int<ST>{})));
+  static constexpr int SBS = int(((size_t(BN) * sizeof(SbT_) + 127) / 128) * 128 / sizeof(SbT_));
+  using MmaOp = decltype(GMMA::ss_op_selector<int8_t, int8_t, int32_t, Shape<Int<64>, Int<BN>, _32>>());
+  using TiledMma = decltype(make_tiled_mma(MmaOp{}, Layout<Shape<Int<NWG>, _1, _1>>{}));
+
+  static constexpr size_t kBytesA = size_t(BM) * BK * ST;
+  static constexpr size_t kBytesB = size_t(BN) * BK * ST;
+  static constexpr size_t kBytesS = size_t(SBS) * sizeof(SbT) * ST;
+  static constexpr int ESTR = BN + 8;
+  static constexpr size_t kBytesE = size_t(NWG) * 64 * ESTR * 2;
+  static constexpr size_t kOffE = kBytesA + kBytesB + ((kBytesS + 127) / 128) * 128;
+  static constexpr size_t kSmemData = kOffE + kBytesE;
+  static constexpr size_t kSmem = 1024 + kSmemData + 2 * ST * 8 + 64;
+  static constexpr uint32_t kTxBytes = uint32_t(BM * BK + BN * BK);
+};
+
+// Persistent variant of GroupedInt8Kernel: CTAs walk output tiles round-robin by blockIdx.z (no atomics or global
+// state), the shared-memory stage ring runs across tiles so the producer prefetches the next tile while the
+// consumers promote the current one, and the scale gather keeps the next K tile's scales in registers.
+// Numerics are identical: a fresh INT32 accumulator per 128-wide K tile, promoted in K order without FMA.
+template <class C, class TmaA, class TmaB>
+__global__ void __launch_bounds__(C::NTHREADS, 1)
+    PersistentGroupedKernel(__grid_constant__ TmaA const tma_a, __grid_constant__ TmaB const tma_b,
+                            const float* __restrict__ sa, bool per_tensor,
+                            const typename C::SbT* __restrict__ sb,  // [N, G]
+                            const typename C::OutT* __restrict__ bias, typename C::OutT* __restrict__ Y,
+                            int M, int N, int K, int m_tiles, int n_tiles) {
+  constexpr int BM = C::BM, BN = C::BN, ST = C::ST, NWG = C::NWG;
+  using SbT = typename C::SbT;
+  using OutT = typename C::OutT;
+  const int G = K / 128;
+  const int total_tiles = m_tiles * n_tiles;
+
+  extern __shared__ __align__(1024) uint8_t smem_raw[];
+  uint8_t* base = reinterpret_cast<uint8_t*>((reinterpret_cast<uintptr_t>(smem_raw) + 1023) & ~uintptr_t(1023));
+  int8_t* smemA = reinterpret_cast<int8_t*>(base);
+  int8_t* smemB = reinterpret_cast<int8_t*>(base + C::kBytesA);
+  SbT* smemS = reinterpret_cast<SbT*>(base + C::kBytesA + C::kBytesB);
+  OutT* smemE = reinterpret_cast<OutT*>(base + C::kOffE);
+  uint64_t* full_bar = reinterpret_cast<uint64_t*>(base + C::kSmemData);
+  uint64_t* empty_bar = full_bar + ST;
+
+  auto sA = make_tensor(make_smem_ptr(smemA), typename C::SmemLayoutA{});
+  auto sB = make_tensor(make_smem_ptr(smemB), typename C::SmemLayoutB{});
+
+  const int wg = threadIdx.x / 128;
+  const int warp_in_wg = (threadIdx.x / 32) % 4;
+  const int lane = threadIdx.x % 32;
+
+  using FullBar = cutlass::arch::ClusterTransactionBarrier;
+  using EmptyBar = cutlass::arch::ClusterBarrier;
+
+  if (threadIdx.x == 0) {
+    cute::prefetch_tma_descriptor(tma_a.get_tma_descriptor());
+    cute::prefetch_tma_descriptor(tma_b.get_tma_descriptor());
+    for (int s = 0; s < ST; ++s) {
+      FullBar::init(&full_bar[s], 2);  // the TMA thread and the scale-gather warp
+      EmptyBar::init(&empty_bar[s], NWG * 4);
+    }
+    cutlass::arch::fence_barrier_init();
+  }
+  __syncthreads();
+
+  if (wg == 0) {
+    cutlass::arch::warpgroup_reg_dealloc<C::kProdRegs>();
+    if (warp_in_wg == 0 && cute::elect_one_sync()) {
+      const void* desc_a = tma_a.get_tma_descriptor();
+      const void* desc_b = tma_b.get_tma_descriptor();
+      constexpr uint64_t kHint = static_cast<uint64_t>(cute::TMA::CacheHintSm90::EVICT_NORMAL);
+      uint32_t it = 0;
+      for (int t = blockIdx.z; t < total_tiles; t += gridDim.z) {
+        int tm, tn;
+        PersistentTileCoords<C::GS>(t, m_tiles, n_tiles, tm, tn);
+        for (int kt = 0; kt < G; ++kt, ++it) {
+          const int s = it % ST;
+          const uint32_t ph = (it / ST) & 1;
+          EmptyBar::wait(&empty_bar[s], ph ^ 1);
+          FullBar::arrive_and_expect_tx(&full_bar[s], C::kTxBytes);
+          cute::SM90_TMA_LOAD::copy(desc_a, &full_bar[s], kHint, smemA + size_t(s) * BM * 128, kt * 128, tm * BM);
+          cute::SM90_TMA_LOAD::copy(desc_b, &full_bar[s], kHint, smemB + size_t(s) * BN * 128, kt * 128, tn * BN);
+        }
+      }
+    }
+    if (warp_in_wg == 1) {
+      constexpr int NL = (BN + 31) / 32;
+      SbT pre[NL];
+      auto load = [&](int n0, int kt) {
+#pragma unroll
+        for (int i = 0; i < NL; ++i) {
+          const int nl = i * 32 + lane;
+          const int n = n0 + nl;
+          pre[i] = (nl < BN && n < N) ? sb[size_t(n) * G + kt] : SbT(0.f);
+        }
+      };
+      auto tile_n0 = [&](int t) {
+        int tm, tn;
+        PersistentTileCoords<C::GS>(t, m_tiles, n_tiles, tm, tn);
+        return tn * BN;
+      };
+      uint32_t it = 0;
+      int t = blockIdx.z;
+      if (t < total_tiles) load(tile_n0(t), 0);
+      for (; t < total_tiles; t += gridDim.z) {
+        const int n0 = tile_n0(t);
+        const int next = t + gridDim.z;
+        for (int kt = 0; kt < G; ++kt, ++it) {
+          SbT cur[NL];
+#pragma unroll
+          for (int i = 0; i < NL; ++i) cur[i] = pre[i];
+          // Fetch the next K tile (or the next output tile's first K tile) while waiting for a free stage.
+          if (kt + 1 < G) {
+            load(n0, kt + 1);
+          } else if (next < total_tiles) {
+            load(tile_n0(next), 0);
+          }
+          const int s = it % ST;
+          const uint32_t ph = (it / ST) & 1;
+          EmptyBar::wait(&empty_bar[s], ph ^ 1);
+#pragma unroll
+          for (int i = 0; i < NL; ++i) {
+            const int nl = i * 32 + lane;
+            if (nl < BN) smemS[s * C::SBS + nl] = cur[i];
+          }
+          __syncwarp();
+          if (lane == 0) FullBar::arrive(&full_bar[s]);
+        }
+      }
+    }
+  } else {
+    cutlass::arch::warpgroup_reg_alloc<C::kConsRegs>();
+    const int ctid = threadIdx.x - 128;
+    typename C::TiledMma tiled_mma;
+    auto thr_mma = tiled_mma.get_thread_slice(ctid);
+    auto tCsA = thr_mma.partition_A(sA);
+    auto tCsB = thr_mma.partition_B(sB);
+    auto tCrA = thr_mma.make_fragment_A(tCsA);
+    auto tCrB = thr_mma.make_fragment_B(tCsB);
+    auto acc0 = partition_fragment_C(tiled_mma, Shape<Int<BM>, Int<BN>>{});
+    auto acc1 = partition_fragment_C(tiled_mma, Shape<Int<BM>, Int<BN>>{});
+    constexpr int NACC = BN / 2;
+    static_assert(decltype(size(acc0))::value == NACC, "unexpected accumulator fragment size");
+    float sum[NACC];
+
+    const int wg_c = ctid / 128;
+    const int row_base = wg_c * 64 + warp_in_wg * 16 + lane / 4;
+    const int col_base = 2 * (lane % 4);
+
+    uint32_t it0 = 0;
+    for (int t = blockIdx.z; t < total_tiles; t += gridDim.z) {
+      int tm, tn;
+      PersistentTileCoords<C::GS>(t, m_tiles, n_tiles, tm, tn);
+      const int m0 = tm * BM;
+      const int n0 = tn * BN;
+#pragma unroll
+      for (int i = 0; i < NACC; ++i) sum[i] = -0.0f;
+      float sa_r[2];
+#pragma unroll
+      for (int h = 0; h < 2; ++h) {
+        const int r = m0 + row_base + 8 * h;
+        sa_r[h] = per_tensor ? sa[0] : (r < M ? sa[r] : 1.0f);
+      }
+      // BF16 scales can leave the FP32 normal range: such rows take the contract's FP64 rule.
+      const bool plain = !C::kStrict || __all_sync(0xffffffffu, PlainScaleProduct(sa_r[0]) && PlainScaleProduct(sa_r[1]));
+
+      auto issue = [&](int kt, auto& acc) {
+        const uint32_t i = it0 + kt;
+        const int s = i % ST;
+        const uint32_t ph = (i / ST) & 1;
+        FullBar::wait(&full_bar[s], ph);
+        warpgroup_fence_operand(acc);
+        warpgroup_arrive();
+        tiled_mma.accumulate_ = GMMA::ScaleOut::Zero;
+#pragma unroll
+        for (int k = 0; k < 4; ++k) {
+          cute::gemm(tiled_mma, tCrA(_, _, k, s), tCrB(_, _, k, s), acc);
+          tiled_mma.accumulate_ = GMMA::ScaleOut::One;
+        }
+        warpgroup_commit_batch();
+        warpgroup_fence_operand(acc);
+      };
+      auto promote = [&](int kt, auto& acc) {
+        const uint32_t i = it0 + kt;
+        const int s = i % ST;
+        warpgroup_fence_operand(acc);
+        const SbT* sp = smemS + s * C::SBS + col_base;
+        constexpr int JC = C::JC;
+#pragma unroll
+        for (int j0 = 0; j0 < BN / 8; j0 += JC) {
+          float sbv[2 * JC];
+#pragma unroll
+          for (int jj = 0; jj < JC; ++jj) {
+            sbv[2 * jj] = GroupedToFloat(sp[8 * (j0 + jj)]);
+            sbv[2 * jj + 1] = GroupedToFloat(sp[8 * (j0 + jj) + 1]);
+          }
+          if (j0 + JC >= BN / 8) {
+            // The last scale read of this stage is in registers, so the stage can be refilled.
+            __syncwarp();
+            if (lane == 0) EmptyBar::arrive(&empty_bar[s]);
+          }
+          auto accumulate = [&](auto fast) {
+#pragma unroll
+            for (int jj = 0; jj < JC; ++jj) {
+              const int j = j0 + jj;
+#pragma unroll
+              for (int h = 0; h < 2; ++h) {
+#pragma unroll
+                for (int e = 0; e < 2; ++e) {
+                  const int idx = 4 * j + 2 * h + e;
+                  const float f = __int2float_rn(acc(idx));
+                  float term;
+                  if constexpr (decltype(fast)::value) {
+                    term = __fmul_rn(__fmul_rn(f, sa_r[h]), sbv[2 * jj + e]);
+                  } else {
+                    term = StrictScaleProductSlow(f, sa_r[h], sbv[2 * jj + e]);
+                  }
+                  sum[idx] = __fadd_rn(sum[idx], term);
+                }
+              }
+            }
+          };
+          if (__builtin_expect(plain, 1)) {
+            accumulate(cute::true_type{});
+          } else {
+            accumulate(cute::false_type{});
+          }
+        }
+      };
+
+      // All waits are compile-time constants in straight-line code so ptxas can prove which accumulator is
+      // in flight; otherwise it serializes the WGMMAs.
+      issue(0, acc0);
+      int kt = 0;
+      for (; kt + 2 < G; kt += 2) {
+        issue(kt + 1, acc1);
+        warpgroup_wait<1>();
+        promote(kt, acc0);
+        issue(kt + 2, acc0);
+        warpgroup_wait<1>();
+        promote(kt + 1, acc1);
+      }
+      if (kt + 1 < G) {
+        issue(kt + 1, acc1);
+        warpgroup_wait<1>();
+        promote(kt, acc0);
+        warpgroup_wait<0>();
+        promote(kt + 1, acc1);
+      } else {
+        warpgroup_wait<0>();
+        promote(kt, acc0);
+      }
+      it0 += G;
+
+      // y = convert(sum + bias) staged through shared memory for coalesced 16-byte stores.
+      OutT* e = smemE + wg_c * 64 * C::ESTR;
+      cutlass::arch::NamedBarrier::sync(128, 1 + wg_c);  // the previous tile's stores have read the staging buffer
+#pragma unroll
+      for (int j = 0; j < BN / 8; ++j) {
+        const int n = n0 + 8 * j + col_base;
+        float b0 = 0.f, b1 = 0.f;
+        if (bias != nullptr) {
+          if (n < N) b0 = GroupedToFloat(bias[n]);
+          if (n + 1 < N) b1 = GroupedToFloat(bias[n + 1]);
+        }
+#pragma unroll
+        for (int h = 0; h < 2; ++h) {
+          const float y0 = __fadd_rn(sum[4 * j + 2 * h], b0);
+          const float y1 = __fadd_rn(sum[4 * j + 2 * h + 1], b1);
+          const int rl = warp_in_wg * 16 + lane / 4 + 8 * h;
+          *reinterpret_cast<decltype(GroupedPack(static_cast<OutT*>(nullptr), 0.f, 0.f))*>(
+              e + rl * C::ESTR + 8 * j + col_base) = GroupedPack(static_cast<OutT*>(nullptr), y0, y1);
+        }
+      }
+      cutlass::arch::NamedBarrier::sync(128, 1 + wg_c);
+      constexpr int CPR = BN / 8;
+      for (int idx = ctid % 128; idx < 64 * CPR; idx += 128) {
+        const int rl = idx / CPR, c = idx % CPR;
+        const int r = m0 + wg_c * 64 + rl;
+        const int n = n0 + 8 * c;
+        if (r < M && n < N) {  // N % 8 == 0, so a chunk is entirely in or out
+          *reinterpret_cast<uint4*>(Y + size_t(r) * N + n) =
+              *reinterpret_cast<const uint4*>(e + rl * C::ESTR + 8 * c);
+        }
+      }
+    }
+  }
+}
+
+template <int BM, int BN, int ST, int GS, class SbT, class OutT>
+Status RunPersistent(const int8_t* a, const float* a_scales, const int8_t* b, const void* b_scales,
+                     const void* bias, void* y, bool per_tensor, int rows, int n, int k, int sm_count,
+                     cudaStream_t stream) {
+  using C = PersistentCfg<BM, BN, ST, GS, SbT, OutT>;
+  auto mA = make_tensor(a, make_shape(rows, k), make_stride(int64_t(k), _1{}));
+  auto mB = make_tensor(b, make_shape(n, k), make_stride(int64_t(k), _1{}));
+  auto tma_a = make_tma_atom(SM90_TMA_LOAD{}, mA, typename C::SmemLayoutA{}(_, _, 0), make_shape(Int<BM>{}, Int<128>{}));
+  auto tma_b = make_tma_atom(SM90_TMA_LOAD{}, mB, typename C::SmemLayoutB{}(_, _, 0), make_shape(Int<BN>{}, Int<128>{}));
+  using TmaA = decltype(tma_a);
+  using TmaB = decltype(tma_b);
+  auto kernel = &PersistentGroupedKernel<C, TmaA, TmaB>;
+  CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, int(C::kSmem)));
+  const int m_tiles = (rows + BM - 1) / BM;
+  const int n_tiles = (n + BN - 1) / BN;
+  const int total = m_tiles * n_tiles;
+  // One CTA per SM. The grid may exceed what is co-resident because tiles never depend on each other.
+  const int ctas = std::min(total, std::max(sm_count, 1));
+  kernel<<<dim3(1, 1, ctas), C::NTHREADS, C::kSmem, stream>>>(
+      tma_a, tma_b, a_scales, per_tensor, static_cast<const SbT*>(b_scales), static_cast<const OutT*>(bias),
+      static_cast<OutT*>(y), rows, n, k, m_tiles, n_tiles);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 template <class SbT, class OutT>
 Status DispatchGrouped(const int8_t* a, const float* a_scales, const int8_t* b, const void* b_scales,
-                       const void* bias, void* y, bool per_tensor, int rows, int n, int k, cudaStream_t stream) {
-  // Tile choice from the measured H200 sweep: narrow tiles for few rows or columns, one wave at M=1536, N=1024.
-  if (rows <= 128 || n <= 512) {
+                       const void* bias, void* y, bool per_tensor, int rows, int n, int k, int sm_count,
+                       cudaStream_t stream) {
+  // Tile choice from the measured H200 sweep: narrow tiles for few rows or columns, wide non-persistent tiles
+  // for one wave at M <= 2048 and N <= 1024, and the persistent 128x128 kernel for everything larger.
+  if (rows <= 128 && n <= 4096) {
     return RunGrouped<64, 32, 4, 2, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
   }
-  if (n <= 1024) {
+  if (rows <= 128) {
+    return RunGrouped<64, 64, 4, 2, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+  }
+  if (rows <= 512 && n <= 1024) {
+    return RunGrouped<64, 32, 4, 2, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+  }
+  if (rows <= 2048 && n <= 1024) {
     return RunGrouped<128, 96, 4, 1, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
   }
-  return RunGrouped<128, 128, 4, 1, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+  return RunPersistent<128, 128, 5, 8, SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, sm_count,
+                                                  stream);
 }
 }  // namespace
 #endif
@@ -494,10 +866,10 @@ Status LaunchDynamicQuantizedSm90(const int8_t* a, const float* a_scales, const 
 Status LaunchDynamicQuantizedSm90Grouped(const int8_t* a, const float* a_scales, const int8_t* b,
                                          const void* b_scales, DynamicWeightScaleType scale_type,
                                          const void* bias, void* y, bool bf16, bool per_tensor, int rows, int n,
-                                         int k, cudaStream_t stream) {
+                                         int k, int sm_count, cudaStream_t stream) {
 #if defined(ORT_DYNAMIC_QUANTIZED_SM90_IMPL)
 #define DISPATCH_GROUPED(SbT, OutT) \
-  return DispatchGrouped<SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream)
+  return DispatchGrouped<SbT, OutT>(a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, sm_count, stream)
   switch (scale_type) {
     case DynamicWeightScaleType::Float:
       if (bf16) DISPATCH_GROUPED(float, __nv_bfloat16);
@@ -524,6 +896,7 @@ Status LaunchDynamicQuantizedSm90Grouped(const int8_t* a, const float* a_scales,
   ORT_UNUSED_PARAMETER(rows);
   ORT_UNUSED_PARAMETER(n);
   ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(sm_count);
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DynamicQuantizeMatMulNBits SM90 grouped GEMM was not built.");
 #endif

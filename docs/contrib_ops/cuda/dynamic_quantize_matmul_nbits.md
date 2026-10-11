@@ -1621,8 +1621,8 @@ Weights: `PrePack` expands the codes to centered signed INT8 `[N, K]`
 bytes of persistent memory in addition to the serialized weights (2x the
 packed size for W4 and 4x for W2). Use `ORT_DISABLE_DYNAMIC_QUANTIZED_SM90_GEMM=1`
 to avoid it. The benchmark reports the bound as `prepack_upper_bound_bytes`.
-Eligibility also needs rows >= 16, N a multiple of 8 and at least 256, and
-16-byte aligned output and bias.
+Eligibility also needs N a multiple of 8 and at least 256, and 16-byte
+aligned output and bias. Any row count is accepted; TMA zero-fills missing rows.
 
 H200, FP16 per-token, previous path -> Hopper grouped (M, K, N, bits):
 
@@ -1649,9 +1649,53 @@ memory clobber, and consumers read after the barrier wait), and results
 are exact across all tests. The same tools report nothing for the TMA-only
 W8 CUTLASS kernel.
 
-Not done: persistent or multicast scheduling (the prototype's main
-remaining lever for large shapes), multiple activation intervals, weight
-blocks other than 128, and Ada/Blackwell.
+Persistent scheduling and dispatch (second iteration). A persistent variant
+(`PersistentGroupedKernel`, 128x128 tile, five stages) is used for the large
+shapes: CTAs walk output tiles round-robin by `blockIdx.z` (no atomics or
+global state, so it is CUDA-graph safe), the shared-memory stage ring runs
+across tiles so the producer prefetches the next tile while the consumers
+promote the current one, the scale-gather warp keeps the next K tile's
+scales in registers, and promotion reads scales in chunks of four column
+groups, which also removes the ptxas C7517 injected-wait warning. The
+numerics are unchanged. TMA multicast with 2x1, 1x2 and 2x2 clusters was
+prototyped and gave a geometric-mean 0.96-0.98x versus no cluster, so it is
+not used; ping-pong consumers and 128x192/192x128 tiles did not help
+(register spills, and the GPU is at its power cap with MMA and exact
+promotion costs close to additive). Dispatch: at most 128 rows with
+N <= 4096 uses 64x32; at most 128 rows with larger N uses 64x64; at most
+512 rows with N <= 1024 uses 64x32; at most 2048 rows with N <= 1024 uses
+128x96; everything else uses the persistent 128x128 kernel. Thresholds are
+tuned on H200 (132 SMs) and must be re-tuned for other SM counts.
+
+Two defects found while measuring the BF16 path. Rows beyond M in a tile used
+scale 0.0, which fails the BF16 plain-range test and sent whole warps through
+the FP64 rule; padded rows now use 1.0 (their outputs are never stored), and
+the plain/slow choice is one warp-uniform branch outside the element loops.
+The grouped path also previously rejected fewer than 16 rows, which left the
+old small-M kernel (about 700 us at K=N=4096, M=16) in use for decode and
+for a 4-row remainder tile when M exceeds the activation scratch budget; all
+row counts now use the Hopper kernel.
+
+H200 complete-operator medians, W4, block 128, per-token:
+
+| M, K, N | dtype | Before (us) | After (us) |
+|---------|-------|-------------|------------|
+| 1536, 4096, 4096 | FP16 | 100.84 | 95.11 |
+| 4096, 4096, 4096 | FP16 | 436.65 | 249.52 |
+| 1536, 4096, 4096 | BF16 | 252 | 114.1 |
+| 1536, 1024, 1024 | BF16 | 35.62 | 24.74 |
+| 1 / 16 / 128, 4096, 4096 | BF16 | 78 | 30-32 |
+| 1 / 16 / 128, 4096, 4096 | FP16 | 31 / 28 / 28 | 32 / 31 / 28 |
+| 256, 1024, 1024 | FP16 | n/a | 20.21 |
+
+BF16 remains 10-20% slower than FP16 on the large persistent shapes because
+of the range test and BF16 scale conversion; the plain-multiply BF16 variant
+is within about 10% of FP16.
+
+Not done: multiple activation intervals, weight blocks other than 128, and
+Ada/Blackwell or Windows execution (the operator and stub translation units
+only compile for sm_75/80/89/100a/120a here).
+
 
 ## 9. Delivery Plan and Acceptance
 

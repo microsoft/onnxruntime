@@ -50,7 +50,7 @@ Status LaunchDynamicQuantizedSm90(const int8_t* a, const float* a_scales, const 
 Status LaunchDynamicQuantizedSm90Grouped(const int8_t* a, const float* a_scales, const int8_t* b,
                                          const void* b_scales, DynamicWeightScaleType scale_type,
                                          const void* bias, void* y, bool bf16, bool per_tensor, int rows, int n,
-                                         int k, cudaStream_t stream);
+                                         int k, int sm_count, cudaStream_t stream);
 Status LaunchValidateDynamicWeightScales(const void* scales, DynamicWeightScaleType type,
                                          int64_t count, int* invalid, cudaStream_t stream);
 // Number of float partial maxima needed by the bounded tensor-wide reduction.
