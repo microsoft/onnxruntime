@@ -22,6 +22,7 @@ const initRaceEnv = "ORT_TEST_INIT_RACE"
 
 const initRetryEnv = "ORT_TEST_INIT_RETRY"
 const initFailureEnv = "ORT_TEST_INIT_FAILURE"
+const epShutdownEnv = "ORT_TEST_EP_SHUTDOWN"
 
 var testRuntimePath string
 
@@ -57,7 +58,7 @@ func TestMain(m *testing.M) {
 		}
 	}
 	code := m.Run()
-	if !IsInitialized() {
+	if !IsInitialized() && (os.Getenv(epShutdownEnv) != "1" || !shutdown.Load()) {
 		println("failed to init ORT: tests did not initialize the runtime")
 		code = 1
 	}
@@ -246,6 +247,18 @@ func TestInitBadPathRetryable(t *testing.T) {
 			t.Fatalf("expected uninitialized build-info error, got %v", err)
 		}
 		var opts *SessionOptions
+		for _, call := range []func() error{
+			func() error { return RegisterExecutionProviderLibrary("", "") },
+			func() error { return UnregisterExecutionProviderLibrary("") },
+			func() error { _, err := GetEPDevices(); return err },
+			func() error { return opts.AppendExecutionProviderV2(nil, nil) },
+			func() error { return opts.SetEPSelectionPolicy(-1) },
+		} {
+			if err := call(); !errors.Is(err, errNotInitialized) {
+				t.Fatalf("pre-init plugin operation: %v", err)
+			}
+		}
+
 		if _, err := opts.GetExecutionMode(); !errors.Is(err, errNotInitialized) {
 			t.Fatalf("pre-init getter: %v", err)
 		}
@@ -484,6 +497,37 @@ func TestAPIFeatureGates(t *testing.T) {
 			}
 			return err
 		}},
+		{"RegisterExecutionProviderLibrary", 22, func() error {
+			err := RegisterExecutionProviderLibrary("go_feature_missing", filepath.Join(t.TempDir(), "missing-plugin"))
+			if APIVersion() >= 22 {
+				var native *OrtError
+				if !errors.As(err, &native) {
+					t.Fatalf("expected native load error, got %v", err)
+				}
+				return nil
+			}
+			return err
+		}},
+		{"UnregisterExecutionProviderLibrary", 22, func() error {
+			err := UnregisterExecutionProviderLibrary("go_feature_unknown")
+			if APIVersion() >= 22 {
+				var native *OrtError
+				if !errors.As(err, &native) {
+					t.Fatalf("expected native unregister error, got %v", err)
+				}
+				return nil
+			}
+			return err
+		}},
+		{"GetEPDevices", 22, func() error { _, err := GetEPDevices(); return err }},
+		{"AppendExecutionProviderV2", 22, func() error {
+			if APIVersion() < 22 {
+				return opts.AppendExecutionProviderV2(nil, nil)
+			}
+			return opts.AppendExecutionProviderV2([]*EPDevice{cpuEPDevice(t)}, nil)
+		}},
+		{"SetEPSelectionPolicy", 22, func() error { return opts.SetEPSelectionPolicy(ExecutionProviderDevicePolicyPreferCPU) }},
+
 		{"GetExecutionMode", 27, func() error {
 			mode, err := opts.GetExecutionMode()
 			if err == nil && mode != ExecutionModeSequential {
@@ -511,7 +555,7 @@ func TestAPIFeatureGates(t *testing.T) {
 			if !errors.As(err, &native) || native.Code != ErrorCodeNotImplemented {
 				t.Fatalf("expected typed unsupported error, got %v", err)
 			}
-			for _, text := range []string{"requires API 27", "negotiated API " + strconv.Itoa(APIVersion())} {
+			for _, text := range []string{"requires API " + strconv.Itoa(tc.minimum), "negotiated API " + strconv.Itoa(APIVersion())} {
 				if !strings.Contains(native.Msg, text) {
 					t.Errorf("missing %q in %q", text, native.Msg)
 				}

@@ -600,3 +600,118 @@ OrtStatusPtr ort_ReleaseAvailableProviders(char **ptr, int count) {
 void ort_AllocatorFree(OrtAllocator *allocator, void *ptr) {
     allocator->Free(allocator, ptr);
 }
+
+// Plugin execution providers. Version checks precede all API-22 slot reads.
+
+OrtStatusPtr ort_RegisterExecutionProviderLibrary(OrtEnv* env, const char* name, const ORTCHAR_T* path) {
+    if (g_api_version < 22) return ort_unsupported("RegisterExecutionProviderLibrary", 22);
+    if (g_api->RegisterExecutionProviderLibrary == NULL) return ort_unsupported("RegisterExecutionProviderLibrary", 22);
+    return g_api->RegisterExecutionProviderLibrary(env, name, path);
+}
+
+OrtStatusPtr ort_UnregisterExecutionProviderLibrary(OrtEnv* env, const char* name) {
+    if (g_api_version < 22) return ort_unsupported("UnregisterExecutionProviderLibrary", 22);
+    if (g_api->UnregisterExecutionProviderLibrary == NULL) return ort_unsupported("UnregisterExecutionProviderLibrary", 22);
+    return g_api->UnregisterExecutionProviderLibrary(env, name);
+}
+
+OrtStatusPtr ort_GetEpDevices(const OrtEnv* env, const OrtEpDevice* const** out, size_t* count) {
+    if (g_api_version < 22) return ort_unsupported("GetEpDevices", 22);
+    if (g_api->GetEpDevices == NULL) return ort_unsupported("GetEpDevices", 22);
+    return g_api->GetEpDevices(env, out, count);
+}
+
+OrtStatusPtr ort_SessionOptionsAppendExecutionProvider_V2(
+    OrtSessionOptions* opts, OrtEnv* env,
+    const OrtEpDevice* const* devices, size_t count,
+    const char* const* keys, const char* const* values, size_t num_options) {
+    if (g_api_version < 22) return ort_unsupported("SessionOptionsAppendExecutionProvider_V2", 22);
+    if (g_api->SessionOptionsAppendExecutionProvider_V2 == NULL)
+        return ort_unsupported("SessionOptionsAppendExecutionProvider_V2", 22);
+    return g_api->SessionOptionsAppendExecutionProvider_V2(opts, env, devices, count, keys, values, num_options);
+}
+
+OrtStatusPtr ort_SessionOptionsSetEpSelectionPolicy(OrtSessionOptions* opts, OrtExecutionProviderDevicePolicy policy) {
+    if (g_api_version < 22) return ort_unsupported("SessionOptionsSetEpSelectionPolicy", 22);
+    if (g_api->SessionOptionsSetEpSelectionPolicy == NULL) return ort_unsupported("SessionOptionsSetEpSelectionPolicy", 22);
+    return g_api->SessionOptionsSetEpSelectionPolicy(opts, policy);
+}
+
+OrtStatusPtr ort_EpDevice_EpName(const OrtEpDevice* device, const char** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpName", 22);
+    if (g_api->EpDevice_EpName == NULL) return ort_unsupported("EpDevice_EpName", 22);
+    *out = g_api->EpDevice_EpName(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_EpVendor(const OrtEpDevice* device, const char** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpVendor", 22);
+    if (g_api->EpDevice_EpVendor == NULL) return ort_unsupported("EpDevice_EpVendor", 22);
+    *out = g_api->EpDevice_EpVendor(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_EpMetadata(const OrtEpDevice* device, const OrtKeyValuePairs** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpMetadata", 22);
+    if (g_api->EpDevice_EpMetadata == NULL) return ort_unsupported("EpDevice_EpMetadata", 22);
+    *out = g_api->EpDevice_EpMetadata(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_EpOptions(const OrtEpDevice* device, const OrtKeyValuePairs** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpOptions", 22);
+    if (g_api->EpDevice_EpOptions == NULL) return ort_unsupported("EpDevice_EpOptions", 22);
+    *out = g_api->EpDevice_EpOptions(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_Device(const OrtEpDevice* device, const OrtHardwareDevice** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_Device", 22);
+    if (g_api->EpDevice_Device == NULL) return ort_unsupported("EpDevice_Device", 22);
+    *out = g_api->EpDevice_Device(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_Type(const OrtHardwareDevice* device, OrtHardwareDeviceType* out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_Type", 22);
+    if (g_api->HardwareDevice_Type == NULL) return ort_unsupported("HardwareDevice_Type", 22);
+    *out = g_api->HardwareDevice_Type(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_VendorId(const OrtHardwareDevice* device, uint32_t* out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_VendorId", 22);
+    if (g_api->HardwareDevice_VendorId == NULL) return ort_unsupported("HardwareDevice_VendorId", 22);
+    *out = g_api->HardwareDevice_VendorId(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_Vendor(const OrtHardwareDevice* device, const char** out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_Vendor", 22);
+    if (g_api->HardwareDevice_Vendor == NULL) return ort_unsupported("HardwareDevice_Vendor", 22);
+    *out = g_api->HardwareDevice_Vendor(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_DeviceId(const OrtHardwareDevice* device, uint32_t* out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_DeviceId", 22);
+    if (g_api->HardwareDevice_DeviceId == NULL) return ort_unsupported("HardwareDevice_DeviceId", 22);
+    *out = g_api->HardwareDevice_DeviceId(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_Metadata(const OrtHardwareDevice* device, const OrtKeyValuePairs** out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_Metadata", 22);
+    if (g_api->HardwareDevice_Metadata == NULL) return ort_unsupported("HardwareDevice_Metadata", 22);
+    *out = g_api->HardwareDevice_Metadata(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_GetKeyValuePairs(
+    const OrtKeyValuePairs* pairs, const char* const** keys,
+    const char* const** values, size_t* count) {
+    if (g_api_version < 22) return ort_unsupported("GetKeyValuePairs", 22);
+    if (g_api->GetKeyValuePairs == NULL) return ort_unsupported("GetKeyValuePairs", 22);
+    g_api->GetKeyValuePairs(pairs, keys, values, count);
+    return NULL;
+}

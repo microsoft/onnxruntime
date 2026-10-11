@@ -53,17 +53,22 @@ func NewSession(modelPath string, opts *SessionOptions) (*Session, error) {
 	}
 	defer freePath()
 
-	if err := opts.lockUsable("create session"); err != nil {
+	snapshot, sessionEnv, err := reserveSessionCreation(opts)
+	if err != nil {
 		return nil, err
 	}
+	var session *Session
+	defer func() { finishSessionCreation(snapshot, session) }()
 	var handle *C.OrtSession
-	createErr := checkStatus(C.ort_CreateSession(env, cPath, opts.handle, &handle))
-	opts.unlock()
-	if createErr != nil {
-		return nil, wrapErr("create session", createErr)
+	if err := checkStatus(C.ort_CreateSession(sessionEnv, cPath, snapshot.handle, &handle)); err != nil {
+		if handle != nil {
+			C.ort_ReleaseSession(handle)
+		}
+		return nil, wrapErr("create session", err)
 	}
 
-	return finalizeSession(handle)
+	session, err = finalizeSession(handle)
+	return session, err
 }
 
 // NewSessionFromBytes creates a session from an in-memory ONNX model.
@@ -84,18 +89,23 @@ func NewSessionFromBytes(model []byte, opts *SessionOptions) (*Session, error) {
 		defer func() { _ = opts.Close() }()
 	}
 
-	if err := opts.lockUsable("create session from bytes"); err != nil {
+	snapshot, sessionEnv, err := reserveSessionCreation(opts)
+	if err != nil {
 		return nil, err
 	}
+	var session *Session
+	defer func() { finishSessionCreation(snapshot, session) }()
 	var handle *C.OrtSession
-	createErr := checkStatus(C.ort_CreateSessionFromArray(
-		env, unsafe.Pointer(&model[0]), C.size_t(len(model)), opts.handle, &handle))
-	opts.unlock()
-	if createErr != nil {
-		return nil, wrapErr("create session from bytes", createErr)
+	if err := checkStatus(C.ort_CreateSessionFromArray(sessionEnv,
+		unsafe.Pointer(&model[0]), C.size_t(len(model)), snapshot.handle, &handle)); err != nil {
+		if handle != nil {
+			C.ort_ReleaseSession(handle)
+		}
+		return nil, wrapErr("create session from bytes", err)
 	}
 
-	return finalizeSession(handle)
+	session, err = finalizeSession(handle)
+	return session, err
 }
 
 // Inputs returns metadata for all model inputs.
@@ -360,6 +370,37 @@ func (s *Session) Close() error {
 	return nil
 }
 
+// reserveSessionCreation defines the options consistency boundary. Neither lock
+// remains held during native construction or introspection.
+func reserveSessionCreation(opts *SessionOptions) (*SessionOptions, *C.OrtEnv, error) {
+	if err := opts.lockUsable("create session snapshot"); err != nil {
+		return nil, nil, err
+	}
+	defer opts.unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	if err := checkInit(); err != nil {
+		return nil, nil, err
+	}
+	inFlightSessionCreates++
+	snapshot, err := opts.cloneLocked()
+	if err != nil {
+		inFlightSessionCreates--
+		return nil, nil, err
+	}
+	return snapshot, env, nil
+}
+
+func finishSessionCreation(snapshot *SessionOptions, session *Session) {
+	_ = snapshot.Close()
+	mu.Lock()
+	if session != nil {
+		sessionCount.Add(1)
+	}
+	inFlightSessionCreates--
+	mu.Unlock()
+}
+
 func ensureOpts(opts *SessionOptions) (bool, *SessionOptions, error) {
 	if opts != nil {
 		return false, opts, nil
@@ -372,13 +413,18 @@ func ensureOpts(opts *SessionOptions) (bool, *SessionOptions, error) {
 }
 
 func finalizeSession(handle *C.OrtSession) (*Session, error) {
-	inputs, err := introspectIO(handle, true)
+	return finalizeSessionWithIO(handle, func(input bool) ([]IOInfo, error) { return introspectIO(handle, input) })
+}
+
+// finalizeSessionWithIO consumes handle, including on introspection failure.
+func finalizeSessionWithIO(handle *C.OrtSession, inspect func(bool) ([]IOInfo, error)) (*Session, error) {
+	inputs, err := inspect(true)
 	if err != nil {
 		C.ort_ReleaseSession(handle)
 		return nil, err
 	}
 
-	outputs, err := introspectIO(handle, false)
+	outputs, err := inspect(false)
 	if err != nil {
 		C.ort_ReleaseSession(handle)
 		return nil, err
@@ -394,7 +440,6 @@ func finalizeSession(handle *C.OrtSession) (*Session, error) {
 		}
 	}
 
-	sessionCount.Add(1)
 	return &Session{
 		handle:    handle,
 		inputs:    inputs,
