@@ -662,34 +662,35 @@ __global__ void NativeSingleIntervalMatMul(const int8_t* a, const float* a_scale
 #endif
 }
 
-template <typename T, int Bits, int TileM, bool Common128 = false>
+template <typename T, int Bits, int TileM, bool Common128 = false, int TileN = 64, int Stages = 3, int WarpsM = 2, int TileK = 64, bool RowGuard = false>
 __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
                                            const void* b_scales, DynamicWeightScaleType scale_type,
                                            const T* bias, T* y, bool per_tensor, int rows, int n,
                                            int k, int runtime_block_size, int runtime_activation_block_size) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  // RowGuard keeps the fixed-geometry Common128 body but predicates rows for a partial last row tile.
+  constexpr bool full_rows = Common128 && !RowGuard;
   const int block_size = Common128 ? 128 : runtime_block_size;
   const int activation_block_size = Common128 ? k : runtime_activation_block_size;
-  constexpr int TileN = 64;
   constexpr int tile_n = TileN;
   constexpr int pack = 8 / Bits;
-  constexpr int Stages = 3;
-  constexpr int tile_k = 64;
+  constexpr int tile_k = TileK;
   constexpr int threads = 128;
   // Four-word padding keeps uint4 stores aligned and makes the eight rows x
   // four words in each MMA register load hit all 32 shared banks.
   constexpr int stride = tile_k / 4 + 4;
-  constexpr int m_fragments = TileM / 32;
+  constexpr int WarpsN = 4 / WarpsM;
+  constexpr int m_fragments = TileM / (16 * WarpsM);
   constexpr int b_stride = (tile_k / (4 * pack)) | 4;
-  constexpr int n_fragments = TileN / 16;
+  constexpr int n_fragments = TileN / (8 * WarpsN);
   const int groups = k / block_size + (k % block_size != 0);
   const int activation_groups = per_tensor ? 0 : k / activation_block_size + (k % activation_block_size != 0);
   __shared__ __align__(16) uint32_t shared_a[Stages][TileM][stride];
   __shared__ __align__(16) uint32_t shared_b[Stages][tile_n][b_stride];
   const int lane = threadIdx.x % 32;
   const int warp = threadIdx.x / 32;
-  const int warp_row = (warp / 2) * (TileM / 2);
-  const int warp_column = (warp % 2) * (TileN / 2);
+  const int warp_row = (warp / WarpsN) * (TileM / WarpsM);
+  const int warp_column = (warp % WarpsN) * (TileN / WarpsN);
   const int column_tiles = n / tile_n + (n % tile_n != 0);
   const int row_tiles = rows / TileM + (rows % TileM != 0);
   for (int64_t tile = blockIdx.x; tile < int64_t{row_tiles} * column_tiles; tile += gridDim.x) {
@@ -709,16 +710,25 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
 #pragma unroll
       for (int mf = 0; mf < m_fragments; ++mf) {
         const int scale_row = tile_row + warp_row + mf * 16 + lane % 16;
-        row_scales[mf] = a_scales[per_tensor ? 0 : scale_row];
+        row_scales[mf] = (full_rows || scale_row < rows) ? a_scales[per_tensor ? 0 : scale_row] : 1.0f;
       }
     }
+    // The weight scale of the next interval is fetched right after the previous promotion so its
+    // global-memory latency overlaps the MMAs instead of stalling the promotion.
+    const int scale_column = tile_column + warp_column + lane;
+    auto load_weight_scale = [&](int group) {
+      return (lane < TileN / WarpsN && (Common128 || scale_column < n) && group < groups)
+                 ? LoadScale(b_scales, scale_type, int64_t{scale_column} * groups + group)
+                 : 0.0f;
+    };
+    float weight_scale = load_weight_scale(0);
     auto load = [&](int pos, int stage) {
 #pragma unroll
       for (int i = threadIdx.x; i < TileM * (tile_k / 16); i += threads) {
         const int local_row = i / (tile_k / 16);
         const int offset = (i % (tile_k / 16)) * 16;
         const int row = tile_row + local_row;
-        const bool valid = (Common128 || row < rows) && pos + offset < k;
+        const bool valid = (full_rows || row < rows) && pos + offset < k;
         CopyAsync16(&shared_a[stage][local_row][offset / 4],
                     valid ? a + int64_t{row} * k + pos + offset : a, valid);
       }
@@ -776,13 +786,7 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
           }
         }
       }
-      if (Common128 ? pos % 128 == 64 : pos + tile_k == interval_end) {
-        const int scale_column = tile_column + warp_column + lane;
-        const int current_weight_group = Common128 ? pos / 128 : weight_group;
-        const float weight_scale = (Common128 || scale_column < n)
-                                       ? LoadScale(b_scales, scale_type,
-                                                   int64_t{scale_column} * groups + current_weight_group)
-                                       : 0.0f;
+      if (Common128 ? (pos + tile_k) % 128 == 0 : pos + tile_k == interval_end) {
         float weight_scales[n_fragments][2];
 #pragma unroll
         for (int cf = 0; cf < n_fragments; ++cf) {
@@ -815,11 +819,11 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
             for (int element = 0; element < 4; ++element) {
               const int row = tile_row + warp_row + mf * 16 + lane / 4 + (element / 2) * 8;
               const int column = tile_column + warp_column + cf * 8 + (lane % 4) * 2 + element % 2;
-              if (Common128 || (row < rows && column < n)) {
+              if (full_rows || (row < rows && (Common128 || column < n))) {
                 const float term = ScaleProduct<std::is_same_v<T, half>>(acc[mf][cf][element],
                                                                          activation_scales[element / 2],
                                                                          weight_scales[cf][element % 2]);
-                total[mf][cf][element] = (Common128 ? pos == 64 : interval_start == 0)
+                total[mf][cf][element] = (Common128 ? pos + tile_k == 128 : interval_start == 0)
                                              ? term
                                              : __fadd_rn(total[mf][cf][element], term);
               }
@@ -827,9 +831,12 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
             }
           }
         }
-        if (!Common128 && interval_end == weight_end) {
+        if (Common128) {
+          weight_scale = load_weight_scale(pos / 128 + 1);
+        } else if (interval_end == weight_end) {
           ++weight_group;
           weight_end = interval_end + min(k - interval_end, block_size);
+          weight_scale = load_weight_scale(weight_group);
         }
         if (!Common128 && interval_end == activation_end) {
           ++activation_group;
@@ -850,7 +857,7 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
         for (int element = 0; element < 4; ++element) {
           const int row = tile_row + warp_row + mf * 16 + lane / 4 + (element / 2) * 8;
           const int column = tile_column + warp_column + cf * 8 + (lane % 4) * 2 + element % 2;
-          if (Common128 || (row < rows && column < n)) {
+          if (full_rows || (row < rows && (Common128 || column < n))) {
             y[int64_t{row} * n + column] = from_float<T>(__fadd_rn(total[mf][cf][element],
                                                                    bias ? to_float(bias[column]) : 0.0f));
           }
@@ -1030,6 +1037,57 @@ Status LaunchPrepacked(const int8_t* a, const float* a_scales, const uint8_t* b,
   return Status::OK();
 }
 
+// CTA tile shapes of the aligned grouped kernel. The 16-row tiles give all four warps distinct columns, and
+// k128 variants stage 128-byte activation rows, which suits Ampere's L2 sectors better than 64-byte rows.
+enum class GroupedTile { k16x32,
+                         k16x64,
+                         k32x64,
+                         k64x64 };
+
+constexpr int GroupedTileRows(GroupedTile tile) {
+  return tile == GroupedTile::k16x32 || tile == GroupedTile::k16x64 ? 16 : tile == GroupedTile::k32x64 ? 32
+                                                                                                       : 64;
+}
+
+constexpr int GroupedTileColumns(GroupedTile tile) { return tile == GroupedTile::k16x32 ? 32 : 64; }
+
+template <typename T, int Bits, bool Common128, bool RowGuard>
+static auto PickGroupedKernel(GroupedTile tile, bool k128) {
+  switch (tile) {
+    case GroupedTile::k16x32:
+      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 32, 3, 1, 128, RowGuard>
+                  : NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 32, 3, 1, 64, RowGuard>;
+    case GroupedTile::k16x64:
+      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 64, 3, 1, 128, RowGuard>
+                  : NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 64, 3, 1, 64, RowGuard>;
+    case GroupedTile::k32x64:
+      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 32, Common128, 64, 3, 2, 128, RowGuard>
+                  : NativeAlignedGroupedMatMul<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard>;
+    case GroupedTile::k64x64:
+      // Two 128-wide stages already fill the 48 KB static shared-memory limit for W8.
+      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 64, Common128, 64, 2, 2, 128, RowGuard>
+                  : NativeAlignedGroupedMatMul<T, Bits, 64, Common128, 64, 3, 2, 64, RowGuard>;
+  }
+  return NativeAlignedGroupedMatMul<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard>;
+}
+
+// Ampere (SM80) selection measured on A100 (108 SMs): use the largest tile that wastes few padded rows and still
+// leaves about 1.5 CTAs per SM, otherwise the narrow 16x32 tile. Other architectures keep the H200 rule.
+GroupedTile SelectGroupedTile(int64_t rows, int64_t column_tiles_64, int compute_capability) {
+  if (compute_capability == 80) {
+    constexpr int64_t kMinimumCtas = 160;
+    for (GroupedTile tile : {GroupedTile::k64x64, GroupedTile::k32x64, GroupedTile::k16x64}) {
+      const int64_t tile_rows = GroupedTileRows(tile);
+      const int64_t row_tiles = (rows + tile_rows - 1) / tile_rows;
+      if (row_tiles * tile_rows * 10 <= rows * 13 && row_tiles * column_tiles_64 >= kMinimumCtas) return tile;
+    }
+    return GroupedTile::k16x32;
+  }
+  const size_t large_tiles = SafeInt<size_t>(rows / 64 + (rows % 64 != 0)) * column_tiles_64;
+  const size_t large_tile_threshold = compute_capability >= 120 ? 128 : 256;
+  return large_tiles >= large_tile_threshold ? GroupedTile::k64x64 : GroupedTile::k32x64;
+}
+
 template <typename T, int Bits>
 Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
                     const void* b_scales, DynamicWeightScaleType scale_type, const void* bias, void* y,
@@ -1060,12 +1118,26 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported prepacked DynamicQuantizeMatMulNBits geometry.");
   }
+  // Whole 64-code intervals permit aligned asynchronous copies even for W2.
+  // Keep address products wide, while bounding the fast path's loop counters.
+  // Consumer Blackwell's measured crossover is eight rows and A100's is one row; other architectures retain 32.
+  const int64_t minimum_rows = compute_capability >= 120 ? 8 : compute_capability == 80 ? 1
+                                                                                        : 32;
+  const bool grouped_geometry =
+      compute_capability >= 80 && rows >= minimum_rows && n >= 8 && k >= 64 && k % 64 == 0 &&
+      rows <= std::numeric_limits<int>::max() - 128 && n <= std::numeric_limits<int>::max() - 128 &&
+      k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
+      activation_block_size <= std::numeric_limits<int>::max() && block_size % 64 == 0 &&
+      (activation_block_size >= k || activation_block_size % 64 == 0);
+  // On A100 the grouped tiles also beat the single-interval tile until the rows amortize its 64x128 shape.
+  const bool grouped_before_single = compute_capability == 80 && rows < 640 && grouped_geometry;
   if constexpr (Bits == 8) {
     // K divisible by 16 keeps every qA row and packed-weight vector aligned.
-    if (compute_capability >= 80 && rows >= 16 && n >= 8 && k >= 32 && k % 16 == 0 &&
+    if (compute_capability >= 80 && rows >= 16 && !grouped_before_single && n >= 8 && k >= 32 && k % 16 == 0 &&
         k <= std::numeric_limits<int>::max() - 256 && block_size >= k && activation_block_size >= k) {
       const bool large_k_tile = compute_capability >= 120 ||
-                                (compute_capability >= 90 && rows >= 128 && k >= 128);
+                                (compute_capability >= 90 && rows >= 128 && k >= 128) ||
+                                (compute_capability == 80 && rows >= 640 && k >= 128);
       bool available;
       ORT_RETURN_IF_ERROR(NativeKernelAvailable(large_k_tile ? NativeSingleIntervalMatMul<T, 128>
                                                              : NativeSingleIntervalMatMul<T, 64>,
@@ -1093,27 +1165,21 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
       }
     }
   }
-  // Whole 64-code intervals permit aligned asynchronous copies even for W2.
-  // Keep address products wide, while bounding the fast path's loop counters.
-  // Consumer Blackwell's measured crossover is eight rows; earlier architectures retain 32.
-  const int64_t minimum_rows = compute_capability >= 120 ? 8 : 32;
-  if (compute_capability >= 80 && rows >= minimum_rows && n >= 8 && k >= 64 && k % 64 == 0 &&
-      rows <= std::numeric_limits<int>::max() - 128 && n <= std::numeric_limits<int>::max() - 128 &&
-      k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
-      activation_block_size <= std::numeric_limits<int>::max() && block_size % 64 == 0 &&
-      (activation_block_size >= k || activation_block_size % 64 == 0)) {
-    const int64_t column_tiles = n / 64 + (n % 64 != 0);
-    const size_t large_tiles = SafeInt<size_t>(rows / 64 + (rows % 64 != 0)) * column_tiles;
-    const size_t large_tile_threshold = compute_capability >= 120 ? 128 : 256;
-    const bool large_m_tile = large_tiles >= large_tile_threshold;
-    const int tile_m = large_m_tile ? 64 : 32;
-    const bool common128 = block_size == 128 && k % 128 == 0 && activation_block_size >= k &&
-                           rows % tile_m == 0 && n % 64 == 0;
-    auto kernel = large_m_tile
-                      ? (common128 ? NativeAlignedGroupedMatMul<T, Bits, 64, true>
-                                   : NativeAlignedGroupedMatMul<T, Bits, 64>)
-                      : (common128 ? NativeAlignedGroupedMatMul<T, Bits, 32, true>
-                                   : NativeAlignedGroupedMatMul<T, Bits, 32>);
+  if (grouped_geometry) {
+    const int64_t column_tiles_64 = n / 64 + (n % 64 != 0);
+    const GroupedTile tile = SelectGroupedTile(rows, column_tiles_64, compute_capability);
+    const int tile_m = GroupedTileRows(tile);
+    const int tile_n = GroupedTileColumns(tile);
+    const int64_t column_tiles = n / tile_n + (n % tile_n != 0);
+    // A 128-code K tile needs every interval boundary and the K tail on a 128-code boundary.
+    const bool k128 = compute_capability == 80 && k % 128 == 0 && block_size % 128 == 0 &&
+                      (activation_block_size >= k || activation_block_size % 128 == 0);
+    const bool common128 = block_size == 128 && k % 128 == 0 && activation_block_size >= k && n % tile_n == 0;
+    // Predicating a partial last row tile of the fixed-geometry kernel beats the generic kernel on A100.
+    const bool common128_rows = rows % tile_m == 0 || compute_capability == 80;
+    auto kernel = !common128 || !common128_rows ? PickGroupedKernel<T, Bits, false, false>(tile, k128)
+                  : rows % tile_m != 0          ? PickGroupedKernel<T, Bits, true, true>(tile, k128)
+                                                : PickGroupedKernel<T, Bits, true, false>(tile, k128);
     bool available;
     ORT_RETURN_IF_ERROR(NativeKernelAvailable(kernel, available));
     if (available) {

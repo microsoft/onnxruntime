@@ -511,6 +511,10 @@ kernel binary/PTX versions at least 80. All native kernels use signed INT8
   products remain 64-bit. The larger M tile is selected when its grid has
   at least 256 CTAs. Scales are reused across fragments, and INT32 dots are
   reset at each common scale boundary before ordered FP32 accumulation.
+  SM80 (A100) instead accepts any M, chooses among `16 x 32`, `16 x 64`,
+  `32 x 64` and `64 x 64` tiles by row count and CTA count, and stages
+  128-code K tiles when K and the weight/activation blocks are multiples of
+  128 (section 8.16).
 - Other native W8A8/W4A8/W2A8: `32 x 64 x 64` CTA tile with direct shared-memory
   weight decoding. Requires M at least 32, N at least 8, K at least 32,
   and every interior activation/weight block boundary 32-aligned: each
@@ -522,7 +526,8 @@ intervals in the same ordered FP32 sequence.
 
 The single-interval M threshold was checked against DP4A on the measured
 H200 shapes, but is not universally tuned. Aligned pipeline tile choices
-were measured on H200; cross-architecture crossovers remain unverified.
+were measured on H200; SM80 (A100) and SM120 have their own measured choices
+(sections 8.15 and 8.16), and other architectures remain unverified.
 The remaining native geometry uses synchronous shared staging.
 
 Dispatch selects an implementation, never the activation-quantization mode.
@@ -1903,6 +1908,126 @@ weights are not a valid common benchmark in this checkout: MatMulNBits
 terminates with integer divide-by-zero for the first K=2048, block=2048 case,
 matching the limitation already observed on H200.
 
+
+### 8.16 A100 (SM80) tuning of the portable kernels
+
+The H200 choices left A100 slow in two regimes: fewer than 32 rows used the
+one-warp-per-output fallback (1.2 ms at M=16, K=N=4096), and the 32x64/64x64
+tiles with 64-code K tiles ran with few warps and short per-column weight
+reads. Measured on an NVIDIA A100-SXM4-80GB (SM80, 108 SMs, 1410 MHz boost),
+CUDA 13.0, PyTorch 2.12.1, a CUDA-plugin Release build with
+`CMAKE_CUDA_ARCHITECTURES=80-real`, FP16 per-token activations, constant
+weights/scales, no bias, ORT CUDA Graph replay and CUDA-event medians.
+
+**Methodology.** An idle A100 starts at 210 MHz, and short kernels do not
+raise the clock within the benchmark's default 10-20 warmups. A configuration
+whose first measurements are slow therefore warms the GPU for the next ones,
+which produced regressions that disappear with `--warmup 3000` (for example
+M=32, identical kernels, 70 us versus 83 us). All numbers below use 3000
+warmups, 100 repetitions, and the minimum of two interleaved old/new
+processes. Run-to-run noise is still about 5%.
+
+**Dispatch (SM80 only; SM90+ WGMMA, SM120 and other architectures unchanged).**
+
+- The aligned grouped kernel is used for any M (previously at least 32).
+- Tiles `16 x 32` (four warps over distinct columns), `16 x 64`, `32 x 64`
+  and `64 x 64` are selected by `SelectGroupedTile`: the largest tile among
+  `64 x 64`, `32 x 64` and `16 x 64` whose padded rows exceed M by at most
+  30% and whose grid has at least 160 CTAs (about 1.5 per SM), otherwise
+  `16 x 32`. On the 50 swept W4 points (M=16-512, N=1024-11008, K=4096) the
+  selected tile is within 10% of the best of the four tiles with 128-code K
+  tiles. At equal tile shape the 128-code K tile was slower than the 64-code
+  tile (by more than 2%) at only one of the 200 swept combinations
+  (`64 x 64`, M=96, N=11008), which the selector does not choose.
+- A 128-code K tile (two stages for `64 x 64`, three otherwise) is used when
+  K and the weight block are multiples of 128 and the activation block covers
+  K or is a multiple of 128. Every promotion boundary then lies on a tile
+  boundary, so the ordered FP32 accumulation is unchanged. The 128-byte
+  activation rows and half as many K iterations gave 1.1-1.25x over 64-code
+  tiles at equal tile shape.
+- The fixed-geometry Common128 kernel also serves partial last row tiles by
+  predicating rows. This was 1.3-2x faster than the generic kernel for ragged
+  M such as 100, 200, 300 and 700, but 30% slower than the unpredicated kernel
+  for aligned M, so both variants exist.
+- Weight-scale loads are fetched one interval ahead (no measurable effect
+  alone; it keeps the promotion off the global-load latency path).
+- W8 weights with one block per channel use the grouped kernel below 640
+  rows (1.09-1.17x over the single-interval tile at M=64-512; rows below 16
+  previously had no tensor-core path) and the single-interval kernel with a
+  128 K tile at 640 rows or more (4-6% faster than a 64 K tile at M >= 512).
+
+Paired old/new, W4, block 128, K=N=4096 (complete operator, us):
+
+| M | Previous | Tuned | Speedup |
+|---|----------|-------|---------|
+| 1 | 110.5 | 54.7 | 2.02x |
+| 8 | 617.8 | 45.9 | 13.5x |
+| 16 | 1205.0 | 44.3 | 27.2x |
+| 32 | 70.5 | 48.3 | 1.46x |
+| 48 | 106.3 | 55.4 | 1.92x |
+| 64 | 79.3 | 62.8 | 1.26x |
+| 96 | 79.7 | 73.1 | 1.09x |
+| 128 | 100.5 | 89.4 | 1.12x |
+| 192 | 120.6 | 90.6 | 1.33x |
+| 256 | 129.2 | 113.0 | 1.14x |
+| 300 | 178.4 | 134.8 | 1.32x |
+| 512 | 207.3 | 176.1 | 1.18x |
+| 700 | 447.9 | 322.9 | 1.39x |
+| 1536 | 520.3 | 449.3 | 1.16x |
+
+Across W2/W4/W8 and K/N of 1024/1024, 2048/6144, 4096/4096, 4096/11008,
+6144/2048 and 11008/4096 (18 combinations), the geometric-mean speedup is
+7.8x for M <= 16 (54 cases), 1.40x for M=32-64 (54), 1.23x for M=96-200 (90),
+1.23x for M=256-700 (90), and 1.24x for M=1024-1536 (36). The sweep used a
+25% padding threshold and had three W8 cases below 1.0x at M=100 (0.84-0.97x);
+the final 30% threshold was rechecked only for W4/W8 at K/N of 4096/4096,
+4096/11008 (W8) and 2048/6144 (W8), where M=100/200/300 measured 1.13-1.74x.
+The other 105 sweep points were not rerun after that change.
+
+The operator is still not a replacement for MatMulNBits on A100 above
+about M=64. Block 128, K=N=4096, same protocol, DynamicQuantizeMatMulNBits
+us / MatMulNBits us / FP16 GEMM us:
+
+| M | W2 | W4 | W8 |
+|---|----|----|----|
+| 1 | 50.4 / 20.7 / 21.1 | 46.1 / 19.3 / 21.3 | 56.2 / 26.3 / 21.3 |
+| 16 | 48.4 / 63.8 / 22.8 | 44.0 / 52.2 / 23.1 | 45.5 / 68.1 / 23.2 |
+| 32 | 51.4 / 66.1 / 22.7 | 48.0 / 63.0 / 22.8 | 48.3 / 70.3 / 22.8 |
+| 64 | 64.5 / 66.5 / 25.1 | 62.3 / 62.5 / 25.0 | 64.9 / 69.7 / 25.3 |
+| 128 | 96.0 / 74.2 / 33.1 | 89.1 / 68.7 / 33.0 | 75.2 / 74.8 / 33.1 |
+| 512 | 186.5 / 124.2 / 87.4 | 175.9 / 120.8 / 88.5 | 161.4 / 128.6 / 88.6 |
+| 1536 | 483.1 / 263.2 / 219.3 | 449.1 / 261.5 / 222.0 | 389.3 / 266.9 / 219.4 |
+
+The dynamic operator wins only at M=16-64 (1.0-1.5x over MatMulNBits) and
+at M=8 for W8. At M=1536 it reaches about 115 INT8 TOPS, against 624 peak, and
+the FP16 cuBLAS GEMM is 2x faster.
+
+Findings that did not pay off and bound future work:
+
+- Stage depth (2-5) and a single barrier per K tile were neutral, and
+  128x64/128x32 CTA tiles gave at most 1.2x on some 128-aligned W2/W4 row
+  counts but were slower for W8 and ragged M, so they were not adopted;
+  large-M time is nearly independent of tile shape.
+- Large-M throughput appears limited by the structure of the `mma.sync`
+  promotion loop rather than by memory or tile shape (ablating MMA, decode,
+  copies or promotion individually moved time by under 20%, though the
+  kernel is sensitive to compiler scheduling and the ablations perturbed it).
+  Reaching cuBLAS-class throughput needs a different kernel (for example a
+  CUTLASS INT8 GEMM with in-kernel ordered promotion) and was not attempted.
+- Nsight Compute counters were unavailable on this host
+  (`ERR_NVGPUCTRPERM`), so no per-kernel stall attribution exists.
+- Only SM80 is tuned; SM86/SM89 keep the H200 rule until measured. The
+  CTA threshold of 160 assumes 108 SMs.
+- N not divisible by the tile columns takes the generic kernel instead of the
+  fixed-geometry one, and K not divisible by 128 keeps 64-code K tiles.
+
+Validation: `AmpereTunedTileDispatch` and
+`test_row_counts_across_grouped_tile_selection_match_exact_reference`
+compare bitwise with the exact reference for M from 1 to 641, all widths,
+per-tensor/token/block activation modes, weight blocks 64/128/256 and K tails;
+an additional 840-case sweep (28 row counts, 10 geometries) also matched
+exactly. The benchmark script validates bitwise equality for every timed
+configuration. Use `--warmup 3000` on a cold GPU.
 
 ## 9. Delivery Plan and Acceptance
 

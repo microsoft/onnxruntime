@@ -430,6 +430,27 @@ TEST(DynamicQuantizeMatMulNBitsTest, BlackwellPortableKernelDispatch) {
   RunCase<MLFloat16>({16, 128}, 512, 8, 128, "dynamic_per_token", 0, true, false, false);
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, AmpereTunedTileDispatch) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (int bits : {2, 4, 8}) {
+    // Row counts straddle the 16x32, 16x64, 32x64 and 64x64 tiles, including partial last row tiles.
+    for (int64_t m : {1, 9, 16, 33, 49, 65, 97, 129, 193, 257}) {
+      RunCase<MLFloat16>({m, 256}, 96, bits, 128, "dynamic_per_token", 0, true, false, true);
+      RunCase<BFloat16, MLFloat16>({m, 384}, 72, bits, 128, "dynamic_per_tensor", 0, true, false, false);
+    }
+    // 128-wide K tiles require 128-code block boundaries; 64-code blocks and K tails keep 64-wide tiles.
+    for (int64_t m : {5, 48, 100, 200}) {
+      RunCase<MLFloat16>({m, 512}, 64, bits, 256, "dynamic_per_block", 256, true, false, true);
+      RunCase<MLFloat16>({m, 320}, 64, bits, 64, "dynamic_per_token", 0, true, false, false);
+      RunCase<BFloat16>({m, 384}, 64, bits, 128, "dynamic_per_block", 192, true, false, false);
+    }
+  }
+  // One weight block per channel: grouped tiles below 640 rows, the single-interval tile above.
+  for (int64_t m : {8, 100, 641}) {
+    RunCase<MLFloat16>({m, 256}, 128, 8, 256, "dynamic_per_token", 0, true, false, true);
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedInt4Dispatch) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   RunCase<MLFloat16>({8, 128}, 64, 4, 32, "dynamic_per_token", 0,
