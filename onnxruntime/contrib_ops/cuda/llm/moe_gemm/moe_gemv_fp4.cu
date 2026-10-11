@@ -395,6 +395,243 @@ __global__ void MoeGemvFp4RawNPackedKernel(
 #endif
 }
 
+// ---------------------------------------------------------------------------------------------
+// Decode-specialised NVFP4 GEMV for row-major [E, N, K/2] weights (S=1 / small expanded row count).
+//
+// The baseline kernel above stages a 16-column x 1024-K tile through shared memory with a
+// load -> barrier -> repack -> barrier -> compute cycle and no prefetch, so each CTA is latency bound
+// (about 3x off the HBM roofline for the Qwen3.8 FC1/FC2 shapes). This kernel streams the weights
+// straight from global memory into registers with independent 128-bit loads (no shared-memory
+// staging, no barriers in the main loop), keeps up to three K tiles of loads in flight per thread,
+// and decodes FP4 in registers with the same Fp4I2FConverter used elsewhere.
+//
+// It reproduces the baseline floating-point summation order exactly so results are bit-identical:
+// the baseline reduces over K as 64 "lanes" L = (k / 16) % 64, each lane accumulating its 16-element
+// groups sequentially across 1024-wide K tiles, then a butterfly over the 16 lanes of a warp and a
+// sequential sum over the 4 warps. Here thread (warp w, lane j) owns the lane pair L = 16w + 2j, +1
+// (one 16-byte load per tile per column); adding the two chains is the baseline's first butterfly
+// step, shuffles over j are the remaining three, and the 4 warp partials are summed through shared
+// memory in warp order.
+template <typename T>
+__device__ __forceinline__ float PackedLowToFloat(uint32_t word) {
+  if constexpr (std::is_same_v<T, half>) {
+    return __half2float(__ushort_as_half(static_cast<uint16_t>(word & 0xffffu)));
+  } else {
+    return __uint_as_float(word << 16);
+  }
+}
+
+template <typename T>
+__device__ __forceinline__ float PackedHighToFloat(uint32_t word) {
+  if constexpr (std::is_same_v<T, half>) {
+    return __half2float(__ushort_as_half(static_cast<uint16_t>(word >> 16)));
+  } else {
+    return __uint_as_float(word & 0xffff0000u);
+  }
+}
+
+template <typename T>
+__device__ __forceinline__ uint32_t ScaleToPackedPair(float value) {
+  const T scale = static_cast<T>(value);
+  uint32_t bits;
+  if constexpr (std::is_same_v<T, half>) {
+    bits = __half_as_ushort(scale);
+  } else {
+    bits = __bfloat16_as_ushort(scale);
+  }
+  return bits | (bits << 16);
+}
+
+__device__ __forceinline__ uint4 LoadWeightStreaming(const void* ptr) {
+  uint4 value;
+  asm("ld.global.nc.L1::no_allocate.v4.u32 {%0, %1, %2, %3}, [%4];"
+      : "=r"(value.x), "=r"(value.y), "=r"(value.z), "=r"(value.w)
+      : "l"(ptr));
+  return value;
+}
+
+static constexpr int kDecodeColsPerThread = 2;
+static constexpr int kDecodeBlockCols = 4 * kDecodeColsPerThread;
+
+// Opt-out for the decode-specialised row-major NVFP4 GEMV (env ORT_FP4_GEMV_DECODE_KERNEL=0).
+static bool Fp4MoeGemvUseDecodeKernel() {
+  static const bool enabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_DECODE_KERNEL", 1) != 0;
+  return enabled;
+}
+
+template <typename T, bool FusedSwiGlu, bool EnableBias, int ColsPerThread>
+__global__ void __launch_bounds__(128) MoeGemvFp4DecodeKernel(
+    const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
+    const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
+    int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
+    cutlass_kernels::ActivationParams activation_params,
+    const int* permuted_row_to_source_row, int num_rows) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  constexpr int kSlots = 4;           // column slots per warp (8 lanes each)
+  constexpr int kTilesInFlight = 3;   // K tiles whose loads are issued together
+  constexpr int kBlockCols = kSlots * ColsPerThread;
+  static_assert(ColsPerThread % 2 == 0, "SwiGLU pairs adjacent columns");
+  constexpr unsigned kFullMask = 0xffffffffu;
+  using PackedT = std::conditional_t<std::is_same_v<T, half>, half2, __nv_bfloat162>;
+
+  const int row = static_cast<int>(blockIdx.x);
+  int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
+#pragma unroll 1
+  for (int e = 0; e < num_experts && permuted_row_to_expert == nullptr; ++e) {
+    if (row >= static_cast<int>(expert_first_token_offset[e + 1])) {
+      expert = e + 1;
+      continue;
+    }
+    break;
+  }
+  if (expert < 0 || expert >= num_experts) {
+    return;
+  }
+
+  const int lane = threadIdx.x % 32;
+  const int warp = threadIdx.x / 32;
+  const int j = lane % 8;
+  const int slot = lane / 8;
+  const int pair = warp * 8 + j;  // 16-byte weight unit inside a 1024-wide K tile
+  const int source_row = permuted_row_to_source_row ? permuted_row_to_source_row[row] % num_rows : row;
+  const int groups = k / 16;
+  const int tiles = (k + 1023) / 1024;
+  const int block_n = static_cast<int>(blockIdx.y) * kBlockCols;
+  const int thread_n = block_n + slot * ColsPerThread;
+
+  const T* row_act = act + static_cast<int64_t>(source_row) * k;
+  const uint8_t* weight_rows[ColsPerThread];
+  const uint8_t* scale_rows[ColsPerThread];
+  const uint8_t* expert_weight = weight + static_cast<int64_t>(expert) * weight_expert_stride;
+  const uint8_t* expert_scales = block_scales + static_cast<int64_t>(expert) * scale_expert_stride;
+#pragma unroll
+  for (int c = 0; c < ColsPerThread; ++c) {
+    weight_rows[c] = expert_weight + static_cast<int64_t>(thread_n + c) * (k / 2) + pair * 16;
+    scale_rows[c] = expert_scales + static_cast<int64_t>(thread_n + c) * groups + pair * 2;
+  }
+  const float global_scale = global_scales[expert];
+
+  float acc[ColsPerThread][2] = {};
+#pragma unroll 1
+  for (int tile0 = 0; tile0 < tiles; tile0 += kTilesInFlight) {
+    uint4 packed[kTilesInFlight][ColsPerThread];
+    uint32_t scale_codes[kTilesInFlight][ColsPerThread];
+#pragma unroll
+    for (int u = 0; u < kTilesInFlight; ++u) {
+      const int group = (tile0 + u) * 64 + pair * 2;
+      if (tile0 + u < tiles && group < groups) {
+#pragma unroll
+        for (int c = 0; c < ColsPerThread; ++c) {
+          packed[u][c] = LoadWeightStreaming(weight_rows[c] + (tile0 + u) * 512);
+          scale_codes[u][c] = *reinterpret_cast<const uint16_t*>(scale_rows[c] + (tile0 + u) * 64);
+        }
+      }
+    }
+#pragma unroll
+    for (int u = 0; u < kTilesInFlight; ++u) {
+      const int group = (tile0 + u) * 64 + pair * 2;
+      if (tile0 + u < tiles && group < groups) {
+        uint4 act_words[4];
+        const uint4* act_vectors = reinterpret_cast<const uint4*>(row_act + static_cast<int64_t>(group) * 16);
+#pragma unroll
+        for (int v = 0; v < 4; ++v) {
+          act_words[v] = act_vectors[v];
+        }
+        float activations[32];
+#pragma unroll
+        for (int v = 0; v < 4; ++v) {
+          const uint32_t words[4] = {act_words[v].x, act_words[v].y, act_words[v].z, act_words[v].w};
+#pragma unroll
+          for (int w = 0; w < 4; ++w) {
+            activations[v * 8 + w * 2] = PackedLowToFloat<T>(words[w]);
+            activations[v * 8 + w * 2 + 1] = PackedHighToFloat<T>(words[w]);
+          }
+        }
+#pragma unroll
+        for (int c = 0; c < ColsPerThread; ++c) {
+          uint32_t half_pair;
+          asm("cvt.rn.f16x2.e4m3x2 %0, %1;" : "=r"(half_pair) : "h"(static_cast<uint16_t>(scale_codes[u][c])));
+          const uint32_t scale_pair[2] = {
+              ScaleToPackedPair<T>(__half2float(__ushort_as_half(static_cast<uint16_t>(half_pair & 0xffffu))) * global_scale),
+              ScaleToPackedPair<T>(__half2float(__ushort_as_half(static_cast<uint16_t>(half_pair >> 16))) * global_scale)};
+          const uint32_t words[4] = {packed[u][c].x, packed[u][c].y, packed[u][c].z, packed[u][c].w};
+#pragma unroll
+          for (int w = 0; w < 4; ++w) {
+            uint32_t word = words[w];
+            alignas(4) T decoded[8];
+            fiv::Fp4I2FConverter<T>::template convert<8>(&word, decoded);
+            const PackedT scale2 = *reinterpret_cast<const PackedT*>(&scale_pair[w / 2]);
+#pragma unroll
+            for (int p = 0; p < 4; ++p) {
+              reinterpret_cast<PackedT*>(decoded)[p] = __hmul2(reinterpret_cast<const PackedT*>(decoded)[p], scale2);
+            }
+#pragma unroll
+            for (int e = 0; e < 8; ++e) {
+              acc[c][w / 2] += static_cast<float>(decoded[e]) * activations[w * 8 + e];
+            }
+          }
+        }
+      }
+    }
+  }
+
+  float sum[ColsPerThread];
+#pragma unroll
+  for (int c = 0; c < ColsPerThread; ++c) {
+    sum[c] = acc[c][0] + acc[c][1];
+    sum[c] += __shfl_xor_sync(kFullMask, sum[c], 1);
+    sum[c] += __shfl_xor_sync(kFullMask, sum[c], 2);
+    sum[c] += __shfl_xor_sync(kFullMask, sum[c], 4);
+  }
+  __shared__ float partials[4][kBlockCols];
+  if (j == 0) {
+#pragma unroll
+    for (int c = 0; c < ColsPerThread; ++c) {
+      partials[warp][slot * ColsPerThread + c] = sum[c];
+    }
+  }
+  __syncthreads();
+  constexpr int kOutputPairs = kBlockCols / 2;
+  if (threadIdx.x >= kOutputPairs) {
+    return;
+  }
+  const int local_col = threadIdx.x * 2;
+  const int n0 = block_n + local_col;
+  float acc0 = 0.0f;
+  float acc1 = 0.0f;
+#pragma unroll
+  for (int w = 0; w < 4; ++w) {
+    acc0 += partials[w][local_col];
+    acc1 += partials[w][local_col + 1];
+  }
+  if constexpr (EnableBias) {
+    const T* expert_bias = bias + static_cast<int64_t>(expert) * n;
+    acc0 += static_cast<float>(expert_bias[n0]);
+    acc1 += static_cast<float>(expert_bias[n0 + 1]);
+  }
+  if constexpr (FusedSwiGlu) {
+    const float* alpha = activation_params.swiglu_alpha;
+    const float* beta = activation_params.swiglu_beta;
+    const float* limit = activation_params.swiglu_limit;
+    const float activation_alpha = alpha ? alpha[expert] : activation_params.alpha;
+    const float activation_beta = beta ? beta[expert] : activation_params.beta;
+    const float activation_limit = limit ? limit[expert] : activation_params.limit;
+    if (isfinite(activation_limit)) {
+      acc0 = fminf(acc0, activation_limit);
+      acc1 = fminf(fmaxf(acc1, -activation_limit), activation_limit);
+    }
+    acc1 += activation_beta;
+    const float sigmoid = 1.0f / (1.0f + expf(-activation_alpha * acc0));
+    out[static_cast<int64_t>(row) * (n / 2) + n0 / 2] = static_cast<T>(acc0 * sigmoid * acc1);
+  } else {
+    out[static_cast<int64_t>(row) * n + n0] = static_cast<T>(acc0);
+    out[static_cast<int64_t>(row) * n + n0 + 1] = static_cast<T>(acc1);
+  }
+#endif
+}
+
 template <typename T, bool FusedSwiGlu>
 void LaunchMoeGemvFp4RawNPacked(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
@@ -406,6 +643,25 @@ void LaunchMoeGemvFp4RawNPacked(
   constexpr int kColsPerBlock = 16;
   const int64_t weight_expert_stride = n * k / 2;
   const int64_t scale_expert_stride = n * (k / 16);
+  if (weights_row_major && Fp4MoeGemvUseDecodeKernel() && k % 32 == 0 && n % kDecodeBlockCols == 0 &&
+      reinterpret_cast<uintptr_t>(weight) % 16 == 0 && reinterpret_cast<uintptr_t>(block_scales) % 2 == 0 &&
+      reinterpret_cast<uintptr_t>(act) % 16 == 0) {
+    const dim3 decode_grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / kDecodeBlockCols));
+    const auto launch_decode = [&](auto bias_tag) {
+      constexpr bool kEnableBias = decltype(bias_tag)::value;
+      MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kDecodeColsPerThread><<<decode_grid, kThreads, 0, stream>>>(
+          act, weight, block_scales, global_scales, bias, out,
+          expert_first_token_offset, permuted_row_to_expert, num_experts,
+          weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+          permuted_row_to_source_row, static_cast<int>(num_rows));
+    };
+    if (bias != nullptr) {
+      launch_decode(std::true_type{});
+    } else {
+      launch_decode(std::false_type{});
+    }
+    return;
+  }
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>((n + kColsPerBlock - 1) / kColsPerBlock));
   const auto launch = [&](auto row_major_tag) {
     constexpr bool kWeightsRowMajor = decltype(row_major_tag)::value;
