@@ -33,7 +33,9 @@ constexpr ONNXTensorElementDataType ToONNXTensorElementDataType(
 consteval bool IsTensorProtoToOrtElementTypeMapBijective() {
   constexpr size_t ort_element_type_count =
       static_cast<size_t>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0) + 1;
-  constexpr size_t onnx_element_type_count = ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE;
+  // Newer ONNX versions may define types that do not have an ORT counterpart yet.
+  constexpr size_t onnx_element_type_count =
+      static_cast<size_t>(ONNX_NAMESPACE::TensorProto_DataType_INT2) + 1;
   if constexpr (onnx_element_type_count != ort_element_type_count) {
     return false;
   }
@@ -55,7 +57,7 @@ consteval bool IsTensorProtoToOrtElementTypeMapBijective() {
 }
 
 static_assert(IsTensorProtoToOrtElementTypeMapBijective(),
-              "ONNX and ORT tensor element type enums must have a complete one-to-one mapping.");
+              "Supported ONNX and ORT tensor element types must have a complete one-to-one mapping.");
 
 }  // namespace type_info_internal
 }  // namespace onnxruntime

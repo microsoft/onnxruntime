@@ -33,7 +33,7 @@ namespace onnxruntime {
 namespace test {
 
 constexpr bool TensorProtoElementSizesAreConstexpr() {
-  constexpr std::array<size_t, TensorProto_DataType_DataType_ARRAYSIZE> expected_sizes{
+  constexpr std::array<size_t, static_cast<size_t>(TensorProto_DataType_INT2) + 1> expected_sizes{
       0,                 // UNDEFINED
       sizeof(float),     // FLOAT
       sizeof(uint8_t),   // UINT8
@@ -65,6 +65,12 @@ constexpr bool TensorProtoElementSizesAreConstexpr() {
 
   for (size_t index = 0; index < expected_sizes.size(); ++index) {
     if (GetElementSizeOfTensor(static_cast<TensorProto_DataType>(index)) != expected_sizes[index]) {
+      return false;
+    }
+  }
+
+  for (size_t index = expected_sizes.size(); index < TensorProto_DataType_DataType_ARRAYSIZE; ++index) {
+    if (GetElementSizeOfTensor(static_cast<TensorProto_DataType>(index)) != 0) {
       return false;
     }
   }
