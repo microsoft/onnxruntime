@@ -12,9 +12,6 @@ class MlasComputeTanhTest : public MlasTestBase {
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
   void TestFp16(size_t N, float MinimumValue, float MaximumValue) {
-    if (!MlasFp16AccelerationSupported()) {
-      return;
-    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
@@ -64,9 +61,6 @@ class MlasComputeSoftcapTest : public MlasTestBase {
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
   void TestFp16(size_t N, float MinimumValue, float MaximumValue, float cap) {
-    if (!MlasFp16AccelerationSupported()) {
-      return;
-    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
@@ -108,11 +102,15 @@ class MlasComputeSoftcapTest : public MlasTestBase {
   }
 };
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+// Both suites only have FP16 test paths, so register them only when FP16
+// arithmetic is available; otherwise they would pass without running any check.
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
-  if (is_short_execute) {
+  if (is_short_execute && MlasFp16AccelerationSupported()) {
     count += MlasDirectShortExecuteTests<MlasComputeTanhTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasComputeSoftcapTest>::RegisterShortExecute();
   }
   return count;
 });
+#endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
