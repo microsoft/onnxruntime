@@ -408,6 +408,8 @@ func reserveSessionCreationWithClone(opts *SessionOptions, clone func(*SessionOp
 	return snapshot, env, nil
 }
 
+// Transfer the exact buffer and reader registration after native construction
+// and introspection succeed. Failed construction releases both with the snapshot.
 func finishSessionCreation(snapshot *SessionOptions, session *Session) {
 	if session != nil {
 		session.resources = snapshot.resources

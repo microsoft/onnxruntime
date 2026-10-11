@@ -18,6 +18,13 @@
 // selection with a buffer is rejected on all accepted runtimes because native
 // policy selection omits the buffer. Fresh options reset selection state.
 // Public clones and private constructor snapshots restore the native buffer.
+// EPContext data readers require API 31. Each payload copy is bounded by maxBytes;
+// readers must bound their own I/O and allocations and handle concurrent calls.
+// Reader callbacks run without package or public options locks. They may call
+// options getters, Clone, setters, Clear and Close, or wait for those calls in
+// another goroutine. They must not recursively construct sessions, call Shutdown,
+// mutate the registry or wait for the current construction to finish. Logical
+// names are UTF-8 identifiers; the binding supplies no filesystem fallback.
 // Linux CPU race tests cover ORT 1.27.0/API 27, 1.28.3/API 28,
 // 1.29.1/API 29, 1.30.0/API 30, and 1.31.0/API 31.
 // Capped builds on a newer runtime do not verify an older runtime's ABI.
