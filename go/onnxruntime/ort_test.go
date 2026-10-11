@@ -668,7 +668,10 @@ func TestInitEnvironmentFailureRetryable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get cgo compiler: %v", err)
 	}
-	compiler := strings.Fields(strings.TrimSpace(string(ccOutput)))
+	compiler, err := splitCompilerCommand(string(ccOutput))
+	if err != nil {
+		t.Fatalf("parse cgo compiler: %v", err)
+	}
 	if len(compiler) == 0 {
 		t.Fatal("empty cgo compiler")
 	}
