@@ -246,4 +246,10 @@ OrtStatusPtr ort_GetKeyValuePairs(
     const OrtKeyValuePairs* pairs, const char* const** keys,
     const char* const** values, size_t* count);
 
+OrtStatusPtr ort_SetDeterministicCompute(OrtSessionOptions*, bool);
+OrtStatusPtr ort_SynchronizeBoundInputs(OrtIoBinding*);
+OrtStatusPtr ort_SynchronizeBoundOutputs(OrtIoBinding*);
+OrtStatusPtr ort_SessionOptionsSetWeightlessSourceModelBuffer(OrtSessionOptions*, const void*, size_t);
+OrtStatusPtr ort_copy_buffer(const void*, size_t, void**);
+
 #endif  // ORT_GO_CSHIM_H

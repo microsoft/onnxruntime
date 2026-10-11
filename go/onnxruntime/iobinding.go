@@ -386,3 +386,31 @@ func (b *IOBinding) Close() error {
 	b.handle = nil
 	return nil
 }
+
+// SynchronizeInputs waits for bound input transfers where the provider requires
+// synchronization. Requires API 10. Tensor data views still need caller synchronization.
+func (b *IOBinding) SynchronizeInputs() error {
+	if err := checkInit(); err != nil {
+		return err
+	}
+	s, err := b.lockSession("synchronize inputs")
+	if err != nil {
+		return err
+	}
+	defer b.unlockSession(s)
+	return wrapErr("synchronize inputs", checkStatus(C.ort_SynchronizeBoundInputs(b.handle)))
+}
+
+// SynchronizeOutputs waits for bound output transfers where the provider
+// requires synchronization. Requires API 10.
+func (b *IOBinding) SynchronizeOutputs() error {
+	if err := checkInit(); err != nil {
+		return err
+	}
+	s, err := b.lockSession("synchronize outputs")
+	if err != nil {
+		return err
+	}
+	defer b.unlockSession(s)
+	return wrapErr("synchronize outputs", checkStatus(C.ort_SynchronizeBoundOutputs(b.handle)))
+}

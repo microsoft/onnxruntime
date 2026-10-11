@@ -490,6 +490,17 @@ func TestAPIFeatureGates(t *testing.T) {
 		minimum int
 		call    func() error
 	}{
+		{"SetDeterministicCompute", 17, func() error { return opts.SetDeterministicCompute(true) }},
+		{"SynchronizeInputs", 10, func() error { return featureGateSynchronize(t, true) }},
+		{"SynchronizeOutputs", 10, func() error { return featureGateSynchronize(t, false) }},
+		{"SetWeightlessSourceModelBuffer", 29, func() error {
+			bufferOpts, err := NewSessionOptions()
+			if err != nil {
+				return err
+			}
+			defer bufferOpts.Close()
+			return bufferOpts.SetWeightlessSourceModelBuffer([]byte{1, 2, 3, 4})
+		}},
 		{"GetBuildInfo", 15, func() error {
 			info, err := GetBuildInfo()
 			if err == nil && info == "" {
@@ -726,3 +737,21 @@ static const char* ORT_API_CALL get_version(void) { return "injected-runtime"; }
 static const OrtApiBase base = {get_api, get_version};
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) { return &base; }
 `
+
+func featureGateSynchronize(t *testing.T, input bool) error {
+	t.Helper()
+	session, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	binding, err := NewIOBinding(session)
+	if err != nil {
+		return err
+	}
+	defer binding.Close()
+	if input {
+		return binding.SynchronizeInputs()
+	}
+	return binding.SynchronizeOutputs()
+}

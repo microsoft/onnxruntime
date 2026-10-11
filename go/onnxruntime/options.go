@@ -20,6 +20,7 @@ type SessionOptions struct {
 	protected       bool
 	policyAttempted bool
 	successfulV2    bool
+	resources       sessionResources
 }
 
 // NewSessionOptions creates a new SessionOptions with default values.
@@ -139,6 +140,12 @@ func (o *SessionOptions) Clone() (*SessionOptions, error) {
 // cloneLocked requires the source options mutex and package mu.
 // Constructors use the same native snapshot as public Clone.
 func (o *SessionOptions) cloneLocked() (*SessionOptions, error) {
+	return o.cloneLockedWithRestore(restoreSourceModelBuffer, releaseNativeOptions)
+}
+
+// The operation parameters keep native restoration failure testable without a
+// public fault-injection setting. Both callers hold the source and package locks.
+func (o *SessionOptions) cloneLockedWithRestore(restore func(*SessionOptions) error, release func(*SessionOptions)) (*SessionOptions, error) {
 	var out *C.OrtSessionOptions
 	if err := checkStatus(C.ort_CloneSessionOptions(o.handle, &out)); err != nil {
 		if out != nil {
@@ -146,7 +153,14 @@ func (o *SessionOptions) cloneLocked() (*SessionOptions, error) {
 		}
 		return nil, wrapErr("clone session options", err)
 	}
-	clone := &SessionOptions{handle: out, policyAttempted: o.policyAttempted, successfulV2: o.successfulV2}
+	clone := &SessionOptions{handle: out, policyAttempted: o.policyAttempted, successfulV2: o.successfulV2, resources: o.resources}
+	if o.resources.source != nil {
+		if err := restore(clone); err != nil {
+			release(clone)
+			return nil, err
+		}
+	}
+	clone.resources.retain()
 	if o.protected {
 		clone.protectLocked()
 	}
@@ -389,8 +403,8 @@ func (o *SessionOptions) Close() error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.handle != nil {
-		C.ort_ReleaseSessionOptions(o.handle)
-		o.handle = nil
+		releaseNativeOptions(o)
+		o.resources.release()
 		mu.Lock()
 		if o.protected {
 			protectedOptionsCount--
@@ -506,4 +520,22 @@ func validateStringMap(values map[string]string, context string) error {
 		}
 	}
 	return nil
+}
+
+// SetDeterministicCompute requests deterministic kernels where supported by the
+// provider. Requires API 17. It does not guarantee determinism for every kernel.
+func (o *SessionOptions) SetDeterministicCompute(enabled bool) error {
+	if err := checkInit(); err != nil {
+		return err
+	}
+	if err := o.lockUsable("set deterministic compute"); err != nil {
+		return err
+	}
+	defer o.unlock()
+	return wrapErr("set deterministic compute", checkStatus(C.ort_SetDeterministicCompute(o.handle, C.bool(enabled))))
+}
+
+func releaseNativeOptions(o *SessionOptions) {
+	C.ort_ReleaseSessionOptions(o.handle)
+	o.handle = nil
 }
