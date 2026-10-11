@@ -27,6 +27,11 @@
 // names are UTF-8 identifiers; the binding supplies no filesystem fallback.
 // Linux CPU race tests cover ORT 1.27.0/API 27, 1.28.3/API 28,
 // 1.29.1/API 29, 1.30.0/API 30, and 1.31.0/API 31.
+// Opt-in plugin tests require a selected-provider compute event in the native
+// profile. WebGPU 0.4.0 with ORT 1.31.0 covers standard Mul only. The test
+// proves execution on the plugin EP, not which adapter the plugin selected.
+// The example plugin EPContext test verifies loading through a reader, not
+// weightless initializer restoration or EPContext inference.
 // Capped builds on a newer runtime do not verify an older runtime's ABI.
 //
 // ErrorCodeDeviceReset requires releasing the old session and creating another.
