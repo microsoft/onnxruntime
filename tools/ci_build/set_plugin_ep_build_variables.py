@@ -2,36 +2,47 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Set plugin EP package version variables for Azure Pipelines.
+"""Set plugin EP package version variables for Azure Pipelines."""
 
-Usage:
-    python set_plugin_ep_build_variables.py <package_version> <version_file_rel>
-
-Where:
-    package_version: 'release', 'rc', or 'dev'
-    version_file_rel: path relative to BUILD_SOURCESDIRECTORY of the VERSION_NUMBER file
-"""
-
+import argparse
+import datetime
 import os
 import re
 import subprocess
 import sys
 
 
+class AzurePipelinesArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        print(f"##vso[task.logissue type=error]{message}")
+        self.exit(2)
+
+
+def parse_arguments():
+    parser = AzurePipelinesArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--package-version",
+        choices=("release", "rc", "dev"),
+        required=True,
+        help="Package version type.",
+    )
+    parser.add_argument(
+        "--version-file",
+        required=True,
+        help="Path to the VERSION_NUMBER file, relative to BUILD_SOURCESDIRECTORY.",
+    )
+    return parser.parse_args()
+
+
 def main():
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <package_version> <version_file_rel>")
+    args = parse_arguments()
+
+    src_root = os.environ.get("BUILD_SOURCESDIRECTORY")
+    if not src_root:
+        print("##vso[task.logissue type=error]BUILD_SOURCESDIRECTORY is not set.")
         sys.exit(1)
 
-    package_version = sys.argv[1]
-    version_file_rel = sys.argv[2]
-
-    if not version_file_rel:
-        print("##vso[task.logissue type=error]version_file parameter is empty.")
-        sys.exit(1)
-
-    src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
-    version_file = os.path.join(src_root, version_file_rel)
+    version_file = os.path.join(src_root, args.version_file)
     if not os.path.isfile(version_file):
         print(f"##vso[task.logissue type=error]Cannot find version number file at: {version_file}")
         sys.exit(1)
@@ -44,19 +55,19 @@ def main():
         sys.exit(1)
 
     print(f"Original version: {original_ver}")
-    print(f"Package version type: {package_version}")
+    print(f"Package version type: {args.package_version}")
 
-    if package_version == "release":
+    if args.package_version == "release":
         version_string = original_ver
         python_version = original_ver
 
-    elif package_version == "rc":
+    elif args.package_version == "rc":
         # RC versioning is not yet implemented. Fail the build to prevent publishing
         # an ambiguous version without an RC number.
         print("##vso[task.logissue type=error]RC versioning is not yet implemented. Use 'dev' or 'release' instead.")
         sys.exit(1)
 
-    elif package_version == "dev":
+    elif args.package_version == "dev":
         try:
             commit_sha = (
                 subprocess.check_output(
@@ -66,25 +77,27 @@ def main():
                 .decode("utf-8")
                 .strip()
             )
-            date_str = (
+            commit_timestamp = int(
                 subprocess.check_output(
-                    ["git", "show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"],
+                    ["git", "show", "-s", "--format=%ct", "HEAD"],
                     cwd=src_root,
                 )
                 .decode("utf-8")
                 .strip()
             )
+            date_time_str = datetime.datetime.fromtimestamp(
+                commit_timestamp,
+                tz=datetime.timezone.utc,
+            ).strftime("%Y%m%d%H%M%S")
         except Exception as e:
             print(f"##vso[task.logissue type=error]Failed to get git info: {e}")
             sys.exit(1)
-        version_string = f"{original_ver}-dev.{date_str}+{commit_sha}"
-        python_version = f"{original_ver}.dev{date_str}"
 
-    else:
-        print(
-            f"##vso[task.logissue type=error]Unknown package_version '{package_version}'. Must be 'release', 'rc', or 'dev'."
-        )
-        sys.exit(1)
+        # The UTC commit timestamp determines dev-version precedence. Distinct commits made in the same second have
+        # equal SemVer precedence and identical Python versions. If that is a problem, we can add a unique identifier
+        # such as Azure Pipelines Build.BuildId to the precedence-bearing portion of each version.
+        version_string = f"{original_ver}-dev.{date_time_str}+{commit_sha}"
+        python_version = f"{original_ver}.dev{date_time_str}"
 
     print(f"Plugin package version string: {version_string}")
     print(f"Plugin Python package version string: {python_version}")

@@ -7,6 +7,7 @@
 // onnxruntime dependencies
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/telemetry_test_environment.h"
 
 // onnx dependencies
 #include "onnx/onnx_pb.h"
@@ -274,6 +275,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  onnxruntime::test::SuppressTelemetryForTests();
   int retval = -1;
   ORT_TRY {
     retval = real_main(argc, argv);

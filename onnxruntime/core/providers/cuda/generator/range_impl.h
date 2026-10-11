@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-Status RangeImpl(cudaStream_t stream, const T start, const T delta, const int count, T* output);
+Status RangeImpl(cudaStream_t stream, const T start, const T delta, const int64_t count, T* output);
 
 }  // namespace cuda
 }  // namespace onnxruntime

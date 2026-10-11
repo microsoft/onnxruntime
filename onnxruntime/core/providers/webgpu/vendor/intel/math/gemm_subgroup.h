@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -21,6 +22,9 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
                                 const ShaderIndicesHelper* batch_dims,
                                 bool is_vec4,
+                                bool a_vec4,
+                                bool b_is_fp16,
+                                bool use_f32_accumulation,
                                 bool transpose_a = false,
                                 bool transpose_b = false,
                                 float alpha = 1.0f,

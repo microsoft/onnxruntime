@@ -376,19 +376,25 @@ if __name__ == "__main__":
 
     # The goal here is to group kernels with common instantiations together in order to reduce template instantiation overheads.
     # Template instantiation dominates the time in a compilation unit, so it is the most important factor to improve.
+    #
+    # We additionally split each group by data type (activation/weight) and quantization operation
+    # (finegrained scale-only vs. scale-and-zeros) so that the heavy SM90 CUTLASS instantiations are
+    # spread across many smaller compilation units instead of two large ones. This lets the build
+    # system compile the launchers in parallel across CPU cores, greatly reducing wall-clock build
+    # time for the fpA_intB_gemm_launcher_*.generated.cu files. CMake globs every
+    # fpA_intB_gemm_launcher_[0-9]+.generated.cu, so adding files requires no CMake changes.
     operations = []
     operations += generate_sm90_operations(has_arch(90))
 
     op_groups = dict()
     for op in operations:
-        dict_key = (op.gemm_kind, op.arch, op.cta_shape[0])
+        dict_key = (op.gemm_kind, op.arch, op.act_type, op.weight_type, op.quant_op, op.cta_shape[0])
         op_group = op_groups.get(dict_key, list())
         op_group.append(op)
         op_groups[dict_key] = op_group
 
     file_counter = 1
     for key, value in op_groups.items():
-        gemm_kind, _, _ = key
         out_file = os.path.join(output_dir, f"fpA_intB_gemm_launcher_{file_counter}.generated.cu")
         write_file(include_map[key[:2]], value, out_file)
         file_counter += 1

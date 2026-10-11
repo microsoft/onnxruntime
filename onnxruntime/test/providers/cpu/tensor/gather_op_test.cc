@@ -405,6 +405,25 @@ TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
   test.Run();
 }
 
+TEST(GatherOpTest, Gather_axis1_indices2d_uint8) {
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<uint8_t>("data", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<int32_t>("indices", {2, 2},
+                         {1, 0,
+                          2, 1});
+  test.AddOutput<uint8_t>("output", {3, 2, 2},
+                          {20, 10, 30, 20,
+                           50, 40, 60, 50,
+                           80, 70, 90, 80});
+  // int8 and uint8 are not supported by some EPs for Gather
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(GatherOpTest, Gather_perf) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);

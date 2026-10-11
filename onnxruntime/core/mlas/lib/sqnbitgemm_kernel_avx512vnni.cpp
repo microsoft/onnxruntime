@@ -28,9 +28,6 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
 #include "sqnbitgemm_kernel_avx512_2bit.h"
-#include "sqnbitgemm_kernel_avx512_2bit_blklen64.h"
-#include "sqnbitgemm_kernel_avx512_2bit_blklen128.h"
-#include "sqnbitgemm_kernel_avx512_2bit_blklen32.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -407,6 +404,16 @@ QuantizeARow_CompInt8_avx512(
     float* AScaledBlkSum  // scale_k * Sum_blklen(a_i)
 );
 
+void MLASCALL
+QuantizeARow_CompInt8_Fp16_avx512(
+    size_t BlkLen,
+    const MLAS_FP16* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum  // scale_k * Sum_blklen(a_i)
+);
+
 static void
 SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
     size_t N,
@@ -462,47 +469,6 @@ SQ8BitGemmPackQuantBDataAndBlkSum512vnni(
 }
 
 //
-// BlkLen-routing wrapper for the W2 CompInt8 AVX-512-VNNI dispatch entry
-// (sqnbitgemm_kernel_avx512_2bit_blklen64.h and friends). Production code
-// reaches this via the MLAS dispatch table; tests call it directly via the
-// namespace.
-//
-namespace onnxruntime::mlas::sq2bit_avx512 {
-size_t MLASCALL
-SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch(
-    size_t BlkLen,
-    const std::byte* QuantA,
-    const float* QuantAScale,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    float* C,
-    size_t CountM,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockCountK,
-    const float* Bias,
-    size_t ldc,
-    const float* ABlockSum,
-    const float* QuantBBlkSum)
-{
-    if (BlkLen == 128) {
-        return SQ2BitGemmKernel_BlkSum_CompInt8_BlkLen128_Avx512Vnni(
-            QuantA, QuantAScale, QuantBData, QuantBScale,
-            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
-    }
-    if (BlkLen == 32) {
-        return SQ2BitGemmKernel_BlkSum_CompInt8_BlkLen32_Avx512Vnni(
-            QuantA, QuantAScale, QuantBData, QuantBScale,
-            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
-    }
-    return SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni(
-        BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint,
-        C, CountM, CountN, CountK, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
-}
-}  // namespace onnxruntime::mlas::sq2bit_avx512
-
-//
 // Kernel dispatch structure definition.
 //
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
@@ -523,6 +489,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
+    d.QuantizeARowComputeBlkSum_CompInt8_Fp16 = QuantizeARow_CompInt8_Fp16_avx512;
 
     // 2-bit native CompInt8 path. Single dispatch entry (W2):
     // 64-byte ZMM load + four fixed shift/mask pairs to unpack 4 K-blocks at
@@ -534,9 +501,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
     d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
     d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch;
-    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
-        return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
-    };
+    d.Q2BitGemmEffectiveBlockCountK     = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmEffectiveBlockCountK;
 
     return d;
 }();

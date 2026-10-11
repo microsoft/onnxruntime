@@ -136,13 +136,22 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
     ORT_THROW("Unsupported reduction type for ScatterElements.");
   }
 
-  // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
-  int dtype = GetElementType(input_tensor->DataType()->Size());
-  if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-    ORT_THROW("Unsupported element size by the ScatterElements CUDA kernel");
+  if (args.operation == GatherScatterElementsArgs::Operation::NONE) {
+    // Use element size for raw assignment so we can specialize fewer template functions to reduce binary size.
+    int dtype = GetElementType(input_tensor->DataType()->Size());
+    if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      ORT_THROW("Unsupported element size by the ScatterElements CUDA kernel");
+    }
+
+    utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
+    return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), updates_tensor->DataRaw(),
+                                                 indices_tensor->DataRaw(), output_tensor->MutableDataRaw(),
+                                                 indices_tensor->DataType()->Size(), args);
   }
 
-  utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
+  utils::MLTypeCallDispatcher<bool, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
+                              MLFloat16, BFloat16, float, double>
+      t_disp(input_tensor->GetElementType());
   return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), updates_tensor->DataRaw(),
                                                indices_tensor->DataRaw(), output_tensor->MutableDataRaw(),
                                                indices_tensor->DataType()->Size(), args);

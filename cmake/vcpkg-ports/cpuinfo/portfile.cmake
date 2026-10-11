@@ -6,13 +6,14 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO pytorch/cpuinfo
-    REF 403d652dca4c1046e8145950b1c0997a9f748b57
-    SHA512 f7cd6dc44bd1120af610cae1337ed4c0f557ba78d2de9c73fed350fa3dfe9512643a1619ae55f5a540c6316a87d641856cca27297bb8766e48f39b7b7a59da1f
-    HEAD_REF master
+    REF 66ee79c038d70dad9f08705b2c9b3e58f6d8f512
+    SHA512 ec1df3a03e52f50f221fc5f25251b7181316b59b32be61f11dec440ef245bc2070d0e16579ae8fd2748711f120c914f4479619ce1bd6b0bc9dbe462a8526298f
+    HEAD_REF main
     PATCHES
         patch_cpuinfo_h_for_arm64ec.patch
         patch_vcpkg_arm64ec_support.patch       # https://github.com/pytorch/cpuinfo/pull/324
-        win_arm_fp16_detection_fallback.patch   # https://github.com/pytorch/cpuinfo/pull/348
+        # https://github.com/pytorch/cpuinfo/pull/400
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/cpuinfo/enable_deinit_refcounting.patch"
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS

@@ -5,6 +5,8 @@
 // Enable quantized KV cache support for INT8/INT4/FP8
 #define KV_QUANT_SUPPORTED 1
 
+#include <algorithm>
+#include <cstdlib>
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
 
@@ -96,12 +98,28 @@ struct TypeConverter<__nv_bfloat16> {
 //   - Conversion: Native CUDA cast via __nv_cvt_float_to_fp8/fp8_to_float
 // ============================================================================
 
+// Number of cache rows that have to be dequantized for a sequence of `valid_len` tokens.
+// Rounded up to kDequantRowAlign so that a consumer which loads whole KV tiles (flash attention
+// pads the final tile) still sees the exact same values the full-cache dequantization produced.
+constexpr int kDequantRowAlign = 128;
+
+__device__ __forceinline__ int ValidRowLimit(int valid_len, int cache_sequence_length) {
+  const int rounded = (valid_len + kDequantRowAlign - 1) / kDequantRowAlign * kDequantRowAlign;
+  return rounded < cache_sequence_length ? rounded : cache_sequence_length;
+}
+
 // Dequantization Kernel: Converts Quantized (Int8/Int4/FP8) KV cache back to Floating Point (T).
 // Iterates over every individual element with one thread per element.
+//
+// `valid_seq_lens` (optional) is the per-batch total KV length. Rows at or beyond it are padding
+// that the consumer (flash attention, which is given the same lengths) never reads, so they are
+// left untouched instead of being dequantized. See DequantizeKVVectorizedKernel below for the fast
+// path used by 8-bit caches.
 template <typename T, typename T_QUANT, typename T_SCALE>
 __global__ void DequantizeKernel(T* dequantized_data,
                                  const T_QUANT* quantized_data,
                                  const T_SCALE* scale, const int* past_seq_lens,
+                                 const int* valid_seq_lens,
                                  int batch_size, int num_heads,
                                  int cache_sequence_length,
                                  int head_size, int bit_width,
@@ -117,6 +135,11 @@ __global__ void DequantizeKernel(T* dequantized_data,
     int s = static_cast<int>((i / head_size) % cache_sequence_length);
     int n = static_cast<int>((i / (head_size * cache_sequence_length)) % num_heads);
     int b = static_cast<int>((i / (num_heads * head_size * cache_sequence_length)));
+
+    // Skip the padding tail of the cache: it is not part of the attended window.
+    if (valid_seq_lens != nullptr && s >= ValidRowLimit(valid_seq_lens[b], cache_sequence_length)) {
+      continue;
+    }
 
     // Correctly identify padding in the past_kv cache.
     // In the decoding case, `seqlens` contains `past_len + new_len - 1`.
@@ -174,6 +197,161 @@ __global__ void DequantizeKernel(T* dequantized_data,
   }
 }
 
+// ============================================================================
+// Vectorized dequantization fast path for 8-bit caches (INT8 / FP8 E4M3).
+//
+// During decoding the whole KV cache is dequantized on every step, which makes this the dominant
+// cost of the quantized-KV decode path. The generic kernel above spends it on scalar 1-byte loads,
+// scalar 2-byte stores and four 64-bit div/mod per element. This variant instead
+//   * gives each thread kVecSize contiguous head-size elements so loads and stores are 8/16 bytes,
+//   * maps (batch, head) to blockIdx.y so the inner loop only does 32-bit address arithmetic,
+//   * hoists the per-channel scales out of the sequence loop (they only depend on head/channel), and
+//   * walks only the rows that are actually part of the sequence instead of the padded capacity.
+//
+// The grid is derived from the cache capacity only (never from a host-side sequence length) so the
+// launch stays valid when the decode step is captured into a CUDA graph and replayed at other
+// sequence lengths; the per-batch row limit is read from device memory inside the kernel.
+// ============================================================================
+template <int kBytes>
+struct DequantVecType;
+template <>
+struct DequantVecType<4> {
+  using type = uint32_t;
+};
+template <>
+struct DequantVecType<8> {
+  using type = uint2;
+};
+template <>
+struct DequantVecType<16> {
+  using type = uint4;
+};
+// 32 bytes is not a native load width; the compiler lowers this to two independent 16-byte loads,
+// which keeps more memory requests in flight per thread.
+struct alignas(16) DequantVec32 {
+  uint4 lo;
+  uint4 hi;
+};
+template <>
+struct DequantVecType<32> {
+  using type = DequantVec32;
+};
+
+template <typename T, typename T_QUANT, typename T_SCALE, int kVecSize>
+__global__ void DequantizeKVVectorizedKernel(T* __restrict__ dequantized_data,
+                                             const T_QUANT* __restrict__ quantized_data,
+                                             const T_SCALE* __restrict__ scale,
+                                             const int* __restrict__ valid_seq_lens,
+                                             int num_heads,
+                                             int cache_sequence_length,
+                                             int head_size,
+                                             KVQuantizationType quant_type,
+                                             bool is_input_bsnh) {
+  static_assert(sizeof(T_QUANT) == 1, "Vectorized dequantization only supports 8-bit caches.");
+  static_assert(sizeof(T) == 2, "Vectorized dequantization only supports 16-bit outputs.");
+
+  using LoadVec = typename DequantVecType<kVecSize>::type;
+  constexpr int kStoreBytes = (kVecSize * 2 >= 16) ? 16 : kVecSize * 2;
+  using StoreVec = typename DequantVecType<kStoreBytes>::type;
+  constexpr int kStoresPerVec = (kVecSize * 2) / kStoreBytes;
+  constexpr int kElemsPerStore = kVecSize / kStoresPerVec;
+
+  const int vecs_per_row = head_size / kVecSize;
+  const int rows_per_block = blockDim.x / vecs_per_row;
+  const int vec_in_row = threadIdx.x % vecs_per_row;
+  const int row_in_block = threadIdx.x / vecs_per_row;
+  if (row_in_block >= rows_per_block) {
+    return;  // blockDim.x is not an exact multiple of vecs_per_row
+  }
+
+  const int bn = blockIdx.y;  // b * num_heads + n
+  const int n = bn % num_heads;
+  const int b = bn / num_heads;
+
+  const int limit = (valid_seq_lens == nullptr)
+                        ? cache_sequence_length
+                        : ValidRowLimit(valid_seq_lens[b], cache_sequence_length);
+
+  const int h0 = vec_in_row * kVecSize;
+
+  float scales[kVecSize];
+  if (quant_type == KVQuantizationType::PER_TENSOR) {
+    const float s0 = static_cast<float>(scale[0]);
+#pragma unroll
+    for (int i = 0; i < kVecSize; i++) {
+      scales[i] = s0;
+    }
+  } else {
+    const T_SCALE* channel_scale = scale + static_cast<int64_t>(n) * head_size + h0;
+#pragma unroll
+    for (int i = 0; i < kVecSize; i++) {
+      scales[i] = static_cast<float>(channel_scale[i]);
+    }
+  }
+
+  // The output is always BNSH; only the input row stride differs between BNSH and BSNH.
+  const int64_t out_base = static_cast<int64_t>(bn) * cache_sequence_length * head_size + h0;
+  const int64_t in_base = is_input_bsnh
+                              ? (static_cast<int64_t>(b) * cache_sequence_length * num_heads * head_size +
+                                 static_cast<int64_t>(n) * head_size + h0)
+                              : (static_cast<int64_t>(bn) * cache_sequence_length * head_size + h0);
+  const int in_row_stride = is_input_bsnh ? (num_heads * head_size) : head_size;
+
+  const int row_step = rows_per_block * gridDim.x;
+  for (int s = blockIdx.x * rows_per_block + row_in_block; s < limit; s += row_step) {
+    const LoadVec packed = *reinterpret_cast<const LoadVec*>(
+        quantized_data + in_base + static_cast<int64_t>(s) * in_row_stride);
+    const auto* raw = reinterpret_cast<const T_QUANT*>(&packed);
+
+    alignas(16) T out[kVecSize];
+#pragma unroll
+    for (int i = 0; i < kVecSize; i++) {
+      float value;
+#ifdef USE_FP8_KV_CACHE
+      if constexpr (std::is_same<T_QUANT, __nv_fp8_e4m3>::value) {
+        value = static_cast<float>(raw[i]);
+      } else
+#endif
+      {
+        value = static_cast<float>(reinterpret_cast<const int8_t*>(raw)[i]);
+      }
+      out[i] = static_cast<T>(value * scales[i]);
+    }
+
+    StoreVec* dst = reinterpret_cast<StoreVec*>(dequantized_data + out_base +
+                                                static_cast<int64_t>(s) * head_size);
+#pragma unroll
+    for (int i = 0; i < kStoresPerVec; i++) {
+      dst[i] = *reinterpret_cast<const StoreVec*>(&out[i * kElemsPerStore]);
+    }
+  }
+}
+
+template <typename T, typename T_QUANT, typename T_SCALE, int kVecSize>
+Status LaunchDequantizeKVVectorized(cudaStream_t stream, T* dequantized_data,
+                                    const T_QUANT* quantized_data, const T_SCALE* scale,
+                                    const int* valid_seq_lens, int batch_size, int num_heads,
+                                    int cache_sequence_length, int head_size,
+                                    KVQuantizationType quant_type, bool is_input_bsnh) {
+  const int vecs_per_row = head_size / kVecSize;
+  const int rows_per_block = kThreadsPerBlock / vecs_per_row;
+  const int row_chunks = (cache_sequence_length + rows_per_block - 1) / rows_per_block;
+
+  // Cap the grid so that a short sequence in a large cache does not launch a wave of blocks that
+  // immediately exit; the kernel loops over the remaining chunks. The cap only depends on shapes,
+  // so the launch configuration stays constant across decode steps (CUDA graph replay safe).
+  const int grid_y = batch_size * num_heads;
+  const int max_chunks = std::max(1, 1024 / grid_y);
+  const dim3 grid(static_cast<unsigned>(std::min(row_chunks, max_chunks)),
+                  static_cast<unsigned>(grid_y));
+
+  DequantizeKVVectorizedKernel<T, T_QUANT, T_SCALE, kVecSize><<<grid, kThreadsPerBlock, 0, stream>>>(
+      dequantized_data, quantized_data, scale, valid_seq_lens,
+      num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
 template <typename T, typename T_QUANT, typename T_SCALE>
 Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
                           const T_QUANT* quantized_data, const T_SCALE* scale,
@@ -181,17 +359,261 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
                           int cache_sequence_length,
                           int head_size, int bit_width,
                           KVQuantizationType quant_type,
-                          bool is_input_bsnh) {
+                          bool is_input_bsnh,
+                          const int* valid_seq_lens = nullptr) {
   if (cache_sequence_length == 0) return Status::OK();
+
+  // Fast path: 8-bit caches (INT8 / FP8) whose head size can be split into aligned vectors.
+  // past_seq_lens (zero-fill semantics) is only used by callers that do not have valid_seq_lens.
+  if constexpr (sizeof(T_QUANT) == 1 && sizeof(T) == 2) {
+    if (bit_width == 8 && past_seq_lens == nullptr) {
+      if (head_size % 32 == 0) {
+        return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 32>(
+            stream, dequantized_data, quantized_data, scale, valid_seq_lens,
+            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
+      }
+      if (head_size % 16 == 0) {
+        return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 16>(
+            stream, dequantized_data, quantized_data, scale, valid_seq_lens,
+            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
+      }
+
+      assert(head_size % 8 == 0);  // GQA has validated head_size that is a multiple of 8 in CheckInputs.
+      return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 8>(
+          stream, dequantized_data, quantized_data, scale, valid_seq_lens,
+          batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
+    }
+  }
 
   // Output buffer uses cache_sequence_length stride
   int64_t total_elements = static_cast<int64_t>(batch_size) * num_heads * cache_sequence_length * head_size;
   const int blocks = static_cast<int>((total_elements + kThreadsPerBlock - 1) / kThreadsPerBlock);
   DequantizeKernel<T, T_QUANT, T_SCALE><<<blocks, kThreadsPerBlock, 0, stream>>>(
-      dequantized_data, quantized_data, scale, past_seq_lens,
+      dequantized_data, quantized_data, scale, past_seq_lens, valid_seq_lens,
       batch_size, num_heads, cache_sequence_length,
       head_size, bit_width, quant_type, is_input_bsnh);
 
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// ============================================================================
+// Fused K + V dequantization.
+//
+// The decode fallback always dequantizes both caches back to back, and each launch only exposes
+// batch_size * kv_num_heads independent (batch, head) slices -- two for a batch-1 GQA model with
+// two KV heads. That leaves the vast majority of the device idle. Doing K and V in one launch
+// doubles the CTA count, halves the number of launches, and lets both caches share the memory
+// pipeline. blockIdx.z selects the tensor; everything else matches DequantizeKVVectorizedKernel.
+//
+// kVecSize is deliberately smaller here than in the single-tensor kernel: at decode sequence
+// lengths the kernel is latency bound rather than instruction bound, so more threads with fewer
+// elements each is faster than wide per-thread vectors.
+// ============================================================================
+template <typename T, typename T_QUANT, typename T_SCALE, int kVecSize, int kBlockThreads>
+__global__ void DequantizeKVPairKernel(T* __restrict__ k_dequantized, T* __restrict__ v_dequantized,
+                                       const T_QUANT* __restrict__ k_quantized,
+                                       const T_QUANT* __restrict__ v_quantized,
+                                       const T_SCALE* __restrict__ k_scale,
+                                       const T_SCALE* __restrict__ v_scale,
+                                       const int* __restrict__ valid_seq_lens,
+                                       int num_heads,
+                                       int cache_sequence_length,
+                                       int head_size,
+                                       KVQuantizationType k_quant_type,
+                                       KVQuantizationType v_quant_type,
+                                       bool is_input_bsnh) {
+  static_assert(sizeof(T_QUANT) == 1, "Vectorized dequantization only supports 8-bit caches.");
+  static_assert(sizeof(T) == 2, "Vectorized dequantization only supports 16-bit outputs.");
+
+  using LoadVec = typename DequantVecType<kVecSize>::type;
+  constexpr int kStoreBytes = (kVecSize * 2 >= 16) ? 16 : kVecSize * 2;
+  using StoreVec = typename DequantVecType<kStoreBytes>::type;
+  constexpr int kStoresPerVec = (kVecSize * 2) / kStoreBytes;
+  constexpr int kElemsPerStore = kVecSize / kStoresPerVec;
+
+  const bool is_value = (blockIdx.z != 0);
+  T* dequantized_data = is_value ? v_dequantized : k_dequantized;
+  const T_QUANT* quantized_data = is_value ? v_quantized : k_quantized;
+  const T_SCALE* scale = is_value ? v_scale : k_scale;
+  const KVQuantizationType quant_type = is_value ? v_quant_type : k_quant_type;
+
+  const int vecs_per_row = head_size / kVecSize;
+  const int rows_per_block = kBlockThreads / vecs_per_row;
+  const int vec_in_row = threadIdx.x % vecs_per_row;
+  const int row_in_block = threadIdx.x / vecs_per_row;
+  if (row_in_block >= rows_per_block) {
+    return;  // kBlockThreads is not an exact multiple of vecs_per_row
+  }
+
+  const int bn = blockIdx.y;  // b * num_heads + n
+  const int n = bn % num_heads;
+  const int b = bn / num_heads;
+
+  const int limit = (valid_seq_lens == nullptr)
+                        ? cache_sequence_length
+                        : ValidRowLimit(valid_seq_lens[b], cache_sequence_length);
+
+  const int h0 = vec_in_row * kVecSize;
+
+  float scales[kVecSize];
+  if (quant_type == KVQuantizationType::PER_TENSOR) {
+    const float s0 = static_cast<float>(scale[0]);
+#pragma unroll
+    for (int i = 0; i < kVecSize; i++) {
+      scales[i] = s0;
+    }
+  } else {
+    const T_SCALE* channel_scale = scale + static_cast<int64_t>(n) * head_size + h0;
+#pragma unroll
+    for (int i = 0; i < kVecSize; i++) {
+      scales[i] = static_cast<float>(channel_scale[i]);
+    }
+  }
+
+  // The output is always BNSH; only the input row stride differs between BNSH and BSNH.
+  const int64_t out_base = static_cast<int64_t>(bn) * cache_sequence_length * head_size + h0;
+  const int64_t in_base = is_input_bsnh
+                              ? (static_cast<int64_t>(b) * cache_sequence_length * num_heads * head_size +
+                                 static_cast<int64_t>(n) * head_size + h0)
+                              : (static_cast<int64_t>(bn) * cache_sequence_length * head_size + h0);
+  const int in_row_stride = is_input_bsnh ? (num_heads * head_size) : head_size;
+
+  const int row_step = rows_per_block * gridDim.x;
+  for (int s = blockIdx.x * rows_per_block + row_in_block; s < limit; s += row_step) {
+    const LoadVec packed = *reinterpret_cast<const LoadVec*>(
+        quantized_data + in_base + static_cast<int64_t>(s) * in_row_stride);
+    const auto* raw = reinterpret_cast<const T_QUANT*>(&packed);
+
+    alignas(16) T out[kVecSize];
+#pragma unroll
+    for (int i = 0; i < kVecSize; i++) {
+      float value;
+#ifdef USE_FP8_KV_CACHE
+      if constexpr (std::is_same<T_QUANT, __nv_fp8_e4m3>::value) {
+        value = static_cast<float>(raw[i]);
+      } else
+#endif
+      {
+        value = static_cast<float>(reinterpret_cast<const int8_t*>(raw)[i]);
+      }
+      out[i] = static_cast<T>(value * scales[i]);
+    }
+
+    StoreVec* dst = reinterpret_cast<StoreVec*>(dequantized_data + out_base +
+                                                static_cast<int64_t>(s) * head_size);
+#pragma unroll
+    for (int i = 0; i < kStoresPerVec; i++) {
+      dst[i] = *reinterpret_cast<const StoreVec*>(&out[i * kElemsPerStore]);
+    }
+  }
+}
+
+// Dequantizes the key and the value cache in a single launch. Falls back to two independent
+// LaunchDequantizeKV calls for cache formats the fused kernel does not cover (INT4, non-16-bit
+// output, head sizes that do not tile into the fused block shape).
+template <typename T, typename T_QUANT, typename T_SCALE>
+Status LaunchDequantizeKVPair(cudaStream_t stream, T* k_dequantized, T* v_dequantized,
+                              const T_QUANT* k_quantized, const T_QUANT* v_quantized,
+                              const T_SCALE* k_scale, const T_SCALE* v_scale,
+                              int batch_size, int num_heads, int cache_sequence_length,
+                              int head_size, int bit_width,
+                              KVQuantizationType k_quant_type, KVQuantizationType v_quant_type,
+                              bool is_input_bsnh, const int* valid_seq_lens) {
+  if (cache_sequence_length == 0) return Status::OK();
+
+  constexpr int kFusedVecSize = 8;
+  constexpr int kFusedBlockThreads = 128;
+
+  // Same-binary opt-out so the fused kernel can be A/B'd against the two-launch path.
+  static const bool fused_disabled = [] {
+    const char* v = std::getenv("ORT_DISABLE_FUSED_KV_DEQUANT");
+    return v != nullptr && v[0] != '\0' && v[0] != '0';
+  }();
+
+  if constexpr (sizeof(T_QUANT) == 1 && sizeof(T) == 2) {
+    if (!fused_disabled && bit_width == 8 && head_size % kFusedVecSize == 0 &&
+        (head_size / kFusedVecSize) <= kFusedBlockThreads) {
+      const int rows_per_block = kFusedBlockThreads / (head_size / kFusedVecSize);
+      const int row_chunks = (cache_sequence_length + rows_per_block - 1) / rows_per_block;
+
+      // Cap the grid so a short sequence in a large cache does not launch a wave of blocks that
+      // immediately exit; the kernel loops over the remaining chunks. The cap only depends on
+      // shapes, so the launch configuration stays constant across decode steps (CUDA graph safe).
+      const int grid_yz = batch_size * num_heads * 2;
+      const int max_chunks = std::max(1, 2048 / grid_yz);
+      const dim3 grid(static_cast<unsigned>(std::min(row_chunks, max_chunks)),
+                      static_cast<unsigned>(batch_size * num_heads), 2u);
+
+      DequantizeKVPairKernel<T, T_QUANT, T_SCALE, kFusedVecSize, kFusedBlockThreads>
+          <<<grid, kFusedBlockThreads, 0, stream>>>(
+              k_dequantized, v_dequantized, k_quantized, v_quantized, k_scale, v_scale,
+              valid_seq_lens, num_heads, cache_sequence_length, head_size,
+              k_quant_type, v_quant_type, is_input_bsnh);
+
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
+
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, T_QUANT, T_SCALE>(
+      stream, k_dequantized, k_quantized, k_scale, nullptr, batch_size, num_heads,
+      cache_sequence_length, head_size, bit_width, k_quant_type, is_input_bsnh, valid_seq_lens)));
+
+  return LaunchDequantizeKV<T, T_QUANT, T_SCALE>(
+      stream, v_dequantized, v_quantized, v_scale, nullptr, batch_size, num_heads,
+      cache_sequence_length, head_size, bit_width, v_quant_type, is_input_bsnh, valid_seq_lens);
+}
+
+// ============================================================================
+// Folding per-channel KV dequantization scales into Q and into the attention output.
+//
+// The XQA decode kernel only understands a *scalar* dequantization scale: it folds k_scale into
+// qkScale (applied to the Q*K.T accumulator) and v_scale into voScale (applied to the P*V
+// accumulator). That is why per-channel quantized caches used to be disqualified from XQA and had
+// to fall back to "dequantize the whole cache, then run flash attention", which costs O(context)
+// memory traffic on every decode step.
+//
+// Per-channel scales can be moved out of the kernel exactly, because dequantization is linear and
+// the channel index is the *contraction* dim for K and the *free* dim for V:
+//
+//   scores_t = sum_d q_d * (k_td * sk_d)          = sum_d (q_d * sk_d) * k_td
+//   out_d    = sum_t p_t   * (v_td * sv_d)        = (sum_t p_t * v_td) * sv_d
+//
+// So pre-scaling Q by sk (per kv-head, per channel) and post-scaling the attention output by sv
+// produces exactly the same result as dequantizing the cache, with two elementwise passes over
+// tensors of shape [batch, seq, num_heads, head_size] -- i.e. O(1) in context length.
+//
+// p_t is unaffected because the softmax only sees the (already correct) scores, so attention sinks,
+// sliding window and the multi-block (Flash Decoding) reduction all stay valid: every step after
+// the P*V accumulation is linear in the accumulator.
+// ============================================================================
+template <typename T>
+__global__ void ScaleHeadsByChannelScaleKernel(T* __restrict__ dst,
+                                               const T* __restrict__ src,
+                                               const float* __restrict__ channel_scale,
+                                               int num_heads, int head_size, int group_size,
+                                               int64_t total_elements) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= total_elements) {
+    return;
+  }
+  const int h = static_cast<int>(i / head_size) % num_heads;  // q head, layout is [..., num_heads, head_size]
+  const int d = static_cast<int>(i % head_size);
+  const float scale = channel_scale[(h / group_size) * head_size + d];  // scale is [kv_num_heads, 1, head_size]
+  dst[i] = static_cast<T>(static_cast<float>(src[i]) * scale);
+}
+
+// dst may alias src (the common case: scale the rotated Q in place, or the output in place).
+template <typename T>
+Status LaunchScaleHeadsByChannelScale(cudaStream_t stream, T* dst, const T* src,
+                                      const float* channel_scale, int batch_size, int sequence_length,
+                                      int num_heads, int kv_num_heads, int head_size) {
+  const int64_t total_elements = static_cast<int64_t>(batch_size) * sequence_length * num_heads * head_size;
+  if (total_elements == 0) {
+    return Status::OK();
+  }
+  const int blocks = static_cast<int>((total_elements + kThreadsPerBlock - 1) / kThreadsPerBlock);
+  ScaleHeadsByChannelScaleKernel<T><<<blocks, kThreadsPerBlock, 0, stream>>>(
+      dst, src, channel_scale, num_heads, head_size, num_heads / kv_num_heads, total_elements);
   return CUDA_CALL(cudaGetLastError());
 }
 

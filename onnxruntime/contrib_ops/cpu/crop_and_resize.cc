@@ -17,16 +17,12 @@ limitations under the License.
 #include "contrib_ops/cpu/crop_and_resize.h"
 
 #include <cmath>
+#include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/object_detection/roialign.h"
-// TODO: fix the warnings
-#if defined(_MSC_VER) && !defined(__clang__)
-// Chance of arithmetic overflow could be reduced
-#pragma warning(disable : 26451)
-#endif
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
@@ -97,7 +93,11 @@ void CropAndResizeForward(const TensorShape& output_shape,
                                       ? roi_start_h * (height - 1)
                                       : 0.5 * (roi_start_h + roi_end_h) * (height - 1));
           }
-          if (in_y < 0 || in_y > height - 1) {
+          // Route non-finite (NaN/inf) or out-of-image coordinates to the extrapolation
+          // branch. The negated-conjunction form is NaN-safe: every comparison with NaN is
+          // false, so !(in_y >= 0 && in_y <= height - 1) is true and NaN cannot reach the
+          // integer index math below. For finite values this is identical to the < / > form.
+          if (!(in_y >= 0 && in_y <= static_cast<T>(height - 1))) {
             for (int64_t pw = 0; pw < pooled_width; pw++) {
               for (int64_t c = 0; c < channels; c++) {
                 int64_t index_n_c = index_n + c * pooled_width * pooled_height;
@@ -126,7 +126,8 @@ void CropAndResizeForward(const TensorShape& output_shape,
                                         ? roi_start_w * (width - 1)
                                         : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
             }
-            if (in_x < 0 || in_x > width - 1) {
+            // NaN-safe bounds guard (see the in_y guard above for rationale).
+            if (!(in_x >= 0 && in_x <= static_cast<T>(width - 1))) {
               for (int64_t c = 0; c < channels; c++) {
                 int64_t index_n_c = index_n + c * pooled_width * pooled_height;
                 int64_t index = index_n_c + ph * pooled_width + pw;
@@ -140,16 +141,16 @@ void CropAndResizeForward(const TensorShape& output_shape,
               const int left_x_index = static_cast<int>(floorf(static_cast<float>(in_x)));
               const int right_x_index = static_cast<int>(ceilf(static_cast<float>(in_x)));
               const float x_lerp = static_cast<float>(in_x - left_x_index);
-              auto top_left_index = top_y_index * width + left_x_index;
-              auto top_right_index = top_y_index * width + right_x_index;
-              auto bottom_left_index = bottom_y_index * width + left_x_index;
-              auto bottom_right_index = bottom_y_index * width + right_x_index;
+              auto top_left_index = SafeInt<int64_t>(top_y_index) * width + left_x_index;
+              auto top_right_index = SafeInt<int64_t>(top_y_index) * width + right_x_index;
+              auto bottom_left_index = SafeInt<int64_t>(bottom_y_index) * width + left_x_index;
+              auto bottom_right_index = SafeInt<int64_t>(bottom_y_index) * width + right_x_index;
 
               for (auto c = 0; c < channels; c++) {
                 int64_t index_n_c = index_n + c * pooled_width * pooled_height;
                 int64_t index = index_n_c + ph * pooled_width + pw;
-                const T* offset_bottom_data =
-                    bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
+                const int64_t bottom_data_offset = (SafeInt<int64_t>(roi_batch_ind) * channels + c) * height * width;
+                const T* offset_bottom_data = bottom_data + bottom_data_offset;
                 const float top_left(static_cast<float>(offset_bottom_data[top_left_index]));
                 const float top_right(static_cast<float>(offset_bottom_data[top_right_index]));
                 const float bottom_left(static_cast<float>(offset_bottom_data[bottom_left_index]));
@@ -162,13 +163,13 @@ void CropAndResizeForward(const TensorShape& output_shape,
             } else {  // mode == "nearest"
               const int closest_x_index = static_cast<int>(roundf(static_cast<float>(in_x)));
               const int closest_y_index = static_cast<int>(roundf(static_cast<float>(in_y)));
-              auto closest_index = closest_y_index * width + closest_x_index;
+              auto closest_index = SafeInt<int64_t>(closest_y_index) * width + closest_x_index;
 
               for (auto c = 0; c < channels; c++) {
                 int64_t index_n_c = index_n + c * pooled_width * pooled_height;
                 int64_t index = index_n_c + ph * pooled_width + pw;
-                const T* offset_bottom_data =
-                    bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
+                const int64_t bottom_data_offset = (SafeInt<int64_t>(roi_batch_ind) * channels + c) * height * width;
+                const T* offset_bottom_data = bottom_data + bottom_data_offset;
                 top_data[index] = static_cast<float>(offset_bottom_data[closest_index]);
               }
             }
@@ -216,6 +217,9 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
   auto crop_size_data = crop_size_ptr->Data<int32_t>();
   auto crop_height = crop_size_data[0];
   auto crop_width = crop_size_data[1];
+
+  ORT_RETURN_IF_NOT(crop_height > 0 && crop_width > 0,
+                    "crop_size values must be positive; got [", crop_height, ", ", crop_width, "]");
 
   auto status = CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr);
   if (status != Status::OK()) {

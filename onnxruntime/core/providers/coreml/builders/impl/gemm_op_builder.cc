@@ -70,8 +70,10 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 // This is an internal function, requires input tensor to be 2d float/float16 tensor
 template <typename T>
 static Status GetTensorDataTransposed(const ONNX_NAMESPACE::TensorProto& tensor,
+                                      const ModelBuilder& model_builder,
                                       std::vector<T>& transposed_data) {
-  Initializer unpacked_tensor(tensor);
+  const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), tensor,
+                                    model_builder.GetGraphViewer().ModelPath());
   const auto src_data = unpacked_tensor.DataAsSpan<T>();
   const auto& tensor_shape = tensor.dims();
   auto x_t = SafeInt<size_t>(tensor_shape[0]);
@@ -138,12 +140,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         // transpose from {K, N} to {N, K}
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
           std::vector<float> weight_nk;
-          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
+          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, model_builder, weight_nk));
           AddOperationInput(*gemm_op, "weight",
                             model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
         } else {  // TensorProto_DataType_FLOAT16
           std::vector<MLFloat16> weight_nk;
-          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
+          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, model_builder, weight_nk));
           AddOperationInput(*gemm_op, "weight",
                             model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
         }
@@ -158,7 +160,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           // can use existing initializer
           AddOperationInput(*gemm_op, "bias", bias_arg.Name());
         } else {
-          Initializer unpacked_tensor(bias);
+          const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), bias,
+                                            model_builder.GetGraphViewer().ModelPath());
           std::string_view bias_data_name;
 
           if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -214,10 +217,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // CoreML takes weight input as {N, K} which is the reverse of ONNX.
     // if Gemm's transB is true the input weight is {N, K} and can be added directly.
     if (transB) {
-      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), *b_initializer));
+      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), *b_initializer, model_builder));
     } else {
       std::vector<float> b_transposed;
-      ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, b_transposed));
+      ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, model_builder, b_transposed));
       CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed);
     }
 
@@ -228,7 +231,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
       // if scalar, or single value expand to 1D tensor of size N
       // IsOpSupportedImpl enforces it's scalar, {1}, {N}, or {1, N}.
-      Initializer unpacked_tensor(bias_tensor);
+      const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), bias_tensor,
+                                        model_builder.GetGraphViewer().ModelPath());
       auto bias_data = unpacked_tensor.DataAsSpan<float>();
       if (bias_data.size() == 1 && N > 1) {
         std::vector<float> expanded_bias_data(N, bias_data[0]);

@@ -187,6 +187,8 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
 }
 
 Status CheckQuantizedInputs(OpKernelContext* context, bool* is_signed_inputs) {
+  const Tensor* segment_ids_tensor = context->Input<Tensor>(1);
+  const Tensor* segment_embedding_tensor = context->Input<Tensor>(4);
   const Tensor* word_embedding_scale_tensor = context->Input<Tensor>(8);
   const Tensor* position_embedding_scale_tensor = context->Input<Tensor>(9);
   const Tensor* segment_embedding_scale_tensor = context->Input<Tensor>(10);
@@ -198,8 +200,14 @@ Status CheckQuantizedInputs(OpKernelContext* context, bool* is_signed_inputs) {
   const Tensor* gamma_zero_point_tensor = context->Input<Tensor>(16);
   const Tensor* beta_zero_point_tensor = context->Input<Tensor>(17);
 
+  const bool has_segment_embedding = segment_ids_tensor != nullptr;
+  ORT_RETURN_IF(has_segment_embedding != (segment_embedding_tensor != nullptr) ||
+                    has_segment_embedding != (segment_embedding_scale_tensor != nullptr) ||
+                    has_segment_embedding != (segment_embedding_zero_point_tensor != nullptr),
+                "segment_ids, segment_embedding, segment_embedding_scale, and segment_embedding_zero_point "
+                "must either all be provided or all be omitted");
+
   bool word_embedding_is_signed_inputs = word_embedding_zero_point_tensor->IsDataType<int8_t>();
-  bool has_segment_embedding = context->Input<Tensor>(1) != nullptr;
 
   if (!IsScalarOr1ElementVector(word_embedding_scale_tensor)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

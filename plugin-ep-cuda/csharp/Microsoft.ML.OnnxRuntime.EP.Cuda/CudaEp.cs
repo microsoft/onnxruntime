@@ -58,7 +58,7 @@ namespace Microsoft.ML.OnnxRuntime.EP.Cuda
         /// <returns>The EP name string.</returns>
         public static string GetEpName()
         {
-            return "CudaPluginExecutionProvider";
+            return "CUDAExecutionProvider";
         }
 
         private static string GetNativeDirectory()
@@ -79,9 +79,9 @@ namespace Microsoft.ML.OnnxRuntime.EP.Cuda
         private static string GetLibraryName()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return "onnxruntime_providers_cuda_plugin.dll";
+                return "onnxruntime_providers_cuda.dll";
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                return "libonnxruntime_providers_cuda_plugin.so";
+                return "libonnxruntime_providers_cuda.so";
 
             throw new PlatformNotSupportedException(
                 $"CUDA plugin EP does not support OS platform: {RuntimeInformation.OSDescription}");

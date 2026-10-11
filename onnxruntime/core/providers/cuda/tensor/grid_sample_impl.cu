@@ -25,10 +25,23 @@ template <typename T>
 __device__ T GsReflect(T x, float x_min, float x_max) {
   float fx = static_cast<float>(x);
   float dx = {};
+  // Guard against NaN or Inf first, before computing the range, so a non-finite coordinate
+  // returns early without an unnecessary subtraction and can never reach the float->int cast
+  // (undefined behavior) below.
+  if (!isfinite(fx)) {
+    return static_cast<T>(x_min);
+  }
   float range = x_max - x_min;
+  // Guard against a non-positive range (e.g. dim==1 with align_corners=true) which would
+  // otherwise produce wild indices via division by zero.
+  if (!(range > 0.0f)) {
+    return static_cast<T>(x_min);
+  }
   if (fx < x_min) {
     dx = x_min - fx;
-    int n = static_cast<int>(dx / range);
+    // Use int64_t rather than int: for extreme (but finite) inputs, dx / range can exceed
+    // INT_MAX, making a float->int cast undefined behavior.
+    int64_t n = static_cast<int64_t>(dx / range);
     float r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_min + r;
@@ -37,7 +50,7 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
     }
   } else if (fx > x_max) {
     dx = fx - x_max;
-    int n = static_cast<int>(dx / range);
+    int64_t n = static_cast<int64_t>(dx / range);
     float r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_max - r;
@@ -47,6 +60,15 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
   }
   // else fallthrough
   return static_cast<T>(fx);
+}
+
+// Returns true when v is finite and its magnitude is small enough that converting it to
+// int64_t via floor / nearbyint is well-defined. 2^62 is far below INT64_MAX (~9.22e18)
+// and leaves ample margin for any realistic image dimension.
+template <typename T>
+__device__ inline bool IsSafeForInt64Conversion(T v) {
+  constexpr T kSafeBound = static_cast<T>(int64_t{1} << 62);
+  return isfinite(v) && v >= -kSafeBound && v <= kSafeBound;
 }
 
 template <typename T, bool Layout>
@@ -71,6 +93,11 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
   } else {  // Reflection
     x = (int64_t)GsReflect<T>(x, border[0], border[2]);
     y = (int64_t)GsReflect<T>(y, border[1], border[3]);
+    // Safety clamp: GsReflect is computed in floating point and cast back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the image range before indexing.
+    x = max((int64_t)0, min((int64_t)W - 1, x));
+    y = max((int64_t)0, min((int64_t)H - 1, y));
     pixel = input_data[PixelOffset(x, y)];
   }
   return pixel;
@@ -168,6 +195,16 @@ __global__ void _GridSampleKernel(
     y_max = float(H_in) - 1.0f;
   }
   float border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
+
+  // Sanitize coordinates that are non-finite or whose magnitude is too large for a safe
+  // float->int64 conversion. Substituting the in-range lower border keeps the subsequent
+  // floor / nearbyint casts well-defined for every padding mode.
+  if (!IsSafeForInt64Conversion(grid_x_imgSpace)) {
+    grid_x_imgSpace = x_min;
+  }
+  if (!IsSafeForInt64Conversion(grid_y_imgSpace)) {
+    grid_y_imgSpace = y_min;
+  }
   if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max ||
       grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) {  // out of bound
     if (padding_mode == 1) {                                 // border
@@ -181,10 +218,10 @@ __global__ void _GridSampleKernel(
   }
 
   if (mode == 0) {  // bilinear
-    int x1 = floor(grid_x_imgSpace);
-    int y1 = floor(grid_y_imgSpace);
-    int x2 = x1 + 1;
-    int y2 = y1 + 1;
+    int64_t x1 = static_cast<int64_t>(floor(grid_x_imgSpace));
+    int64_t y1 = static_cast<int64_t>(floor(grid_y_imgSpace));
+    int64_t x2 = x1 + 1;
+    int64_t y2 = y1 + 1;
     T w_lt = 0.0f;
     T w_rt = 0.0f;
     T w_lb = 0.0f;
@@ -209,8 +246,8 @@ __global__ void _GridSampleKernel(
     return;
   }
   if (mode == 1) {  // nearest
-    int x_n = grid_x_imgSpace;
-    int y_n = grid_y_imgSpace;
+    int64_t x_n = static_cast<int64_t>(grid_x_imgSpace);
+    int64_t y_n = static_cast<int64_t>(grid_y_imgSpace);
     output_data[outIdx] =
         PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
     return;
@@ -286,7 +323,12 @@ __device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx, int6
     z = (int64_t)GsReflect<T>(z, border[0], border[3]);
     y = (int64_t)GsReflect<T>(y, border[1], border[4]);
     x = (int64_t)GsReflect<T>(x, border[2], border[5]);
-
+    // Safety clamp: GsReflect is computed in floating point and cast back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the volume range before indexing.
+    z = max((int64_t)0, min((int64_t)D - 1, z));
+    y = max((int64_t)0, min((int64_t)H - 1, y));
+    x = max((int64_t)0, min((int64_t)W - 1, x));
     pixel = input_data[PixelOffset3D(z, y, x)];
   }
   return pixel;
@@ -381,6 +423,19 @@ __global__ void _GridSampleKernel3D(
   }
 
   float border[] = {z_min, y_min, x_min, z_max, y_max, x_max};  // zmin,ymin,xmin,zmax,ymax,xmax
+
+  // Sanitize coordinates that are non-finite or whose magnitude is too large for a safe
+  // float->int64 conversion. Substituting the in-range lower border keeps the subsequent
+  // floor / nearbyint casts well-defined for every padding mode.
+  if (!IsSafeForInt64Conversion(grid_x_volSpace)) {
+    grid_x_volSpace = x_min;
+  }
+  if (!IsSafeForInt64Conversion(grid_y_volSpace)) {
+    grid_y_volSpace = y_min;
+  }
+  if (!IsSafeForInt64Conversion(grid_z_volSpace)) {
+    grid_z_volSpace = z_min;
+  }
   if (grid_z_volSpace < z_min || grid_z_volSpace > z_max ||
       grid_y_volSpace < y_min || grid_y_volSpace > y_max ||
       grid_x_volSpace < x_min || grid_x_volSpace > x_max) {  // out of bound
@@ -397,12 +452,12 @@ __global__ void _GridSampleKernel3D(
   }
 
   if (mode == 0) {  // bilinear
-    int z1 = floor(grid_z_volSpace);
-    int y1 = floor(grid_y_volSpace);
-    int x1 = floor(grid_x_volSpace);
-    int z2 = z1 + 1;
-    int y2 = y1 + 1;
-    int x2 = x1 + 1;
+    int64_t z1 = static_cast<int64_t>(floor(grid_z_volSpace));
+    int64_t y1 = static_cast<int64_t>(floor(grid_y_volSpace));
+    int64_t x1 = static_cast<int64_t>(floor(grid_x_volSpace));
+    int64_t z2 = z1 + 1;
+    int64_t y2 = y1 + 1;
+    int64_t x2 = x1 + 1;
 
     // Weights
     T w_lt_front = 0.0f;
@@ -450,9 +505,9 @@ __global__ void _GridSampleKernel3D(
     return;
   }
   if (mode == 1) {  // nearest
-    int x_n = grid_x_volSpace;
-    int y_n = grid_y_volSpace;
-    int z_n = grid_z_volSpace;
+    int64_t x_n = static_cast<int64_t>(grid_x_volSpace);
+    int64_t y_n = static_cast<int64_t>(grid_y_volSpace);
+    int64_t z_n = static_cast<int64_t>(grid_z_volSpace);
 
     output_data[outIdx] =
         PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z_n, y_n, x_n, padding_mode, N, C, D_in, H_in, W_in, border);

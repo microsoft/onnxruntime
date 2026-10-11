@@ -198,13 +198,15 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     Node* p_add2 = nullptr;
     Format matched_format = Format::None;
 
-    // Format 1
-    std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
-        {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
-        {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
-
+    // The matcher paths are passed inline via FindPath's std::initializer_list overload. Their
+    // backing arrays are stack temporaries, so they stay clear of the GCC 15 -Wfree-nonheap-object
+    // false positive that fired on the equivalent local std::vector's heap-buffer destructor.
     std::vector<const Node::EdgeEnd*> edges;
-    if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
+    // Format 1
+    if (graph_utils::FindPath(ln_node, true,
+                              {{0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+                               {0, 0, "Add", {7, 13, 14}, kOnnxDomain}},
+                              edges, logger)) {
       p_add1 = const_cast<Node*>(&edges[0]->GetNode());
       p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
@@ -218,11 +220,10 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (matched_format == Format::None) {
       // Format 2
-      std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
-          {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
-          {0, 1, "Add", {7, 13, 14}, kOnnxDomain}};
-
-      if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
+      if (graph_utils::FindPath(ln_node, true,
+                                {{0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+                                 {0, 1, "Add", {7, 13, 14}, kOnnxDomain}},
+                                edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
         p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
@@ -237,10 +238,9 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (matched_format == Format::None) {
       // Format 3
-      std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
-          {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
-
-      if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
+      if (graph_utils::FindPath(ln_node, true,
+                                {{0, 0, "Add", {7, 13, 14}, kOnnxDomain}},
+                                edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
@@ -253,6 +253,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       continue;
     }
+    const size_t first_node_to_remove = nodes_to_remove.size();
 
     // SkipLayerNormalization kernel requires gamma and beta to be 1D.
     // Skip fusion if gamma or beta have more than 1 dimension.
@@ -314,6 +315,13 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     }
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
+
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(nodes_to_remove.size() - first_node_to_remove);
+    for (size_t i = first_node_to_remove; i < nodes_to_remove.size(); ++i) {
+      source_node_indices.push_back(nodes_to_remove[i].get().Index());
+    }
+    graph.NotifyNodeReplacement(source_node_indices, skip_layer_norm_node.Index());
   }
 
   for (const auto& node : nodes_to_remove) {

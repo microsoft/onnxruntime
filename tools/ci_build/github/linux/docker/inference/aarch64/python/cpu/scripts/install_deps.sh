@@ -9,8 +9,20 @@ fi
 popd
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+FREE_THREADED_REQUIREMENTS=$(mktemp)
+grep -Ev '^(onnx|onnx-ir|onnxscript)==' requirements.txt > "${FREE_THREADED_REQUIREMENTS}"
+trap 'rm -f "${FREE_THREADED_REQUIREMENTS}"' EXIT
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
-  ${PYTHON_EXE} -m pip install -r requirements.txt
+  PIP_REQUIREMENTS=(-r requirements.txt)
+  if [[ "${PYTHON_EXE}" == */cp3??-cp3??t/* ]]; then
+    # ONNX does not publish free-threaded wheels, and ONNX-dependent tooling would resolve its unsupported source build.
+    PIP_REQUIREMENTS=(-r "${FREE_THREADED_REQUIREMENTS}")
+  fi
+  if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then
+    # mypy 1.19+ dependencies do not support free-threaded CPython 3.13.
+    PIP_REQUIREMENTS+=("mypy<1.19")
+  fi
+  "${PYTHON_EXE}" -m pip install "${PIP_REQUIREMENTS[@]}"
 done

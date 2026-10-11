@@ -97,5 +97,77 @@
         ]
       }
     ]
+  },
+  {
+    "name": "Split on Axis 0 - vec4 across trailing dimensions",
+    "operator": "Split",
+    "opset": { "domain": "", "version": 12 },
+    "attributes": [
+      { "name": "axis", "data": 0, "type": "int" },
+      { "name": "split", "data": [1, 1], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[2,4,3]",
+        "inputs": [
+          {
+            "data": [
+              1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0,
+              20.0, 21.0, 22.0, 23.0, 24.0
+            ],
+            "dims": [2, 4, 3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+            "dims": [1, 4, 3],
+            "type": "float32"
+          },
+          {
+            "data": [13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
+            "dims": [1, 4, 3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Split on Axis 1 - vec4 with unequal segments across multiple outer slices",
+    "operator": "Split",
+    "opset": { "domain": "", "version": 12 },
+    "attributes": [
+      { "name": "axis", "data": 1, "type": "int" },
+      { "name": "split", "data": [1, 2], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[2,3,4]",
+        "inputs": [
+          {
+            "data": [
+              1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0,
+              20.0, 21.0, 22.0, 23.0, 24.0
+            ],
+            "dims": [2, 3, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 2.0, 3.0, 4.0, 13.0, 14.0, 15.0, 16.0],
+            "dims": [2, 1, 4],
+            "type": "float32"
+          },
+          {
+            "data": [5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
+            "dims": [2, 2, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
   }
 ]

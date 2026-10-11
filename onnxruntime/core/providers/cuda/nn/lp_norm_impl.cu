@@ -124,6 +124,7 @@ void LpNormImpl(
 // Explicit instantiations.
 template void LpNormImpl<float>(cudaStream_t, const float*, float*, int64_t, int64_t, int64_t, int);
 template void LpNormImpl<half>(cudaStream_t, const half*, half*, int64_t, int64_t, int64_t, int);
+template void LpNormImpl<BFloat16>(cudaStream_t, const BFloat16*, BFloat16*, int64_t, int64_t, int64_t, int);
 
 }  // namespace cuda
 }  // namespace onnxruntime

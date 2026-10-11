@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
 #include "core/common/narrow.h"
+#include "core/common/path_utils.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
@@ -544,8 +545,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
       std::vector<int64_t> shapes_opt_64(shapes_opt.begin(), shapes_opt.end());
       std::vector<int64_t> shapes_max_64(shapes_max.begin(), shapes_max.end());
       trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_opt_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt_64[0], shape_size);
 #else
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
@@ -760,8 +761,8 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       std::vector<int64_t> shapes_opt_64(shapes_opt.begin(), shapes_opt.end());
       std::vector<int64_t> shapes_max_64(shapes_max.begin(), shapes_max.end());
       trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_opt_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt_64[0], shape_size);
 #else
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
@@ -1686,10 +1687,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   // The new cache path will be saved as the "ep_cache_context" node attritue of the EP context node.
   // For security reason, it needs to make sure the engine cache is saved inside context model directory.
   if (dump_ep_context_model_ && engine_cache_enable_) {
-    if (IsAbsolutePath(cache_path_)) {
+    if (path_utils::IsAbsolutePath(cache_path_)) {
       LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, the trt_engine_cache_path should be set with a relative path, but it is an absolute path:  " << cache_path_;
     }
-    if (IsRelativePathToParentPath(cache_path_)) {
+    if (path_utils::IsRelativePathToParentPath(cache_path_)) {
       LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
     }
 
@@ -1698,7 +1699,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     engine_cache_relative_path_to_context_model_dir = cache_path_;
 
     // Make cache_path_ to be the relative path of ep_context_file_path_
-    cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
+    cache_path_ = path_utils::GetDirOrParentPath(ep_context_file_path_).append(cache_path_).string();
   }
 
   // Hardware compatibility: pre-check on environment
@@ -2873,7 +2874,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                       std::string& onnx_model_folder_path,
                                                       std::string& weight_stripped_engine_cath_path,
-                                                      bool path_check,
                                                       const void* onnx_model_bytestream,
                                                       size_t onnx_model_bytestream_size,
                                                       const void* onnx_external_data_bytestream,
@@ -2897,7 +2897,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                              "When providing a bytestream during session initialization, it should also be set as trt_onnx_bytes_stream");
     } else {
       // Validate that the ONNX model path does not escape the model directory.
-      if (path_check && !onnx_model_filename.empty()) {
+      if (!onnx_model_filename.empty()) {
         ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
             std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
@@ -3536,7 +3536,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
-    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
+    ctx_model_path_ = path_utils::GetPathWithStemSuffix(ep_context_file_path_, model_path_, "_ctx.onnx");
   }
 
   if (!has_dynamic_shape) {
@@ -3709,10 +3709,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     if (weight_stripped_engine_refit_) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refit engine from main ONNX file after engine build";
-      auto status = RefitEngine(model_path_,
-                                onnx_model_folder_path_,
+      std::filesystem::path model_fs_path(model_path_);
+      std::string refit_folder = onnx_model_folder_path_.empty()
+                                     ? model_fs_path.parent_path().string()
+                                     : onnx_model_folder_path_;
+      auto status = RefitEngine(model_fs_path.filename().string(),
+                                refit_folder,
                                 engine_cache_path,
-                                false /* path check for security */,
                                 onnx_model_bytestream_,
                                 onnx_model_bytestream_size_,
                                 onnx_external_data_bytestream_,
@@ -4204,10 +4207,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       context_update = true;
 
       if (weight_stripped_engine_refit_) {
-        auto status = RefitEngine(model_path_,
-                                  onnx_model_folder_path_,
+        std::filesystem::path model_fs_path(model_path_);
+        std::string refit_folder = onnx_model_folder_path_.empty()
+                                       ? model_fs_path.parent_path().string()
+                                       : onnx_model_folder_path_;
+        auto status = RefitEngine(model_fs_path.filename().string(),
+                                  refit_folder,
                                   engine_cache_path,
-                                  false /* path check for security */,
                                   onnx_model_bytestream_,
                                   onnx_model_bytestream_size_,
                                   onnx_external_data_bytestream_,

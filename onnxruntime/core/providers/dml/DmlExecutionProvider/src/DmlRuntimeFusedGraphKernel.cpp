@@ -20,7 +20,7 @@ namespace Dml
         DmlRuntimeFusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
             std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-            const std::filesystem::path& modelPath,
+            std::filesystem::path modelPath,
             std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
             std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
             std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
@@ -29,7 +29,7 @@ namespace Dml
             std::vector<ONNX_NAMESPACE::TensorProto>&& ownedInitializers)
         : OpKernel(kernelInfo),
           m_indexedSubGraph(std::move(indexedSubGraph)),
-          m_modelPath(modelPath),
+          m_modelPath(std::move(modelPath)),
           m_subgraphNodes(std::move(subgraphNodes)),
           m_subgraphInputs(std::move(subgraphInputs)),
           m_subgraphOutputs(std::move(subgraphOutputs)),
@@ -314,7 +314,11 @@ namespace Dml
 
         mutable std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         std::shared_ptr<const onnxruntime::IndexedSubGraph> m_indexedSubGraph;
-        const std::filesystem::path& m_modelPath;
+
+        // Owned by value: the caller that registers the kernel-creation callback (see
+        // DmlGraphFusionHelper::RegisterDynamicKernel) returns long before the callback runs, so this
+        // kernel cannot alias the model path owned by that frame.
+        std::filesystem::path m_modelPath;
 
         std::vector<std::shared_ptr<onnxruntime::Node>> m_subgraphNodes;
         std::vector<const onnxruntime::NodeArg*> m_subgraphInputs;
@@ -341,7 +345,7 @@ namespace Dml
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-        const std::filesystem::path& modelPath,
+        std::filesystem::path modelPath,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
         std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
@@ -352,7 +356,7 @@ namespace Dml
         return new DmlRuntimeFusedGraphKernel(
             info,
             std::move(indexedSubGraph),
-            modelPath,
+            std::move(modelPath),
             std::move(subgraphNodes),
             std::move(subgraphInputs),
             std::move(subgraphOutputs),

@@ -12,7 +12,6 @@ namespace test {
 constexpr float epsilon_ = 1e-12f;
 
 static void RunOneTest(
-    bool strict,
     const std::vector<float>& input_data,
     const std::vector<float>& skip_data,
     const std::vector<float>& gamma_data,
@@ -136,14 +135,7 @@ static void RunOneTest(
                                ToBFloat16(sum_output_data));
     }
 
-    if (strict) {
-      Ort::CUDAProviderOptions cuda_options;
-      std::unordered_map<std::string, std::string> options = {{"enable_skip_layer_norm_strict_mode", "1"}};
-      cuda_options.Update(options);
-      execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(cuda_options)));
-    } else {
-      execution_providers.push_back(DefaultCudaExecutionProvider());
-    }
+    execution_providers.push_back(DefaultCudaExecutionProvider());
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
@@ -187,14 +179,7 @@ static void RunOneTest(
     } else if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else {
-      if (strict) {
-        Ort::CUDAProviderOptions cuda_options;
-        std::unordered_map<std::string, std::string> options = {{"enable_skip_layer_norm_strict_mode", "1"}};
-        cuda_options.Update(options);
-        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(cuda_options)));
-      } else {
-        execution_providers.push_back(DefaultCudaExecutionProvider());
-      }
+      execution_providers.push_back(DefaultCudaExecutionProvider());
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -220,16 +205,9 @@ static void RunTest(
     bool use_token_count = false,
     bool broadcast_skip = false,
     bool no_batch_size = false) {
-  RunOneTest(false, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
+  RunOneTest(input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
              epsilon, batch_size, sequence_length, hidden_size, use_float16, use_bfloat16, no_beta, simplified,
              use_token_count, broadcast_skip, no_batch_size);
-
-  // strict mode does not support skip broadcasting.
-  if (!broadcast_skip) {
-    RunOneTest(true, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
-               epsilon, batch_size, sequence_length, hidden_size, use_float16, use_bfloat16, no_beta, simplified,
-               use_token_count, broadcast_skip, no_batch_size);
-  }
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormPrePack) {
@@ -256,6 +234,146 @@ TEST(SkipLayerNormTest, SkipLayerNormPrePack) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
             kNnapiExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortGamma) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}));
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{1}, ToFloat16({1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of gamma and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortSkip) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", std::vector<int64_t>{1, 1, 1}, ToFloat16({3.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "last two dimensions of skip needs to be same as input",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortBeta) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of beta and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortBias) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddInput<MLFloat16>("bias", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of bias and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormPrePackRejectsShortBias) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("bias", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of bias and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsMismatchedSkipShape) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  const std::vector<int64_t> input_output_dims = {1, 5, 2};
+  test.AddInput<MLFloat16>("input", input_output_dims, ToFloat16(std::vector<float>(10, 1.f)));
+  test.AddInput<MLFloat16>("skip", std::vector<int64_t>{1, 3, 2}, ToFloat16(std::vector<float>(6, 1.f)), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_output_dims, ToFloat16(std::vector<float>(10)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "last two dimensions of skip needs to be same as input",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackAllowsEmptySkip) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  const std::vector<int64_t> empty_dims = {1, 0, 2};
+  test.AddInput<MLFloat16>("input", empty_dims, {});
+  test.AddInput<MLFloat16>("skip", empty_dims, {}, true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", empty_dims, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {
@@ -322,6 +440,41 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1) {
           batch_size,
           sequence_length,
           hidden_size);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormStatistics) {
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon_);
+  const std::vector<int64_t> input_dims{1, 1, 4};
+  const std::vector<int64_t> stat_dims{1, 1, 1};
+  test.AddInput<float>("input", input_dims, {10000.0f, 10001.0f, 9999.0f, 10000.0f});
+  test.AddInput<float>("skip", input_dims, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("beta", {4}, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", input_dims, {0.0f, 1.4142135f, -1.4142135f, 0.0f});
+  test.AddOutput<float>("mean", stat_dims, {10000.0f});
+  test.AddOutput<float>("inv_std_var", stat_dims, {1.4142135f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormStatistics) {
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon_);
+  const std::vector<int64_t> input_dims{1, 1, 4};
+  const std::vector<int64_t> stat_dims{1, 1, 1};
+  test.AddInput<float>("input", input_dims, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("skip", input_dims, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("output", input_dims, {0.3651484f, 0.7302967f, 1.0954452f, 1.4605935f});
+  test.AddOutput<float>("mean", stat_dims, {0.0f});
+  test.AddOutput<float>("inv_std_var", stat_dims, {0.3651484f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {

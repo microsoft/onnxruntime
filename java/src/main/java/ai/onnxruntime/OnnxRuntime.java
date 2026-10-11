@@ -44,6 +44,7 @@ final class OnnxRuntime {
   private static final int ORT_API_VERSION_14 = 14;
   // Post 1.22 builds of the ORT API
   private static final int ORT_API_VERSION_23 = 23;
+  private static final int ORT_API_VERSION_31 = 31;
 
   // The initial release of the ORT training API.
   private static final int ORT_TRAINING_API_VERSION_1 = 1;
@@ -83,9 +84,6 @@ final class OnnxRuntime {
 
   /** The short name of the WebGPU DAWN library */
   static final String ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME = "webgpu_dawn";
-
-  /** The short name of the WebGPU DXC library "dxil.dll" */
-  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME = "dxil";
 
   /** The short name of the WebGPU DXC library "dxcompiler.dll" */
   static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME = "dxcompiler";
@@ -181,7 +179,6 @@ final class OnnxRuntime {
       // Extract and prepare the Dawn shared libraries (if present) but don't try to load them,
       // the ONNX Runtime native library will load them
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME);
-      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME);
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME);
 
       if (!isAndroid()) {
@@ -189,7 +186,7 @@ final class OnnxRuntime {
       }
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
 
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_23);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_31);
       if (ortApiHandle == 0L) {
         throw new IllegalStateException(
             "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");

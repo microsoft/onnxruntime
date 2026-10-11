@@ -26,7 +26,7 @@ bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
   // Weight zero point must be either const int8_t or null tensor
   const ONNX_NAMESPACE::TensorProto* weight_zp_tensor_proto = nullptr;
   const auto* zp_def = input_defs.size() <= weight_zp_idx ? nullptr : input_defs[weight_zp_idx];
-  if (nullptr != zp_def) {
+  if (nullptr != zp_def && zp_def->Exists()) {
     if (!graph_utils::NodeArgIsConstant(graph, *zp_def) ||
         !graph.GetInitializedTensor(zp_def->Name(), weight_zp_tensor_proto) ||
         weight_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
@@ -43,12 +43,14 @@ bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
     // The weights fits into S7, overflow is not a problem, no need to convert to U8
     return false;
   }
-  input_defs[weights_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  op_node.MutableInputDefs()[weights_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
 
   // Convert weight zero point to uint8
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
   Int8TensorProto2Uint8(weight_zp_tensor_proto, weight_zp_proto_u8, graph, true);
-  input_defs[weight_zp_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8);
+  graph_utils::SetOptionalNodeInput(graph, op_node, weight_zp_idx,
+                                    graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8));
 
   return true;
 }

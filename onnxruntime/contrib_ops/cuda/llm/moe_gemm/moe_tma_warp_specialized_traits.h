@@ -109,12 +109,14 @@ constexpr bool isValidAmpereMOESpecialisation() {
 #if defined(ENABLE_FP8) && defined(ENABLE_FP4)
   // W8A16-FP8 (FP8 weights with non-FP8 activations) is SM90-only, not valid for Ampere.
   constexpr bool is_wfp8a16 = std::is_same_v<WeightType, __nv_fp8_e4m3> && !std::is_same_v<T, __nv_fp8_e4m3> && !std::is_same_v<T, __nv_fp8_e5m2>;
-  return !std::is_same_v<T, __nv_fp4_e2m1> && !std::is_same_v<WeightType, __nv_fp4_e2m1> && !is_wfp8a16;
+  // wfp4a16 (e2m1 WEIGHT + fp16/bf16 activation) runs the SM80 fused-dequant grouped GEMM, like INT4.
+  // Only the e2m1 ACTIVATION (true NVFP4) is excluded from the Ampere path.
+  return !std::is_same_v<T, __nv_fp4_e2m1> && !is_wfp8a16;
 #elif defined(ENABLE_FP8)
   constexpr bool is_wfp8a16 = std::is_same_v<WeightType, __nv_fp8_e4m3> && !std::is_same_v<T, __nv_fp8_e4m3> && !std::is_same_v<T, __nv_fp8_e5m2>;
   return !is_wfp8a16;
 #elif defined(ENABLE_FP4)
-  return !std::is_same_v<T, __nv_fp4_e2m1> && !std::is_same_v<WeightType, __nv_fp4_e2m1>;
+  return !std::is_same_v<T, __nv_fp4_e2m1>;
 #else
   return true;  // Default to true
 #endif

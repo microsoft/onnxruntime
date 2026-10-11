@@ -16,6 +16,17 @@ using onnxruntime::contrib::attention::AttentionBackend;
 namespace onnxruntime {
 namespace test {
 
+TEST(AttentionKernelDebugInfoTest, LatentAttention) {
+  AttentionKernelDebugInfo debug_info;
+  debug_info.use_latent_attention = true;
+
+  testing::internal::CaptureStdout();
+  debug_info.Print("PagedAttention", "", true, false);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=LATENT_ATTENTION"), std::string::npos) << debug_output;
+}
+
 TEST(AttentionKernelOptionsTest, NonZeroValue) {
   {
     AttentionKernelOptions options;

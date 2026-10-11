@@ -313,6 +313,73 @@ Return Value:
     }
 }
 
+// Each window consists of a block suffix and the next block's prefix.
+// Use kernel-width blocks so each input value is read at most twice.
+static void
+MlasMaximumPool1DSlidingKernel(
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
+    size_t ChannelCount,
+    const float* Input,
+    float* Output
+)
+{
+    const size_t InputWidth = WorkBlock->InputShape[0];
+    const size_t OutputWidth = WorkBlock->OutputShape[0];
+    const int64_t KernelWidth = WorkBlock->KernelShape[0];
+    const int64_t Padding = WorkBlock->Padding[0];
+    const int64_t Stride = WorkBlock->StrideShape[0];
+    constexpr float Initial = MLAS_MAXIMUM_POOLING::InitialValue();
+
+    for (size_t c = 0; c < ChannelCount; c++) {
+        size_t pw = 0, Next = 0;
+        float Maximum = Initial;
+        // Windows that start in the left padding need only a prefix maximum.
+        while (pw < OutputWidth && int64_t(pw) * Stride <= Padding) {
+            const int64_t Start = int64_t(pw) * Stride - Padding;
+            const size_t End = size_t(std::max(int64_t(0), std::min(Start + KernelWidth, int64_t(InputWidth))));
+            for (; Next < End; Next++) {
+                Maximum = std::max(Maximum, Input[Next]);
+            }
+            Output[pw++] = Maximum;
+        }
+        while (pw < OutputWidth) {
+            const size_t Begin = size_t(int64_t(pw) * Stride - Padding);
+            if (Begin >= InputWidth) {
+                Output[pw++] = Initial;
+                continue;
+            }
+            const size_t TileStart = Begin / size_t(KernelWidth) * size_t(KernelWidth);
+            const size_t TileEnd = TileStart + std::min(size_t(KernelWidth), InputWidth - TileStart);
+            const size_t Count = std::min(OutputWidth - pw, (TileEnd - 1 - Begin) / size_t(Stride) + 1);
+            // Store suffix maxima in the output slots that will consume them.
+            // These slots belong to this block and are not read by another block.
+            Next = TileEnd;
+            Maximum = Initial;
+            for (size_t p = Count; p > 0; p--) {
+                const size_t Start = Begin + (p - 1) * size_t(Stride);
+                while (Next > Start) {
+                    // Keep the first equal value and ignore NaN, as in the scalar loop.
+                    const float Value = std::max(Initial, Input[--Next]);
+                    Maximum = std::max(Value, Maximum);
+                }
+                Output[pw + p - 1] = Maximum;
+            }
+            Next = TileEnd;
+            Maximum = Initial;
+            for (size_t p = 0; p < Count; p++) {
+                const size_t End = std::min(InputWidth, Begin + p * size_t(Stride) + size_t(KernelWidth));
+                for (; Next < End; Next++) {
+                    Maximum = std::max(Maximum, Input[Next]);
+                }
+                Output[pw + p] = std::max(Output[pw + p], Maximum);
+            }
+            pw += Count;
+        }
+        Input += InputWidth;
+        Output += OutputWidth;
+    }
+}
+
 template<typename PoolingType>
 void
 MlasPool2DKernel(
@@ -1199,6 +1266,11 @@ Return Value:
     }
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
+        if (Padding != nullptr &&
+            (Padding[dim] < 0 || Padding[dim + Dimensions] < 0)) {
+            MLAS_THROW_EX(std::invalid_argument, "padding values must be non-negative");
+        }
+
         WorkBlock.InputShape[dim] = size_t(InputShape[dim]);
         WorkBlock.OutputShape[dim] = size_t(OutputShape[dim]);
 
@@ -1247,6 +1319,13 @@ Return Value:
     if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
 
         PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
+
+    } else if (PoolingKind == MlasMaximumPooling && Dimensions == 1 && OutputSize >= 4 &&
+               WorkBlock.KernelShape[0] >= 32 &&
+               uint64_t(WorkBlock.KernelShape[0]) <= std::numeric_limits<size_t>::max() &&
+               WorkBlock.StrideShape[0] <= WorkBlock.KernelShape[0] / 4) {
+
+        PoolKernelRoutine = MlasMaximumPool1DSlidingKernel;
 
     } else if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
 

@@ -157,6 +157,8 @@ class Model {
 
   const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
 
+  common::Status ValidateLocalFunctionCallDepth(const Graph& graph) const;
+
 #else
   // Get model's IR version.
   // Return <kNoVersion> if not specified.
@@ -210,6 +212,20 @@ class Model {
                                                                   const std::filesystem::path& file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
 
+  /** Serializes this model while writing externalized initializer data to a caller-provided stream.
+  @param external_file_name Non-empty relative logical file name recorded in each externalized initializer's
+  TensorProto. This name does not identify the physical stream destination.
+  @param model_saving_options Initializer size threshold and external-data alignment settings.
+  @param external_stream Open caller-owned output stream that receives the external initializer bytes. The caller
+  retains ownership.
+  @param model_proto Output parameter set to the serialized ModelProto.
+  @returns A status indicating success or an error writing to the stream.
+  */
+  common::Status ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                      const ModelSavingOptions& model_saving_options,
+                                                      std::ostream& external_stream,
+                                                      ONNX_NAMESPACE::ModelProto& model_proto) const;
+
   /// <summary>
   /// Serialize the Model to a onnx::ModelProto. Caller provides a function that determines where each initializer
   /// is stored (i.e., either in an external file or within the model).
@@ -246,6 +262,16 @@ class Model {
 
   // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
   static common::Status Load(const PathString& file_path,
+                             /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
+
+  // Reads the model bytes from file_path but stores graph_model_path as the graph's model path.
+  // graph_model_path is used as the base directory for resolving external initializers, so this
+  // overload lets callers load a model file while resolving its external data from a different folder.
+  static common::Status Load(const PathString& file_path,
+                             const PathString& graph_model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,

@@ -106,10 +106,13 @@ class OutputIterator {
 
   // set the output for the current iteration to zeros. used for short sequence lengths
   Status ZeroOutCurrent() {
-    auto status = Status::OK();
     auto* tensor = (**this).GetMutable<Tensor>();
-    status = zero_data_func_(tensor->MutableDataRaw(), tensor->SizeInBytes());
-    return status;
+    if (tensor->IsDataTypeString()) {
+      // std::string is not trivially copyable — memset would corrupt the objects.
+      // The strings are already default-constructed (empty) from placement-new so nothing to do.
+      return Status::OK();
+    }
+    return zero_data_func_(tensor->MutableDataRaw(), tensor->SizeInBytes());
   }
 
   const OrtValue& GetOutput() const {
@@ -164,6 +167,13 @@ class OutputIterator {
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                     TensorShapeVector& directions, size_t num_entries);
+
+// Validates the node's 'num_scan_inputs' attribute against the actual number of variadic inputs
+// and outputs before it is used to derive the loop state variable and scan output counts, so a
+// value outside the valid range can't produce a negative count that later code uses as an index
+// or size without further checks. Called both at kernel construction time, before the attribute
+// value is used to size any directions/axes vectors, and again when building Info.
+void ValidateNumScanInputs(int64_t num_scan_inputs, int64_t num_variadic_inputs, int64_t num_outputs);
 
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,

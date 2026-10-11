@@ -2332,6 +2332,45 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_Decode_BottomRight) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// q_len=1 with nonpad_kv_seqlen keeps bottom-right decode behavior: the single
+// query attends every valid key. If the no-nonpad upper-left overlay is applied
+// here, this returns 1.0 instead of the expected 1/6.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_SingleQueryKeepsBottomRight_CPU) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  constexpr int batch_size = 1;
+  constexpr int q_num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int q_sequence_length = 1;
+  constexpr int kv_sequence_length = 6;
+  constexpr int head_size = 8;
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.0f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::fill_n(v.begin(), head_size, 1.0f);
+
+  test.AddInput<float>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, q);
+  test.AddInput<float>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, k);
+  test.AddInput<float>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {batch_size}, {kv_sequence_length});
+
+  std::vector<float> expected_y(batch_size * q_num_heads * q_sequence_length * head_size,
+                                1.0f / static_cast<float>(kv_sequence_length));
+  test.AddOutput<float>("Y", {batch_size, q_num_heads, q_sequence_length, head_size}, expected_y, false, 0,
+                        1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Continued / chunked prefill (S_q=2) into a partially-filled static cache.
 // nonpad=[4], S_q=2 -> offset = 4 - 2 = 2: query 0 attends keys {0,1,2}, query 1
 // attends {0,1,2,3}. The old top-left alignment would mask everything past the
@@ -2528,6 +2567,37 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_ExceedsTotalSeqLen) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "nonpad_kv_seqlen[0] = 5 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
+// Validation: in a multi-batch nonpad_kv_seqlen, a bad entry in a LATER batch must still be
+// rejected — a valid batch-0 must not mask a bad batch-1. This proves the host-validation loop
+// (core/providers/cpu/llm/attention_helper.h:126-134) indexes the right batch, mirroring GQA's
+// MultiBatchOneBadSeqlensK_OOB.
+// The existing NegativeValue / ExceedsTotalSeqLen rejection tests are single-batch only.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_MultiBatchOneBad_Rejected_CPU) {
+  // batch_size=2, kv_seq_len=4 => valid range [0, 4]. Batch 0 valid (0), batch 1 bad (-3).
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {2, 1, 1, 2};
+  std::vector<int64_t> k_shape = {2, 1, 4, 2};
+  std::vector<int64_t> v_shape = {2, 1, 4, 2};
+
+  test.AddInput<float>("Q", q_shape, std::vector<float>(4, 1.0f));
+  test.AddInput<float>("K", k_shape, std::vector<float>(16, 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(16, 1.0f));
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {0, -3});
+
+  test.AddOutput<float>("Y", {2, 1, 1, 2}, std::vector<float>(4, 0.0f));
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "nonpad_kv_seqlen[1] = -3 is out of range",
            {}, nullptr, &execution_providers);
 }
 
@@ -3087,8 +3157,40 @@ TEST(AttentionTest, Attention4DSoftCapOutputQkRawLogits) {
 
 // ============================================================================
 // Causal alignment tests: verify upper-left (no past) vs lower-right (with past)
-// These are CUDA-only tests that validate the causal masking fix.
+// These tests validate causal mask alignment across CPU and CUDA.
 // ============================================================================
+
+// Test: Causal + cross-attention (S_q=1, S_kv=6, no past)
+// ONNX spec mandates upper-left alignment: q0 attends only to kv[0].
+// This covers GitHub issue #29020, where CPU skipped causal masking for S_q=1.
+TEST(AttentionTest, Attention4DCausalSingleQueryCrossAttentionUpperLeft) {
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 1;
+  int head_size = 8;
+  int kv_sequence_length = 6;
+  int kv_num_heads = 1;
+  int v_head_size = 8;
+  int past_sequence_length = 0;
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.0f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size, 0.0f);
+  for (int i = 0; i < v_head_size; ++i) {
+    v[i] = 1.0f;
+  }
+  std::vector<float> y(batch_size * q_num_heads * q_sequence_length * v_head_size, 1.0f);
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads,
+            v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(),
+            std::vector<float>(), std::vector<float>(),
+            1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1,
+            TensorType::kFloat,
+            y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
 
 // Test: Causal + cross-attention (S_q=3, S_kv=5, no past)
 // ONNX spec mandates upper-left alignment: q_i attends to kv[0..i].
@@ -4404,6 +4506,88 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_MixedBatchOffsets_ForceF
 }
 
 #undef SKIP_IF_MEA_NOT_COMPILED
+
+TEST(AttentionTest, Attention3DInconsistentHeadSizeInK) {
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+
+  const int64_t batch_size = 1;
+  const int64_t q_num_heads = 2;
+  const int64_t kv_num_heads = 2;
+  const int64_t head_size = 8;  // derived from Q as Q.shape[2] / q_num_heads = 16 / 2 = 8
+  const int64_t v_head_size = 8;
+  const int64_t q_seq = 2;
+  const int64_t kv_seq = 3;
+
+  // Q hidden = q_num_heads * head_size = 16 (consistent).
+  const std::vector<int64_t> q_shape = {batch_size, q_seq, q_num_heads * head_size};
+  // Deliberately undersized K hidden width: should be kv_num_heads * head_size = 16, use 8.
+  const std::vector<int64_t> k_shape = {batch_size, kv_seq, kv_num_heads * head_size / 2};
+  const std::vector<int64_t> v_shape = {batch_size, kv_seq, kv_num_heads * v_head_size};
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<float>("Q", q_shape, std::vector<float>(batch_size * q_seq * q_num_heads * head_size, 1.0f));
+  test.AddInput<float>("K", k_shape,
+                       std::vector<float>(batch_size * kv_seq * (kv_num_heads * head_size / 2), 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(batch_size * kv_seq * kv_num_heads * v_head_size, 1.0f));
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+
+  // Output shape is only used for allocation; the run must fail before producing it.
+  test.AddOutput<float>("Y", {batch_size, q_seq, q_num_heads * v_head_size},
+                        std::vector<float>(batch_size * q_seq * q_num_heads * v_head_size, 0.0f));
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent head_size",
+           {kTensorrtExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider,
+            kCoreMLExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider,
+            kWebGpuExecutionProvider});
+}
+
+// Validation: 3D Attention where V.shape[1] does not match K.shape[1] (kv_sequence_length).
+// The 4D path enforces this on shape[2]; the 3D path used to skip it, letting the kernel walk
+// past the V allocation when V.shape[1] < K.shape[1]. Excluded EPs implement Attention
+// themselves and validate shapes independently: TensorRT, CUDA, DML, CoreML, QNN, OpenVINO,
+// WebGPU. This test targets the shared CPU shape helper.
+TEST(AttentionTest, Attention3DInconsistentKvSequenceLength) {
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+
+  const int64_t batch_size = 1;
+  const int64_t q_num_heads = 2;
+  const int64_t kv_num_heads = 2;
+  const int64_t head_size = 4;
+  const int64_t v_head_size = 4;
+  const int64_t q_seq = 2;
+  const int64_t k_seq = 5;
+  const int64_t v_seq = 3;  // Mismatch with k_seq.
+
+  const std::vector<int64_t> q_shape = {batch_size, q_seq, q_num_heads * head_size};
+  const std::vector<int64_t> k_shape = {batch_size, k_seq, kv_num_heads * head_size};
+  const std::vector<int64_t> v_shape = {batch_size, v_seq, kv_num_heads * v_head_size};
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<float>("Q", q_shape, std::vector<float>(batch_size * q_seq * q_num_heads * head_size, 1.0f));
+  test.AddInput<float>("K", k_shape, std::vector<float>(batch_size * k_seq * kv_num_heads * head_size, 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(batch_size * v_seq * kv_num_heads * v_head_size, 1.0f));
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+
+  test.AddOutput<float>("Y", {batch_size, q_seq, q_num_heads * v_head_size},
+                        std::vector<float>(batch_size * q_seq * q_num_heads * v_head_size, 0.0f));
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent kv_sequence_length",
+           {kTensorrtExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider,
+            kCoreMLExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider,
+            kWebGpuExecutionProvider});
+}
 
 }  // namespace test
 }  // namespace onnxruntime

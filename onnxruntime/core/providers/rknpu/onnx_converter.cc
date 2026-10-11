@@ -1,6 +1,7 @@
 // Copyright 2020 rock-chips.com Inc.
 
 #include <fstream>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <string>
@@ -10,7 +11,9 @@
 #include <algorithm>
 #include <memory>
 #include <vector>
+#include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "onnx_converter.h"
 #include "node_attr_helper.h"
 
@@ -119,12 +122,28 @@ OnnxConverter::CreateRknnTensor(const std::string& name,
   return graph_->CreateTensor(attr, (void*)data);
 }
 
+static uint32_t ToRknpuDim(int64_t dim, const std::string& name) {
+  ORT_ENFORCE(dim >= 0 && dim <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+              "RKNPU: tensor dimension out of uint32_t range (name=", name, ", dim=", dim, ")");
+
+  return static_cast<uint32_t>(dim);
+}
+
+// Allocates a zero-initialized bias buffer for `count` elements of `element_size`
+// bytes, used when a Conv/Gemm node omits its bias input. SafeInt provides
+// overflow-checked size arithmetic (throws on size_t overflow); std::make_unique
+// zero-initializes and owns the buffer.
+static std::unique_ptr<uint8_t[]> AllocZeroedBias(size_t element_size, uint32_t count) {
+  const size_t num_bytes = SafeInt<size_t>(element_size) * count;
+  return std::make_unique<uint8_t[]>(num_bytes);
+}
+
 void OnnxConverter::HandleInitializer() {
   for (const auto& tensor : model_proto_.graph().initializer()) {
     const std::string name = tensor.name();
     std::vector<uint32_t> dims;
     for (const auto dim : tensor.dims()) {
-      dims.push_back(static_cast<uint32_t>(dim));
+      dims.push_back(ToRknpuDim(dim, name));
     }
     if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       const char* ptr = tensor.float_data().empty()
@@ -186,7 +205,7 @@ std::vector<std::shared_ptr<rk::nn::Tensor>> OnnxConverter::GetInputOfOnnxModel(
     for (const auto& dim : input.type().tensor_type().shape().dim()) {
       if (dim.value_case() ==
           ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue) {
-        shape.push_back(static_cast<uint32_t>(dim.dim_value()));
+        shape.push_back(ToRknpuDim(dim.dim_value(), input.name()));
       } else {
         throw std::invalid_argument(
             "The input of graph doesn't have dim_value");
@@ -267,7 +286,7 @@ Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
 
       for (const auto& dim : value_info.type().tensor_type().shape().dim()) {
         if (dim.has_dim_value()) {
-          shape.push_back(dim.dim_value());
+          shape.push_back(ToRknpuDim(dim.dim_value(), value_info.name()));
         } else {
           break;
         }
@@ -548,7 +567,7 @@ std::vector<std::vector<int>> OnnxConverter::GetSupportedNodes(
     const std::string name = tensor.name();
     std::vector<uint32_t> dims;
     for (const auto dim : tensor.dims()) {
-      dims.push_back(static_cast<uint32_t>(dim));
+      dims.push_back(ToRknpuDim(dim, name));
     }
     tensor_dims_[name] = dims;
   }
@@ -814,9 +833,6 @@ void OnnxConverter::Clear() {
   rk_tensors_.clear();
   shaper_.Clear();
 
-  for (const auto p : free_list_) {
-    if (p) free(p);
-  }
   free_list_.clear();
 }
 
@@ -944,9 +960,8 @@ void OnnxConverter::AddLayerConvImpl(const std::string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(float) * dim);
-    memset(ptr, 0, sizeof(float) * dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(float), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST);
@@ -1053,9 +1068,8 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(int32_t) * dim);
-    memset(ptr, 0, sizeof(int32_t) * dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(int32_t), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST,
@@ -1142,9 +1156,8 @@ void OnnxConverter::AddLayerDepthwiseConvImpl(
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(float) * dim);
-    memset(ptr, 0, sizeof(float) * dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(float), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST);
@@ -1376,9 +1389,8 @@ void OnnxConverter::AddLayerFC(const std::string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(float) * dim);
-    memset(ptr, 0, sizeof(float) * dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(float), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST);

@@ -347,7 +347,15 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
   T* mask_data = nullptr;
   bool delete_mask_data = false;
-  bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
+  // In the nonpad_kv_seqlen path, q_len=1 is external KV-cache decode with
+  // bottom-right alignment. The single query's causal frontier is the valid
+  // length, so nonpad masking alone leaves exactly all valid keys visible.
+  // Keep causal=false for that case to avoid applying the batch-shared
+  // upper-left overlay used by the no-nonpad path.
+  bool causal = parameters.is_causal &&
+                (parameters.has_nonpad_kv_seqlen
+                     ? parameters.q_sequence_length > 1
+                     : !(parameters.q_sequence_length == 1 && parameters.past_sequence_length > 0));
   // When nonpad_kv_seqlen is present the causal frontier is offset-aware
   // (bottom-right) and per-batch, so it cannot be baked into the batch-shared mask
   // buffer here; it is applied per-batch in the main loop below. Skip the top-left

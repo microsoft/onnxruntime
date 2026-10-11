@@ -16,11 +16,14 @@ limitations under the License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 
+#include <limits>
+
 #include <thrust/count.h>
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 
 #include "non_max_suppression_impl.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -241,15 +244,18 @@ Status NmsGpu(cudaStream_t stream,
   auto iptr = reinterpret_cast<std::uintptr_t>(d_sorted_boxes_float_ptr);
   ORT_ENFORCE((iptr & 15) == 0);
 
-  const int bit_mask_len =
-      (num_boxes + kNmsBoxesPerThread - 1) / kNmsBoxesPerThread;
-  int max_nms_mask_size = num_boxes * bit_mask_len;
+  const int bit_mask_len = num_boxes == 0 ? 0 : 1 + (num_boxes - 1) / kNmsBoxesPerThread;
+  const size_t max_nms_mask_size = SafeInt<size_t>(num_boxes) * bit_mask_len;
+  ORT_RETURN_IF_NOT(max_nms_mask_size <= static_cast<size_t>(std::numeric_limits<int>::max()),
+                    "CUDA NonMaxSuppression mask size exceeds the int index range.");
+  const int max_nms_mask_size_int = static_cast<int>(max_nms_mask_size);
 
-  IAllocatorUniquePtr<void> d_nms_mask_ptr{allocator(max_nms_mask_size * sizeof(int))};
+  IAllocatorUniquePtr<void> d_nms_mask_ptr{allocator(SafeInt<size_t>(max_nms_mask_size) * sizeof(int))};
   auto* d_nms_mask = static_cast<int*>(d_nms_mask_ptr.get());
 
-  int blocksPerGrid = (int)(ceil(static_cast<float>(max_nms_mask_size) / GridDim::maxThreadsPerBlock));
-  SetZero<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(max_nms_mask_size, d_nms_mask);
+  int blocksPerGrid = static_cast<int>((max_nms_mask_size + GridDim::maxThreadsPerBlock - 1) /
+                                       GridDim::maxThreadsPerBlock);
+  SetZero<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(max_nms_mask_size_int, d_nms_mask);
 
   int* d_delete_mask = d_nms_mask;
   int* h_selected_count = h_nkeep;

@@ -35,25 +35,38 @@ pass `--staging-dir` to use an explicit one (required when running with `--build
 At least one binary directory (or `--artifacts-dir` with matching subdirectories) must be provided. Platforms without
 a binary directory are skipped. Run `python pack_nuget.py --help` for the full list of options and their defaults.
 
+CI produces one package per RID and per CUDA major version, using `--package-id` to override the `<PackageId>` in the
+.csproj and `--required-platforms` to select the native binary that goes into it:
+
+| Package id | Runtime |
+|---|---|
+| `Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64` | `win-x64` |
+| `Microsoft.ML.OnnxRuntime.EP.Cuda13.win-arm64` | `win-arm64` |
+| `Microsoft.ML.OnnxRuntime.EP.Cuda13.linux-x64` | `linux-x64` |
+| `Microsoft.ML.OnnxRuntime.EP.Cuda13.linux-arm64` | `linux-arm64` |
+
+The CUDA 12 packages use the same names with `Cuda12` in place of `Cuda13`.
+
 ### Pack with a local build (single platform)
 
 ```powershell
 cd plugin-ep-cuda/csharp
 
 python pack_nuget.py --version 0.1.0-dev `
+  --package-id Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64 `
+  --required-platforms win_x64 `
   --binary-dir-win-x64 <path-to-win-x64-binaries>
 ```
 
-### Pack multiple platforms
+### Pack another RID
 
-Each `--binary-dir-*` points at the directory containing that platform's already-built native binaries. In practice
-the binaries are produced on different machines and combined in CI; locally you'd typically only set the one(s)
-you have available.
+Each `--binary-dir-*` points at the directory containing that platform's already-built native binaries. The internal
+Linux ARM64 platform name is `linux_aarch64`, while its canonical .NET RID and package suffix are `linux-arm64`.
 
 ```powershell
 python pack_nuget.py --version 0.1.0-dev `
-  --binary-dir-win-x64 <path-to-win-x64-binaries> `
-  --binary-dir-linux-x64 <path-to-linux-x64-binaries> `
+  --package-id Microsoft.ML.OnnxRuntime.EP.Cuda13.linux-arm64 `
+  --required-platforms linux_aarch64 `
   --binary-dir-linux-aarch64 <path-to-linux-aarch64-binaries>
 ```
 
@@ -67,7 +80,7 @@ pre-release version is derived from [`VERSION_NUMBER`](../../VERSION_NUMBER).
 The `.nupkg` is a ZIP file. To verify its contents:
 
 ```powershell
-Expand-Archive nuget_output/Microsoft.ML.OnnxRuntime.EP.Cuda.0.1.0-dev.nupkg `
+Expand-Archive nuget_output/Microsoft.ML.OnnxRuntime.EP.Cuda13.linux-arm64.0.1.0-dev.nupkg `
   -DestinationPath nuget_output/inspect -Force
 
 Get-ChildItem nuget_output/inspect -Recurse | Select-Object FullName
@@ -77,9 +90,7 @@ Expected layout inside the package:
 
 ```
 lib/netstandard2.0/Microsoft.ML.OnnxRuntime.EP.Cuda.dll
-runtimes/win-x64/native/onnxruntime_providers_cuda_plugin.dll
-runtimes/linux-x64/native/libonnxruntime_providers_cuda_plugin.so
-runtimes/linux-arm64/native/libonnxruntime_providers_cuda_plugin.so
+runtimes/linux-arm64/native/libonnxruntime_providers_cuda.so
 ```
 
 ## Testing the Package
@@ -101,7 +112,8 @@ $localFeed = (Resolve-Path nuget_output).Path
 "@ | Set-Content test/CudaEpNuGetTest/nuget.config
 
 # Build and run
-dotnet run --project test/CudaEpNuGetTest/CudaEpNuGetTest.csproj --configuration Release
+dotnet run --project test/CudaEpNuGetTest/CudaEpNuGetTest.csproj --configuration Release `
+  -p:OrtCudaPackageId=Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64
 ```
 
 A successful run prints `PASSED: All outputs match expected values.` and exits with code 0.
@@ -121,13 +133,14 @@ The NuGet packaging is integrated into the CUDA plugin pipeline:
 - **Pipeline:** `tools/ci_build/github/azure-pipelines/plugin-cuda-pipeline.yml`
 - **Packaging stage:** `tools/ci_build/github/azure-pipelines/stages/plugin-cuda-nuget-packaging-stage.yml`
 
-The CI stage downloads build artifacts from all enabled platform stages, invokes `pack_nuget.py`, ESRP-signs the
-package, and runs the test app on a GPU agent.
+The CI stage downloads build artifacts from all enabled platform stages, invokes `pack_nuget.py` once per RID,
+ESRP-signs the packages, and runs the test app on a GPU agent.
 
 ## Native Binaries Per Platform
 
 | RID | Required Files |
 |---|---|
-| `win-x64` | `onnxruntime_providers_cuda_plugin.dll` |
-| `linux-x64` | `libonnxruntime_providers_cuda_plugin.so` |
-| `linux-arm64` | `libonnxruntime_providers_cuda_plugin.so` |
+| `win-x64` | `onnxruntime_providers_cuda.dll` |
+| `win-arm64` | `onnxruntime_providers_cuda.dll` |
+| `linux-x64` | `libonnxruntime_providers_cuda.so` |
+| `linux-arm64` | `libonnxruntime_providers_cuda.so` |

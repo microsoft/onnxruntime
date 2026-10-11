@@ -161,6 +161,11 @@ export interface ComputeContext {
   readonly adapterInfo: AdapterInfo;
 
   /**
+   * gpu device limits
+   */
+  readonly deviceLimits: GPUSupportedLimits;
+
+  /**
    * stores the pointer to OpKernelContext
    */
   readonly opKernelContext: number;

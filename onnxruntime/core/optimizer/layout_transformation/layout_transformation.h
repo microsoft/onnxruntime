@@ -98,7 +98,8 @@ std::string MakeORTLayoutSensitiveOpId(std::string_view domain, std::string_view
 /// <param name="node">Node to modify</param>
 /// <param name="input_perms">Input permutations. nullptr entries indicate to skip corresponding input.</param>
 /// <param name="output_perms">Output permutations. nullptr entries indicate to skip corresponding output.</param>
-void WrapTransposesAroundNode(onnx_transpose_optimization::api::GraphRef& graph,
+/// <returns>False if an input cannot be safely transposed. The rejected input is not modified.</returns>
+bool WrapTransposesAroundNode(onnx_transpose_optimization::api::GraphRef& graph,
                               onnx_transpose_optimization::api::NodeRef& node,
                               const std::vector<const std::vector<int64_t>*>& input_perms,
                               const std::vector<const std::vector<int64_t>*>& output_perms);

@@ -3,6 +3,7 @@
 
 #include "crop.h"
 #include "crop_impl.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -50,18 +51,23 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   Tensor* Y = context->Output(0, TensorShape({N, C, bottomLimit - topBorder, rightLimit - leftBorder}));
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
-  fast_divmod fdm_YW(gsl::narrow_cast<int>(rightLimit - leftBorder));
-  fast_divmod fdm_YHW(gsl::narrow_cast<int>((bottomLimit - topBorder) * (rightLimit - leftBorder)));
+  const int output_height = SafeInt<int>(bottomLimit - topBorder);
+  const int output_width = SafeInt<int>(rightLimit - leftBorder);
+  fast_divmod fdm_YW(output_width);
+  fast_divmod fdm_YHW(SafeInt<int>(output_height) * output_width);
 
   CropImpl<CudaT>(
       Stream(context),
       reinterpret_cast<const CudaT*>(X->Data<T>()),
-      gsl::narrow_cast<int>(leftBorder),
-      gsl::narrow_cast<int>(topBorder),
-      gsl::narrow_cast<int>(W),
-      gsl::narrow_cast<int>(W * H),
+      SafeInt<int>(leftBorder),
+      SafeInt<int>(topBorder),
+      SafeInt<int>(W),
+      SafeInt<int>(W) * H,
       fdm_YW,
       fdm_YHW,
       reinterpret_cast<CudaT*>(Y->MutableData<T>()),

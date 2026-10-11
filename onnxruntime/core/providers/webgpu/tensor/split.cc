@@ -8,66 +8,39 @@
 namespace onnxruntime {
 namespace webgpu {
 
-namespace {
-
-// Helper function to calculate the output index based on the input index and the sizes of the splits.
-void CalculateOutputIndex(OStringStream& os, size_t output_count) {
-  os << "fn calculate_output_index(index: u32) -> u32 {\n"
-     << "  for (var i: u32 = 0u; i < " << output_count << "u; i += 1u ) {\n"
-     << "    if (index < " << GetElementAt("uniforms.sizes_in_split_axis", "i", output_count) << ") {\n"
-     << "      return i;\n"
-     << "    }\n"
-     << "  }\n"
-     << "  return " << output_count << "u;\n"
-     << "}\n";
-}
-
-// Helper function to write the buffer data for each output.
-void WriteBufferData(OStringStream& os, const ShaderVariableHelper& input,
-                     gsl::span<const ShaderVariableHelper*> outputs) {
-  os << "fn write_buffer_data(output_number: u32, global_idx: u32,  indices: output_0_indices_t) {\n";
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    const auto buffer_write = outputs[i]->SetByIndices("indices", input.GetByOffset("global_idx"));
-    if (outputs.size() == 1) {
-      os << buffer_write << "\n";
-    } else if (i == 0) {
-      os << "  if (output_number == 0u) { " << buffer_write << " }\n";
-    } else if (i == outputs.size() - 1) {
-      os << "  else { " << buffer_write << " }\n";
-    } else {
-      os << "  else if (output_number == " << i << "u) { " << buffer_write << " }\n";
-    }
-  }
-  os << "}\n";
-}
-
-}  // namespace
-
 Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  size_t output_count = Outputs().size();
-  std::vector<const ShaderVariableHelper*> outputs;
-  outputs.reserve(output_count);
-  for (size_t i = 0; i < output_count; ++i) {
+  InlinedVector<const ShaderVariableHelper*> outputs;
+  outputs.reserve(output_count_);
+  for (size_t i = 0; i < output_count_; ++i) {
     outputs.push_back(
-        &shader.AddOutput("output_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
+        &shader.AddOutput("output_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias));
   }
 
-  // Add implementation of fn calculate_output_index.
-  CalculateOutputIndex(shader.AdditionalImplementation(), output_count);
-  // Add implementation of fn write_buffer_data.
-  WriteBufferData(shader.AdditionalImplementation(), input, outputs);
-
+  // Splitting along `axis` cuts the input into `outer` identical blocks of `total_segment_elements`,
+  // and each output takes one contiguous run out of every block. So the flat offset alone decides
+  // both which output an element belongs to and where it lands, with no indices arithmetic.
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
-                            << "  var indices = " << input.OffsetToIndices("global_idx") << ";\n"
-                            << "  var index = " << input.IndicesGet("indices", axis_) << ";\n"
-                            << "  let output_number = calculate_output_index(index);\n"
-                            << "  if (output_number != 0u) {\n"
-                            << "    index -= " << GetElementAt("uniforms.sizes_in_split_axis", "output_number - 1u", output_count) << ";\n"
-                            << "    " << input.IndicesSet("indices", axis_, "index") << "\n"
-                            << "  }\n"
-                            << "  write_buffer_data(output_number, global_idx, indices);\n";
+                            << "  let outer_index = global_idx / uniforms.total_segment_elements;\n"
+                            << "  let within_outer = global_idx % uniforms.total_segment_elements;\n"
+                            << "  var segment_start = 0u;\n";
+
+  for (size_t i = 0; i < output_count_; ++i) {
+    const std::string segment_size = GetElementAt("uniforms.segment_sizes", i, output_count_);
+    shader.MainFunctionBody()
+        << "  {\n"
+        << "    let segment_size = " << segment_size << ";\n"
+        << "    if (within_outer < segment_start + segment_size) {\n"
+        << "      "
+        << outputs[i]->SetByOffset("outer_index * segment_size + within_outer - segment_start",
+                                   input.GetByOffset("global_idx"))
+        << "\n"
+        << "      return;\n"
+        << "    }\n"
+        << "    segment_start += segment_size;\n"
+        << "  }\n";
+  }
 
   return Status::OK();
 }
@@ -128,27 +101,41 @@ Status Split::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  SplitProgram program{static_cast<uint32_t>(axis)};
-  program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank});
-
-  // Only add non-empty outputs to the program
+  // Each output takes `split_size * inner_size` contiguous elements out of every outer block, so
+  // vec4 is usable whenever every one of those runs is a whole number of vec4s. Otherwise the same
+  // program runs with a single component.
+  const int64_t inner_size = input_shape.SizeFromDimension(narrow<size_t>(axis) + 1);
+  bool use_vec4 = true;
   for (int output_idx : non_empty_output_indices) {
-    program.AddOutput({all_outputs[output_idx], ProgramTensorMetadataDependency::Rank});
+    if ((split_sizes[output_idx] * inner_size) % 4 != 0) {
+      use_vec4 = false;
+      break;
+    }
+  }
+  const int components = use_vec4 ? 4 : 1;
+
+  InlinedVector<uint32_t> segment_sizes;
+  segment_sizes.reserve(non_empty_output_indices.size());
+  uint32_t total_segment_elements = 0;
+  for (int output_idx : non_empty_output_indices) {
+    const uint32_t segment_size = narrow<uint32_t>((split_sizes[output_idx] * inner_size) / components);
+    segment_sizes.push_back(segment_size);
+    total_segment_elements += segment_size;
   }
 
-  uint32_t previous_sum = 0;
-  std::vector<uint32_t> sizes_in_split_axis;
-  // sizes_in_split_axis are the cumulative sizes of the NON-EMPTY splits in the split axis.
-  for (int output_idx : non_empty_output_indices) {
-    previous_sum += onnxruntime::narrow<uint32_t>(split_sizes[output_idx]);
-    sizes_in_split_axis.push_back(previous_sum);
-  }
+  const uint32_t element_count = input_size / components;
 
-  program
-      .SetDispatchGroupSize((input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(axis))
-      .AddUniformVariables(
-          {input_size, gsl::span<const uint32_t>(sizes_in_split_axis.data(), sizes_in_split_axis.size())});
+  SplitProgram program{non_empty_output_indices.size()};
+  program.AddInput({input, ProgramTensorMetadataDependency::Type, TensorShape({element_count}), components});
+  for (int output_idx : non_empty_output_indices) {
+    Tensor* output = all_outputs[output_idx];
+    program.AddOutput({output, ProgramTensorMetadataDependency::Type,
+                       TensorShape({output->Shape().Size() / components}), components});
+  }
+  program.SetDispatchGroupSize((element_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .CacheHint(non_empty_output_indices.size(), components)
+      .AddUniformVariables({element_count, total_segment_elements,
+                            gsl::span<const uint32_t>(segment_sizes.data(), segment_sizes.size())});
   return context.RunProgram(program);
 }
 

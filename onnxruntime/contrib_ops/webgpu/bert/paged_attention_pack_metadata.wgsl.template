@@ -1,0 +1,17 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Pack cumulative sequence lengths and past lengths for one D-to-H download.
+// output = [cumulative_sequence_length[0..B], past_seqlens[0..B)).
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  output.setByOffset(global_idx, cumulative_sequence_length.getByOffset(global_idx));
+  if (global_idx < uniforms.batch_size) {
+    output.setByOffset(uniforms.batch_size + 1u + global_idx, past_seqlens.getByOffset(global_idx));
+  }
+}

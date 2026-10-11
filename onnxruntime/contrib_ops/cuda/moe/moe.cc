@@ -5,9 +5,14 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "core/framework/kernel_pilot.h"
+#endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 
 #include <mutex>
 
@@ -146,6 +151,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                                     static_cast<int64_t>(this->block_size_), kernel_activation_type,
                                     false, true, parallelism_config, sm);
 
+    // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
+    // allocates/frees scratch from the temp allocator on the compute stream. All of these are
+    // illegal while that stream is being captured into a CUDA graph; performing them corrupts the
+    // capture. During capture we therefore skip profiling and reuse a config cached from an earlier
+    // non-capturing run, falling back to the default tactic when nothing is cached.
+    const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
+
     onnxruntime::llm::nvinfer::DataType dtype = onnxruntime::llm::nvinfer::DataType::kFLOAT;
     if constexpr (std::is_same_v<CudaT, half>) {
       dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
@@ -158,23 +170,38 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     // GEMM 1
     MoeGemmId id1(static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.hidden_size), dtype, MoeGemmId::GemmType::Gemm1);
-    {
+    if (!stream_is_capturing) {
       // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
       // (small M) and prefill (large M) each profile and select their own best tile shape.
       GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                     static_cast<int64_t>(moe_params.inter_size), static_cast<int64_t>(moe_params.hidden_size));
-      mGemmProfiler.profileTactics(&moe_runner, dims, id1);
+      mGemmProfiler.profileTactics(&moe_runner, dims, id1, stream);
     }
     auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
 
     // GEMM 2
     MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, MoeGemmId::GemmType::Gemm2);
-    {
+    if (!stream_is_capturing) {
       GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                     static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-      mGemmProfiler.profileTactics(&moe_runner, dims, id2);
+      mGemmProfiler.profileTactics(&moe_runner, dims, id2, stream);
     }
     auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
+
+    // Capture-safe fallback: if profiling was skipped (graph capture) and no tuned config was
+    // cached from a prior non-capturing run, use the runner's default tactic instead of leaving
+    // the config unset.
+    if (!config1 || !config2) {
+      auto tactics = moe_runner.getTactics();
+      if (!tactics.empty()) {
+        if (!config1) {
+          config1 = tactics[0];
+        }
+        if (!config2) {
+          config2 = tactics[0];
+        }
+      }
+    }
 
     moe_runner.setTactic(config1, config2);
   }
@@ -200,6 +227,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Perform Softmax + TopK
   bool is_fp16 = input->IsDataType<MLFloat16>();
+  bool is_bf16 = input->IsDataType<BFloat16>();
 
   if (use_sparse_mixer_) {
     ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
@@ -212,6 +240,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           expert_scales,
           expert_indices,
           unpermuted_row_to_permuted_row,  // source_rows
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          stream);
+    } else if (is_bf16) {
+      LaunchSparseMixerTop2(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          unpermuted_row_to_permuted_row,
           static_cast<int>(moe_params.num_rows),
           static_cast<int>(moe_params.num_experts),
           stream);
@@ -237,6 +274,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(k_),
           normalize_routing_weights_,
           stream);
+    } else if (is_bf16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
     } else {
       LaunchSoftmaxTopK(
           reinterpret_cast<const float*>(router_probs->DataRaw()),
@@ -249,6 +296,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           stream);
     }
   }
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(expert_indices, expanded_rows, stream));
+  }
+#endif
 
   Tensor* output = context->Output(0, input->Shape());
 
@@ -332,7 +388,14 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         params.limit = swiglu_limit_;
         return params;
       }(),
+      onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{},
       stream);
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+  }
+#endif
 
   return Status::OK();
 }

@@ -185,7 +185,7 @@ bool MatchEpDevice(const EpDeviceView& ep,
     if (target_specifier.empty()) {
       if (ep.device_type == OrtDevice::GPU) return true;
       // Heuristic fallback for common GPU EPs if hardware info is missing
-      return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider ||
+      return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaExecutionProviderPluginAlias ||
              ep.ep_name == kDmlExecutionProvider;
     }
     // "gpu:<vendor>" or "gpu:<index>"
@@ -210,7 +210,7 @@ bool MatchEpDevice(const EpDeviceView& ep,
           ep.vendor_id == OrtDevice::VendorIds::INTEL) return true;
       // Heuristic: gpu:nvidia -> CUDA
       if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
-          (ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider)) return true;
+          (ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaExecutionProviderPluginAlias)) return true;
     }
     return false;
   }
@@ -232,7 +232,7 @@ bool MatchEpDevice(const EpDeviceView& ep,
   }
   // "cuda"
   if (CaseInsensitiveCompare(target_type_str, "cuda")) {
-    return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider;
+    return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaExecutionProviderPluginAlias;
   }
   // "dml"
   if (CaseInsensitiveCompare(target_type_str, "dml")) {

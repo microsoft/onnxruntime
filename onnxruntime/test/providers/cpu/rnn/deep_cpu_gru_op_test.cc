@@ -3,16 +3,37 @@
 
 #include "gtest/gtest.h"
 
+#include <algorithm>
+#include <cctype>
 #include <iterator>
 #include <limits>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {
+
+TEST(GRUTest, RuntimeScalarInputRejected) {
+  OpTester test("GRU", 14);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("hidden_size", int64_t{1});
+  test.AddInput<float>("X", {}, {1.0f});
+  test.AddInput<float>("W", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("R", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("Y", {1, 1, 1, 1}, {0.0f});
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input X must have 3 dimensions only", {}, nullptr,
+           &execution_providers);
+}
 
 #ifndef ORT_NO_EXCEPTIONS
 TEST(GRUTest, CalculateBufferElementCountThrowsOnOverflow) {
@@ -42,8 +63,10 @@ static void RunGruTest(const std::vector<float>& X_data,
                        // copy the following vectors as we may modify them
                        std::vector<string> activations = default_activations,
                        std::vector<float> activation_alphas = {},
-                       std::vector<float> activation_betas = {}) {
-  OpTester test("GRU");
+                       std::vector<float> activation_betas = {},
+                       int64_t layout = 0,
+                       bool webgpu_only = false) {
+  OpTester test("GRU", layout == 0 ? 7 : 14);
 
   test.AddShapeToTensorData();
 
@@ -65,11 +88,14 @@ static void RunGruTest(const std::vector<float>& X_data,
   test.AddAttribute("hidden_size", hidden_size);
   // test.AddAttribute<int64_t>("output_sequence", output_sequence);
   test.AddAttribute<int64_t>("linear_before_reset", linear_before_reset);
+  if (layout != 0)
+    test.AddAttribute<int64_t>("layout", layout);
   // if clip is a very big number (usually it is default value), don't set the clip
   if (clip < 999.f)
     test.AddAttribute<float>("clip", clip);
 
-  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<int64_t> X_dims = layout == 0 ? std::vector<int64_t>{seq_length, batch_size, input_size}
+                                            : std::vector<int64_t>{batch_size, seq_length, input_size};
   std::vector<int64_t> W_dims = {num_directions, 3 * hidden_size, input_size};
   std::vector<int64_t> R_dims = {num_directions, 3 * hidden_size, hidden_size};
 
@@ -88,30 +114,54 @@ static void RunGruTest(const std::vector<float>& X_data,
   }
 
   if (initial_h_data) {
-    std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
+    std::vector<int64_t> initial_h_dims = layout == 0 ? std::vector<int64_t>{num_directions, batch_size, hidden_size}
+                                                      : std::vector<int64_t>{batch_size, num_directions, hidden_size};
     test.AddInput<float>("initial_h", initial_h_dims, *initial_h_data);
   }
 
   if (output_sequence != 0) {
-    std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+    std::vector<int64_t> Y_dims = layout == 0 ? std::vector<int64_t>{seq_length, num_directions, batch_size, hidden_size}
+                                              : std::vector<int64_t>{batch_size, seq_length, num_directions, hidden_size};
     test.AddOutput<float>("Y", Y_dims, Y_data);
   } else {
     test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_h_data.empty()) {
-    std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
+    std::vector<int64_t> Y_h_dims = layout == 0 ? std::vector<int64_t>{num_directions, batch_size, hidden_size}
+                                                : std::vector<int64_t>{batch_size, num_directions, hidden_size};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
   } else {
     test.AddOptionalOutputEdge<float>();
   }
 
-// TensorRT, OpenVINO failed on GRU tests
+  // TensorRT, OpenVINO failed on GRU tests
+  std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider};
 #if defined(USE_OPENVINO)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  excluded_providers.insert(kOpenVINOExecutionProvider);
 #endif
+  // The WebGPU GRU kernel only implements the Sigmoid/Tanh/Relu activations; skip it for others.
+  auto webgpu_supports = [](const std::string& a) {
+    std::string l;
+    for (char c : a) l += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return l == "sigmoid" || l == "tanh" || l == "relu";
+  };
+  if (!std::all_of(activations.cbegin(), activations.cend(), webgpu_supports)) {
+    excluded_providers.insert(kWebGpuExecutionProvider);
+  }
+  if (webgpu_only) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep == nullptr) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(webgpu_ep));
+    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  }
 }
 
 void DefaultActivationsSimpleWeightsNoBias(std::string direction,

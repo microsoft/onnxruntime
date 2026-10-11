@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdarg>
+#include <string_view>
 #include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/code_location.h"
@@ -41,7 +42,7 @@ class Capture {
     return stream_;
   }
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 // add SAL annotation for printf format string. requires Code Analysis to run to validate usage.
 #define msvc_printf_check _Printf_format_string_
 #define __attribute__(x)  // Disable for MSVC. Supported by GCC and CLang.
@@ -97,6 +98,14 @@ class Capture {
   std::string Message() const noexcept {
     return stream_.str();
   }
+
+#ifdef _WIN32
+  // Only the Windows ETW sink needs this API; Apple libc++ does not provide stream::view().
+  // The view remains valid until the capture stream is modified or destroyed.
+  std::string_view MessageView() const noexcept {
+    return stream_.view();
+  }
+#endif
 
   ~Capture();
 

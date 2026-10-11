@@ -6,6 +6,7 @@
 #   python generate_moe_kernels.py -a "80;90" -o ./moe_gemm/launchers
 
 import argparse
+import glob
 import os
 from itertools import product
 
@@ -333,18 +334,30 @@ if __name__ == "__main__":
     if has_arch(80) or has_arch(90):  # SM90 also uses SM80 kernels for non-TMA path
         operations = generate_sm80_moe_operations()
 
-        # Group by element type for separate files to reduce compile time
+        # Split by (element type, tile shape) into separate files. Each SM80 template
+        # instantiation is a full CUTLASS GEMM kernel that nvcc compiles serially within
+        # a translation unit, so packing all of them into one file per dtype creates a
+        # long single-file critical path. Emitting one file per tile shape lets the build
+        # system (Ninja) compile these kernels in parallel and shrinks the slowest object.
         groups = {}
         for op in operations:
-            key = op["element_type"]
-            if key not in groups:
-                groups[key] = []
-            groups[key].append(op)
+            key = (op["element_type"], op["tile_m"], op["tile_n"], op["tile_k"])
+            groups.setdefault(key, []).append(op)
 
-        for dtype, ops in groups.items():
-            output_file = os.path.join(output_dir, f"fused_moe_gemm_sm80_{dtype}.generated.cu")
+        current_files = set()
+        for (dtype, tile_m, tile_n, tile_k), ops in groups.items():
+            file_name = f"fused_moe_gemm_sm80_{dtype}_m{tile_m}_n{tile_n}_k{tile_k}.generated.cu"
+            current_files.add(file_name)
+            output_file = os.path.join(output_dir, file_name)
             content = get_sm80_file_content(ops, 80)
             write_file(content, output_file)
+
+        # Remove stale SM80 generated files (e.g. the old monolithic per-dtype files or
+        # split files from a previous tile configuration) so they are not compiled.
+        for stale in glob.glob(os.path.join(output_dir, "fused_moe_gemm_sm80_*.generated.cu")):
+            if os.path.basename(stale) not in current_files:
+                os.remove(stale)
+                print(f"Removed stale {stale}")
 
     # Generate SM90 TMA Warp Specialized Grouped GEMM kernels
     if has_arch(90):

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <array>
 
+#include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_experimental_c_api.h"

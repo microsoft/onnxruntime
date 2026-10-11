@@ -14,7 +14,7 @@ Usage:
     python tools/ci_build/cuda_plugin_parity_report.py [--repo-root /path/to/onnxruntime]
 
     # Runtime inquiry mode:
-    python tools/ci_build/cuda_plugin_parity_report.py --runtime [--plugin-ep-lib /path/to/libonnxruntime_providers_cuda_plugin.so]
+    python tools/ci_build/cuda_plugin_parity_report.py --runtime [--plugin-ep-lib /path/to/libonnxruntime_providers_cuda.so]
 """
 
 import argparse
@@ -659,8 +659,8 @@ def main():
     )
     parser.add_argument(
         "--plugin-ep-name",
-        default="CudaPluginExecutionProvider",
-        help="Name of the plugin EP (default: CudaPluginExecutionProvider)",
+        default="CUDAExecutionProvider",
+        help="Name of the plugin EP (default: CUDAExecutionProvider)",
     )
     parser.add_argument(
         "--plugin-ep-lib",
@@ -704,7 +704,7 @@ def _auto_detect_plugin_lib(repo_root):
         repo_root = script_dir.parent.parent
 
     repo_root = Path(repo_root)
-    lib_name = "libonnxruntime_providers_cuda_plugin.so"
+    lib_name = "libonnxruntime_providers_cuda.so"
 
     # Check ORT_CUDA_PLUGIN_PATH env var first
     env_path = os.environ.get("ORT_CUDA_PLUGIN_PATH")

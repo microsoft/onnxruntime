@@ -8,8 +8,6 @@ import os
 import tarfile
 import zipfile
 
-import requests
-
 TFMODELS = {
     "bert-base-uncased": (
         "bert",
@@ -57,6 +55,8 @@ TFMODELS = {
 
 
 def download_compressed_file(tf_ckpt_url, ckpt_dir):
+    import requests  # noqa: PLC0415
+
     r = requests.get(tf_ckpt_url)
     compressed_file_name = tf_ckpt_url.split("/")[-1]
     compressed_file_dir = os.path.join(ckpt_dir, compressed_file_name)
@@ -159,6 +159,8 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
         return get_ckpt_prefix_path(ckpt_dir)
 
     else:
+        import requests  # noqa: PLC0415
+
         for filename in [
             "checkpoint",
             "model.ckpt.data-00000-of-00001",

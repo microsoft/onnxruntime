@@ -14,11 +14,12 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=cffconvert-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     steps:
       - name: Check out a copy of the repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Check whether the citation metadata from CITATION.cff is valid
-        uses: citation-file-format/cffconvert-github-action@2.0.0
+        uses: citation-file-format/cffconvert-github-action@4cf11baa70a673bfdf9dad0acc7ee33b3f4b6084 # 2.0.0
         with:
           args: "--validate"

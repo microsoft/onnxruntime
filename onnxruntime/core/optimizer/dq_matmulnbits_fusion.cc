@@ -12,6 +12,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/matmul_nbits_sharing_identity.h"
 #include "core/optimizer/utils.h"
 
 #include <cmath>
@@ -447,7 +448,6 @@ std::vector<DirectDQMatch> CollectDirectDQMatches(
   return direct_matches;
 }
 
-// ---------------------------------------------------------------------------
 // Pattern 1 rewriting: DQ+Reshape+Transpose+[Cast]+MatMul/Gemm -> MatMulNBits
 // ---------------------------------------------------------------------------
 
@@ -569,6 +569,10 @@ void ApplyReshapeTransposeFusions(
       zp_mnb_tp.emplace(utils::TensorToTensorProto(*zp_dst, zp_dst_name, true));
     }
 
+    // Cross-session sharing identity for the generated weight group; computed before the tensors move.
+    const std::string share_id =
+        ComputeMatMulNBitsSharingId(weight_dst, scale_dst, zp_dst, N, K, block_size, /*bits*/ 4, accuracy_level);
+
     NodeAttributes mnb_attrs;
     utils::SetNodeAttribute(utils::MakeAttribute("K", K), mnb_attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("N", N), mnb_attrs);
@@ -578,7 +582,10 @@ void ApplyReshapeTransposeFusions(
 
     std::vector<NodeArg*> mnb_inputs;
     mnb_inputs.push_back(const_cast<NodeArg*>(mm_node->InputDefs()[0]));
-    mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst)));
+    NodeArg& b_weight_arg = graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst));
+    // Tag the generated B weight for cross-session pre-pack sharing.
+    graph.SetSharedPrepackInitializerId(b_weight_arg.Name(), share_id);
+    mnb_inputs.push_back(&b_weight_arg);
     mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, scale_mnb_tp, std::move(scale_dst)));
     if (zp_mnb_tp) {
       mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, zp_mnb_tp.value(), std::move(*zp_dst)));
@@ -749,6 +756,10 @@ void ApplyDirectDQFusions(
       zp_mnb_tp.emplace(utils::TensorToTensorProto(*zp_dst, zp_dst_name, true));
     }
 
+    // Cross-session sharing identity for the generated weight group; computed before the tensors move.
+    const std::string share_id =
+        ComputeMatMulNBitsSharingId(weight_dst, scale_dst, zp_dst, N, K, block_size, /*bits*/ 4, accuracy_level);
+
     NodeAttributes mnb_attrs;
     utils::SetNodeAttribute(utils::MakeAttribute("K", K), mnb_attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("N", N), mnb_attrs);
@@ -758,7 +769,10 @@ void ApplyDirectDQFusions(
 
     std::vector<NodeArg*> mnb_inputs;
     mnb_inputs.push_back(const_cast<NodeArg*>(mm_node->InputDefs()[0]));
-    mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst)));
+    NodeArg& b_weight_arg = graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst));
+    // Tag the generated B weight for cross-session pre-pack sharing.
+    graph.SetSharedPrepackInitializerId(b_weight_arg.Name(), share_id);
+    mnb_inputs.push_back(&b_weight_arg);
     mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, scale_mnb_tp, std::move(scale_dst)));
     if (zp_mnb_tp) {
       mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, zp_mnb_tp.value(), std::move(*zp_dst)));

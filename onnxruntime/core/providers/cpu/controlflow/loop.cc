@@ -273,12 +273,15 @@ static Status ConcatenateCpuOutput(void* /*stream*/,
                                    void* output, size_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
-  size_t bytes_per_iteration = first_output.SizeInBytes();
+  const bool is_string = first_output.IsDataTypeString();
+  const size_t bytes_per_iteration = first_output.SizeInBytes();
+  const int64_t elements_per_iteration = first_output.Shape().Size();
 
-  // we can't easily use a C++ template for the tensor element type,
-  // so use a span for some protection but work in bytes
-  gsl::span<std::byte> output_span = gsl::make_span<std::byte>(static_cast<std::byte*>(output),
-                                                               output_size_in_bytes);
+  // for the non-string path, create the output span once outside the loop
+  gsl::span<std::byte> output_span;
+  if (!is_string) {
+    output_span = gsl::make_span<std::byte>(static_cast<std::byte*>(output), output_size_in_bytes);
+  }
 
   for (size_t i = 0, num_iterations = per_iteration_output.size(); i < num_iterations; ++i) {
     auto& ort_value = per_iteration_output[i];
@@ -290,10 +293,18 @@ static Status ConcatenateCpuOutput(void* /*stream*/,
                              " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
-    auto src = gsl::make_span<const std::byte>(static_cast<const std::byte*>(iteration_data.DataRaw()),
-                                               bytes_per_iteration);
-    auto dst = output_span.subspan(i * bytes_per_iteration, bytes_per_iteration);
-    gsl::copy(src, dst);
+    if (is_string) {
+      // std::string is not trivially copyable — move from the per-iteration tensors since they are
+      // discarded after concatenation
+      auto src = ort_value.GetMutable<Tensor>()->MutableDataAsSpan<std::string>();
+      auto* dst_begin = static_cast<std::string*>(output) + i * elements_per_iteration;
+      std::move(src.begin(), src.end(), dst_begin);
+    } else {
+      auto src = gsl::make_span<const std::byte>(static_cast<const std::byte*>(iteration_data.DataRaw()),
+                                                 bytes_per_iteration);
+      auto dst = output_span.subspan(i * bytes_per_iteration, bytes_per_iteration);
+      gsl::copy(src, dst);
+    }
   }
 
   return Status::OK();

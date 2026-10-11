@@ -288,6 +288,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* /* resource_accountant */) const override;
 
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer&) const override {
+    return dump_ep_context_model_ && ep_context_embed_mode_ == 0 ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                                                 : OrtEpContextDataCallbackSupportFlags_NONE;
+  }
+
   int GetDeviceId() const { return device_id_; }
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
@@ -315,7 +320,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
                                     std::string& weight_stripped_engine_cath_path,
-                                    bool path_check,
                                     const void* onnx_model_bytestream,
                                     size_t onnx_model_bytestream_size,
                                     const void* onnx_external_data_bytestream,

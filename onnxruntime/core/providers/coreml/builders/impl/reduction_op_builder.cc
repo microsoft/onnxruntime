@@ -60,7 +60,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   NodeAttrHelper helper(node);
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     const auto& axes_tensor = *model_builder.GetConstantInitializer(input_defs[1]->Name());
-    Initializer axes_initializer(model_builder.GetGraphViewer().GetGraph(), axes_tensor);
+    Initializer axes_initializer(model_builder.GetGraphViewer().GetGraph(), axes_tensor,
+                                 model_builder.GetGraphViewer().ModelPath());
     int64_t* data = axes_initializer.data<int64_t>();
     int64_t size = axes_initializer.size();
 

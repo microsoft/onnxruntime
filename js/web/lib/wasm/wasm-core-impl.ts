@@ -358,9 +358,14 @@ export const createSession = async (
       const loadingPromises = [];
       for (const file of options.externalData) {
         const path = typeof file === 'string' ? file : file.path;
+        const data = typeof file === 'string' ? file : file.data;
+        if (BUILD_DEFS.ENABLE_JSPI && data instanceof Blob) {
+          wasm.mountExternalData(path, data);
+          continue;
+        }
         loadingPromises.push(
-          loadFile(typeof file === 'string' ? file : file.data).then((data) => {
-            wasm.mountExternalData(path, data);
+          loadFile(data).then((fileData) => {
+            wasm.mountExternalData(path, fileData);
           }),
         );
       }
@@ -562,6 +567,56 @@ export const releaseSession = (sessionId: number): void => {
   activeSessions.delete(sessionId);
 };
 
+// map from LoRA adapter ID to native LoRA adapter handle. The native handle is not used as the ID, because the
+// memory of a released adapter can be reused by a new one.
+const loraAdapters = new Map<number, number>();
+let nextLoraAdapterId = 1;
+// number of runs in progress that use each LoRA adapter. An adapter cannot be released while it is in use.
+const loraAdapterRunCounts = new Map<number, number>();
+
+/**
+ * create a LoRA adapter from a buffer in the LoRA adapter format.
+ *
+ * @param adapterData - the LoRA adapter data.
+ * @returns the LoRA adapter ID
+ */
+export const createLoraAdapter = (adapterData: Uint8Array): number => {
+  const wasm = getInstance();
+  const dataOffset = wasm._malloc(adapterData.byteLength);
+  if (dataOffset === 0) {
+    throw new Error(`Can't create a LoRA adapter. failed to allocate a buffer of size ${adapterData.byteLength}.`);
+  }
+
+  try {
+    wasm.HEAPU8.set(adapterData, dataOffset);
+    const adapterHandle = wasm._OrtCreateLoraAdapter(dataOffset, adapterData.byteLength);
+    if (adapterHandle === 0) {
+      checkLastError("Can't create a LoRA adapter.");
+    }
+    const adapterId = nextLoraAdapterId++;
+    loraAdapters.set(adapterId, adapterHandle);
+    return adapterId;
+  } finally {
+    // the data is copied by ORT, so it can be freed here.
+    wasm._free(dataOffset);
+  }
+};
+
+export const releaseLoraAdapter = (adapterId: number): void => {
+  const wasm = getInstance();
+  const adapterHandle = loraAdapters.get(adapterId);
+  if (adapterHandle === undefined) {
+    throw new Error(`cannot release LoRA adapter. invalid adapter id: ${adapterId}`);
+  }
+  if (loraAdapterRunCounts.has(adapterId)) {
+    throw new Error(`cannot release LoRA adapter. the adapter is used by a run in progress. adapter id: ${adapterId}`);
+  }
+  if (wasm._OrtReleaseLoraAdapter(adapterHandle) !== 0) {
+    checkLastError("Can't release LoRA adapter.");
+  }
+  loraAdapters.delete(adapterId);
+};
+
 export const prepareInputOutputTensor = async (
   tensor: TensorMetadata | null,
   tensorHandles: number[],
@@ -702,6 +757,7 @@ export const run = async (
   outputIndices: number[],
   outputTensors: Array<TensorMetadata | null>,
   options: InferenceSession.RunOptions,
+  loraAdapterIds: readonly number[] = [],
 ): Promise<TensorMetadata[]> => {
   const wasm = getInstance();
   const ptrSize = wasm.PTR_SIZE;
@@ -715,6 +771,24 @@ export const run = async (
   const ioBindingState = session[3];
   const enableGraphCapture = session[4];
   const inputOutputBound = session[5];
+
+  const loraAdapterHandles: number[] = [];
+  if (loraAdapterIds.length > 0) {
+    // ORT does not apply active LoRA adapters in RunWithBinding(). Fail instead of silently ignoring them.
+    if (ioBindingState) {
+      throw new Error(
+        'LoRA adapters are not supported for a session that uses IO binding, e.g. when an output is preferred to be ' +
+          'on GPU, or when the WebNN execution provider produces an output.',
+      );
+    }
+    for (const adapterId of loraAdapterIds) {
+      const adapterHandle = loraAdapters.get(adapterId);
+      if (adapterHandle === undefined) {
+        throw new Error(`cannot run inference. invalid LoRA adapter id: ${adapterId}`);
+      }
+      loraAdapterHandles.push(adapterHandle);
+    }
+  }
 
   const inputCount = inputIndices.length;
   const outputCount = outputIndices.length;
@@ -734,7 +808,10 @@ export const run = async (
   const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
   try {
-    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
+    for (const adapterId of loraAdapterIds) {
+      loraAdapterRunCounts.set(adapterId, (loraAdapterRunCounts.get(adapterId) ?? 0) + 1);
+    }
+    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options, loraAdapterHandles);
 
     TRACE_EVENT_BEGIN('wasm prepareInputOutputTensor');
     // create input tensors
@@ -1097,6 +1174,15 @@ export const run = async (
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
     runOptionsAllocs.forEach((p) => wasm._free(p));
+
+    for (const adapterId of loraAdapterIds) {
+      const count = loraAdapterRunCounts.get(adapterId)! - 1;
+      if (count === 0) {
+        loraAdapterRunCounts.delete(adapterId);
+      } else {
+        loraAdapterRunCounts.set(adapterId, count);
+      }
+    }
   }
 };
 

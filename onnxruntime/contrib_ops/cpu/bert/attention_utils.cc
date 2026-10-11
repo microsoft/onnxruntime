@@ -197,6 +197,9 @@ Status MaybeTransposeToBNSHAndAddBias(OpKernelContext* context, AllocatorPtr all
   gsl::span<const int64_t> new_dims_span{new_dims};
   TensorShape v_BNLH(new_dims_span);
   Tensor::InitOrtValue(element_type, v_BNLH, allocator, out);
+  if (batch_size == 0 || sequence_length == 0) {
+    return Status::OK();
+  }
   if (bias == nullptr) {
     std::unique_ptr<Tensor> reshaped;
     if (in->Shape().GetDims().size() == 3) {

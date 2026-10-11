@@ -72,7 +72,9 @@ Status GatherNDOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
                           GetShape(*input_defs[1], indices_shape, logger) && !indices_shape.empty(),
                       "GatherND: failed to get data/indices shape");
     const size_t depth = static_cast<size_t>(indices_shape.back());
-    const Initializer unpacked(*model_builder.GetConstantInitializer(input_defs[1]->Name()));
+    const Initializer unpacked(model_builder.GetGraphViewer().GetGraph(),
+                               *model_builder.GetConstantInitializer(input_defs[1]->Name()),
+                               model_builder.GetGraphViewer().ModelPath());
     int32_t indices_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
     GetType(*input_defs[1], indices_type, logger);
 

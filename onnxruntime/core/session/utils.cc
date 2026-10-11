@@ -318,7 +318,10 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       for (auto domain : domains) {
-        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+        // Multiple EP devices can expose the same custom-op domain. Keep one copy
+        // in this session's collection before its custom registry is created.
+        if (ShouldAddDomain(domain, options->custom_op_domains_) &&
+            !DoesDomainWithNameExist(domain->domain_, all_ep_custom_op_domains)) {
           all_ep_custom_op_domains.push_back(domain);
         }
       }
@@ -347,113 +350,22 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
 }
 
 // Internal function that creates an InferenceSession and loads the model.
-// Caller should provide either a model file path, model_data + model_data_length, or a model package directory.
+// Caller should provide either a model file path, or model_data + model_data_length.
 static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* options,
                                                 const onnxruntime::Environment& env,
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
-  // `model_path` could be a single ONNX file path, an ORT format model path, or a model package directory.
-  const ORTCHAR_T* model_path_to_use = model_path;
-
-  // keep storage alive if ORT selects a model variant.
-  std::filesystem::path selected_model_variant_path;
-
-  if (model_path_to_use != nullptr) {
+  if (model_path != nullptr) {
     std::error_code ec;
-    std::filesystem::path package_root{model_path_to_use};
-
-    if (std::filesystem::is_directory(package_root, ec) && !ec) {
-#if !defined(ORT_MINIMAL_BUILD)
-      OrtSessionOptions* options_to_use = nullptr;
-      OrtSessionOptions ort_sess_options = options ? *options : OrtSessionOptions();
-      if (options) {
-        options_to_use = &ort_sess_options;
-      }
-
-      std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-      const bool has_provider_factories = options_to_use != nullptr && !options_to_use->provider_factories.empty();
-      ProviderPolicyContext provider_policy_context;
-      std::vector<const OrtEpDevice*> execution_devices;
-      std::vector<const OrtEpDevice*> devices_selected;
-
-      // Create the IExecutionProvider instances to gather EP name and EP devices.
-      if (has_provider_factories) {
-        for (auto& factory : options_to_use->provider_factories) {
-          auto provider = factory->CreateProvider(*options_to_use, *logging::LoggingManager::DefaultLogger().ToExternal());
-          provider_list.push_back(std::move(provider));
-        }
-      } else if (options_to_use != nullptr && options_to_use->value.ep_selection_policy.enable) {
-        // No model loaded yet, so no model metadata. Pass empty metadata for now.
-        // TODO: Pass metadata from manifest json to delegate policy?
-        OrtKeyValuePairs model_metadata;
-        auto status = provider_policy_context.SelectEpsForModelPackage(env, *options_to_use, model_metadata,
-                                                                       execution_devices, devices_selected,
-                                                                       provider_list);
-        ORT_API_RETURN_IF_STATUS_NOT_OK(status);
-      }
-
-      // Build EP info from finalized providers.
-      std::vector<VariantSelectionEpInfo> ep_infos;
-      ORT_API_RETURN_IF_STATUS_NOT_OK(GetVariantSelectionEpInfo(provider_list, ep_infos));
-
-      ORT_API_RETURN_IF_STATUS_NOT_OK(PrintAvailableAndSelectedEpInfos(env, ep_infos));
-
-      if (ep_infos.empty()) {
-        return OrtApis::CreateStatus(ORT_FAIL,
-                                     "No execution providers were provided or selected. "
-                                     "Check the EP selection policy or explicitly specify EPs.");
-      }
-
-      // Select the most suitable model variant based on EP info and model constraints.
-      ModelPackageContext model_package_context(package_root);
-      const auto& package_info = model_package_context.GetModelPackageInfo();
-      const ComponentInfo* component_info = nullptr;
-
-      if (package_info.components.empty()) {
-        return OrtApis::CreateStatus(ORT_FAIL, "No component models found in the model package.");
-      } else if (package_info.components.size() > 1) {
-        return OrtApis::CreateStatus(ORT_FAIL,
-                                     "Multiple component models found in the model package. "
-                                     "Currently only single component model is supported.");
-      }
-
-      component_info = &package_info.components[0];
-      if (component_info == nullptr) {
-        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Component model not found.");
-      }
-
-      ModelPackageComponentContext component_context(component_info->component_name, *component_info, ep_infos);
-      ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.ResolveVariant());
-      ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.GetSelectedVariantFilePath(selected_model_variant_path));
-      model_path_to_use = selected_model_variant_path.c_str();
-
-      ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
-                                                                  model_data, model_data_length, sess));
-
-      // Register execution providers
-      for (auto& provider : provider_list) {
-        if (provider) {
-          ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
-        }
-      }
-
-      // Log telemetry for auto EP selection
-      if (!has_provider_factories &&
-          options_to_use != nullptr &&
-          options_to_use->value.ep_selection_policy.enable) {
-        ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(*sess, *options_to_use,
-                                                                             execution_devices, devices_selected));
-      }
-
-#else
-      return OrtApis::CreateStatus(ORT_FAIL, "Model package is not supported in this build.");
-#endif
-      return nullptr;
+    if (std::filesystem::is_directory(model_path, ec) && !ec) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          "The model path is a directory. Loading a model package from a directory path is not supported. "
+          "Use the model package API (CreateModelPackageContext, SelectComponent, CreateSession) instead.");
     }
   }
-
   return CreateSessionAndLoadSingleModelImpl(options, env, model_path, model_data, model_data_length, sess);
 }
 
@@ -522,7 +434,10 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       for (auto domain : domains) {
-        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+        // Multiple EP devices can expose the same custom-op domain. Keep one copy
+        // in this session's collection before its custom registry is created.
+        if (ShouldAddDomain(domain, options->custom_op_domains_) &&
+            !DoesDomainWithNameExist(domain->domain_, all_ep_custom_op_domains)) {
           all_ep_custom_op_domains.push_back(domain);
         }
       }
@@ -701,8 +616,36 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
 
   const Telemetry& telemetry_provider = Env::Default().GetTelemetryProvider();
 
+  OrtSessionOptions staged_session_options = model_compile_options.GetSessionOptions();
+  auto& gen_options = staged_session_options.value.ep_context_gen_options;
+  const auto* external_output =
+      model_compile_options.GetSessionOptions().value.ep_context_gen_options.TryGetExternalInitializerBufferInfo();
+  const auto* model_output =
+      model_compile_options.GetSessionOptions().value.ep_context_gen_options.TryGetOutputModelBuffer();
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  void* model_buffer = nullptr;
+  size_t model_size = 0;
+  auto free_pending_buffers = gsl::finally([&]() {
+    if (external_buffer) external_output->buffer_allocator->Free(external_buffer);
+    if (model_buffer) model_output->buffer_allocator->Free(model_buffer);
+  });
+
+  // Saving the model and subsequent session validation can fail after initializers have been serialized.
+  // Stage both allocations until the entire CompileModel call succeeds, including for EPContext models.
+  if (external_output) {
+    auto& staged_output = std::get<epctx::ExternalInitializerBufferInfo>(gen_options.initializers_location);
+    staged_output.buffer_ptr = &external_buffer;
+    staged_output.buffer_size_ptr = &external_size;
+  }
+  if (model_output) {
+    auto& staged_output = std::get<epctx::BufferHolder>(gen_options.output_model_location);
+    staged_output.buffer_ptr = &model_buffer;
+    staged_output.buffer_size_ptr = &model_size;
+  }
+
   std::unique_ptr<onnxruntime::InferenceSession> session;
-  const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
+  const OrtSessionOptions* session_options = &staged_session_options;
 
   Status status;
 
@@ -753,6 +696,17 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
       status.IsOK() ? 0 : static_cast<uint32_t>(status.Code()),
       status.IsOK() ? 0 : static_cast<uint32_t>(status.Category()),
       status.IsOK() ? "" : status.ErrorMessage());
+
+  if (status.IsOK()) {
+    if (external_output) {
+      *external_output->buffer_ptr = std::exchange(external_buffer, nullptr);
+      *external_output->buffer_size_ptr = external_size;
+    }
+    if (model_output) {
+      *model_output->buffer_ptr = std::exchange(model_buffer, nullptr);
+      *model_output->buffer_size_ptr = model_size;
+    }
+  }
 
   return status;
 }
@@ -915,11 +869,12 @@ Status PrintAvailableAndSelectedEpInfos(const Environment& env, std::vector<Vari
 // Gets EP info needed for model package workflow to select suitable model.
 //
 // For simplicity, there are some constraints in this initial implementation:
-// - Only one EP is supported, skip ORT CPU EP.
+// - Only the first EP is used for variant selection.
 // - All devices should be supported by the same EP
 //
 Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
-                                 std::vector<VariantSelectionEpInfo>& ep_infos) {
+                                 std::vector<VariantSelectionEpInfo>& ep_infos,
+                                 gsl::span<const OrtEpDevice* const> selected_devices) {
   if (provider_list.empty()) {
     return Status::OK();
   }
@@ -943,8 +898,15 @@ Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>
   }
 
   // Add ep devices to ep_info
-  auto& ep_devices = provider->GetEpDevices();
-  ep_info.ep_devices = ep_devices;
+  ep_info.ep_devices = provider->GetEpDevices();
+  if (ep_info.ep_devices.empty()) {
+    for (const auto* device : selected_devices) {
+      if (device->ep_name == ep_info.ep_name) {
+        ep_info.ep_devices.push_back(device);
+      }
+    }
+  }
+  const auto& ep_devices = ep_info.ep_devices;
 
   // Add ep factory to ep_info
   ep_info.ep_factory = ep_devices.empty() ? nullptr : ep_devices.front()->ep_factory;
@@ -968,42 +930,42 @@ Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>
 
 // Create session for model package workflow.
 //
-// Preconditions: caller has already
-//   1. resolved EP selection  -> provider_list (owns the IExecutionProvider instances),
-//   2. selected a model variant -> selected_model_path.
-//
-// This function:
-//   a. creates and loads an InferenceSession for selected_model_path,
-//   b. registers the providers from provider_list (moves them into the session),
-//   c. optionally logs auto-EP-selection telemetry when from_policy is true.
+// The caller configures provider factories and custom domains before model load.
 OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                         const onnxruntime::Environment& env,
                                         const std::filesystem::path& selected_model_path,
                                         onnxruntime::ModelPackageComponentContext& model_package_context,
                                         std::unique_ptr<onnxruntime::InferenceSession>& sess) {
-  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options, env,
+  // The model is loaded from selected_model_path. Any path-valued options (e.g. the external
+  // initializers folder via session.model_external_initializers_file_folder_path) were already
+  // resolved and merged into `options` by the caller.
+  std::unique_ptr<OrtSessionOptions> default_options;
+  const OrtSessionOptions* options_to_use = options;
+  if (options_to_use == nullptr) {
+    // Caller did not pass options: synthesize a default OrtSessionOptions so the downstream
+    // *options_to_use dereferences are safe.
+    default_options = std::make_unique<OrtSessionOptions>();
+    options_to_use = default_options.get();
+  }
+
+  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
                                                               selected_model_path.c_str(),
                                                               /*model_data*/ nullptr,
                                                               /*model_data_length*/ 0,
                                                               sess));
 
-  // Always rebuild providers from the effective session options (which include merged variant
-  // provider options). Providers created during EP selection used the original session options
-  // and would not reflect variant-specific provider options.
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.RebuildProviderListForSession(env, *options));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(options_to_use, *sess));
 
-  auto& provider_list = model_package_context.MutableProviderList();
+  const auto& selected_ep = model_package_context.EpInfos().front().ep_name;
+  const auto& registered_eps = sess->GetRegisteredProviderTypes();
+  ORT_API_RETURN_IF(selected_ep != kCpuExecutionProvider &&
+                        std::find(registered_eps.begin(), registered_eps.end(), selected_ep) == registered_eps.end(),
+                    ORT_EP_FAIL, "The selected model package execution provider was not registered: ", selected_ep);
 
-  for (auto& provider : provider_list) {
-    if (provider) {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
-    }
-  }
-
-  if (model_package_context.IsFromPolicy() && options != nullptr) {
+  if (model_package_context.IsFromPolicy()) {
     ProviderPolicyContext provider_policy_context;
     ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(
-        *sess, *options,
+        *sess, *options_to_use,
         model_package_context.ExecutionDevices(),
         model_package_context.DevicesSelected()));
   }

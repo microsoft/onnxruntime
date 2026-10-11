@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include <cstdlib>
+#include <limits>
 #include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
@@ -157,6 +158,14 @@ TEST(BFCArenaTest, AllocateZeroBufSize) {
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   void* ptr = a.Alloc(0);
   EXPECT_EQ(nullptr, ptr);
+}
+
+TEST(BFCArenaTest, RoundedBytesOverflowThrows) {
+  BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
+  void* ptr = a.Alloc(256);
+  a.Free(ptr);
+
+  EXPECT_THROW(a.Alloc(std::numeric_limits<size_t>::max()), OnnxRuntimeException);
 }
 
 TEST(BFCArenaTest, AllocatedVsRequested) {

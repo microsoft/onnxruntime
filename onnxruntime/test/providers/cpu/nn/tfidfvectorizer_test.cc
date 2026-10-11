@@ -689,6 +689,42 @@ TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5_2rows) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+TEST(TfIdfVectorizerTest, Int64_IDFWeights_PermutedNgramIndexes) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  InitTestAttr(test, "IDF", 1, 1, 0,
+               {0},
+               {0, 100, 1},
+               {1.0f, 2.0f, 3.0f},
+               {7, 8, 9},
+               {});
+
+  test.AddInput<int64_t>("T", {1}, {8});
+
+  std::vector<float> output(101, 0.0f);
+  output[100] = 2.0f;
+  test.AddOutput<float>("Y", {101}, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(TfIdfVectorizerTest, Int64_TFIDFWeights_PermutedNgramIndexes) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  InitTestAttr(test, "TFIDF", 1, 1, 0,
+               {0},
+               {0, 100, 1},
+               {1.0f, 2.0f, 3.0f},
+               {7, 8, 9},
+               {});
+
+  test.AddInput<int64_t>("T", {3}, {8, 8, 8});
+
+  std::vector<float> output(101, 0.0f);
+  output[100] = 6.0f;
+  test.AddOutput<float>("Y", {101}, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 // This test runs the inference 100 times to test the improvement
 // It enables profiling while running inference multiple times.
 // So we can manually inspect the profiling output

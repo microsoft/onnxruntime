@@ -44,6 +44,7 @@ class MatrixGuardBuffer {
     _BaseBuffer = nullptr;
     _BaseBufferSize = 0;
     _ElementsAllocated = 0;
+    _GuardAddress = nullptr;
   }
 
   ~MatrixGuardBuffer(void) {
@@ -150,6 +151,7 @@ class MatrixGuardBuffer {
     }
 
     _ElementsAllocated = 0;
+    _GuardAddress = nullptr;
   }
 
  private:

@@ -889,10 +889,13 @@ Status LaunchConcatKVInPlace(int batch_size,
                              const bool is_new_kv_bnsh_format,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
-  // static_assert(sizeof(T) == 2);
-  assert(head_size % 4 == 0);
+  constexpr int elements_per_vector = sizeof(float2) / sizeof(T);
+  if (head_size % elements_per_vector != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size must be divisible by ", elements_per_vector,
+                           " for vectorized kernel.");
+  }
 
-  const int H = head_size / 4;
+  const int H = head_size / elements_per_vector;
   if (H * kv_num_heads <= max_threads_per_block) {
     const dim3 grid(new_seq_len, batch_size, 1);
     const dim3 block(H, kv_num_heads, 1);

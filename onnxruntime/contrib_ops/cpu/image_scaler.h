@@ -36,7 +36,11 @@ class ImageScaler final : public OpKernel {
     const int64_t H = dims[2];
     const int64_t W = dims[3];
 
-    if (!bias_.empty() && bias_.size() != static_cast<size_t>(C)) {
+    // The loop below reads bias_[nc % C] for every channel, so the bias must have exactly one entry
+    // per channel. An empty bias is not a valid "no bias" state here: the constructor already fails
+    // when the attribute is absent, and a present-but-empty attribute would otherwise index an
+    // empty vector.
+    if (bias_.size() != static_cast<size_t>(C)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias size (", bias_.size(), ") does not match the number of channels (", C, ")");
     }
 

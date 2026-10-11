@@ -23,8 +23,8 @@ namespace dynamic_plugin_ep_test_infra = onnxruntime::test::dynamic_plugin_ep_in
 TEST(DynamicPluginEpInfraTest, ParseInitializationConfigParsesOptionalFields) {
   constexpr std::string_view kConfigJson = R"json(
 {
-  "ep_library_registration_name": "CudaPluginExecutionProvider",
-  "ep_library_path": "/tmp/libonnxruntime_providers_cuda_plugin.so",
+  "ep_library_registration_name": "CUDAExecutionProvider",
+  "ep_library_path": "/tmp/libonnxruntime_providers_cuda.so",
   "selected_ep_device_indices": [0, 2],
   "default_ep_options": {
     "ep.cuda.use_tf32": "1",
@@ -40,8 +40,8 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigParsesOptionalFields) {
   dynamic_plugin_ep_test_infra::InitializationConfig config{};
   ASSERT_STATUS_OK(dynamic_plugin_ep_test_infra::ParseInitializationConfig(kConfigJson, config));
 
-  EXPECT_EQ(config.ep_library_registration_name, "CudaPluginExecutionProvider");
-  EXPECT_EQ(config.ep_library_path, "/tmp/libonnxruntime_providers_cuda_plugin.so");
+  EXPECT_EQ(config.ep_library_registration_name, "CUDAExecutionProvider");
+  EXPECT_EQ(config.ep_library_path, "/tmp/libonnxruntime_providers_cuda.so");
   EXPECT_TRUE(config.selected_ep_name.empty());
   EXPECT_THAT(config.selected_ep_device_indices, ::testing::ElementsAre(0u, 2u));
   EXPECT_THAT(config.default_ep_options,
@@ -72,10 +72,27 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigDefaultsUnsetOptionalFie
   EXPECT_TRUE(config.tests_to_skip.empty());
 }
 
+TEST(DynamicPluginEpInfraTest, ParseInitializationConfigAllowsMissingEpLibraryPath) {
+  // `ep_library_path` may be omitted when the EP library is already registered, e.g. a statically linked plugin EP.
+  constexpr std::string_view kConfigJson = R"json(
+{
+  "ep_library_registration_name": "WebGpuExecutionProvider",
+  "selected_ep_name": "WebGpuExecutionProvider"
+}
+)json";
+
+  dynamic_plugin_ep_test_infra::InitializationConfig config{};
+  ASSERT_STATUS_OK(dynamic_plugin_ep_test_infra::ParseInitializationConfig(kConfigJson, config));
+
+  EXPECT_EQ(config.ep_library_registration_name, "WebGpuExecutionProvider");
+  EXPECT_TRUE(config.ep_library_path.empty());
+  EXPECT_EQ(config.selected_ep_name, "WebGpuExecutionProvider");
+}
+
 TEST(DynamicPluginEpInfraTest, ParseInitializationConfigRejectsMissingRequiredFields) {
   constexpr std::string_view kConfigJson = R"json(
 {
-  "ep_library_registration_name": "CudaPluginExecutionProvider"
+  "ep_library_path": "/tmp/libonnxruntime_providers_cuda.so"
 }
 )json";
 
@@ -85,23 +102,29 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigRejectsMissingRequiredFi
 }
 
 TEST(DynamicPluginEpInfraTest, UninitializedStateReturnsSafeDefaults) {
-  dynamic_plugin_ep_test_infra::Shutdown();
+  // Use RunWithTemporaryShutdownForTesting so that shutting the infrastructure down here does not
+  // leave the shared global infrastructure uninitialized for subsequent tests. Unit test main may have
+  // initialized it (e.g. to route CUDA to the plugin EP), and tearing it down permanently would cause
+  // later tests that rely on DefaultCudaExecutionProvider() to receive a null provider and crash.
+  dynamic_plugin_ep_test_infra::RunWithTemporaryShutdownForTesting([]() {
+    dynamic_plugin_ep_test_infra::Shutdown();
 
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
-  EXPECT_EQ(dynamic_plugin_ep_test_infra::MakeEp(), nullptr);
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
-  EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
+    EXPECT_EQ(dynamic_plugin_ep_test_infra::MakeEp(), nullptr);
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
+    EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
 
-  dynamic_plugin_ep_test_infra::Shutdown();
+    dynamic_plugin_ep_test_infra::Shutdown();
 
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
-  EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
+    EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
+  });
 }
 
 #if defined(USE_CUDA) && defined(ORT_USE_EP_API_ADAPTERS)
 TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBiasAndSdpaKernel) {
-  onnxruntime::CUDAExecutionProvider provider{"CudaPluginExecutionProvider"};
+  onnxruntime::CUDAExecutionProvider provider{"CUDAExecutionProvider"};
   auto config = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(&provider);
   config->fuse_conv_bias = true;
   config->sdpa_kernel = static_cast<int>(onnxruntime::contrib::attention::AttentionBackend::MATH);
@@ -116,7 +139,7 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBias
 }
 
 TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesDoCopyInDefaultStream) {
-  onnxruntime::CUDAExecutionProvider provider{"CudaPluginExecutionProvider"};
+  onnxruntime::CUDAExecutionProvider provider{"CUDAExecutionProvider"};
   auto config = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(&provider);
 
   // Default should be true
@@ -144,6 +167,18 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterTryBytesForCountNormalCase) {
   size_t bytes = 0;
   ASSERT_TRUE(onnxruntime::cuda::detail::TryBytesForCount(10, 4, bytes));
   EXPECT_EQ(bytes, size_t{40});
+}
+
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRetainsGraphCaptureHostBuffer) {
+  std::weak_ptr<int> retained_buffer;
+  {
+    onnxruntime::cuda::detail::CudaKernelAdapterRuntimeConfig config;
+    auto buffer = std::make_shared<int>(42);
+    retained_buffer = buffer;
+    config.RetainBufferForGraphCapture(std::move(buffer));
+    EXPECT_FALSE(retained_buffer.expired());
+  }
+  EXPECT_TRUE(retained_buffer.expired());
 }
 #endif
 

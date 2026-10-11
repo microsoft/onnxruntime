@@ -46,3 +46,146 @@ index 3887169..8432613 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/defs/nn/defs.cc b/onnx/defs/nn/defs.cc
+index 0c271d5..6d64da7 100644
+--- a/onnx/defs/nn/defs.cc
++++ b/onnx/defs/nn/defs.cc
+@@ -2670,7 +2670,7 @@ ONNX_OPERATOR_SET_SCHEMA(
+                               // positive value.
+                               axis += input_ndim;
+                          }
+-          if (axis < 0) {
++          if (axis < 0 || axis >= input_ndim) {
+                               fail_shape_inference(
+                                         "Unexpected axis value (",
+                                         axis,
+diff --git a/onnx/common/assertions.h b/onnx/common/assertions.h
+--- a/onnx/common/assertions.h
++++ b/onnx/common/assertions.h
+@@ -27,9 +27,9 @@
+ #endif
+ std::string barf(const char* fmt, ...);
+
+-[[noreturn]] void throw_assert_error(std::string& /*msg*/);
++[[noreturn]] void throw_assert_error(const std::string& /*msg*/);
+
+-[[noreturn]] void throw_tensor_error(std::string& /*msg*/);
++[[noreturn]] void throw_tensor_error(const std::string& /*msg*/);
+
+ } // namespace ONNX_NAMESPACE
+
+diff --git a/onnx/common/assertions.cc b/onnx/common/assertions.cc
+--- a/onnx/common/assertions.cc
++++ b/onnx/common/assertions.cc
+@@ -42,11 +42,11 @@
+ }
+
+-void throw_assert_error(std::string& msg) {
++void throw_assert_error(const std::string& msg) {
+     ONNX_THROW_EX(assert_error(msg));
+ }
+
+-void throw_tensor_error(std::string& msg) {
++void throw_tensor_error(const std::string& msg) {
+     ONNX_THROW_EX(tensor_error(msg));
+ }
+
+ } // namespace ONNX_NAMESPACE
+diff --git a/onnx/common/tensor.h b/onnx/common/tensor.h
+--- a/onnx/common/tensor.h
++++ b/onnx/common/tensor.h
+@@ -51,13 +51,13 @@
+     /// size_from_dim() cannot handle this case, while elem_num() handles it correctly
+     int64_t elem_num() const {
+-    return safe_dim_product(sizes_, [](const char* msg) { throw tensor_error(msg); });
++    return safe_dim_product(sizes_, [](const char* msg) { throw_tensor_error(msg); });
+     }
+     int64_t size_from_dim(int dim) const {
+       if (dim < 0) {
+           dim += static_cast<int>(sizes_.size());
+       }
+       ONNX_ASSERT(dim >= 0 && (size_t)dim < sizes_.size())
+-    return safe_dim_product(sizes_.begin() + dim, sizes_.end(), [](const char* msg) { throw tensor_error(msg); });
++    return safe_dim_product(sizes_.begin() + dim, sizes_.end(), [](const char* msg) { throw_tensor_error(msg); });
+     }
+
+     int32_t elem_type() const {
+diff --git a/onnx/common/scoped_resource.h b/onnx/common/scoped_resource.h
+--- a/onnx/common/scoped_resource.h
++++ b/onnx/common/scoped_resource.h
+@@ -25,18 +25,18 @@
+ // Usage:
+-//   using ScopedFd = ScopedResource<-1, close_fd>;
+-//   ScopedFd guard(fd);          // destructor calls close_fd(fd)
++//   using ScopedFd = ScopedResource<FdTraits>;
++//   ScopedFd guard(fd);          // destructor calls FdTraits::close(fd)
+ //   int raw = guard.release();   // relinquish ownership
+-template <auto Invalid, void (*Close)(decltype(Invalid))>
++template <typename Traits>
+ class ScopedResource {
+-  using T = decltype(Invalid);
++  using T = typename Traits::type;
+     T val_;
+
+  public:
+     explicit ScopedResource(T v) : val_(v) {}
+     ~ScopedResource() {
+-    if (val_ != Invalid) {
+-      Close(val_);
++    if (val_ != Traits::invalid()) {
++      Traits::close(val_);
+       }
+     }
+     T get() const {
+       return val_;
+@@ -44,7 +44,7 @@
+     }
+     T release() {
+       T tmp = val_;
+-    val_ = Invalid;
++    val_ = Traits::invalid();
+       return tmp;
+     }
+     ScopedResource(const ScopedResource&) = delete;
+@@ -55,20 +55,32 @@
+ #ifdef _WIN32
+-inline void close_handle(HANDLE h) {
+-  CloseHandle(h);
+-}
+-using ScopedHandle = ScopedResource<INVALID_HANDLE_VALUE, close_handle>;
++struct HandleTraits {
++  using type = HANDLE;
++  static HANDLE invalid() {
++    return INVALID_HANDLE_VALUE;
++  }
++  static void close(HANDLE h) {
++    CloseHandle(h);
++  }
++};
++using ScopedHandle = ScopedResource<HandleTraits>;
+ #endif
+
+-inline void close_fd(int fd) {
++struct FdTraits {
++  using type = int;
++  static constexpr int invalid() {
++    return -1;
++  }
++  static void close(int fd) {
+ #ifdef _WIN32
+-  _close(fd);
++    _close(fd);
+ #else
+-  close(fd);
++    ::close(fd);
+ #endif
+-}
+-using ScopedFd = ScopedResource<-1, close_fd>;
++  }
++};
++using ScopedFd = ScopedResource<FdTraits>;
+
+ // RAII guard that invokes a callable on destruction (scope exit).
+ template <typename F>
+ class ScopeExit {
+     F fn_;

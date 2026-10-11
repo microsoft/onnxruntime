@@ -28,7 +28,6 @@ function compareTensors(tensorA, tensorB, msg) {
 // work item list:
 // - format the code
 // - remove 'wasm' from file name
-// - test depending on public website (https://media.istockphoto.com/) should be changed to depends on a localhost
 // - the test is composed by 3 different test cases. split them to 3 different cases.
 // - some test cases are wriiten incorrectly.
 //
@@ -98,28 +97,25 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
   // data url with type 'image/png' has a determined 'RGBA' format
 
   compareTensors(inputTensorDataURL, inputTensorImageData, 'BUG in ImageData & Data URL use case');
-
   // Testing URL --> Tensor --> ImageData --> Tensor
-  let online = navigator.onLine;
-  if (online) {
-    // URL element to tensor API
-    const inputTensorURL = await ort.Tensor.fromImage(
-      'https://media.istockphoto.com/id/172859087/photo/square-eggs.jpg?s=2048x2048&w=is&k=20&c=KiBRyyYaoUUSjcJLBh1-qqVu7LW6UQZBopZdva0f5e4=',
-      { norm: { bias: [2, 3, 9, 0], mean: [5, 6, 17, 0] } },
-    );
-    // Tensor to ImageDAta API
-    let newImage = inputTensorURL.toImageData({
-      format: 'RGB',
-      norm: { bias: [2 / 5, 3 / 6, 9 / 17, 0], mean: [5, 6, 17, 0] },
-    });
-    // ImageData to tensor API
-    let inputTensorImageData = await ort.Tensor.fromImage(newImage, {
-      format: 'RGB',
-      norm: { bias: [2, 3, 9, 0], mean: [5, 6, 17, 0] },
-    });
-
-    compareTensors(inputTensorURL, inputTensorImageData, 'BUG in ImageData & URL');
-  } else {
-    console.log("No internet connection - didn't test Image URL to tensor API");
+  if (typeof __ort_arg_port === 'undefined') {
+    throw new Error('test flag --port=<PORT> is required');
   }
+
+  // URL element to tensor API
+  const inputTensorURL = await ort.Tensor.fromImage(`http://localhost:${__ort_arg_port}/test-data/tensor-image.jpg`, {
+    norm: { bias: [2, 3, 9, 0], mean: [5, 6, 17, 0] },
+  });
+  // Tensor to ImageDAta API
+  newImage = inputTensorURL.toImageData({
+    format: 'RGB',
+    norm: { bias: [2 / 5, 3 / 6, 9 / 17, 0], mean: [5, 6, 17, 0] },
+  });
+  // ImageData to tensor API
+  inputTensorImageData = await ort.Tensor.fromImage(newImage, {
+    format: 'RGB',
+    norm: { bias: [2, 3, 9, 0], mean: [5, 6, 17, 0] },
+  });
+
+  compareTensors(inputTensorURL, inputTensorImageData, 'BUG in ImageData & URL');
 });

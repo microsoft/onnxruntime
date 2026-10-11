@@ -27,7 +27,7 @@
 // for both a and b, outer-dim is gemm-K and inner-dim is gemm-M or gemm-N
 // acc is used as both input and output.
 template <typename InputElem>
-__device__ inline void mma(float (&acc)[2][2], uint32_t const (&a)[2][2], uint32_t const (&b)[2][1]) {
+__device__ inline void mma(float (&acc)[2][2], const uint32_t (&a)[2][2], const uint32_t (&b)[2][1]) {
   static_assert(mha::is_same_v<InputElem, half> || mha::is_same_v<InputElem, __nv_bfloat16> || mha::is_same_v<InputElem, __nv_fp8_e4m3>,
                 "not implemented");
   if constexpr (mha::is_same_v<InputElem, half>) {
@@ -59,7 +59,7 @@ __device__ inline void mma(float (&acc)[2][2], uint32_t const (&a)[2][2], uint32
   }
 }
 
-__device__ inline void mmaF8_k16(float (&acc)[2][2], uint32_t const (&a)[2], uint32_t const b) {
+__device__ inline void mmaF8_k16(float (&acc)[2][2], const uint32_t (&a)[2], const uint32_t b) {
   asm("mma.sync.aligned.m16n8k16.row.col.f32.e4m3.e4m3.f32 \n"
       "    {%0, %1, %2, %3}, \n"
       "    {%4, %5}, \n"
@@ -69,7 +69,7 @@ __device__ inline void mmaF8_k16(float (&acc)[2][2], uint32_t const (&a)[2], uin
       : "r"(a[0]), "r"(a[1]), "r"(b));
 }
 
-__device__ inline void mmaF8_k32_2inst(float (&acc)[2][2], uint32_t const (&a)[2][2], uint32_t const (&b)[2][1]) {
+__device__ inline void mmaF8_k32_2inst(float (&acc)[2][2], const uint32_t (&a)[2][2], const uint32_t (&b)[2][1]) {
   for (uint32_t i = 0; i < 2; i++) {
     mmaF8_k16(acc, a[i], b[i][0]);
   }

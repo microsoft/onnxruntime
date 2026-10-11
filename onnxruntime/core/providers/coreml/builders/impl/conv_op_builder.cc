@@ -281,13 +281,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
 
     // Add weight
-    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor));
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor, model_builder));
 
     // Add bias if present
     if (input_defs.size() > 2) {
       coreml_conv->set_hasbias(true);
       const auto& bias_tensor = *model_builder.GetConstantInitializer(input_defs[2]->Name());
-      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_conv->mutable_bias(), bias_tensor));
+      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_conv->mutable_bias(), bias_tensor, model_builder));
     }
 
     if (is_1d_conv) {

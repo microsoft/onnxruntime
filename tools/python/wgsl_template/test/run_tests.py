@@ -4,7 +4,8 @@
 """Test runner for the WGSL template Python port.
 
 Discovers ``test_*.py`` siblings and aggregates them into one suite.
-Invoked manually or via ``ctest`` (see CMake's ``add_test`` wiring).
+Run manually, or via the ``WGSL Template Tests`` GitHub Actions workflow
+(.github/workflows/wgsl_template_tests.yml).
 """
 
 from __future__ import annotations

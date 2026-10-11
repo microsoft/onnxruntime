@@ -83,6 +83,10 @@ Status LpNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   Tensor* output = p_op_kernel_context->Output(0, input_shape);
 
   const auto canonical_axis = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
+
   const int64_t m = input_shape.GetDims()[onnxruntime::narrow<size_t>(canonical_axis)];
   const int64_t n = input_shape.Size() / m;
   const int64_t sf = input_shape.SizeFromDimension(SafeInt<size_t>(canonical_axis) + 1);

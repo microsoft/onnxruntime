@@ -1965,7 +1965,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     try
                     {
-                        var task = session.RunAsync(null, inputNames, inputValues, outputNames, outputValues);
+                        RunOptions runOptions = new RunOptions();
+                        var task = session.RunAsync(runOptions, inputNames, inputValues, outputNames, outputValues);
+                        runOptions = null;
+                        // Exercise the managed argument and RunOptions lifetimes while native work is outstanding.
+                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
+                        GC.WaitForPendingFinalizers();
                         var outputs = await task;
                         var valueOut = outputs.ElementAt<OrtValue>(0);
                         var float16s = valueOut.GetTensorDataAsSpan<Float16>().ToArray();
@@ -1979,6 +1984,34 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 #endif
+
+        [Fact(DisplayName = "TestModelRunAsyncRejectsMismatchedArgumentCounts")]
+        private async Task TestModelRunAsyncRejectsMismatchedArgumentCounts()
+        {
+            Float16[] inputData = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
+            long[] shape = { 1, 5 };
+
+            var inputNames = new List<string> { "input" };
+            var outputNames = new List<string> { "output" };
+
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
+            using (var inputValue = OrtValue.CreateTensorValueFromMemory(inputData, shape))
+            using (var outputValue = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance,
+                    TensorElementType.Float16, shape))
+            using (var session = new InferenceSession(model))
+            {
+                var inputValues = new List<OrtValue> { inputValue };
+                var outputValues = new List<OrtValue> { outputValue };
+
+                var inputException = await Assert.ThrowsAsync<ArgumentException>(() =>
+                    session.RunAsync(null, new List<string>(), inputValues, outputNames, outputValues));
+                Assert.StartsWith("Length of inputNames (0) must match that of inputValues (1).", inputException.Message);
+
+                var outputException = await Assert.ThrowsAsync<ArgumentException>(() =>
+                    session.RunAsync(null, inputNames, inputValues, new List<string>(), outputValues));
+                Assert.StartsWith("Length of outputNames (0) must match that of outputValues (1).", outputException.Message);
+            }
+        }
 
         [Fact(DisplayName = "TestModelRunAsyncTaskFail")]
         private async Task TestModelRunAsyncTaskFail()

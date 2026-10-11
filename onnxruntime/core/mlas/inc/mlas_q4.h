@@ -25,6 +25,8 @@ Abstract:
 
 #include <math.h>
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 
 /**
  * @brief Define types of block quantization
@@ -360,6 +362,40 @@ MlasDequantizeBlockwise(
     );
 
 /**
+ * @brief Blockwise dequantization for the variant where the zero points are
+ *        floating point values instead of packed quantized integers, as some
+ *        external quantizers emit for MatMulNBits. Only the columnwise layout
+ *        and qbits=2 with float dequantized elements are implemented.
+ *
+ * @tparam ElementT     type of the dequantized matrix element, must be float
+ * @tparam ZeroPointT   float or MLAS_FP16
+ * @tparam qbits        number of bits used for quantization, must be 2
+ *
+ * @param dst           points to dequantized matrix shape [rows, columns] column major
+ * @param src           points to quantized matrix, column major
+ * @param scales        points to quantization scales, column major
+ * @param zero_points   points to floating point quantization zero points, column major;
+ *                      may be nullptr, in which case a zero point of 0 is used for every block
+ * @param block_size    number of elements in each quantization block; elements in the same block share the same scale and zero point;
+ *                      must be a multiple of 4 so blocks start byte aligned in the packed stream
+ * @param rows
+ * @param columns
+ * @param thread_pool
+*/
+template <typename ElementT, typename ZeroPointT, int qbits>
+void
+MlasDequantizeBlockwiseFpZeroPoint(
+    ElementT* dst,
+    const uint8_t* src,
+    const ElementT* scales,
+    const ZeroPointT* zero_points,
+    int block_size,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+    );
+
+/**
  * @brief Blockwise 4 bits quantization. After quantization, the weights and zero points
  *        are packed row-wise. If zero_points is null, quantized type is int4 with default
  *        zero point 0, to align with DQ schema. Otherwise, quantized type is uint4.
@@ -391,6 +427,58 @@ MlasQDQQuantizeBlockwise(
     int quant_block_size,
     MLAS_THREADPOOL* thread_pool
 );
+
+/**
+ * @brief Check that QDQ blockwise quantization index arithmetic fits in int32.
+ */
+inline bool
+MlasQDQBlockwiseShapeIsValid(
+    int64_t rows,
+    int64_t columns,
+    int64_t quant_block_size,
+    int64_t qbits,
+    bool columnwise,
+    bool transpose
+    )
+{
+    constexpr int64_t kMaxIndex = std::numeric_limits<int32_t>::max();
+    constexpr int64_t kThreadBlockSize = 128;
+    if (rows <= 0 || columns <= 0 || quant_block_size <= 0 ||
+        (qbits != 2 && qbits != 4 && qbits != 8) ||
+        rows > kMaxIndex || columns > kMaxIndex || quant_block_size > kMaxIndex) {
+        return false;
+    }
+
+    const int64_t pack_size = 8 / qbits;
+    const int64_t max_column_addend = transpose ? pack_size - 1 : kThreadBlockSize - 1;
+    const bool uses_unaligned_quantize = !transpose && columnwise && (columns & 1) != 0;
+    if (uses_unaligned_quantize && quant_block_size > kMaxIndex / 2) {
+        return false;
+    }
+    const int64_t row_block_size = uses_unaligned_quantize ? quant_block_size * 2 : quant_block_size;
+    if (rows > kMaxIndex - (row_block_size - 1) ||
+        columns > kMaxIndex - max_column_addend ||
+        quant_block_size > (kMaxIndex - 7) / qbits ||
+        rows > kMaxIndex / columns) {
+        return false;
+    }
+
+    const int64_t block_count = (rows + quant_block_size - 1) / quant_block_size;
+    if (block_count > kMaxIndex - (pack_size - 1) ||
+        block_count > kMaxIndex / columns) {
+        return false;
+    }
+
+    if (transpose) {
+        const int64_t packed_block_bytes = (quant_block_size * qbits + 7) / 8;
+        if (block_count > kMaxIndex / packed_block_bytes ||
+            block_count * packed_block_bytes > kMaxIndex / columns) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 /**
  * @brief Transpose blockwise quantized tensors. The src tensors are row major. src weights and zero

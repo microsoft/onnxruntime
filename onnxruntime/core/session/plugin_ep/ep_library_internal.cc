@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/plugin_ep/ep_library_internal.h"
+#include "core/session/plugin_ep/ep_factory_coreml.h"
 #include "core/session/plugin_ep/ep_factory_cpu.h"
 #include "core/session/plugin_ep/ep_factory_dml.h"
 #include "core/session/plugin_ep/ep_factory_webgpu.h"
@@ -14,6 +15,14 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
   return std::make_unique<EpLibraryInternal>(std::move(internal_factory));
 }
 
+#if defined(USE_COREML) && defined(__APPLE__)
+std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCoreMLEp() {
+  auto coreml_factory_impl = std::make_unique<CoreMLEpFactory>();
+  auto internal_factory = std::make_unique<EpFactoryInternal>(std::move(coreml_factory_impl));
+  return std::make_unique<EpLibraryInternal>(std::move(internal_factory));
+}
+#endif
+
 #if defined(USE_DML)
 
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
@@ -24,14 +33,14 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
 #endif
 
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
-  auto webgpu_factory_impl = std::make_unique<WebGpuEpFactory>();
+std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp(bool allow_virtual_devices) {
+  auto webgpu_factory_impl = std::make_unique<WebGpuEpFactory>(allow_virtual_devices);
   auto internal_factory = std::make_unique<EpFactoryInternal>(std::move(webgpu_factory_impl));
   return std::make_unique<EpLibraryInternal>(std::move(internal_factory));
 }
 #endif
 
-std::vector<std::unique_ptr<EpLibraryInternal>> EpLibraryInternal::CreateInternalEps() {
+std::vector<std::unique_ptr<EpLibraryInternal>> EpLibraryInternal::CreateInternalEps(bool allow_virtual_devices) {
   std::vector<std::unique_ptr<EpLibraryInternal>> internal_eps;
   internal_eps.reserve(4);
 
@@ -39,11 +48,19 @@ std::vector<std::unique_ptr<EpLibraryInternal>> EpLibraryInternal::CreateInterna
   internal_eps.push_back(CreateCpuEp());
 
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-  internal_eps.push_back(CreateWebGpuEp());
+  internal_eps.push_back(CreateWebGpuEp(allow_virtual_devices));
+#else
+  ORT_UNUSED_PARAMETER(allow_virtual_devices);
 #endif
 
 #if defined(USE_DML)
   internal_eps.push_back(CreateDmlEp());
+#endif
+
+// Unlike WebGPU, CoreML has no plugin-EP adapter, so it does not need an ORT_USE_EP_API_ADAPTERS exclusion.
+// This matches DML.
+#if defined(USE_COREML) && defined(__APPLE__)
+  internal_eps.push_back(CreateCoreMLEp());
 #endif
 
   return internal_eps;

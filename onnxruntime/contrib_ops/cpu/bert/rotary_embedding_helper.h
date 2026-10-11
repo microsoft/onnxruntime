@@ -115,8 +115,25 @@ Status CheckInputs(const T* input,
   if (rotary_embedding_dim == 0) {
     int cache_width = 0;
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[1], "cache_width", cache_width));
-    if (head_size == 0) {
-      ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
+
+    int effective_rotary_dim = 0;
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "effective_rotary_dim", effective_rotary_dim));
+
+    const bool head_size_inferred = (head_size == 0);
+    if (head_size_inferred) {
+      head_size = effective_rotary_dim;
+    }
+
+    // Only needed when head_size is inferred from the cache; the exact-width check below
+    // cannot catch a mismatch there because head_size == effective_rotary_dim by construction.
+    // When num_heads > 0 / rank-4, head_size is known and the exact-width check rejects an
+    // oversized cache with a more actionable message.
+    if (head_size_inferred && hidden_size > 0 && effective_rotary_dim > hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: cos_cache dimension (", cache_width,
+                             " * 2 = ", effective_rotary_dim,
+                             ") exceeds input hidden_size (", hidden_size,
+                             ") when rotary_embedding_dim is 0");
     }
   } else {
     if (!transposed) {

@@ -5,17 +5,60 @@ The software may collect information about you and your use of the software and 
 
 ***
 
-### Private Builds
-No data collection is performed when using your private builds built from source code.
-
 ### Official Builds
-ONNX Runtime does not maintain any independent telemetry collection mechanisms outside of what is provided by the platforms it supports. However, where applicable, ONNX Runtime will take advantage of platform-supported telemetry systems to collect trace events with the goal of improving product quality.
+ONNX Runtime collects trace events with the goal of improving product quality. For builds used in Windows apps and components like Windows ML, it uses the platform's built-in ETW telemetry system; for other Windows builds including our official releases, supported Linux architectures, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, tvOS, visionOS, Mac Catalyst, AIX, and RISC-V, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
 
-Currently telemetry is only implemented for Windows builds and is turned **ON** by default in the official builds distributed in their respective package management repositories ([see here](../README.md#binaries)). This may be expanded to cover other platforms in the future. Data collection is implemented via 'Platform Telemetry' per vendor platform providers (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
+Telemetry is turned **ON** by default in the official builds ([see here](../README.md#binaries)). Both providers are accessed through ONNX Runtime's common telemetry interface (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
+
+### Private Builds
+The build driver enables telemetry by default for supported native platforms. Targets without a supported provider and builds that disable C++ exceptions automatically exclude telemetry. For information on how to disable telemetry in other builds, see [Disabling Telemetry](#disabling-telemetry) below.
+
+Existing native Windows build scripts that pass `--use_telemetry` retain the
+historical TraceLogging backend, with a deprecation warning. New scripts can use
+`--use_windows_telemetry` explicitly. Application telemetry control APIs are unchanged.
+
+For direct CMake builds, `onnxruntime_USE_TELEMETRY=ON` with the default `AUTO`
+backend selects 1DS on supported native platforms, including Windows. Windows
+TraceLogging requires explicit `onnxruntime_TELEMETRY_BACKEND=WINDOWS` or
+`onnxruntime_USE_WINDOWS_TELEMETRY=ON`.
 
 #### Technical Details
-The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. 
 
-Windows ML and onnxruntime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details).
-For information on how to enable and disable telemetry, see [C API: Telemetry](./C_API.md#telemetry). 
-There are equivalent APIs in the C#, Python, and Java language bindings as well.
+Custom ONNX model metadata (`modelMetaData`) is not uploaded through 1DS. Arbitrary
+metadata keys and values can contain sensitive information; size limits or path
+redaction alone do not make them safe to transmit. Public model metadata APIs and
+local Windows ETW capture-state events are unchanged.
+
+**Windows apps and components.** The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
+
+**Other builds with telemetry (Linux, macOS, Android, iOS, Windows builds not made for Windows apps and components).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
+
+For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetry) section below.
+
+### Disabling Telemetry
+
+Telemetry can be disabled in any of these ways:
+
+- **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from all builds and disables the Microsoft telemetry configuration on Windows. Unsupported targets and exception-free builds never include telemetry.
+- **Disable all 1DS telemetry at runtime.** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. On all builds with 1DS telemetry, this prevents the uploader, events, and persistent device identifier from being created for the process lifetime. The legacy Windows TraceLogging backend does not use this environment variable.
+- **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
+
+All 1DS builds use the pinned GitHub SDK source, including builds that use vcpkg for
+other dependencies. Desktop builds disable the SDK's native device-ID collection and
+instead supply a hash of ORT's locally generated persistent identifier. Android and
+iOS retain the SDK's platform device IDs. SDK logging is compiled out; source builds
+retain exception support, use WinHTTP on Windows, and use Java HTTP with native SQLite
+storage on Android.
+
+Telemetry-enabled static Linux builds depend on static curl and
+mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built
+packages resolve these transport dependencies through vcpkg. Shared ORT libraries use
+a public-symbol allowlist, so embedded telemetry dependencies are not exported. ELF
+consumers also hide the SDK, bundled SQLite, zlib, curl, and mbedTLS archives, and
+GNU's implicitly linked `libstdc++_nonshared.a` compatibility archive while preserving
+ORT's public API exports.
+
+Applications linking a telemetry-enabled static Linux ORT build must not co-link
+another copy of curl or mbedTLS. Symbol hiding does not namespace static archives,
+so duplicate-symbol or archive-order conflicts can still occur. Build ORT with
+`--no_telemetry` if your application needs its own curl or mbedTLS copy.

@@ -73,10 +73,11 @@ fn run() -> Result<(), Error> {
     let outputs = session.run(input_tensor_values)?;
 
     let output = outputs[0].float_array().unwrap();
+    let view = output.view();
 
-    assert_eq!(output.shape(), output0_shape.as_slice());
+    assert_eq!(view.shape(), output0_shape.as_slice());
     for i in 0..5 {
-        println!("Score for class [{}] =  {}", i, output[[0, i, 0, 0]]);
+        println!("Score for class [{}] =  {}", i, view[[0, i, 0, 0]]);
     }
 
     Ok(())

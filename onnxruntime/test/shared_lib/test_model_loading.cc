@@ -6,6 +6,7 @@
 #include "core/common/narrow.h"
 #include "test/util/include/asserts.h"
 #include <fstream>
+#include <filesystem>
 #include <limits>
 #include "test_fixture.h"
 #include "file_util.h"
@@ -273,6 +274,38 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersViaSetExternalDataP
   // Cleanup.
   ASSERT_EQ(std::remove(optimized_file_path.c_str()), 0);
   ASSERT_EQ(std::remove(generated_bin_path.c_str()), 0);
+}
+
+// The model has external data. Load the model from a file path whose directory does NOT contain
+// the external data file, and set model_external_initializers_file_folder_path to the folder that
+// does. This verifies the option is honored for file-path loads and overrides the model directory.
+TEST(CApiTest, TestLoadModelFromPathWithExternalInitializersViaSetExternalDataPath) {
+  const std::string model_file_name = "conv_qdq_external_ini.onnx";
+  const std::string test_folder = "testdata/";
+
+  // Copy just the model file (not the external .bin) into a subfolder so the model's own directory
+  // cannot resolve the external initializers.
+  const std::string model_only_folder = test_folder + "ext_ini_path_override/";
+  std::error_code ec;
+  std::filesystem::create_directories(model_only_folder, ec);
+  ASSERT_FALSE(ec);
+  const std::string copied_model_path = model_only_folder + model_file_name;
+  std::filesystem::copy_file(test_folder + model_file_name, copied_model_path,
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  ASSERT_FALSE(ec) << "Failed to copy model file: " << ec.message();
+
+  Ort::SessionOptions so;
+  so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  // Point external initializers at the original folder, overriding the copied model's directory.
+  so.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, test_folder.c_str());
+
+  // Loading succeeds only if the external initializers are resolved from the override folder.
+  const PathString copied_model_path_t(copied_model_path.begin(), copied_model_path.end());
+  Ort::Session session(*ort_env.get(), copied_model_path_t.c_str(), so);
+
+  // Cleanup.
+  std::filesystem::remove_all(model_only_folder, ec);
+  ASSERT_FALSE(ec) << "Failed to remove temp folder: " << ec.message();
 }
 
 #ifndef _WIN32

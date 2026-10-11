@@ -9,6 +9,7 @@
 #if USE_LEAN_ATTENTION
 
 #include "contrib_ops/cuda/bert/lean_attention/lean_api.h"
+#include <algorithm>
 #include <cutlass/numeric_types.h>
 
 #include "contrib_ops/cuda/bert/lean_attention/flash.h"
@@ -173,6 +174,7 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream) {
 std::tuple<size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_size, size_t max_seqlen_q, size_t max_seqlen_k,
                                                                                                            size_t num_heads, size_t num_heads_k, size_t head_size, size_t num_SMs, bool is_causal) {
   // This needs to match with run_mha_fwd_splitkv_dispatch
+  num_SMs = std::max<size_t>(num_SMs, 1);
   const int block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
   const int block_m = head_size <= 64 ? 64 : (head_size <= 128 ? 64 : 64);
   const int num_m_blocks = (max_seqlen_q + block_m - 1) / block_m;
@@ -207,6 +209,9 @@ std::tuple<size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t> get_n
     tiles_per_head = num_m_blocks * num_n_blocks;
   }
   size_t total_tiles = tiles_per_head * batch_size * num_heads_k;
+  if (total_tiles == 0 || num_n_blocks == 0) {
+    return {0, 0, 0, 0, 1, 1, 0, tiles_per_head};
+  }
 
   // StreamK Lean has as many threadblocks as SMs
   // This should be a function of tile size and number of scratchpad space
@@ -222,13 +227,16 @@ std::tuple<size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t> get_n
     // to account for ceil
     lean_griddimz = std::min(2 * num_SMs, 32 * num_heads_k * batch_size * num_m_blocks);
   }
+  lean_griddimz = std::max<size_t>(1, std::min(lean_griddimz, total_tiles));
   size_t max_tiles_per_tb = (total_tiles + lean_griddimz - 1) / lean_griddimz;
   // Find max number of splits
   size_t num_splits = 0;
   if (total_tiles % lean_griddimz == 0) {
     num_splits = 1 + ((num_n_blocks + max_tiles_per_tb - 2) / (max_tiles_per_tb));
-  } else {
+  } else if (max_tiles_per_tb > 1) {
     num_splits = 1 + ((num_n_blocks + max_tiles_per_tb - 3) / (max_tiles_per_tb - 1));
+  } else {
+    num_splits = 1;
   }
   size_t high_load_tbs = total_tiles - ((max_tiles_per_tb - 1) * lean_griddimz);
 

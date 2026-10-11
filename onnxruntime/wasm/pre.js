@@ -9,7 +9,7 @@
  * Mount external data files of a model to an internal map, which will be used during session initialization.
  *
  * @param {string} externalDataFilesPath
- * @param {Uint8Array} externalDataFilesData
+ * @param {Uint8Array|Blob} externalDataFilesData
  */
 Module["mountExternalData"] = (externalDataFilePath, externalDataFileData) => {
   if (externalDataFilePath.startsWith("./")) {
@@ -24,6 +24,10 @@ Module["mountExternalData"] = (externalDataFilePath, externalDataFileData) => {
  */
 Module["unmountExternalData"] = () => {
   delete Module.MountedFiles;
+  // Release the buffers used by the Blob-backed external data loader
+  delete Module.ortExtDataScratch;
+  delete Module.ortExtDataChunk;
+  delete Module.ortExtDataScratchBusy;
 };
 
 /**

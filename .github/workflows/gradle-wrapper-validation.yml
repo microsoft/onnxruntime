@@ -18,9 +18,10 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=gradle-wrapper-validation-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
-      - uses: gradle/actions/wrapper-validation@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true

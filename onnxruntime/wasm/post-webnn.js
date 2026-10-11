@@ -50,24 +50,6 @@ Module["webnnInit"] = (params) => {
   Module["webnnCreateMLContext"] = (optionsOrGpuDevice) => {
     return backend["createMLContext"](optionsOrGpuDevice);
   };
-  Module["webnnRegisterMLConstant"] = (
-    externalFilePath,
-    dataOffset,
-    dataLength,
-    builder,
-    desc,
-    shouldConvertInt64ToInt32
-  ) => {
-    return backend["registerMLConstant"](
-      externalFilePath,
-      dataOffset,
-      dataLength,
-      builder,
-      desc,
-      Module.MountedFiles,
-      shouldConvertInt64ToInt32
-    );
-  };
   Module["webnnRegisterGraphInput"] =
     backend["registerGraphInput"].bind(backend);
   Module["webnnIsGraphInput"] = backend["isGraphInput"].bind(backend);

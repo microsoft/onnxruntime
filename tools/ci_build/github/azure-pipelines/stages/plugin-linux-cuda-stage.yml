@@ -43,7 +43,7 @@ parameters:
 
 - name: cmake_cuda_archs
   type: string
-  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+  default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
 
 - name: python_version
   type: string
@@ -56,6 +56,14 @@ parameters:
 - name: artifact_name
   type: string
   default: 'cuda_plugin_linux_x64'
+
+- name: enable_cuda_fatbin_size_compression
+  type: boolean
+  default: false
+
+- name: enable_fpa_intb_gemm
+  type: boolean
+  default: true
 
 stages:
 - stage: ${{ parameters.stage_name }}
@@ -77,10 +85,18 @@ stages:
         artifactName: ${{ parameters.artifact_name }}
     variables:
       - template: ../templates/common-variables.yml
+      - name: FatbinCompressDefine
+        ${{ if eq(parameters.enable_cuda_fatbin_size_compression, true) }}:
+          value: 'onnxruntime_CUDA_FATBIN_COMPRESS_SIZE=ON'
+        ${{ else }}:
+          value: ''
+      - name: FpaIntBGemmDefine
+        ${{ if eq(parameters.enable_fpa_intb_gemm, true) }}:
+          value: 'onnxruntime_USE_FPA_INTB_GEMM=ON'
+        ${{ else }}:
+          value: 'onnxruntime_USE_FPA_INTB_GEMM=OFF'
     steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -112,21 +128,33 @@ stages:
           -p ${{ parameters.docker_python_exe_path }}
           -v ${{ parameters.cuda_version }}
           -a "${{ parameters.cmake_cuda_archs }}"
+          -h "${{ parameters.arch }}"
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build CUDA Plugin (Python ${{ parameters.python_version }}, ${{ parameters.arch }}, CUDA ${{ parameters.cuda_version }})'
         env:
-          EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
+          EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine) $(FatbinCompressDefine) $(FpaIntBGemmDefine)
 
       - script: |
           set -e -x
           mkdir -p $(Build.ArtifactStagingDirectory)/bin
-          plugin_path="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_cuda_plugin.so"
+          plugin_path="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_cuda.so"
           if [ ! -f "$plugin_path" ]; then
             echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
             exit 1
           fi
+
+          dynamic_search_path="$(readelf -d "$plugin_path" | sed -nE 's/.*\((RPATH|RUNPATH)\).*\[([^]]*)\].*/\2/p')"
+          if [[ -n "$dynamic_search_path" && ":$dynamic_search_path:" == *::* ]]; then
+            echo "Error: Plugin binary contains an empty RPATH/RUNPATH component: '$dynamic_search_path'"
+            exit 1
+          fi
+          if [[ "$dynamic_search_path" == *cuda* ]]; then
+            echo "Error: Plugin binary contains a hard-coded CUDA RPATH/RUNPATH: '$dynamic_search_path'"
+            exit 1
+          fi
+
           cp "$plugin_path" "$(Build.ArtifactStagingDirectory)/bin/"
-        displayName: 'Copy plugin binaries'
+        displayName: 'Verify and copy plugin binaries'
 
       - script: |
           set -e -x
@@ -143,61 +171,63 @@ stages:
           touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
         displayName: 'Create version marker file'
 
-  - ${{ if eq(parameters.arch, 'x64') }}:
-    - job: ${{ parameters.stage_name }}_Python_Package
-      dependsOn: ${{ parameters.stage_name }}
-      timeoutInMinutes: 60
-      workspace:
-        clean: all
-      pool:
-        name: ${{ parameters.machine_pool }}
-        os: linux
-      templateContext:
-        outputs:
-        - output: pipelineArtifact
-          targetPath: $(Build.ArtifactStagingDirectory)/python
+  - job: ${{ parameters.stage_name }}_Python_Package
+    dependsOn: ${{ parameters.stage_name }}
+    timeoutInMinutes: 60
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+      ${{ if eq(parameters.arch, 'aarch64') }}:
+        hostArchitecture: Arm64
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)/python
+        ${{ if eq(parameters.arch, 'x64') }}:
           artifactName: cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
-      variables:
-      - template: ../templates/common-variables.yml
-      steps:
-      - checkout: self
-        clean: true
-        submodules: none
+        ${{ if eq(parameters.arch, 'aarch64') }}:
+          artifactName: cuda_plugin_python_linux_aarch64_cuda${{ replace(parameters.cuda_version, '.', '') }}
+    variables:
+    - template: ../templates/common-variables.yml
+    steps:
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
-      - template: ../templates/set-nightly-build-option-variable-step.yml
+    - template: ../templates/set-nightly-build-option-variable-step.yml
 
-      - template: ../templates/setup-feeds-and-python-steps.yml
-        parameters:
-          architecture: ${{ parameters.arch }}
+    - template: ../templates/setup-feeds-and-python-steps.yml
+      parameters:
+        architecture: ${{ parameters.arch }}
 
-      - template: ../templates/set-plugin-ep-build-variables-step.yml
-        parameters:
-          package_version: ${{ parameters.package_version }}
-          version_file: ${{ parameters.version_file }}
+    - template: ../templates/set-plugin-ep-build-variables-step.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
 
-      - template: ../templates/get-docker-image-steps.yml
-        parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-          Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: >-
-            --network=host
-            --secret id=PIP_INDEX_URL
-            --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
-            --build-arg TRT_VERSION=
-            --build-arg BUILD_UID=$( id -u )
-          Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: >-
+          --network=host
+          --secret id=PIP_INDEX_URL
+          --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+          --build-arg TRT_VERSION=
+          --build-arg BUILD_UID=$( id -u )
+        Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
 
-      - task: DownloadPipelineArtifact@2
-        displayName: 'Download plugin build artifacts'
-        inputs:
-          artifactName: ${{ parameters.artifact_name }}
-          targetPath: '$(Build.BinariesDirectory)/plugin_artifacts'
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download plugin build artifacts'
+      inputs:
+        artifactName: ${{ parameters.artifact_name }}
+        targetPath: '$(Build.BinariesDirectory)/plugin_artifacts'
 
-      - script: |
-          set -e -x
-          $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_plugin_python_package.sh \
-            -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }} \
-            -p ${{ parameters.docker_python_exe_path }} \
-            -v "$(PluginPythonPackageVersion)" \
-            -n "${{ parameters.python_package_name }}"
-        displayName: 'Build Python wheel'
+    - script: |
+        set -e -x
+        $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_plugin_python_package.sh \
+          -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }} \
+          -p ${{ parameters.docker_python_exe_path }} \
+          -v "$(PluginPythonPackageVersion)" \
+          -n "${{ parameters.python_package_name }}"
+      displayName: 'Build Python wheel'

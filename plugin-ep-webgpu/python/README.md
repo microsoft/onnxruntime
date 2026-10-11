@@ -1,4 +1,4 @@
-# WebGPU Plugin EP Python Package
+# WebGPU Plugin EP — Python Packaging
 
 This directory contains the packaging source for the `onnxruntime-ep-webgpu` Python package.
 
@@ -17,6 +17,10 @@ pip install -r requirements-build-wheel.txt
 
 Wheels are built via `build_wheel.py`. Running `pip install` or `pip wheel` directly against this directory is not
 supported — the source tree contains `pyproject.toml.in` (a template), not a real `pyproject.toml`.
+
+The wheel is platform-specific. Each platform's wheel is built from binaries produced on that platform —
+`build_wheel.py` does not cross-build. See the
+[bundled wheel readme](onnxruntime_ep_webgpu/README.md#supported-platforms) for the list of supported platforms.
 
 ```bash
 python build_wheel.py --binary_dir <path-to-built-binaries> --version <PEP-440-version> --output_dir <output-directory>
@@ -42,11 +46,16 @@ pip install dist/onnxruntime_ep_webgpu-*.whl
 python test/test_webgpu_plugin_ep.py
 ```
 
+`onnx` and `numpy` are required only by the smoke test, not by the `onnxruntime-ep-webgpu` wheel itself. The wheel's
+only runtime dependency is a compatible `onnxruntime` (see
+[`../MIN_ONNXRUNTIME_VERSION`](../MIN_ONNXRUNTIME_VERSION)).
+
 The test validates import, EP registration, device discovery, and inference (requires WebGPU-capable hardware for the
 inference portion). Set the environment variable `ORT_TEST_VERBOSE=1` to print additional diagnostic information
 (environment, available providers, discovered devices, etc.).
 
 ## Versioning
 
-The package version is derived from `plugin-ep-webgpu/VERSION_NUMBER` by the packaging pipeline, which produces a
-PEP 440 version string.
+The package version is derived from [`../VERSION_NUMBER`](../VERSION_NUMBER) by the packaging pipeline (see
+[`set-plugin-ep-build-variables-step.yml`](../../tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml)),
+which produces a PEP 440 version string.

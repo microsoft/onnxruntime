@@ -56,12 +56,20 @@ const BufferWriteFuncHolder* ModelGenOptions::TryGetOutputModelWriteFunc() const
   return std::get_if<BufferWriteFuncHolder>(&output_model_location);
 }
 
+const EpContextDataWriteFuncHolder* ModelGenOptions::TryGetEpContextDataWriteFunc() const {
+  return ep_context_data_write_func.write_func != nullptr ? &ep_context_data_write_func : nullptr;
+}
+
 bool ModelGenOptions::AreInitializersEmbeddedInOutputModel() const {
   return std::holds_alternative<std::monostate>(initializers_location);
 }
 
 const ExternalInitializerFileInfo* ModelGenOptions::TryGetExternalInitializerFileInfo() const {
   return std::get_if<ExternalInitializerFileInfo>(&initializers_location);
+}
+
+const ExternalInitializerBufferInfo* ModelGenOptions::TryGetExternalInitializerBufferInfo() const {
+  return std::get_if<ExternalInitializerBufferInfo>(&initializers_location);
 }
 
 const InitializerHandler* ModelGenOptions::TryGetInitializerHandler() const {

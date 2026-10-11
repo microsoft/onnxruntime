@@ -124,6 +124,17 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "Cubic mode is only supported in 4-D cases.");
   }
 
+  // Spatial dimensions must be non-empty for sampling: the output is sized by the grid, so a zero-size
+  // input spatial dimension would otherwise lead to invalid index computations during interpolation.
+  // Spatial dims are [1, rank-1) for NHWC (N,...,C) and [2, rank) for NCHW (N,C,...).
+  const size_t spatial_begin = IsNHWC ? 1 : 2;
+  const size_t spatial_end = IsNHWC ? dims_input.size() - 1 : dims_input.size();
+  for (size_t i = spatial_begin; i < spatial_end; ++i) {
+    ORT_RETURN_IF_NOT(dims_input[i] > 0,
+                      "Input spatial dimensions must be non-empty for sampling. Dimension ", i,
+                      " has size ", dims_input[i]);
+  }
+
   using Ch = Channels<IsNHWC>;
 
   TensorShapeVector dims_output(dims_input.size());

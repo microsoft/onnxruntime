@@ -3,8 +3,10 @@
 
 #include "contrib_ops/cpu/quantization/qlinear_softmax.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -216,6 +218,8 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
       [x_data, y_data, D, y_scale, yzp, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
         const auto c_y_scale = y_scale;
         const auto c_y_zp = yzp;
+        constexpr int32_t low = std::numeric_limits<int8_t>::lowest();
+        constexpr int32_t high = std::numeric_limits<int8_t>::max();
 
         const int8_t* x_t = x_data + first * D;
         int8_t* y_t = y_data + first * D;
@@ -243,7 +247,7 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
             const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to Int8
             const int32_t vq = static_cast<int32_t>(std::nearbyintf(((vt * c_y_scale)) / vsum)) + c_y_zp;
-            const int8_t vy = static_cast<int32_t>(vq) > 255 ? static_cast<int8_t>(255) : static_cast<int8_t>(vq);
+            const int8_t vy = static_cast<int8_t>(std::clamp(vq, low, high));
             *y_t++ = vy;
           } while (--elements_n != 0);
           x_t = x_t_cur;

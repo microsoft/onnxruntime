@@ -12,12 +12,16 @@ from autoep_helper import AutoEpTestCase
 from helper import get_name
 from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
-from onnx.defs import onnx_opset_version
 
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
+
+# Highest ai.onnx opset that has been *released* by the installed onnx package.
+# Avoid onnx.defs.onnx_opset_version(), which returns the in-development next opset
+# (ORT's loader rejects un-released opsets unless ALLOW_RELEASED_ONNX_OPSET_ONLY=0).
+_LAST_RELEASED_AI_ONNX_OPSET = max(v for (d, v) in helper.OP_SET_ID_VERSION_MAP if d == "ai.onnx")
 
 
 class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
@@ -357,7 +361,7 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         sess_options = onnxrt.SessionOptions()
         sess_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_GPU)
         self.assertTrue(sess_options.has_providers())
-        opset = onnx_opset_version()
+        opset = _LAST_RELEASED_AI_ONNX_OPSET
         device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0)
 
         for dtype in [
@@ -422,7 +426,7 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         sess_options = onnxrt.SessionOptions()
         sess_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_GPU)
         self.assertTrue(sess_options.has_providers())
-        opset = onnx_opset_version()
+        opset = _LAST_RELEASED_AI_ONNX_OPSET
 
         for dtype in [
             torch.float32,

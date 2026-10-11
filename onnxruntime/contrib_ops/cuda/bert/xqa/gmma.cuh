@@ -46,7 +46,7 @@ struct MatDesc {
   enum class Raw : uint64_t {
   };
 
-  [[nodiscard]] __device__ inline MatDesc withAddr(void const* data) const {
+  [[nodiscard]] __device__ inline MatDesc withAddr(const void* data) const {
     MatDesc ret = *this;
     ret.addr = encode(__cvta_generic_to_shared(data));
     return ret;
@@ -56,23 +56,23 @@ struct MatDesc {
     return (val & 0x3FFFFU) >> 4;
   }
 
-  __device__ inline bool operator==(MatDesc const& other) const {
+  __device__ inline bool operator==(const MatDesc& other) const {
     return raw() == other.raw();
   }
 
-  __device__ inline Raw const& raw() const {
+  const __device__ inline Raw& raw() const {
     static_assert(sizeof(MatDesc) == 8);
-    return reinterpret_cast<Raw const&>(*this);
+    return reinterpret_cast<const Raw&>(*this);
   }
 
-  static __device__ inline MatDesc fromRaw(Raw const& raw) {
-    return reinterpret_cast<MatDesc const&>(raw);
+  static __device__ inline MatDesc fromRaw(const Raw& raw) {
+    return reinterpret_cast<const MatDesc&>(raw);
   }
 };
 
 static_assert(sizeof(MatDesc) == 8);
 
-[[nodiscard]] __device__ inline MatDesc::Raw addAddr(MatDesc::Raw base, void const* data) {
+[[nodiscard]] __device__ inline MatDesc::Raw addAddr(MatDesc::Raw base, const void* data) {
   assert((uint32_t(__cvta_generic_to_shared(data)) & ~0x3FFFFU) == 0);
   MatDesc::Raw ret = base;
   auto& u32x2 = reinterpret_cast<uint32_t (&)[2]>(ret);
@@ -80,10 +80,10 @@ static_assert(sizeof(MatDesc) == 8);
   return ret;
 }
 
-__device__ inline MatDesc makeMatDesc(void const* data, uint32_t dimKByteOffset, uint32_t dimMNByteOffset,
-                                      void const* patternStartAddr, SwizzleMode swizzleMode) {
-  uint32_t const patternAddr = __cvta_generic_to_shared(patternStartAddr);
-  uint32_t const baseAlign = [&]() -> uint32_t {
+__device__ inline MatDesc makeMatDesc(const void* data, uint32_t dimKByteOffset, uint32_t dimMNByteOffset,
+                                      const void* patternStartAddr, SwizzleMode swizzleMode) {
+  const uint32_t patternAddr = __cvta_generic_to_shared(patternStartAddr);
+  const uint32_t baseAlign = [&]() -> uint32_t {
     switch (swizzleMode) {
       case SwizzleMode::kNONE:
         return 1;
@@ -98,7 +98,7 @@ __device__ inline MatDesc makeMatDesc(void const* data, uint32_t dimKByteOffset,
     return 0;
   }();
   assert(__cvta_generic_to_shared(data) % baseAlign == 0);
-  uint32_t const baseOffset = ((patternAddr % baseAlign == 0) ? 0U : ((patternAddr >> 0x7) & 0x7));
+  const uint32_t baseOffset = ((patternAddr % baseAlign == 0) ? 0U : ((patternAddr >> 0x7) & 0x7));
   return MatDesc{
       /*addr=*/MatDesc::encode(__cvta_generic_to_shared(data)),
       /*dimKOffset=*/MatDesc::encode(dimKByteOffset),
@@ -111,7 +111,7 @@ __device__ inline MatDesc makeMatDesc(void const* data, uint32_t dimKByteOffset,
 }
 
 __device__ inline MatDesc makeMatDesc(
-    void const* data, uint32_t dimKByteOffset, uint32_t dimMNByteOffset, SwizzleMode swizzleMode) {
+    const void* data, uint32_t dimKByteOffset, uint32_t dimMNByteOffset, SwizzleMode swizzleMode) {
   return makeMatDesc(data, dimKByteOffset, dimMNByteOffset, data, swizzleMode);
 }
 
@@ -129,7 +129,7 @@ __device__ void mma_async_shmA(
     float (&acc)[exactDiv(n, instNBase)][2][2], MatDesc::Raw descA, MatDesc::Raw descB, bool accHasVal);
 template <typename InputElem, uint32_t n, bool transA = false, bool transB = false>
 __device__ void mma_async_regA(
-    float (&acc)[exactDiv(n, instNBase)][2][2], uint32_t const (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal);
+    float (&acc)[exactDiv(n, instNBase)][2][2], const uint32_t (&a)[2][2][1], MatDesc::Raw descB, bool accHasVal);
 
 __device__ inline void fence() {
   asm volatile("wgmma.fence.sync.aligned;\n");
@@ -145,7 +145,7 @@ __device__ inline void wait_group() {
 }
 
 template <bool swizzle, typename T, uint32_t rows, uint32_t cols, bool alignedForSwizzle>
-constexpr SwizzleMode getSwizzleMode(Array2D<T, rows, cols, alignedForSwizzle> const&) {
+constexpr SwizzleMode getSwizzleMode(const Array2D<T, rows, cols, alignedForSwizzle>&) {
   constexpr auto rowBytes = Array2D<T, rows, cols, alignedForSwizzle>::rowBytes;
   if constexpr (!swizzle) {
     return SwizzleMode::kNONE;
