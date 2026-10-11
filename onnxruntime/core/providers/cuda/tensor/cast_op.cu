@@ -145,6 +145,20 @@ struct CastSat<Float8E5M2, half> {
 
 #endif
 
+template <>
+struct CastStd<__nv_bfloat16, Float8E4M3FN> {
+  __device__ __forceinline__ __nv_bfloat16 operator()(Float8E4M3FN value) const {
+    return __float2bfloat16_rn(CastStd<float, Float8E4M3FN>()(value));
+  }
+};
+
+template <>
+struct CastStd<__nv_bfloat16, Float8E5M2> {
+  __device__ __forceinline__ __nv_bfloat16 operator()(Float8E5M2 value) const {
+    return __float2bfloat16_rn(CastStd<float, Float8E5M2>()(value));
+  }
+};
+
 #endif  // DISABLE_FLOAT8_TYPES
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -390,12 +404,14 @@ Status CudaCastSat(cudaStream_t stream, const InT* input, OutT* output, size_t n
 
 template Status CudaCastStd<float, Float8E4M3FN>(cudaStream_t stream, const Float8E4M3FN* input, float* output, size_t num_of_element);
 template Status CudaCastStd<half, Float8E4M3FN>(cudaStream_t stream, const Float8E4M3FN* input, half* output, size_t num_of_element);
+template Status CudaCastStd<__nv_bfloat16, Float8E4M3FN>(cudaStream_t stream, const Float8E4M3FN* input, __nv_bfloat16* output, size_t num_of_element);
 
 template Status CudaCastSat<Float8E4M3FN, float>(cudaStream_t stream, const float* input, Float8E4M3FN* output, size_t num_of_element, bool saturate);
 template Status CudaCastSat<Float8E4M3FN, half>(cudaStream_t stream, const half* input, Float8E4M3FN* output, size_t num_of_element, bool saturate);
 
 template Status CudaCastStd<float, Float8E5M2>(cudaStream_t stream, const Float8E5M2* input, float* output, size_t num_of_element);
 template Status CudaCastStd<half, Float8E5M2>(cudaStream_t stream, const Float8E5M2* input, half* output, size_t num_of_element);
+template Status CudaCastStd<__nv_bfloat16, Float8E5M2>(cudaStream_t stream, const Float8E5M2* input, __nv_bfloat16* output, size_t num_of_element);
 
 template Status CudaCastSat<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, size_t num_of_element, bool saturate);
 template Status CudaCastSat<Float8E5M2, half>(cudaStream_t stream, const half* input, Float8E5M2* output, size_t num_of_element, bool saturate);

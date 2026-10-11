@@ -500,7 +500,13 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
             float dequantized[kUint8DequantBatch];
             MlasDequantizeLinear(unpacked, dequantized, narrow<size_t>(run_len), scale_val,
                                  static_cast<uint8_t>(zp_val));
-            MlasConvertFloatToHalfBuffer(dequantized, output_ptr + output_idx, narrow<size_t>(run_len));
+            if constexpr (std::is_same_v<T2, MLFloat16>) {
+              MlasConvertFloatToHalfBuffer(dequantized, output_ptr + output_idx, narrow<size_t>(run_len));
+            } else {
+              for (int64_t index = 0; index < run_len; ++index) {
+                output_ptr[output_idx + index] = static_cast<T2>(dequantized[index]);
+              }
+            }
           }
 
           i += run_len;
@@ -603,7 +609,12 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
                                             quantize_axis_dim, quantize_N, p,
                                             tp);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
-    ORT_THROW("DequantizeLinear into BFLOAT16 is not implemented yet.");
+    const auto* scales_ptr = p.scales_tensor->template Data<BFloat16>();
+    auto* output_ptr = p.output_tensor->template MutableData<BFloat16>();
+
+    return CopyDataAndDequantize<BFloat16>(data_ptr, indices_ptr, scales_ptr, zero_points_ptr,
+                                         output_ptr, gather_M, gather_N, gather_axis_dim, gather_block,
+                                         quantize_axis_dim, quantize_N, p, tp);
   } else {
     ORT_THROW("Unsupported dequantized type: ", dequantized_type);
   }
@@ -617,7 +628,8 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
       kCpuExecutionProvider,                                                                                      \
       KernelDefBuilder()                                                                                          \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                                \
-          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()}) \
+            .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),                                           \
+                       DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<BFloat16>()}) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()),                                           \
       GatherBlockQuantized<T1, Tind>);
 

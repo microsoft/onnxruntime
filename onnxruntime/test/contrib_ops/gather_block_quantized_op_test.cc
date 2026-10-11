@@ -21,6 +21,42 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(GatherBlockQuantizedOpTest, Uint8BFloat16OutputCpu) {
+  OpTester test("GatherBlockQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", 0);
+  test.AddAttribute<int64_t>("quantize_axis", 1);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddAttribute<int64_t>("bits", 8);
+  test.AddInput<uint8_t>("data", {1, 3}, {129, 131, 124});
+  test.AddInput<int32_t>("indices", {1}, {0});
+  test.AddInput<BFloat16>("scales", {1, 1}, {BFloat16(1.0078125f)});
+  test.AddOutput<BFloat16>("output", {1, 3},
+                          {BFloat16(1.0078125f), BFloat16(3.0234375f), BFloat16(-4.03125f)});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+TEST(GatherBlockQuantizedOpTest, FpBFloat16OutputCpu) {
+  OpTester test("GatherBlockQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", 0);
+  test.AddAttribute<int64_t>("quantize_axis", 1);
+  test.AddAttribute<int64_t>("block_size", 0);
+  test.AddInput<Float8E4M3FN>("data", {2, 2},
+                            {Float8E4M3FN(1.0f), Float8E4M3FN(2.0f),
+                             Float8E4M3FN(-4.0f), Float8E4M3FN(8.0f)});
+  test.AddInput<int64_t>("indices", {3}, {1, -2, 1});
+  test.AddInput<BFloat16>("scales", {1, 1}, {BFloat16(0.5f)});
+  test.AddOutput<BFloat16>("output", {3, 2},
+                          {BFloat16(-2.0f), BFloat16(4.0f), BFloat16(0.5f),
+                           BFloat16(1.0f), BFloat16(-2.0f), BFloat16(4.0f)});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+#endif
+
 // When uint8_t data type is used GatherBlockQuantize applies MatMulNBit's conventions for storing the data.
 // That is when no zero points are specified a default zero point of 8 (for 4 bits) or 128 (for 8 bits) is used.
 // This convertor hence compensates for that by adding it to the data values, so that the outputs match the results

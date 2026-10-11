@@ -308,10 +308,10 @@ COMPUTE_INTERNAL_FL16_32(BFloat16)
         break;                                                                      \
       case TensorProto_DataType_BFLOAT16:                                           \
         if (count > 0) {                                                            \
-          Impl_Cast<FLOAT8_TYPE, half>(                                             \
+          return cast_helper_impl::CudaCastStd<__nv_bfloat16, FLOAT8_TYPE>(         \
               Stream(context),                                                      \
               x_data,                                                               \
-              reinterpret_cast<half*>(Y->MutableData<BFloat16>()),                  \
+              reinterpret_cast<__nv_bfloat16*>(Y->MutableData<BFloat16>()),         \
               count);                                                               \
         }                                                                           \
         break;                                                                      \

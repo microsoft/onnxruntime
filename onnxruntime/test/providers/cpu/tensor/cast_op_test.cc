@@ -104,6 +104,33 @@ void TestCastOp(gsl::span<const SrcType> input,
   test.Run(expect_result, expected_failure_string, excluded_provider_types);
 }
 
+#if defined(USE_CUDA) && !defined(DISABLE_FLOAT8_TYPES)
+template <typename Float8Type>
+void TestCudaFloat8ToBFloat16BitPatterns() {
+  if (!HasCudaEnvironment(800) || DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA SM80 or newer is required";
+  }
+  std::vector<Float8Type> input;
+  std::vector<BFloat16> expected;
+  input.reserve(256);
+  expected.reserve(256);
+  for (int code = 0; code < 256; ++code) {
+    input.emplace_back(static_cast<uint8_t>(code), Float8Type::FromBits());
+    expected.emplace_back(input.back().ToFloat());
+  }
+  TestCastOp<Float8Type, BFloat16>(gsl::make_span(input), gsl::make_span(expected), std::vector<int64_t>{256},
+                                   OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::None, true);
+}
+
+TEST(CastOpTest, Float8E4M3FNToBFloat16CudaBitPatterns) {
+  TestCudaFloat8ToBFloat16BitPatterns<Float8E4M3FN>();
+}
+
+TEST(CastOpTest, Float8E5M2ToBFloat16CudaBitPatterns) {
+  TestCudaFloat8ToBFloat16BitPatterns<Float8E5M2>();
+}
+#endif
+
 // INT2 types were introduced in opset 25 (IR13)
 constexpr int kInt2Opset = 25;
 
