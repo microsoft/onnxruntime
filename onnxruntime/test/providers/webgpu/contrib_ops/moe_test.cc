@@ -13,6 +13,7 @@
 
 #include "gtest/gtest.h"
 
+#include "contrib_ops/webgpu/moe/block_fp8_expert_matmul.h"
 #if !defined(DISABLE_FLOAT8_TYPES)
 #include "core/common/float8.h"
 #endif
@@ -27,7 +28,6 @@
 #if defined(ORT_USE_EP_API_ADAPTERS)
 #include "test/providers/webgpu/test_plugin.h"
 #else
-#include "contrib_ops/webgpu/moe/block_fp8_expert_matmul.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #endif
