@@ -444,3 +444,19 @@ func assertReaderReleased(t *testing.T, registration *epContextReaderRegistratio
 		t.Fatal("cgo handle leaked")
 	}
 }
+
+type contextReaderFailureCase struct {
+	name       string
+	reader     EPContextDataReader
+	limit      uint64
+	code       ErrorCode
+	diagnostic string
+}
+
+func contextReaderFailureCases(payload []byte) []contextReaderFailureCase {
+	return []contextReaderFailureCase{
+		{"error", func(string) ([]byte, error) { return nil, errors.New("integration reader error") }, uint64(len(payload)), ErrorCodeFail, "integration reader error"},
+		{"panic", func(string) ([]byte, error) { panic("integration panic") }, uint64(len(payload)), ErrorCodeFail, "panicked"},
+		{"oversize", func(string) ([]byte, error) { return payload, nil }, uint64(len(payload) - 1), ErrorCodeInvalidArgument, "maxBytes"},
+	}
+}

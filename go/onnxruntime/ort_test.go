@@ -757,3 +757,53 @@ func featureGateSynchronize(t *testing.T, input bool) error {
 	}
 	return binding.SynchronizeOutputs()
 }
+
+func integrationPluginPath(t *testing.T, variable string) string {
+	t.Helper()
+	path, present := os.LookupEnv(variable)
+	if !present {
+		t.Skipf("%s is absent", variable)
+	}
+	if path == "" {
+		t.Fatalf("%s is explicitly empty", variable)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("%s plugin file %q: %v", variable, path, err)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatalf("%s plugin path %q is not a regular file", variable, path)
+	}
+	return path
+}
+
+func TestEPIntegrationOptIn(t *testing.T) {
+	invalid := filepath.Join(t.TempDir(), "invalid_plugin.so")
+	if err := os.WriteFile(invalid, []byte("not a plugin library"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ variable, selector string }{
+		{"ORT_TEST_WEBGPU_EP_PATH", "^TestEPWebGPUIntegration$"},
+		{"ORT_TEST_PLUGIN_EP_PATH", "^TestEPPluginIntegration$"},
+		{"ORT_TEST_PLUGIN_EP_PATH", "^TestEPContextPluginIntegration$"},
+	} {
+		for _, value := range []string{"", "/definitely/missing/plugin.so", invalid} {
+			t.Run(tc.selector+"/"+value, func(t *testing.T) {
+				out, err := runRuntimeChild(t, ".", testRuntimePath, "", tc.selector, tc.variable+"="+value)
+				diagnostic := "register plugin"
+				switch value {
+				case "":
+					diagnostic = "explicitly empty"
+				case "/definitely/missing/plugin.so":
+					diagnostic = "plugin file"
+				}
+				if err == nil || !strings.Contains(string(out), diagnostic) {
+					t.Fatalf("opt-in negative: %v\n%s", err, out)
+				}
+				if strings.Contains(string(out), "is not available") {
+					t.Fatalf("API negotiation wrote to stderr:\n%s", out)
+				}
+			})
+		}
+	}
+}

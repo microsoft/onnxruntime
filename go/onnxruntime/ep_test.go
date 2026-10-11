@@ -2,8 +2,11 @@ package onnxruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -499,5 +502,83 @@ func TestEPShutdown(t *testing.T) {
 	}
 	if _, err := GetEPDevices(); !errors.Is(err, errShutdown) {
 		t.Fatalf("discovery after shutdown: %v", err)
+	}
+}
+
+func checkPluginProfile(data []byte, provider string) error {
+	var events []struct {
+		Name     string `json:"name"`
+		Category string `json:"cat"`
+		Args     struct {
+			Provider string `json:"provider"`
+			OpName   string `json:"op_name"`
+		} `json:"args"`
+	}
+	if err := json.Unmarshal(data, &events); err != nil {
+		return fmt.Errorf("decode plugin profile: %w", err)
+	}
+	found := false
+	for _, event := range events {
+		if event.Category != "Node" || !strings.HasSuffix(event.Name, "_kernel_time") {
+			continue
+		}
+		if event.Args.OpName == "Mul" && event.Args.Provider == "CPUExecutionProvider" {
+			return fmt.Errorf("Mul ran on CPUExecutionProvider")
+		}
+		if event.Args.Provider == provider {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("profile has no compute event for selected EP %s", provider)
+	}
+	return nil
+}
+
+func TestEPPluginProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name, data string
+		valid      bool
+	}{
+		{"plugin", `[{"cat":"Node","name":"Mul_kernel_time","args":{"provider":"go_example_ep","op_name":"Mul"}}]`, true},
+		{"omitted_append", `[{"cat":"Node","name":"Mul_kernel_time","args":{"provider":"CPUExecutionProvider","op_name":"Mul"}}]`, false},
+		{"non_compute", `[{"cat":"Session","name":"session_initialization","args":{"provider":"go_example_ep"}}]`, false},
+		{"cpu_mul", `[{"cat":"Node","name":"Mul_kernel_time","args":{"provider":"CPUExecutionProvider","op_name":"Mul"}},{"cat":"Node","name":"Other_kernel_time","args":{"provider":"go_example_ep"}}]`, false},
+		{"invalid", `{`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := checkPluginProfile([]byte(tc.data), "go_example_ep"); (err == nil) != tc.valid {
+				t.Fatalf("profile result: %v", err)
+			}
+		})
+	}
+}
+
+func TestEPProfileRequiresAppend(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeEPResource(t, opts)
+	if err := opts.EnableProfiling(filepath.Join(t.TempDir(), "cpu_profile")); err != nil {
+		t.Fatal(err)
+	}
+	// Omit V2 append deliberately: correct values alone cannot prove plugin execution.
+	session, err := NewSession(testdataPath("mul_f32.onnx"), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeEPResource(t, session)
+	runPluginMul(t, session)
+	profile, err := session.EndProfiling()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPluginProfile(data, "go_example_ep"); err == nil || !strings.Contains(err.Error(), "Mul ran on CPUExecutionProvider") {
+		t.Fatalf("omitted append did not fail provider assertion: %v", err)
 	}
 }

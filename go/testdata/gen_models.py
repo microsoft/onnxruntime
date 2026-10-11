@@ -26,6 +26,25 @@ def make_add_f32():
     return path
 
 
+def make_mul_f32():
+    """Mul op: A[2,3] * B[2,3] = C[2,3], all float32."""
+    input_a = helper.make_tensor_value_info("A", TensorProto.FLOAT, [2, 3])
+    input_b = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
+    output_c = helper.make_tensor_value_info("C", TensorProto.FLOAT, [2, 3])
+
+    node = helper.make_node("Mul", inputs=["A", "B"], outputs=["C"])
+    graph = helper.make_graph([node], "mul_graph", [input_a, input_b], [output_c])
+    model = helper.make_model(
+        graph,
+        opset_imports=[helper.make_opsetid("", 13)],
+    )
+    model.ir_version = 8
+    checker.check_model(model)
+    path = os.path.join(OUT_DIR, "mul_f32.onnx")
+    save_model(model, path)
+    return path
+
+
 def make_matmul_dynamic():
     """MatMul with dynamic batch: A[batch,4] @ B[4,2] = C[batch,2]."""
     input_a = helper.make_tensor_value_info("A", TensorProto.FLOAT, ["batch", 4])
@@ -68,7 +87,7 @@ def make_kvconcat():
 
 
 if __name__ == "__main__":
-    for gen in [make_add_f32, make_matmul_dynamic, make_kvconcat]:
+    for gen in [make_add_f32, make_mul_f32, make_matmul_dynamic, make_kvconcat]:
         path = gen()
         size = os.path.getsize(path)
         print(f"{os.path.basename(path):25s}  {size:4d} bytes")
