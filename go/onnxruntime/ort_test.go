@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +21,7 @@ import (
 const initRaceEnv = "ORT_TEST_INIT_RACE"
 
 const initRetryEnv = "ORT_TEST_INIT_RETRY"
+const initFailureEnv = "ORT_TEST_INIT_FAILURE"
 
 var testRuntimePath string
 
@@ -47,7 +50,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	SetSharedLibraryPath(testRuntimePath)
-	if os.Getenv(initRaceEnv) != "1" && os.Getenv(initRetryEnv) != "1" {
+	if os.Getenv(initRaceEnv) != "1" && os.Getenv(initRetryEnv) != "1" && os.Getenv(initFailureEnv) != "1" {
 		if err := Init(); err != nil {
 			println("failed to init ORT:", err.Error())
 			os.Exit(1)
@@ -117,6 +120,7 @@ func TestTestMainRuntimeRequired(t *testing.T) {
 		{"valid", testRuntimePath, "", "^TestGetVersion$", "--- PASS: TestGetVersion", 0},
 		{"missing_no_match", filepath.Join(dir, "missing"), "", "^NoRuntimeTestMatches$", "runtime library is unavailable", 1},
 		{"cold_race_no_match", testRuntimePath, initRaceEnv, "^NoRuntimeTestMatches$", "tests did not initialize the runtime", 1},
+		{"cold_failure_no_match", testRuntimePath, initFailureEnv, "^NoRuntimeTestMatches$", "tests did not initialize the runtime", 1},
 		{"cold_retry_no_match", testRuntimePath, initRetryEnv, "^NoRuntimeTestMatches$", "tests did not initialize the runtime", 1},
 		{"cold_missing", filepath.Join(dir, "missing"), initRaceEnv, "^TestInitRaceChild$", "runtime library is unavailable", 1},
 	} {
@@ -237,6 +241,16 @@ func TestInitBadPathRetryable(t *testing.T) {
 		}
 		if IsInitialized() || APIVersion() != 0 {
 			t.Fatal("failed Init published initialization state")
+		}
+		if _, err := GetBuildInfo(); !errors.Is(err, errNotInitialized) {
+			t.Fatalf("expected uninitialized build-info error, got %v", err)
+		}
+		var opts *SessionOptions
+		if _, err := opts.GetExecutionMode(); !errors.Is(err, errNotInitialized) {
+			t.Fatalf("pre-init getter: %v", err)
+		}
+		if _, err := opts.IsMemPatternEnabled(); !errors.Is(err, errNotInitialized) {
+			t.Fatalf("pre-init getter: %v", err)
 		}
 		if _, err := GetVersion(); !errors.Is(err, errNotInitialized) {
 			t.Fatalf("expected uninitialized version error, got %v", err)
@@ -384,3 +398,287 @@ func TestLoadLibraryRejectsNULPath(t *testing.T) {
 		t.Fatal("expected error for NUL in shared library path")
 	}
 }
+
+func TestAPIVersionPolicy(t *testing.T) {
+	version, err := GetVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := APIVersion()
+	if api < 17 || api > 32 {
+		t.Fatalf("API %d outside loader range [17,32]", api)
+	}
+	if value, set := os.LookupEnv("ORT_TEST_EXPECT_API"); set {
+		expected, err := strconv.Atoi(value)
+		if err != nil || expected < 17 || expected > 32 {
+			t.Fatalf("invalid ORT_TEST_EXPECT_API %q", value)
+		}
+		if api != expected {
+			t.Fatalf("expected API %d, got %d", expected, api)
+		}
+	}
+	if value, set := os.LookupEnv("ORT_TEST_EXPECT_VERSION"); set {
+		if value == "" {
+			t.Fatal("invalid empty ORT_TEST_EXPECT_VERSION")
+		}
+		if version != value {
+			t.Fatalf("expected version %q, got %q", value, version)
+		}
+	}
+	t.Logf("ORT version: %s, API version: %d", version, api)
+}
+
+func TestInitAPINegotiationQuiet(t *testing.T) {
+	version, err := GetVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 || parts[0] != "1" {
+		t.Fatalf("expected release version 1.N.x, got %q", version)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		t.Fatalf("invalid runtime minor in %q: %v", version, err)
+	}
+	expected := min(minor, apiVersionMax)
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, "-test.run=^TestAPIVersionPolicy$", "-test.v")
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(runtimeTestEnvironment(testRuntimePath, ""),
+		"ORT_TEST_EXPECT_API="+strconv.Itoa(expected), "ORT_TEST_EXPECT_VERSION="+version)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("negotiation child: %v\n%s\n%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "--- PASS: TestAPIVersionPolicy") {
+		t.Fatalf("negotiation child did not run the API assertion:\n%s", stdout.String())
+	}
+	if strings.Contains(stderr.String(), "is not available") {
+		t.Fatalf("Init printed an unsupported API diagnostic:\n%s", stderr.String())
+	}
+}
+
+func TestAPIFeatureGates(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+	for _, tc := range []struct {
+		name    string
+		minimum int
+		call    func() error
+	}{
+		{"GetBuildInfo", 15, func() error {
+			info, err := GetBuildInfo()
+			if err == nil && info == "" {
+				t.Error("expected nonempty build info")
+			}
+			return err
+		}},
+		{"GetExecutionMode", 27, func() error {
+			mode, err := opts.GetExecutionMode()
+			if err == nil && mode != ExecutionModeSequential {
+				t.Errorf("expected sequential, got %v", mode)
+			}
+			return err
+		}},
+		{"IsMemPatternEnabled", 27, func() error {
+			enabled, err := opts.IsMemPatternEnabled()
+			if err == nil && !enabled {
+				t.Error("expected memory pattern enabled")
+			}
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if APIVersion() >= tc.minimum {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			var native *OrtError
+			if !errors.As(err, &native) || native.Code != ErrorCodeNotImplemented {
+				t.Fatalf("expected typed unsupported error, got %v", err)
+			}
+			for _, text := range []string{"requires API 27", "negotiated API " + strconv.Itoa(APIVersion())} {
+				if !strings.Contains(native.Msg, text) {
+					t.Errorf("missing %q in %q", text, native.Msg)
+				}
+			}
+		})
+	}
+}
+
+func TestVendoredHeaders(t *testing.T) {
+	canonical := filepath.Join("..", "..", "include", "onnxruntime", "core", "session")
+	if _, err := os.Stat(canonical); os.IsNotExist(err) {
+		if _, repoErr := os.Stat(filepath.Join("..", "..", ".git")); !os.IsNotExist(repoErr) {
+			t.Fatalf("repository checkout is missing canonical headers: %v", err)
+		}
+		t.Skip("standalone module has no canonical source tree")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"onnxruntime_c_api.h", "onnxruntime_ep_c_api.h", "onnxruntime_error_code.h"} {
+		t.Run(name, func(t *testing.T) {
+			source, err := os.ReadFile(filepath.Join(canonical, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			vendored, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(source, vendored) {
+				t.Fatal("vendored header differs from canonical source")
+			}
+		})
+	}
+}
+
+func TestGetBuildInfo(t *testing.T) {
+	info, err := GetBuildInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info == "" {
+		t.Fatal("expected nonempty build info")
+	}
+	t.Log(info)
+}
+
+func TestErrorCodes(t *testing.T) {
+	for _, tc := range []struct {
+		code   ErrorCode
+		number int
+		name   string
+	}{
+		{ErrorCodeModelLoadCanceled, 12, "ModelLoadCanceled"},
+		{ErrorCodeModelRequiresCompilation, 13, "ModelRequiresCompilation"},
+		{ErrorCodeNotFound, 14, "NotFound"},
+		{ErrorCodeDeviceReset, 15, "DeviceReset"},
+		{ErrorCode(999), 999, "ErrorCode(999)"},
+	} {
+		if int(tc.code) != tc.number || tc.code.String() != tc.name {
+			t.Errorf("code %d: got %s, want %s", tc.code, tc.code, tc.name)
+		}
+	}
+}
+
+// The fixture negotiates a real ABI table layout but fails before publishing Init.
+// It needs no link-time or run-time dependency on a second ORT library.
+func TestInitEnvironmentFailureRetryable(t *testing.T) {
+	if os.Getenv(initFailureEnv) == "1" {
+		if IsInitialized() || APIVersion() != 0 {
+			t.Fatal("child must start uninitialized")
+		}
+		SetSharedLibraryPath(os.Getenv("ORT_TEST_INIT_FAILURE_LIBRARY"))
+		err := Init()
+		if err == nil || !strings.Contains(err.Error(), "injected initialization failure") {
+			t.Fatalf("expected injected failure, got %v", err)
+		}
+		if IsInitialized() || APIVersion() != 0 {
+			t.Fatalf("failed Init leaked API %d", APIVersion())
+		}
+		if _, err := GetVersion(); !errors.Is(err, errNotInitialized) {
+			t.Fatalf("version after failed Init: %v", err)
+		}
+		if _, err := GetBuildInfo(); !errors.Is(err, errNotInitialized) {
+			t.Fatalf("build info after failed Init: %v", err)
+		}
+		SetSharedLibraryPath(testRuntimePath)
+		if err := Init(); err != nil {
+			t.Fatal(err)
+		}
+		version, err := GetVersion()
+		if err != nil || version == "" || version == "injected-runtime" || APIVersion() == 0 {
+			t.Fatalf("retry version %q API %d: %v", version, APIVersion(), err)
+		}
+		return
+	}
+	ccOutput, err := exec.Command("go", "env", "CC").Output()
+	if err != nil {
+		t.Fatalf("get cgo compiler: %v", err)
+	}
+	compiler := strings.Fields(strings.TrimSpace(string(ccOutput)))
+	if len(compiler) == 0 {
+		t.Fatal("empty cgo compiler")
+	}
+	include, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, memoryFailure := range []bool{false, true} {
+		t.Run(strconv.FormatBool(memoryFailure), func(t *testing.T) {
+			dir := t.TempDir()
+			source := filepath.Join(dir, "init_failure.c")
+			if err := os.WriteFile(source, []byte(initFailureSource), 0600); err != nil {
+				t.Fatal(err)
+			}
+			library := filepath.Join(dir, platformLibraryName())
+			args := append([]string{}, compiler[1:]...)
+			if runtime.GOOS == "darwin" {
+				args = append(args, "-dynamiclib")
+			} else {
+				args = append(args, "-shared")
+			}
+			if runtime.GOOS != "windows" {
+				args = append(args, "-fPIC")
+			}
+			if memoryFailure {
+				args = append(args, "-DFAIL_MEMORY")
+			}
+			args = append(args, "-I", include, source, "-o", library)
+			if out, err := exec.Command(compiler[0], args...).CombinedOutput(); err != nil {
+				t.Fatalf("compile Init failure fixture: %v\n%s", err, out)
+			}
+			out, err := runRuntimeChild(t, dir, testRuntimePath, initFailureEnv, "^TestInitEnvironmentFailureRetryable$", "ORT_TEST_INIT_FAILURE_LIBRARY="+library)
+			if err != nil || !bytes.Contains(out, []byte("--- PASS: TestInitEnvironmentFailureRetryable")) {
+				t.Fatalf("Init failure child: %v\n%s", err, out)
+			}
+		})
+	}
+}
+
+const initFailureSource = `
+#include "onnxruntime_c_api.h"
+static char status;
+static OrtStatus* ORT_API_CALL create_env(OrtLoggingLevel level, const char* id, OrtEnv** out) {
+#ifdef FAIL_MEMORY
+ *out = (OrtEnv*)&status;
+ return NULL;
+#else
+ return (OrtStatus*)&status;
+#endif
+}
+static OrtStatus* ORT_API_CALL create_memory(enum OrtAllocatorType type, enum OrtMemType mem, OrtMemoryInfo** out) {
+ return (OrtStatus*)&status;
+}
+static void ORT_API_CALL release_env(OrtEnv* env) {}
+static OrtErrorCode ORT_API_CALL error_code(const OrtStatus* s) { return ORT_FAIL; }
+static const char* ORT_API_CALL error_message(const OrtStatus* s) { return "injected initialization failure"; }
+static void ORT_API_CALL release_status(OrtStatus* s) {}
+static const OrtApi api = {
+ .CreateEnv = create_env,
+ .CreateCpuMemoryInfo = create_memory,
+ .ReleaseEnv = release_env,
+ .GetErrorCode = error_code,
+ .GetErrorMessage = error_message,
+ .ReleaseStatus = release_status
+};
+static const OrtApi* ORT_API_CALL get_api(uint32_t version) { return version <= ORT_API_VERSION ? &api : NULL; }
+static const char* ORT_API_CALL get_version(void) { return "injected-runtime"; }
+static const OrtApiBase base = {get_api, get_version};
+ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) { return &base; }
+`

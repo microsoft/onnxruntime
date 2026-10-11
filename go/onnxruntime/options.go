@@ -236,8 +236,8 @@ func (o *SessionOptions) SetExecutionMode(mode ExecutionMode) error {
 
 // GetExecutionMode returns the current execution mode. Requires ORT >= 1.27.
 func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
-	if apiVersion < 27 {
-		return 0, fmt.Errorf("ort: GetExecutionMode requires ORT >= 1.27 (have API version %d)", apiVersion)
+	if err := checkInit(); err != nil {
+		return 0, err
 	}
 	if err := o.lockUsable("get execution mode"); err != nil {
 		return 0, err
@@ -252,8 +252,8 @@ func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
 
 // IsMemPatternEnabled reports whether memory pattern optimization is enabled. Requires ORT >= 1.27.
 func (o *SessionOptions) IsMemPatternEnabled() (bool, error) {
-	if apiVersion < 27 {
-		return false, fmt.Errorf("ort: IsMemPatternEnabled requires ORT >= 1.27 (have API version %d)", apiVersion)
+	if err := checkInit(); err != nil {
+		return false, err
 	}
 	if err := o.lockUsable("get mem pattern enabled"); err != nil {
 		return false, err

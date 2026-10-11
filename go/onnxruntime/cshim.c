@@ -1,4 +1,5 @@
 #include "cshim.h"
+#include <stdio.h>
 
 _Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2 == 24, "UINT2 C API ABI value must remain 24");
 _Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2 == 25, "INT2 C API ABI value must remain 25");
@@ -8,11 +9,40 @@ static const OrtApi *g_api = NULL;
 static int g_api_version = 0;
 static const char *g_ort_version = NULL;
 
+void ort_reset_api(void) {
+    g_api = NULL;
+    g_api_version = 0;
+    g_ort_version = NULL;
+}
+
+static int ort_first_api_version(const char *version) {
+    if (version == NULL || version[0] != '1' || version[1] != '.') return ORT_GO_API_VERSION_MAX;
+    const char *p = version + 2;
+    if (*p < '0' || *p > '9') return ORT_GO_API_VERSION_MAX;
+    int minor = 0;
+    while (*p >= '0' && *p <= '9') {
+        // Clamp while parsing so an oversized minor cannot overflow.
+        if (minor < ORT_GO_API_VERSION_MAX) {
+            minor = minor * 10 + (*p - '0');
+            if (minor > ORT_GO_API_VERSION_MAX) minor = ORT_GO_API_VERSION_MAX;
+        }
+        p++;
+    }
+    if (*p++ != '.') return ORT_GO_API_VERSION_MAX;
+    if (*p < '0' || *p > '9') return ORT_GO_API_VERSION_MAX;
+    while (*p >= '0' && *p <= '9') p++;
+    if (*p != '\0') return ORT_GO_API_VERSION_MAX;
+    return minor;
+}
+
 int ort_init_api(void *get_api_base_fn, int *actual_version) {
+    ort_reset_api();
+    *actual_version = 0;
     const OrtApiBase *base = ((const OrtApiBase *(*)(void))get_api_base_fn)();
     if (base == NULL) return 1;
     g_ort_version = base->GetVersionString();
-    for (int v = ORT_GO_API_VERSION_MAX; v >= ORT_GO_API_VERSION_MIN; v--) {
+    // Release 1.N provides API N. Avoid rejected requests that ORT logs to stderr.
+    for (int v = ort_first_api_version(g_ort_version); v >= ORT_GO_API_VERSION_MIN; v--) {
         g_api = base->GetApi((uint32_t)v);
         if (g_api != NULL) {
             g_api_version = v;
@@ -20,11 +50,27 @@ int ort_init_api(void *get_api_base_fn, int *actual_version) {
             return 0;
         }
     }
+    ort_reset_api();
     return 2;
 }
 
 const char *ort_GetVersionString(void) {
     return g_ort_version;
+}
+
+// Call only after successful API initialization. Check versions before slot reads.
+static OrtStatusPtr ort_unsupported(const char *operation, int required) {
+    char message[192];
+    snprintf(message, sizeof(message), "%s requires API %d; negotiated API %d (function unavailable)",
+             operation, required, g_api_version);
+    return g_api->CreateStatus(ORT_NOT_IMPLEMENTED, message);
+}
+
+OrtStatusPtr ort_GetBuildInfoString(const char **out) {
+    if (g_api_version < 15) return ort_unsupported("GetBuildInfoString", 15);
+    if (g_api->GetBuildInfoString == NULL) return ort_unsupported("GetBuildInfoString", 15);
+    *out = g_api->GetBuildInfoString();
+    return NULL;
 }
 
 // Environment
@@ -485,10 +531,14 @@ OrtStatusPtr ort_CreateMemoryInfo(const char *name, enum OrtAllocatorType type,
 // Session options getters (since 1.27)
 
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out) {
+    if (g_api_version < 27) return ort_unsupported("GetMemPatternEnabled", 27);
+    if (g_api->GetMemPatternEnabled == NULL) return ort_unsupported("GetMemPatternEnabled", 27);
     return g_api->GetMemPatternEnabled(opts, out);
 }
 
 OrtStatusPtr ort_GetSessionExecutionMode(const OrtSessionOptions *opts, ExecutionMode *out) {
+    if (g_api_version < 27) return ort_unsupported("GetSessionExecutionMode", 27);
+    if (g_api->GetSessionExecutionMode == NULL) return ort_unsupported("GetSessionExecutionMode", 27);
     return g_api->GetSessionExecutionMode(opts, out);
 }
 

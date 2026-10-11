@@ -15,6 +15,8 @@ import (
 	"unsafe"
 )
 
+const apiVersionMax = int(C.ORT_GO_API_VERSION_MAX)
+
 var (
 	mu           sync.Mutex
 	libPath      string
@@ -61,20 +63,22 @@ func Init() error {
 	var cVersion C.int
 	rc := C.ort_init_api(fn, &cVersion)
 	if rc == 1 {
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("init api", fmt.Errorf("OrtGetApiBase returned NULL"))
 	}
 	if rc == 2 {
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("init api", fmt.Errorf("GetApi failed; ORT library may be too old (need API >= %d)", C.ORT_GO_API_VERSION_MIN))
 	}
-	apiVersion = int(cVersion)
 
 	cLogID := C.CString("onnxruntime-go")
 	defer C.free(unsafe.Pointer(cLogID))
 
 	var ortEnv *C.OrtEnv
 	if err := checkStatus(C.ort_CreateEnv(C.ORT_LOGGING_LEVEL_WARNING, cLogID, &ortEnv)); err != nil {
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("create env", err)
 	}
@@ -82,6 +86,7 @@ func Init() error {
 	var memInfo *C.OrtMemoryInfo
 	if err := checkStatus(C.ort_CreateCpuMemoryInfo(C.OrtDeviceAllocator, C.OrtMemTypeDefault, &memInfo)); err != nil {
 		C.ort_ReleaseEnv(ortEnv)
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("create cpu memory info", err)
 	}
@@ -89,6 +94,7 @@ func Init() error {
 	env = ortEnv
 	cpuMemInfo = memInfo
 	libModule = handle
+	apiVersion = int(cVersion)
 	initialized.Store(true)
 	return nil
 }
@@ -102,6 +108,21 @@ func GetVersion() (string, error) {
 		return "", errNotInitialized
 	}
 	return C.GoString(C.ort_GetVersionString()), nil
+}
+
+// GetBuildInfo returns a copy of the loaded runtime's build diagnostics.
+// Requires API 15 and successful Init.
+func GetBuildInfo() (string, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	if !initialized.Load() {
+		return "", errNotInitialized
+	}
+	var info *C.char
+	if err := checkStatus(C.ort_GetBuildInfoString(&info)); err != nil {
+		return "", wrapErr("get build info", err)
+	}
+	return C.GoString(info), nil
 }
 
 // APIVersion returns the ORT API version negotiated during Init.
