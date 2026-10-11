@@ -490,6 +490,8 @@ func TestAPIFeatureGates(t *testing.T) {
 		minimum int
 		call    func() error
 	}{
+		{"SetEPContextDataReader", 31, func() error { return opts.SetEPContextDataReader(func(string) ([]byte, error) { return nil, nil }, 1) }},
+		{"ClearEPContextDataReader", 31, func() error { return opts.ClearEPContextDataReader() }},
 		{"SetDeterministicCompute", 17, func() error { return opts.SetDeterministicCompute(true) }},
 		{"SynchronizeInputs", 10, func() error { return featureGateSynchronize(t, true) }},
 		{"SynchronizeOutputs", 10, func() error { return featureGateSynchronize(t, false) }},

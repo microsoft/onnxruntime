@@ -751,3 +751,81 @@ OrtStatusPtr ort_copy_buffer(const void* data, size_t size, void** out) {
     *out = copy;
     return NULL;
 }
+
+OrtStatusPtr ort_SessionOptionsSetEpContextDataReadFunc(
+    OrtSessionOptions* options, OrtReadNamedBufferFunc reader, void* state) {
+    if (g_api_version < 31) return ort_unsupported("SessionOptionsSetEpContextDataReadFunc", 31);
+    if (g_api->SessionOptionsSetEpContextDataReadFunc == NULL)
+        return ort_unsupported("SessionOptionsSetEpContextDataReadFunc", 31);
+    return g_api->SessionOptionsSetEpContextDataReadFunc(options, reader, state);
+}
+
+typedef struct { uintptr_t handle; } OrtGoReaderState;
+extern OrtStatus* ortGoReadNamedBuffer(uintptr_t, char*, OrtAllocator*, void**, size_t*);
+
+OrtStatusPtr ort_reader_state(uintptr_t handle, void** out) {
+    OrtGoReaderState* state = malloc(sizeof(*state));
+    if (state == NULL) return g_api->CreateStatus(ORT_FAIL, "reader state allocation failed");
+    state->handle = handle;
+    *out = state;
+    return NULL;
+}
+
+OrtStatus* ORT_API_CALL ort_reader_trampoline(
+    void* state, const char* name, OrtAllocator* allocator, void** buffer, size_t* size) {
+    if (buffer != NULL) *buffer = NULL;
+    if (size != NULL) *size = 0;
+    if (state == NULL || name == NULL || allocator == NULL || buffer == NULL || size == NULL)
+        return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "invalid reader callback arguments");
+    OrtGoReaderState* registration = state;
+    return ortGoReadNamedBuffer(registration->handle, (char*)name, allocator, buffer, size);
+}
+
+OrtStatusPtr ort_reader_validate(OrtAllocator* allocator) {
+    if (allocator == NULL || allocator->Alloc == NULL || allocator->Free == NULL || allocator->Info == NULL)
+        return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "invalid reader allocator");
+    const OrtMemoryInfo* info = NULL;
+    OrtStatus* status = g_api->AllocatorGetInfo(allocator, &info);
+    if (status != NULL) return status;
+    if (info == NULL) return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "reader allocator has no memory info");
+    OrtMemoryInfoDeviceType type;
+    g_api->MemoryInfoGetDeviceType(info, &type);
+    if (type != OrtMemoryInfoDeviceType_CPU &&
+        g_api->MemoryInfoGetDeviceMemType(info) != OrtDeviceMemoryType_HOST_ACCESSIBLE)
+        return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "reader allocator memory is not host accessible");
+    return NULL;
+}
+
+OrtStatusPtr ort_reader_copy(OrtAllocator* allocator, const void* data, size_t size,
+                             void** out, size_t* out_size) {
+    if (size == 0) return NULL;
+    void* candidate = NULL;
+    OrtStatus* status = g_api->AllocatorAlloc(allocator, size, &candidate);
+    if (status != NULL) {
+        if (candidate != NULL) {
+            OrtStatus* cleanup = g_api->AllocatorFree(allocator, candidate);
+            if (cleanup != NULL) g_api->ReleaseStatus(cleanup);
+        }
+        return status;
+    }
+    if (candidate == NULL) return g_api->CreateStatus(ORT_FAIL, "reader allocator returned NULL");
+    memcpy(candidate, data, size);
+    *out = candidate;
+    *out_size = size;
+    return NULL;
+}
+
+OrtStatusPtr ort_reader_error(OrtErrorCode code, const char* message, size_t size) {
+    if (size == SIZE_MAX) return g_api->CreateStatus(ORT_FAIL, "reader error message too large");
+    char* copy = malloc(size + 1);
+    if (copy == NULL) return g_api->CreateStatus(ORT_FAIL, "reader error allocation failed");
+    if (size != 0) memcpy(copy, message, size);
+    copy[size] = 0;
+    OrtStatus* status = g_api->CreateStatus(code, copy);
+    free(copy);
+    return status;
+}
+
+OrtStatusPtr ort_reader_panic(void) {
+    return g_api->CreateStatus(ORT_FAIL, "EPContext data reader panicked");
+}

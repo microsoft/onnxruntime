@@ -252,4 +252,12 @@ OrtStatusPtr ort_SynchronizeBoundOutputs(OrtIoBinding*);
 OrtStatusPtr ort_SessionOptionsSetWeightlessSourceModelBuffer(OrtSessionOptions*, const void*, size_t);
 OrtStatusPtr ort_copy_buffer(const void*, size_t, void**);
 
+OrtStatusPtr ort_SessionOptionsSetEpContextDataReadFunc(OrtSessionOptions*, OrtReadNamedBufferFunc, void*);
+OrtStatusPtr ort_reader_state(uintptr_t, void**);
+OrtStatus* ORT_API_CALL ort_reader_trampoline(void*, const char*, OrtAllocator*, void**, size_t*);
+OrtStatusPtr ort_reader_validate(OrtAllocator*);
+OrtStatusPtr ort_reader_copy(OrtAllocator*, const void*, size_t, void**, size_t*);
+OrtStatusPtr ort_reader_error(OrtErrorCode, const char*, size_t);
+OrtStatusPtr ort_reader_panic(void);
+
 #endif  // ORT_GO_CSHIM_H

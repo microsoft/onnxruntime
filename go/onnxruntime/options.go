@@ -138,7 +138,8 @@ func (o *SessionOptions) Clone() (*SessionOptions, error) {
 }
 
 // cloneLocked requires the source options mutex and package mu.
-// Constructors use the same native snapshot as public Clone.
+// Constructors use the same native snapshot as public Clone. Retain the reader
+// only after native cloning and source-buffer restoration succeed.
 func (o *SessionOptions) cloneLocked() (*SessionOptions, error) {
 	return o.cloneLockedWithRestore(restoreSourceModelBuffer, releaseNativeOptions)
 }

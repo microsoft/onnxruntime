@@ -210,10 +210,20 @@ func TestSessionResourceLifetime(t *testing.T) {
 	}
 	for _, fromBytes := range []bool{false, true} {
 		opts := bufferOptions(t)
+		var reader *epContextReaderRegistration
+		if APIVersion() >= 31 {
+			if err := opts.SetEPContextDataReader(func(string) ([]byte, error) { return nil, nil }, 1); err != nil {
+				t.Fatal(err)
+			}
+			reader = opts.resources.reader
+		}
 		source := opts.resources.source
 		s, err := constructBufferSession(opts, fromBytes)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if reader != nil && resourceRefCount(&reader.ref) != 2 {
+			t.Fatal("session did not retain reader")
 		}
 		if resourceRefCount(&source.ref) != 2 {
 			t.Fatalf("session did not retain buffer: %d", resourceRefCount(&source.ref))
@@ -221,18 +231,39 @@ func TestSessionResourceLifetime(t *testing.T) {
 		if err := opts.SetWeightlessSourceModelBuffer([]byte{5}); err != nil {
 			t.Fatal(err)
 		}
+		if reader != nil {
+			if err := opts.ClearEPContextDataReader(); err != nil {
+				t.Fatal(err)
+			}
+			if resourceRefCount(&reader.ref) != 1 {
+				t.Fatal("Clear lost session reader")
+			}
+		}
 		opts.Close()
+		if reader != nil && s.resources.reader != reader {
+			t.Fatal("session lost exact reader")
+		}
 		if !bytes.Equal(bufferBytes(s.resources.source), []byte{1, 2, 3, 4}) {
 			t.Fatal("session lost snapshot bytes")
 		}
 		assertBufferSessionAdd(t, s)
 		s.Close()
 		s.Close()
+		if reader != nil {
+			assertReaderReleased(t, reader)
+		}
 		if resourceRefCount(&source.ref) != 0 {
 			t.Fatal("session leaked buffer")
 		}
 	}
 	opts := bufferOptions(t)
+	var reader *epContextReaderRegistration
+	if APIVersion() >= 31 {
+		if err := opts.SetEPContextDataReader(func(string) ([]byte, error) { return nil, nil }, 1); err != nil {
+			t.Fatal(err)
+		}
+		reader = opts.resources.reader
+	}
 	source := opts.resources.source
 	p, c, s := epCounts()
 	for _, fromBytes := range []bool{false, true} {
@@ -245,6 +276,9 @@ func TestSessionResourceLifetime(t *testing.T) {
 		}
 		if err == nil || session != nil {
 			t.Fatal("invalid model accepted")
+		}
+		if reader != nil && resourceRefCount(&reader.ref) != 1 {
+			t.Fatal("failed creation leaked reader")
 		}
 		if resourceRefCount(&source.ref) != 1 {
 			t.Fatal("failed creation leaked buffer")
@@ -275,6 +309,9 @@ func TestSessionResourceLifetime(t *testing.T) {
 			finishSessionCreation(snapshot, nil)
 			if result != nil || !errors.Is(err, sentinel) {
 				t.Fatalf("introspection: %v", err)
+			}
+			if reader != nil && resourceRefCount(&reader.ref) != 1 {
+				t.Fatal("introspection leaked reader")
 			}
 			if resourceRefCount(&source.ref) != 1 {
 				t.Fatal("introspection leaked buffer")
@@ -315,5 +352,95 @@ func assertBufferSessionAdd(t *testing.T, session *Session) {
 	}
 	if !reflect.DeepEqual(values, []float32{11, 22, 33, 44, 55, 66}) || !reflect.DeepEqual(out["C"].Shape(), []int64{2, 3}) {
 		t.Fatalf("buffer session Add: %v shape %v", values, out["C"].Shape())
+	}
+}
+
+func TestEPContextReaderRegistration(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+	reader := func(string) ([]byte, error) { return []byte{1, 2, 3}, nil }
+	if APIVersion() < 31 {
+		requireOrtCode(t, opts.SetEPContextDataReader(nil, 0), ErrorCodeNotImplemented)
+		requireOrtCode(t, opts.ClearEPContextDataReader(), ErrorCodeNotImplemented)
+		checkEPAdd(t, opts, false)
+		return
+	}
+	for _, limit := range []uint64{0, ^uint64(0)} {
+		requireOrtCode(t, opts.SetEPContextDataReader(reader, limit), ErrorCodeInvalidArgument)
+	}
+	requireOrtCode(t, opts.SetEPContextDataReader(nil, 1), ErrorCodeInvalidArgument)
+	if err := opts.SetEPContextDataReader(reader, 3); err != nil {
+		t.Fatal(err)
+	}
+	registration := opts.resources.reader
+	requireOrtCode(t, opts.SetEPContextDataReader(nil, 3), ErrorCodeInvalidArgument)
+	if opts.resources.reader != registration || resourceRefCount(&registration.ref) != 1 {
+		t.Fatal("invalid replacement changed registration")
+	}
+	clone, err := opts.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clone.Close()
+	if resourceRefCount(&registration.ref) != 2 {
+		t.Fatal("clone did not retain reader")
+	}
+	if err := opts.SetEPContextDataReader(reader, 4); err != nil {
+		t.Fatal(err)
+	}
+	if resourceRefCount(&registration.ref) != 1 {
+		t.Fatal("replacement lost clone reader")
+	}
+	replacement := opts.resources.reader
+	if err := opts.ClearEPContextDataReader(); err != nil {
+		t.Fatal(err)
+	}
+	assertReaderReleased(t, replacement)
+	if err := opts.ClearEPContextDataReader(); err != nil {
+		t.Fatal(err)
+	}
+	opts.Close()
+	for _, fromBytes := range []bool{false, true} {
+		session, err := constructBufferSession(clone, fromBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if session.resources.reader != registration || resourceRefCount(&registration.ref) != 2 {
+			t.Fatal("session lost reader snapshot")
+		}
+		session.Close()
+		var failed *Session
+		if fromBytes {
+			failed, err = NewSessionFromBytes([]byte{1}, clone)
+		} else {
+			failed, err = NewSession("/definitely/missing", clone)
+		}
+		if err == nil || failed != nil || resourceRefCount(&registration.ref) != 1 {
+			t.Fatal("failed construction leaked reader")
+		}
+	}
+	clone.Close()
+	assertReaderReleased(t, registration)
+	if err := opts.ClearEPContextDataReader(); err == nil {
+		t.Fatal("closed options accepted")
+	}
+	var nilOpts *SessionOptions
+	if err := nilOpts.SetEPContextDataReader(reader, 3); err == nil {
+		t.Fatal("nil options accepted")
+	}
+}
+
+func assertReaderReleased(t *testing.T, registration *epContextReaderRegistration) {
+	t.Helper()
+	if resourceRefCount(&registration.ref) != 0 {
+		t.Fatal("reader reference leaked")
+	}
+	deleted := false
+	func() { defer func() { deleted = recover() != nil }(); registration.handle.Value() }()
+	if !deleted {
+		t.Fatal("cgo handle leaked")
 	}
 }
