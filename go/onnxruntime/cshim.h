@@ -223,4 +223,27 @@ OrtStatusPtr ort_ReleaseAvailableProviders(char** ptr, int count);
 // Allocator free (for freeing names returned by SessionGetInputName etc.)
 void ort_AllocatorFree(OrtAllocator* allocator, void* ptr);
 
+// Plugin execution providers (API 22).
+OrtStatusPtr ort_RegisterExecutionProviderLibrary(OrtEnv* env, const char* name, const ORTCHAR_T* path);
+OrtStatusPtr ort_UnregisterExecutionProviderLibrary(OrtEnv* env, const char* name);
+OrtStatusPtr ort_GetEpDevices(const OrtEnv* env, const OrtEpDevice* const** out, size_t* count);
+OrtStatusPtr ort_SessionOptionsAppendExecutionProvider_V2(
+    OrtSessionOptions* opts, OrtEnv* env,
+    const OrtEpDevice* const* devices, size_t count,
+    const char* const* keys, const char* const* values, size_t num_options);
+OrtStatusPtr ort_SessionOptionsSetEpSelectionPolicy(OrtSessionOptions* opts, OrtExecutionProviderDevicePolicy policy);
+OrtStatusPtr ort_EpDevice_EpName(const OrtEpDevice* device, const char** out);
+OrtStatusPtr ort_EpDevice_EpVendor(const OrtEpDevice* device, const char** out);
+OrtStatusPtr ort_EpDevice_EpMetadata(const OrtEpDevice* device, const OrtKeyValuePairs** out);
+OrtStatusPtr ort_EpDevice_EpOptions(const OrtEpDevice* device, const OrtKeyValuePairs** out);
+OrtStatusPtr ort_EpDevice_Device(const OrtEpDevice* device, const OrtHardwareDevice** out);
+OrtStatusPtr ort_HardwareDevice_Type(const OrtHardwareDevice* device, OrtHardwareDeviceType* out);
+OrtStatusPtr ort_HardwareDevice_VendorId(const OrtHardwareDevice* device, uint32_t* out);
+OrtStatusPtr ort_HardwareDevice_Vendor(const OrtHardwareDevice* device, const char** out);
+OrtStatusPtr ort_HardwareDevice_DeviceId(const OrtHardwareDevice* device, uint32_t* out);
+OrtStatusPtr ort_HardwareDevice_Metadata(const OrtHardwareDevice* device, const OrtKeyValuePairs** out);
+OrtStatusPtr ort_GetKeyValuePairs(
+    const OrtKeyValuePairs* pairs, const char* const** keys,
+    const char* const** values, size_t* count);
+
 #endif  // ORT_GO_CSHIM_H

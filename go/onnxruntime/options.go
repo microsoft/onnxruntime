@@ -15,8 +15,11 @@ import (
 
 // SessionOptions configures how a Session is created.
 type SessionOptions struct {
-	handle *C.OrtSessionOptions
-	mu     sync.Mutex
+	handle          *C.OrtSessionOptions
+	mu              sync.Mutex
+	protected       bool
+	policyAttempted bool
+	successfulV2    bool
 }
 
 // NewSessionOptions creates a new SessionOptions with default values.
@@ -125,11 +128,29 @@ func (o *SessionOptions) Clone() (*SessionOptions, error) {
 		return nil, err
 	}
 	defer o.unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	if err := checkInit(); err != nil {
+		return nil, err
+	}
+	return o.cloneLocked()
+}
+
+// cloneLocked requires the source options mutex and package mu.
+// Constructors use the same native snapshot as public Clone.
+func (o *SessionOptions) cloneLocked() (*SessionOptions, error) {
 	var out *C.OrtSessionOptions
 	if err := checkStatus(C.ort_CloneSessionOptions(o.handle, &out)); err != nil {
+		if out != nil {
+			C.ort_ReleaseSessionOptions(out)
+		}
 		return nil, wrapErr("clone session options", err)
 	}
-	return &SessionOptions{handle: out}, nil
+	clone := &SessionOptions{handle: out, policyAttempted: o.policyAttempted, successfulV2: o.successfulV2}
+	if o.protected {
+		clone.protectLocked()
+	}
+	return clone, nil
 }
 
 // DisableMemPattern disables memory pattern optimization.
@@ -370,6 +391,12 @@ func (o *SessionOptions) Close() error {
 	if o.handle != nil {
 		C.ort_ReleaseSessionOptions(o.handle)
 		o.handle = nil
+		mu.Lock()
+		if o.protected {
+			protectedOptionsCount--
+			o.protected = false
+		}
+		mu.Unlock()
 	}
 	return nil
 }

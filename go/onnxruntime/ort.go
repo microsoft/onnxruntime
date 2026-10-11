@@ -18,15 +18,18 @@ import (
 const apiVersionMax = int(C.ORT_GO_API_VERSION_MAX)
 
 var (
-	mu           sync.Mutex
-	libPath      string
-	libModule    libHandle
-	initialized  atomic.Bool
-	shutdown     atomic.Bool
-	apiVersion   int
-	env          *C.OrtEnv
-	cpuMemInfo   *C.OrtMemoryInfo
-	sessionCount atomic.Int64
+	mu                     sync.Mutex
+	libPath                string
+	libModule              libHandle
+	initialized            atomic.Bool
+	shutdown               atomic.Bool
+	apiVersion             int
+	env                    *C.OrtEnv
+	cpuMemInfo             *C.OrtMemoryInfo
+	sessionCount           atomic.Int64
+	environmentGeneration  uint64 = 1
+	protectedOptionsCount  int
+	inFlightSessionCreates int
 )
 
 // SetSharedLibraryPath sets the path to the ONNX Runtime shared library.
@@ -140,7 +143,8 @@ func IsInitialized() bool {
 }
 
 // Shutdown releases the ONNX Runtime environment. It returns an error if
-// any sessions are still open. After Shutdown, Init cannot be called again.
+// any sessions, protected options or session constructors are still live.
+// After Shutdown, Init cannot be called again.
 // Shutdown must not run concurrently with other calls into this package:
 // it releases the shared environment that those calls use.
 func Shutdown() error {
@@ -158,6 +162,11 @@ func Shutdown() error {
 	if n := sessionCount.Load(); n > 0 {
 		return fmt.Errorf("ort: cannot shut down: %d session(s) still open", n)
 	}
+
+	if protectedOptionsCount != 0 || inFlightSessionCreates != 0 {
+		return fmt.Errorf("ort: cannot shut down: %d protected options, %d session creations still live", protectedOptionsCount, inFlightSessionCreates)
+	}
+	environmentGeneration++
 
 	C.ort_ReleaseMemoryInfo(cpuMemInfo)
 	cpuMemInfo = nil
