@@ -439,13 +439,17 @@ __device__ __forceinline__ uint4 LoadWeightStreaming(const void* ptr) {
 
 static constexpr int kDecodeMaxK = 3072;  // three K tiles in flight per lane pair
 
+// Tiling of the decode kernels: warps per CTA, output columns per thread and the min-blocks-per-SM hint that
+// caps registers. A CTA covers 4 * Warps * Cols columns of one expanded row. FC1 (fused SwiGLU) is ALU bound,
+// FC2 is latency bound and wants one resident wave of 2-column threads. (Measured on H200 for N=1280/K=2560
+// and N=2560/K=640 at 10 expanded rows.)
 #ifndef GEMV_FC1_WARPS
 #define GEMV_FC1_WARPS 4
-#define GEMV_FC1_COLS 1
-#define GEMV_FC1_MINB 6
-#define GEMV_FC2_WARPS 4
+#define GEMV_FC1_COLS 2
+#define GEMV_FC1_MINB 4
+#define GEMV_FC2_WARPS 2
 #define GEMV_FC2_COLS 2
-#define GEMV_FC2_MINB 6
+#define GEMV_FC2_MINB 8
 #endif
 
 // Opt-out for the decode-specialised row-major NVFP4 GEMV (env ORT_FP4_GEMV_DECODE_KERNEL=0).
@@ -656,13 +660,13 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   const auto load_block = [&](int w) {
 #pragma unroll
     for (int u = 0; u < kTilesInFlight; ++u) {
-      const int group = u * 64 + w * 16 + j * 2;
-      if (group < groups) {
+      // Lane pairs past the end of K load nothing and contribute exact zeros.
+      const bool valid = u * 64 + w * 16 + j * 2 < groups;
 #pragma unroll
-        for (int c = 0; c < Cols; ++c) {
-          packed[u][c] = LoadWeightStreaming(weight_row + static_cast<int64_t>(c) * (k / 2) + w * 128 + u * 512);
-          scale_codes[u][c] = *reinterpret_cast<const uint16_t*>(scale_row + c * groups + w * 16 + u * 64);
-        }
+      for (int c = 0; c < Cols; ++c) {
+        packed[u][c] = valid ? LoadWeightStreaming(weight_row + static_cast<int64_t>(c) * (k / 2) + w * 128 + u * 512)
+                             : make_uint4(0, 0, 0, 0);
+        scale_codes[u][c] = valid ? *reinterpret_cast<const uint16_t*>(scale_row + c * groups + w * 16 + u * 64) : 0u;
       }
     }
   };
@@ -719,8 +723,9 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
     }
 #pragma unroll
     for (int u = 0; u < kTilesInFlight; ++u) {
-      const int group = u * 64 + w * 16 + j * 2;
-      if (group < groups) {
+      // Warp-uniform: lane j == 0 has the smallest group of the warp.
+      if (u * 64 + w * 16 < groups) {
+        const int group = min(u * 64 + w * 16 + j * 2, groups - 2);
         const float* unit_act = act_smem + (group / 2) * kDecodeActUnitStride;
         AccumulateWeightVectors<T, Cols>(current_packed[u], current_codes[u], global_scale, fast_scales, unit_act,
                                          chain_a, chain_b);
