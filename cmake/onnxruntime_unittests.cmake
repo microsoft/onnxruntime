@@ -3232,6 +3232,9 @@ if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CM
           LIBS ${SYS_PATH_LIB}
           DEPENDS ${all_dependencies}
   )
+  if (onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+    add_dependencies(onnxruntime_webgpu_delay_load_test onnxruntime_providers_webgpu)
+  endif()
 endif()
 
 # onnxruntime_ep_graph_test tests the implementation of the public OrtGraph APIs for use in plugin EPs (OrtEp).
