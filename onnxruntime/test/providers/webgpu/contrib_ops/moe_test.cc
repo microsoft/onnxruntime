@@ -13,18 +13,10 @@
 
 #include "gtest/gtest.h"
 
-#include "contrib_ops/webgpu/moe/gate_1token.h"
 #if !defined(DISABLE_FLOAT8_TYPES)
 #include "core/common/float8.h"
 #endif
-#include "core/framework/op_kernel.h"
-#include "core/framework/ort_value_name_idx_map.h"
-#include "core/graph/model.h"
-#include "core/providers/webgpu/allocator.h"
-#include "core/providers/webgpu/buffer_manager.h"
-#include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
-#include "core/providers/webgpu/webgpu_context.h"
+
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -32,7 +24,9 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
-#if defined(USE_WEBGPU)
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "test/providers/webgpu/test_plugin.h"
+#else
 #include "contrib_ops/webgpu/moe/block_fp8_expert_matmul.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -327,7 +321,16 @@ TEST(MoETest, QMoETest_WebGPU_SingleTokenOddExpertPoolTie) {
 
 TEST(MoETest, QMoETest_WebGPU_SingleTokenLargeExpertPoolTie) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  const auto capabilities = GetWebGpuTestPlugin().Inspect(*webgpu_ep);
+  struct {
+    uint32_t maxComputeWorkgroupSizeX;
+    uint32_t maxComputeInvocationsPerWorkgroup;
+  } limits{
+      capabilities.max_workgroup_size_x, capabilities.max_workgroup_invocations};
+#else
   const auto& limits = webgpu::WebGpuContextFactory::GetContext(0).DeviceLimits();
+#endif
   if (limits.maxComputeWorkgroupSizeX < 512 || limits.maxComputeInvocationsPerWorkgroup < 512) {
     GTEST_SKIP() << "512 experts require workgroup size and invocation limits of at least 512";
   }
@@ -419,84 +422,6 @@ TEST(MoETest, QMoETest_WebGPU_SingleTokenWeightedRouting) {
 TEST(MoETest, QMoETest_WebGPU_SingleTokenUnnormalizedRouting) {
   RunQMoEWebGpuSingleTokenWeightedRoutingTest(true, false, false);
   RunQMoEWebGpuSingleTokenWeightedRoutingTest(false, false, false);
-}
-
-class GateTestKernel final : public OpKernel {
- public:
-  explicit GateTestKernel(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext*) const override { return Status::OK(); }
-};
-
-static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
-                                        const std::vector<uint32_t>& expected, bool use_fp16) {
-  GET_WEBGPU_EP_OR_SKIP(ep);
-  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
-  webgpu_ep.SetLogger(&DefaultLoggingManager().DefaultLogger());
-  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
-  auto& recording = webgpu_ep.Recording();
-  const auto cols = static_cast<uint32_t>(logits.size());
-  ASSERT_LE(cols, context.DeviceLimits().maxComputeWorkgroupSizeX);
-  ASSERT_LE(cols, context.DeviceLimits().maxComputeInvocationsPerWorkgroup);
-  ASSERT_EQ(expected.size(), static_cast<size_t>(k));
-
-  ConfigOptions options;
-  Model model("gate_indices", false, DefaultLoggingManager().DefaultLogger());
-  auto& node = model.MainGraph().AddNode("gate_test", "Identity", "", {}, {});
-  auto kernel_def = KernelDefBuilder().SetName("Identity").Provider(kWebGpuExecutionProvider).SinceVersion(1).Build();
-  const std::unordered_map<int, OrtValue> initializers;
-  const OrtValueNameIdxMap values;
-  const DataTransferManager transfers;
-  const AllocatorMap allocators;
-  OpKernelInfo info(node, *kernel_def, *ep, initializers, values, transfers, allocators, options);
-  GateTestKernel kernel(info);
-  webgpu::ComputeContextBase compute_context(context, webgpu_ep, kernel);
-
-  auto fp16_logits = ToFloat16(logits);
-  auto fp32_logits = logits;
-  const size_t element_size = use_fp16 ? sizeof(MLFloat16) : sizeof(float);
-  const size_t buffer_size = (cols * element_size + 3) & ~size_t{3};
-  wgpu::BufferDescriptor logits_desc{};
-  logits_desc.size = buffer_size;
-  logits_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
-  auto logits_buffer = context.Device().CreateBuffer(&logits_desc);
-  ASSERT_NE(logits_buffer.Get(), nullptr);
-  webgpu_ep.BufferManager().Upload(recording, use_fp16 ? static_cast<void*>(fp16_logits.data()) : static_cast<void*>(fp32_logits.data()),
-                                   logits_buffer.Get(), cols * element_size);
-  wgpu::BufferDescriptor weights_desc{};
-  weights_desc.size = buffer_size;
-  weights_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc;
-  auto weights_buffer = context.Device().CreateBuffer(&weights_desc);
-  wgpu::BufferDescriptor indices_desc{};
-  indices_desc.size = (k * sizeof(uint32_t) + 15) & ~size_t{15};
-  indices_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc;
-  auto indices_buffer = context.Device().CreateBuffer(&indices_desc);
-  ASSERT_NE(weights_buffer.Get(), nullptr);
-  ASSERT_NE(indices_buffer.Get(), nullptr);
-
-  const auto dtype = use_fp16 ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
-  const auto memory_info = OrtMemoryInfo(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
-  Tensor router_logits(dtype, TensorShape{1, cols}, logits_buffer.Get(), memory_info);
-  Tensor topk_values(dtype, TensorShape{1, cols}, weights_buffer.Get(), memory_info);
-  Tensor indirect_experts(DataTypeImpl::GetType<uint32_t>(), TensorShape{k}, indices_buffer.Get(), memory_info);
-  contrib::webgpu::Gate1TokenProgram gate{k, use_fp16, false, true};
-  gate.AddInputs({{&router_logits, webgpu::ProgramTensorMetadataDependency::Type}})
-      .AddOutput({&topk_values, webgpu::ProgramTensorMetadataDependency::None})
-      .AddOutput({&indirect_experts, webgpu::ProgramTensorMetadataDependency::None})
-      .SetWorkgroupSize(cols)
-      .SetDispatchGroupSize(1)
-      .AddUniformVariables({1u, cols});
-  ASSERT_STATUS_OK(compute_context.RunProgram(gate));
-
-  std::vector<uint32_t> actual(k);
-  webgpu_ep.BufferManager().Download(recording, indices_buffer.Get(), actual.data(), actual.size() * sizeof(uint32_t));
-  EXPECT_EQ(actual, expected);
-}
-
-TEST(MoETest, QMoETest_WebGPU_SingleTokenGateIndices) {
-  CheckSingleTokenGateIndices({0.0f, -INFINITY, -INFINITY}, 2, {0, 1}, true);
-  CheckSingleTokenGateIndices({0.0f, -INFINITY, -INFINITY}, 2, {0, 1}, false);
-  CheckSingleTokenGateIndices({10.0f, 10.0f, 10.0f, 10.0f}, 4, {0, 1, 2, 3}, true);
-  CheckSingleTokenGateIndices({10.0f, 10.0f, 10.0f, 10.0f}, 4, {0, 1, 2, 3}, false);
 }
 
 TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
@@ -1224,6 +1149,13 @@ TEST(MoETest, QMoETest_WebGPU_BlockFp8_TiledPrefill) {
 
 TEST(MoETest, QMoETest_WebGPU_BlockFp8_MixedRoutingSeparateFc3) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  auto probe_ep = GetWebGpuTestPlugin().MakeEp();
+  webgpu_ep = GetWebGpuTestPlugin().MakeEp();
+  const auto capabilities = GetWebGpuTestPlugin().Inspect(*probe_ep);
+  const bool matrix_supported = capabilities.supports_fp8_matrix;
+  const auto dispatches_before = capabilities.fp8_matrix_dispatches;
+#else
   const auto& gpu_context = webgpu::WebGpuContextFactory::GetContext(0);
   const auto& adapter = gpu_context.AdapterInfo();
   const auto& configs = gpu_context.SubgroupMatrixConfigs();
@@ -1236,6 +1168,7 @@ TEST(MoETest, QMoETest_WebGPU_BlockFp8_MixedRoutingSeparateFc3) {
             16, 16, 16, 32, false}})
           .has_value();
   const auto dispatches_before = contrib::webgpu::BlockFp8MatrixDispatchCount();
+#endif
 
   constexpr int rows = 132;
   constexpr int experts = 2;
@@ -1304,7 +1237,11 @@ TEST(MoETest, QMoETest_WebGPU_BlockFp8_MixedRoutingSeparateFc3) {
   if (!matrix_supported) {
     GTEST_SKIP() << "Adapter does not support the FP8 expert subgroup-matrix configuration";
   }
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  EXPECT_EQ(GetWebGpuTestPlugin().Inspect(*probe_ep).fp8_matrix_dispatches - dispatches_before, 3u);
+#else
   EXPECT_EQ(contrib::webgpu::BlockFp8MatrixDispatchCount() - dispatches_before, 3u);
+#endif
 }
 
 TEST(MoETest, QMoETest_WebGPU_BlockFp8_LargeScaleCancellation) {

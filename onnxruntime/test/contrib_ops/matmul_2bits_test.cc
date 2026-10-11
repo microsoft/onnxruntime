@@ -34,7 +34,11 @@
 #include "test/util/include/test/test_environment.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #ifdef USE_WEBGPU
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "test/providers/webgpu/test_plugin.h"
+#else
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#endif
 #endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -1520,7 +1524,7 @@ TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
   TestMatMul2BitsTyped<float, 100, 288, 256, 32, 0>();
 }
 
-#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(USE_WEBGPU) && (!defined(ORT_USE_EP_API_ADAPTERS) || defined(ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH))
 
 namespace {
 
@@ -1620,7 +1624,11 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_LargerK) {
 TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
   // Ensure the WebGPU context is initialized so we can query adapter capabilities.
   auto ep = DefaultWebGpuExecutionProvider();
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  if (!GetWebGpuTestPlugin().Inspect(*ep).supports_dp4a) {
+#else
   if (!contrib::webgpu::HasDP4ADeviceSupport(ep->GetDeviceId())) {
+#endif
     GTEST_SKIP() << "DP4A requires Subgroups support on a non-Apple adapter";
   }
 
@@ -1663,7 +1671,7 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
   RunTest2Bits<float>(opts);
 }
 
-#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#endif  // WebGPU with native or private plugin test support
 
 #ifdef USE_CUDA
 

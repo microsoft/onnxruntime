@@ -72,7 +72,8 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
                   const Ort::KeyValuePairs& provider_options = Ort::KeyValuePairs{},
                   const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr,
                   bool test_auto_select = true,
-                  bool disable_cpu_ep_fallback = false);
+                  bool disable_cpu_ep_fallback = false,
+                  std::optional<EpSelectionDelegate> delegate = std::nullopt);
 
 }  // namespace test
 }  // namespace onnxruntime

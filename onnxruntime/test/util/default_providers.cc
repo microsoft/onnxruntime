@@ -22,6 +22,9 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/providers.h"
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
+#if defined(ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH)
+#include "test/providers/webgpu/test_plugin.h"
+#endif
 
 namespace onnxruntime {
 
@@ -409,6 +412,8 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
     const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
   return WebGpuProviderFactoryCreator::CreateForTesting(config_options, test_options)->CreateProvider();
+#elif defined(ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH)
+  return GetWebGpuTestPlugin().MakeEp(config_options, test_options);
 #else
   ORT_UNUSED_PARAMETER(config_options);
   ORT_UNUSED_PARAMETER(test_options);

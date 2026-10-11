@@ -815,14 +815,40 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
   file(GLOB_RECURSE onnxruntime_test_providers_webgpu_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/webgpu/*.cc"
     "${TEST_SRC_DIR}/providers/webgpu/*.h")
 
+  set(onnxruntime_test_providers_webgpu_internal_src
+    "${TEST_SRC_DIR}/providers/webgpu/activation_cache_key_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/activation_snippet_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/data_transfer_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/math/subgroup_matrix_config_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/matmul_execution_planner_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/webgpu_context_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/webgpu_utils_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/internal_test_kernel.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/dispatch_normalization_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/webgpu_stream_regression_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/concurrent_internal_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/contrib_ops/moe_internal_test.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/plugin_factory_test.cc")
+  list(REMOVE_ITEM onnxruntime_test_providers_webgpu_src
+    "${TEST_SRC_DIR}/providers/webgpu/internal_test_main.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/internal_test_runner.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/test_plugin.cc"
+    ${onnxruntime_test_providers_webgpu_plugin_src})
+  if(onnxruntime_USE_EP_API_ADAPTERS)
+    list(REMOVE_ITEM onnxruntime_test_providers_webgpu_src ${onnxruntime_test_providers_webgpu_internal_src})
+  else()
+    list(REMOVE_ITEM onnxruntime_test_providers_webgpu_src
+      "${TEST_SRC_DIR}/providers/webgpu/plugin_factory_test.cc"
+      "${TEST_SRC_DIR}/providers/webgpu/test_plugin.cc")
+    list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
+  endif()
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
 
 # QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
@@ -1626,6 +1652,10 @@ block()
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
   )
 
+  if(onnxruntime_USE_WEBGPU AND onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY AND onnxruntime_USE_EP_API_ADAPTERS)
+    set(onnxruntime_provider_test_srcs ${onnxruntime_test_providers_webgpu_plugin_src})
+  endif()
+
   if (onnxruntime_USE_DNNL)
     list(APPEND supporting_test_srcs
       ${TEST_SRC_DIR}/common/dnnl_op_test_utils.cc
@@ -1677,6 +1707,22 @@ block()
   onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
+  if(onnxruntime_USE_WEBGPU AND onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY)
+    if(NOT onnxruntime_USE_EP_API_ADAPTERS)
+      # Keep built-in context/allocator contracts, accelerated weight loading, and a small
+      # operator smoke test. Shared plugin CI owns the full numerical provider suite.
+      set_property(TEST onnxruntime_provider_test APPEND PROPERTY ENVIRONMENT
+        "GTEST_FILTER=WebGpuContextTest.*:WebGpuConcurrentContextTest.*:WebGpuConcurrentContextTestStandalone.*:WebGpuDataTransferTest.*:HardSwish_WebGPU.*")
+    endif()
+    set_property(TEST onnxruntime_provider_test APPEND PROPERTY
+      FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+    # D3D12 external-loader lifecycle tests do not have WebGPU in their names.
+    set_property(TEST onnxruntime_test_all APPEND PROPERTY ENVIRONMENT
+      "GTEST_FILTER=*WebGpu*:*WebGPU*:ExternalDataLoaderManagerTest.*")
+    set_property(TEST onnxruntime_test_all APPEND PROPERTY
+      FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+  endif()
+
   if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND
       NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND
       NOT IOS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -1722,6 +1768,69 @@ block()
     onnxruntime_set_plugin_ep_test_environment(onnxruntime_webgpu_legacy_test)
     set_property(TEST onnxruntime_webgpu_legacy_test APPEND PROPERTY
       ENVIRONMENT "ORT_WEBGPU_EP_FORCE_LEGACY=1")
+  endif()
+
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+    # Keep the plugin's manual API initialization isolated from the test host's runtime.
+    # Reuse its compiled implementation without adding exports to the production plugin.
+    onnxruntime_add_shared_library_module(onnxruntime_webgpu_internal_test_impl
+      ${onnxruntime_test_providers_webgpu_internal_src}
+      "${TEST_SRC_DIR}/util/temp_dir.cc"
+      "${TEST_SRC_DIR}/providers/webgpu/internal_test_runner.cc")
+    target_sources(onnxruntime_webgpu_internal_test_impl PRIVATE
+      $<TARGET_OBJECTS:onnxruntime_providers_webgpu>)
+    target_link_libraries(onnxruntime_webgpu_internal_test_impl PRIVATE GTest::gtest GTest::gmock
+      "$<TARGET_GENEX_EVAL:onnxruntime_providers_webgpu,$<TARGET_PROPERTY:onnxruntime_providers_webgpu,LINK_LIBRARIES>>")
+    target_include_directories(onnxruntime_webgpu_internal_test_impl PRIVATE
+      "$<TARGET_GENEX_EVAL:onnxruntime_providers_webgpu,$<TARGET_PROPERTY:onnxruntime_providers_webgpu,INCLUDE_DIRECTORIES>>"
+      ${TEST_INC_DIR})
+    target_compile_definitions(onnxruntime_webgpu_internal_test_impl PRIVATE
+      "$<TARGET_GENEX_EVAL:onnxruntime_providers_webgpu,$<TARGET_PROPERTY:onnxruntime_providers_webgpu,COMPILE_DEFINITIONS>>")
+    target_precompile_headers(onnxruntime_webgpu_internal_test_impl PRIVATE
+      "${REPO_ROOT}/include/onnxruntime/ep/adapters.h")
+    add_dependencies(onnxruntime_webgpu_internal_test_impl onnxruntime_providers_webgpu)
+    if (WIN32)
+      target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
+        "/EXPORT:CreateEpFactories" "/EXPORT:ReleaseEpFactory")
+    elseif (APPLE)
+      target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
+        "LINKER:-exported_symbol,_RunWebGpuInternalTests"
+        "LINKER:-exported_symbol,_CreateEpFactories"
+        "LINKER:-exported_symbol,_ReleaseEpFactory"
+        "LINKER:-exported_symbol,_BeginWebGpuTestContext"
+        "LINKER:-exported_symbol,_EndWebGpuTestContext")
+      target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
+        "LINKER:-exported_symbol,_ConfigureWebGpuTestEp"
+        "LINKER:-exported_symbol,_InspectWebGpuTestEp")
+    elseif (UNIX AND NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
+        "LINKER:--version-script=${TEST_SRC_DIR}/providers/webgpu/internal_test.lds")
+      set_property(TARGET onnxruntime_webgpu_internal_test_impl APPEND PROPERTY LINK_DEPENDS
+        "${TEST_SRC_DIR}/providers/webgpu/internal_test.lds")
+    endif()
+
+    AddTest(
+      TARGET onnxruntime_webgpu_internal_test
+      SOURCES "${TEST_SRC_DIR}/providers/webgpu/internal_test_main.cc"
+      LIBS ${onnxruntime_test_common_libs} ${onnxruntime_providers_target}
+      DEPENDS onnxruntime_webgpu_internal_test_impl
+    )
+    target_compile_definitions(onnxruntime_webgpu_internal_test PRIVATE
+      ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_webgpu_internal_test_impl>")
+    onnxruntime_apply_test_target_workarounds(onnxruntime_webgpu_internal_test)
+    add_test(NAME onnxruntime_webgpu_internal_serialized_test
+      COMMAND onnxruntime_webgpu_internal_test
+        --gtest_filter=WebGpuContextTest.SessionAllocatorDefersReusedBufferClearDuringRun
+      WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_webgpu_internal_test>)
+    set_tests_properties(onnxruntime_webgpu_internal_serialized_test PROPERTIES
+      ENVIRONMENT "ORT_WEBGPU_EP_FORCE_LEGACY=1"
+      FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+    add_dependencies(onnxruntime_provider_test onnxruntime_webgpu_internal_test)
+    target_sources(onnxruntime_test_utils PRIVATE "${TEST_SRC_DIR}/providers/webgpu/test_plugin.cc")
+    target_compile_definitions(onnxruntime_test_utils PRIVATE
+      ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_webgpu_internal_test_impl>")
+    target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE
+      ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_webgpu_internal_test_impl>")
   endif()
 
   # The CUDA EP internal unit tests (onnxruntime_providers_cuda_ut) are built as a shared-library
@@ -2738,6 +2847,11 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
         # Note: Here we rely on the values in ORT_PROVIDER_FLAGS to be of the format "-Doption=value".
         # This happens to also match the gradle command line option for specifying system properties.
         set(GRADLE_SYSTEM_PROPERTY_DEFINITIONS ${ORT_PROVIDER_FLAGS})
+        if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+          list(APPEND GRADLE_SYSTEM_PROPERTY_DEFINITIONS
+            "-DWEBGPU_PLUGIN_LIBRARY=$<TARGET_FILE:onnxruntime_providers_webgpu>")
+          add_dependencies(onnxruntime4j_jni onnxruntime_providers_webgpu)
+        endif()
 
         if(onnxruntime_ENABLE_TRAINING_APIS)
           message(STATUS "Enabling Java tests for training APIs")
@@ -3041,6 +3155,12 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           LIBS ${onnxruntime_autoep_test_LIBS}
           DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
+  if(onnxruntime_USE_WEBGPU AND onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY)
+    set_property(TEST onnxruntime_autoep_test APPEND PROPERTY ENVIRONMENT
+      "GTEST_FILTER=AutoEpSelection.WebGpuEP")
+    set_property(TEST onnxruntime_autoep_test APPEND PROPERTY
+      FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+  endif()
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

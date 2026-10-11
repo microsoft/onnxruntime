@@ -10,9 +10,8 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "test/providers/webgpu/internal_test_kernel.h"
 
-#include "core/framework/ort_value_name_idx_map.h"
-#include "core/graph/model.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/compute_context.h"
@@ -22,7 +21,6 @@
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
-#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {
@@ -101,26 +99,11 @@ TEST(WebGpuDispatchNormalizationTest, RejectsInvalidAndUnrepresentableCounts) {
 }
 
 // Supplies node metadata to ComputeContextBase; Compute() is not called.
-class DispatchTestKernel final : public OpKernel {
- public:
-  explicit DispatchTestKernel(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext*) const override { return Status::OK(); }
-};
-
-void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
+void RunAndReadProgram(WebGpuTestKernel& test_kernel, const ProgramBase& program,
                        WGPUBuffer output_buffer, std::vector<float>& output_data) {
+  auto& ep = test_kernel.Ep();
   auto& context = WebGpuContextFactory::GetContext(0);
-  ConfigOptions options;
-  Model model("dispatch_padding", false, DefaultLoggingManager().DefaultLogger());
-  auto& node = model.MainGraph().AddNode("unused", "Identity", "", {}, {});
-  auto kernel_def = KernelDefBuilder().SetName("Identity").Provider(kWebGpuExecutionProvider).SinceVersion(1).Build();
-  const std::unordered_map<int, OrtValue> initializers;
-  const OrtValueNameIdxMap values;
-  const DataTransferManager transfers;
-  const AllocatorMap allocators;
-  OpKernelInfo info(node, *kernel_def, ep, initializers, values, transfers, allocators, options);
-  DispatchTestKernel kernel(info);
-  ComputeContextBase compute_context(context, ep, kernel);
+  ComputeContextBase compute_context(context, ep, test_kernel.Kernel());
   ASSERT_STATUS_OK(compute_context.RunProgram(program));
   ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(float));
 }
@@ -137,16 +120,16 @@ class WebGpuDispatchExecutionTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ConfigOptions options;
-    ep_ = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    ep_ = std::make_unique<WebGpuTestKernel>(options);
     ASSERT_NE(ep_, nullptr);
-    ep_->SetLogger(&DefaultLoggingManager().DefaultLogger());
     ASSERT_TRUE(WebGpuContextFactory::GetContext(0).HasDevice());
   }
 
-  WebGpuExecutionProvider& Ep() { return static_cast<WebGpuExecutionProvider&>(*ep_); }
+  WebGpuTestKernel& TestKernel() { return *ep_; }
+  WebGpuExecutionProvider& Ep() { return ep_->Ep(); }
 
  private:
-  std::unique_ptr<IExecutionProvider> ep_;
+  std::unique_ptr<WebGpuTestKernel> ep_;
 };
 
 TEST_F(WebGpuDispatchExecutionTest, PackedMatMulSupportsNonDefaultValidTuning) {
@@ -191,7 +174,7 @@ TEST_F(WebGpuDispatchExecutionTest, PackedMatMulSupportsNonDefaultValidTuning) {
                                output_program_shape, 4));
   AppendActivationUniformsData(activation, program);
 
-  RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data);
+  RunAndReadProgram(TestKernel(), program, output_buffer.Get(), output_data);
   for (uint32_t m = 0; m < M; ++m) {
     for (uint32_t n = 0; n < N; ++n) {
       float expected = 0.0f;
@@ -248,8 +231,9 @@ class LogicalDispatchProbeProgram final : public Program<LogicalDispatchProbePro
   }
 };
 
-void CheckLogicalDispatch(WebGpuExecutionProvider& ep, const std::array<uint32_t, 3>& logical,
+void CheckLogicalDispatch(WebGpuTestKernel& test_kernel, const std::array<uint32_t, 3>& logical,
                           uint32_t dispatch_limit, bool expect_logical_oob_writes = false) {
+  auto& ep = test_kernel.Ep();
   SCOPED_TRACE(::testing::PrintToString(logical));
   auto physical = logical;
   ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(
@@ -274,7 +258,7 @@ void CheckLogicalDispatch(WebGpuExecutionProvider& ep, const std::array<uint32_t
       .AddUniformVariables({{logical[0]}, {logical[1]}, {allowed_dispatch_z}})
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
       .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
-  ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(ep, program, output_buffer.Get(), output_data));
+  ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(test_kernel, program, output_buffer.Get(), output_data));
 
   size_t offset = 0;
   for (uint32_t z = 0; z < logical[2]; ++z) {
@@ -318,13 +302,13 @@ TEST_F(WebGpuDispatchExecutionTest, LogicalCoordinatesAndPadding) {
       {{1, 1, 70000}, 65535},
   };
   for (const auto& test_case : cases) {
-    ASSERT_NO_FATAL_FAILURE(CheckLogicalDispatch(Ep(), test_case.logical, test_case.limit));
+    ASSERT_NO_FATAL_FAILURE(CheckLogicalDispatch(TestKernel(), test_case.logical, test_case.limit));
   }
 }
 
 TEST_F(WebGpuDispatchExecutionTest, CanaryDetectsExcessWorkgroups) {
   // Trigger logical OOB writes into physically valid padding to verify canary detection.
-  ASSERT_NO_FATAL_FAILURE(CheckLogicalDispatch(Ep(), {1, 1, 7}, 5, true));
+  ASSERT_NO_FATAL_FAILURE(CheckLogicalDispatch(TestKernel(), {1, 1, 7}, 5, true));
 }
 
 TEST_F(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
@@ -352,7 +336,7 @@ TEST_F(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
         channels_last ? 4 : 8, channels_last ? 8 : 4, 32, channels_last,
         {x_shape, w.Shape(), output_shape});
     program.SetDispatchGroupSize(physical[0], physical[1], physical[2]);
-    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(TestKernel(), program, output_buffer.Get(), output_data));
     CheckResultsAndPadding(output_data, batches * 8 * 2 * 2, 32.0f);
   }
 }
