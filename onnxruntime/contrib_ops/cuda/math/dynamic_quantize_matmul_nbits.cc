@@ -62,9 +62,9 @@ DynamicQuantizeMatMulNBits::DynamicQuantizeMatMulNBits(const OpKernelInfo& info)
               "block_size must be a power of two and at least 16.");
   ORT_ENFORCE(bits_ != 2 || block_size_ <= 256, "INT2 block_size must not exceed 256.");
   ORT_ENFORCE(weight_prepacked_ == 0 ||
-                  (weight_prepacked_ == 1 && bits_ == 4 && block_size_ == 32 &&
+                  (weight_prepacked_ == 1 && block_size_ == (bits_ == 2 ? 64 : 32) &&
                    GetDeviceProp().major >= 8),
-              "weight_prepacked=1 requires INT4 block-32 weights on an SM80+ device.");
+              "weight_prepacked=1 requires INT2 block-64, INT4 block-32, or INT8 block-32 weights on an SM80+ device.");
   const auto mode = info.GetAttrOrDefault<std::string>("activation_quantization", "dynamic_per_token");
   const bool has_block_size = info.GetAttr<int64_t>("activation_block_size", &activation_block_size_).IsOK();
   ORT_ENFORCE(mode == "dynamic_per_tensor" || mode == "dynamic_per_token" || mode == "dynamic_per_block",

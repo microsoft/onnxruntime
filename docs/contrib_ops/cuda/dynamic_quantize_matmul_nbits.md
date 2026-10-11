@@ -58,7 +58,7 @@ Non-goals for the initial implementation:
   unsigned codes centered at the fixed symmetric midpoint.
 - Reusing `weight_prepacked=2` or arbitrary architecture-specific layouts.
   The only prepacked exception is SM80 `weight_prepacked=1` for the explicitly
-  gated SM80+ W4 block-32 path.
+  gated SM80+ W2 block-64, W4 block-32, and W8 block-32 paths.
 - Weight-only W8A16/W4A16/W2A16 execution, static activation scales, or externally
   quantized activation inputs.
 - FP32 activation/output support or quantized output.
@@ -105,7 +105,7 @@ The proposed schema supports `bits = 8`, `bits = 4`, and `bits = 2`.
 |-----------|------|---------|---------|
 | `bits` | INT | `8` | Integer weight bit width; `8`, `4`, and `2` are supported by the proposed contract. Other widths are rejected. |
 | `block_size` | INT | `128` | Number of logical K elements sharing a weight scale; power of two and at least 16, as in MatMulNBits. For `bits = 2`, at most 256. |
-| `weight_prepacked` | INT | `0` | `0` uses standard blobs. `1` selects the SM80 fpA_intB layout and requires CUDA SM80+, W4 block 32, K divisible by 128, N divisible by 64, and one activation-scale interval. |
+| `weight_prepacked` | INT | `0` | `0` uses standard blobs. `1` selects the SM80 fpA_intB layout and requires CUDA SM80+, W2 block 64 or W4/W8 block 32, K divisible by 128, N divisible by 64, and one activation-scale interval. |
 | `activation_quantization` | STRING | `"dynamic_per_token"` | `"dynamic_per_tensor"`, `"dynamic_per_token"`, or `"dynamic_per_block"`. All modes dynamically quantize A to symmetric INT8. |
 | `activation_block_size` | INT | No default | Required and positive for `"dynamic_per_block"`; must be absent for the other modes. |
 
@@ -264,7 +264,8 @@ can supply standard `is_symmetric=True` QOperator weight/scales initializers
 for bits 2, 4, or 8 without repacking or requantization.
 This does not include asymmetric zero points, `g_idx`, or CUDA prepacked
 layouts. An exporter may instead opt into the separately validated SM80
-`weight_prepacked=1` contract for the supported SM80+ W4 geometry. The
+`weight_prepacked=1` contract for the supported SM80+ W2 block-64, W4 block-32,
+or W8 block-32 geometry. The
 `weight_prepacked=2`, QServe, GGUF, and Marlin formats are not implicitly
 accepted. Internal prepacking must preserve the decoded logical codes and
 scale values.
@@ -869,7 +870,7 @@ before omitting that input. Decode packed zero points and check only valid
 block entries; unused padding lanes need not equal the midpoint. Reject
 runtime or overridable zero points, even if their current values match.
 Reject nondefault zero points, `g_idx`, and prepacked layouts other than the
-explicitly supported `weight_prepacked=1` W4 block-32 geometry rather than
+explicitly supported `weight_prepacked=1` W2 block-64, W4 block-32, and W8 block-32 geometries rather than
 silently dropping their meaning. Check that source A/output and optional bias
 use the supported FP16/BF16 type, and that source `K`/`N` attributes agree
 with A and the canonical B/scales shapes before removing those attributes.
@@ -1874,12 +1875,14 @@ CUDA Graph protocol it measured 596.62 us for the dynamic operator and
 standard-layout dynamic path is therefore not a replacement for optimized
 MatMulNBits geometries.
 
-The SM80+ W4 block-32 path also accepts `weight_prepacked=1`, the existing
+The SM80+ W2 block-64, W4 block-32, and W8 block-32 paths also accept `weight_prepacked=1`, the existing
 SM80 fpA_intB layout. It reads that layout directly, retains canonical
 `[N, G]` scales, and preserves the same interval arithmetic as standard
-DynamicQuantizeMatMulNBits. Eligibility requires K divisible by 128, N
+DynamicQuantizeMatMulNBits (a W2 interval spans two 32-wide MMA steps accumulated
+in INT32 before scaling). Eligibility requires K divisible by 128, N
 divisible by 64, and one activation-scale interval. Fixed M=8/M=9 variants
-serve drafting, while a 16-row tiled variant covers prefill. Real BF16 qkv
+serve drafting, while a 16-row tiled variant covers prefill. The measurements
+below are for W4 only. Real BF16 qkv
 weights from the Qwen drafter (K=5120, N=6144) measured:
 
 | M | Standard-layout Dynamic (us) | Prepacked Dynamic (us) | Dynamic speedup | Prepacked MatMulNBits (us) |

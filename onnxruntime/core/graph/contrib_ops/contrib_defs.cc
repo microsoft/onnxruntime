@@ -3233,9 +3233,9 @@ A has shape [..., K]. With weight_prepacked=0, B contains unsigned offset codes 
 [N, ceil(K/block_size), block_size*bits/8]. Codes are packed low bits first within each byte;
 subtract 2^(bits-1) to obtain signed weights. Codes beyond K are ignored. Weight scales have
 shape [N, ceil(K/block_size)] or its flattened equivalent and must be finite; signed and zero
-scales are supported. weight_prepacked=1 selects the SM80 fpA_intB W4 layout for the specialized
-CUDA SM80+ block-32 path; the tensor shape and byte count are unchanged. No zero points or group
-indices are accepted.
+scales are supported. weight_prepacked=1 selects the SM80 fpA_intB layout for the specialized
+CUDA SM80+ INT2 block-64, INT4 block-32, and INT8 block-32 paths; the tensor shape and byte count are
+unchanged. No zero points or group indices are accepted.
 
 Activation scales are computed over the entire tensor, each row, or each row's consecutive
 activation_block_size values according to activation_quantization. For each domain, sA is
@@ -3262,8 +3262,8 @@ accuracy choice, not a semantics-preserving replacement for weight-only MatMulNB
               AttributeProto::INT, int64_t{128})
         .Attr("weight_prepacked",
               "Weight layout selector. 0 uses standard MatMulNBits blobs. 1 uses the SM80 fpA_intB "
-              "layout and requires the CUDA SM80+ INT4 block-32 path with K divisible by 128, "
-              "N divisible by 64, and one activation-scale interval.",
+              "layout and requires the CUDA SM80+ INT2 block-64, INT4 block-32, or INT8 block-32 path "
+              "with K divisible by 128, N divisible by 64, and one activation-scale interval.",
               AttributeProto::INT, int64_t{0})
         .Attr("activation_quantization", "dynamic_per_tensor, dynamic_per_token, or dynamic_per_block.",
               AttributeProto::STRING, std::string("dynamic_per_token"))
@@ -3293,8 +3293,8 @@ accuracy choice, not a semantics-preserving replacement for weight-only MatMulNB
           if (weight_prepacked != 0 && weight_prepacked != 1) {
             fail_shape_inference("weight_prepacked must be 0 or 1.");
           }
-          if (weight_prepacked == 1 && (bits != 4 || block != 32)) {
-            fail_shape_inference("weight_prepacked=1 requires INT4 block-32 weights.");
+          if (weight_prepacked == 1 && block != (bits == 2 ? 64 : 32)) {
+            fail_shape_inference("weight_prepacked=1 requires INT2 block-64, INT4 block-32, or INT8 block-32 weights.");
           }
           if (mode != "dynamic_per_tensor" && mode != "dynamic_per_token" && mode != "dynamic_per_block") {
             fail_shape_inference("Unrecognized activation_quantization.");

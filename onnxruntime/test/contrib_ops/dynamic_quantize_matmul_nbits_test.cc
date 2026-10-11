@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
 
@@ -142,6 +143,41 @@ float ReferenceProduct(int64_t acc, float a, float b) {
                                           : static_cast<float>((static_cast<double>(value) * a) * b);
 }
 
+// Applies the preprocess_weights_for_mixed_gemm SM80 stages: row permutation, column-major packing,
+// column-interleaved tiles of 64 K x (16 / bits) columns, and the in-word pair interleave.
+std::vector<uint8_t> PrepackSm80(const std::vector<int>& weights, int64_t n, int64_t k, int bits) {
+  const int interleave = 16 / bits;
+  const int permute_rows = 8 * interleave;
+  const int elements_per_word = 32 / bits;
+  const int words_per_tile = 64 / elements_per_word;
+  const int64_t words_per_column = k / elements_per_word;
+  std::vector<uint32_t> words(n * words_per_column, 0);
+  for (int64_t column = 0; column < n; ++column) {
+    for (int64_t row = 0; row < k; ++row) {
+      // Destination row `r` of each permutation block holds source row 2g + 8j + h.
+      const int64_t block_start = row / permute_rows * permute_rows;
+      int64_t permuted = -1;
+      for (int r = 0; r < permute_rows; ++r) {
+        const int g = r / (2 * interleave);
+        const int j = (r % (2 * interleave)) / 2;
+        if (2 * g + 8 * j + r % 2 == row - block_start) permuted = block_start + r;
+      }
+      ORT_ENFORCE(permuted >= 0);
+      const int64_t word = permuted / elements_per_word;
+      const int element = static_cast<int>(permuted % elements_per_word);
+      const int slot = element % 2 == 0 ? element / 2 : (element - 1) / 2 + elements_per_word / 2;
+      const int64_t write_word = (column / interleave) * words_per_column * interleave +
+                                 interleave * (word / words_per_tile * words_per_tile) +
+                                 words_per_tile * (column % interleave) + word % words_per_tile;
+      const uint32_t code = static_cast<uint32_t>(weights[column * k + row] + (1 << (bits - 1)));
+      words[write_word] |= code << (slot * bits);
+    }
+  }
+  std::vector<uint8_t> packed(words.size() * 4);
+  std::memcpy(packed.data(), words.data(), packed.size());
+  return packed;
+}
+
 template <typename T, typename S = float>
 void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t block,
              const std::string& mode, int64_t activation_block = 0,
@@ -164,7 +200,12 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t blo
   std::vector<uint8_t> b(n * groups * blob, 0xff);  // Nonzero padding must be ignored.
   for (int64_t column = 0; column < n; ++column) {
     for (int64_t pos = 0; pos < k; ++pos) {
-      const int code = identity ? (column == pos ? 1 : 0) : int((column * 7 + pos * 3) % (1 << bits)) - (1 << (bits - 1));
+      // A hashed pattern lets every code position distinguish layout permutations.
+      const uint32_t mixed = static_cast<uint32_t>((column * 0x9E3779B1u) ^ (pos * 0x85EBCA6Bu));
+      const int code = identity ? (column == pos ? 1 : 0)
+                       : weight_prepacked != 0
+                           ? int(((mixed ^ (mixed >> 15)) * 0x2C1B3C6Du >> 12) % (1u << bits)) - (1 << (bits - 1))
+                           : int((column * 7 + pos * 3) % (1 << bits)) - (1 << (bits - 1));
       weights[column * k + pos] = code;
       const int shift = int(pos % (8 / bits)) * bits;
       auto& byte = b[(column * groups + pos / block) * blob + (pos % block) / (8 / bits)];
@@ -172,23 +213,9 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n, int bits, int64_t blo
     }
   }
   if (weight_prepacked == 1) {
-    ORT_ENFORCE(bits == 4 && block == 32 && k % 128 == 0 && n % 64 == 0);
-    std::vector<uint8_t> prepacked(b.size(), 0);
-    for (int64_t column = 0; column < n; ++column) {
-      for (int64_t group = 0; group < groups; ++group) {
-        const int64_t chunk =
-            (column / 4) * (k / 8) + (group / 2) * 8 + (column % 4) * 2 + group % 2;
-        auto* packed = prepacked.data() + chunk * 16;
-        for (int logical = 0; logical < 32; ++logical) {
-          const int permuted = logical % 2 + (logical % 8) / 2 * 8 + logical / 8 * 2;
-          const int within = permuted % 8;
-          const int physical = permuted / 8 * 8 + (within % 2) * 4 + within / 2;
-          const int code = weights[(column * groups + group) * 32 + logical] + 8;
-          packed[physical / 2] |= static_cast<uint8_t>(code << (4 * (physical % 2)));
-        }
-      }
-    }
-    b = std::move(prepacked);
+    ORT_ENFORCE(block == (bits == 2 ? 64 : 32) && k % 128 == 0 && n % 64 == 0);
+    b = PrepackSm80(weights, n, k, bits);
+    ORT_ENFORCE(b.size() == static_cast<size_t>(n * groups * blob));
   }
   std::vector<T> bias(n);
   for (int64_t column = 0; column < n; ++column) bias[column] = T(float(column) / 4.0f);
@@ -411,6 +438,61 @@ TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedInt4Dispatch) {
                               true, false, false, {}, {}, false, true, 1);
   RunCase<BFloat16, MLFloat16>({33, 128}, 64, 4, 32, "dynamic_per_tensor", 0,
                                true, false, true, {}, {}, false, true, 1);
+  RunCase<MLFloat16>({17, 384}, 128, 4, 32, "dynamic_per_token", 0,
+                     true, false, true, {}, {}, false, true, 1);
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedLayoutMatchesMatMulNBits) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  constexpr int64_t n = 128, k = 256;
+  for (const auto& [bits, block] : {std::pair{2, 64}, std::pair{4, 32}, std::pair{8, 32}}) {
+    SCOPED_TRACE("bits=" + std::to_string(bits));
+    std::vector<int> weights(n * k);
+    std::vector<MLFloat16> a(k * k, MLFloat16(0.0f));
+    std::vector<MLFloat16> expected(k * n);
+    for (int64_t column = 0; column < n; ++column) {
+      for (int64_t pos = 0; pos < k; ++pos) {
+        const uint32_t mixed = static_cast<uint32_t>((column * 0x9E3779B1u) ^ (pos * 0x85EBCA6Bu));
+        weights[column * k + pos] = int(((mixed ^ (mixed >> 15)) * 0x2C1B3C6Du >> 12) % (1u << bits)) - (1 << (bits - 1));
+        expected[pos * n + column] = MLFloat16(static_cast<float>(weights[column * k + pos]));
+      }
+    }
+    for (int64_t i = 0; i < k; ++i) a[i * k + i] = MLFloat16(1.0f);
+    const std::vector<uint8_t> b = PrepackSm80(weights, n, k, bits);
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("block_size", block);
+    test.AddAttribute<int64_t>("bits", bits);
+    test.AddAttribute<int64_t>("accuracy_level", 0);
+    test.AddAttribute<int64_t>("weight_prepacked", 1);
+    test.AddInput<MLFloat16>("A", {k, k}, a);
+    test.AddInput<uint8_t>("B", {n, k / block, block * bits / 8}, b, true);
+    test.AddInput<MLFloat16>("scales", {n, k / block}, std::vector<MLFloat16>(n * k / block, MLFloat16(1.0f)), true);
+    test.AddOptionalInputEdge<uint8_t>();
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<MLFloat16>();
+    test.AddOutput<MLFloat16>("Y", {k, n}, expected);
+    test.SetOutputAbsErr("Y", 0.0f);
+    test.SetOutputRelErr("Y", 0.0f);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedInt2Int8Dispatch) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (const auto& [bits, block] : {std::pair{2, 64}, std::pair{8, 32}}) {
+    RunCase<MLFloat16>({8, 128}, 64, bits, block, "dynamic_per_token", 0,
+                       true, false, true, {}, {}, false, true, 1);
+    RunCase<BFloat16, BFloat16>({9, 128}, 64, bits, block, "dynamic_per_token", 0,
+                                true, false, false, {}, {}, false, true, 1);
+    RunCase<BFloat16, MLFloat16>({33, 128}, 64, bits, block, "dynamic_per_tensor", 0,
+                                 true, false, true, {}, {}, false, true, 1);
+    RunCase<MLFloat16>({17, 384}, 128, bits, block, "dynamic_per_token", 0,
+                       true, false, true, {}, {}, false, true, 1);
+  }
 }
 
 TEST(DynamicQuantizeMatMulNBitsTest, ConstantWeightsAndFallbacks) {

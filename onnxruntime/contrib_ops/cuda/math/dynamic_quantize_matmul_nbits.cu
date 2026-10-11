@@ -285,6 +285,28 @@ __device__ __forceinline__ uint32_t DecodePrepackedInt4(const uint8_t* blob, int
   return ((codes | 0x80808080u) - 0x08080808u) ^ 0x80808080u;
 }
 
+// Four consecutive centered codes of one B fragment register in the SM80 fpA_intB layout. `column` points at the
+// column's words inside one 64-element K tile; `tile_step` selects the 32-wide half of that tile.
+// The tile layout is the row permutation, column-major pair interleave and in-word pair interleave of
+// preprocess_weights_for_mixed_gemm_cuda.
+template <int Bits>
+__device__ __forceinline__ uint32_t DecodePrepacked(const uint32_t* column, int tile_step, int quarter, bool upper) {
+  static_assert(Bits == 2 || Bits == 4 || Bits == 8);
+  if constexpr (Bits == 4) {
+    return DecodePrepackedInt4(reinterpret_cast<const uint8_t*>(column + tile_step * 4), quarter, upper);
+  } else if constexpr (Bits == 8) {
+    const int word = (tile_step * 2 + (upper ? 1 : 0)) * 4 + (quarter % 2) * 2;
+    const uint32_t selector = 0x6420u + 0x1111u * (quarter / 2);
+    return __byte_perm(column[word], column[word + 1], selector) ^ 0x80808080u;
+  } else {
+    const int shift = 2 * (tile_step * 4 + (upper ? 2 : 0) + quarter / 2);
+    const uint32_t first = (column[(quarter % 2) * 2] >> shift) & 0x00030003u;
+    const uint32_t second = (column[(quarter % 2) * 2 + 1] >> shift) & 0x00030003u;
+    const uint32_t codes = __byte_perm(first, second, 0x6420u);
+    return ((codes | 0x80808080u) - 0x02020202u) ^ 0x80808080u;
+  }
+}
+
 // Lossless signed-INT8 expansion of centered codes for the Hopper grouped-scale GEMM.
 template <int Bits>
 __global__ void DynamicExpandWeights(const uint8_t* weights, int8_t* expanded, int64_t count) {
@@ -389,27 +411,33 @@ __device__ __forceinline__ void CopyAsync16(void* destination, const void* sourc
 #endif
 }
 
-template <typename T, typename ScaleT, int FixedRows = 0>
-__global__ void Int4Block32PrepackedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
-                                           const void* b_scales, const T* bias, T* y,
-                                           bool per_tensor, int rows, int n, int k) {
+// Weights use the SM80 fpA_intB layout: 64 K x (16 / Bits) columns form one 128-byte tile. Block size is 32 for
+// INT4/INT8 and 64 for INT2, so each scale interval covers one or two 32-wide MMA steps.
+template <typename T, typename ScaleT, int Bits, int FixedRows = 0>
+__global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                const void* b_scales, const T* bias, T* y,
+                                bool per_tensor, int rows, int n, int k) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   constexpr int TileM = 16;
   constexpr int TileN = 64;
   constexpr int TileK = 128;
   constexpr int Stages = 2;
   constexpr int AStride = TileK / 4 + 4;
-  constexpr int BStride = TileK / 8 + 4;
-  constexpr int GroupsPerTile = TileK / 32;
+  constexpr int Interleave = 16 / Bits;
+  constexpr int ColumnWords = 32 / Interleave;
+  constexpr int ChunksPerColumnGroup = TileK / 64 * 8;
+  constexpr int BlockSize = Bits == 2 ? 64 : 32;
+  constexpr int StepsPerGroup = BlockSize / 32;
+  constexpr int Steps = TileK / 32;
   __shared__ __align__(16) uint32_t shared_a[Stages][TileM][AStride];
-  __shared__ __align__(16) uint32_t shared_b[Stages][TileN][BStride];
+  __shared__ __align__(16) uint4 shared_b[Stages][(TileN / Interleave) * ChunksPerColumnGroup];
   const int lane = threadIdx.x % 32;
   const int warp = threadIdx.x / 32;
   const int column_tiles = n / TileN;
   const int active_rows = FixedRows == 0 ? rows : FixedRows;
   const int tile_row = FixedRows == 0 ? (blockIdx.x / column_tiles) * TileM : 0;
   const int tile_column = (FixedRows == 0 ? blockIdx.x % column_tiles : blockIdx.x) * TileN;
-  const int groups = k / 32;
+  const int groups = k / BlockSize;
   float total[4];
   const float row_scale = tile_row + lane % 16 < active_rows
                               ? a_scales[per_tensor ? 0 : tile_row + lane % 16]
@@ -429,13 +457,13 @@ __global__ void Int4Block32PrepackedMatMul(const int8_t* a, const float* a_scale
                   valid ? a + int64_t{tile_row + row} * k + pos + offset : a, valid);
     }
 #pragma unroll
-    for (int i = threadIdx.x; i < (TileN / 4) * (TileK / 64 * 8); i += 256) {
-      const int column_group = i / (TileK / 64 * 8);
-      const int chunk = i % (TileK / 64 * 8);
-      const int64_t global_column_group = tile_column / 4 + column_group;
+    for (int i = threadIdx.x; i < (TileN / Interleave) * ChunksPerColumnGroup; i += 256) {
+      const int column_group = i / ChunksPerColumnGroup;
+      const int chunk = i % ChunksPerColumnGroup;
+      const int64_t global_column_group = tile_column / Interleave + column_group;
       const int64_t source_chunk = global_column_group * (k / 8) + (pos / 64) * 8 + chunk;
       const bool valid = pos < k;
-      CopyAsync16(&reinterpret_cast<uint4*>(&shared_b[stage][0][0])[i],
+      CopyAsync16(&shared_b[stage][i],
                   valid ? &reinterpret_cast<const uint4*>(b)[source_chunk] : reinterpret_cast<const uint4*>(b), valid);
     }
     asm volatile("cp.async.commit_group;" ::: "memory");
@@ -448,28 +476,31 @@ __global__ void Int4Block32PrepackedMatMul(const int8_t* a, const float* a_scale
     asm volatile("cp.async.wait_group 1;" ::: "memory");
     __syncthreads();
 
+    const int column = warp * 8 + lane / 4;
+    const uint32_t* column_words = reinterpret_cast<const uint32_t*>(&shared_b[stage][0]) +
+                                   (column / Interleave) * (ChunksPerColumnGroup * 4) +
+                                   (column % Interleave) * ColumnWords;
+    int32_t acc[4];
 #pragma unroll
-    for (int group_in_tile = 0; group_in_tile < GroupsPerTile; ++group_in_tile) {
+    for (int step = 0; step < Steps; ++step) {
       uint32_t fragment_a[4];
       const int row = lane % 16;
       const uint32_t a_address = static_cast<uint32_t>(__cvta_generic_to_shared(
-          &shared_a[stage][row][group_in_tile * 8 + (lane / 16) * 4]));
+          &shared_a[stage][row][step * 8 + (lane / 16) * 4]));
       asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
                    : "=r"(fragment_a[0]), "=r"(fragment_a[1]),
                      "=r"(fragment_a[2]), "=r"(fragment_a[3]) : "r"(a_address));
 
-      const int group = pos / 32 + group_in_tile;
-      const int column = warp * 8 + lane / 4;
-      const int column_group = column / 4;
-      const int column_in_group = column % 4;
-      const int chunk = (group_in_tile / 2) * 8 + column_in_group * 2 + group_in_tile % 2;
-      const auto* packed = reinterpret_cast<const uint8_t*>(
-          &reinterpret_cast<const uint4*>(&shared_b[stage][0][0])[column_group * (TileK / 64 * 8) + chunk]);
-      const uint32_t b0 = DecodePrepackedInt4(packed, lane % 4, false);
-      const uint32_t b1 = DecodePrepackedInt4(packed, lane % 4, true);
-      int32_t acc[4] = {};
+      const uint32_t* tile_words = column_words + (step / 2) * 32;
+      const uint32_t b0 = DecodePrepacked<Bits>(tile_words, step % 2, lane % 4, false);
+      const uint32_t b1 = DecodePrepacked<Bits>(tile_words, step % 2, lane % 4, true);
+      if (step % StepsPerGroup == 0) {
+        acc[0] = acc[1] = acc[2] = acc[3] = 0;
+      }
       MmaInt8(acc, fragment_a, b0, b1);
+      if (step % StepsPerGroup != StepsPerGroup - 1) continue;
 
+      const int group = (pos + step * 32) / BlockSize;
       const int scale_column = tile_column + warp * 8 + lane * 2;
       const int64_t scale_index0 = int64_t{scale_column} * groups + group;
       const int64_t scale_index1 = int64_t{scale_column + 1} * groups + group;
@@ -977,21 +1008,21 @@ Status NativeKernelAvailable(Kernel kernel, bool& available) {
   return Status::OK();
 }
 
-template <typename T, typename ScaleT>
-Status LaunchInt4Block32Prepacked(const int8_t* a, const float* a_scales, const uint8_t* b,
-                                  const void* b_scales, const void* bias, void* y,
-                                  bool per_tensor, int64_t rows, int64_t n, int64_t k,
-                                  cudaStream_t stream) {
-  auto kernel = rows == 8   ? Int4Block32PrepackedMatMul<T, ScaleT, 8>
-                : rows == 9 ? Int4Block32PrepackedMatMul<T, ScaleT, 9>
-                            : Int4Block32PrepackedMatMul<T, ScaleT, 0>;
+template <typename T, typename ScaleT, int Bits>
+Status LaunchPrepacked(const int8_t* a, const float* a_scales, const uint8_t* b,
+                       const void* b_scales, const void* bias, void* y,
+                       bool per_tensor, int64_t rows, int64_t n, int64_t k,
+                       cudaStream_t stream) {
+  auto kernel = rows == 8   ? PrepackedMatMul<T, ScaleT, Bits, 8>
+                : rows == 9 ? PrepackedMatMul<T, ScaleT, Bits, 9>
+                            : PrepackedMatMul<T, ScaleT, Bits, 0>;
   bool available;
   ORT_RETURN_IF_ERROR(NativeKernelAvailable(kernel, available));
   ORT_RETURN_IF_NOT(available, "The SM80+ integer MMA body is unavailable in the loaded CUDA image.");
   const int64_t column_tiles = n / 64;
   const int64_t row_tiles = rows == 8 || rows == 9 ? 1 : rows / 16 + (rows % 16 != 0);
   const int64_t tiles = SafeInt<int64_t>(column_tiles) * row_tiles;
-  ORT_RETURN_IF_NOT(tiles <= std::numeric_limits<int>::max(), "Prepacked INT4 tile grid exceeds CUDA limits.");
+  ORT_RETURN_IF_NOT(tiles <= std::numeric_limits<int>::max(), "Prepacked tile grid exceeds CUDA limits.");
   kernel<<<static_cast<int>(tiles), 256, 0, stream>>>(
       a, a_scales, b, b_scales, static_cast<const T*>(bias), static_cast<T*>(y),
       per_tensor, static_cast<int>(rows), static_cast<int>(n), static_cast<int>(k));
@@ -1006,27 +1037,26 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
                     int64_t activation_block_size, int64_t weight_prepacked,
                     int compute_capability, cudaStream_t stream) {
   if (weight_prepacked != 0) {
-    if constexpr (Bits == 4) {
-      const bool supported = weight_prepacked == 1 && compute_capability >= 80 && rows >= 1 &&
-                             rows <= std::numeric_limits<int>::max() && n >= 64 &&
-                             n <= std::numeric_limits<int>::max() && k >= 128 &&
-                             k <= std::numeric_limits<int>::max() && n % 64 == 0 && k % 128 == 0 &&
-                             block_size == 32 && activation_block_size >= k;
-      ORT_RETURN_IF_NOT(
-          supported,
-          "weight_prepacked=1 requires SM80+ INT4 block-32 execution, positive M, K divisible by 128, "
-          "N divisible by 64, and one activation-scale interval.");
-      switch (scale_type) {
-        case DynamicWeightScaleType::Float:
-          return LaunchInt4Block32Prepacked<T, float>(
-              a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
-        case DynamicWeightScaleType::Half:
-          return LaunchInt4Block32Prepacked<T, half>(
-              a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
-        case DynamicWeightScaleType::BFloat16:
-          return LaunchInt4Block32Prepacked<T, __nv_bfloat16>(
-              a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
-      }
+    const int64_t prepacked_block = Bits == 2 ? 64 : 32;
+    const bool supported = weight_prepacked == 1 && compute_capability >= 80 && rows >= 1 &&
+                           rows <= std::numeric_limits<int>::max() && n >= 64 &&
+                           n <= std::numeric_limits<int>::max() && k >= 128 &&
+                           k <= std::numeric_limits<int>::max() && n % 64 == 0 && k % 128 == 0 &&
+                           block_size == prepacked_block && activation_block_size >= k;
+    ORT_RETURN_IF_NOT(
+        supported,
+        "weight_prepacked=1 requires SM80+ INT2 block-64, INT4 block-32, or INT8 block-32 execution, "
+        "positive M, K divisible by 128, N divisible by 64, and one activation-scale interval.");
+    switch (scale_type) {
+      case DynamicWeightScaleType::Float:
+        return LaunchPrepacked<T, float, Bits>(
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+      case DynamicWeightScaleType::Half:
+        return LaunchPrepacked<T, half, Bits>(
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+      case DynamicWeightScaleType::BFloat16:
+        return LaunchPrepacked<T, __nv_bfloat16, Bits>(
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported prepacked DynamicQuantizeMatMulNBits geometry.");
   }

@@ -101,21 +101,32 @@ def reference(a, packed, scales, bits, block, mode, activation_block):
     return (output + np.float32(0)).astype(np.float16)
 
 
-def prepack_sm80_int4(packed):
+def prepack_sm80(packed, bits):
+    """Applies the SM80 mixed-GEMM stages: row permutation, column-interleaved tiles, in-word pair interleave."""
     n, groups, blob = packed.shape
-    assert blob == 16
-    k = groups * 32
-    codes = np.stack((packed & 0x0F, packed >> 4), axis=-1).reshape(n, k)
-    prepacked = np.zeros_like(packed).reshape(-1)
-    for column in range(n):
-        for group in range(groups):
-            chunk = (column // 4) * (k // 8) + (group // 2) * 8 + (column % 4) * 2 + group % 2
-            for logical in range(32):
-                permuted = logical % 2 + (logical % 8) // 2 * 8 + logical // 8 * 2
-                within = permuted % 8
-                physical = permuted // 8 * 8 + (within % 2) * 4 + within // 2
-                prepacked[chunk * 16 + physical // 2] |= codes[column, group * 32 + logical] << (4 * (physical % 2))
-    return prepacked.reshape(packed.shape)
+    k = groups * blob * 8 // bits
+    codes = ((packed[..., None] >> (bits * np.arange(8 // bits))) & ((1 << bits) - 1)).reshape(n, k)
+    interleave = 16 // bits
+    permute_rows = 8 * interleave
+    elements_per_word = 32 // bits
+    words_per_tile = 64 // elements_per_word
+    permutation = [2 * (r // (2 * interleave)) + 8 * ((r % (2 * interleave)) // 2) + r % 2 for r in range(permute_rows)]
+    source_rows = (np.arange(k) // permute_rows) * permute_rows + np.tile(permutation, k // permute_rows)
+    elements = codes[:, source_rows].reshape(n, -1, elements_per_word).astype(np.uint32)
+    words = np.zeros(elements.shape[:2], dtype=np.uint32)
+    for element in range(elements_per_word):
+        slot = element // 2 if element % 2 == 0 else (element - 1) // 2 + elements_per_word // 2
+        words |= elements[:, :, element] << np.uint32(slot * bits)
+    column = np.arange(n)[:, None]
+    word = np.arange(words.shape[1])[None, :]
+    destination = (
+        interleave * (word // words_per_tile * words_per_tile)
+        + words_per_tile * (column % interleave)
+        + word % words_per_tile
+    )
+    output = np.zeros((n // interleave, words.shape[1] * interleave), dtype=np.uint32)
+    output[np.broadcast_to(column // interleave, words.shape), destination] = words
+    return output.reshape(-1).view(np.uint8).reshape(packed.shape)
 
 
 class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
@@ -175,39 +186,40 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
                         result = make_session(model).run(None, {"A": a})[0]
                         np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
 
-    def test_sm80_prepacked_int4_matches_exact_reference(self):
+    def test_sm80_prepacked_matches_exact_reference(self):
         if ort.get_device() != "GPU":
             self.skipTest("CUDAExecutionProvider is required")
         rng = np.random.default_rng(43)
-        k, n, block = 128, 64, 32
-        packed = rng.integers(0, 256, size=(n, k // block, block // 2), dtype=np.uint8)
-        prepacked = prepack_sm80_int4(packed)
-        for m, scale_dtype, mode in (
-            (8, np.float32, "dynamic_per_token"),
-            (9, np.float16, "dynamic_per_token"),
-            (33, ml_dtypes.bfloat16, "dynamic_per_tensor"),
-        ):
-            with self.subTest(m=m, scale_dtype=scale_dtype, mode=mode):
-                a = rng.normal(size=(m, k)).astype(np.float16)
-                scales = rng.uniform(-0.02, 0.02, size=(n, k // block)).astype(scale_dtype)
-                model = make_model(scales, bits=4, m=m, k=k, n=n, block=block)
-                model.graph.input.remove(model.graph.input[1])
-                model.graph.initializer.append(numpy_helper.from_array(prepacked, "B"))
-                model.graph.node[0].attribute.extend(
-                    [
-                        helper.make_attribute("activation_quantization", mode),
-                        helper.make_attribute("weight_prepacked", 1),
-                    ]
-                )
-                expected = reference(a, packed, scales, 4, block, mode, k)
-                try:
-                    session = make_session(model)
-                except ort_capi.Fail as error:
-                    if "SM80+" in str(error):
-                        self.skipTest("SM80+ is required for prepacked DynamicQuantizeMatMulNBits")
-                    raise
-                result = session.run(None, {"A": a})[0]
-                np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
+        for bits, block in ((2, 64), (4, 32), (8, 32)):
+            k, n = 256, 128
+            packed = rng.integers(0, 256, size=(n, k // block, block * bits // 8), dtype=np.uint8)
+            prepacked = prepack_sm80(packed, bits)
+            for m, scale_dtype, mode in (
+                (8, np.float32, "dynamic_per_token"),
+                (9, np.float16, "dynamic_per_token"),
+                (33, ml_dtypes.bfloat16, "dynamic_per_tensor"),
+            ):
+                with self.subTest(bits=bits, m=m, scale_dtype=scale_dtype, mode=mode):
+                    a = rng.normal(size=(m, k)).astype(np.float16)
+                    scales = rng.uniform(-0.02, 0.02, size=(n, k // block)).astype(scale_dtype)
+                    model = make_model(scales, bits=bits, m=m, k=k, n=n, block=block)
+                    model.graph.input.remove(model.graph.input[1])
+                    model.graph.initializer.append(numpy_helper.from_array(prepacked, "B"))
+                    model.graph.node[0].attribute.extend(
+                        [
+                            helper.make_attribute("activation_quantization", mode),
+                            helper.make_attribute("weight_prepacked", 1),
+                        ]
+                    )
+                    expected = reference(a, packed, scales, bits, block, mode, k)
+                    try:
+                        session = make_session(model)
+                    except ort_capi.Fail as error:
+                        if "SM80+" in str(error):
+                            self.skipTest("SM80+ is required for prepacked DynamicQuantizeMatMulNBits")
+                        raise
+                    result = session.run(None, {"A": a})[0]
+                    np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
 
     def test_hopper_constant_weights_concurrent_dynamic_shapes(self):
         n = 512
