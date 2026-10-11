@@ -58,11 +58,14 @@ window-512 chunks `500,24,3,520,1`, logical masks across wrap, fully masked rows
 GQA, immutable ownership, later-layer failure, and rejected preallocated fetches.
 The smoke graph also preserves the Qwen INT64-to-BOOL padding-mask conversion,
 exercising the explicit CPU Cast-28 registration with existing supported dtypes.
+An additional numerical test exercises the direct float32 Swish-24 kernel under
+opset 29, including zero and negative alpha. Baseline graphs previously relied
+on function expansion for Swish; lifted graphs require the explicit kernel.
 Real pretrained model parity is performed by the coordinated Mobius driver;
 these focused tests alone do not establish model-level parity.
 
 The wheel is `onnxruntime-1.32.0-cp313-cp313-win_amd64.whl`, SHA256
-`6845ee966cc0e2e56cb0a48ad3082c1797d8f179b3aa08231a4eb964539ec517`.
+`ab1fc5ef214e69ce17ee566fec58ffe1a4a8bf4d0965cc97513cc1c9cd0205d4`.
 The matching ONNX wheel is `onnx-1.24.0-cp312-abi3-win_amd64.whl`, SHA256
 `03029ba7a488ee71bc1ad2f4647a695097e1eca95fb56000e52c89218482f744`.
 Wheel hashes identify these local artifacts, not deterministic build outputs.

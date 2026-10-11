@@ -5,6 +5,7 @@
 #include "core/providers/cpu/activation/activations.h"
 #include "core/providers/cpu/fp16/fp16_activations.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#include <cmath>
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/activations.h"
 #endif
@@ -12,6 +13,34 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+
+class Swish final : public OpKernel {
+ public:
+  explicit Swish(const OpKernelInfo& info)
+      : OpKernel(info), alpha_(info.GetAttrOrDefault<float>("alpha", 1.0f)) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    const auto& input = context->RequiredInput<Tensor>(0);
+    auto& output = context->RequiredOutput(0, input.Shape());
+    const auto* x = input.Data<float>();
+    auto* y = output.MutableData<float>();
+    for (int64_t i = 0; i < input.Shape().Size(); ++i) {
+      const float z = alpha_ * x[i];
+      const float e = std::exp(-std::abs(z));
+      const float sigmoid = z >= 0 ? 1.0f / (1.0f + e) : e / (1.0f + e);
+      y[i] = x[i] * sigmoid;
+    }
+    return Status::OK();
+  }
+
+ private:
+  const float alpha_;
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Swish, 24,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Swish);
 
 #define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(op, since_version, end_version) \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                               \

@@ -60,6 +60,20 @@ def dense_attention(q, keys, values, start, window):
 
 
 class KVCacheIntegrationTest(unittest.TestCase):
+    def test_swish_float32_in_lifted_graph(self):
+        for alpha in (1.0, 0.0, -0.75):
+            graph = onnx.helper.make_graph(
+                [onnx.helper.make_node("Swish", ["x"], ["y"], alpha=alpha)],
+                "swish",
+                [onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [7])],
+                [onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [7])],
+            )
+            model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 29)], ir_version=15)
+            session = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+            x = np.array([-100, -10, -1, 0, 1, 10, 100], dtype=np.float32)
+            expected = x.astype(np.float64) / (1 + np.exp(-alpha * x.astype(np.float64)))
+            np.testing.assert_allclose(session.run(None, {"x": x})[0], expected, atol=2e-6, rtol=2e-6)
+
     def test_identical_model_with_runtime_selected_storage(self):
         rng = np.random.default_rng(42)
         chunks = [
