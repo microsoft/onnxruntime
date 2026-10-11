@@ -586,3 +586,25 @@ func TestSessionOptionsRejectNULStrings(t *testing.T) {
 		})
 	}
 }
+
+func TestDeterministicCompute(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+	for _, enabled := range []bool{true, false} {
+		if err := opts.SetDeterministicCompute(enabled); err != nil {
+			t.Fatal(err)
+		}
+		checkEPAdd(t, opts, false)
+	}
+	opts.Close()
+	if err := opts.SetDeterministicCompute(true); err == nil {
+		t.Fatal("closed options accepted")
+	}
+	var nilOpts *SessionOptions
+	if err := nilOpts.SetDeterministicCompute(true); err == nil {
+		t.Fatal("nil options accepted")
+	}
+}

@@ -1,5 +1,7 @@
 #include "cshim.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 _Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2 == 24, "UINT2 C API ABI value must remain 24");
 _Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2 == 25, "INT2 C API ABI value must remain 25");
@@ -713,5 +715,39 @@ OrtStatusPtr ort_GetKeyValuePairs(
     if (g_api_version < 22) return ort_unsupported("GetKeyValuePairs", 22);
     if (g_api->GetKeyValuePairs == NULL) return ort_unsupported("GetKeyValuePairs", 22);
     g_api->GetKeyValuePairs(pairs, keys, values, count);
+    return NULL;
+}
+
+OrtStatusPtr ort_SetDeterministicCompute(OrtSessionOptions* opts, bool enabled) {
+    if (g_api_version < 17) return ort_unsupported("SetDeterministicCompute", 17);
+    if (g_api->SetDeterministicCompute == NULL) return ort_unsupported("SetDeterministicCompute", 17);
+    return g_api->SetDeterministicCompute(opts, enabled);
+}
+
+OrtStatusPtr ort_SynchronizeBoundInputs(OrtIoBinding* binding) {
+    if (g_api_version < 10) return ort_unsupported("SynchronizeBoundInputs", 10);
+    if (g_api->SynchronizeBoundInputs == NULL) return ort_unsupported("SynchronizeBoundInputs", 10);
+    return g_api->SynchronizeBoundInputs(binding);
+}
+
+OrtStatusPtr ort_SynchronizeBoundOutputs(OrtIoBinding* binding) {
+    if (g_api_version < 10) return ort_unsupported("SynchronizeBoundOutputs", 10);
+    if (g_api->SynchronizeBoundOutputs == NULL) return ort_unsupported("SynchronizeBoundOutputs", 10);
+    return g_api->SynchronizeBoundOutputs(binding);
+}
+
+OrtStatusPtr ort_SessionOptionsSetWeightlessSourceModelBuffer(OrtSessionOptions* opts, const void* data, size_t size) {
+    if (g_api_version < 29) return ort_unsupported("SessionOptionsSetWeightlessSourceModelBuffer", 29);
+    if (g_api->SessionOptionsSetWeightlessSourceModelBuffer == NULL)
+        return ort_unsupported("SessionOptionsSetWeightlessSourceModelBuffer", 29);
+    return g_api->SessionOptionsSetWeightlessSourceModelBuffer(opts, data, size);
+}
+
+OrtStatusPtr ort_copy_buffer(const void* data, size_t size, void** out) {
+    if (data == NULL || size == 0) return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "source buffer is empty");
+    void* copy = malloc(size);
+    if (copy == NULL) return g_api->CreateStatus(ORT_FAIL, "source buffer allocation failed");
+    memcpy(copy, data, size);
+    *out = copy;
     return NULL;
 }

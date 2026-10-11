@@ -11,6 +11,13 @@
 // SessionOptions.IsMemPatternEnabled require API 27. Unsupported operations
 // return an OrtError with ErrorCodeNotImplemented.
 // Plugin registration, discovery, V2 selection and device policies require API 22.
+// Deterministic compute requires API 17; I/O binding synchronization requires API 10.
+// Weightless source model buffers require API 29. The binding copies source bytes
+// into native storage and retains them through clones and sessions until Close.
+// Buffer sessions require successful explicit V2 selection. Automatic policy
+// selection with a buffer is rejected on all accepted runtimes because native
+// policy selection omits the buffer. Fresh options reset selection state.
+// Public clones and private constructor snapshots restore the native buffer.
 // Linux CPU race tests cover ORT 1.27.0/API 27, 1.28.3/API 28,
 // 1.29.1/API 29, 1.30.0/API 30, and 1.31.0/API 31.
 // Capped builds on a newer runtime do not verify an older runtime's ABI.

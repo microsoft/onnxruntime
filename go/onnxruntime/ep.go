@@ -392,6 +392,9 @@ func (o *SessionOptions) SetEPSelectionPolicy(policy ExecutionProviderDevicePoli
 	if policy < ExecutionProviderDevicePolicyDefault || policy > ExecutionProviderDevicePolicyMinOverallPower {
 		return fmt.Errorf("ort: invalid EP selection policy %d", policy)
 	}
+	if o.resources.source != nil {
+		return policyBufferError()
+	}
 	o.protectLocked()
 	o.policyAttempted = true
 	return wrapErr("set EP selection policy", checkStatus(C.ort_SessionOptionsSetEpSelectionPolicy(o.handle, C.OrtExecutionProviderDevicePolicy(policy))))
