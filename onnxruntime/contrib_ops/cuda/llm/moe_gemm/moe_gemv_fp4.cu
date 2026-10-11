@@ -503,7 +503,8 @@ __device__ __forceinline__ void FmaWeightVector(const float* act, float (&chain_
         float& chain = (w / 2) ? chain_b[c] : chain_a[c];
 #pragma unroll
         for (int i = 0; i < 4; ++i) {
-          const float decoded = h == 0 ? PackedLowToFloat<T>(decoded_pairs[c][i]) : PackedHighToFloat<T>(decoded_pairs[c][i]);
+          const float decoded = h == 0 ? PackedLowToFloat<T>(decoded_pairs[c][i])
+                                       : PackedHighToFloat<T>(decoded_pairs[c][i]);
           chain += decoded * activations[i];
         }
       }
