@@ -431,26 +431,22 @@ __device__ __forceinline__ float PackedHighToFloat(uint32_t word) {
 
 __device__ __forceinline__ uint4 LoadWeightStreaming(const void* ptr) {
   uint4 value;
-#ifdef GEMV_DBG_NOLOAD
-  const uint32_t seed = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(ptr)) * 2654435761u;
-  value = make_uint4(seed, seed ^ 0x1234567u, seed + 77u, seed * 3u);
-#else
   asm("ld.global.nc.L1::no_allocate.v4.u32 {%0, %1, %2, %3}, [%4];"
       : "=r"(value.x), "=r"(value.y), "=r"(value.z), "=r"(value.w)
       : "l"(ptr));
-#endif
   return value;
 }
 
-#ifndef GEMV_WARPS
-#define GEMV_WARPS 4
-#endif
-#ifndef GEMV_MINB
-#define GEMV_MINB 8
-#endif
-static constexpr int kDecodeWarps = GEMV_WARPS;
-static constexpr int kDecodeBlockCols = kDecodeWarps * 4;
 static constexpr int kDecodeMaxK = 3072;  // three K tiles in flight per lane pair
+
+#ifndef GEMV_FC1_WARPS
+#define GEMV_FC1_WARPS 4
+#define GEMV_FC1_COLS 1
+#define GEMV_FC1_MINB 6
+#define GEMV_FC2_WARPS 4
+#define GEMV_FC2_COLS 2
+#define GEMV_FC2_MINB 6
+#endif
 
 // Opt-out for the decode-specialised row-major NVFP4 GEMV (env ORT_FP4_GEMV_DECODE_KERNEL=0).
 static bool Fp4MoeGemvUseDecodeKernel() {
@@ -480,39 +476,69 @@ static constexpr int kDecodeActUnitStride = 36;
 template <typename T>
 using PackedPairT = std::conditional_t<std::is_same_v<T, half>, half2, __nv_bfloat162>;
 
-// Accumulates the 32 products of one weight vector into the two lane-pair chains. `decode` yields the
-// four packed pairs {element j, element j + 4} of 32-bit weight word w.
-template <typename T, typename DecodeFn>
-__device__ __forceinline__ void FmaWeightVector(const float* act, float& chain_a, float& chain_b, DecodeFn decode) {
+// Accumulates the 32 products of one weight vector per column into the two lane-pair chains of each
+// column. `decode(c, w, pairs)` yields the four packed pairs {element j, element j + 4} of 32-bit weight
+// word w of column c; each activation chunk is read from shared memory once for all columns.
+template <typename T, int Cols, typename DecodeFn>
+__device__ __forceinline__ void FmaWeightVector(const float* act, float (&chain_a)[Cols], float (&chain_b)[Cols],
+                                                DecodeFn decode) {
 #pragma unroll
   for (int w = 0; w < 4; ++w) {
-    uint32_t decoded_pairs[4];
-    decode(w, decoded_pairs);
-    float& chain = (w / 2) ? chain_b : chain_a;
+    uint32_t decoded_pairs[Cols][4];
+#pragma unroll
+    for (int c = 0; c < Cols; ++c) {
+      decode(c, w, decoded_pairs[c]);
+    }
 #pragma unroll
     for (int h = 0; h < 2; ++h) {
       // Elements 8w + 4h .. 8w + 4h + 3 are float4 chunk 2w + h of the unit.
       const float4 a = *reinterpret_cast<const float4*>(act + (2 * w + h) * 4);
       const float activations[4] = {a.x, a.y, a.z, a.w};
 #pragma unroll
-      for (int i = 0; i < 4; ++i) {
-        const float decoded = h == 0 ? PackedLowToFloat<T>(decoded_pairs[i]) : PackedHighToFloat<T>(decoded_pairs[i]);
-        chain += decoded * activations[i];
+      for (int c = 0; c < Cols; ++c) {
+        float& chain = (w / 2) ? chain_b[c] : chain_a[c];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+          const float decoded = h == 0 ? PackedLowToFloat<T>(decoded_pairs[c][i]) : PackedHighToFloat<T>(decoded_pairs[c][i]);
+          chain += decoded * activations[i];
+        }
       }
     }
   }
 }
 
-// Generic decode (any T, any block scale): the Fp4I2FConverter path of the baseline kernel.
+// Block scales of the two groups of one vector: scale_rounded = T(e4m3 * global), exactly as the baseline,
+// packed {group A, group B} in T.
 template <typename T>
-__device__ __noinline__ float2 AccumulateWeightVectorGeneric(
-    uint4 packed, uint32_t scale_rounded, const float* act, float chain_a, float chain_b) {
-  const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
-  FmaWeightVector<T>(act, chain_a, chain_b, [&](int w, uint32_t (&decoded_pairs)[4]) {
-    uint32_t word_copy = words[w];
+__device__ __forceinline__ uint32_t RoundedScalePair(uint32_t scale_code, float global_scale) {
+  uint32_t half_pair;
+  asm("cvt.rn.f16x2.e4m3x2 %0, %1;" : "=r"(half_pair) : "h"(static_cast<uint16_t>(scale_code)));
+  const float scale_a = __half2float(__ushort_as_half(static_cast<uint16_t>(half_pair & 0xffffu))) * global_scale;
+  const float scale_b = __half2float(__ushort_as_half(static_cast<uint16_t>(half_pair >> 16))) * global_scale;
+  if constexpr (std::is_same_v<T, half>) {
+    const half2 rounded = __floats2half2_rn(scale_a, scale_b);
+    return *reinterpret_cast<const uint32_t*>(&rounded);
+  } else {
+    const __nv_bfloat162 rounded = __floats2bfloat162_rn(scale_a, scale_b);
+    return *reinterpret_cast<const uint32_t*>(&rounded);
+  }
+}
+
+// Generic decode (any T, any block scale): the Fp4I2FConverter path of the baseline kernel.
+template <typename T, int Cols>
+__device__ __noinline__ void AccumulateWeightVectorsGeneric(
+    const uint4 (&packed)[Cols], const uint32_t (&scale_codes)[Cols], float global_scale, const float* act,
+    float (&chain_a)[Cols], float (&chain_b)[Cols]) {
+  uint32_t scale_rounded[Cols];
+#pragma unroll
+  for (int c = 0; c < Cols; ++c) {
+    scale_rounded[c] = RoundedScalePair<T>(scale_codes[c], global_scale);
+  }
+  FmaWeightVector<T, Cols>(act, chain_a, chain_b, [&](int c, int w, uint32_t (&decoded_pairs)[4]) {
+    uint32_t word_copy = (&packed[c].x)[w];
     alignas(4) T decoded[8];
     fiv::Fp4I2FConverter<T>::template convert<8>(&word_copy, decoded);
-    const uint32_t scale_splat = __byte_perm(scale_rounded, scale_rounded, (w / 2) ? 0x3232 : 0x1010);
+    const uint32_t scale_splat = __byte_perm(scale_rounded[c], scale_rounded[c], (w / 2) ? 0x3232 : 0x1010);
 #pragma unroll
     for (int p = 0; p < 4; ++p) {
       reinterpret_cast<PackedPairT<T>*>(decoded)[p] = __hmul2(reinterpret_cast<const PackedPairT<T>*>(decoded)[p],
@@ -524,55 +550,44 @@ __device__ __noinline__ float2 AccumulateWeightVectorGeneric(
       decoded_pairs[j] = static_cast<uint32_t>(bits[j]) | (static_cast<uint32_t>(bits[j + 4]) << 16);
     }
   });
-  return make_float2(chain_a, chain_b);
 }
 
-// One 16-byte weight vector (32 K elements = two 16-element scale groups) of one column, accumulated
-// into the two chains of the lane pair.
-template <typename T>
-__device__ __forceinline__ void AccumulateWeightVector(
-    const uint4& packed, uint32_t scale_code, float global_scale, const float* act, float& chain_a, float& chain_b) {
-  uint32_t half_pair;
-  asm("cvt.rn.f16x2.e4m3x2 %0, %1;" : "=r"(half_pair) : "h"(static_cast<uint16_t>(scale_code)));
-  const float scale_a = __half2float(__ushort_as_half(static_cast<uint16_t>(half_pair & 0xffffu))) * global_scale;
-  const float scale_b = __half2float(__ushort_as_half(static_cast<uint16_t>(half_pair >> 16))) * global_scale;
+// bf16 fast path: valid when every block scale is below 4 (global_scale * 448 < 3.98), so that
+// block_scale * 2^126 stays finite in bf16.
+template <typename T, int Cols>
+__device__ __forceinline__ void AccumulateWeightVectors(
+    const uint4 (&packed)[Cols], const uint32_t (&scale_codes)[Cols], float global_scale, bool fast_scales,
+    const float* act, float (&chain_a)[Cols], float (&chain_b)[Cols]) {
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-    const __nv_bfloat162 rounded = __floats2bfloat162_rn(scale_a, scale_b);
-    // 2^126 * scale must stay finite in bf16, i.e. |scale| < 4; larger scales take the generic decode.
-    const bool large = fmaxf(fabsf(scale_a), fabsf(scale_b)) >= 3.98f;
-    if (!__any_sync(__activemask(), large)) {
-      const __nv_bfloat162 shifted = __hmul2(rounded, *reinterpret_cast<const __nv_bfloat162*>(&kBf16Pow2_126));
-      const uint32_t shifted_bits = *reinterpret_cast<const uint32_t*>(&shifted);
-      const uint32_t scale_raw[2] = {__byte_perm(shifted_bits, shifted_bits, 0x1010),
-                                     __byte_perm(shifted_bits, shifted_bits, 0x3232)};
-      const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
-      FmaWeightVector<T>(act, chain_a, chain_b, [&](int w, uint32_t (&decoded_pairs)[4]) {
+    if (fast_scales) {
+      uint32_t scale_raw[Cols][2];
+#pragma unroll
+      for (int c = 0; c < Cols; ++c) {
+        const uint32_t rounded_bits = RoundedScalePair<T>(scale_codes[c], global_scale);
+        const __nv_bfloat162 shifted = __hmul2(*reinterpret_cast<const __nv_bfloat162*>(&rounded_bits),
+                                               *reinterpret_cast<const __nv_bfloat162*>(&kBf16Pow2_126));
+        const uint32_t shifted_bits = *reinterpret_cast<const uint32_t*>(&shifted);
+        scale_raw[c][0] = __byte_perm(shifted_bits, shifted_bits, 0x1010);
+        scale_raw[c][1] = __byte_perm(shifted_bits, shifted_bits, 0x3232);
+      }
+      FmaWeightVector<T, Cols>(act, chain_a, chain_b, [&](int c, int w, uint32_t (&decoded_pairs)[4]) {
         uint32_t raw[4];
-        Fp4WordToRawBf16(words[w], raw);
+        Fp4WordToRawBf16((&packed[c].x)[w], raw);
 #pragma unroll
         for (int j = 0; j < 4; ++j) {
           const __nv_bfloat162 product = __hmul2(*reinterpret_cast<const __nv_bfloat162*>(&raw[j]),
-                                                 *reinterpret_cast<const __nv_bfloat162*>(&scale_raw[w / 2]));
+                                                 *reinterpret_cast<const __nv_bfloat162*>(&scale_raw[c][w / 2]));
           decoded_pairs[j] = *reinterpret_cast<const uint32_t*>(&product);
         }
       });
       return;
     }
-    const float2 chains = AccumulateWeightVectorGeneric<T>(packed, *reinterpret_cast<const uint32_t*>(&rounded), act,
-                                                           chain_a, chain_b);
-    chain_a = chains.x;
-    chain_b = chains.y;
-  } else {
-    const half2 rounded = __floats2half2_rn(scale_a, scale_b);
-    const float2 chains = AccumulateWeightVectorGeneric<T>(packed, *reinterpret_cast<const uint32_t*>(&rounded), act,
-                                                           chain_a, chain_b);
-    chain_a = chains.x;
-    chain_b = chains.y;
   }
+  AccumulateWeightVectorsGeneric<T, Cols>(packed, scale_codes, global_scale, act, chain_a, chain_b);
 }
 
-template <typename T, bool FusedSwiGlu, bool EnableBias>
-__global__ void __launch_bounds__(kDecodeWarps * 32, GEMV_MINB) MoeGemvFp4DecodeKernel(
+template <typename T, bool FusedSwiGlu, bool EnableBias, int Warps, int Cols, int MinBlocks>
+__global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
     const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
@@ -581,8 +596,9 @@ __global__ void __launch_bounds__(kDecodeWarps * 32, GEMV_MINB) MoeGemvFp4Decode
     const int* permuted_row_to_source_row, int num_rows) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
   constexpr int kTilesInFlight = 3;  // K tiles whose loads are issued together
-  constexpr int kThreads = kDecodeWarps * 32;
+  constexpr int kThreads = Warps * 32;
   constexpr unsigned kFullMask = 0xffffffffu;
+  static_assert(Cols == 1 || Cols == 2, "SwiGLU pairs are either inside a thread or across adjacent slots");
 
   const int row = static_cast<int>(blockIdx.x);
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
@@ -602,25 +618,28 @@ __global__ void __launch_bounds__(kDecodeWarps * 32, GEMV_MINB) MoeGemvFp4Decode
   const int warp = threadIdx.x / 32;
   const int j = lane % 8;
   const int slot = lane / 8;
-  const int column = static_cast<int>(blockIdx.y) * kDecodeBlockCols + warp * 4 + slot;
+  const int first_column = (static_cast<int>(blockIdx.y) * Warps + warp) * (4 * Cols) + slot * Cols;
   const int source_row = permuted_row_to_source_row ? permuted_row_to_source_row[row] % num_rows : row;
   const int groups = k / 16;
   const int w_blocks = min(4, (groups + 15) / 16);
 
   const uint8_t* weight_row = weight + static_cast<int64_t>(expert) * weight_expert_stride +
-                              static_cast<int64_t>(column) * (k / 2) + j * 16;
+                              static_cast<int64_t>(first_column) * (k / 2) + j * 16;
   const uint8_t* scale_row = block_scales + static_cast<int64_t>(expert) * scale_expert_stride +
-                             static_cast<int64_t>(column) * groups + j * 2;
+                             static_cast<int64_t>(first_column) * groups + j * 2;
 
-  uint4 packed[kTilesInFlight];
-  uint32_t scale_codes[kTilesInFlight];
+  uint4 packed[kTilesInFlight][Cols];
+  uint32_t scale_codes[kTilesInFlight][Cols];
   const auto load_block = [&](int w) {
 #pragma unroll
     for (int u = 0; u < kTilesInFlight; ++u) {
       const int group = u * 64 + w * 16 + j * 2;
       if (group < groups) {
-        packed[u] = LoadWeightStreaming(weight_row + w * 128 + u * 512);
-        scale_codes[u] = *reinterpret_cast<const uint16_t*>(scale_row + w * 16 + u * 64);
+#pragma unroll
+        for (int c = 0; c < Cols; ++c) {
+          packed[u][c] = LoadWeightStreaming(weight_row + static_cast<int64_t>(c) * (k / 2) + w * 128 + u * 512);
+          scale_codes[u][c] = *reinterpret_cast<const uint16_t*>(scale_row + c * groups + w * 16 + u * 64);
+        }
       }
     }
   };
@@ -645,19 +664,32 @@ __global__ void __launch_bounds__(kDecodeWarps * 32, GEMV_MINB) MoeGemvFp4Decode
     }
   }
   const float global_scale = global_scales[expert];
+  const bool fast_scales = fabsf(global_scale) * 448.0f < 3.98f;
   __syncthreads();
 
-  float total = 0.0f;
+  float total[Cols];
+#pragma unroll
+  for (int c = 0; c < Cols; ++c) {
+    total[c] = 0.0f;
+  }
 #pragma unroll 1
   for (int w = 0; w < w_blocks; ++w) {
-    float chain_a = 0.0f;
-    float chain_b = 0.0f;
-    uint4 current_packed[kTilesInFlight];
-    uint32_t current_codes[kTilesInFlight];
+    float chain_a[Cols];
+    float chain_b[Cols];
+    uint4 current_packed[kTilesInFlight][Cols];
+    uint32_t current_codes[kTilesInFlight][Cols];
+#pragma unroll
+    for (int c = 0; c < Cols; ++c) {
+      chain_a[c] = 0.0f;
+      chain_b[c] = 0.0f;
+    }
 #pragma unroll
     for (int u = 0; u < kTilesInFlight; ++u) {
-      current_packed[u] = packed[u];
-      current_codes[u] = scale_codes[u];
+#pragma unroll
+      for (int c = 0; c < Cols; ++c) {
+        current_packed[u][c] = packed[u][c];
+        current_codes[u][c] = scale_codes[u][c];
+      }
     }
     if (w + 1 < w_blocks) {
       load_block(w + 1);
@@ -667,38 +699,37 @@ __global__ void __launch_bounds__(kDecodeWarps * 32, GEMV_MINB) MoeGemvFp4Decode
       const int group = u * 64 + w * 16 + j * 2;
       if (group < groups) {
         const float* unit_act = act_smem + (group / 2) * kDecodeActUnitStride;
-#ifdef GEMV_DBG_NOCOMP
-        chain_a += __uint_as_float(current_packed[u].x ^ current_packed[u].y ^ current_packed[u].z ^ current_packed[u].w ^ current_codes[u]);
-#else
-        AccumulateWeightVector<T>(current_packed[u], current_codes[u], global_scale, unit_act, chain_a, chain_b);
-#endif
+        AccumulateWeightVectors<T, Cols>(current_packed[u], current_codes[u], global_scale, fast_scales, unit_act,
+                                         chain_a, chain_b);
       }
     }
-    float partial = chain_a + chain_b;
-    partial += __shfl_xor_sync(kFullMask, partial, 1);
-    partial += __shfl_xor_sync(kFullMask, partial, 2);
-    partial += __shfl_xor_sync(kFullMask, partial, 4);
-    total += partial;
+#pragma unroll
+    for (int c = 0; c < Cols; ++c) {
+      float partial = chain_a[c] + chain_b[c];
+      partial += __shfl_xor_sync(kFullMask, partial, 1);
+      partial += __shfl_xor_sync(kFullMask, partial, 2);
+      partial += __shfl_xor_sync(kFullMask, partial, 4);
+      total[c] += partial;
+    }
   }
 
-  // Columns (n, n + 1) of a SwiGLU pair sit in adjacent slots; fetch the neighbour's total.
-  float neighbour = 0.0f;
-  if constexpr (FusedSwiGlu) {
-    neighbour = __shfl_xor_sync(kFullMask, total, 8);
+  // SwiGLU pairs columns (n, n + 1): inside the thread for Cols == 2, else in adjacent slots.
+  float acc0 = total[0];
+  float acc1 = total[Cols - 1];
+  if constexpr (FusedSwiGlu && Cols == 1) {
+    acc1 = __shfl_xor_sync(kFullMask, total[0], 8);
   }
   if (j != 0) {
     return;
   }
   if constexpr (FusedSwiGlu) {
-    if (slot & 1) {
+    if (Cols == 1 && (slot & 1)) {
       return;
     }
-    float acc0 = total;
-    float acc1 = neighbour;
     if constexpr (EnableBias) {
       const T* expert_bias = bias + static_cast<int64_t>(expert) * n;
-      acc0 += static_cast<float>(expert_bias[column]);
-      acc1 += static_cast<float>(expert_bias[column + 1]);
+      acc0 += static_cast<float>(expert_bias[first_column]);
+      acc1 += static_cast<float>(expert_bias[first_column + 1]);
     }
     const float* alpha = activation_params.swiglu_alpha;
     const float* beta = activation_params.swiglu_beta;
@@ -712,13 +743,16 @@ __global__ void __launch_bounds__(kDecodeWarps * 32, GEMV_MINB) MoeGemvFp4Decode
     }
     acc1 += activation_beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_alpha * acc0));
-    out[static_cast<int64_t>(row) * (n / 2) + column / 2] = static_cast<T>(acc0 * sigmoid * acc1);
+    out[static_cast<int64_t>(row) * (n / 2) + first_column / 2] = static_cast<T>(acc0 * sigmoid * acc1);
   } else {
-    float acc0 = total;
-    if constexpr (EnableBias) {
-      acc0 += static_cast<float>(bias[static_cast<int64_t>(expert) * n + column]);
+#pragma unroll
+    for (int c = 0; c < Cols; ++c) {
+      float value = total[c];
+      if constexpr (EnableBias) {
+        value += static_cast<float>(bias[static_cast<int64_t>(expert) * n + first_column + c]);
+      }
+      out[static_cast<int64_t>(row) * n + first_column + c] = static_cast<T>(value);
     }
-    out[static_cast<int64_t>(row) * n + column] = static_cast<T>(acc0);
   }
 #endif
 }
@@ -735,24 +769,44 @@ void LaunchMoeGemvFp4RawNPacked(
   const int64_t weight_expert_stride = n * k / 2;
   const int64_t scale_expert_stride = n * (k / 16);
   if (weights_row_major && Fp4MoeGemvUseDecodeKernel() && k % 32 == 0 && k <= kDecodeMaxK &&
-      n % kDecodeBlockCols == 0 && reinterpret_cast<uintptr_t>(weight) % 16 == 0 &&
-      reinterpret_cast<uintptr_t>(block_scales) % 2 == 0 && reinterpret_cast<uintptr_t>(act) % 16 == 0) {
-    const dim3 decode_grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / kDecodeBlockCols));
+      reinterpret_cast<uintptr_t>(weight) % 16 == 0 && reinterpret_cast<uintptr_t>(block_scales) % 2 == 0 &&
+      reinterpret_cast<uintptr_t>(act) % 16 == 0) {
     const size_t decode_smem = static_cast<size_t>(k / 32) * kDecodeActUnitStride * sizeof(float);
-    const auto launch_decode = [&](auto bias_tag) {
+    // Columns per CTA = 4 slots x Cols x Warps.
+    const auto launch_decode = [&](auto warps_tag, auto cols_tag, auto min_blocks_tag, auto bias_tag) {
+      constexpr int kWarps = decltype(warps_tag)::value;
+      constexpr int kCols = decltype(cols_tag)::value;
+      constexpr int kMinBlocks = decltype(min_blocks_tag)::value;
       constexpr bool kEnableBias = decltype(bias_tag)::value;
-      MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias><<<decode_grid, kDecodeWarps * 32, decode_smem, stream>>>(
-          act, weight, block_scales, global_scales, bias, out,
-          expert_first_token_offset, permuted_row_to_expert, num_experts,
-          weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
-          permuted_row_to_source_row, static_cast<int>(num_rows));
+      constexpr int kBlockCols = 4 * kWarps * kCols;
+      const dim3 decode_grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / kBlockCols));
+      MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kWarps, kCols, kMinBlocks>
+          <<<decode_grid, kWarps * 32, decode_smem, stream>>>(
+              act, weight, block_scales, global_scales, bias, out,
+              expert_first_token_offset, permuted_row_to_expert, num_experts,
+              weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+              permuted_row_to_source_row, static_cast<int>(num_rows));
     };
-    if (bias != nullptr) {
-      launch_decode(std::true_type{});
-    } else {
-      launch_decode(std::false_type{});
+    const auto dispatch = [&](auto bias_tag) {
+      if constexpr (FusedSwiGlu) {
+        if (n % (4 * GEMV_FC1_WARPS * GEMV_FC1_COLS) == 0) {
+          launch_decode(std::integral_constant<int, GEMV_FC1_WARPS>{}, std::integral_constant<int, GEMV_FC1_COLS>{},
+                        std::integral_constant<int, GEMV_FC1_MINB>{}, bias_tag);
+          return true;
+        }
+      } else {
+        if (n % (4 * GEMV_FC2_WARPS * GEMV_FC2_COLS) == 0) {
+          launch_decode(std::integral_constant<int, GEMV_FC2_WARPS>{}, std::integral_constant<int, GEMV_FC2_COLS>{},
+                        std::integral_constant<int, GEMV_FC2_MINB>{}, bias_tag);
+          return true;
+        }
+      }
+      return false;
+    };
+    const bool launched = bias != nullptr ? dispatch(std::true_type{}) : dispatch(std::false_type{});
+    if (launched) {
+      return;
     }
-    return;
   }
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>((n + kColsPerBlock - 1) / kColsPerBlock));
   const auto launch = [&](auto row_major_tag) {
