@@ -4412,13 +4412,14 @@ ConvActivationBuilder SimpleActivation(const std::string& op_type,
 // Use fp16, group 1, NHWC, and a non-1x1 kernel to select Im2ColMatMulProgram.
 void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation,
                                      const std::string& expected_activation,
-                                     int opset_version) {
+                                     int opset_version,
+                                     int64_t input_channels = 4) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
-  const std::vector<int64_t> input_shape{1, 4, 14, 14};
-  const std::vector<int64_t> weight_shape{8, 4, 3, 3};
+  const std::vector<int64_t> input_shape{1, input_channels, 14, 14};
+  const std::vector<int64_t> weight_shape{8, input_channels, 3, 3};
 
   auto to_fp16 = [](const std::vector<float>& values) {
     std::vector<MLFloat16> converted;
@@ -4439,8 +4440,10 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
   };
 
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<MLFloat16>(input_shape, to_fp16(ramp(1 * 4 * 14 * 14, -3.0f, 3.0f)));
-    auto* weight = builder.MakeInitializer<MLFloat16>(weight_shape, to_fp16(ramp(8 * 4 * 3 * 3, -0.5f, 0.5f)));
+    auto* input = builder.MakeInput<MLFloat16>(
+        input_shape, to_fp16(ramp(static_cast<size_t>(input_channels * 14 * 14), -3.0f, 3.0f)));
+    auto* weight = builder.MakeInitializer<MLFloat16>(
+        weight_shape, to_fp16(ramp(static_cast<size_t>(8 * input_channels * 3 * 3), -0.5f, 0.5f)));
     auto* bias = builder.MakeInitializer<MLFloat16>({weight_shape[0]}, to_fp16(ramp(8, -0.5f, 0.5f)));
     auto* conv_out = builder.MakeIntermediate();
     auto* output = builder.MakeOutput();
@@ -4608,6 +4611,16 @@ TEST_F(GraphTransformationTests, WebGpuConvLeakyReluParityAcrossAlphaValues) {
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvReluFusionMatchesUnfusedResults) {
   RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+// Odd input channels give vec_size == 1, which takes the scalar path of the shader (including the
+// subgroup variant when subgroup-size control is available). 4 channels give vec_size == 4 and 2 give 2.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvOddInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/3);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvTwoInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/2);
 }
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvLeakyReluFusionMatchesUnfusedResults) {
