@@ -1790,7 +1790,7 @@ enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big =
 
 #if defined(__linux__) && defined(MLAS_TARGET_AMD64) && defined(MLAS_ENABLE_TEST_HOOKS)
 bool MlasInitAMX();
-bool MlasAMXTileDataIsPreservedForTesting(bool (*probe)(int, void*), void* context);
+bool MlasAMXCheckOSSupportForTesting(unsigned long bitmask, bool (*probe)(int, void*), void* context);
 #endif
 
 struct MLAS_PLATFORM {

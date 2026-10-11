@@ -301,25 +301,42 @@ MlasAMXProbeThread(void* arg)
 }
 
 bool
-MlasAMXTileDataIsPreserved(bool (*probe)(int, void*), void* context)
+MlasAMXCheckOSSupport(unsigned long bitmask, bool (*probe)(int, void*), void* context)
 {
-    // Only change affinity in a temporary thread, never in the caller.
-    MlasAMXProbeContext probe_context{probe, context};
-    pthread_t thread;
-    if (pthread_create(&thread, nullptr, MlasAMXProbeThread, &probe_context) != 0) {
+    if ((bitmask & XFEATURE_MASK_XTILE) != XFEATURE_MASK_XTILE) {
         return false;
     }
-    pthread_join(thread, nullptr);
-    return probe_context.Result;
+    // Only change affinity in a temporary thread, never in the caller.
+    MlasAMXProbeContext probe_context{probe, context};
+    pthread_attr_t attributes;
+    if (pthread_attr_init(&attributes) != 0) {
+        return false;
+    }
+    // Keep the worker joinable even if process defaults were changed, and
+    // disable cancellation until it finishes using the stack-owned context.
+    int cancel_state;
+    if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cancel_state) != 0) {
+        pthread_attr_destroy(&attributes);
+        return false;
+    }
+    pthread_t thread;
+    const int rc = pthread_create(&thread, &attributes, MlasAMXProbeThread, &probe_context);
+    pthread_attr_destroy(&attributes);
+    if (rc == 0) {
+        pthread_join(thread, nullptr);
+    }
+    const bool supported = rc == 0 && probe_context.Result;
+    pthread_setcancelstate(cancel_state, nullptr);
+    return supported;
 }
 
 } // namespace
 
 #if defined(MLAS_ENABLE_TEST_HOOKS)
 bool
-MlasAMXTileDataIsPreservedForTesting(bool (*probe)(int, void*), void* context)
+MlasAMXCheckOSSupportForTesting(unsigned long bitmask, bool (*probe)(int, void*), void* context)
 {
-    return MlasAMXTileDataIsPreserved(probe, context);
+    return MlasAMXCheckOSSupport(bitmask, probe, context);
 }
 #endif
 #endif
@@ -341,13 +358,10 @@ MlasInitAMX()
     if (rc) {
         return false;
     }
-    if ((bitmask & XFEATURE_MASK_XTILE) != XFEATURE_MASK_XTILE) {
-        return false;
-    }
 #if defined(MLAS_TARGET_AMD64)
-    return MlasAMXTileDataIsPreserved(MlasAMXTileDataRoundTrip, nullptr);
+    return MlasAMXCheckOSSupport(bitmask, MlasAMXTileDataRoundTrip, nullptr);
 #else
-    return true;
+    return (bitmask & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE;
 #endif
 #else
     return true;

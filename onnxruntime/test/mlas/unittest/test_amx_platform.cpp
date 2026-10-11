@@ -6,10 +6,13 @@
 
 #if defined(__linux__) && defined(MLAS_TARGET_AMD64) && defined(MLAS_ENABLE_TEST_HOOKS)
 
+#include <pthread.h>
 #include <sched.h>
 #include <thread>
 
 namespace {
+
+constexpr unsigned long kTilePermissionMask = (1ul << 17) | (1ul << 18);
 
 struct ProbeContext {
   bool PreserveData;
@@ -38,7 +41,7 @@ void TestProbeResult(bool preserve_data) {
     GTEST_SKIP() << "Migration probe requires two allowed CPUs";
   }
   ProbeContext context{preserve_data};
-  EXPECT_EQ(MlasAMXTileDataIsPreservedForTesting(TestTileDataRoundTrip, &context), preserve_data);
+  EXPECT_EQ(MlasAMXCheckOSSupportForTesting(kTilePermissionMask, TestTileDataRoundTrip, &context), preserve_data);
   EXPECT_EQ(context.Calls, 1);
   cpu_set_t after;
   ASSERT_EQ(sched_getaffinity(0, sizeof(after), &after), 0);
@@ -55,6 +58,48 @@ TEST(AmxPlatform, LostTileData) {
   TestProbeResult(false);
 }
 
+TEST(AmxPlatform, BothTilePermissionsRequired) {
+  for (unsigned long permission : {0ul, 1ul << 17, 1ul << 18}) {
+    ProbeContext context{true};
+    EXPECT_FALSE(MlasAMXCheckOSSupportForTesting(permission, TestTileDataRoundTrip, &context));
+    EXPECT_EQ(context.Calls, 0);
+  }
+}
+
+TEST(AmxPlatform, CancellationStateUnchanged) {
+  for (int state : {PTHREAD_CANCEL_ENABLE, PTHREAD_CANCEL_DISABLE}) {
+    std::thread worker([state] {
+      int original;
+      ASSERT_EQ(pthread_setcancelstate(state, &original), 0);
+      ProbeContext context{false};
+      EXPECT_FALSE(MlasAMXCheckOSSupportForTesting(kTilePermissionMask, TestTileDataRoundTrip, &context));
+      int previous;
+      ASSERT_EQ(pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &previous), 0);
+      EXPECT_EQ(previous, state);
+      ASSERT_EQ(pthread_setcancelstate(original, nullptr), 0);
+    });
+    worker.join();
+  }
+}
+
+#if defined(__GLIBC__)
+#if __GLIBC_PREREQ(2, 18)
+TEST(AmxPlatform, DetachedThreadDefaults) {
+  pthread_attr_t original;
+  ASSERT_EQ(pthread_getattr_default_np(&original), 0);
+  pthread_attr_t attributes;
+  ASSERT_EQ(pthread_attr_init(&attributes), 0);
+  ASSERT_EQ(pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED), 0);
+  const int rc = pthread_setattr_default_np(&attributes);
+  EXPECT_EQ(pthread_attr_destroy(&attributes), 0);
+  ASSERT_EQ(rc, 0);
+  TestProbeResult(true);
+  EXPECT_EQ(pthread_setattr_default_np(&original), 0);
+  EXPECT_EQ(pthread_attr_destroy(&original), 0);
+}
+#endif
+#endif
+
 TEST(AmxPlatform, UnverifiableMigrationDisablesAmx) {
   cpu_set_t before;
   ASSERT_EQ(sched_getaffinity(0, sizeof(before), &before), 0);
@@ -69,7 +114,7 @@ TEST(AmxPlatform, UnverifiableMigrationDisablesAmx) {
     CPU_SET(cpu, &target);
     ASSERT_EQ(sched_setaffinity(0, sizeof(target), &target), 0);
     ProbeContext context{true};
-    EXPECT_FALSE(MlasAMXTileDataIsPreservedForTesting(TestTileDataRoundTrip, &context));
+    EXPECT_FALSE(MlasAMXCheckOSSupportForTesting(kTilePermissionMask, TestTileDataRoundTrip, &context));
     EXPECT_EQ(context.Calls, 0);
 #if !defined(ORT_MINIMAL_BUILD)
     MLAS_PLATFORM platform;
@@ -89,6 +134,9 @@ TEST(AmxPlatform, DispatchRequiresPreservedTileData) {
   constexpr unsigned int amx_features = (1u << 24) | (1u << 25);
   if ((edx & amx_features) != amx_features) {
     GTEST_SKIP() << "AMX-TILE and AMX-INT8 are required";
+  }
+  if (!GetMlasPlatform().Avx2Supported_) {
+    GTEST_SKIP() << "AMX dispatch requires AVX2/FMA3";
   }
   __cpuid(1, eax, ebx, ecx, edx);
   if ((ecx & (1u << 27)) == 0) {
