@@ -450,19 +450,22 @@ TEST_F(WebGpuConcurrentContextTest, ColdAndWarmSessionsRunConcurrently) {
             << throughput_efficiency << std::endl;
 }
 
-// Case F: separate data-transfer objects share the context-level BufferManager but own distinct
-// command recording timelines. Their command encoders and pending buffers must remain isolated.
+// Case F: separate data transfers share the context and buffer cache, with independent recordings.
+// Submitted copies must retire only their own buffers, including under concurrent cache reuse.
 TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
   constexpr int kThreads = 4;
   constexpr int kIters = 30;
   constexpr size_t kElements = 4096;
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
+                                webgpu::BufferCacheMode::Simple, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
 
   std::array<webgpu::CommandRecordingState, kThreads> recordings;
   std::array<std::unique_ptr<webgpu::DataTransferImpl>, kThreads> data_transfers;
   std::array<wgpu::Buffer, kThreads> gpu_buffers;
   for (int t = 0; t < kThreads; ++t) {
-    data_transfers[t] = std::make_unique<webgpu::DataTransferImpl>(context.BufferManager(), recordings[t]);
+    data_transfers[t] = std::make_unique<webgpu::DataTransferImpl>(context, recordings[t]);
     wgpu::BufferDescriptor desc{};
     desc.size = kElements * sizeof(float);
     desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
@@ -481,7 +484,13 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
         for (int i = 0; i < kIters && !sink.Failed(); ++i) {
           ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(input.data(), false, gpu_buffers[t].Get(), true,
                                                            input.size() * sizeof(float)));
-          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
+          auto copy = manager.Create(recordings[t], input.size() * sizeof(float),
+                                     wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
+          wgpu::Buffer retained_copy{copy};
+          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(gpu_buffers[t].Get(), true, copy, true,
+                                                           input.size() * sizeof(float)));
+          manager.Release(copy, &recordings[t]);
+          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(retained_copy.Get(), true, output.data(), false,
                                                            output.size() * sizeof(float)));
           if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
             sink.Record("F.thread" + std::to_string(t) + " copied incorrect data");

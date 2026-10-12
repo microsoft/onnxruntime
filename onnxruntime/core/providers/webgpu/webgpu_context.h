@@ -141,6 +141,9 @@ struct CommandRecordingState {
   // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
   // BufferManager clears it under its cache lock after submission or abandonment.
   std::atomic<bool> has_unsubmitted_work{false};
+  // Allocation/dispatch owners select the cache policy for the next submission.
+  // The manager must outlive that submission; Flush clears this association.
+  std::atomic<const BufferManager*> pending_buffer_manager{nullptr};
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   std::mutex pending_release_callbacks_mutex;
   std::vector<std::function<void()>> pending_release_callbacks;
@@ -333,7 +336,11 @@ class WebGpuContext final {
               CommandRecordingState& recording);
   void ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& captured_commands);
 
-  Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+  Status Flush(CommandRecordingState& recording);
+  Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording) {
+    recording.pending_buffer_manager.store(&buffer_mgr, std::memory_order_relaxed);
+    return Flush(recording);
+  }
 
   // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
   // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
@@ -479,6 +486,7 @@ class WebGpuContext final {
   Status CheckDeviceStatus() const;
 
   friend class BufferManager;
+  friend class DataTransferImpl;
   friend class ComputeContext;
   friend class WebGpuContextFactory;
 
