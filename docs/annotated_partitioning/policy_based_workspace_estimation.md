@@ -74,15 +74,19 @@ number" — it is to make estimation *route-aware* and *policy-bound*.
 - **Runtime state `x`:** the per-Run inputs that steer dispatch —
   `(phase, S_q, S_kv, dtype, device, flags)` where `S_q = sequence_length` (query axis) and
   `S_kv = total_sequence_length` / `seqlen_present_kv_cache` (KV axis).
-- **Dispatch policy `π`:** a **committed, total, enforceable** function `π: x → route` whose
-  **image is a restricted route set** (deliberately excluding the expensive fallback). It is *not*
-  a description of today's open-ended `if`-ladder; it is a contract that the runtime is modified
-  to obey.
+- **Dispatch intent `I`:** the portable user objective (`auto`, `latency`, `memory`, or `safe`).
+  It is not itself a route and has no hardware-specific meaning until an EP resolves it.
+- **Committed policy `P`:** a **total, enforceable** function `P: x → non-empty set<route>`.
+  It restricts the runtime to a known route set for every admitted state. A singleton set pins a
+  route; a larger set preserves bounded fallback freedom.
+- **Runtime selector `π`:** the existing or future ranking logic constrained so
+  `π(x) ∈ P(x)`. The selector may choose differently per phase and shape, but it may never escape
+  the committed set.
 
 ### The L1 requirement under a policy
 
 ```
-W_L1(node) = max over admitted runtime states x:  CompleteWorkspace(x, π(x))
+W_L1(node) = max over admitted states x and routes r ∈ P(x): CompleteWorkspace(x, r)
 ```
 
 `CompleteWorkspace` is the route's **full** footprint (e.g. `qkv_buffer` + the route's auxiliary
@@ -103,16 +107,36 @@ legitimately dispatch to *different* kernels. So:
 This is exactly TensorRT's **optimization-profile** model: a different tactic is tuned per shape
 regime, and the workspace reservation is the max across profiles.
 
-### The three properties that make `π` the estimation object
+### Route descriptors are functions, not constants
 
-1. **Total over the admitted workload.** `π(x)` must be defined for every admitted `x`. If some
+Each runtime route needs a descriptor whose properties are evaluated for the workload and device:
+
+```
+RouteDescriptor {
+  eligible(x, device) -> bool
+  workspace_bound(envelope, device) -> bytes | unavailable
+  latency_rank(x, device) -> comparable cost or ordered preference
+  proof_kind -> analytical | empirical | heuristic
+}
+```
+
+Workspace and latency are not scalar route attributes. Both depend on shape, phase, dtype, device,
+and feature flags. The first GQA policy implementation therefore uses analytical workspace
+functions but deliberately does **not** claim a calibrated latency model: `latency` reuses the
+current runtime priority order. Empirical timing can replace that ordering only after it is
+collected over the same enforced workload envelope.
+
+### The three properties that make `P` the estimation object
+
+1. **Total over the admitted workload.** `P(x)` must be non-empty for every admitted `x`. If some
    admitted state maps nowhere (and the fallback is prohibited), the policy is **invalid** — narrow
    the admitted set or add a bounded fallback. This is the coverage condition.
-2. **Bounded image excluding the expensive route.** The set `{π(x)}` is small, known, and excludes
-   the quadratic unfused route *by construction*.
+2. **Bounded image.** Every route in every `P(x)` has a complete analytical bound. A policy may
+   include unfused when its quadratic bound is acceptable; it may exclude unfused only when the
+   remaining permitted set is total over the admitted workload.
 3. **Enforceable — estimation and execution are one commitment.** The runtime must dispatch to
-   `π(x)`. A would-be out-of-policy route (the ladder wanting to fall to unfused) is a *policy
-   violation* → error or bounded fallback, **never** a silent quadratic allocation.
+   some route in `P(x)`. A would-be out-of-policy route is a *policy violation* → explicit error,
+   **never** a silent allocation outside the bound.
 
 > **Soundness invariant:** an L1 estimate is sound only if it bounds *every route the runtime can
 > actually execute*. A route may be dropped from the `max` **iff** the runtime is incapable of
@@ -125,7 +149,7 @@ The unit of commitment is not a chosen kernel but a **contract** — the triple:
 
 ```
 contract(node) = ( admitted workload = envelope,
-                    permitted routes  = image(π),
+                    permitted routes  = image(P),
                     workspace bound    = W_L1 )
 ```
 
@@ -204,7 +228,7 @@ changed so unfused cannot execute:
 
 - **Prohibit unfused** by replacing the fallback with (a) a **hard error** ("no admitted route for
   this state"), or (b) a **bounded fallback route** (tiled attention, workspace ≤ fixed budget).
-- Only after that change is unfused out of `image(π)`, and only then may the `max` drop it.
+- Only after that change is unfused out of `image(P)`, and only then may the `max` drop it.
 
 **The bounded fallback is a precondition for a total policy** — it is the ORT analog of cuDNN's
 guaranteed zero-workspace algorithm, which is *why* cuDNN/TensorRT can safely invert to
@@ -260,7 +284,8 @@ partition time no Run has happened, so L1 has no phase to observe.
 the phases the envelope admits and evaluates the policy at each phase-corner:
 
 ```
-W_L1 = max over p ∈ AdmittedPhases:  CompleteWorkspace( corner(p, envelope), π(p) )
+W_L1 = max over p ∈ AdmittedPhases and r ∈ P(p):
+         CompleteWorkspace(corner(p, envelope), r)
 ```
 
 Everything L1 needs is static:
@@ -270,7 +295,7 @@ Everything L1 needs is static:
 | which phases are admissible | graph structure: node has `past_key`/`present_key` edges ⇒ autoregressive ⇒ `{prefill, chunk, decode}`; no `past` input ⇒ prefill-only |
 | query bound `P` | `max_shape_override` on `input_ids` |
 | KV capacity `C` | overridden `past_key` seq dim / GQA capacity knob |
-| route per phase `π(p)` | the committed policy, evaluated symbolically |
+| routes per phase `P(p)` | the committed policy, evaluated symbolically |
 | route eligibility | seq-free static predicates (dtype, device_prop, head_size, heads, flags) |
 
 ### `max`, not `sum` — and the one caveat
@@ -307,10 +332,13 @@ The L1 budget must be reconciled with what the kernel actually declares/consumes
   `group_query_attention_workspace*.{h,cc}` (`GetGQAPreparationRecipe` plus per-backend
   `GetGQA{Xqa,Flash,MemoryEfficient,Unfused}WorkspaceRecipe`, composed by
   `GetGQACompleteWorkspaceRecipe`, overflow-checked and validated) drives both the partition-time
-  estimator and runtime allocation. The remaining Level-2 work is to pass the same validated
-  envelope into `DeclareWorkspaceRequirements` and verify L1/L2 agreement. Sharing formulas makes
+  estimator and runtime allocation. The GQA-first committed-policy slice also passes the validated
+  KV envelope and dispatch intent into `DeclareWorkspaceRequirements`, resolves the same committed
+  route mask, and stores that mask in the kernel for runtime enforcement. Route ranking is
+  canonicalized across L1 and L2 when their knowledge differs (for example, L1 knows a constant
+  head sink *may* be prepacked while L2 knows the exact post-PrePack state). Sharing formulas makes
   each concrete Run's allocation provably **bounded by** `W_L1`; it does not make them equal because
-  `W_L1` is the maximum over envelope states and reachable routes, while a Run takes one concrete
+  `W_L1` is the maximum over envelope states and permitted routes, while a Run takes one concrete
   state and route.
 
 ### Requirements vs. allocation strategy — and the lifetime invariant
@@ -365,24 +393,38 @@ free authorship. Three actors:
 
 ### Three tiers
 
-**Tier 0 — auto (default).** Framework synthesizes `π` from `(device caps, envelope, budget)`:
-pick the fastest route set it can *prove* total over the admitted phases; else degrade to the
-bounded/safe policy. No user action.
+**Tier 0 — auto (default).** The GQA-first implementation preserves the current runtime route
+priority and behavior. In capacity-aware placement, L1 still declines when any reachable route
+(currently cuDNN) lacks a graph-free workspace oracle. Future auto-selection can compare validated
+contracts against budget and measured cost; it must not silently turn an unproven route into a
+capacity proof.
 
 **Tier 1 — intent-level named policy (portable session option).**
 
 ```
-session.attention_dispatch_policy = "latency" | "memory" | "safe"
+session.kernel_dispatch_policy = "latency" | "memory" | "safe"
 ```
 
-Intent, not mechanism — portable across ops/EPs. `latency` favors high-workspace fast routes;
-`memory` favors low-workspace routes (more nodes fit on GPU → less offloading); `safe` forces the
-bounded fallback everywhere. Belongs in **session options** (hardware-neutral).
+Intent, not mechanism — portable across ops/EPs. The first GQA implementation resolves it as:
+
+- **`latency`:** preserve the current route priority
+  (XQA → cuDNN → Flash/fast-decode → MEA → unfused). This is an ordered heuristic, not a measured
+  latency model. If a permitted route has no analytical workspace oracle, strict capacity-aware L1
+  remains unavailable.
+- **`memory`:** among analytically bounded routes, choose the smallest bound independently for
+  prompt/general and single-token decode, then commit their union. Runtime fallback is allowed only
+  inside that union, and L1 takes the max over every route still permitted by it.
+- **`safe`:** permit every reachable route with a complete analytical bound and exclude unproven
+  routes such as cuDNN. This maximizes bounded fallback coverage; it does not mean "always choose
+  the slowest route."
+
+For every non-auto committed policy, if no permitted route serves a Run, runtime returns an explicit
+error rather than escaping to an unaccounted route.
 
 ```
 latency : minimize per-kernel time       → larger reservation → fewer resident nodes → more offload
 memory  : minimize per-node workspace     → more resident nodes → less offload
-safe    : minimize + bound worst-case     → predictable, provable, slowest
+safe    : maximize proven route coverage  → predictable route-local bound
 ```
 
 **`latency` is the zero-config default and the right choice for the common case** — a single
@@ -398,13 +440,12 @@ GPU kernel), and that asymmetry is what flips the choice:
   slower. This is the central case the offloading design targets. Also the right pick for
   **multi-tenant / high-concurrency** GPUs (minimize per-session footprint so more sessions stay
   resident) and **large-batch / long-context serving** (spend VRAM on batch/KV rather than scratch).
-- **Choose `safe` when a route-level proof is required.** The bounded fallback supplies a known
-  graph-free route bound when fast routes, especially cuDNN, have no graph-free oracle. A system-wide
-  no-OOM guarantee additionally requires runtime enforcement of the query/KV envelope, whole-graph
-  peak/lifetime accounting, and explicit allocator/runtime reserve; those are not supplied by a
-  route policy alone. `safe` is also useful for **correctness / reproducibility / debugging** (A/B
-  against a known-good path, work around a per-architecture numerical or availability issue) and
-  **portability** (select the always-present route when cuDNN/XQA/Flash may be absent).
+- **Choose `safe` when a route-level proof is required.** It removes routes without a graph-free
+  oracle (currently cuDNN) while retaining every proven fallback, including unfused when eligible.
+  A system-wide no-OOM guarantee additionally requires runtime enforcement of the query/KV
+  envelope, whole-graph peak/lifetime accounting, and explicit allocator/runtime reserve; those
+  are not supplied by a route policy alone. `safe` is also useful for reproducibility, debugging,
+  and portability across devices with different fused-route availability.
 
 Users switch away from `latency` precisely when the **system-level** objective (fit, concurrency,
 or a proof-oriented deployment) outweighs the **node-level** objective (fastest kernel):
@@ -432,13 +473,16 @@ per-route toggles become the **compile target** this policy lowers to:
 
 ### Validation is non-negotiable (regardless of who chose)
 
-At Initialize, run a **coverage check**: is `π` total over the admitted `(phase × envelope)` on
+At Initialize, run a **coverage check**: is `P` total over the admitted `(phase × envelope)` on
 *this* device? Reuse the strictness pattern already modeled by
 `session.strict_workspace_verification`:
 
-- **strict = 1** → invalid policy (e.g. `decode=xqa` on SM70 where XQA is unsupported) **fails
-  Initialize** with a precise diagnostic. No silent OOM.
-- **strict = 0** → log a warning and **degrade** the offending phase to the bounded fallback.
+- The GQA-first implementation fails Initialize for `memory` or `safe` when the declared shapes and
+  envelope cannot resolve a complete policy.
+- At Run time, a per-Run availability failure may fall back only to another route in the committed
+  set. If none is available, the Run fails explicitly.
+- A future permissive mode may degrade only to a fallback already represented in `P` and `W_L1`;
+  it must never enlarge the route set after accounting.
 
 Explicit choice ≠ unchecked choice.
 
@@ -446,9 +490,9 @@ Explicit choice ≠ unchecked choice.
 
 - **Budget is separate from policy** (cuDNN workspace-limit / vLLM `gpu-memory-utilization`
   precedent): the user supplies the VRAM budget/reserve; the policy defines the route *function*;
-  ORT checks `W_L1(π) ≤ budget`.
-- **Session-scoped by default.** All attention nodes share one KV-cache envelope, so `π` is one
-  function for all GQA nodes (matching `AttentionKernelOptions`), with an optional per-node
+  ORT checks `W_L1(P) ≤ budget`.
+- **Session-scoped by default.** All attention nodes share one KV-cache envelope, so `P` is one
+  policy for all GQA nodes (matching `AttentionKernelOptions`), with an optional per-node
   **attribute** override.
 - **Safe for output correctness.** The routes are numerically equivalent to fp tolerance, so
   choosing a policy changes *memory/latency, not model outputs*. The policy is a Pareto-frontier
@@ -551,16 +595,14 @@ nodes that *stay* resident.
 
 ---
 
-## Worked example: GQA policy `π_GQA`
+## Worked example: strict GQA policy `P_GQA`
 
 ```
-Policy π_GQA(x):
-  prefill  (is_first_prompt)          → Flash        if flash_supported   else INVALID
-  decode   (seq==1 && !is_first)      → XQA          if xqa_supported
-                                         else Flash   if flash_supported
-                                         else INVALID
-  chunk    (1 < seq < total)          → Flash        if flash_supported   else INVALID
-  # unfused ∉ image(π_GQA)  →  prohibited (error or bounded fallback)
+Policy P_GQA(x):
+  prefill  (is_first_prompt)          → {Flash}       if flash_supported else INVALID
+  decode   (seq==1 && !is_first)      → {XQA, Flash}  after eligibility filtering
+  chunk    (1 < seq < total)          → {Flash}       if flash_supported else INVALID
+  # unfused ∉ image(P_GQA)  →  prohibited (error or bounded fallback)
 ```
 
 Envelope: caller-declared query bound `P` (estimated from `max_shape_override`) and KV capacity `C`
@@ -610,7 +652,7 @@ arrives later, so the estimator is not reworked.
 
 ### Automatic selection is this comparison, run for the user
 
-Tier-0 auto-selection is exactly this global comparison solved on the user's behalf: the user
+The Tier-0 end state is this global comparison solved on the user's behalf: the user
 declares **budget + workload envelope + intent (`latency`/`memory`)**, and the framework enumerates
 the **kernel author's** policy menu, evaluates each policy's `(W_L1, cost)` for their device and
 envelope, and picks the placement+policy that meets budget with the best objective. The user never
@@ -638,10 +680,11 @@ Stage 2: Static route predicate + route-aware, envelope-driven estimate.
          - If a reachable route has no proof bound, fail closed for capacity-aware placement.
          - Reclaims most VRAM via static analysis (Case A models).
 
-Stage 3: Committed policy + bounded fallback + enforcement.
-         - Named policies (Tier 0/1/2), coverage validation at Initialize.
-         - Bounded fallback route so every policy can be made total (Case B).
-         - Runtime prohibits unfused under a committed policy.
+Stage 3: Committed policy + enforcement.
+         - Resolve GQA auto/latency/memory/safe intents to a phase-aware route mask.
+         - Share that resolver across L1, L2, and runtime.
+         - Runtime may fall back only inside the committed mask and otherwise fails explicitly.
+         - Follow-up: add a low-workspace fallback so stricter policies can remain total in Case B.
 
 Stage 4: Envelope profiling Run to validate and calibrate.
          - Exercise every relevant shape/route regime, including chunked prefill.
@@ -662,22 +705,19 @@ is a complete no-OOM guarantee.
 ### Actionable now vs. forward-looking
 
 - **Actionable now** (opt-in flag, no default change): the contract triple with `W_L1` closed over
-  the permitted set (Stages 1–2), the L1/L2 requirement-vs-strategy split with the lifetime caveat,
-  and basic auto-selection over a *validated* menu.
+  the permitted set, the GQA-first `latency`/`memory`/`safe` resolver shared by L1/L2/runtime, and
+  the L1/L2 requirement-vs-strategy split with the lifetime caveat.
 - **Forward-looking** (gate on the Stage-4 profiling that makes latency comparable): full policy
   comparability including CPU-boundary cost, and the auto-optimizer that consumes it — but ship the
   `(W_L1, cost)` interface early so it drops in without rework.
 - **Separate global dependency:** Stage 5 consumes proven per-node bounds but owns activation,
   workspace, persistent-buffer, and allocator lifetimes. Tightening a node estimate does not by
   itself prove the whole-session peak.
-- **The hard prerequisite for the Case B reductions:** the dispatch-ladder enforcement change —
-  redirecting the unfused terminal (`data.use_unfused = true` in `group_query_attention.cc`) under a
-  committed contract — landed as its own small, well-tested PR *before* any estimate that **removes a
-  currently-reachable route** is trusted. It is **not** required for Case A, where static Flash/MEA
-  eligibility already forecloses unfused with no code change; that reclamation is sound on its own.
-  (Independently, a reduced estimate is emitted only when every *remaining* reachable route is soundly
-  sizeable — e.g. a reachable cuDNN route ⇒ `Unavailable` — so the two dependencies compose into one
-  consistent rule.)
+- **The hard prerequisite for any Case B reduction:** runtime enforcement must land with the
+  estimate that removes a currently reachable route. The GQA-first implementation gates every
+  dispatch branch with the committed mask and fails when no permitted route serves the Run. A
+  future low-workspace fallback can make more restrictive masks total without re-admitting the
+  quadratic route.
 
 ---
 
@@ -686,16 +726,15 @@ is a complete no-OOM guarantee.
 Do not force one static estimate to be both safe and tight, and do not estimate the `max` over every
 implementation in the source tree. Instead:
 
-1. **Commit to a policy** — a total, enforceable `π: state → route` whose image excludes the
-   expensive route. The estimate is `max over admitted states of CompleteWorkspace(x, π(x))`.
+1. **Commit to a policy** — a total, enforceable `P: state → non-empty set<route>`. The estimate is
+   `max over admitted states x and permitted routes r ∈ P(x) of CompleteWorkspace(x, r)`.
 2. **Bind per `(node, phase)`**, not per node — because one kernel serves prefill and decode with
    different routes, and preference is phase/shape-dependent (a scalar `speed_rank` is insufficient).
 3. **Excluding a route from the estimate is earned, not assumed** — either *prove* it unreachable
    (Case A: seq-free flash/MEA eligibility already forecloses unfused) or *enforce* it (Case B:
    bounded fallback / error). Estimation and execution are one commitment.
-4. **L1 never detects the phase** — it enumerates envelope-admitted phases and takes the `max` of
-   the policy-selected route at each, which is why `π` must be a static, total function evaluable at
-   partition time.
+4. **L1 never detects the phase** — it enumerates envelope-admitted phases and takes the `max` over
+   each phase's permitted routes, which is why `P` must be statically resolvable at partition time.
 5. **Profiles are evidence, not proof** — use empirical peaks to detect estimator bugs and calibrate
    cost models, never to replace an analytical upper bound required for strict placement.
 6. **Per-node proof is not global proof** — whole-graph liveness and allocator reserve determine the
