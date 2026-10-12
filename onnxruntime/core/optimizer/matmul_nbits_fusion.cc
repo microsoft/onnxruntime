@@ -3,6 +3,8 @@
 
 #include "core/optimizer/matmul_nbits_fusion.h"
 
+#include <cmath>
+
 #include "core/common/common.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
@@ -214,16 +216,22 @@ bool MatchQuantizedLoraWeight(Graph& graph, NodeArg* value,
 }
 
 bool FuseLoraUpdate(Graph& graph, Node& root, NodeArg* base_result, Node* lora_a,
-                    NodeArg* lora_b_weight, Node* lora_b_node = nullptr) {
+                    NodeArg* lora_b_weight, Node* lora_b_node = nullptr,
+                    Node* scale_node = nullptr, float alpha = 1.0f) {
   Node* base = graph.GetMutableProducerNode(base_result->Name());
   if (!base || !lora_a || !lora_b_weight ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*base, "MatMulNBits", {1}, kMSDomain) ||
+      base->InputDefs().size() < 3 || base->InputDefs().size() > 6 ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*lora_a, "MatMul", {1, 9, 13}) ||
       !IsSingleUseIntermediate(graph, *base) || !IsSingleUseIntermediate(graph, *lora_a) ||
       lora_a->InputDefs().size() != 2 ||
       base->GetExecutionProviderType() != root.GetExecutionProviderType() ||
       lora_a->GetExecutionProviderType() != root.GetExecutionProviderType() ||
       (lora_b_node && (!IsSingleUseIntermediate(graph, *lora_b_node) ||
-                       lora_b_node->GetExecutionProviderType() != root.GetExecutionProviderType()))) {
+                       lora_b_node->GetExecutionProviderType() != root.GetExecutionProviderType())) ||
+      (scale_node && (!IsSingleUseIntermediate(graph, *scale_node) ||
+                      scale_node->GetExecutionProviderType() != root.GetExecutionProviderType())) ||
+      base->InputDefs()[0] != lora_a->InputDefs()[0]) {
     return false;
   }
   const auto* type = lora_a->InputDefs()[0]->TypeAsProto();
@@ -246,7 +254,12 @@ bool FuseLoraUpdate(Graph& graph, Node& root, NodeArg* base_result, Node* lora_a
   }
   const int64_t K = a_default->dims(0);
   const int64_t N = b_default->dims(1);
+  const auto* base_k = graph_utils::GetNodeAttribute(*base, "K");
+  const auto* base_n = graph_utils::GetNodeAttribute(*base, "N");
+  const auto* prepacked = graph_utils::GetNodeAttribute(*base, "weight_prepacked");
   if (K <= 0 || N <= 0 ||
+      !base_k || !base_n || base_k->i() != K || base_n->i() != N ||
+      (prepacked && prepacked->i() != 0) ||
       !IsEmptyLoraDefault(graph, a.weights, K, 0, ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
       !IsEmptyLoraDefault(graph, b.weights, 0, N, ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
       !IsEmptyLoraDefault(graph, a.scales, (K - 1) / 32 + 1, 0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
@@ -261,7 +274,7 @@ bool FuseLoraUpdate(Graph& graph, Node& root, NodeArg* base_result, Node* lora_a
       base_shape->dim(base_shape->dim_size() - 1).dim_value() != N) {
     return false;
   }
-  // LoraMulAdd does not implement Add/Gemm's broadcasted base input.
+  // The combined operator preserves the base projection's output shape.
   for (int axis = 0; axis + 1 < input_shape->dim_size(); ++axis) {
     const auto& input_dim = input_shape->dim(axis);
     const auto& base_dim = base_shape->dim(axis);
@@ -272,28 +285,57 @@ bool FuseLoraUpdate(Graph& graph, Node& root, NodeArg* base_result, Node* lora_a
       return false;
     }
   }
-  std::vector<NodeArg*> inputs{base_result, lora_a->MutableInputDefs()[0],
-                               a.weights, b.weights, a.scales, b.scales};
+  std::vector<NodeArg*> inputs(base->MutableInputDefs().begin(), base->MutableInputDefs().end());
+  while (inputs.size() < 6) {
+    inputs.push_back(&graph.GetOrCreateNodeArg("", nullptr));
+  }
+  inputs.insert(inputs.end(), {a.weights, b.weights, a.scales, b.scales});
   Node& fused = graph.AddNode(
-      graph.GenerateNodeName("LoraMulAdd"), "LoraMulAdd",
-      "optional quantized low-rank update of an existing base result",
-      inputs, root.MutableOutputDefs(), nullptr, kMSDomain);
+      graph.GenerateNodeName("MatMulNBitsLora"), "MatMulNBitsLora",
+      "quantized base projection with an optional scaled low-rank update",
+      inputs, root.MutableOutputDefs(), &base->GetAttributes(), kMSDomain);
+  fused.AddAttribute("lora_alpha", alpha);
   fused.SetExecutionProviderType(root.GetExecutionProviderType());
-  std::vector<std::reference_wrapper<Node>> nodes{*a.dequantize, *b.dequantize, *lora_a};
+  std::vector<std::reference_wrapper<Node>> nodes{*base, *a.dequantize, *b.dequantize, *lora_a};
   if (a.cast) nodes.push_back(*a.cast);
   if (b.cast) nodes.push_back(*b.cast);
   if (lora_b_node) {
     nodes.push_back(*lora_b_node);
+  }
+  if (scale_node) {
+    nodes.push_back(*scale_node);
   }
   nodes.push_back(root);
   graph_utils::FinalizeNodeFusion(graph, nodes, fused);
   return true;
 }
 
+bool ReadLoraScalar(const Graph& graph, const NodeArg& value, float& alpha) {
+  const auto* tensor = graph.GetConstantInitializer(value.Name(), true);
+  if (!tensor || tensor->dims_size() > 1 ||
+      (tensor->dims_size() == 1 && tensor->dims(0) != 1)) {
+    return false;
+  }
+  if (tensor->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (!utils::UnpackTensor<float>(*tensor, graph.ModelPath(), &alpha, 1).IsOK()) {
+      return false;
+    }
+  } else if (tensor->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    MLFloat16 scalar;
+    if (!utils::UnpackTensor<MLFloat16>(*tensor, graph.ModelPath(), &scalar, 1).IsOK()) {
+      return false;
+    }
+    alpha = scalar.ToFloat();
+  } else {
+    return false;
+  }
+  return std::isfinite(alpha);
+}
+
 }  // namespace
 
-Status LoraMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                   const logging::Logger& logger) const {
+Status MatMulNBitsLoraFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                        const logging::Logger& logger) const {
   GraphViewer viewer(graph);
   for (auto index : viewer.GetNodesInTopologicalOrder()) {
     Node* root = graph.GetNode(index);
@@ -327,6 +369,21 @@ Status LoraMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level
     }
     for (size_t base_index = 0; base_index < 2; ++base_index) {
       Node* lora_b = graph.GetMutableProducerNode(root->InputDefs()[1 - base_index]->Name());
+      Node* scale_node = nullptr;
+      float alpha = 1.0f;
+      if (lora_b && graph_utils::IsSupportedOptypeVersionAndDomain(*lora_b, "Mul", {7, 13, 14}) &&
+          lora_b->InputDefs().size() == 2) {
+        for (size_t scalar_index = 0; scalar_index < 2; ++scalar_index) {
+          if (ReadLoraScalar(graph, *lora_b->InputDefs()[scalar_index], alpha)) {
+            scale_node = lora_b;
+            lora_b = graph.GetMutableProducerNode(lora_b->InputDefs()[1 - scalar_index]->Name());
+            break;
+          }
+        }
+        if (!scale_node) {
+          continue;
+        }
+      }
       if (!lora_b ||
           !graph_utils::IsSupportedOptypeVersionAndDomain(*lora_b, "MatMul", {1, 9, 13}) ||
           lora_b->InputDefs().size() != 2) {
@@ -334,7 +391,7 @@ Status LoraMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
       Node* lora_a = graph.GetMutableProducerNode(lora_b->InputDefs()[0]->Name());
       if (FuseLoraUpdate(graph, *root, root->MutableInputDefs()[base_index], lora_a,
-                         lora_b->MutableInputDefs()[1], lora_b)) {
+                         lora_b->MutableInputDefs()[1], lora_b, scale_node, alpha)) {
         modified = true;
         break;
       }

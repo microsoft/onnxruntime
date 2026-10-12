@@ -2,15 +2,18 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "contrib_ops/cpu/quantization/lora_mul_add_helper.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_lora_helper.h"
 #include "core/framework/allocator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/webgpu/graph_capture_test_utils.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime::test {
@@ -19,7 +22,7 @@ namespace {
 template <typename T>
 void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
                  bool mismatched_rank = false, bool vector = false,
-                 bool negative_weights = false) {
+                 bool negative_weights = false, float alpha = 1.0f) {
   constexpr int64_t K = 35;
   constexpr int64_t N = 16;
   const int64_t rows = empty ? 0 : 3;
@@ -28,9 +31,18 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
                                                   : std::vector<int64_t>{2, rows, K};
   const std::vector<int64_t> output_shape = vector ? std::vector<int64_t>{N}
                                                    : std::vector<int64_t>{2, rows, N};
-  OpTester test("LoraMulAdd", 1, kMSDomain);
-  test.AddInput<T>("base", output_shape, std::vector<T>(count * N, T{0.75f}));
+  WebGpuGraphCaptureTester test("MatMulNBitsLora", 1, kMSDomain);
+  test.AddAttribute("K", K);
+  test.AddAttribute("N", N);
+  test.AddAttribute("bits", int64_t{4});
+  test.AddAttribute("block_size", int64_t{32});
+  test.AddAttribute("lora_alpha", alpha);
   test.AddInput<T>("X", input_shape, std::vector<T>(count * K, T{1.0f}));
+  test.AddInput<uint8_t>("B", {N, 2, 16}, std::vector<uint8_t>(N * 2 * 16, 0x99), true);
+  test.AddInput<T>("scales", {N, 2}, std::vector<T>(N * 2, T{0.5f}), true);
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<T>("bias", {N}, std::vector<T>(N, T{0.75f}), true);
   test.AddInput<int8_t>("Q_A", {K, rank}, std::vector<int8_t>(K * rank, negative_weights ? -1 : 1));
   const int64_t b_rank = mismatched_rank ? rank + 1 : rank;
   test.AddInput<int8_t>("Q_B", {b_rank, N}, std::vector<int8_t>(b_rank * N, 1));
@@ -39,9 +51,9 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
   test.AddInput<float>("S_A", {2, rank}, scale_a);
   test.AddInput<float>("S_B", {(b_rank + 31) / 32, N},
                        std::vector<float>(((b_rank + 31) / 32) * N, 0.5f));
-  test.AddOutput<T>("Y", output_shape,
-                    std::vector<T>(count * N, T{0.75f + (negative_weights ? -1.0f : 1.0f) *
-                                                            9.5f * static_cast<float>(rank) * 0.5f}));
+  const std::vector<T> expected(count * N, T{18.25f + (negative_weights ? -1.0f : 1.0f) *
+                                                          9.5f * static_cast<float>(rank) * 0.5f * alpha});
+  test.AddOutput<T>("Y", output_shape, expected);
   if (gpu) {
 #ifdef USE_WEBGPU
     ConfigOptions config;
@@ -55,8 +67,7 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
     }
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-    test.SetNumRunCalls(4);
-    test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+    test.RunWithBoundCapture<T>(std::move(ep), options, TensorShape(output_shape), expected);
     return;
 #else
     GTEST_SKIP() << "WebGPU execution provider is not compiled.";
@@ -64,43 +75,53 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
   }
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(mismatched_rank ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
-           mismatched_rank ? "LoraMulAdd requires" : "", {}, nullptr, &providers);
+  const bool invalid_alpha = !std::isfinite(alpha);
+  test.Run(mismatched_rank || invalid_alpha ? OpTester::ExpectResult::kExpectFailure
+                                            : OpTester::ExpectResult::kExpectSuccess,
+           invalid_alpha ? "lora_alpha must be finite" : mismatched_rank ? "MatMulNBitsLora requires"
+                                                                         : "",
+           {}, nullptr, &providers);
 }
 
 }  // namespace
 
-TEST(LoraMulAdd, CpuZeroRank) { RunLoraTest<float>(0); }
-TEST(LoraMulAdd, CpuActiveRank) { RunLoraTest<float>(3); }
-TEST(LoraMulAdd, CpuMultipleScaleBlocks) { RunLoraTest<float>(33); }
-TEST(LoraMulAdd, CpuEmptyOutput) { RunLoraTest<float>(3, false, true); }
-TEST(LoraMulAdd, CpuVector) { RunLoraTest<float>(3, false, false, false, true); }
-TEST(LoraMulAdd, CpuNegativeQuantizedWeights) { RunLoraTest<float>(3, false, false, false, false, true); }
-TEST(LoraMulAdd, CpuRejectMismatchedRank) { RunLoraTest<float>(3, false, false, true); }
-TEST(LoraMulAdd, WebGpuFloatZeroRank) { RunLoraTest<float>(0, true); }
-TEST(LoraMulAdd, WebGpuFloatActiveRank) { RunLoraTest<float>(3, true); }
-TEST(LoraMulAdd, WebGpuHalfZeroRank) { RunLoraTest<MLFloat16>(0, true); }
-TEST(LoraMulAdd, WebGpuHalfActiveRank) { RunLoraTest<MLFloat16>(3, true); }
-TEST(LoraMulAdd, WebGpuHalfMultipleScaleBlocks) { RunLoraTest<MLFloat16>(33, true); }
-TEST(LoraMulAdd, WebGpuHalfEmptyOutput) { RunLoraTest<MLFloat16>(3, true, true); }
-TEST(LoraMulAdd, WebGpuHalfVector) { RunLoraTest<MLFloat16>(3, true, false, false, true); }
-TEST(LoraMulAdd, WebGpuHalfNegativeQuantizedWeights) { RunLoraTest<MLFloat16>(3, true, false, false, false, true); }
+TEST(MatMulNBitsLora, CpuZeroRank) { RunLoraTest<float>(0); }
+TEST(MatMulNBitsLora, CpuActiveRank) { RunLoraTest<float>(3); }
+TEST(MatMulNBitsLora, CpuMultipleScaleBlocks) { RunLoraTest<float>(33); }
+TEST(MatMulNBitsLora, CpuEmptyOutput) { RunLoraTest<float>(3, false, true); }
+TEST(MatMulNBitsLora, CpuVector) { RunLoraTest<float>(3, false, false, false, true); }
+TEST(MatMulNBitsLora, CpuNegativeQuantizedWeights) { RunLoraTest<float>(3, false, false, false, false, true); }
+TEST(MatMulNBitsLora, CpuRejectMismatchedRank) { RunLoraTest<float>(3, false, false, true); }
+TEST(MatMulNBitsLora, CpuScalarScale) { RunLoraTest<float>(3, false, false, false, false, false, 0.5f); }
+TEST(MatMulNBitsLora, CpuNegativeScalarScale) { RunLoraTest<float>(3, false, false, false, false, false, -2.0f); }
+TEST(MatMulNBitsLora, CpuZeroRankWithScalarScale) { RunLoraTest<float>(0, false, false, false, false, false, 0.5f); }
+TEST(MatMulNBitsLora, CpuZeroRankRejectsNonfiniteScale) {
+  RunLoraTest<float>(0, false, false, false, false, false, std::numeric_limits<float>::infinity());
+}
+TEST(MatMulNBitsLora, WebGpuFloatZeroRank) { RunLoraTest<float>(0, true); }
+TEST(MatMulNBitsLora, WebGpuFloatActiveRank) { RunLoraTest<float>(3, true); }
+TEST(MatMulNBitsLora, WebGpuHalfZeroRank) { RunLoraTest<MLFloat16>(0, true); }
+TEST(MatMulNBitsLora, WebGpuHalfActiveRank) { RunLoraTest<MLFloat16>(3, true); }
+TEST(MatMulNBitsLora, WebGpuHalfMultipleScaleBlocks) { RunLoraTest<MLFloat16>(33, true); }
+TEST(MatMulNBitsLora, WebGpuHalfEmptyOutput) { RunLoraTest<MLFloat16>(3, true, true); }
+TEST(MatMulNBitsLora, WebGpuHalfVector) { RunLoraTest<MLFloat16>(3, true, false, false, true); }
+TEST(MatMulNBitsLora, WebGpuHalfNegativeQuantizedWeights) { RunLoraTest<MLFloat16>(3, true, false, false, false, true); }
+TEST(MatMulNBitsLora, WebGpuHalfScalarScale) { RunLoraTest<MLFloat16>(3, true, false, false, false, false, 0.5f); }
 
-TEST(LoraMulAdd, ValidatesHalfShapesWithoutGpu) {
+TEST(MatMulNBitsLora, ValidatesHalfShapesWithoutGpu) {
   const auto allocator = CPUAllocator::DefaultInstance();
-  Tensor base(DataTypeImpl::GetType<MLFloat16>(), TensorShape({1, 3, 16}), allocator);
   Tensor input(DataTypeImpl::GetType<MLFloat16>(), TensorShape({1, 3, 35}), allocator);
   Tensor a(DataTypeImpl::GetType<int8_t>(), TensorShape({35, 0}), allocator);
   Tensor b(DataTypeImpl::GetType<int8_t>(), TensorShape({0, 16}), allocator);
   Tensor sa(DataTypeImpl::GetType<float>(), TensorShape({2, 0}), allocator);
   Tensor sb(DataTypeImpl::GetType<float>(), TensorShape({0, 16}), allocator);
-  EXPECT_TRUE(contrib::CheckLoraMulAddInputs(&base, &input, &a, &b, &sa, &sb).IsOK());
+  EXPECT_TRUE(contrib::CheckMatMulNBitsLoraInputs(&input, &a, &b, &sa, &sb, 35, 16).IsOK());
   Tensor bad_scale(DataTypeImpl::GetType<float>(), TensorShape({1, 0}), allocator);
-  EXPECT_FALSE(contrib::CheckLoraMulAddInputs(&base, &input, &a, &b, &bad_scale, &sb).IsOK());
+  EXPECT_FALSE(contrib::CheckMatMulNBitsLoraInputs(&input, &a, &b, &bad_scale, &sb, 35, 16).IsOK());
 }
 
 #ifdef USE_WEBGPU
-TEST(LoraMulAdd, UnfusedWebGpuEmptyBlockedDequantization) {
+TEST(MatMulNBitsLora, UnfusedWebGpuEmptyBlockedDequantization) {
   ConfigOptions config;
   ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kEnableGraphCapture,
                                          webgpu::options::kEnableGraphCapture_ON));
@@ -108,7 +129,7 @@ TEST(LoraMulAdd, UnfusedWebGpuEmptyBlockedDequantization) {
                                          webgpu::options::kValidationMode_full));
   auto ep = WebGpuExecutionProviderWithOptions(config);
   if (!ep) GTEST_SKIP() << "WebGPU execution provider is unavailable.";
-  OpTester test("DequantizeLinear", 21);
+  WebGpuGraphCaptureTester test("DequantizeLinear", 21);
   test.AddAttribute("axis", int64_t{0});
   test.AddAttribute("block_size", int64_t{32});
   test.AddInput<int8_t>("Q", {35, 0}, {});
@@ -116,8 +137,7 @@ TEST(LoraMulAdd, UnfusedWebGpuEmptyBlockedDequantization) {
   test.AddOutput<float>("Y", {35, 0}, {});
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  test.SetNumRunCalls(4);
-  test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+  test.RunWithBoundCapture<float>(std::move(ep), options, TensorShape({35, 0}), {});
 }
 #endif
 

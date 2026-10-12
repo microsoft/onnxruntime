@@ -61,7 +61,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
-  * <a href="#com.microsoft.LoraMulAdd">com.microsoft.LoraMulAdd</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
@@ -70,6 +69,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
+  * <a href="#com.microsoft.MatMulNBitsLora">com.microsoft.MatMulNBitsLora</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
@@ -3612,53 +3612,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.LoraMulAdd"></a><a name="com.microsoft.loramuladd">**com.microsoft.LoraMulAdd**</a>
-
-  Y = base + (X * Dequantize(Q_A, S_A)) * Dequantize(Q_B, S_B). Dequantization uses INT8 weights and FP32 scales with axis 0, block size 32, and zero point 0. FP16 computation casts dequantized weights before multiplication. Adapter scaling is folded into S_B. Empty rank returns base without LoRA computation; buffer reuse is optional, not an aliasing guarantee.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>block_size</tt> : int</dt>
-<dd>Axis-0 quantization group size; only 32 is supported.</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>base</tt> : T</dt>
-<dd>Existing base result [..., N].</dd>
-<dt><tt>X</tt> : T</dt>
-<dd>Activation [..., K].</dd>
-<dt><tt>Q_A</tt> : tensor(int8)</dt>
-<dd>INT8 LoRA weights [K, rank].</dd>
-<dt><tt>Q_B</tt> : tensor(int8)</dt>
-<dd>INT8 LoRA weights [rank, N].</dd>
-<dt><tt>S_A</tt> : tensor(float)</dt>
-<dd>FP32 scales [ceil(K / 32), rank].</dd>
-<dt><tt>S_B</tt> : tensor(float)</dt>
-<dd>FP32 scales [ceil(rank / 32), N].</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>Y</tt> : T</dt>
-<dd>Base result plus the optional low-rank update.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Matching base, activation, and output types.</dd>
-</dl>
-
-
 ### <a name="com.microsoft.MRotaryEmbedding"></a><a name="com.microsoft.mrotaryembedding">**com.microsoft.MRotaryEmbedding**</a>
 
   MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the
@@ -4149,6 +4102,79 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain quantized zero point types to uint8 or float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>the index tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsLora"></a><a name="com.microsoft.matmulnbitslora">**com.microsoft.MatMulNBitsLora**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Input feature dimension of the base weight matrix.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output feature dimension of the base weight matrix.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>MatMulNBits accuracy level.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Bit-width of the base weights.</dd>
+<dt><tt>block_size</tt> : int (required)</dt>
+<dd>Quantization block size of the base weights.</dd>
+<dt><tt>lora_alpha</tt> : float</dt>
+<dd>Finite constant scalar applied to the LoRA delta.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Axis-0 adapter quantization group size; only 32 is supported.</dd>
+<dt><tt>weight_prepacked</tt> : int</dt>
+<dd>MatMulNBits prepacked weight layout.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T1</dt>
+<dd></dd>
+<dt><tt>B</tt> : T2</dt>
+<dd></dd>
+<dt><tt>scales</tt> : T1</dt>
+<dd></dd>
+<dt><tt>zero_points</tt> (optional) : T3</dt>
+<dd></dd>
+<dt><tt>g_idx</tt> (optional) : T4</dt>
+<dd></dd>
+<dt><tt>bias</tt> (optional) : T1</dt>
+<dd></dd>
+<dt><tt>Q_A</tt> : tensor(int8)</dt>
+<dd></dd>
+<dt><tt>Q_B</tt> : tensor(int8)</dt>
+<dd></dd>
+<dt><tt>S_A</tt> : tensor(float)</dt>
+<dd></dd>
+<dt><tt>S_B</tt> : tensor(float)</dt>
+<dd></dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd></dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
+<dd>Matching activation and output types.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed base weights.</dd>
+<dt><tt>T3</tt> : tensor(uint8), tensor(float), tensor(float16)</dt>
+<dd>Base zero points.</dd>
+<dt><tt>T4</tt> : tensor(int32)</dt>
+<dd>Base group indices.</dd>
 </dl>
 
 

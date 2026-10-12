@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,12 @@ struct Options {
   bool half{};
   bool different_provider{};
   bool broadcast_base{};
+  bool scalar_mul{};
+  bool reverse_scalar{};
+  bool dynamic_scalar{};
+  bool different_input{};
   float alpha{1.0f};
+  float scalar{0.5f};
   const char* provider{kCpuExecutionProvider};
 };
 
@@ -39,10 +45,15 @@ void BuildGraph(ModelTestBuilder& builder, const Options& opts,
   const int64_t rank = opts.nonempty_default ? 3 : 0;
   const int32_t type = opts.half ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   NodeArg* input = opts.half ? builder.MakeInput<MLFloat16>({2, K}, MLFloat16{1.0f}, MLFloat16{1.0f}) : builder.MakeInput<float>({2, K}, 1.0f, 1.0f);
-  auto* packed = builder.MakeInitializer<uint8_t>({N, 2, 16}, uint8_t{0x88}, uint8_t{0x88});
+  auto* packed = builder.MakeInitializer<uint8_t>({N, 2, 16}, std::vector<uint8_t>(N * 2 * 16, 0x88));
   NodeArg* scales = opts.half ? builder.MakeInitializer<MLFloat16>({N, 2}, MLFloat16{1.0f}, MLFloat16{1.0f}) : builder.MakeInitializer<float>({N, 2}, 1.0f, 1.0f);
   auto* base = opts.exposed_base ? builder.MakeOutput() : builder.MakeIntermediate();
-  auto& projection = builder.AddNode("MatMulNBits", {input, packed, scales}, {base}, kMSDomain);
+  NodeArg* base_input = input;
+  if (opts.different_input) {
+    base_input = opts.half ? builder.MakeInput<MLFloat16>({2, K}, MLFloat16{1.0f}, MLFloat16{1.0f})
+                           : builder.MakeInput<float>({2, K}, 1.0f, 1.0f);
+  }
+  auto& projection = builder.AddNode("MatMulNBits", {base_input, packed, scales}, {base}, kMSDomain);
   projection.AddAttribute("K", K);
   projection.AddAttribute("N", N);
   projection.AddAttribute("bits", int64_t{4});
@@ -56,8 +67,8 @@ void BuildGraph(ModelTestBuilder& builder, const Options& opts,
     gather.SetExecutionProviderType(opts.provider);
     base = vector_base;
   }
-  auto* qa = builder.MakeInput<int8_t>({K, rank}, int8_t{0}, int8_t{0});
-  auto* qb = builder.MakeInput<int8_t>({rank, N}, int8_t{0}, int8_t{0});
+  auto* qa = builder.MakeInput<int8_t>({K, rank}, std::vector<int8_t>(K * rank, 0));
+  auto* qb = builder.MakeInput<int8_t>({rank, N}, std::vector<int8_t>(rank * N, 0));
   auto* sa = builder.MakeInput<float>({2, rank}, 0.0f, 0.0f);
   auto* sb = builder.MakeInput<float>({(rank + 31) / 32, N}, 0.0f, 0.0f);
   names = {qa->Name(), qb->Name(), sa->Name(), sb->Name()};
@@ -90,13 +101,28 @@ void BuildGraph(ModelTestBuilder& builder, const Options& opts,
     auto* delta = builder.MakeIntermediate();
     auto& second = builder.AddNode("MatMul", {low, b}, {delta});
     second.SetExecutionProviderType(opts.provider);
+    if (opts.scalar_mul) {
+      NodeArg* scalar = nullptr;
+      if (opts.dynamic_scalar) {
+        scalar = opts.half ? builder.MakeInput<MLFloat16>({}, std::vector<MLFloat16>{MLFloat16{opts.scalar}})
+                           : builder.MakeInput<float>({}, std::vector<float>{opts.scalar});
+      } else {
+        scalar = opts.half ? builder.MakeScalarInitializer<MLFloat16>(MLFloat16{opts.scalar})
+                           : builder.MakeScalarInitializer<float>(opts.scalar);
+      }
+      auto* scaled = builder.MakeIntermediate();
+      auto& mul = builder.AddNode("Mul", opts.reverse_scalar ? std::vector<NodeArg*>{scalar, delta} : std::vector<NodeArg*>{delta, scalar},
+                                  {scaled});
+      mul.SetExecutionProviderType(opts.provider);
+      delta = scaled;
+    }
     auto& add = builder.AddNode("Add", opts.reverse ? std::vector<NodeArg*>{delta, base} : std::vector<NodeArg*>{base, delta}, {output});
     add.SetExecutionProviderType(opts.provider);
   }
 }
 
 void AddDefaults(Graph& graph, const std::array<std::string, 4>& names, int64_t rank) {
-  const auto inputs = graph.GetInputsIncludingInitializers();
+  const auto inputs = graph.GetInputs();
   graph.SetInputs(inputs);
   const std::array<std::array<int64_t, 2>, 4> shapes{{{35, rank}, {rank, 16}, {2, rank}, {(rank + 31) / 32, 16}}};
   for (size_t index = 0; index < names.size(); ++index) {
@@ -120,11 +146,26 @@ void RunStructuralTest(const Options& options, bool expected) {
   };
   auto after = [&](Graph& graph) {
     const auto counts = CountOpsInGraph(graph);
-    EXPECT_EQ(OpCount(counts, "com.microsoft.LoraMulAdd"), expected ? 1 : 0);
-    EXPECT_EQ(OpCount(counts, "com.microsoft.MatMulNBits"), 1);
+    EXPECT_EQ(OpCount(counts, "com.microsoft.MatMulNBitsLora"), expected ? 1 : 0);
+    EXPECT_EQ(OpCount(counts, "com.microsoft.MatMulNBits"), expected ? 0 : 1);
     if (expected) {
       EXPECT_EQ(OpCount(counts, "DequantizeLinear"), 0);
       EXPECT_EQ(OpCount(counts, "MatMul"), 0);
+      EXPECT_EQ(OpCount(counts, "Mul"), 0);
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "MatMulNBitsLora") {
+          if (node.InputDefs().size() != 10) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulNBitsLora must retain all ten inputs.");
+          }
+          EXPECT_EQ(node.GetAttributes().at("K").i(), 35);
+          EXPECT_EQ(node.GetAttributes().at("N").i(), 16);
+          EXPECT_EQ(node.GetAttributes().at("lora_alpha").f(), options.scalar_mul ? options.scalar : 1.0f);
+          EXPECT_NE(graph.GetConstantInitializer(node.InputDefs()[1]->Name(), true), nullptr);
+          for (size_t index = 0; index < names.size(); ++index) {
+            EXPECT_EQ(node.InputDefs()[6 + index]->Name(), names[index]);
+          }
+        }
+      }
       for (const auto& name : names) {
         const auto& inputs = graph.GetInputsIncludingInitializers();
         EXPECT_TRUE(std::any_of(inputs.begin(), inputs.end(),
@@ -135,14 +176,14 @@ void RunStructuralTest(const Options& options, bool expected) {
   };
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, 21, DefaultLoggingManager().DefaultLogger(),
-      std::make_unique<LoraMulAddFusion>(
+      std::make_unique<MatMulNBitsLoraFusion>(
           InlinedHashSet<std::string_view>{kCpuExecutionProvider, kWebGpuExecutionProvider}),
       TransformerLevel::Level2, 1, before, after));
 }
 
 }  // namespace
 
-TEST(LoraMulAddFusion, QuantizedPatternsPreserveBaseAndInputs) {
+TEST(MatMulNBitsLoraFusion, QuantizedPatternsFuseBaseAndPreserveInputs) {
   RunStructuralTest({}, true);
   Options options;
   options.reverse = true;
@@ -153,7 +194,24 @@ TEST(LoraMulAddFusion, QuantizedPatternsPreserveBaseAndInputs) {
   RunStructuralTest(options, false);
 }
 
-TEST(LoraMulAddFusion, RejectsSharedValuesAndNonemptyDefaults) {
+TEST(MatMulNBitsLoraFusion, ConstantScalarAndFoldedScales) {
+  Options options;
+  options.scalar_mul = true;
+  RunStructuralTest(options, true);
+  options.reverse_scalar = true;
+  RunStructuralTest(options, true);
+  options.scalar = -2.0f;
+  RunStructuralTest(options, true);
+  options.dynamic_scalar = true;
+  RunStructuralTest(options, false);
+  options.dynamic_scalar = false;
+  options.scalar = std::numeric_limits<float>::infinity();
+  RunStructuralTest(options, false);
+  options.scalar = std::numeric_limits<float>::quiet_NaN();
+  RunStructuralTest(options, false);
+}
+
+TEST(MatMulNBitsLoraFusion, RejectsSharedValuesAndNonemptyDefaults) {
   Options options;
   options.exposed_base = true;
   RunStructuralTest(options, false);
@@ -169,17 +227,22 @@ TEST(LoraMulAddFusion, RejectsSharedValuesAndNonemptyDefaults) {
   options = {};
   options.broadcast_base = true;
   RunStructuralTest(options, false);
+  options = {};
+  options.different_input = true;
+  RunStructuralTest(options, false);
 }
 
-TEST(LoraMulAddFusion, HalfRequiresWebGpu) {
+TEST(MatMulNBitsLoraFusion, HalfRequiresWebGpu) {
   Options options;
   options.half = true;
   RunStructuralTest(options, false);
   options.provider = kWebGpuExecutionProvider;
   RunStructuralTest(options, true);
+  options.scalar_mul = true;
+  RunStructuralTest(options, true);
 }
 
-TEST(LoraMulAddFusion, ExplicitOptInAndLegacyLocalAlias) {
+TEST(MatMulNBitsLoraFusion, ExplicitOptInAndLegacyLocalAlias) {
   const auto provider = DefaultCpuExecutionProvider();
   ASSERT_NE(provider, nullptr);
   SessionOptions options;
@@ -187,26 +250,28 @@ TEST(LoraMulAddFusion, ExplicitOptInAndLegacyLocalAlias) {
     const auto transformers = optimizer_utils::GenerateTransformers(
         TransformerLevel::Level2, options, *provider, DefaultLoggingManager().DefaultLogger());
     return std::any_of(transformers.begin(), transformers.end(), [](const auto& transformer) {
-      return transformer->Name() == "LoraMulAddFusion";
+      return transformer->Name() == "MatMulNBitsLoraFusion";
     });
   };
   EXPECT_FALSE(present());
-  ASSERT_STATUS_OK(options.config_options.AddConfigEntry("optimization.enable_matmul_nbits_lora_fusion", "1"));
-  EXPECT_TRUE(present());
-  ASSERT_STATUS_OK(options.config_options.AddConfigEntry("optimization.enable_lora_mul_add_fusion", "0"));
-  EXPECT_FALSE(present());
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry("optimization.enable_lora_mul_add_fusion", "1"));
+  EXPECT_TRUE(present());
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry("optimization.enable_matmul_nbits_lora_fusion", "0"));
+  EXPECT_FALSE(present());
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry("optimization.enable_matmul_nbits_lora_fusion", "1"));
   EXPECT_TRUE(present());
 }
 
-TEST(LoraMulAddFusion, QuantizedSessionDefaultActiveDefault) {
+void RunQuantizedSessionDefaultActiveDefault(bool scalar_mul) {
   Model model("quantized_lora_session", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}},
               {}, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder(graph);
   std::array<std::string, 4> names;
-  BuildGraph(builder, {}, names);
+  Options graph_options;
+  graph_options.scalar_mul = scalar_mul;
+  BuildGraph(builder, graph_options, names);
   builder.SetGraphOutputs();
   ASSERT_STATUS_OK(graph.Resolve());
   AddDefaults(graph, names, 0);
@@ -236,8 +301,8 @@ TEST(LoraMulAddFusion, QuantizedSessionDefaultActiveDefault) {
   InferenceSessionWrapper fused{options, GetEnvironment()};
   ASSERT_STATUS_OK(fused.Load(bytes.data(), static_cast<int>(bytes.size())));
   ASSERT_STATUS_OK(fused.Initialize());
-  ASSERT_EQ(OpCount(CountOpsInGraph(fused.GetGraph()), "com.microsoft.LoraMulAdd"), 1);
-  EXPECT_EQ(OpCount(CountOpsInGraph(fused.GetGraph()), "com.microsoft.MatMulNBits"), 1);
+  ASSERT_EQ(OpCount(CountOpsInGraph(fused.GetGraph()), "com.microsoft.MatMulNBitsLora"), 1);
+  EXPECT_EQ(OpCount(CountOpsInGraph(fused.GetGraph()), "com.microsoft.MatMulNBits"), 0);
 
   const auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   NameMLValMap active = builder.feeds_;
@@ -256,7 +321,7 @@ TEST(LoraMulAddFusion, QuantizedSessionDefaultActiveDefault) {
     }
   };
   check(builder.feeds_, 0.0f);
-  check(active, 14.25f);
+  check(active, scalar_mul ? 7.125f : 14.25f);
   check(builder.feeds_, 0.0f);
   OrtValue wrong_rank;
   CreateMLValue<int8_t>(allocator, {35, 4}, std::vector<int8_t>(140, 1), &wrong_rank);
@@ -264,6 +329,14 @@ TEST(LoraMulAddFusion, QuantizedSessionDefaultActiveDefault) {
   std::vector<OrtValue> outputs;
   EXPECT_FALSE(fused.Run(RunOptions{}, active, builder.output_names_, &outputs).IsOK());
   check(builder.feeds_, 0.0f);
+}
+
+TEST(MatMulNBitsLoraFusion, QuantizedSessionDefaultActiveDefault) {
+  RunQuantizedSessionDefaultActiveDefault(false);
+}
+
+TEST(MatMulNBitsLoraFusion, ScaledSessionDefaultActiveDefault) {
+  RunQuantizedSessionDefaultActiveDefault(true);
 }
 
 }  // namespace onnxruntime::test

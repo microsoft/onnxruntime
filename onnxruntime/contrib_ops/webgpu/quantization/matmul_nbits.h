@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cmath>
+
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/math/matmul.h"
@@ -74,7 +76,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool acc_f32_;
 };
 
-class MatMulNBits final : public WebGpuKernel {
+class MatMulNBits : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -96,20 +98,28 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t bits_;
 };
 
-class LoraMulAdd final : public WebGpuKernel {
+class MatMulNBitsLora final : public MatMulNBits {
  public:
-  explicit LoraMulAdd(const OpKernelInfo& info) : WebGpuKernel(info) {
-    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("block_size", 32) == 32,
-                "LoraMulAdd supports only block_size=32.");
+  explicit MatMulNBitsLora(const OpKernelInfo& info)
+      : MatMulNBits(info),
+        K_{info.GetAttr<int64_t>("K")},
+        N_{info.GetAttr<int64_t>("N")},
+        alpha_{info.GetAttrOrDefault<float>("lora_alpha", 1.0f)} {
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("lora_block_size", 32) == 32,
+                "MatMulNBitsLora supports only lora_block_size=32.");
+    ORT_ENFORCE(std::isfinite(alpha_), "MatMulNBitsLora lora_alpha must be finite.");
   }
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoraMulAdd);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsLora);
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
-  mutable MatMulOptImplCache lora_a_cache_;
-  mutable MatMulOptImplCache lora_b_cache_;
+  const int64_t K_;
+  const int64_t N_;
+  const float alpha_;
+  mutable MatMulComputeDispatcher lora_a_dispatcher_;
+  mutable MatMulComputeDispatcher lora_b_dispatcher_;
 };
 
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,

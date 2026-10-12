@@ -406,10 +406,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // Preserve the LoRA boundary before Gemm absorbs a following activation.
       if (session_options.config_options.GetConfigOrDefault(
-              kOrtSessionOptionsEnableLoraMulAddFusion,
+              kOrtSessionOptionsEnableMatMulNBitsLoraFusion,
               session_options.config_options.GetConfigOrDefault(
-                  kOrtSessionOptionsEnableMatMulNBitsLoraFusion, "0")) == "1") {
-        transformers.emplace_back(std::make_unique<LoraMulAddFusion>(
+                  kOrtSessionOptionsEnableLoraMulAddFusion, "0")) == "1") {
+        transformers.emplace_back(std::make_unique<MatMulNBitsLoraFusion>(
             InlinedHashSet<std::string_view>{onnxruntime::kCpuExecutionProvider,
                                              onnxruntime::kWebGpuExecutionProvider}));
       }

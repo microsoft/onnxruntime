@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
-#include "contrib_ops/cpu/quantization/lora_mul_add_helper.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_lora_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
@@ -32,11 +32,13 @@ ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits);
 
 ONNX_OPERATOR_KERNEL_EX(
-    LoraMulAdd, kMSDomain, 1, kWebGpuExecutionProvider,
+    MatMulNBitsLora, kMSDomain, 1, kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .MayInplace(0, 0),
-    LoraMulAdd);
+        .TypeConstraint("T1", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    MatMulNBitsLora);
 
 namespace {
 
@@ -66,13 +68,13 @@ class LoraDequantizeProgram final : public Program<LoraDequantizeProgram> {
 
 class LoraAddProgram final : public Program<LoraAddProgram> {
  public:
-  explicit LoraAddProgram(bool inplace) : Program{"LoraAdd"}, inplace_(inplace) {}
+  LoraAddProgram() : Program{"MatMulNBitsLoraAdd"} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoraAddProgram);
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& delta = shader.AddInput("delta", ShaderUsage::UseValueTypeAlias);
     const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
-    const auto base_value = inplace_ ? output.GetByOffset("global_idx") : shader.AddInput("base", ShaderUsage::UseValueTypeAlias).GetByOffset("global_idx");
+    const auto base_value = output.GetByOffset("global_idx");
     shader.MainFunctionBody()
         << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
         << output.SetByOffset("global_idx", base_value + " + " + delta.GetByOffset("global_idx"));
@@ -80,32 +82,46 @@ class LoraAddProgram final : public Program<LoraAddProgram> {
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+};
 
- private:
-  const bool inplace_;
+class LoraScaleProgram final : public Program<LoraScaleProgram> {
+ public:
+  LoraScaleProgram() : Program{"MatMulNBitsLoraScale"} {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoraScaleProgram);
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    shader.MainFunctionBody()
+        << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+        << output.SetByOffset("global_idx", output.GetByOffset("global_idx") +
+                                                " * output_value_t(uniforms.alpha)");
+    return Status::OK();
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"output_size", ProgramUniformVariableDataType::Uint32},
+      {"alpha", ProgramUniformVariableDataType::Float32});
 };
 
 }  // namespace
 
-Status LoraMulAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
-  const Tensor* base = context.Input(0);
-  const Tensor* input = context.Input(1);
-  const Tensor* lora_a = context.Input(2);
-  const Tensor* lora_b = context.Input(3);
-  const Tensor* scale_a = context.Input(4);
-  const Tensor* scale_b = context.Input(5);
-  ORT_RETURN_IF_ERROR(CheckLoraMulAddInputs(base, input, lora_a, lora_b, scale_a, scale_b));
-  Tensor* output = context.Output(0, base->Shape());
+Status MatMulNBitsLora::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const Tensor* input = context.Input(0);
+  const Tensor* lora_a = context.Input(6);
+  const Tensor* lora_b = context.Input(7);
+  const Tensor* scale_a = context.Input(8);
+  const Tensor* scale_b = context.Input(9);
+  ORT_RETURN_IF_ERROR(CheckMatMulNBitsLoraInputs(input, lora_a, lora_b, scale_a, scale_b, K_, N_));
+  ORT_RETURN_IF_ERROR(MatMulNBits::ComputeInternal(context));
+  auto output_shape = input->Shape().AsShapeVector();
+  output_shape.back() = N_;
+  Tensor* output = context.Output(0, output_shape);
   if (output->Shape().Size() == 0) {
     return Status::OK();
   }
   const int64_t rank = lora_a->Shape()[1];
-  const bool inplace = base->DataRaw() == output->DataRaw();
-  LOGS(context.Logger(), VERBOSE) << "LoraMulAdd rank=" << rank << " base_buffer_reused=" << inplace;
+  LOGS(context.Logger(), VERBOSE) << "MatMulNBitsLora rank=" << rank;
   if (rank == 0) {
-    if (!inplace) {
-      return context.CopyTensor(*base, *output);
-    }
     return Status::OK();
   }
   const auto dequantize = [&context](const Tensor* weights, const Tensor* scales, Tensor& result) {
@@ -130,27 +146,28 @@ Status LoraMulAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context)
   }
   TensorShapeVector low_shape = matmul_input->Shape().AsShapeVector();
   low_shape.back() = rank;
-  TensorShapeVector output_shape = matmul_input->Shape().AsShapeVector();
-  output_shape.back() = lora_b->Shape()[1];
+  TensorShapeVector delta_shape = matmul_input->Shape().AsShapeVector();
+  delta_shape.back() = lora_b->Shape()[1];
   Tensor low_rank = context.CreateGPUTensor(input->DataType(), low_shape);
-  Tensor delta = context.CreateGPUTensor(input->DataType(), output_shape);
+  Tensor delta = context.CreateGPUTensor(input->DataType(), delta_shape);
   const Activation activation{};
   std::vector<const Tensor*> first{matmul_input, &a};
-  ORT_RETURN_IF_ERROR(ComputeMatMul(&context, activation, first, &low_rank,
-                                    true, lora_a_cache_, false));
+  ORT_RETURN_IF_ERROR(lora_a_dispatcher_.Compute(context, activation, first, &low_rank, true));
   std::vector<const Tensor*> second{&low_rank, &b};
-  ORT_RETURN_IF_ERROR(ComputeMatMul(&context, activation, second, &delta,
-                                    true, lora_b_cache_, false));
+  ORT_RETURN_IF_ERROR(lora_b_dispatcher_.Compute(context, activation, second, &delta, true));
   const uint32_t size = narrow<uint32_t>(output->Shape().Size());
-  LoraAddProgram program{inplace};
-  program.CacheHint(inplace)
-      .AddInput({&delta, ProgramTensorMetadataDependency::TypeAndRank, 1})
+  if (alpha_ != 1.0f) {
+    LoraScaleProgram scale_program;
+    scale_program.AddOutput({&delta, ProgramTensorMetadataDependency::TypeAndRank, 1})
+        .AddUniformVariables({{size}, {alpha_}})
+        .SetDispatchGroupSize(CeilDiv(size, static_cast<uint32_t>(WORKGROUP_SIZE)));
+    ORT_RETURN_IF_ERROR(context.RunProgram(scale_program));
+  }
+  LoraAddProgram program;
+  program.AddInput({&delta, ProgramTensorMetadataDependency::TypeAndRank, 1})
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, 1})
       .AddUniformVariables({{size}})
       .SetDispatchGroupSize(CeilDiv(size, static_cast<uint32_t>(WORKGROUP_SIZE)));
-  if (!inplace) {
-    program.AddInput({base, ProgramTensorMetadataDependency::TypeAndRank, 1});
-  }
   return context.RunProgram(program);
 }
 
