@@ -35,7 +35,7 @@ static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
     "session.moe_expert_counter_state_file";
 // Exponential decay applied to every expert counter after each invocation of its MoE/QMoE node.
-// Must be finite and in [0, 1]. A selected expert receives an increment of 1 - alpha. The default is 0.9.
+// Must be finite and in [0, 1]. A selected expert receives an increment of 1 - alpha. The default is 0.75.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
     "session.moe_expert_counter_alpha";
 
@@ -51,7 +51,7 @@ static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
     "session.moe_cpu_offload_experts";
 
 // Relative margin required before an adaptive MoE swap replaces a CUDA-resident expert.
-// The value must be finite and non-negative. The default is 0.
+// The value must be finite and non-negative. The default is 0.01.
 static const char* const kOrtSessionOptionsConfigMoeExpertSwapEpsilon =
     "session.moe_expert_swap_epsilon";
 

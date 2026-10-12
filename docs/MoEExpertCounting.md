@@ -12,7 +12,7 @@ The default is `0`. Counting alone does not emit logs, enable profiling, change 
 Configure the update with:
 
 ```text
-session.moe_expert_counter_alpha=<finite value in [0, 1]> # default: 0.9
+session.moe_expert_counter_alpha=<finite value in [0, 1]> # default: 0.75
 session.moe_expert_counter_probability_weight=<finite value in [0, 1]> # default: 0
 ```
 

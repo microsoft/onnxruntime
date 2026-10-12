@@ -144,10 +144,10 @@ class KernelPilotMoeExpertState {
   std::string logging_request_id_;
   const logging::Logger* logging_logger_{nullptr};
   std::atomic<size_t> logging_record_count_{0};
-  double alpha_{0.9};
+  double alpha_{0.75};
   double counter_probability_weight_{0.0};
   size_t cpu_offload_expert_count_{0};
-  double swap_epsilon_{0.0};
+  double swap_epsilon_{0.01};
   size_t max_in_flight_swaps_per_device_{4};
   bool cpu_offload_enabled_{false};
   bool initialized_{false};

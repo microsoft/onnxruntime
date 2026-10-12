@@ -69,7 +69,7 @@ def parse_args():
     parser.add_argument(
         "--moe-expert-counter-alpha",
         type=float,
-        default=0.9,
+        default=0.75,
         help="MoE expert popularity counter decay coefficient.",
     )
     parser.add_argument(

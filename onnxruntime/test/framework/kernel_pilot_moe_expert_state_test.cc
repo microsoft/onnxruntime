@@ -22,6 +22,8 @@
 namespace onnxruntime::test {
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
+constexpr double kDefaultCounterAlpha = 0.75;
+
 class KernelPilotMoeExpertStateTest : public testing::Test {
  protected:
   void SetUp() override {
@@ -151,9 +153,9 @@ TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSub
   InlinedVector<double> first;
   ASSERT_STATUS_OK(state.GetCounters(kernels_[0], first));
   ASSERT_EQ(first.size(), 3U);
-  EXPECT_DOUBLE_EQ(first[0], 0.19);
+  EXPECT_DOUBLE_EQ(first[0], 1.0 - std::pow(kDefaultCounterAlpha, 2));
   EXPECT_DOUBLE_EQ(first[1], 0);
-  EXPECT_DOUBLE_EQ(first[2], 0.19);
+  EXPECT_DOUBLE_EQ(first[2], 1.0 - std::pow(kDefaultCounterAlpha, 2));
   InlinedVector<double> second;
   ASSERT_STATUS_OK(state.GetCounters(kernels_[1], second));
   EXPECT_EQ(second, (InlinedVector<double>{0, 0}));
@@ -163,21 +165,24 @@ TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSub
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], selected));
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(state.GetCounters(kernels_[2], counters));
-  EXPECT_EQ(counters, (InlinedVector<double>{1.0 - 0.9, 0, 1.0 - 0.9, 0}));
+  EXPECT_EQ(counters, (InlinedVector<double>{1.0 - kDefaultCounterAlpha, 0,
+                                             1.0 - kDefaultCounterAlpha, 0}));
 
   const auto stats = state.GetExpertStats();
   ASSERT_EQ(stats.size(), 9U);
   for (const auto& stat : stats) {
     if (stat.kernel == kernels_[0]) {
       EXPECT_LT(stat.expert_id, 3U);
-      EXPECT_DOUBLE_EQ(stat.popularity, stat.expert_id == 1 ? 0.0 : 0.19);
+      EXPECT_DOUBLE_EQ(stat.popularity,
+                       stat.expert_id == 1 ? 0.0 : 1.0 - std::pow(kDefaultCounterAlpha, 2));
     } else if (stat.kernel == kernels_[1]) {
       EXPECT_LT(stat.expert_id, 2U);
       EXPECT_DOUBLE_EQ(stat.popularity, 0.0);
     } else {
       ASSERT_EQ(stat.kernel, kernels_[2]);
       EXPECT_LT(stat.expert_id, 4U);
-      EXPECT_DOUBLE_EQ(stat.popularity, (stat.expert_id == 0 || stat.expert_id == 2) ? 0.1 : 0.0);
+      EXPECT_DOUBLE_EQ(stat.popularity,
+                       (stat.expert_id == 0 || stat.expert_id == 2) ? 1.0 - kDefaultCounterAlpha : 0.0);
     }
   }
 }
@@ -224,7 +229,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
             nlohmann::json({
                 {
                     {"expert_id", 2},
-                    {"score", 1.0 - 0.9},
+                    {"score", 1.0 - kDefaultCounterAlpha},
                     {"selected_rank", 0},
                     {"node_rank", 0},
                     {"global_position", 0},
@@ -610,7 +615,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
   ASSERT_STATUS_OK(state.GetCounters(kernels_[0], counters));
   ASSERT_EQ(counters.size(), 3U);
   EXPECT_DOUBLE_EQ(counters[0], 0);
-  EXPECT_DOUBLE_EQ(counters[1], 2.35);
+  EXPECT_DOUBLE_EQ(counters[1], kDefaultCounterAlpha * 2.5 + (1.0 - kDefaultCounterAlpha));
   EXPECT_DOUBLE_EQ(counters[2], 0);
 }
 
@@ -646,7 +651,7 @@ TEST_F(KernelPilotMoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 0}));
   const int selected[] = {1};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 1.0 - 0.9}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 1.0 - kDefaultCounterAlpha}));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, ValidCoefficientsKeepCountersBounded) {
@@ -701,7 +706,7 @@ TEST_F(KernelPilotMoeExpertStateTest, DistinctKernelsCanUpdateIndependently) {
     const auto counters = Counters(state, kernel);
     ASSERT_EQ(counters.size(), 2U);
     EXPECT_DOUBLE_EQ(counters[0], 0);
-    EXPECT_NEAR(counters[1], 1.0 - std::pow(0.9, 100), 1e-14);
+    EXPECT_NEAR(counters[1], 1.0 - std::pow(kDefaultCounterAlpha, 100), 1e-14);
   }
   EXPECT_EQ(Counters(other, kernels_[0]), (InlinedVector<double>{0, 0}));
 }

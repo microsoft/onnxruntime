@@ -1708,11 +1708,11 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     int64_t max_in_flight_swaps_per_device = -1;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
     const auto alpha_value =
-        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.75");
     const auto counter_probability_weight_value = sess_options_.config_options.GetConfigOrDefault(
         kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "0");
     const auto swap_epsilon_value =
-        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0");
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0.01");
     const auto max_in_flight_swaps_per_device_value = sess_options_.config_options.GetConfigOrDefault(
         kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "4");
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
