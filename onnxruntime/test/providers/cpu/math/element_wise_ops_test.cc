@@ -4506,9 +4506,13 @@ TEST(ModOpTest, FloorMod_float_edge_cases) {
     ASSERT_TRUE(fetches[0].IsTensor());
     const float* output = fetches[0].Get<Tensor>().Data<float>();
 
+    EXPECT_EQ(output[0], 0.0f);
     EXPECT_TRUE(std::signbit(output[0]));
+    EXPECT_EQ(output[1], 0.0f);
     EXPECT_FALSE(std::signbit(output[1]));
+    EXPECT_EQ(output[2], 0.0f);
     EXPECT_FALSE(std::signbit(output[2]));
+    EXPECT_EQ(output[3], 0.0f);
     EXPECT_TRUE(std::signbit(output[3]));
     EXPECT_EQ(output[4], std::numeric_limits<float>::infinity());
     EXPECT_EQ(output[5], 3.0f);
