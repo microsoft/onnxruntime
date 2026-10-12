@@ -1,5 +1,10 @@
 # Native WebGPU shader cache identity
 
+This describes the current #33153 implementation. The proposed
+[explicit input categories](webgpu_shader_value_categories.md) refine its
+authoring contract after the correctness fixes merged in #33242; that refinement
+is not yet implemented.
+
 Native WebGPU programs use `ConfiguredProgram<Spec>`. Each generator receives one
 declared configuration and a restricted `ConfiguredShaderHelper`. The framework
 encodes the configuration and the metadata exposed by that helper before looking
