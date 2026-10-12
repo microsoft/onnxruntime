@@ -93,6 +93,10 @@ shared intermediates, broadcasted base results, prepacked-layout base weights,
 unsupported zero points or quantization layouts, and non-unit or transposed
 Gemm variants are left unchanged.
 
+Only `weight_prepacked=0` is supported. Shape inference and both kernel
+constructors reject every nonzero value, including CUDA-specific layouts,
+even for a directly authored operator or an inactive adapter.
+
 Reduced builds loading an optimized model need the new operator in their
 required-operator configuration. The transformer itself is available in
 full builds; it is not registered for minimal-build optimization replay.
@@ -106,7 +110,7 @@ Structural optimizer tests cover the supported patterns, unsafe-fusion
 guards, retained inputs, provider/dtype eligibility, and explicit opt-in.
 
 The revised combined operator remains a prototype. A native Windows Debug
-build with full CPU types and bundled Dawn/D3D12 passed all 22 provider
+build with full CPU types and bundled Dawn/D3D12 passed all 24 provider
 tests and all seven optimizer tests, without skips. This includes CPU
 inactive/active/inactive session transitions and WebGPU FP32/FP16 stable-bound
 capture/replay. The operator/schema documentation entries are generated from

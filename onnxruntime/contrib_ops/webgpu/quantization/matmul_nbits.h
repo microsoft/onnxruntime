@@ -105,6 +105,8 @@ class MatMulNBitsLora final : public MatMulNBits {
         K_{info.GetAttr<int64_t>("K")},
         N_{info.GetAttr<int64_t>("N")},
         alpha_{info.GetAttrOrDefault<float>("lora_alpha", 1.0f)} {
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("weight_prepacked", 0) == 0,
+                "MatMulNBitsLora requires weight_prepacked=0.");
     ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("lora_block_size", 32) == 32,
                 "MatMulNBitsLora supports only lora_block_size=32.");
     ORT_ENFORCE(std::isfinite(alpha_), "MatMulNBitsLora lora_alpha must be finite.");

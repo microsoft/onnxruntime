@@ -3955,7 +3955,8 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Attr("bits", "Bit-width of the base weights.", AttributeProto::INT, static_cast<int64_t>(4))
       .Attr("block_size", "Quantization block size of the base weights.", AttributeProto::INT)
       .Attr("accuracy_level", "MatMulNBits accuracy level.", AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("weight_prepacked", "MatMulNBits prepacked weight layout.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("weight_prepacked", "Only 0 is supported; CUDA-specific prepacked layouts are rejected.",
+            AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("lora_alpha", "Finite constant scalar applied to the LoRA delta.", AttributeProto::FLOAT, 1.0f)
       .Attr("lora_block_size", "Axis-0 adapter quantization group size; only 32 is supported.",
             AttributeProto::INT, static_cast<int64_t>(32))
@@ -3975,6 +3976,9 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .TypeConstraint("T3", {"tensor(uint8)", "tensor(float)", "tensor(float16)"}, "Base zero points.")
       .TypeConstraint("T4", {"tensor(int32)"}, "Base group indices.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (getAttribute(ctx, "weight_prepacked", 0) != 0) {
+          fail_shape_inference("MatMulNBitsLora requires weight_prepacked=0.");
+        }
         if (getAttribute(ctx, "lora_block_size", 32) != 32) {
           fail_shape_inference("MatMulNBitsLora supports only lora_block_size=32.");
         }

@@ -22,7 +22,8 @@ namespace {
 template <typename T>
 void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
                  bool mismatched_rank = false, bool vector = false,
-                 bool negative_weights = false, float alpha = 1.0f) {
+                 bool negative_weights = false, float alpha = 1.0f,
+                 int64_t weight_prepacked = 0) {
   constexpr int64_t K = 35;
   constexpr int64_t N = 16;
   const int64_t rows = empty ? 0 : 3;
@@ -37,6 +38,7 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
   test.AddAttribute("bits", int64_t{4});
   test.AddAttribute("block_size", int64_t{32});
   test.AddAttribute("lora_alpha", alpha);
+  test.AddAttribute("weight_prepacked", weight_prepacked);
   test.AddInput<T>("X", input_shape, std::vector<T>(count * K, T{1.0f}));
   test.AddInput<uint8_t>("B", {N, 2, 16}, std::vector<uint8_t>(N * 2 * 16, 0x99), true);
   test.AddInput<T>("scales", {N, 2}, std::vector<T>(N * 2, T{0.5f}), true);
@@ -67,7 +69,14 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
     }
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-    test.RunWithBoundCapture<T>(std::move(ep), options, TensorShape(output_shape), expected);
+    if (weight_prepacked != 0) {
+      test.Config(options)
+          .ConfigEp(std::move(ep))
+          .Config(OpTester::ExpectResult::kExpectFailure, "weight_prepacked=0")
+          .RunWithConfig();
+    } else {
+      test.RunWithBoundCapture<T>(std::move(ep), options, TensorShape(output_shape), expected);
+    }
     return;
 #else
     GTEST_SKIP() << "WebGPU execution provider is not compiled.";
@@ -76,10 +85,11 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
   const bool invalid_alpha = !std::isfinite(alpha);
-  test.Run(mismatched_rank || invalid_alpha ? OpTester::ExpectResult::kExpectFailure
-                                            : OpTester::ExpectResult::kExpectSuccess,
-           invalid_alpha ? "lora_alpha must be finite" : mismatched_rank ? "MatMulNBitsLora requires"
-                                                                         : "",
+  test.Run(mismatched_rank || invalid_alpha || weight_prepacked != 0 ? OpTester::ExpectResult::kExpectFailure
+                                                                     : OpTester::ExpectResult::kExpectSuccess,
+           weight_prepacked != 0 ? "weight_prepacked=0" : invalid_alpha ? "lora_alpha must be finite"
+                                                      : mismatched_rank ? "MatMulNBitsLora requires"
+                                                                        : "",
            {}, nullptr, &providers);
 }
 
@@ -107,6 +117,23 @@ TEST(MatMulNBitsLora, WebGpuHalfEmptyOutput) { RunLoraTest<MLFloat16>(3, true, t
 TEST(MatMulNBitsLora, WebGpuHalfVector) { RunLoraTest<MLFloat16>(3, true, false, false, true); }
 TEST(MatMulNBitsLora, WebGpuHalfNegativeQuantizedWeights) { RunLoraTest<MLFloat16>(3, true, false, false, false, true); }
 TEST(MatMulNBitsLora, WebGpuHalfScalarScale) { RunLoraTest<MLFloat16>(3, true, false, false, false, false, 0.5f); }
+
+TEST(MatMulNBitsLora, CpuRejectsPrepackedLayouts) {
+  for (int64_t layout : {-1, 1, 2}) {
+    for (int64_t rank : {0, 3}) {
+      RunLoraTest<float>(rank, false, false, false, false, false, 1.0f, layout);
+    }
+  }
+}
+
+TEST(MatMulNBitsLora, WebGpuRejectsPrepackedLayouts) {
+  for (int64_t layout : {-1, 1, 2}) {
+    for (int64_t rank : {0, 3}) {
+      RunLoraTest<float>(rank, true, false, false, false, false, 1.0f, layout);
+      RunLoraTest<MLFloat16>(rank, true, false, false, false, false, 1.0f, layout);
+    }
+  }
+}
 
 TEST(MatMulNBitsLora, ValidatesHalfShapesWithoutGpu) {
   const auto allocator = CPUAllocator::DefaultInstance();

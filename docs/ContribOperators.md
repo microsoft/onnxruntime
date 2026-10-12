@@ -4129,7 +4129,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>lora_block_size</tt> : int</dt>
 <dd>Axis-0 adapter quantization group size; only 32 is supported.</dd>
 <dt><tt>weight_prepacked</tt> : int</dt>
-<dd>MatMulNBits prepacked weight layout.</dd>
+<dd>Only 0 is supported; CUDA-specific prepacked layouts are rejected.</dd>
 </dl>
 
 #### Inputs
