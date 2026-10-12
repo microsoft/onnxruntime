@@ -62,6 +62,20 @@ struct OP_Sigmoid<half> : public CtxSigmoid {
   }
 };
 
+template <>
+struct OP_Sigmoid<BFloat16> : public CtxSigmoid {
+  __device__ __inline__ BFloat16 operator()(const BFloat16& a) const {
+    // The generic form 1 - 1 / (1 + exp(a)) rounds to bf16 after every operation: for negative inputs 1 + exp(a) is
+    // quantised to steps of 2^-7, so small sigmoid values come out in steps of 2^-8 (up to ~50% relative error,
+    // one-sided). Compute in fp32 (exp(a) / (1 + exp(a)) for a <= 0 keeps the relative precision of small results)
+    // and round once.
+    float af = static_cast<float>(a);
+    float e = _Exp(-fabsf(af));
+    float res = af > 0.0f ? 1.0f / (1.0f + e) : e / (1.0f + e);
+    return static_cast<BFloat16>(res);
+  }
+};
+
 template <typename T>
 struct OP_Softplus : public CtxSoftplus {
   __device__ __inline__ T operator()(const T& a) const {
