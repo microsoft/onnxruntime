@@ -375,6 +375,8 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   onnxruntime::IAllocatorUniquePtr<char> workspace_tmp{nullptr};
   cudaStream_t stream;
 
+  CUDA_CALL_THROW(cudaSetDevice(mAllocator->Info().device.Id()));
+
   auto profileTactics = [&](int m, int n, int k) {
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
@@ -491,6 +493,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   int const n = static_cast<int>(mDims.n);
   int const k = static_cast<int>(mDims.k);
   size_t const workspace_bytes = computeTmpSize(target, n, k);
+
+  CUDA_CALL_THROW(cudaSetDevice(mAllocator->Info().device.Id()));
 
   cudaStream_t stream;
   CUDA_CALL_THROW(cudaStreamCreate(&stream));
