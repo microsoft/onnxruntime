@@ -441,15 +441,15 @@ static constexpr int kDecodeMaxK = 3072;  // three K tiles in flight per lane pa
 
 // Tiling of the decode kernels: warps per CTA, output columns per thread and the min-blocks-per-SM hint that
 // caps registers. A CTA covers 4 * Warps * Cols columns of one expanded row. FC1 (fused SwiGLU) is ALU bound,
-// FC2 is latency bound and wants one resident wave of 2-column threads. (Measured on H200 for N=1280/K=2560
-// and N=2560/K=640 at 10 expanded rows.)
+// FC2 is latency bound (all loads of a column are issued up front, see MoeGemvFp4DecodeKernel). Measured on
+// H200 for N=1280/K=2560 and N=2560/K=640 at 10 and 20 expanded rows (one and two tokens).
 #ifndef GEMV_FC1_WARPS
 #define GEMV_FC1_WARPS 4
 #define GEMV_FC1_COLS 2
 #define GEMV_FC1_MINB 4
-#define GEMV_FC2_WARPS 2
+#define GEMV_FC2_WARPS 4
 #define GEMV_FC2_COLS 2
-#define GEMV_FC2_MINB 8
+#define GEMV_FC2_MINB 4
 #endif
 
 // Opt-out for the decode-specialised row-major NVFP4 GEMV (env ORT_FP4_GEMV_DECODE_KERNEL=0).
@@ -614,7 +614,9 @@ __device__ __forceinline__ void AccumulateWeightVectors(
   }
 }
 
-template <typename T, bool FusedSwiGlu, bool EnableBias, int Warps, int Cols, int MinBlocks>
+// Tiles = K tiles of 1024 elements per w block: 1 when k <= 1024 (every w block of the column then fits in
+// one 16-byte load per lane pair, so all loads of the column are issued before the first FMA) and 3 otherwise.
+template <typename T, bool FusedSwiGlu, bool EnableBias, int Warps, int Cols, int MinBlocks, int Tiles>
 __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
     const T* bias, T* out,
@@ -623,10 +625,12 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
     cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int num_rows) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
-  constexpr int kTilesInFlight = 3;  // K tiles whose loads are issued together
+  constexpr int kTilesInFlight = Tiles;                // K tiles whose loads are issued together
+  constexpr int kPrefetchBlocks = Tiles == 1 ? 4 : 1;  // w blocks whose loads are issued up front
   constexpr int kThreads = Warps * 32;
   constexpr unsigned kFullMask = 0xffffffffu;
-  static_assert(Cols == 1 || Cols == 2, "SwiGLU pairs are either inside a thread or across adjacent slots");
+  static_assert(Cols == 1 || Cols == 2 || !FusedSwiGlu, "SwiGLU pairs are either inside a thread or across adjacent slots");
+  static_assert(Tiles == 1 || Tiles == 3, "tile count");
 
   const int row = static_cast<int>(blockIdx.x);
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
@@ -656,22 +660,30 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   const uint8_t* scale_row = block_scales + static_cast<int64_t>(expert) * scale_expert_stride +
                              static_cast<int64_t>(first_column) * groups + j * 2;
 
-  uint4 packed[kTilesInFlight][Cols];
-  uint32_t scale_codes[kTilesInFlight][Cols];
-  const auto load_block = [&](int w) {
+  uint4 packed[kPrefetchBlocks][kTilesInFlight][Cols];
+  uint32_t scale_codes[kPrefetchBlocks][kTilesInFlight][Cols];
+  const auto load_block = [&](int w, uint4 (&dst_packed)[kTilesInFlight][Cols],
+                              uint32_t (&dst_codes)[kTilesInFlight][Cols]) {
 #pragma unroll
     for (int u = 0; u < kTilesInFlight; ++u) {
       // Lane pairs past the end of K load nothing and contribute exact zeros.
       const bool valid = u * 64 + w * 16 + j * 2 < groups;
 #pragma unroll
       for (int c = 0; c < Cols; ++c) {
-        packed[u][c] = valid ? LoadWeightStreaming(weight_row + static_cast<int64_t>(c) * (k / 2) + w * 128 + u * 512)
-                             : make_uint4(0, 0, 0, 0);
-        scale_codes[u][c] = valid ? *reinterpret_cast<const uint16_t*>(scale_row + c * groups + w * 16 + u * 64) : 0u;
+        dst_packed[u][c] = valid ? LoadWeightStreaming(weight_row + static_cast<int64_t>(c) * (k / 2) + w * 128 + u * 512)
+                                 : make_uint4(0, 0, 0, 0);
+        dst_codes[u][c] = valid ? *reinterpret_cast<const uint16_t*>(scale_row + c * groups + w * 16 + u * 64) : 0u;
       }
     }
   };
-  load_block(0);
+  if constexpr (Tiles == 1) {
+#pragma unroll
+    for (int w = 0; w < 4; ++w) {
+      load_block(w, packed[w], scale_codes[w]);
+    }
+  } else {
+    load_block(0, packed[0], scale_codes[0]);
+  }
 
   // Stage the activation row as FP32, one padded 32-element unit per lane pair.
   extern __shared__ __align__(16) float act_smem[];
@@ -700,12 +712,10 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   for (int c = 0; c < Cols; ++c) {
     total[c] = 0.0f;
   }
-#pragma unroll 1
-  for (int w = 0; w < w_blocks; ++w) {
+  const auto accumulate_block = [&](const uint4 (&block_packed)[kTilesInFlight][Cols],
+                                    const uint32_t (&block_codes)[kTilesInFlight][Cols], int w) {
     float chain_a[Cols];
     float chain_b[Cols];
-    uint4 current_packed[kTilesInFlight][Cols];
-    uint32_t current_codes[kTilesInFlight][Cols];
 #pragma unroll
     for (int c = 0; c < Cols; ++c) {
       chain_a[c] = 0.0f;
@@ -713,22 +723,11 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
     }
 #pragma unroll
     for (int u = 0; u < kTilesInFlight; ++u) {
-#pragma unroll
-      for (int c = 0; c < Cols; ++c) {
-        current_packed[u][c] = packed[u][c];
-        current_codes[u][c] = scale_codes[u][c];
-      }
-    }
-    if (w + 1 < w_blocks) {
-      load_block(w + 1);
-    }
-#pragma unroll
-    for (int u = 0; u < kTilesInFlight; ++u) {
       // Warp-uniform: lane j == 0 has the smallest group of the warp.
       if (u * 64 + w * 16 < groups) {
         const int group = min(u * 64 + w * 16 + j * 2, groups - 2);
         const float* unit_act = act_smem + (group / 2) * kDecodeActUnitStride;
-        AccumulateWeightVectors<T, Cols>(current_packed[u], current_codes[u], global_scale, fast_scales, unit_act,
+        AccumulateWeightVectors<T, Cols>(block_packed[u], block_codes[u], global_scale, fast_scales, unit_act,
                                          chain_a, chain_b);
       }
     }
@@ -739,6 +738,32 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
       partial += __shfl_xor_sync(kFullMask, partial, 2);
       partial += __shfl_xor_sync(kFullMask, partial, 4);
       total[c] += partial;
+    }
+  };
+  if constexpr (Tiles == 1) {
+#pragma unroll
+    for (int w = 0; w < 4; ++w) {
+      if (w < w_blocks) {
+        accumulate_block(packed[w], scale_codes[w], w);
+      }
+    }
+  } else {
+#pragma unroll 1
+    for (int w = 0; w < w_blocks; ++w) {
+      uint4 current_packed[kTilesInFlight][Cols];
+      uint32_t current_codes[kTilesInFlight][Cols];
+#pragma unroll
+      for (int u = 0; u < kTilesInFlight; ++u) {
+#pragma unroll
+        for (int c = 0; c < Cols; ++c) {
+          current_packed[u][c] = packed[0][u][c];
+          current_codes[u][c] = scale_codes[0][u][c];
+        }
+      }
+      if (w + 1 < w_blocks) {
+        load_block(w + 1, packed[0], scale_codes[0]);
+      }
+      accumulate_block(current_packed, current_codes, w);
     }
   }
 
@@ -802,31 +827,39 @@ void LaunchMoeGemvFp4RawNPacked(
       reinterpret_cast<uintptr_t>(act) % 16 == 0) {
     const size_t decode_smem = static_cast<size_t>(k / 32) * kDecodeActUnitStride * sizeof(float);
     // Columns per CTA = 4 slots x Cols x Warps.
-    const auto launch_decode = [&](auto warps_tag, auto cols_tag, auto min_blocks_tag, auto bias_tag) {
+    const auto launch_decode = [&](auto warps_tag, auto cols_tag, auto min_blocks_tag, auto bias_tag, auto tiles_tag) {
+      constexpr int kTiles = decltype(tiles_tag)::value;
       constexpr int kWarps = decltype(warps_tag)::value;
       constexpr int kCols = decltype(cols_tag)::value;
       constexpr int kMinBlocks = decltype(min_blocks_tag)::value;
       constexpr bool kEnableBias = decltype(bias_tag)::value;
       constexpr int kBlockCols = 4 * kWarps * kCols;
       const dim3 decode_grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / kBlockCols));
-      MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kWarps, kCols, kMinBlocks>
+      MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kWarps, kCols, kMinBlocks, kTiles>
           <<<decode_grid, kWarps * 32, decode_smem, stream>>>(
               act, weight, block_scales, global_scales, bias, out,
               expert_first_token_offset, permuted_row_to_expert, num_experts,
               weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
               permuted_row_to_source_row, static_cast<int>(num_rows));
     };
+    const auto launch_with_tiles = [&](auto warps_tag, auto cols_tag, auto min_blocks_tag, auto bias_tag) {
+      if (k <= 1024) {
+        launch_decode(warps_tag, cols_tag, min_blocks_tag, bias_tag, std::integral_constant<int, 1>{});
+      } else {
+        launch_decode(warps_tag, cols_tag, min_blocks_tag, bias_tag, std::integral_constant<int, 3>{});
+      }
+    };
     const auto dispatch = [&](auto bias_tag) {
       if constexpr (FusedSwiGlu) {
         if (n % (4 * GEMV_FC1_WARPS * GEMV_FC1_COLS) == 0) {
-          launch_decode(std::integral_constant<int, GEMV_FC1_WARPS>{}, std::integral_constant<int, GEMV_FC1_COLS>{},
-                        std::integral_constant<int, GEMV_FC1_MINB>{}, bias_tag);
+          launch_with_tiles(std::integral_constant<int, GEMV_FC1_WARPS>{}, std::integral_constant<int, GEMV_FC1_COLS>{},
+                            std::integral_constant<int, GEMV_FC1_MINB>{}, bias_tag);
           return true;
         }
       } else {
         if (n % (4 * GEMV_FC2_WARPS * GEMV_FC2_COLS) == 0) {
-          launch_decode(std::integral_constant<int, GEMV_FC2_WARPS>{}, std::integral_constant<int, GEMV_FC2_COLS>{},
-                        std::integral_constant<int, GEMV_FC2_MINB>{}, bias_tag);
+          launch_with_tiles(std::integral_constant<int, GEMV_FC2_WARPS>{}, std::integral_constant<int, GEMV_FC2_COLS>{},
+                            std::integral_constant<int, GEMV_FC2_MINB>{}, bias_tag);
           return true;
         }
       }
