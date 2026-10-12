@@ -6,7 +6,7 @@
 #include <gsl/span>
 
 #include "../plugin_ep_utils.h"
-#include "onnxruntime_experimental_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 
 class ExampleEpFactory;
 
@@ -64,13 +64,15 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool enable_ep_context = false;
     bool embed_ep_context_in_model = false;
     bool enable_weightless_ep_context_nodes = false;
+    bool advertise_ep_context_data_support = true;
     bool use_default_cpu_allocator = false;
+    bool test_read_ep_context_during_compile = false;
     std::string ep_context_output_model_path;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 
   ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
-            Ort::Experimental::EpContextConfig ep_context_config);
+            Ort::EpContextConfig ep_context_config);
 
   ~ExampleEp() = default;
 
@@ -86,6 +88,8 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL GetWeightlessSupportImpl(const OrtEp* this_ptr,
                                                           OrtWeightlessSupport* support) noexcept;
+  static OrtStatus* ORT_API_CALL GetEpContextDataCallbackSupportImpl(const OrtEp* this_ptr,
+                                                                     uint32_t* supported_flags) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(_In_ OrtEp* this_ptr,
                                                      _In_ const OrtMemoryInfo* memory_info,
@@ -130,7 +134,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
-  Ort::Experimental::EpContextConfig ep_context_config_;
+  Ort::EpContextConfig ep_context_config_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> mul_kernels_;
   std::unordered_map<std::string, std::unique_ptr<EpContextKernel>> ep_context_kernels_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;

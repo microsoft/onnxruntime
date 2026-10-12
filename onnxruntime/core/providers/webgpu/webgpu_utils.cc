@@ -3,7 +3,10 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #include <sstream>
+#include <string_view>
+
 #include "core/providers/webgpu/shader_variable.h"
+#include "core/providers/webgpu/vendor/intel/math/split_k_config.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -25,55 +28,32 @@ TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components
   return TensorShape(shape_vector);
 }
 
-SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
-  if (adapter_info.vendor == std::string_view{"intel"}) {
-    // Disable Split-K on old Intel GPUs.
-    if (adapter_info.architecture == std::string_view{"gen-7"} ||
-        adapter_info.architecture == std::string_view{"gen-8"} ||
-        adapter_info.architecture == std::string_view{"gen-9"} ||
-        adapter_info.architecture == std::string_view{"gen-11"}) {
-      enable_split_k_ = false;
-    } else if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
-               adapter_info.architecture == std::string_view{"xe-2hpg"} ||
-               adapter_info.architecture == std::string_view{"gen-12hp"}) {
-      // Below thresholds are only verified on Intel discrete GPUs and Lunar Lake iGPUs.
-      enable_split_k_ = true;
-
-      max_batch_size_ = 8;
-      split_dim_inner_ = 256;
-      min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
-
-      configs_per_dim_inner_range_.emplace_back(768, 52.0);
-      configs_per_dim_inner_range_.emplace_back(2304, 35.0);
-      configs_per_dim_inner_range_.emplace_back(3072, 21.5);
-      configs_per_dim_inner_range_.emplace_back(4096, 16.0);
-    } else if (adapter_info.architecture == std::string_view{"xe-3lpg"}) {
-      // Below thresholds are only verified on Intel Panther Lake iGPUs (12Xe).
-      enable_split_k_ = true;
-
-      max_batch_size_ = 8;
-      split_dim_inner_ = 256;
-      min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
-
-      configs_per_dim_inner_range_.emplace_back(768, 40.0);
-      configs_per_dim_inner_range_.emplace_back(1792, 22.0);
-      configs_per_dim_inner_range_.emplace_back(3072, 18.0);
-      configs_per_dim_inner_range_.emplace_back(4096, 10.0);
-    } else {
-      // Below are the default thresholds on newer Intel GPUs. These values are chosen on
-      // Intel "gen-12lp" GPU with 32EUs.
-      enable_split_k_ = true;
-
-      max_batch_size_ = 8;
-      split_dim_inner_ = 256;
-      min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
-
-      configs_per_dim_inner_range_.emplace_back(768, 20.0);
-      configs_per_dim_inner_range_.emplace_back(1792, 13.0);
-      configs_per_dim_inner_range_.emplace_back(3072, 8.0);
-      configs_per_dim_inner_range_.emplace_back(4096, 6.0);
-    }
+SplitKConfig::SplitKConfig(
+    uint32_t max_batch_size,
+    uint32_t split_dim_inner,
+    uint32_t min_dim_inner_with_split_k,
+    std::initializer_list<std::pair<uint32_t, double>> configs_per_dim_inner_range)
+    : enable_split_k_{true},
+      split_dim_inner_{split_dim_inner},
+      min_dim_inner_with_split_k_{min_dim_inner_with_split_k},
+      max_batch_size_{max_batch_size} {
+  configs_per_dim_inner_range_.reserve(configs_per_dim_inner_range.size());
+  for (const auto& [max_dim_inner, rate] : configs_per_dim_inner_range) {
+    configs_per_dim_inner_range_.emplace_back(max_dim_inner, rate);
   }
+}
+
+SplitKConfig CreateSplitKConfig(const wgpu::AdapterInfo& adapter_info) {
+  return CreateSplitKConfig(
+      std::string_view{adapter_info.vendor},
+      std::string_view{adapter_info.architecture});
+}
+
+SplitKConfig CreateSplitKConfig(std::string_view vendor, std::string_view architecture) {
+  if (vendor == "intel") {
+    return intel::CreateSplitKConfig(architecture);
+  }
+  return {};
 }
 
 SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, double rate)
@@ -88,9 +68,9 @@ bool SplitKConfig::UseSplitK(
     bool is_vec4,
     ActivationKind activation_kind,
     uint64_t batch_size,
-    uint32_t dim_a_outer,
-    uint32_t dim_b_outer,
-    uint32_t dim_inner,
+    uint64_t dim_a_outer,
+    uint64_t dim_b_outer,
+    uint64_t dim_inner,
     bool is_channels_last) const {
   if (!enable_split_k_) {
     return false;

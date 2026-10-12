@@ -47,12 +47,21 @@ Status ModOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                    bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
   NodeAttrHelper node_helper(node_unit);
-  int64_t fmod = node_helper.Get("fmod", static_cast<int64_t>(0));  // 0=integer mod. 1=float mod.
+  int64_t fmod = node_helper.Get("fmod", static_cast<int64_t>(0));
   if (1 == fmod) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Mod Op only support fmod == 0 for now.");
   }
 
   const auto& inputs = node_unit.Inputs();
+  int32_t input_type = 0;
+  ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(inputs[0].node_arg, input_type));
+  // a - b * floor(a / b) does not preserve the ONNX floating-point edge-case semantics.
+  ORT_RETURN_IF(input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+                    input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+                    input_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
+                    input_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+                "QNN EP does not support floating-point Mod with fmod == 0.");
+
   const auto input_count = GetInputCountQnnRequired(node_unit);
   for (size_t input_i = 0; input_i < input_count; ++input_i) {
     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_i], logger, input_names));

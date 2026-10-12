@@ -8,6 +8,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "lib/Telemetry/pch.h"
+#include "core/platform/telemetry_strings.h"
 
 WinMLTelemetryHelper::WinMLTelemetryHelper() : provider_(winml_trace_logging_provider) {
 }
@@ -18,6 +19,7 @@ WinMLTelemetryHelper::~WinMLTelemetryHelper() {
 void WinMLTelemetryHelper::LogApiUsage(const char* name) {
   if (!telemetry_enabled_)
     return;
+  onnxruntime::telemetry_detail::TelemetryStrings strings;
   WinMLTraceLoggingWrite(
     provider_,
     "ApiUsage",
@@ -26,14 +28,14 @@ void WinMLTelemetryHelper::LogApiUsage(const char* name) {
     //Telemetry info
     TraceLoggingUInt8(WINML_TLM_EXPERIMENTAL_API_VERSION, "experimentalSchemaVersion"),
     // named dimension override info
-    TraceLoggingString(name, "name"),
+    TraceLoggingString(strings.Utf8(name), "name"),
     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
   );
 }
 
 void WinMLTelemetryHelper::LogWinMLShutDown() {
-  std::string message = BINARY_NAME;
-  message += " is unloaded";
+  std::string message = onnxruntime::telemetry_detail::BoundedTelemetryString(BINARY_NAME);
+  onnxruntime::telemetry_detail::AppendTelemetryString(message, " is unloaded");
   WinMLTraceLoggingWrite(
     provider_,
     "WinMLShutDown",
@@ -54,6 +56,7 @@ void WinMLTelemetryHelper::LogWinMLSuspended() {
 void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line) {
   if (!telemetry_enabled_)
     return;
+  onnxruntime::telemetry_detail::TelemetryStrings strings;
 
   WinMLTraceLoggingWrite(
     provider_,
@@ -64,16 +67,18 @@ void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file
     TraceLoggingUInt8(WINML_TLM_RUNTIME_ERROR_VERSION, "schemaVersion"),
     // Error Info
     TraceLoggingHResult(hr, "hResult"),
-    TraceLoggingString(message, "errormessage"),
-    TraceLoggingString(file, "file"),
-    TraceLoggingString(function, "function"),
+    TraceLoggingString(strings.Utf8(message), "errormessage"),
+    TraceLoggingString(strings.Utf8(file), "file"),
+    TraceLoggingString(strings.Utf8(function), "function"),
     TraceLoggingInt32(line, "line"),
     TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
   );
 }
 
-void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, std::string message, PCSTR file, PCSTR function, int line) {
+void WinMLTelemetryHelper::LogRuntimeError(
+  HRESULT hr, const std::string& message, PCSTR file, PCSTR function, int line
+) {
   LogRuntimeError(hr, message.c_str(), file, function, line);
 }
 
@@ -85,6 +90,7 @@ bool WinMLTelemetryHelper::IsMeasureSampled() {
 void WinMLTelemetryHelper::LogRegisterOperatorKernel(const char* name, const char* domain, int execution_type) {
   if (!telemetry_enabled_)
     return;
+  onnxruntime::telemetry_detail::TelemetryStrings strings;
 
   WinMLTraceLoggingWrite(
     provider_,
@@ -94,8 +100,8 @@ void WinMLTelemetryHelper::LogRegisterOperatorKernel(const char* name, const cha
     // Telemetry info
     TraceLoggingUInt8(WINML_TLM_RUNTIME_ERROR_VERSION, "schemaVersion"),
     //op kernel info
-    TraceLoggingString(name, "name"),
-    TraceLoggingString(domain, "domain"),
+    TraceLoggingString(strings.Utf8(name), "name"),
+    TraceLoggingString(strings.Utf8(domain), "domain"),
     TraceLoggingInt32(execution_type, "executionType"),
     TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
@@ -112,6 +118,7 @@ void WinMLTelemetryHelper::RegisterOperatorSetSchema(
 ) {
   if (!telemetry_enabled_)
     return;
+  onnxruntime::telemetry_detail::TelemetryStrings strings;
 
   WinMLTraceLoggingWrite(
     provider_,
@@ -121,7 +128,7 @@ void WinMLTelemetryHelper::RegisterOperatorSetSchema(
     // Telemetry info
     TraceLoggingUInt8(WINML_TLM_RUNTIME_ERROR_VERSION, "schemaVersion"),
     //op kernel info
-    TraceLoggingString(name, "name"),
+    TraceLoggingString(strings.Utf8(name), "name"),
     TraceLoggingInt32(input_count, "inputCount"),  //stats
     TraceLoggingInt32(output_count, "outputCount"),
     TraceLoggingInt32(type_constraint_count, "typeConstraintCount"),
@@ -168,6 +175,7 @@ void WinMLTelemetryHelper::SetIntraOpThreadSpinning(bool allow_spinning) {
 void WinMLTelemetryHelper::SetNamedDimensionOverride(winrt::hstring name, uint32_t value) {
   if (!telemetry_enabled_)
     return;
+  onnxruntime::telemetry_detail::TelemetryStrings strings;
   WinMLTraceLoggingWrite(
     provider_,
     "SetNamedDimensionOverride",
@@ -176,7 +184,7 @@ void WinMLTelemetryHelper::SetNamedDimensionOverride(winrt::hstring name, uint32
     //Telemetry info
     TraceLoggingUInt8(WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION, "schemaVersion"),
     // named dimension override info
-    TraceLoggingWideString(name.c_str(), "dimensionName"),
+    TraceLoggingWideString(strings.Wide(std::wstring_view(name.c_str(), name.size())), "dimensionName"),
     TraceLoggingInt32(value, "overrideValue"),
     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
   );

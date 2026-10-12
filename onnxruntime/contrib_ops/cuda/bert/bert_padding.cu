@@ -29,6 +29,60 @@ namespace cuda {
 
 constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
 
+__global__ void validateTokenOffset(
+    const int* token_offset,
+    int token_offset_count,
+    int* validation_flag) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < token_offset_count;
+       i = AdvancePaddingTokenOffsetValidationIndex(i, gridDim.x, blockDim.x)) {
+    const int offset = token_offset[i];
+    if (offset < 0 || offset >= token_offset_count) {
+      atomicExch(validation_flag, 1);
+      return;
+    }
+  }
+}
+
+Status ValidateTokenOffset(
+    const int* token_offset,
+    int token_offset_count,
+    int* validation_flag,
+    cudaStream_t stream) {
+  if (token_offset_count == 0) {
+    return Status::OK();
+  }
+
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+  if (capture_status != cudaStreamCaptureStatusNone) {
+    // Host readback is not capture-safe. The captured restore kernels enforce the same bounds.
+    return Status::OK();
+  }
+
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(validation_flag, 0, sizeof(int), stream));
+  constexpr int threads_per_block = 256;
+  const int required_blocks =
+      static_cast<int>((static_cast<int64_t>(token_offset_count) + threads_per_block - 1) /
+                       threads_per_block);
+  const int blocks = required_blocks < 1024 ? required_blocks : 1024;
+  validateTokenOffset<<<blocks, threads_per_block, 0, stream>>>(
+      token_offset, token_offset_count, validation_flag);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  int host_validation_flag = 0;
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&host_validation_flag, validation_flag, sizeof(int),
+                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  if (host_validation_flag != 0) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "token_offset values must be in [0, batch_size * sequence_length).");
+  }
+
+  return Status::OK();
+}
+
 // -----------------------------------
 // Get indices of non-padding tokens and padding tokens. Here we assume that padding is on the right side of sequence.
 // sequence_token_count is number of non-padding tokens per sequence, and it has shape [batch_size].
@@ -178,6 +232,10 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
   const int tid = threadIdx.x;
   const int token_index = blockIdx.x;
   const int target_seq_id = token_offset[token_index];
+  if (target_seq_id < 0 || target_seq_id >= gridDim.x) {
+    return;
+  }
+
   const int source_seq_id = token_index;
   constexpr T padding_zero = 0;
 
@@ -199,6 +257,10 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
   const int tid = threadIdx.x;
   const int token_index = blockIdx.x;
   const int target_seq_id = token_offset[token_index];
+  if (target_seq_id < 0 || target_seq_id >= gridDim.x) {
+    return;
+  }
+
   const int source_seq_id = token_index;
   int4 padding_zero{0, 0, 0, 0};
 

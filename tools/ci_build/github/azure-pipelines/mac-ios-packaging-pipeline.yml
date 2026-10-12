@@ -61,7 +61,7 @@ extends:
       os: macOS
     sdl:
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
+        name: onnxruntime-Win-CPU-2022
         os: windows
     stages:
 

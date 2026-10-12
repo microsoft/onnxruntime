@@ -28,6 +28,8 @@ static bool GetScalarInt64Initializer(const Graph& graph, const NodeArg& node_ar
   const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node_arg.Name());
   if (!tensor_proto || tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto::INT64) return false;
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type and need not agree with the dims on the initializer.
+  if (init_const.size() < 1) return false;
   value = *(init_const.data<int64_t>());
   rank = tensor_proto->dims_size();
   return true;

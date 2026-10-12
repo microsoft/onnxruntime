@@ -3,6 +3,7 @@
 
 #include <limits>
 
+#include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
@@ -41,6 +42,40 @@ TEST(OneHotOpTest, DefaultAxis_float_float_float /*indices, output, depth*/) {
                          0., 0., 0., 0., 0., 0., 1., 0., 0., 0.});
   // TRT EP segmentation fault in A100
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
+TEST(OneHotOpTest, FractionalFloatIndicesAreCastToInt64) {
+  for (int opset : {9, 11}) {
+    OpTester test("OneHot", opset);
+    test.AddInput<float>("indices", {6}, {0.9f, 1.8f, -1.2f, -4.3f, -5.3f, 2.0f});
+    test.AddInput<float>("depth", {}, {4.0f});
+    test.AddInput<float>("values", {2}, {2.0f, 3.0f});
+    test.AddOutput<float>("output", {6, 4},
+                          {3.0f, 2.0f, 2.0f, 2.0f,
+                           2.0f, 3.0f, 2.0f, 2.0f,
+                           2.0f, 2.0f, 2.0f, 3.0f,
+                           3.0f, 2.0f, 2.0f, 2.0f,
+                           2.0f, 2.0f, 2.0f, 2.0f,
+                           2.0f, 2.0f, 3.0f, 2.0f});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(OneHotOpTest, NonFiniteAndUnrepresentableFloatIndicesAreOutOfRange) {
+  OpTester test("OneHot", 11);
+  test.AddInput<float>("indices", {4},
+                       {std::numeric_limits<float>::infinity(),
+                        -std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::max()});
+  test.AddInput<float>("depth", {}, {4.0f});
+  test.AddInput<float>("values", {2}, {2.0f, 3.0f});
+  test.AddOutput<float>("output", {4, 4},
+                        {2.0f, 2.0f, 2.0f, 2.0f,
+                         2.0f, 2.0f, 2.0f, 2.0f,
+                         2.0f, 2.0f, 2.0f, 2.0f,
+                         2.0f, 2.0f, 2.0f, 2.0f});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(OneHotOpTest, DefaultAxis_int64_int32_float /*indices, output, depth*/) {
