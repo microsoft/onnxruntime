@@ -1978,6 +1978,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:
+                log.info("Testing CUDA kernel execution")
+                run_subprocess([sys.executable, "onnxruntime_test_python_cuda_kernel.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing running inference concurrently")
