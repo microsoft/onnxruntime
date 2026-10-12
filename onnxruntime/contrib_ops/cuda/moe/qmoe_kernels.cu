@@ -395,8 +395,11 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
                            int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
                            int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
                            int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
-  if (num_rows < 1 || num_rows > kFusedRouteMaxRows || num_experts != kFusedRouteExperts || k < 1 ||
-      k > kFusedRouteMaxK || reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+  // k is limited to the values the single-CTA radix-rank map builder supports (1, 2, 4, 6, 8, 10): the fused path then
+  // replaces exactly the launches it is bit-identical to; other k keep the generic route.
+  const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8 || k == 10;
+  if (num_rows < 1 || num_rows > kFusedRouteMaxRows || num_experts != kFusedRouteExperts || !supported_k ||
+      reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
     return false;
   }
   cudaLaunchConfig_t config{};
