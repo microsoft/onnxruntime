@@ -9,6 +9,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -227,7 +228,7 @@ void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool tra
 }
 
 template <typename T>
-static void RunTransposeAWithRightVector(const char* op_name) {
+static void RunTransposeAWithRightVector(const char* op_name, bool use_cuda = false) {
   for (bool batched : {false, true}) {
     const std::vector<int64_t> a_dims = batched ? std::vector<int64_t>{2, 2, 3}
                                                 : std::vector<int64_t>{2, 3};
@@ -243,7 +244,7 @@ static void RunTransposeAWithRightVector(const char* op_name) {
           SCOPED_TRACE("batched=" + std::to_string(batched) + " trans_b=" + std::to_string(trans_b) +
                        " constant_b=" + std::to_string(constant_b) + " alpha=" + std::to_string(alpha));
           OpTester test(op_name, 1, onnxruntime::kMSDomain);
-          test.ConfigEp(DefaultCpuExecutionProvider());
+          test.ConfigEp(use_cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider());
           test.AddAttribute("transA", int64_t{1});
           test.AddAttribute("transB", int64_t{trans_b});
           test.AddAttribute("alpha", alpha);
@@ -254,7 +255,13 @@ static void RunTransposeAWithRightVector(const char* op_name) {
             value *= static_cast<T>(alpha);
           }
           test.AddOutput<T>("Y", output_dims, scaled_expected);
-          test.Run();
+          if (use_cuda) {
+            SessionOptions options;
+            ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+            test.Run(options);
+          } else {
+            test.Run();
+          }
         }
       }
     }
@@ -271,6 +278,28 @@ TEST(FusedMatMulOpTest, DoubleTransposeAWithRightVector) {
 
 TEST(FusedMatMulOpTest, LegacyTransposeAWithRightVector) {
   RunTransposeAWithRightVector<float>("TransposeMatMul");
+}
+
+TEST(FusedMatMulOpTest, FloatTransposeAWithRightVectorCuda) {
+#if defined(USE_CUDA)
+  if (!HasCudaEnvironment(200)) {
+    GTEST_SKIP() << "CUDA device is unavailable";
+  }
+  RunTransposeAWithRightVector<float>("FusedMatMul", true);
+#else
+  GTEST_SKIP() << "CUDA is not enabled in this build";
+#endif
+}
+
+TEST(FusedMatMulOpTest, DoubleTransposeAWithRightVectorCuda) {
+#if defined(USE_CUDA)
+  if (!HasCudaEnvironment(200)) {
+    GTEST_SKIP() << "CUDA device is unavailable";
+  }
+  RunTransposeAWithRightVector<double>("FusedMatMul", true);
+#else
+  GTEST_SKIP() << "CUDA is not enabled in this build";
+#endif
 }
 
 TEST(FusedMatMulOpTest, TransposeARightVectorHelperOffsets) {
