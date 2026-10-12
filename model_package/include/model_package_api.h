@@ -57,7 +57,7 @@ typedef struct ModelPackageStatus ModelPackageStatus;
 /// values will not be renumbered.
 typedef enum ModelPackageErrorCode {
   MODEL_PACKAGE_OK = 0,
-  MODEL_PACKAGE_ERR_IO = 1,                   ///< Filesystem read/write/sync failure.
+  MODEL_PACKAGE_ERR_IO = 1,                   ///< Filesystem or path-conversion failure.
   MODEL_PACKAGE_ERR_SCHEMA = 2,               ///< JSON value has wrong shape or wrong type.
   MODEL_PACKAGE_ERR_VERSION = 3,              ///< Unsupported schema_version.
   MODEL_PACKAGE_ERR_PATH_CONFINEMENT = 4,     ///< Path resolution escaped the allowed base.

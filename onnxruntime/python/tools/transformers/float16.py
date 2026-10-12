@@ -378,6 +378,14 @@ def convert_float_to_float16(
                             if (n.op_type in ["RandomNormal", "RandomUniform", "SequenceEmpty"]) and not has_dtype:
                                 n.attribute.extend([helper.make_attribute("dtype", TensorProto.FLOAT16)])
 
+                        if (
+                            n.domain in ("", "ai.onnx")
+                            and n.op_type == "ConstantOfShape"
+                            and not any(attr.name == "value" for attr in n.attribute)
+                        ):
+                            value = helper.make_tensor("value", TensorProto.FLOAT16, [1], [0])
+                            n.attribute.extend([helper.make_attribute("value", value)])
+
                         # For Resize/GroupNorm, attribute data type cannot be changed
                         if n.op_type not in always_float_inputs or n.op_type in force_fp16_inputs_dict:
                             for attr in n.attribute:

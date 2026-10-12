@@ -52,6 +52,39 @@ struct PrefillWorkspace {
 };
 
 template <typename ElementType>
+void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
+                          const ElementType* activations, const uint8_t* weights,
+                          const void* scales, const int64_t* offsets, ElementType* output,
+                          int64_t num_rows, int num_columns, int reduction_size, int weight_bits) {
+  if (weight_bits == 2) {
+    Int2GroupedGemmParamsT<ElementType> gemm;
+    gemm.activations = activations;
+    gemm.packed_weights = weights;
+    gemm.block_scales = static_cast<const ElementType*>(scales);
+    gemm.expert_row_ends = offsets + 1;
+    gemm.output = output;
+    gemm.num_rows = num_rows;
+    gemm.num_columns = num_columns;
+    gemm.reduction_size = reduction_size;
+    gemm.block_size = params.block_size;
+    gemm.num_experts = params.num_experts;
+    gemm.sm = params.sm;
+    gemm.multiprocessor_count = params.multiprocessor_count;
+    gemm.stream = params.stream;
+    RunInt2GroupedGemm(gemm);
+    return;
+  }
+  ORT_ENFORCE(weight_bits == 4, "Packed INT prefill requires INT2 or INT4 weights");
+  GroupedGemmInput<ElementType, cutlass::uint4b_t, ElementType, ElementType> gemm{
+      activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights), static_cast<const ElementType*>(scales), nullptr, nullptr, output, nullptr, nullptr, ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
+  gemm.gemm_config = cutlass_extensions::CutlassGemmConfig(
+      cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
+      cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
+  MoeGemmRunner<ElementType, cutlass::uint4b_t, ElementType> runner(params.sm, params.multiprocessor_count);
+  runner.moeGemm(gemm, {});
+}
+
+template <typename ElementType>
 void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) {
   const PrefillWorkspace layout(params);
   auto* storage = static_cast<char*>(workspace);
@@ -75,20 +108,9 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
       params.num_rows, params.hidden_size,
       params.top_k, params.num_experts, quant_params, false, offsets, nullptr, nullptr, nullptr, params.stream);
 
-  Int2GroupedGemmParamsT<ElementType> fc1;
-  fc1.activations = expanded_input;
-  fc1.packed_weights = params.fc1_weights;
-  fc1.block_scales = static_cast<const ElementType*>(params.fc1_scales);
-  fc1.expert_row_ends = offsets + 1;
-  fc1.output = fc1_output;
-  fc1.num_rows = expanded;
-  fc1.num_columns = params.inter_size * 2;
-  fc1.reduction_size = params.hidden_size;
-  fc1.num_experts = params.num_experts;
-  fc1.sm = params.sm;
-  fc1.multiprocessor_count = params.multiprocessor_count;
-  fc1.stream = params.stream;
-  RunInt2GroupedGemm(fc1);
+  RunPackedGroupedGemm(params, expanded_input, params.fc1_weights, params.fc1_scales,
+                       offsets, fc1_output, expanded, params.inter_size * 2,
+                       params.hidden_size, params.fc1_weight_bits);
 
   ActivationParams activation(ActivationType::Swiglu);
   activation.alpha = params.alpha;
@@ -100,13 +122,9 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
       params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
       quant_params, false, nullptr, params.stream, activation);
 
-  GroupedGemmInput<ElementType, cutlass::uint4b_t, ElementType, ElementType> fc2{
-      activated_output, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(params.fc2_weights), static_cast<const ElementType*>(params.fc2_scales), nullptr, nullptr, fc2_output, nullptr, nullptr, ActivationType::Identity, expanded, params.hidden_size, params.inter_size, params.num_experts, 64, true, false, params.stream, {}, {}};
-  fc2.gemm_config = cutlass_extensions::CutlassGemmConfig(
-      cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
-      cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
-  MoeGemmRunner<ElementType, cutlass::uint4b_t, ElementType> fc2_runner(params.sm, params.multiprocessor_count);
-  fc2_runner.moeGemm(fc2, {});
+  RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales,
+                       offsets, fc2_output, expanded, params.hidden_size,
+                       params.inter_size, params.fc2_weight_bits);
   finalizeMoeRoutingKernelLauncher<ElementType, ElementType, ElementType>(
       fc2_output, static_cast<ElementType*>(params.output), static_cast<const ElementType*>(params.fc2_bias),
       params.routing_weights, params.unpermuted_to_permuted,

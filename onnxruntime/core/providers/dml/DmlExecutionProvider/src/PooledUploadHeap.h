@@ -9,6 +9,14 @@ namespace Dml
 {
     class ExecutionContext;
 
+    namespace detail
+    {
+        constexpr size_t c_maxUploadHeapChunkSize = 0xFFFF0000;
+
+        void ValidateUploadHeapAllocationSize(size_t sizeInBytes);
+        std::optional<size_t> TryConvertToUploadSize(uint64_t sizeInBytes) noexcept;
+    }
+
     // Implements a non-blocking, ring-buffer style upload heap for copying CPU data to GPU resources.
     class PooledUploadHeap
     {
@@ -32,7 +40,6 @@ namespace Dml
     private:
         static constexpr size_t c_minChunkSize = 1024 * 1024; // 1MB
         static constexpr size_t c_allocationAlignment = 512; // In bytes; as per D3D12 requirement for buffers
-        static constexpr size_t c_maxChunkSize = 0xFFFF0000; // ~4 GiB limitation for DX12 CPU-visible resource
 
         // A suballoction from a chunk
         struct Allocation

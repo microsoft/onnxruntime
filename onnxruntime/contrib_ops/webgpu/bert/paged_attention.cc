@@ -69,20 +69,23 @@ Status ScatterKVToPagedCacheProgram::GenerateShaderCode(ShaderHelper& sh) const 
 // (validated at Compute time), these are actually the same GPU buffers as the
 // cache inputs. Writes only touch the slots computed from block_table, so
 // other entries in the cache remain intact.
-static Status RunScatterKVToPagedCache(onnxruntime::webgpu::ComputeContext& context,
-                                       const PagedAttentionParameters& parameters,
-                                       const Tensor* key,
-                                       const Tensor* value,
-                                       const Tensor* cumulative_seqlens_q,
-                                       const Tensor* past_seqlens,
-                                       const Tensor* block_table,
-                                       Tensor* key_cache_out,
-                                       Tensor* value_cache_out) {
+Status RunPagedAttentionScatterKVToPagedCache(onnxruntime::webgpu::ComputeContext& context,
+                                              const PagedAttentionParameters& parameters,
+                                              const Tensor* key,
+                                              const Tensor* value,
+                                              const Tensor* cumulative_seqlens_q,
+                                              const Tensor* past_seqlens,
+                                              const Tensor* block_table,
+                                              Tensor* key_cache_out,
+                                              Tensor* value_cache_out) {
   const uint32_t token_count = static_cast<uint32_t>(parameters.token_count);
   const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
   const uint32_t kv_num_heads = static_cast<uint32_t>(parameters.kv_num_heads);
   const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
   const uint32_t block_size = static_cast<uint32_t>(parameters.block_size);
+  const uint32_t num_blocks = static_cast<uint32_t>(parameters.num_blocks);
+  const uint32_t max_num_blocks_per_seq =
+      static_cast<uint32_t>(parameters.max_num_blocks_per_seq);
   const uint32_t dispatch_size = token_count * kv_num_heads * head_size;
 
   ScatterKVToPagedCacheProgram program{};
@@ -104,6 +107,8 @@ static Status RunScatterKVToPagedCache(onnxruntime::webgpu::ComputeContext& cont
           {kv_num_heads},
           {head_size},
           {block_size},
+          {num_blocks},
+          {max_num_blocks_per_seq},
           {dispatch_size},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -130,16 +135,16 @@ Status PagedAttentionRotaryProgram::GenerateShaderCode(ShaderHelper& sh) const {
 // (input : (token_count, n_heads * head_size)). Rotated Q and K each call
 // this once with the appropriate `n_heads` (num_heads for Q, kv_num_heads
 // for K). V is not rotated.
-static Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
-                                 const PagedAttentionParameters& parameters,
-                                 uint32_t n_heads,
-                                 bool interleaved,
-                                 const Tensor* input,
-                                 const Tensor* cos_cache,
-                                 const Tensor* sin_cache,
-                                 const Tensor* cumulative_seqlens_q,
-                                 const Tensor* past_seqlens,
-                                 Tensor* output) {
+Status RunPagedAttentionRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
+                                        const PagedAttentionParameters& parameters,
+                                        uint32_t n_heads,
+                                        bool interleaved,
+                                        const Tensor* input,
+                                        const Tensor* cos_cache,
+                                        const Tensor* sin_cache,
+                                        const Tensor* cumulative_seqlens_q,
+                                        const Tensor* past_seqlens,
+                                        Tensor* output) {
   const uint32_t token_count = static_cast<uint32_t>(parameters.token_count);
   const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
   const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
@@ -186,12 +191,12 @@ Status PagedAttentionSplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh)
 // Dispatch the split-packed-QKV program: slice the packed query into three
 // standalone Q, K, V tensors (each with the non-packed hidden layout) so the
 // rest of the pipeline can consume them unchanged.
-static Status RunSplitPackedQKV(onnxruntime::webgpu::ComputeContext& context,
-                                const PagedAttentionParameters& parameters,
-                                const Tensor* packed_qkv,
-                                Tensor* q_out,
-                                Tensor* k_out,
-                                Tensor* v_out) {
+Status RunPagedAttentionSplitPackedQKV(onnxruntime::webgpu::ComputeContext& context,
+                                       const PagedAttentionParameters& parameters,
+                                       const Tensor* packed_qkv,
+                                       Tensor* q_out,
+                                       Tensor* k_out,
+                                       Tensor* v_out) {
   const uint32_t token_count = static_cast<uint32_t>(parameters.token_count);
   const uint32_t q_hidden_size = static_cast<uint32_t>(parameters.hidden_size);
   const uint32_t kv_hidden_size = static_cast<uint32_t>(parameters.kv_hidden_size);
@@ -672,9 +677,9 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
         dtype, TensorShape({parameters.token_count, parameters.kv_hidden_size}));
     packed_v_tensor = context.CreateGPUTensor(
         dtype, TensorShape({parameters.token_count, parameters.kv_hidden_size}));
-    ORT_RETURN_IF_ERROR(RunSplitPackedQKV(context, parameters, query,
-                                          &packed_q_tensor, &packed_k_tensor,
-                                          &packed_v_tensor));
+    ORT_RETURN_IF_ERROR(RunPagedAttentionSplitPackedQKV(context, parameters, query,
+                                                        &packed_q_tensor, &packed_k_tensor,
+                                                        &packed_v_tensor));
     // Re-point the local Q/K/V so the rest of the routine sees the
     // non-packed layout and needs no further branching.
     query = &packed_q_tensor;
@@ -889,27 +894,27 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   Tensor rotated_key_tensor;
   if (do_rotary_) {
     rotated_query_tensor = context.CreateGPUTensor(query->DataType(), query->Shape());
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
-                                           static_cast<uint32_t>(parameters.num_heads),
-                                           rotary_interleaved_,
-                                           query_for_fa, cos_cache, sin_cache,
-                                           cumulative_seqlens_q, past_seqlens,
-                                           &rotated_query_tensor));
+    ORT_RETURN_IF_ERROR(RunPagedAttentionRotaryEmbedding(context, parameters,
+                                                         static_cast<uint32_t>(parameters.num_heads),
+                                                         rotary_interleaved_,
+                                                         query_for_fa, cos_cache, sin_cache,
+                                                         cumulative_seqlens_q, past_seqlens,
+                                                         &rotated_query_tensor));
     query_for_fa = &rotated_query_tensor;
 
     rotated_key_tensor = context.CreateGPUTensor(key->DataType(), key->Shape());
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
-                                           static_cast<uint32_t>(parameters.kv_num_heads),
-                                           rotary_interleaved_,
-                                           key_for_scatter, cos_cache, sin_cache,
-                                           cumulative_seqlens_q, past_seqlens,
-                                           &rotated_key_tensor));
+    ORT_RETURN_IF_ERROR(RunPagedAttentionRotaryEmbedding(context, parameters,
+                                                         static_cast<uint32_t>(parameters.kv_num_heads),
+                                                         rotary_interleaved_,
+                                                         key_for_scatter, cos_cache, sin_cache,
+                                                         cumulative_seqlens_q, past_seqlens,
+                                                         &rotated_key_tensor));
     key_for_scatter = &rotated_key_tensor;
   }
 
-  ORT_RETURN_IF_ERROR(RunScatterKVToPagedCache(context, parameters, key_for_scatter, value,
-                                               cumulative_seqlens_q, past_seqlens,
-                                               block_table, key_cache_out, value_cache_out));
+  ORT_RETURN_IF_ERROR(RunPagedAttentionScatterKVToPagedCache(context, parameters, key_for_scatter, value,
+                                                             cumulative_seqlens_q, past_seqlens,
+                                                             block_table, key_cache_out, value_cache_out));
 
   const auto* dtype = query->DataType();
 

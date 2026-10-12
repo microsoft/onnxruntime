@@ -123,6 +123,10 @@ class ComputeContextBase {
     return ep_.EnableMatmulFp32Accumulation();
   }
 
+  inline std::optional<MatMulAlgorithm> ForcedMatMulAlgorithm() const {
+    return ep_.ForcedMatMulAlgorithm();
+  }
+
   //
   // Get the logger.
   //
@@ -234,7 +238,6 @@ class ComputeContext final : public ComputeContextBase {
   //
   inline void FillZero(Tensor& dst) {
     auto& recording = ep_.Recording();
-    std::lock_guard<std::recursive_mutex> lock{recording.mutex};
     ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches(recording));
     webgpu_context_.EndComputePass(recording);
     auto& command_encoder = webgpu_context_.GetCommandEncoder(recording);
