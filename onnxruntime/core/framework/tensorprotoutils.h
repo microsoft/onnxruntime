@@ -29,7 +29,8 @@ namespace onnxruntime {
 namespace utils {
 namespace detail {
 
-inline constexpr std::array<uint8_t, ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE>
+// Newer ONNX versions may define types that ONNX Runtime does not support yet.
+inline constexpr std::array<uint8_t, static_cast<size_t>(ONNX_NAMESPACE::TensorProto_DataType_INT2) + 1>
     kTensorProtoDataTypeElementSizes{
         0,                 // UNDEFINED
         sizeof(float),     // FLOAT
@@ -74,7 +75,7 @@ consteval bool IsTensorProtoDataTypeElementSizeMapComplete() {
 }
 
 static_assert(IsTensorProtoDataTypeElementSizeMapComplete(),
-              "TensorProto data type element-size map must cover every numeric data type.");
+              "TensorProto data type element-size map must cover every supported numeric data type.");
 
 }  // namespace detail
 
