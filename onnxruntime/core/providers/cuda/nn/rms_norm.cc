@@ -93,8 +93,8 @@ Status RMSNorm<T, U, V>::ComputeInternal(OpKernelContext* ctx) const {
   CudaU* mean_data = nullptr;
   CudaU* inv_var_data = nullptr;
 
-  // simplified should always be true for RMSNorm
-  HostApplyLayerNorm<CudaT, CudaU, CudaV, true>(
+  // Unlike historical SimplifiedLayerNormalization, ONNX RMSNorm rounds before scaling.
+  HostApplyLayerNorm<CudaT, CudaU, CudaV, true, true>(
       GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data, X_data,
       onnxruntime::narrow<int>(params.num_rows), onnxruntime::narrow<int>(params.norm_size), epsilon_,
       scale_data, bias_data,
