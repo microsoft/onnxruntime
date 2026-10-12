@@ -8,11 +8,14 @@
 #include "core/common/span_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_helpers.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
@@ -317,6 +320,41 @@ TEST_F(GraphTest, SimpleAddDefaultDomain) {
   ConstructASimpleAddGraph(*m.mutable_graph(), "");
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+}
+
+TEST_F(GraphTest, ModelEditorPreservesTensorElementTypes) {
+  const std::pair<ONNXTensorElementDataType, int> element_types[] = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, TensorProto_DataType_FLOAT},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, TensorProto_DataType_FLOAT4E2M1},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, TensorProto_DataType_FLOAT8E8M0},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, TensorProto_DataType_UINT2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, TensorProto_DataType_INT2},
+  };
+
+  for (const auto& [ort_type, proto_type] : element_types) {
+    SCOPED_TRACE(proto_type);
+    ModelEditorGraph editor_graph;
+    const TensorShape shape{1};
+    auto make_value_info = [&]() {
+      auto value_info = std::make_unique<ModelEditorValueInfo>();
+      value_info->name = "value";
+      value_info->type_info = std::make_unique<OrtTypeInfo>(
+          ONNX_TYPE_TENSOR, OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(ort_type, &shape, nullptr));
+      return std::unique_ptr<ModelEditorValueInfo, OrtValueInfoDeleter>(value_info.release());
+    };
+    editor_graph.inputs.push_back(make_value_info());
+    editor_graph.outputs.push_back(make_value_info());
+
+    Model model("model_editor_element_types", false, *logger_);
+    std::unique_ptr<Graph> graph;
+    ASSERT_STATUS_OK(Graph::LoadFromModelEditorApiModel(editor_graph, model, model.MainGraph().DomainToVersionMap(),
+                                                        nullptr, false, *logger_, graph));
+    const auto& graph_proto = graph->ToGraphProto();
+    ASSERT_EQ(graph_proto.input_size(), 1);
+    ASSERT_EQ(graph_proto.output_size(), 1);
+    EXPECT_EQ(graph_proto.input(0).type().tensor_type().elem_type(), proto_type);
+    EXPECT_EQ(graph_proto.output(0).type().tensor_type().elem_type(), proto_type);
+  }
 }
 
 TEST_F(GraphTest, SimpleAddFutureOpSet) {

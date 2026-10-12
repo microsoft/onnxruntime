@@ -189,6 +189,14 @@ GQAWorkspaceStatus XqaBackendEnvelope(const GQAWorkspaceProblem& problem,
   status = Add(bytes, output, bytes);
   if (!status.IsOK()) return status;
 
+  if (problem.head_size == 512) {
+    // Each batch/head/partition stores 512 FP32 weighted-value accumulators plus
+    // the softmax maximum and exponential sum used to merge partitions.
+    status = Mul4(static_cast<size_t>(problem.batch_size), static_cast<size_t>(problem.num_heads),
+                  kGQAXqaH512Partitions, (512 + 2) * sizeof(float), bytes);
+    if (!status.IsOK()) return status;
+  }
+
   if (problem.do_rotary) {
     size_t q = 0;
     status = Mul4(static_cast<size_t>(problem.batch_size),
@@ -358,8 +366,10 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
 
   if (HasGQAReachableBackend(bounds.reachable_backends, GQAReachableBackend::Xqa)) {
     bool found_head = false;
-    for (int64_t head : {int64_t{64}, int64_t{128}, int64_t{256}}) {
+    for (int64_t head : {int64_t{64}, int64_t{128}, int64_t{256}, int64_t{512}}) {
       if (head > bounds.head_size_bound) continue;
+      if (!IsSupportedGQAXqaGeometry(head, bounds.num_heads / bounds.kv_num_heads,
+                                     bounds.xqa_kv_type != GQAXqaKvType::None)) continue;
       found_head = true;
       const auto problem = MakeProblem(bounds, 1, head, false);
       GQAPreparationRoute route;
