@@ -13,6 +13,7 @@ _TOOLS_PYTHON = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "
 if _TOOLS_PYTHON not in sys.path:
     sys.path.insert(0, _TOOLS_PYTHON)
 
+from optimize_qmoe_expert_counters import ReplayEvent, evaluate_alpha, validate_alpha_candidates  # noqa: E402
 from qmoe_expert_distribution import (  # noqa: E402
     CUMULATIVE_GLOBAL_POSITION_THRESHOLDS,
     GLOBAL_POSITION_THRESHOLDS,
@@ -73,6 +74,50 @@ def _trace(events):
 
 
 class TestQMoEExpertDistribution(unittest.TestCase):
+    def test_counter_parameter_optimization(self):
+        events = [
+            (0, (0,)),
+            (1, (0,)),
+            (0, (1, 0)),
+            (1, (1, 0)),
+        ]
+        replay_events = [ReplayEvent(node_index, selected_experts) for node_index, selected_experts in events]
+
+        results = evaluate_alpha(
+            replay_events,
+            moe_count=2,
+            experts_per_node=2,
+            thresholds=(2, 3),
+            alpha=0.5,
+            beta=0.5,
+            selected_expert_count=2,
+        )
+
+        self.assertEqual(results[0].threshold, 2)
+        self.assertEqual(results[0].selected_experts_at_or_above_threshold, 3)
+        self.assertEqual(results[0].selected_expert_count, 4)
+        self.assertEqual(results[0].cumulative_share, 0.75)
+        self.assertEqual(results[0].moe_invocations_at_or_above_threshold, 2)
+        self.assertEqual(results[0].moe_invocation_count, 2)
+        self.assertEqual(results[0].cumulative_moe_share, 1.0)
+        self.assertEqual(results[0].impacted_invocations_by_node, (1, 1))
+        self.assertEqual(results[0].invocations_by_node, (1, 1))
+        self.assertEqual(results[0].selected_experts_below_threshold_by_node, (1, 0))
+        self.assertEqual(results[1].threshold, 3)
+        self.assertEqual(results[1].selected_experts_at_or_above_threshold, 1)
+        self.assertEqual(results[1].cumulative_moe_share, 0.5)
+        alpha_one_results = evaluate_alpha(
+            replay_events,
+            moe_count=2,
+            experts_per_node=2,
+            thresholds=(2,),
+            alpha=1.0,
+            beta=0.0,
+            selected_expert_count=2,
+        )
+        self.assertEqual(alpha_one_results[0].cumulative_share, 0.5)
+        self.assertEqual(validate_alpha_candidates([1.0, 0.0, 0.9]), [0.0, 0.9, 1.0])
+
     def test_builds_local_and_global_timeline(self):
         events = [
             _event(
