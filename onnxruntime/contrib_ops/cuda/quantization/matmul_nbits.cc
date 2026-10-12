@@ -1152,7 +1152,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   int m = SafeInt<int>(helper.M());
   int n = SafeInt<int>(helper.N());
   int k = SafeInt<int>(helper.K());
-
   DUMP_TENSOR_INIT();
 
 #if USE_FPA_INTB_GEMM
@@ -1302,6 +1301,28 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 #endif
+
+#if USE_FPA_INTB_GEMM
+  const bool unaligned4_has_fpA_intB = has_fpA_intB_gemm_;
+#else
+  constexpr bool unaligned4_has_fpA_intB = false;
+#endif
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    if (IsUnaligned4FastPathEligible(
+            unaligned4_fast_path_, true, m, n, k, static_cast<int>(nbits_), static_cast<int>(block_size_),
+            column_wise_quant_blk_, zero_points != nullptr, bias != nullptr, reorder_idx != nullptr,
+            unaligned4_has_fpA_intB, force_chunked_) &&
+        TryMatMulUnaligned4Bits<CudaT>(
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()), reinterpret_cast<const CudaT*>(a_data),
+            blob_data, reinterpret_cast<const CudaT*>(scales_data), m, n, k,
+            GetDeviceProp().sharedMemPerBlock, stream)) {
+      if (unaligned4_log_.ShouldLog(m == 1)) {
+        CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
+        unaligned4_log_.Log(m == 1, this->Node().Name(), m, k, n);
+      }
+      return Status::OK();
+    }
+  }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
     // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV

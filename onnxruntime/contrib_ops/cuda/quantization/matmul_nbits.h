@@ -24,6 +24,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_unaligned4.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
@@ -410,6 +411,9 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool force_chunked_{false};
   int64_t chunk_target_rows_{kDefaultChunkTargetRows};
+  bool unaligned4_fast_path_{
+      ParseUnaligned4FastPathEnabled(ParseEnvironmentVariableWithDefault<std::string>(kUnaligned4FastPathEnvVar, ""))};
+  Unaligned4DispatchLog unaligned4_log_;
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};

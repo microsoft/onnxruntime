@@ -32,6 +32,11 @@ constexpr bool IsMatMul8BitsSmallM(
 }
 
 template <class T>
+bool TryMatMulUnaligned4Bits(
+    T* output, const T* a_data, const uint8_t* b_data_quant, const T* scales_data,
+    int m, int n, int k, size_t shared_mem_per_block, cudaStream_t stream);
+
+template <class T>
 bool TryMatMul2Bits(
     T* output,
     const T* a_data,
