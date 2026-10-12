@@ -193,14 +193,14 @@ struct TensorCheckFloat6 {
       std::vector<uint8_t> expected_bits, actual_bits;
       expected_bits.reserve(size);
       actual_bits.reserve(size);
-      for (int64_t i = 0; i < size; ++i) {
+      for (size_t i = 0; i < size; ++i) {
         expected_bits.push_back(expected_data[i].ToBits());
         actual_bits.push_back(actual_data[i].ToBits());
       }
       sort_expected_and_actual_buffers(expected_bits, actual_bits);
       EXPECT_EQ(expected_bits, actual_bits);
     } else {
-      for (int64_t i = 0; i < size; ++i) {
+      for (size_t i = 0; i < size; ++i) {
         EXPECT_EQ(expected_data[i].ToBits(), actual_data[i].ToBits()) << "i:" << i;
       }
     }
