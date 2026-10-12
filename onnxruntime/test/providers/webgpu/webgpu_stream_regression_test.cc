@@ -57,7 +57,7 @@ TEST(WebGpuContextTest, FillZeroClearsSessionBuffer) {
   desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
   auto buffer = context.Device().CreateBuffer(&desc);
   Tensor tensor(DataTypeImpl::GetType<uint32_t>(), TensorShape{16}, buffer.Get(),
-                OrtMemoryInfo(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice, OrtMemTypeDefault));
+                OrtMemoryInfo(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault));
 
   std::array<uint32_t, 16> data;
   data.fill(42);

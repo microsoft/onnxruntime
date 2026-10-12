@@ -22,6 +22,8 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
+#include <cstdint>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "layer_norm_impl.h"
 #include "core/providers/cpu/nn/layer_norm_macro.h"
@@ -35,13 +37,14 @@ __device__ void cuWelfordOnlineSum(
     U& mu,
     U& sigma2,
     U& count) {
-  count = count + U(1);
-  U delta = curr - mu;
-  U lmean = mu + delta / count;
-  mu = lmean;
-  if (simplified) {
+  // RMSNorm only needs the sum of squares; mean/count updates are unnecessary.
+  if constexpr (simplified) {
     sigma2 = sigma2 + curr * curr;
   } else {
+    count = count + U(1);
+    U delta = curr - mu;
+    U lmean = mu + delta / count;
+    mu = lmean;
     U delta2 = curr - lmean;
     sigma2 = sigma2 + delta * delta2;
   }
@@ -55,23 +58,23 @@ __device__ void cuChanOnlineSum(
     U& mu,
     U& sigma2,
     U& count) {
-  U delta = muB - mu;
-  U nA = count;
-  U nB = countB;
-  count = count + countB;
-  U nX = count;
-  if (nX > U(0)) {
-    nA = nA / nX;
-    nB = nB / nX;
-    mu = nA * mu + nB * muB;
-    if (simplified) {
-      sigma2 = sigma2 + sigma2B;
-    } else {
-      sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
-    }
+  if constexpr (simplified) {
+    sigma2 = sigma2 + sigma2B;
   } else {
-    mu = U(0);
-    sigma2 = U(0);
+    U delta = muB - mu;
+    U nA = count;
+    U nB = countB;
+    count = count + countB;
+    U nX = count;
+    if (nX > U(0)) {
+      nA = nA / nX;
+      nB = nB / nX;
+      mu = nA * mu + nB * muB;
+      sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
+    } else {
+      mu = U(0);
+      sigma2 = U(0);
+    }
   }
 }
 
@@ -135,9 +138,13 @@ __device__ void cuWelfordMuSigma2(
 // intra-warp reductions
 #pragma unroll
     for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
-      U muB = WARP_SHFL_DOWN(mu, stride);
-      U countB = WARP_SHFL_DOWN(count, stride);
       U sigma2B = WARP_SHFL_DOWN(sigma2, stride);
+      U muB = U(0);
+      U countB = U(0);
+      if constexpr (!simplified) {
+        muB = WARP_SHFL_DOWN(mu, stride);
+        countB = WARP_SHFL_DOWN(count, stride);
+      }
       cuChanOnlineSum<U, simplified>(muB, sigma2B, countB, mu, sigma2, count);
     }
 
@@ -157,9 +164,13 @@ __device__ void cuWelfordMuSigma2(
         __syncthreads();
         // lower half merges
         if (threadIdx.x == 0 && threadIdx.y < offset) {
-          U muB = ubuf[2 * threadIdx.y];
           U sigma2B = ubuf[2 * threadIdx.y + 1];
-          U countB = ibuf[threadIdx.y];
+          U muB = U(0);
+          U countB = U(0);
+          if constexpr (!simplified) {
+            muB = ubuf[2 * threadIdx.y];
+            countB = ibuf[threadIdx.y];
+          }
           cuChanOnlineSum<U, simplified>(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
@@ -180,101 +191,6 @@ __device__ void cuWelfordMuSigma2(
   }
 }
 
-template <bool simplified>
-__device__ void cuWelfordMuSigma2(
-    const half* __restrict__ vals,
-    const int n1,
-    const int n2,
-    const int i1,
-    float& mu,
-    float& sigma2,
-    float* buf) {
-  // Assumptions:
-  // 1) blockDim.x == GPU_WARP_SIZE
-  // 2) Tensor is contiguous
-  // 3) 2*blockDim.y*sizeof(U)+blockDim.y*sizeof(int) shared memory available.
-  //
-  // compute variance and mean over n2
-  float count = 0.0f;
-  mu = float(0);
-  sigma2 = float(0);
-  if (i1 < n1) {
-    // one warp normalizes one n1 index,
-    // synchronization is implicit
-    // initialize with standard Welford algorithm
-    const int numx = blockDim.x * blockDim.y;
-    const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
-    const half* lvals = vals + i1 * n2;
-    int l = 8 * thrx;
-    if ((((size_t)lvals) & 3) != 0) {
-      // 16 bit alignment
-      // first thread consumes first point
-      if (thrx == 0) {
-        float curr = static_cast<float>(lvals[0]);
-        cuWelfordOnlineSum<float, simplified>(curr, mu, sigma2, count);
-      }
-      ++l;
-    }
-    // at this point, lvals[l] are 32 bit aligned for all threads.
-    for (; l + 7 < n2; l += 8 * numx) {
-      for (int k = 0; k < 8; k += 2) {
-        float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum<float, simplified>(curr.x, mu, sigma2, count);
-        cuWelfordOnlineSum<float, simplified>(curr.y, mu, sigma2, count);
-      }
-    }
-    for (; l < n2; ++l) {
-      float curr = static_cast<float>(lvals[l]);
-      cuWelfordOnlineSum<float, simplified>(curr, mu, sigma2, count);
-    }
-// intra-warp reductions
-#pragma unroll
-    for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
-      float muB = WARP_SHFL_DOWN(mu, stride);
-      float countB = WARP_SHFL_DOWN(count, stride);
-      float sigma2B = WARP_SHFL_DOWN(sigma2, stride);
-      cuChanOnlineSum<float, simplified>(muB, sigma2B, countB, mu, sigma2, count);
-    }
-
-    // threadIdx.x == 0 has correct values for each warp
-    // inter-warp reductions
-    if (blockDim.y > 1) {
-      float* ubuf = (float*)buf;
-      float* ibuf = (float*)(ubuf + blockDim.y);
-      for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
-        // upper half of warps write to shared
-        if (threadIdx.x == 0 && threadIdx.y >= offset && threadIdx.y < 2 * offset) {
-          const int wrt_y = threadIdx.y - offset;
-          ubuf[2 * wrt_y] = mu;
-          ubuf[2 * wrt_y + 1] = sigma2;
-          ibuf[wrt_y] = count;
-        }
-        __syncthreads();
-        // lower half merges
-        if (threadIdx.x == 0 && threadIdx.y < offset) {
-          float muB = ubuf[2 * threadIdx.y];
-          float sigma2B = ubuf[2 * threadIdx.y + 1];
-          float countB = ibuf[threadIdx.y];
-          cuChanOnlineSum<float, simplified>(muB, sigma2B, countB, mu, sigma2, count);
-        }
-        __syncthreads();
-      }
-      // threadIdx.x = 0 && threadIdx.y == 0 only thread that has correct values
-      if (threadIdx.x == 0 && threadIdx.y == 0) {
-        ubuf[0] = mu;
-        ubuf[1] = sigma2;
-      }
-      __syncthreads();
-      mu = ubuf[0];
-      sigma2 = ubuf[1] / float(n2);
-      // don't care about final value of count, we know count == n2
-    } else {
-      mu = WARP_SHFL(mu, 0);
-      sigma2 = WARP_SHFL(sigma2 / float(n2), 0);
-    }
-  }
-}
-
 template <typename U>
 __device__ U rsqrt(U v) {
   return U(1) / sqrt(v);
@@ -285,7 +201,8 @@ __device__ float rsqrt(float v) {
 }
 template <>
 __device__ double rsqrt(double v) {
-  return rsqrt(v);
+  // Select the CUDA double intrinsic rather than recursively calling this specialization.
+  return ::rsqrt(v);
 }
 
 namespace {
@@ -360,29 +277,52 @@ __global__ void cuApplyLayerNorm(
 
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
-    for (int i = thrx; i < n2; i += numx) {
-      U curr = static_cast<U>(lvals[i]);
-
-      if (bias != nullptr) {
-        curr += static_cast<U>(bias[i]);
+    // Pairwise loads/stores require aligned pointers and even row/scale offsets. Keep arithmetic in FP32 to avoid
+    // intermediate FP16 overflow/underflow before normalization brings values back into range.
+    bool use_scalar = true;
+    if constexpr (simplified && std::is_same_v<T, half> && std::is_same_v<U, float> && std::is_same_v<V, half>) {
+      if (bias == nullptr && skip_vals == nullptr && skip_input_bias_add_ovals == nullptr &&
+          gamma != nullptr && n2 % 2 == 0 && gamma_beta_offset % 2 == 0 &&
+          reinterpret_cast<std::uintptr_t>(lvals) % alignof(half2) == 0 &&
+          reinterpret_cast<std::uintptr_t>(gamma + gamma_beta_offset) % alignof(half2) == 0 &&
+          reinterpret_cast<std::uintptr_t>(ovals) % alignof(half2) == 0) {
+        const half2* input2 = reinterpret_cast<const half2*>(lvals);
+        const half2* gamma2 = reinterpret_cast<const half2*>(gamma + gamma_beta_offset);
+        half2* output2 = reinterpret_cast<half2*>(ovals);
+        for (int i = thrx; i < n2 / 2; i += numx) {
+          const float2 input_pair = __half22float2(input2[i]);
+          const float2 gamma_pair = __half22float2(gamma2[i]);
+          output2[i] = __floats2half2_rn(gamma_pair.x * c_inv_std_dev * input_pair.x,
+                                         gamma_pair.y * c_inv_std_dev * input_pair.y);
+        }
+        use_scalar = false;
       }
+    }
+    if (use_scalar) {
+      for (int i = thrx; i < n2; i += numx) {
+        U curr = static_cast<U>(lvals[i]);
 
-      if (skip_vals != nullptr) {
-        curr += static_cast<U>(skip_vals[i]);
-      }
+        if (bias != nullptr) {
+          curr += static_cast<U>(bias[i]);
+        }
 
-      int index = gamma_beta_offset + i;
-      U gamma_i = (gamma != nullptr) ? (U)gamma[index] : (U)1;
-      U beta_i = (beta != nullptr) ? (U)beta[index] : (U)0;
+        if (skip_vals != nullptr) {
+          curr += static_cast<U>(skip_vals[i]);
+        }
 
-      if (simplified) {
-        ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
-      } else {
-        ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * (curr - mu) + beta_i);
-      }
+        int index = gamma_beta_offset + i;
+        U gamma_i = (gamma != nullptr) ? (U)gamma[index] : (U)1;
+        U beta_i = (beta != nullptr) ? (U)beta[index] : (U)0;
 
-      if (skip_input_bias_add_ovals != nullptr) {
-        skip_input_bias_add_ovals[i] = static_cast<T>(curr);
+        if (simplified) {
+          ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
+        } else {
+          ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * (curr - mu) + beta_i);
+        }
+
+        if (skip_input_bias_add_ovals != nullptr) {
+          skip_input_bias_add_ovals[i] = static_cast<T>(curr);
+        }
       }
     }
     if (threadIdx.x == 0 && threadIdx.y == 0) {

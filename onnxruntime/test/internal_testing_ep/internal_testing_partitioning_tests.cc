@@ -802,6 +802,129 @@ Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(InternalTestingEP, StaticKernelEpGraphAssignmentInfoAfterFunctionInlining) {
+  class OnnxOnlyStaticExecutionProvider : public InternalTestingExecutionProvider {
+   public:
+    explicit OnnxOnlyStaticExecutionProvider(DataLayout layout)
+        : InternalTestingExecutionProvider({}, {}, layout) {
+      EnableStaticKernels().TakeAllNodes();
+    }
+
+    std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+        const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup,
+        const GraphOptimizerRegistry& optimizer_registry, IResourceAccountant* accountant) const override {
+      auto capabilities = InternalTestingExecutionProvider::GetCapability(
+          graph_viewer, kernel_lookup, optimizer_registry, accountant);
+      capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
+                                        [&](const auto& capability) {
+                                          return graph_viewer.GetNode(capability->sub_graph->nodes[0])->Domain() != kOnnxDomain;
+                                        }),
+                         capabilities.end());
+      return capabilities;
+    }
+  };
+
+  FunctionProto function;
+  function.set_domain("local");
+  function.set_name("IdentityFunction");
+  function.add_input("X");
+  function.add_output("Y");
+  function.add_opset_import()->set_version(13);
+  auto* body = function.add_node();
+  body->set_op_type("Identity");
+  body->add_input("X");
+  body->add_output("Y");
+
+  // AOT inlining covers one partitioning round; fallback inlining must not re-report the assigned Add.
+  for (DataLayout layout : {DataLayout::NCHW, DataLayout::NHWC}) {
+    for (bool disable_aot : {false, true}) {
+      SCOPED_TRACE(layout == DataLayout::NHWC ? "NHWC" : "NCHW");
+      SCOPED_TRACE(disable_aot ? "Fallback inlining" : "AOT inlining");
+      Model model("StaticKernelEpGraphAssignmentInfoAfterFunctionInlining", false,
+                  ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  {{kOnnxDomain, 13}, {"local", 1}}, {function},
+                  DefaultLoggingManager().DefaultLogger());
+      Graph& graph = model.MainGraph();
+      ModelTestBuilder builder(graph);
+      auto* input_a = builder.MakeInput<float>(std::vector<int64_t>{3});
+      auto* input_b = builder.MakeInput<float>(std::vector<int64_t>{3});
+      auto* intermediate = builder.MakeIntermediate<float>(std::vector<int64_t>{3});
+      auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3});
+      const std::string add_name = builder.AddNode("Add", {input_a, input_b}, {intermediate}).Name();
+      builder.AddNode("IdentityFunction", {intermediate}, {output}, "local");
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(graph.Resolve());
+
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Default;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1"));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, disable_aot ? "1" : "0"));
+      InferenceSessionWrapper session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<OnnxOnlyStaticExecutionProvider>(layout)));
+      const std::string model_bytes = model.ToProto().SerializeAsString();
+      ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+
+      const auto& subgraphs = session.GetEpGraphAssignmentInfo();
+      ASSERT_EQ(subgraphs.size(), 2u);
+      InlinedVector<std::string> assigned_ops;
+      for (const auto* subgraph : subgraphs) {
+        EXPECT_EQ(subgraph->ep_name, kInternalTestingExecutionProvider);
+        ASSERT_EQ(subgraph->nodes.size(), 1u);
+        const auto* node = subgraph->nodes[0];
+        EXPECT_EQ(node->domain, kOnnxDomain);
+        assigned_ops.push_back(node->op_type);
+        if (node->op_type == "Add") {
+          EXPECT_EQ(node->name, add_name);
+        }
+      }
+      EXPECT_THAT(assigned_ops, testing::UnorderedElementsAre("Add", "Identity"));
+    }
+  }
+}
+
+TEST(InternalTestingEP, NhwcTransformedStaticKernelEpGraphAssignmentInfo) {
+  Model model("NhwcTransformedStaticKernelEpGraphAssignmentInfo", false,
+              ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  auto* input = builder.MakeInput<float>(std::vector<int64_t>{1, 1, 3, 3});
+  auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
+  auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 1, 3, 3});
+  builder.AddConvNode(input, weights, output);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  auto ep = std::make_unique<InternalTestingExecutionProvider>(
+      std::unordered_set<std::string>{"Conv"}, std::unordered_set<std::string>{}, DataLayout::NHWC);
+  ep->EnableStaticKernels();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+  const std::string model_bytes = model.ToProto().SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  size_t conv_count = 0;
+  for (const auto* subgraph : session.GetEpGraphAssignmentInfo()) {
+    for (const auto* node : subgraph->nodes) {
+      if (node->op_type == "Conv") {
+        ++conv_count;
+        EXPECT_EQ(subgraph->ep_name, kInternalTestingExecutionProvider);
+        EXPECT_EQ(node->domain, kMSInternalNHWCDomain);
+      }
+    }
+  }
+  EXPECT_EQ(conv_count, 1u);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
 auto RunTest(const std::string& op, const ORTCHAR_T* model_path) {
   SessionOptions so;
   auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());

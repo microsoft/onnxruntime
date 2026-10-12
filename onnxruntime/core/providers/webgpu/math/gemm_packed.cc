@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
+#include "core/providers/webgpu/tensor/cast.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -34,9 +35,9 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_, use_f32_accumulation_));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, transA_, transB_, alpha_, need_handle_matmul_, 32, need_split_k, split_dim_inner_, use_f32_accumulation_));
   }
 
   const ShaderVariableHelper* c = nullptr;
@@ -104,9 +105,11 @@ Status ApplyGemmPacked(const Tensor* a,
     c_is_scalar = c_shape.Size() == 1;
   }
 
+  Tensor split_k_output;
   ProgramOutput output(y, ProgramTensorMetadataDependency::TypeAndRank, output_components);
   uint32_t dispatch_z = 1;
   uint32_t split_dim_inner = 1;
+  const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && y->IsDataType<MLFloat16>();
 
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
   if (!context.KernelContext().GetUseDeterministicCompute()) {
@@ -116,6 +119,13 @@ Status ApplyGemmPacked(const Tensor* a,
     // We need to use `true` as `is_channels_last` to meet the requirement in `UseSplitK`.
     const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, M, N, K);
     if (need_split_k) {
+      Tensor* reduction_output = y;
+      if (use_f32_accumulation) {
+        split_k_output = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), y->Shape());
+        reduction_output = &split_k_output;
+        output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::TypeAndRank, output_components);
+      }
+
       const Tensor* bias = nullptr;
       uint32_t output_components_in_fill_bias_program = 4;
       if (need_handle_bias) {
@@ -125,7 +135,7 @@ Status ApplyGemmPacked(const Tensor* a,
       const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
 
       auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
-          bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, output_shape);
+          bias, reduction_output, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, output_shape);
       ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
 
       // When Split-K is used, `bias` will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
@@ -143,7 +153,7 @@ Status ApplyGemmPacked(const Tensor* a,
     }
   }
 
-  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, output_components, is_vec4, split_dim_inner};
+  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, output_components, is_vec4, split_dim_inner, use_f32_accumulation};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, components},
@@ -158,7 +168,7 @@ Status ApplyGemmPacked(const Tensor* a,
   const uint32_t dispatch_x = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t dispatch_y = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  program.CacheHint(alpha, transA, transB, c_is_scalar, split_dim_inner)
+  program.CacheHint(alpha, transA, transB, c_is_scalar, split_dim_inner, use_f32_accumulation)
       .AddOutput(std::move(output))
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
@@ -172,7 +182,20 @@ Status ApplyGemmPacked(const Tensor* a,
                             {dispatch_z}} /* logical_dispatch_z */
       );
 
-  return context.RunProgram(program);
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  if (split_dim_inner > 1 && use_f32_accumulation) {
+    const uint32_t cast_output_size = narrow<uint32_t>(output_size);
+    const uint32_t vec_size = cast_output_size / 4;
+    CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, false, true, false, false};
+    cast_program
+        .AddInput({&split_k_output, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+        .AddOutput({y, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+        .SetDispatchGroupSize(CeilDiv(vec_size, static_cast<uint32_t>(WORKGROUP_SIZE)))
+        .AddUniformVariables({{vec_size}, {cast_output_size}})
+        .CacheHint(std::to_string(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    return context.RunProgram(cast_program);
+  }
+  return Status::OK();
 }
 
 }  // namespace webgpu

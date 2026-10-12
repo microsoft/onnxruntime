@@ -996,7 +996,7 @@ Status ExtremeDecoding(
   if (q_rot_ptr == nullptr) {
     q_input_for_xqa = reinterpret_cast<const T*>(data.query);
   }
-  // GQABufferRequirements reserves qkv_buffer whenever the K scale has to be folded into Q, so the
+  // QKV preparation reserves qkv_buffer whenever the K scale has to be folded into Q, so the
   // preprocess kernel always has somewhere to write the scaled Q (rotated or not).
   ORT_ENFORCE(!fold_k_scale_into_q || q_rot_ptr != nullptr,
               "Per-channel XQA requires a scratch buffer for the scaled Q.");
@@ -1572,7 +1572,7 @@ Status UnfusedGqaAttention(
   p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
   p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
   p.is_causal = parameters.is_unidirectional;
-  p.local_window_size = parameters.local_window_size;  // -1 disables
+  p.local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
   p.scale = scale;
   p.softcap = parameters.softcap;

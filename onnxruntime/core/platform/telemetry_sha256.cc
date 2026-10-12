@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/posix/telemetry_sha256.h"
+#include "core/platform/telemetry_sha256.h"
 
 #include <algorithm>
 #include <cstring>
