@@ -170,7 +170,7 @@ float FiniteFp8Reference(int code) {
   const int exponent = (code >> 3) & 15;
   const int mantissa = code & 7;
   const float magnitude = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), -9)
-                                       : std::ldexp(1.0f + static_cast<float>(mantissa) / 8.0f, exponent - 7);
+                                        : std::ldexp(1.0f + static_cast<float>(mantissa) / 8.0f, exponent - 7);
   return code & 128 ? -magnitude : magnitude;
 }
 
