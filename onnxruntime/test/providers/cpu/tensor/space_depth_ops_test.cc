@@ -320,14 +320,25 @@ TEST(TensorOpTest, SpaceToDepthOpset28ModesAndProviderRouting) {
         ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
         ASSERT_STATUS_OK(session.Initialize());
         bool has_space_to_depth = false;
+        std::string space_to_depth_provider;
         for (const auto& resolved_node : session.GetGraph().Nodes()) {
-          has_space_to_depth |= resolved_node.OpType() == "SpaceToDepth";
+          if (resolved_node.OpType() == "SpaceToDepth") {
+            has_space_to_depth = true;
+            space_to_depth_provider = resolved_node.GetExecutionProviderType();
+            break;
+          }
         }
-        if (opset == 28 && (mode == "CRD" || provider_type == kCpuExecutionProvider ||
-                            provider_type == kCudaExecutionProvider)) {
-          EXPECT_FALSE(has_space_to_depth);
-        } else if (opset < 28 && provider_type == kCpuExecutionProvider) {
-          EXPECT_TRUE(has_space_to_depth);
+        EXPECT_TRUE(has_space_to_depth);
+        if (provider_type == kCpuExecutionProvider) {
+          EXPECT_EQ(space_to_depth_provider, kCpuExecutionProvider);
+        } else if (provider_type == kCudaExecutionProvider) {
+          EXPECT_EQ(space_to_depth_provider, kCudaExecutionProvider);
+        } else if (provider_type == kDmlExecutionProvider) {
+          if (opset == 28 && mode == "CRD") {
+            EXPECT_EQ(space_to_depth_provider, kCpuExecutionProvider);
+          } else {
+            EXPECT_EQ(space_to_depth_provider, kDmlExecutionProvider);
+          }
         }
 
         std::vector<OrtValue> fetches;
