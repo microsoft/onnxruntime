@@ -2172,22 +2172,101 @@ Analysis:
   as many ALU instructions as the MMAs themselves, and bit-exactness forbids
   fusing or reordering them. A back-of-envelope count for M=512, K=N=4096 puts
   the promotion alone near 80 us of the 261-341 us (W4/W8) measured.
-  The window where the dynamic operator beats MatMulNBits on A100 is therefore
-  M=8-64 (W2/W8 and the larger shape) and does not widen with larger tiles.
-- At equal M the standard-layout fine kernel is 1.9-2.6x slower than the
+  Against standard-layout MatMulNBits the dynamic operator wins only at
+  M=8-64 (W2/W8 and the larger shape); section 8.17.2 shows that prepacked
+  MatMulNBits is faster still, so this window does not exist for production
+  weights.
+- At equal M the standard-layout fine kernel is 2-3x slower than the
   prepacked kernel (for example W4 M=128: 248 vs 123 us), because it decodes
   codes from a row-major layout with `DecodeWeight4` and has no fragment-ready
   layout; prepacking remains the right choice for block-32 serving weights.
 - INT4 gains least from more row fragments because nibble decode and the
   promotion dominate; INT2 and INT8 gain most.
 - The multi-fragment thresholds (96 CTAs) and the fine mode are tuned for
-  108 SMs and have only been measured on A100. A single noisy attribute
-  setting changed throughput by 7% in this session (see change 3), so any
-  further kernel edit should be A/B-tested against the previous binary with
-  interleaved runs.
-- `mnb_pre` still could not be measured: the build has
-  `onnxruntime_USE_FPA_INTB_GEMM=OFF` (see the follow-up in section 8.17.2 if
-  present).
+  108 SMs and have only been measured on A100. Code-generation side effects are
+  large (change 3: a register attribute alone cost 7%), so any further kernel
+  edit should be A/B-tested against the previous binary with interleaved runs.
+- `mnb_pre` could not be measured in the build used above
+  (`onnxruntime_USE_FPA_INTB_GEMM=OFF`), so `mnb_std` is only a proxy and
+  overstates MatMulNBits' latency; see section 8.17.2 for the real baseline.
+
+#### 8.17.2 Prepacked MatMulNBits baseline
+
+The build was reconfigured with `onnxruntime_USE_FPA_INTB_GEMM=ON` (compact
+tactic set, SM80 only) so `bench_prepacked.py` could time `mnb_pre`: the
+MatMulNBits fpA_intB CUTLASS kernel on the same prepacked bytes. Reconfiguring
+an existing build directory re-applies the FetchContent patches and fails with
+"Reversed (or previously applied) patch" unless the sub-build `.ninja_log`
+files are removed and their stamps touched; configure from the same path form
+that created the directory, or every object is rebuilt. Idle A100-SXM4-80GB
+(a first attempt on a GPU that another job started using showed ~340 us for
+every case and was discarded), same protocol, microseconds, final code of
+section 8.17.1:
+
+| K x N | Weights | M | dyn_pre | mnb_pre | mnb_pre time / dyn_pre time (below 1: MatMulNBits faster) |
+|-------|---------|---|---------|---------|------------------------------|
+| 4096x4096 | W2 b64 | 1 | 40.1 | 20.6 | 0.51x |
+| 4096x4096 | W2 b64 | 8 | 38.9 | 32.1 | 0.82x |
+| 4096x4096 | W2 b64 | 16 | 40.6 | 35.7 | 0.88x |
+| 4096x4096 | W2 b64 | 32 | 51.1 | 39.6 | 0.78x |
+| 4096x4096 | W2 b64 | 64 | 60.6 | 44.9 | 0.74x |
+| 4096x4096 | W2 b64 | 128 | 86.9 | 54.0 | 0.62x |
+| 4096x4096 | W2 b64 | 256 | 128.8 | 70.9 | 0.55x |
+| 4096x4096 | W2 b64 | 512 | 194.5 | 110.1 | 0.57x |
+| 4096x4096 | W4 b32 | 1 | 50.9 | 21.9 | 0.43x |
+| 4096x4096 | W4 b32 | 8 | 51.4 | 28.7 | 0.56x |
+| 4096x4096 | W4 b32 | 16 | 51.1 | 36.4 | 0.71x |
+| 4096x4096 | W4 b32 | 32 | 66.2 | 40.1 | 0.61x |
+| 4096x4096 | W4 b32 | 64 | 84.4 | 46.2 | 0.55x |
+| 4096x4096 | W4 b32 | 128 | 123.3 | 55.7 | 0.45x |
+| 4096x4096 | W4 b32 | 256 | 186.5 | 73.5 | 0.39x |
+| 4096x4096 | W4 b32 | 512 | 341.0 | 113.7 | 0.33x |
+| 4096x4096 | W8 b32 | 1 | 49.3 | 20.9 | 0.42x |
+| 4096x4096 | W8 b32 | 8 | 46.1 | 29.8 | 0.65x |
+| 4096x4096 | W8 b32 | 16 | 49.8 | 37.0 | 0.74x |
+| 4096x4096 | W8 b32 | 32 | 62.9 | 41.3 | 0.66x |
+| 4096x4096 | W8 b32 | 64 | 81.9 | 47.4 | 0.58x |
+| 4096x4096 | W8 b32 | 128 | 114.9 | 56.6 | 0.49x |
+| 4096x4096 | W8 b32 | 256 | 171.3 | 77.5 | 0.45x |
+| 4096x4096 | W8 b32 | 512 | 263.0 | 118.7 | 0.45x |
+| 5120x6144 | W2 b64 | 1 | 47.2 | 22.4 | 0.47x |
+| 5120x6144 | W2 b64 | 8 | 44.6 | 37.1 | 0.83x |
+| 5120x6144 | W2 b64 | 16 | 47.3 | 39.5 | 0.83x |
+| 5120x6144 | W2 b64 | 32 | 56.8 | 44.4 | 0.78x |
+| 5120x6144 | W2 b64 | 64 | 76.3 | 50.2 | 0.66x |
+| 5120x6144 | W2 b64 | 128 | 105.6 | 69.3 | 0.66x |
+| 5120x6144 | W2 b64 | 256 | 190.0 | 101.5 | 0.53x |
+| 5120x6144 | W2 b64 | 512 | 357.7 | 175.8 | 0.49x |
+| 5120x6144 | W4 b32 | 1 | 60.7 | 24.2 | 0.40x |
+| 5120x6144 | W4 b32 | 8 | 61.8 | 38.4 | 0.62x |
+| 5120x6144 | W4 b32 | 16 | 61.8 | 41.0 | 0.66x |
+| 5120x6144 | W4 b32 | 32 | 75.9 | 45.0 | 0.59x |
+| 5120x6144 | W4 b32 | 64 | 103.9 | 52.1 | 0.50x |
+| 5120x6144 | W4 b32 | 128 | 187.8 | 70.6 | 0.38x |
+| 5120x6144 | W4 b32 | 256 | 350.1 | 105.2 | 0.30x |
+| 5120x6144 | W4 b32 | 512 | 634.7 | 185.5 | 0.29x |
+| 5120x6144 | W8 b32 | 1 | 65.9 | 33.2 | 0.50x |
+| 5120x6144 | W8 b32 | 8 | 61.5 | 44.5 | 0.72x |
+| 5120x6144 | W8 b32 | 16 | 66.7 | 42.8 | 0.64x |
+| 5120x6144 | W8 b32 | 32 | 83.0 | 48.9 | 0.59x |
+| 5120x6144 | W8 b32 | 64 | 104.4 | 55.8 | 0.53x |
+| 5120x6144 | W8 b32 | 128 | 145.0 | 74.5 | 0.51x |
+| 5120x6144 | W8 b32 | 256 | 263.4 | 109.5 | 0.42x |
+| 5120x6144 | W8 b32 | 512 | 494.3 | 190.8 | 0.39x |
+
+`Sm80PrepackedLayoutMatchesMatMulNBits` also passes in this build, and the
+relative RMSE of the dynamic result against `mnb_pre` is 0.80-1.02% for every
+case (activation quantization error).
+
+Conclusion for A100: prepacked MatMulNBits is faster than the dynamic operator
+at every measured M: 1.1-1.8x at M=8-16, 2.2-3.4x for W4 at M>=128 (W4, K=5120,
+N=6144, M=512: 186 against 635 us), and it is more accurate. The
+standard-layout MatMulNBits used as a baseline earlier was a poor proxy (for
+example W4 K=N=4096, M=64: 63 us standard against 46 us prepacked). On A100 the
+dynamic operator is therefore only useful where activation quantization itself
+is wanted (for example to reproduce a W8A8 deployment), not as a speed-up over
+weight-only fpA_intB. A speed-up would need a different promotion scheme than
+bit-exact per-32-code FP32 accumulation.
 
 Validation: `Sm80PrepackedMultiRowFragmentTiles`, `AmpereFineScaleIntervals`,
 and the Python tests `test_sm80_prepacked_row_fragment_tiles_match_exact_reference`
