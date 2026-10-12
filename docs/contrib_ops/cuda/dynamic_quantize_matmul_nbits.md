@@ -514,7 +514,9 @@ kernel binary/PTX versions at least 80. All native kernels use signed INT8
   SM80 (A100) instead accepts any M, chooses among `16 x 32`, `16 x 64`,
   `32 x 64` and `64 x 64` tiles by row count and CTA count, and stages
   128-code K tiles when K and the weight/activation blocks are multiples of
-  128 (section 8.16).
+  128 (section 8.16). On SM80 it also accepts weight blocks of 32 and
+  activation blocks that are multiples of 32, promoting after every 32-wide
+  MMA step (section 8.17).
 - Other native W8A8/W4A8/W2A8: `32 x 64 x 64` CTA tile with direct shared-memory
   weight decoding. Requires M at least 32, N at least 8, K at least 32,
   and every interior activation/weight block boundary 32-aligned: each
@@ -2028,6 +2030,171 @@ per-tensor/token/block activation modes, weight blocks 64/128/256 and K tails;
 an additional 840-case sweep (28 row counts, 10 geometries) also matched
 exactly. The benchmark script validates bitwise equality for every timed
 configuration. Use `--warmup 3000` on a cold GPU.
+
+### 8.17 Prepacked weights and 32-aligned intervals on A100
+
+Measured with `bench_prepacked.py` (kept outside the tree; it times
+`DynamicQuantizeMatMulNBits` with standard blobs (`dyn_std`), the same operator with
+`weight_prepacked=1` (`dyn_pre`), and prepacked MatMulNBits (`mnb_pre`)), commit
+`f4a6469479` plus section 8.16, on an idle A100-SXM4-80GB, CUDA 13.0, FP16
+per-token, CUDA Graph replay, 2000 warmups, 100 repetitions, median of 9 trials.
+The first attempt was discarded: another user's job started on the same GPU
+mid-run and produced ~2.2 ms time-slice plateaus, so check `nvidia-smi
+--query-compute-apps` before and after a run.
+
+`mnb_pre` could not run because this build has `onnxruntime_USE_FPA_INTB_GEMM=OFF`.
+The baseline below is therefore standard-layout MatMulNBits (`mnb_std`, byte-identical
+weights, no activation quantization) from `benchmark_dynamic_quantize_matmul_nbits.py`;
+the real prepacked MatMulNBits is expected to be faster, especially at small M.
+`dyn_pre` equalled `dyn_std` bit for bit in all 48 cases.
+
+K=N=4096, microseconds:
+
+| Weights | M | dyn_std | dyn_pre | mnb_std | dyn_std/dyn_pre | mnb_std/dyn_pre |
+|---------|---|---------|---------|---------|-----------------|-----------------|
+| W2 b64 | 1 | 76.0 | 43.0 | 21.1 | 1.77x | 0.49x |
+| W2 b64 | 8 | 74.4 | 40.1 | 40.7 | 1.85x | 1.01x |
+| W2 b64 | 16 | 77.9 | 43.5 | 64.1 | 1.79x | 1.47x |
+| W2 b64 | 32 | 84.7 | 52.8 | 65.8 | 1.60x | 1.25x |
+| W2 b64 | 64 | 116.6 | 63.8 | 65.5 | 1.83x | 1.03x |
+| W2 b64 | 128 | 177.6 | 92.6 | 73.2 | 1.92x | 0.79x |
+| W2 b64 | 512 | 467.9 | 273.8 | 127.7 | 1.71x | 0.47x |
+| W4 b32 | 1 | 375.8 | 54.6 | 20.1 | 6.9x | 0.37x |
+| W4 b32 | 8 | 2362.6 | 47.0 | 33.2 | 50x | 0.71x |
+| W4 b32 | 16 | 4662.1 | 55.1 | 52.9 | 85x | 0.96x |
+| W4 b32 | 32 | 821.7 | 68.0 | 63.5 | 12x | 0.93x |
+| W4 b32 | 64 | 860.7 | 84.8 | 62.9 | 10x | 0.74x |
+| W4 b32 | 128 | 908.5 | 131.1 | 69.2 | 6.9x | 0.53x |
+| W4 b32 | 512 | 2702.7 | 426.0 | 125.8 | 6.3x | 0.30x |
+| W8 b32 | 1 | 378.8 | 51.4 | 27.6 | 7.4x | 0.54x |
+| W8 b32 | 8 | 2357.3 | 46.6 | 69.1 | 51x | 1.48x |
+| W8 b32 | 16 | 4650.5 | 52.2 | 69.3 | 89x | 1.33x |
+| W8 b32 | 32 | 864.6 | 66.2 | 71.4 | 13x | 1.08x |
+| W8 b32 | 64 | 926.0 | 84.1 | 70.5 | 11x | 0.84x |
+| W8 b32 | 128 | 1021.7 | 129.5 | 75.7 | 7.9x | 0.58x |
+| W8 b32 | 512 | 3100.5 | 406.0 | 134.3 | 7.6x | 0.33x |
+
+K=5120, N=6144 shows the same pattern: `dyn_pre` beats `mnb_std` at M=8-32 for
+W8 (1.4-1.9x), M=16-64 for W2 (1.3-2.2x) and M=16-32 for W4 (1.2-1.4x), and
+loses at M=1 and from M=64-128 (W4 M=512: 796 us against 201 us).
+
+Findings:
+
+- The large `dyn_std` gaps for W4/W8 block 32 exist because the aligned grouped
+  kernel requires `block_size % 64 == 0`; block 32 falls to the older
+  `NativeIntegerMatMul` (M >= 32) or the DP4A/scalar kernel (M < 32). W2 block
+  64 already uses the grouped kernel, so its 1.7-2.0x prepacked gain is the
+  layout itself.
+- The prepacked kernel's fixed 16-row CTA tile re-reads the weights once per
+  16 rows and has no larger tile, so it scales poorly: W4 K=N=4096 goes from
+  55 us (M=16) to 131 us (M=128) and 426 us (M=512). The older `b1.json`/`b2.json`
+  runs on another GPU show the same shape (M=512: 274 us against 101 us
+  prepacked MatMulNBits).
+- On A100 the useful window is roughly M=8-32 with 1.1-2x over standard
+  MatMulNBits; at M=1 MatMulNBits is 2-3x faster.
+
+#### 8.17.1 Changes after the baseline
+
+Three changes followed, all SM80-only, bit-exact, and checked against the exact
+reference and against each other (`dyn_pre == dyn_std` in every benchmark case):
+
+1. **Prepacked row fragments.** `PrepackedMatMul` takes a `RowFragments`
+   parameter: each warp keeps its eight columns and decodes a B fragment once for
+   2 or 4 row fragments (CTA rows 32 or 64). `PrepackedRowFragments` picks the
+   largest count that does not exceed M and leaves at least 96 CTAs (a CTA per
+   SM), at most 2 for INT4 (whose nibble decode is the most expensive; four
+   fragments were 0-10% slower than two at M=128-512) and 4 for INT2/INT8.
+   The scales of the next 128-wide K tile are also loaded into registers ahead
+   of the MMAs (neutral on its own at one fragment). Measured at K=N=4096,
+   M=512: W2 288 -> 194 us, W4 423 -> 341 us, W8 407 -> 262 us; K=5120, N=6144,
+   M=128: W2 162 -> 105 us, W4 238 -> 187 us, W8 232 -> 144 us. M <= 16 and
+   the fixed M=8/9 kernels are unchanged.
+2. **32-aligned intervals in the standard layout.** `NativeAlignedGroupedMatMul`
+   has a `Fine` mode that zeroes and promotes the INT32 accumulators after every
+   32-wide MMA step, so weight blocks of 32 and activation blocks that are
+   multiples of 32 but not 64 (for example 96) use the grouped tensor-core
+   kernel instead of `NativeIntegerMatMul` (M >= 32) or the DP4A kernel
+   (M < 32). It is enabled only on SM80 and keeps the 64-code K tile and the
+   existing tile selector. Weight scales of the whole tile are loaded before
+   its MMAs. W4/W8 block 32, K=N=4096: M=16 4662 -> 115 us (40x), M=32 822 ->
+   121 us, M=128 909 -> 248 us, M=512 2703 -> 776 us; K=5120, N=6144 gives
+   62x at M=16 and 3.5-4x at M=512. Block-128 and block-64 results are unchanged
+   within noise (paired old/new runs, section 8.16 protocol).
+3. **Register cap for the runtime-interval kernel.** Restructuring the
+   promotion into a shared lambda raised the register count of the 64x64
+   runtime-interval instantiation from 151 to 174 and dropped it from three to
+   two CTAs per SM (W2 block 64, M=512: 468 -> 645 us). Those instantiations
+   now use `__launch_bounds__(128, 3)` (168 registers, 16 bytes of stack), which
+   restored 458 us (1.02-1.04x over the previous code). The fixed-geometry
+   Common128 instantiations are slower with any launch-bound or register
+   attribute (6-7% at M=1536 even with `__maxnreg__(255)`), so the body lives in
+   a `__forceinline__` function behind two kernels, one with and one without the
+   attribute.
+
+Complete-operator times (us) before and after on an idle A100, same protocol as
+above (`mnb_std` is standard-layout MatMulNBits, not the prepacked kernel; M=1
+differences of 10-15% are noise, as are M=32 differences between runs):
+
+| K x N | Weights | M | dyn_std before | dyn_std after | dyn_pre before | dyn_pre after | mnb_std | mnb_std / dyn_pre |
+|-------|---------|---|----------------|---------------|----------------|---------------|---------|-------------------|
+| 4096x4096 | W2 b64 | 16 | 77.9 | 77.2 | 43.5 | 40.5 | 64.1 | 1.6x |
+| 4096x4096 | W2 b64 | 64 | 116.6 | 111.9 | 63.8 | 60.6 | 65.5 | 1.1x |
+| 4096x4096 | W2 b64 | 128 | 177.6 | 171.7 | 92.6 | 86.8 | 73.2 | 0.8x |
+| 4096x4096 | W2 b64 | 512 | 467.9 | 457.8 | 273.8 | 193.8 | 127.7 | 0.7x |
+| 4096x4096 | W4 b32 | 16 | 4662.1 | 115.0 | 55.1 | 51.1 | 52.9 | 1.0x |
+| 4096x4096 | W4 b32 | 32 | 821.7 | 120.5 | 68.0 | 65.9 | 63.5 | 1.0x |
+| 4096x4096 | W4 b32 | 64 | 860.7 | 159.0 | 84.8 | 84.0 | 62.9 | 0.7x |
+| 4096x4096 | W4 b32 | 128 | 908.5 | 247.9 | 131.1 | 123.2 | 69.2 | 0.6x |
+| 4096x4096 | W4 b32 | 256 | - | 397.8 | - | 185.5 | - | - |
+| 4096x4096 | W4 b32 | 512 | 2702.7 | 775.8 | 426.0 | 340.6 | 125.8 | 0.4x |
+| 4096x4096 | W8 b32 | 16 | 4650.5 | 110.7 | 52.2 | 50.3 | 69.3 | 1.4x |
+| 4096x4096 | W8 b32 | 64 | 926.0 | 160.3 | 84.1 | 82.1 | 70.5 | 0.9x |
+| 4096x4096 | W8 b32 | 128 | 1021.7 | 252.1 | 129.5 | 114.4 | 75.7 | 0.7x |
+| 4096x4096 | W8 b32 | 256 | - | 398.1 | - | 170.7 | - | - |
+| 4096x4096 | W8 b32 | 512 | 3100.5 | 775.3 | 406.0 | 262.4 | 134.3 | 0.5x |
+| 5120x6144 | W2 b64 | 64 | 185.8 | 181.9 | 90.8 | 76.1 | 117.4 | 1.5x |
+| 5120x6144 | W2 b64 | 128 | 282.7 | 275.7 | 156.7 | 105.1 | 120.8 | 1.1x |
+| 5120x6144 | W2 b64 | 512 | 859.1 | 832.5 | 496.7 | 354.7 | 198.6 | 0.6x |
+| 5120x6144 | W4 b32 | 16 | 8687.1 | 140.3 | 65.9 | 61.8 | 80.0 | 1.3x |
+| 5120x6144 | W4 b32 | 64 | 1079.8 | 266.2 | 141.4 | 103.7 | 116.4 | 1.1x |
+| 5120x6144 | W4 b32 | 128 | 1242.2 | 449.0 | 240.0 | 186.9 | 117.9 | 0.6x |
+| 5120x6144 | W4 b32 | 512 | 4809.8 | 1374.0 | 796.4 | 631.3 | 201.5 | 0.3x |
+| 5120x6144 | W8 b32 | 16 | 9066.9 | 139.9 | 69.3 | 64.8 | 120.5 | 1.9x |
+| 5120x6144 | W8 b32 | 64 | 1432.7 | 272.6 | 128.6 | 103.8 | 124.6 | 1.2x |
+| 5120x6144 | W8 b32 | 128 | 1450.4 | 442.3 | 230.4 | 144.2 | 127.5 | 0.9x |
+| 5120x6144 | W8 b32 | 512 | 5599.8 | 1367.4 | 772.6 | 491.6 | 209.1 | 0.4x |
+
+Analysis:
+
+- The prepacked kernel and the fine standard kernel are both limited by the
+  per-32-code promotion, not by memory: every output element needs an
+  INT-to-float conversion, two ordered multiplies and an add per 32 K, about
+  as many ALU instructions as the MMAs themselves, and bit-exactness forbids
+  fusing or reordering them. A back-of-envelope count for M=512, K=N=4096 puts
+  the promotion alone near 80 us of the 261-341 us (W4/W8) measured.
+  The window where the dynamic operator beats MatMulNBits on A100 is therefore
+  M=8-64 (W2/W8 and the larger shape) and does not widen with larger tiles.
+- At equal M the standard-layout fine kernel is 1.9-2.6x slower than the
+  prepacked kernel (for example W4 M=128: 248 vs 123 us), because it decodes
+  codes from a row-major layout with `DecodeWeight4` and has no fragment-ready
+  layout; prepacking remains the right choice for block-32 serving weights.
+- INT4 gains least from more row fragments because nibble decode and the
+  promotion dominate; INT2 and INT8 gain most.
+- The multi-fragment thresholds (96 CTAs) and the fine mode are tuned for
+  108 SMs and have only been measured on A100. A single noisy attribute
+  setting changed throughput by 7% in this session (see change 3), so any
+  further kernel edit should be A/B-tested against the previous binary with
+  interleaved runs.
+- `mnb_pre` still could not be measured: the build has
+  `onnxruntime_USE_FPA_INTB_GEMM=OFF` (see the follow-up in section 8.17.2 if
+  present).
+
+Validation: `Sm80PrepackedMultiRowFragmentTiles`, `AmpereFineScaleIntervals`,
+and the Python tests `test_sm80_prepacked_row_fragment_tiles_match_exact_reference`
+and `test_row_counts_across_grouped_tile_selection_match_exact_reference`
+(extended with block-32 and 96-wide activation geometries) compare bitwise with
+the exact reference; an extended 1428-case sweep (28 row counts, 17 geometries,
+all tile choices forced during development) also matched exactly.
 
 ## 9. Delivery Plan and Acceptance
 

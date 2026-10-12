@@ -412,13 +412,15 @@ __device__ __forceinline__ void CopyAsync16(void* destination, const void* sourc
 }
 
 // Weights use the SM80 fpA_intB layout: 64 K x (16 / Bits) columns form one 128-byte tile. Block size is 32 for
-// INT4/INT8 and 64 for INT2, so each scale interval covers one or two 32-wide MMA steps.
-template <typename T, typename ScaleT, int Bits, int FixedRows = 0>
+// INT4/INT8 and 64 for INT2, so each scale interval covers one or two 32-wide MMA steps. Each warp owns eight columns
+// and RowFragments 16-row fragments, so every decoded weight fragment feeds RowFragments MMAs. The scales of the
+// next K tile are loaded ahead into registers to keep their latency off the promotion path.
+template <typename T, typename ScaleT, int Bits, int FixedRows = 0, int RowFragments = 1>
 __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
                                 const void* b_scales, const T* bias, T* y,
                                 bool per_tensor, int rows, int n, int k) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  constexpr int TileM = 16;
+  constexpr int TileM = 16 * RowFragments;
   constexpr int TileN = 64;
   constexpr int TileK = 128;
   constexpr int Stages = 2;
@@ -429,6 +431,7 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
   constexpr int BlockSize = Bits == 2 ? 64 : 32;
   constexpr int StepsPerGroup = BlockSize / 32;
   constexpr int Steps = TileK / 32;
+  constexpr int GroupsPerTile = TileK / BlockSize;
   __shared__ __align__(16) uint32_t shared_a[Stages][TileM][AStride];
   __shared__ __align__(16) uint4 shared_b[Stages][(TileN / Interleave) * ChunksPerColumnGroup];
   const int lane = threadIdx.x % 32;
@@ -438,14 +441,20 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
   const int tile_row = FixedRows == 0 ? (blockIdx.x / column_tiles) * TileM : 0;
   const int tile_column = (FixedRows == 0 ? blockIdx.x % column_tiles : blockIdx.x) * TileN;
   const int groups = k / BlockSize;
-  float total[4];
-  const float row_scale = tile_row + lane % 16 < active_rows
-                              ? a_scales[per_tensor ? 0 : tile_row + lane % 16]
-                              : 1.0f;
-  const float activation_scale0 = __shfl_sync(0xffffffff, row_scale, lane / 4);
-  const float activation_scale1 = __shfl_sync(0xffffffff, row_scale, lane / 4 + 8);
-  const bool normal_activation_scale0 = isfinite(activation_scale0) && fabsf(activation_scale0) >= FLT_MIN;
-  const bool normal_activation_scale1 = isfinite(activation_scale1) && fabsf(activation_scale1) >= FLT_MIN;
+  float total[RowFragments][4];
+  float activation_scale[RowFragments][2];
+  bool normal_activation_scale[RowFragments][2];
+#pragma unroll
+  for (int rf = 0; rf < RowFragments; ++rf) {
+    const int scale_row = tile_row + rf * 16 + lane % 16;
+    const float row_scale = scale_row < active_rows ? a_scales[per_tensor ? 0 : scale_row] : 1.0f;
+#pragma unroll
+    for (int half = 0; half < 2; ++half) {
+      activation_scale[rf][half] = __shfl_sync(0xffffffff, row_scale, lane / 4 + half * 8);
+      normal_activation_scale[rf][half] =
+          isfinite(activation_scale[rf][half]) && fabsf(activation_scale[rf][half]) >= FLT_MIN;
+    }
+  }
 
   auto load = [&](int pos, int stage) {
 #pragma unroll
@@ -469,10 +478,26 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
     asm volatile("cp.async.commit_group;" ::: "memory");
   };
 
+  // Lane l < 4 owns the scales of columns 2l and 2l+1 of this warp's eight; the others are shuffled from it.
+  const int scale_column = tile_column + warp * 8 + (lane % 4) * 2;
+  auto load_scales = [&](int pos, float (&s0)[GroupsPerTile], float (&s1)[GroupsPerTile]) {
+#pragma unroll
+    for (int g = 0; g < GroupsPerTile; ++g) {
+      const int group = pos / BlockSize + g;
+      const bool valid = lane < 4 && pos < k;
+      s0[g] = valid ? LoadTypedScale<ScaleT>(b_scales, int64_t{scale_column} * groups + group) : 0.0f;
+      s1[g] = valid ? LoadTypedScale<ScaleT>(b_scales, int64_t{scale_column + 1} * groups + group) : 0.0f;
+    }
+  };
+  float current0[GroupsPerTile], current1[GroupsPerTile];
+  float next0[GroupsPerTile], next1[GroupsPerTile];
+  load_scales(0, current0, current1);
+
   load(0, 0);
   for (int pos = 0; pos < k; pos += TileK) {
     const int stage = (pos / TileK) % Stages;
     load(pos + TileK, (stage + 1) % Stages);
+    load_scales(pos + TileK, next0, next1);
     asm volatile("cp.async.wait_group 1;" ::: "memory");
     __syncthreads();
 
@@ -480,42 +505,47 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
     const uint32_t* column_words = reinterpret_cast<const uint32_t*>(&shared_b[stage][0]) +
                                    (column / Interleave) * (ChunksPerColumnGroup * 4) +
                                    (column % Interleave) * ColumnWords;
-    int32_t acc[4];
+    int32_t acc[RowFragments][4];
 #pragma unroll
     for (int step = 0; step < Steps; ++step) {
-      uint32_t fragment_a[4];
-      const int row = lane % 16;
-      const uint32_t a_address = static_cast<uint32_t>(__cvta_generic_to_shared(
-          &shared_a[stage][row][step * 8 + (lane / 16) * 4]));
-      asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
-                   : "=r"(fragment_a[0]), "=r"(fragment_a[1]),
-                     "=r"(fragment_a[2]), "=r"(fragment_a[3]) : "r"(a_address));
-
       const uint32_t* tile_words = column_words + (step / 2) * 32;
       const uint32_t b0 = DecodePrepacked<Bits>(tile_words, step % 2, lane % 4, false);
       const uint32_t b1 = DecodePrepacked<Bits>(tile_words, step % 2, lane % 4, true);
       if (step % StepsPerGroup == 0) {
-        acc[0] = acc[1] = acc[2] = acc[3] = 0;
+#pragma unroll
+        for (int rf = 0; rf < RowFragments; ++rf) acc[rf][0] = acc[rf][1] = acc[rf][2] = acc[rf][3] = 0;
       }
-      MmaInt8(acc, fragment_a, b0, b1);
+#pragma unroll
+      for (int rf = 0; rf < RowFragments; ++rf) {
+        uint32_t fragment_a[4];
+        const int row = rf * 16 + lane % 16;
+        const uint32_t a_address = static_cast<uint32_t>(__cvta_generic_to_shared(
+            &shared_a[stage][row][step * 8 + (lane / 16) * 4]));
+        asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
+                     : "=r"(fragment_a[0]), "=r"(fragment_a[1]),
+                       "=r"(fragment_a[2]), "=r"(fragment_a[3]) : "r"(a_address));
+        MmaInt8(acc[rf], fragment_a, b0, b1);
+      }
       if (step % StepsPerGroup != StepsPerGroup - 1) continue;
 
-      const int group = (pos + step * 32) / BlockSize;
-      const int scale_column = tile_column + warp * 8 + lane * 2;
-      const int64_t scale_index0 = int64_t{scale_column} * groups + group;
-      const int64_t scale_index1 = int64_t{scale_column + 1} * groups + group;
-      const float loaded_scale0 = lane < 4 ? LoadTypedScale<ScaleT>(b_scales, scale_index0) : 0.0f;
-      const float loaded_scale1 = lane < 4 ? LoadTypedScale<ScaleT>(b_scales, scale_index1) : 0.0f;
-      const float scale0 = __shfl_sync(0xffffffff, loaded_scale0, lane % 4);
-      const float scale1 = __shfl_sync(0xffffffff, loaded_scale1, lane % 4);
+      const int group_in_tile = step / StepsPerGroup;
+      const float scale0 = __shfl_sync(0xffffffff, current0[group_in_tile], lane % 4);
+      const float scale1 = __shfl_sync(0xffffffff, current1[group_in_tile], lane % 4);
 #pragma unroll
-      for (int element = 0; element < 4; ++element) {
-        const float term = DecodeScaleProduct<T>(
-            acc[element], element < 2 ? activation_scale0 : activation_scale1,
-            element % 2 == 0 ? scale0 : scale1,
-            element < 2 ? normal_activation_scale0 : normal_activation_scale1);
-        total[element] = group == 0 ? term : __fadd_rn(total[element], term);
+      for (int rf = 0; rf < RowFragments; ++rf) {
+#pragma unroll
+        for (int element = 0; element < 4; ++element) {
+          const float term = DecodeScaleProduct<T>(
+              acc[rf][element], activation_scale[rf][element / 2], element % 2 == 0 ? scale0 : scale1,
+              normal_activation_scale[rf][element / 2]);
+          total[rf][element] = pos == 0 && group_in_tile == 0 ? term : __fadd_rn(total[rf][element], term);
+        }
       }
+    }
+#pragma unroll
+    for (int g = 0; g < GroupsPerTile; ++g) {
+      current0[g] = next0[g];
+      current1[g] = next1[g];
     }
     __syncthreads();
   }
@@ -523,12 +553,15 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
   __syncthreads();
 
 #pragma unroll
-  for (int element = 0; element < 4; ++element) {
-    const int row = tile_row + lane / 4 + (element / 2) * 8;
-    const int column = tile_column + warp * 8 + (lane % 4) * 2 + element % 2;
-    if (row < active_rows) {
-      y[int64_t{row} * n + column] =
-          from_float<T>(__fadd_rn(total[element], bias ? to_float(bias[column]) : 0.0f));
+  for (int rf = 0; rf < RowFragments; ++rf) {
+#pragma unroll
+    for (int element = 0; element < 4; ++element) {
+      const int row = tile_row + rf * 16 + lane / 4 + (element / 2) * 8;
+      const int column = tile_column + warp * 8 + (lane % 4) * 2 + element % 2;
+      if (row < active_rows) {
+        y[int64_t{row} * n + column] =
+            from_float<T>(__fadd_rn(total[rf][element], bias ? to_float(bias[column]) : 0.0f));
+      }
     }
   }
 #endif
@@ -662,12 +695,15 @@ __global__ void NativeSingleIntervalMatMul(const int8_t* a, const float* a_scale
 #endif
 }
 
-template <typename T, int Bits, int TileM, bool Common128 = false, int TileN = 64, int Stages = 3, int WarpsM = 2, int TileK = 64, bool RowGuard = false>
-__global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
-                                           const void* b_scales, DynamicWeightScaleType scale_type,
-                                           const T* bias, T* y, bool per_tensor, int rows, int n,
-                                           int k, int runtime_block_size, int runtime_activation_block_size) {
+template <typename T, int Bits, int TileM, bool Common128, int TileN, int Stages, int WarpsM, int TileK, bool RowGuard,
+          bool Fine>
+__device__ __forceinline__ void NativeAlignedGroupedBody(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                                         const void* b_scales, DynamicWeightScaleType scale_type,
+                                                         const T* bias, T* y, bool per_tensor, int rows, int n,
+                                                         int k, int runtime_block_size,
+                                                         int runtime_activation_block_size) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  // Fine promotes after every 32-wide MMA step, for 32-aligned (not 64-aligned) scale intervals.
   // RowGuard keeps the fixed-geometry Common128 body but predicates rows for a partial last row tile.
   constexpr bool full_rows = Common128 && !RowGuard;
   const int block_size = Common128 ? 128 : runtime_block_size;
@@ -771,28 +807,18 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
                          "=r"(fragment_a[buffer][mf][2]), "=r"(fragment_a[buffer][mf][3]) : "r"(address));
         }
       };
-      load_fragments(0, 0);
+      float fine_scales[Fine ? tile_k / 32 : 1];
+      if constexpr (Fine) {
 #pragma unroll
-      for (int half_k = 0; half_k < tile_k / 32; ++half_k) {
-        if (half_k * 32 < valid_k) {
-          if (half_k + 1 < tile_k / 32) load_fragments(half_k + 1, (half_k + 1) % 2);
-#pragma unroll
-          for (int mf = 0; mf < m_fragments; ++mf) {
-#pragma unroll
-            for (int cf = 0; cf < n_fragments; ++cf) {
-              MmaInt8(acc[mf][cf], fragment_a[half_k % 2][mf],
-                      fragment_b[half_k % 2][cf][0], fragment_b[half_k % 2][cf][1]);
-            }
-          }
-        }
+        for (int h = 0; h < tile_k / 32; ++h) fine_scales[h] = load_weight_scale((pos + h * 32) / block_size);
       }
-      if (Common128 ? (pos + tile_k) % 128 == 0 : pos + tile_k == interval_end) {
+      auto promote = [&](int end, float weight_scale_in) {
         float weight_scales[n_fragments][2];
 #pragma unroll
         for (int cf = 0; cf < n_fragments; ++cf) {
 #pragma unroll
           for (int c = 0; c < 2; ++c) {
-            weight_scales[cf][c] = __shfl_sync(0xffffffff, weight_scale, cf * 8 + (lane % 4) * 2 + c);
+            weight_scales[cf][c] = __shfl_sync(0xffffffff, weight_scale_in, cf * 8 + (lane % 4) * 2 + c);
           }
         }
         if (!Common128 && activation_group != cached_activation_group) {
@@ -823,7 +849,7 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
                 const float term = ScaleProduct<std::is_same_v<T, half>>(acc[mf][cf][element],
                                                                          activation_scales[element / 2],
                                                                          weight_scales[cf][element % 2]);
-                total[mf][cf][element] = (Common128 ? pos + tile_k == 128 : interval_start == 0)
+                total[mf][cf][element] = (Common128 ? end == 128 : interval_start == 0)
                                              ? term
                                              : __fadd_rn(total[mf][cf][element], term);
               }
@@ -832,11 +858,11 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
           }
         }
         if (Common128) {
-          weight_scale = load_weight_scale(pos / 128 + 1);
+          weight_scale = load_weight_scale(end / 128);
         } else if (interval_end == weight_end) {
           ++weight_group;
           weight_end = interval_end + min(k - interval_end, block_size);
-          weight_scale = load_weight_scale(weight_group);
+          if constexpr (!Fine) weight_scale = load_weight_scale(weight_group);
         }
         if (!Common128 && interval_end == activation_end) {
           ++activation_group;
@@ -844,6 +870,27 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
         }
         interval_start = interval_end;
         interval_end = min(weight_end, activation_end);
+      };
+      load_fragments(0, 0);
+#pragma unroll
+      for (int half_k = 0; half_k < tile_k / 32; ++half_k) {
+        if (half_k * 32 < valid_k) {
+          if (half_k + 1 < tile_k / 32) load_fragments(half_k + 1, (half_k + 1) % 2);
+#pragma unroll
+          for (int mf = 0; mf < m_fragments; ++mf) {
+#pragma unroll
+            for (int cf = 0; cf < n_fragments; ++cf) {
+              MmaInt8(acc[mf][cf], fragment_a[half_k % 2][mf],
+                      fragment_b[half_k % 2][cf][0], fragment_b[half_k % 2][cf][1]);
+            }
+          }
+          if constexpr (Fine) {
+            if (pos + half_k * 32 + 32 == interval_end) promote(interval_end, fine_scales[half_k]);
+          }
+        }
+      }
+      if constexpr (!Fine) {
+        if (Common128 ? (pos + tile_k) % 128 == 0 : pos + tile_k == interval_end) promote(pos + tile_k, weight_scale);
       }
       __syncthreads();
     }
@@ -866,6 +913,31 @@ __global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scale
     }
   }
 #endif
+}
+
+template <typename T, int Bits, int TileM, bool Common128 = false, int TileN = 64, int Stages = 3, int WarpsM = 2,
+          int TileK = 64, bool RowGuard = false, bool Fine = false>
+__global__ void NativeAlignedGroupedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                           const void* b_scales, DynamicWeightScaleType scale_type,
+                                           const T* bias, T* y, bool per_tensor, int rows, int n,
+                                           int k, int runtime_block_size, int runtime_activation_block_size) {
+  NativeAlignedGroupedBody<T, Bits, TileM, Common128, TileN, Stages, WarpsM, TileK, RowGuard, Fine>(
+      a, a_scales, b, b_scales, scale_type, bias, y, per_tensor, rows, n, k, runtime_block_size,
+      runtime_activation_block_size);
+}
+
+// The runtime-interval body needs the register cap to keep three 128-thread CTAs per SM; the fixed Common128 body
+// is slower with any register attribute, so it keeps the compiler default.
+template <typename T, int Bits, int TileM, bool Common128 = false, int TileN = 64, int Stages = 3, int WarpsM = 2,
+          int TileK = 64, bool RowGuard = false, bool Fine = false>
+__global__ void __launch_bounds__(128, 3)
+    NativeAlignedGroupedMatMulCapped(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                     const void* b_scales, DynamicWeightScaleType scale_type,
+                                     const T* bias, T* y, bool per_tensor, int rows, int n,
+                                     int k, int runtime_block_size, int runtime_activation_block_size) {
+  NativeAlignedGroupedBody<T, Bits, TileM, Common128, TileN, Stages, WarpsM, TileK, RowGuard, Fine>(
+      a, a_scales, b, b_scales, scale_type, bias, y, per_tensor, rows, n, k, runtime_block_size,
+      runtime_activation_block_size);
 }
 
 template <typename T, int Bits>
@@ -1015,19 +1087,37 @@ Status NativeKernelAvailable(Kernel kernel, bool& available) {
   return Status::OK();
 }
 
+// Row fragments per CTA of the prepacked kernel. On A100 a decoded weight fragment serving 2-4 row fragments
+// raised M >= 128 throughput by up to 1.9x. Use the largest count that does not exceed the row count and still
+// leaves a CTA per SM (96 of 108), and at most two for INT4, whose nibble decode is the costliest and which gained nothing from four. Other
+// architectures keep one fragment until measured.
+int PrepackedRowFragments(int bits, int64_t rows, int64_t n, int compute_capability) {
+  if (compute_capability != 80 || rows <= 16) return 1;
+  constexpr int64_t kMinimumCtas = 96;
+  for (int fragments = bits == 4 ? 2 : 4; fragments > 1; fragments /= 2) {
+    const int64_t tile_rows = 16 * fragments;
+    if (tile_rows <= rows && (rows + tile_rows - 1) / tile_rows * (n / 64) >= kMinimumCtas) return fragments;
+  }
+  return 1;
+}
+
 template <typename T, typename ScaleT, int Bits>
 Status LaunchPrepacked(const int8_t* a, const float* a_scales, const uint8_t* b,
                        const void* b_scales, const void* bias, void* y,
                        bool per_tensor, int64_t rows, int64_t n, int64_t k,
-                       cudaStream_t stream) {
-  auto kernel = rows == 8   ? PrepackedMatMul<T, ScaleT, Bits, 8>
-                : rows == 9 ? PrepackedMatMul<T, ScaleT, Bits, 9>
-                            : PrepackedMatMul<T, ScaleT, Bits, 0>;
+                       int compute_capability, cudaStream_t stream) {
+  const int fragments = PrepackedRowFragments(Bits, rows, n, compute_capability);
+  auto kernel = rows == 8        ? PrepackedMatMul<T, ScaleT, Bits, 8>
+                : rows == 9      ? PrepackedMatMul<T, ScaleT, Bits, 9>
+                : fragments == 4 ? PrepackedMatMul<T, ScaleT, Bits, 0, 4>
+                : fragments == 2 ? PrepackedMatMul<T, ScaleT, Bits, 0, 2>
+                                 : PrepackedMatMul<T, ScaleT, Bits, 0, 1>;
   bool available;
   ORT_RETURN_IF_ERROR(NativeKernelAvailable(kernel, available));
   ORT_RETURN_IF_NOT(available, "The SM80+ integer MMA body is unavailable in the loaded CUDA image.");
   const int64_t column_tiles = n / 64;
-  const int64_t row_tiles = rows == 8 || rows == 9 ? 1 : rows / 16 + (rows % 16 != 0);
+  const int64_t tile_rows = 16 * fragments;
+  const int64_t row_tiles = rows == 8 || rows == 9 ? 1 : rows / tile_rows + (rows % tile_rows != 0);
   const int64_t tiles = SafeInt<int64_t>(column_tiles) * row_tiles;
   ORT_RETURN_IF_NOT(tiles <= std::numeric_limits<int>::max(), "Prepacked tile grid exceeds CUDA limits.");
   kernel<<<static_cast<int>(tiles), 256, 0, stream>>>(
@@ -1051,24 +1141,36 @@ constexpr int GroupedTileRows(GroupedTile tile) {
 
 constexpr int GroupedTileColumns(GroupedTile tile) { return tile == GroupedTile::k16x32 ? 32 : 64; }
 
-template <typename T, int Bits, bool Common128, bool RowGuard>
+template <typename T, int Bits, int TileM, bool Common128, int TileN, int Stages, int WarpsM, int TileK,
+          bool RowGuard, bool Fine>
+constexpr auto GroupedKernel() {
+  if constexpr (Common128) {
+    return NativeAlignedGroupedMatMul<T, Bits, TileM, Common128, TileN, Stages, WarpsM, TileK, RowGuard, Fine>;
+  } else {
+    return NativeAlignedGroupedMatMulCapped<T, Bits, TileM, Common128, TileN, Stages, WarpsM, TileK, RowGuard, Fine>;
+  }
+}
+
+template <typename T, int Bits, bool Common128, bool RowGuard, bool Fine = false>
 static auto PickGroupedKernel(GroupedTile tile, bool k128) {
+  // Fine intervals never use 128-wide K tiles; equal arguments keep a single instantiation.
+  constexpr int K128 = Fine ? 64 : 128;
   switch (tile) {
     case GroupedTile::k16x32:
-      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 32, 3, 1, 128, RowGuard>
-                  : NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 32, 3, 1, 64, RowGuard>;
+      return k128 ? GroupedKernel<T, Bits, 16, Common128, 32, 3, 1, K128, RowGuard, Fine>()
+                  : GroupedKernel<T, Bits, 16, Common128, 32, 3, 1, 64, RowGuard, Fine>();
     case GroupedTile::k16x64:
-      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 64, 3, 1, 128, RowGuard>
-                  : NativeAlignedGroupedMatMul<T, Bits, 16, Common128, 64, 3, 1, 64, RowGuard>;
+      return k128 ? GroupedKernel<T, Bits, 16, Common128, 64, 3, 1, K128, RowGuard, Fine>()
+                  : GroupedKernel<T, Bits, 16, Common128, 64, 3, 1, 64, RowGuard, Fine>();
     case GroupedTile::k32x64:
-      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 32, Common128, 64, 3, 2, 128, RowGuard>
-                  : NativeAlignedGroupedMatMul<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard>;
+      return k128 ? GroupedKernel<T, Bits, 32, Common128, 64, 3, 2, K128, RowGuard, Fine>()
+                  : GroupedKernel<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard, Fine>();
     case GroupedTile::k64x64:
       // Two 128-wide stages already fill the 48 KB static shared-memory limit for W8.
-      return k128 ? NativeAlignedGroupedMatMul<T, Bits, 64, Common128, 64, 2, 2, 128, RowGuard>
-                  : NativeAlignedGroupedMatMul<T, Bits, 64, Common128, 64, 3, 2, 64, RowGuard>;
+      return k128 ? GroupedKernel<T, Bits, 64, Common128, 64, 2, 2, K128, RowGuard, Fine>()
+                  : GroupedKernel<T, Bits, 64, Common128, 64, 3, 2, 64, RowGuard, Fine>();
   }
-  return NativeAlignedGroupedMatMul<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard>;
+  return GroupedKernel<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard, Fine>();
 }
 
 // Ampere (SM80) selection measured on A100 (108 SMs): use the largest tile that wastes few padded rows and still
@@ -1108,13 +1210,13 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
     switch (scale_type) {
       case DynamicWeightScaleType::Float:
         return LaunchPrepacked<T, float, Bits>(
-            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, stream);
       case DynamicWeightScaleType::Half:
         return LaunchPrepacked<T, half, Bits>(
-            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, stream);
       case DynamicWeightScaleType::BFloat16:
         return LaunchPrepacked<T, __nv_bfloat16, Bits>(
-            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, stream);
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, stream);
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported prepacked DynamicQuantizeMatMulNBits geometry.");
   }
@@ -1129,6 +1231,13 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
       k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
       activation_block_size <= std::numeric_limits<int>::max() && block_size % 64 == 0 &&
       (activation_block_size >= k || activation_block_size % 64 == 0);
+  // 32-aligned intervals (block 32, activation blocks such as 96) promote after every MMA step. Only measured on A100.
+  const bool fine_geometry =
+      compute_capability == 80 && rows >= 1 && n >= 8 && k >= 64 && k % 64 == 0 &&
+      rows <= std::numeric_limits<int>::max() - 128 && n <= std::numeric_limits<int>::max() - 128 &&
+      k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
+      activation_block_size <= std::numeric_limits<int>::max() && block_size % 32 == 0 &&
+      (activation_block_size >= k || activation_block_size % 32 == 0) && !grouped_geometry;
   // On A100 the grouped tiles also beat the single-interval tile until the rows amortize its 64x128 shape.
   const bool grouped_before_single = compute_capability == 80 && rows < 640 && grouped_geometry;
   if constexpr (Bits == 8) {
@@ -1165,7 +1274,7 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
       }
     }
   }
-  if (grouped_geometry) {
+  if (grouped_geometry || fine_geometry) {
     const int64_t column_tiles_64 = n / 64 + (n % 64 != 0);
     const GroupedTile tile = SelectGroupedTile(rows, column_tiles_64, compute_capability);
     const int tile_m = GroupedTileRows(tile);
@@ -1177,9 +1286,10 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
     const bool common128 = block_size == 128 && k % 128 == 0 && activation_block_size >= k && n % tile_n == 0;
     // Predicating a partial last row tile of the fixed-geometry kernel beats the generic kernel on A100.
     const bool common128_rows = rows % tile_m == 0 || compute_capability == 80;
-    auto kernel = !common128 || !common128_rows ? PickGroupedKernel<T, Bits, false, false>(tile, k128)
-                  : rows % tile_m != 0          ? PickGroupedKernel<T, Bits, true, true>(tile, k128)
-                                                : PickGroupedKernel<T, Bits, true, false>(tile, k128);
+    auto kernel = fine_geometry                   ? PickGroupedKernel<T, Bits, false, false, true>(tile, false)
+                  : !common128 || !common128_rows ? PickGroupedKernel<T, Bits, false, false>(tile, k128)
+                  : rows % tile_m != 0            ? PickGroupedKernel<T, Bits, true, true>(tile, k128)
+                                                  : PickGroupedKernel<T, Bits, true, false>(tile, k128);
     bool available;
     ORT_RETURN_IF_ERROR(NativeKernelAvailable(kernel, available));
     if (available) {

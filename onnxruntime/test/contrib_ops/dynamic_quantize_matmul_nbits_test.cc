@@ -516,6 +516,34 @@ TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedInt2Int8Dispatch) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedMultiRowFragmentTiles) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (const auto& [bits, block] : {std::pair{2, 64}, std::pair{4, 32}, std::pair{8, 32}}) {
+    // N=1024 gives 16 column tiles, so these row counts select two and four row fragments on A100,
+    // including partial last row tiles.
+    for (int64_t m : {17, 200, 333, 400}) {
+      RunCase<MLFloat16>({m, 256}, 1024, bits, block, "dynamic_per_token", 0,
+                         true, false, true, {}, {}, false, true, 1);
+      RunCase<BFloat16, MLFloat16>({m, 256}, 1024, bits, block, "dynamic_per_tensor", 0,
+                                   true, false, false, {}, {}, false, true, 1);
+    }
+  }
+}
+
+TEST(DynamicQuantizeMatMulNBitsTest, AmpereFineScaleIntervals) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (int bits : {2, 4, 8}) {
+    // Weight blocks of 32 and activation blocks of 32 or 96 are 32-aligned but not 64-aligned.
+    for (int64_t m : {1, 15, 33, 65, 100, 193, 257}) {
+      RunCase<MLFloat16>({m, 256}, 96, bits, 32, "dynamic_per_token", 0, true, false, true);
+      RunCase<BFloat16, MLFloat16>({m, 320}, 72, bits, 32, "dynamic_per_tensor", 0, true, false, false);
+      RunCase<MLFloat16>({m, 384}, 128, bits, 32, "dynamic_per_block", 96, true, false, true);
+      RunCase<MLFloat16>({m, 384}, 64, bits, 128, "dynamic_per_block", 96, true, false, false);
+      RunCase<BFloat16>({m, 192}, 40, bits, 64, "dynamic_per_block", 32, true, false, false);
+    }
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, ConstantWeightsAndFallbacks) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (int bits : {2, 4}) {

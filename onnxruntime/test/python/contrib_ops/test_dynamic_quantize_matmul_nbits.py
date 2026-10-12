@@ -221,6 +221,37 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
                     result = session.run(None, {"A": a})[0]
                     np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
 
+    def test_sm80_prepacked_row_fragment_tiles_match_exact_reference(self):
+        if ort.get_device() != "GPU":
+            self.skipTest("CUDAExecutionProvider is required")
+        rng = np.random.default_rng(44)
+        k, n = 256, 1024
+        for bits, block in ((2, 64), (4, 32), (8, 32)):
+            packed = rng.integers(0, 256, size=(n, k // block, block * bits // 8), dtype=np.uint8)
+            prepacked = prepack_sm80(packed, bits)
+            scales = rng.uniform(-0.02, 0.02, size=(n, k // block)).astype(np.float16)
+            for m in (17, 200, 333, 400):
+                with self.subTest(bits=bits, m=m):
+                    a = rng.normal(size=(m, k)).astype(np.float16)
+                    model = make_model(scales, bits=bits, m=m, k=k, n=n, block=block)
+                    model.graph.input.remove(model.graph.input[1])
+                    model.graph.initializer.append(numpy_helper.from_array(prepacked, "B"))
+                    model.graph.node[0].attribute.extend(
+                        [
+                            helper.make_attribute("activation_quantization", "dynamic_per_token"),
+                            helper.make_attribute("weight_prepacked", 1),
+                        ]
+                    )
+                    expected = reference(a, packed, scales, bits, block, "dynamic_per_token", k)
+                    try:
+                        session = make_session(model)
+                    except ort_capi.Fail as error:
+                        if "SM80+" in str(error):
+                            self.skipTest("SM80+ is required for prepacked DynamicQuantizeMatMulNBits")
+                        raise
+                    result = session.run(None, {"A": a})[0]
+                    np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
+
     def test_hopper_constant_weights_concurrent_dynamic_shapes(self):
         n = 512
         session = make_session(constant_weight_model(n=n, dynamic_shape=True))
@@ -287,6 +318,9 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
             (512, 64, 256, "dynamic_per_block", 256),
             (320, 64, 64, "dynamic_per_token", 0),
             (256, 128, 256, "dynamic_per_token", 0),
+            (256, 96, 32, "dynamic_per_token", 0),
+            (384, 128, 32, "dynamic_per_block", 96),
+            (384, 64, 128, "dynamic_per_block", 96),
         )
         row_counts = (1, 9, 16, 33, 49, 65, 97, 129, 193, 257, 641)
         for k, n, block, mode, activation_block in geometries:
