@@ -195,8 +195,8 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                    shape->Size() == 1 &&
                    (existing_shape.NumDimensions() == 0 || shape->NumDimensions() == 0)) {
           // Reuse buffer, update shape in-place
-          p_ort_value->GetMutable<Tensor>()->Reshape(*shape),
-              shape_matched = true;
+          p_ort_value->GetMutable<Tensor>()->Reshape(*shape);
+          shape_matched = true;
         } else {
           shape_matched = false;
         }
