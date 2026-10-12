@@ -1289,6 +1289,88 @@ request ceiling is 9,217 total tokens, and sampled memory headroom is
 only about 56 MiB. This does not qualify actual 80 GiB hardware or
 guarantee strict 100 TPS.
 
+#### Optional fused gate/up epilogue
+
+`ORT_QMOE_NVFP4_FUSED_SWIGLU=1` additionally fuses the eligible packed
+NVFP4 gate/up GEMM epilogue with bias and interleaved SwiGLU. Its default
+is `0`; it has no effect without the packed-prefill route and does not
+change integer prefill, unsupported-layout fallback or decode GEMV.
+The FP32 accumulators are still rounded to FP16/BF16 before adding bias
+and applying the same alpha/beta/limit semantics. Each paired gate/up
+channel belongs to the same tile.
+
+The epilogue writes the activated down-projection input directly, avoiding
+the gate/up output reservation and the separate activation launch. At
+4,096 rows, top-10 and intermediate size 640 this removes exactly 100 MiB
+from the packed workspace. H200 device-wide sampled peak fell from a
+fresh 79.9432 GiB unfused control to 79.7498 GiB; allocator-pool effects
+make this device-wide difference larger than the one workspace buffer.
+Two five-request fused invocations reached 100.71 and 100.44 E2E TPS,
+pooling to 100.58 E2E / 133.60 decode TPS and 1.266 s TTFT. Fresh
+unfused controls pooled to 99.54 E2E TPS and 1.299 s TTFT.
+All 128 paired quality token streams matched, preserving all 110
+control-correct answers. This is workload-specific evidence, not a
+throughput guarantee or qualification on actual 80 GiB hardware;
+sampled headroom remains only about 256 MiB.
+
+#### Optional routing scratch lifetime reuse
+
+`ORT_QMOE_NVFP4_REUSE_ROUTING_SCRATCH=1` reuses the packed NVFP4 sorting
+temporaries (counts, cumulative counts and blocked rows) for the expanded
+input and later down-projection output. Default is `0`. The three sorting
+kernels finish on the same stream before expansion starts; row maps,
+expert offsets and tile offsets remain separate and live through
+finalization. The shared reservation is the larger of the aligned sorting
+scratch and expanded-input storage, so shapes with more sorting scratch
+than input storage are also supported. Integer prefill is unchanged.
+
+At 4,096 rows, 512 experts, top-10 and hidden size 2,560 this removes
+8,404,992 bytes (about 8.02 MiB) of packed workspace. A fresh H200
+flag-off/flag-on memory comparison with fused SwiGLU observed
+79.7479 -> 79.7322 GiB, a 16 MiB device-wide sampled reduction.
+Reversed-order ten-request pools measured 100.01 -> 100.28 E2E TPS;
+that small timing difference does not establish an independent speedup.
+Sampled headroom is about 274 MiB, still not actual 80 GiB qualification.
+
+Direct input gathering into shared memory was also screened. Exact
+numerical tests passed, but 4,096-token scheduling showed slower TTFT
+(1.267 -> 1.289 seconds) and E2E (100.49 -> 99.95 TPS), with no workspace
+reduction because expanded-input storage already aliases down output.
+That implementation was rejected and is not present in the retained path.
+
+#### Optional tiled down-projection output
+
+`ORT_QMOE_NVFP4_TILED_DOWN_OUTPUT=1` enables a further default-off memory
+tradeoff when both supported packed prefill and the fused SwiGLU epilogue
+are active. Gate/up gathers original input rows into shared memory using
+the unchanged sorted maps instead of materializing expanded input.
+Down projection writes at most 1,024 columns of expanded output at a time;
+each tile is reduced in original top-k rank order before its storage is
+reused on the same stream. Bias addition, activation-dtype GEMM rounding,
+FP32 routing accumulation and final rounding match the existing path;
+there are no unordered atomic additions. Sorting-lifetime reuse can
+still be enabled, with a reservation covering the larger live buffer.
+
+For 4,096 rows, top-10, hidden size 2,560 this reduces the shared
+expanded-input/down-output reservation from 200 to 80 MiB, saving exactly
+120 MiB workspace. H200 sampled device-wide peak falls from 79.7322 to
+79.5760 GiB, a 160 MiB reduction including allocator-pool effects. The
+candidate has about 434 MiB sampled headroom, not a hard memory cap.
+
+This is **not an established speed optimization**: final paired pools
+observe TTFT rising from 1.271 to 1.295 seconds. Two five-request tiled
+runs reach 100.02 and 104.46 E2E TPS, but decode variability accounts for
+the high second result; another independent tiled screen reaches 99.996
+TPS. Strict at-least-100 throughput and actual 80 GiB hardware remain
+unqualified. A smaller 512-column screen saved more workspace but was
+slower (99.81 versus 100.31 E2E TPS); it is not selected.
+
+173 focused/regression tests pass, including exact tiled/untiled
+FP16/BF16 output and workspace parity, biases, 512 experts, small hidden
+dimensions, column tails, row tiling, empty experts, graph replay and
+unaffected integer/decode/fallback routes. Fresh paired quality runs match
+all 128 token streams and preserve all 110 control-correct answers.
+
 ---
 
 ## 10. FP8 (W8A16) Details

@@ -1322,6 +1322,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       moe_params.num_rows > 0 && SafeInt<int64_t>(moe_params.num_rows) * k_ <=
                                    std::numeric_limits<int>::max() - moe_params.num_experts;
   int64_t effective_row_tile_size = row_tile_size_;
+  const bool fuse_nvfp4_swiglu = use_nvfp4_packed_prefill &&
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_FUSED_SWIGLU", 0) == 1;
+  const bool reuse_nvfp4_routing_scratch = use_nvfp4_packed_prefill &&
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_REUSE_ROUTING_SCRATCH", 0) == 1;
+  const bool tile_nvfp4_down_output = use_nvfp4_packed_prefill && fuse_nvfp4_swiglu &&
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_TILED_DOWN_OUTPUT", 0) == 1;
   size_t packed_prefill_workspace_bytes = 0;
   if (use_packed_int_prefill || use_nvfp4_packed_prefill) {
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
@@ -1329,6 +1335,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         (use_nvfp4_packed_prefill ? 384 : 256) * 1024 * 1024;
     ck::Int2MoePrefillParams sizing_params;
     sizing_params.is_nvfp4 = use_nvfp4_packed_prefill;
+    sizing_params.fuse_nvfp4_swiglu = fuse_nvfp4_swiglu;
+    sizing_params.reuse_nvfp4_routing_scratch = reuse_nvfp4_routing_scratch;
+    sizing_params.tile_nvfp4_down_output = tile_nvfp4_down_output;
     sizing_params.hidden_size = static_cast<int>(moe_params.hidden_size);
     sizing_params.inter_size = static_cast<int>(moe_params.inter_size);
     sizing_params.num_experts = static_cast<int>(moe_params.num_experts);
@@ -2127,6 +2136,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.is_bf16 = !is_fp16_;
     params.fake_int4_activations = int2_fake_int4_activations_;
     params.is_nvfp4 = use_nvfp4_packed_prefill;
+    params.fuse_nvfp4_swiglu = fuse_nvfp4_swiglu;
+    params.reuse_nvfp4_routing_scratch = reuse_nvfp4_routing_scratch;
+    params.tile_nvfp4_down_output = tile_nvfp4_down_output;
     params.fc1_weights = static_cast<const uint8_t*>(
         use_nvfp4_packed_prefill ? fc1_experts_weights->DataRaw() : packed_fc1_weights_.get());
     params.fc2_weights = static_cast<const uint8_t*>(

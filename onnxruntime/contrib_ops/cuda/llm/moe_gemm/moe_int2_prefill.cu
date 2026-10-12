@@ -25,6 +25,7 @@ namespace {
 constexpr int kNvfp4TileK = 64;
 constexpr int kNvfp4TileM = 64;
 constexpr int kNvfp4TileN = 128;
+constexpr int kNvfp4DownColumns = 1024;
 constexpr int kNvfp4TileStride = kNvfp4TileK + 8;
 constexpr int kNvfp4AElements = kNvfp4TileM * kNvfp4TileStride;
 constexpr int kNvfp4PackedTileBytes = kNvfp4TileN * kNvfp4TileK / 2;
@@ -32,18 +33,20 @@ constexpr int kNvfp4PackedOffset = (2 * kNvfp4TileM + kNvfp4TileN) * kNvfp4TileS
 constexpr int kNvfp4SharedBytes = kNvfp4PackedOffset + 2 * kNvfp4PackedTileBytes;
 static_assert(kNvfp4SharedBytes >= kNvfp4TileM * kNvfp4TileN * sizeof(float));
 
-template <typename T>
+template <typename T, bool GatherInput>
 __device__ void LoadNvfp4Stage(T* a, uint8_t* packed, const T* input, const uint8_t* weights,
                              int64_t first_row, int64_t end_row, int expert,
-                             int first_column, int columns, int reduction, int k) {
+                             int first_column, int columns, int reduction, int k,
+                             const int* source_rows) {
 #if __CUDA_ARCH__ >= 800
   constexpr int vectors = kNvfp4TileK / 8;
   for (int i = threadIdx.x; i < kNvfp4TileM * vectors; i += blockDim.x) {
     const int64_t row = first_row + i / vectors;
     const int kk = (i % vectors) * 8;
     if (row < end_row) {
+      const int64_t source_row = GatherInput ? source_rows[i / vectors] : row;
       __pipeline_memcpy_async(a + (i / vectors) * kNvfp4TileStride + kk,
-                              input + row * reduction + k + kk, sizeof(uint4));
+                              input + source_row * reduction + k + kk, sizeof(uint4));
     } else {
       *reinterpret_cast<uint4*>(a + (i / vectors) * kNvfp4TileStride + kk) = uint4{};
     }
@@ -72,11 +75,14 @@ __global__ void BuildNvfp4TileOffsets(const int64_t* offsets, int* tiles, int ex
   }
 }
 
-template <typename T>
+template <typename T, bool FuseSwiglu, bool GatherInput>
 __global__ void Nvfp4GroupedGemm(const T* input, const uint8_t* weights,
                                 const uint8_t* scales, const float* global_scales,
                                 const int64_t* offsets, const int* tiles, T* output,
-                                int columns, int reduction, int experts) {
+                                int columns, int reduction, int experts,
+                                const T* bias, float alpha, float beta, float limit,
+                                int column_offset, int output_columns,
+                                const int* permuted_rows, int64_t num_rows) {
 #if __CUDA_ARCH__ >= 800
   using namespace nvcuda;
   constexpr int stride = kNvfp4TileStride;
@@ -84,10 +90,11 @@ __global__ void Nvfp4GroupedGemm(const T* input, const uint8_t* weights,
   extern __shared__ __align__(32) uint8_t storage[];
   float* c = reinterpret_cast<float*>(storage);
   __shared__ int expert, row_tile;
+  __shared__ int source_rows[GatherInput ? kNvfp4TileM : 1];
   const int warp = threadIdx.x / 32;
   const int m = (warp / 2) * 16;
   const int n = (warp % 2) * (kNvfp4TileN / 2);
-  const int n_tiles = (columns - 1) / kNvfp4TileN + 1;
+  const int n_tiles = (output_columns - 1) / kNvfp4TileN + 1;
   const int64_t total = static_cast<int64_t>(tiles[experts]) * n_tiles;
   for (int64_t tile = blockIdx.x; tile < total; tile += gridDim.x) {
     if (threadIdx.x == 0) {
@@ -104,13 +111,20 @@ __global__ void Nvfp4GroupedGemm(const T* input, const uint8_t* weights,
     __syncthreads();
     const int64_t first_row = offsets[expert] + static_cast<int64_t>(row_tile) * kNvfp4TileM;
     const int64_t end_row = offsets[expert + 1];
-    const int first_column = static_cast<int>(tile % n_tiles) * kNvfp4TileN;
+    const int first_column = column_offset + static_cast<int>(tile % n_tiles) * kNvfp4TileN;
     const float global_scale = global_scales[expert];
+    if constexpr (GatherInput) {
+      if (threadIdx.x < kNvfp4TileM) {
+        const int64_t row = first_row + threadIdx.x;
+        source_rows[threadIdx.x] = row < end_row ? permuted_rows[row] % num_rows : 0;
+      }
+      __syncthreads();
+    }
     constexpr int fragments = kNvfp4TileN / 32;
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc[fragments];
     for (int j = 0; j < fragments; ++j) wmma::fill_fragment(acc[j], 0.0f);
-    LoadNvfp4Stage(reinterpret_cast<T*>(storage), storage + kNvfp4PackedOffset,
-                   input, weights, first_row, end_row, expert, first_column, columns, reduction, 0);
+    LoadNvfp4Stage<T, GatherInput>(reinterpret_cast<T*>(storage), storage + kNvfp4PackedOffset,
+                   input, weights, first_row, end_row, expert, first_column, columns, reduction, 0, source_rows);
     for (int k = 0; k < reduction; k += kNvfp4TileK) {
       const int buffer = (k / kNvfp4TileK) % 2;
       T* a = reinterpret_cast<T*>(storage) + buffer * kNvfp4AElements;
@@ -123,8 +137,9 @@ __global__ void Nvfp4GroupedGemm(const T* input, const uint8_t* weights,
       if (k + kNvfp4TileK < reduction) {
         T* next_a = reinterpret_cast<T*>(storage) + (1 - buffer) * kNvfp4AElements;
         uint8_t* next_packed = storage + kNvfp4PackedOffset + (1 - buffer) * kNvfp4PackedTileBytes;
-        LoadNvfp4Stage(next_a, next_packed,
-                       input, weights, first_row, end_row, expert, first_column, columns, reduction, k + kNvfp4TileK);
+        LoadNvfp4Stage<T, GatherInput>(next_a, next_packed,
+                       input, weights, first_row, end_row, expert, first_column, columns, reduction, k + kNvfp4TileK,
+                       source_rows);
       }
       constexpr int vectors = kNvfp4TileK / 8;
       for (int i = threadIdx.x; i < kNvfp4TileN * vectors; i += blockDim.x) {
@@ -171,14 +186,76 @@ __global__ void Nvfp4GroupedGemm(const T* input, const uint8_t* weights,
       wmma::store_matrix_sync(c + m * kNvfp4TileN + n + j * 16, acc[j], kNvfp4TileN, wmma::mem_row_major);
     }
     __syncthreads();
-    for (int i = threadIdx.x; i < kNvfp4TileM * kNvfp4TileN; i += blockDim.x) {
-      const int64_t row = first_row + i / kNvfp4TileN;
-      const int col = first_column + i % kNvfp4TileN;
-      if (row < end_row && col < columns) output[row * columns + col] = T(c[i]);
+    if constexpr (FuseSwiglu) {
+      for (int i = threadIdx.x; i < kNvfp4TileM * kNvfp4TileN / 2; i += blockDim.x) {
+        const int local_row = i / (kNvfp4TileN / 2);
+        const int local_col = (i % (kNvfp4TileN / 2)) * 2;
+        const int64_t row = first_row + local_row;
+        const int col = first_column + local_col;
+        if (row < end_row && col < columns) {
+          // Preserve the standalone GEMM's activation-dtype rounding before bias and SwiGLU.
+          float gate = static_cast<float>(T(c[local_row * kNvfp4TileN + local_col]));
+          float linear = static_cast<float>(T(c[local_row * kNvfp4TileN + local_col + 1]));
+          if (bias) {
+            gate += static_cast<float>(bias[static_cast<int64_t>(expert) * columns + col]);
+            linear += static_cast<float>(bias[static_cast<int64_t>(expert) * columns + col + 1]);
+          }
+          float activated;
+          if (alpha != 1.0f || beta != 0.0f || isfinite(limit)) {
+            if (isfinite(limit)) {
+              gate = fminf(gate, limit);
+              linear = fminf(fmaxf(linear, -limit), limit);
+            }
+            const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
+            linear += beta;
+            activated = gate * sigmoid * linear;
+          } else {
+            activated = cutlass::epilogue::thread::SiLu<float>{}(gate) * linear;
+          }
+          output[row * (columns / 2) + col / 2] = T(activated);
+        }
+      }
+    } else {
+      for (int i = threadIdx.x; i < kNvfp4TileM * kNvfp4TileN; i += blockDim.x) {
+        const int64_t row = first_row + i / kNvfp4TileN;
+        const int col = first_column + i % kNvfp4TileN;
+        if (row < end_row && col < column_offset + output_columns) {
+          output[row * output_columns + col - column_offset] = T(c[i]);
+        }
+      }
     }
     __syncthreads();
   }
 #endif
+}
+
+template <typename ElementType>
+__global__ void FinalizeNvfp4Columns(const ElementType* expanded, ElementType* output,
+                                    const ElementType* bias, const float* scales,
+                                    const int* reverse_map, const int* experts, int64_t rows,
+                                    int hidden, int columns, int column_offset, int top_k) {
+  constexpr int elements = 8;
+  using Values = cutlass::Array<ElementType, elements>;
+  using Compute = cutlass::Array<float, elements>;
+  const int64_t row = blockIdx.x;
+  for (int vector = threadIdx.x; vector < columns / elements; vector += blockDim.x) {
+    Compute result;
+    result.fill(0);
+    for (int rank = 0; rank < top_k; ++rank) {
+      const int64_t route = row * top_k + rank;
+      const int permuted = reverse_map[row + rank * rows];
+      const auto* input = reinterpret_cast<const Values*>(expanded + static_cast<int64_t>(permuted) * columns);
+      Compute value = arrayConvert<Values, Compute>(input[vector]);
+      if (bias) {
+        const auto* expert_bias = reinterpret_cast<const Values*>(
+            bias + static_cast<int64_t>(experts[route]) * hidden + column_offset);
+        value = value + arrayConvert<Values, Compute>(expert_bias[vector]);
+      }
+      result = result + scales[route] * value;
+    }
+    auto* target = reinterpret_cast<Values*>(output + row * hidden + column_offset);
+    target[vector] = arrayConvert<Compute, Values>(result);
+  }
 }
 
 template <typename ElementType>
@@ -238,14 +315,29 @@ struct PrefillWorkspace {
     const int64_t block_rows = computeNumTokensPerBlock(params.num_rows, params.num_experts);
     const size_t blocks = (params.num_rows + block_rows - 1) / block_rows;
     const size_t count_elements = SafeInt<size_t>(params.num_experts) * blocks;
+    const int input_columns = params.is_nvfp4 && params.tile_nvfp4_down_output
+                                  ? std::min(params.hidden_size, kNvfp4DownColumns) : params.hidden_size;
     permuted_rows = Reserve(expanded, sizeof(int));
     permuted_experts = Reserve(expanded, sizeof(int));
     expert_offsets = Reserve(SafeInt<size_t>(params.num_experts) + 1, sizeof(int64_t));
-    counts = Reserve(count_elements, sizeof(int));
-    cumulative_counts = Reserve(count_elements, sizeof(int));
-    blocked_rows = Reserve(SafeInt<size_t>(params.num_rows) * params.num_experts, sizeof(int));
-    expanded_input = Reserve(SafeInt<size_t>(expanded) * params.hidden_size, sizeof(half));
-    fc1_output = Reserve(SafeInt<size_t>(expanded) * params.inter_size * 2, sizeof(half));
+    if (params.is_nvfp4 && params.reuse_nvfp4_routing_scratch) {
+      // Sorting completes before expansion; retain maps/offsets but reuse its temporary counters.
+      const size_t scratch_start = bytes;
+      counts = Reserve(count_elements, sizeof(int));
+      cumulative_counts = Reserve(count_elements, sizeof(int));
+      blocked_rows = Reserve(SafeInt<size_t>(params.num_rows) * params.num_experts, sizeof(int));
+      const size_t routing_end = bytes;
+      bytes = scratch_start;
+      expanded_input = Reserve(SafeInt<size_t>(expanded) * input_columns, sizeof(half));
+      bytes = std::max(bytes, routing_end);
+    } else {
+      counts = Reserve(count_elements, sizeof(int));
+      cumulative_counts = Reserve(count_elements, sizeof(int));
+      blocked_rows = Reserve(SafeInt<size_t>(params.num_rows) * params.num_experts, sizeof(int));
+      expanded_input = Reserve(SafeInt<size_t>(expanded) * input_columns, sizeof(half));
+    }
+    fc1_output = params.is_nvfp4 && params.fuse_nvfp4_swiglu
+                     ? 0 : Reserve(SafeInt<size_t>(expanded) * params.inter_size * 2, sizeof(half));
     activated_output = Reserve(SafeInt<size_t>(expanded) * params.inter_size, sizeof(half));
     fc2_output = expanded_input;
     tile_offsets = params.is_nvfp4 ? Reserve(SafeInt<size_t>(params.num_experts) + 1, sizeof(int)) : 0;
@@ -257,13 +349,19 @@ void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
                           const ElementType* activations, const uint8_t* weights,
                           const void* scales, const int64_t* offsets, ElementType* output,
                           int64_t num_rows, int num_columns, int reduction_size, int weight_bits,
-                          const int* tile_offsets, const float* global_scales) {
+                          const int* tile_offsets, const float* global_scales, bool fuse_swiglu = false,
+                          const int* gathered_rows = nullptr, int column_offset = 0, int output_columns = 0) {
   if (params.is_nvfp4) {
-    CUDA_CALL_THROW(cudaFuncSetAttribute(Nvfp4GroupedGemm<ElementType>,
+    auto kernel = gathered_rows
+        ? (fuse_swiglu ? Nvfp4GroupedGemm<ElementType, true, true> : Nvfp4GroupedGemm<ElementType, false, true>)
+        : (fuse_swiglu ? Nvfp4GroupedGemm<ElementType, true, false> : Nvfp4GroupedGemm<ElementType, false, false>);
+    CUDA_CALL_THROW(cudaFuncSetAttribute(kernel,
                                         cudaFuncAttributeMaxDynamicSharedMemorySize, kNvfp4SharedBytes));
-    Nvfp4GroupedGemm<<<params.multiprocessor_count * 8, (kNvfp4TileM / 16) * 64, kNvfp4SharedBytes, params.stream>>>(
+    kernel<<<params.multiprocessor_count * 8, (kNvfp4TileM / 16) * 64, kNvfp4SharedBytes, params.stream>>>(
         activations, weights, static_cast<const uint8_t*>(scales), global_scales,
-        offsets, tile_offsets, output, num_columns, reduction_size, params.num_experts);
+        offsets, tile_offsets, output, num_columns, reduction_size, params.num_experts,
+        static_cast<const ElementType*>(params.fc1_bias), params.alpha, params.beta, params.limit,
+        column_offset, output_columns ? output_columns : num_columns, gathered_rows, params.num_rows);
     CUDA_CALL_THROW(cudaGetLastError());
     return;
   }
@@ -319,30 +417,54 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
     CUDA_CALL_THROW(cudaGetLastError());
   }
   const QuantParams quant_params{};
-  expandInputRowsKernelLauncher<ElementType, ElementType>(
-      static_cast<const ElementType*>(params.input), expanded_input, nullptr, nullptr, permuted_rows,
-      params.num_rows, params.hidden_size,
-      params.top_k, params.num_experts, quant_params, false, offsets, nullptr, nullptr, nullptr, params.stream);
+  const bool tiled_down = params.is_nvfp4 && params.tile_nvfp4_down_output;
+  if (!tiled_down) {
+    expandInputRowsKernelLauncher<ElementType, ElementType>(
+        static_cast<const ElementType*>(params.input), expanded_input, nullptr, nullptr, permuted_rows,
+        params.num_rows, params.hidden_size,
+        params.top_k, params.num_experts, quant_params, false, offsets, nullptr, nullptr, nullptr, params.stream);
+  }
 
   if (params.fake_int4_activations) {
     SimulateInt4Activations(expanded_input, expanded, params.hidden_size, params.stream);
   }
-  RunPackedGroupedGemm(params, expanded_input, params.fc1_weights, params.fc1_scales,
-                       offsets, fc1_output, expanded, params.inter_size * 2,
-                       params.hidden_size, params.fc1_weight_bits, tile_offsets, params.fc1_global_scales);
+  const bool fused = params.is_nvfp4 && params.fuse_nvfp4_swiglu;
+  RunPackedGroupedGemm(params, tiled_down ? static_cast<const ElementType*>(params.input) : expanded_input,
+                       params.fc1_weights, params.fc1_scales,
+                       offsets, fused ? activated_output : fc1_output, expanded, params.inter_size * 2,
+                       params.hidden_size, params.fc1_weight_bits, tile_offsets, params.fc1_global_scales, fused,
+                       tiled_down ? permuted_rows : nullptr);
 
-  ActivationParams activation(ActivationType::Swiglu);
-  activation.alpha = params.alpha;
-  activation.beta = params.beta;
-  activation.limit = params.limit;
-  activation.swiglu_fusion = 1;
-  doActivation<ElementType, ElementType, ElementType>(
-      activated_output, fc1_output, nullptr, static_cast<const ElementType*>(params.fc1_bias), true, offsets,
-      params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
-      quant_params, false, nullptr, params.stream, activation);
+  if (!fused) {
+    ActivationParams activation(ActivationType::Swiglu);
+    activation.alpha = params.alpha;
+    activation.beta = params.beta;
+    activation.limit = params.limit;
+    activation.swiglu_fusion = 1;
+    doActivation<ElementType, ElementType, ElementType>(
+        activated_output, fc1_output, nullptr, static_cast<const ElementType*>(params.fc1_bias), true, offsets,
+        params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
+        quant_params, false, nullptr, params.stream, activation);
+  }
 
   if (params.fake_int4_activations) {
     SimulateInt4Activations(activated_output, expanded, params.inter_size, params.stream);
+  }
+  if (tiled_down) {
+    for (int column = 0; column < params.hidden_size;) {
+      const int columns = std::min(kNvfp4DownColumns, params.hidden_size - column);
+      RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales,
+                           offsets, fc2_output, expanded, params.hidden_size,
+                           params.inter_size, params.fc2_weight_bits, tile_offsets, params.fc2_global_scales,
+                           false, nullptr, column, columns);
+      FinalizeNvfp4Columns<<<params.num_rows, 128, 0, params.stream>>>(
+          fc2_output, static_cast<ElementType*>(params.output), static_cast<const ElementType*>(params.fc2_bias),
+          params.routing_weights, params.unpermuted_to_permuted, params.selected_experts, params.num_rows,
+          params.hidden_size, columns, column, params.top_k);
+      CUDA_CALL_THROW(cudaGetLastError());
+      column += columns;
+    }
+    return;
   }
   RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales,
                        offsets, fc2_output, expanded, params.hidden_size,
@@ -362,6 +484,8 @@ size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params) {
 
 void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace) {
   if (params.is_nvfp4) {
+    ORT_ENFORCE(!params.tile_nvfp4_down_output || params.fuse_nvfp4_swiglu,
+                "Tiled NVFP4 down output requires the fused gate/up epilogue.");
     ORT_ENFORCE(params.sm >= 80 && params.multiprocessor_count > 0 &&
                     params.num_rows > 0 && params.hidden_size > 0 && params.hidden_size % 64 == 0 &&
                     params.inter_size > 0 && params.inter_size <= std::numeric_limits<int>::max() / 2 &&

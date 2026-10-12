@@ -25,6 +25,9 @@ struct Int2MoePrefillParams {
   bool is_bf16 = false;
   bool fake_int4_activations = false;
   bool is_nvfp4 = false;
+  bool fuse_nvfp4_swiglu = false;
+  bool reuse_nvfp4_routing_scratch = false;
+  bool tile_nvfp4_down_output = false;
   const float* fc1_global_scales = nullptr;
   const float* fc2_global_scales = nullptr;
   int64_t num_rows = 0;
