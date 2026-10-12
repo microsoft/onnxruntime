@@ -866,10 +866,11 @@ void LaunchMoeGemvFp4RawNPacked(
         attribute[0].val.programmaticStreamSerializationAllowed = 1;
         config.attrs = attribute;
         config.numAttrs = 1;
-        CUDA_CALL_THROW(cudaLaunchKernelEx(
+        const cudaError_t status = cudaLaunchKernelEx(
             &config, kernel, act, weight, block_scales, global_scales, bias, out, expert_first_token_offset,
             permuted_row_to_expert, num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n),
-            static_cast<int>(k), activation_params, permuted_row_to_source_row, static_cast<int>(num_rows)));
+            static_cast<int>(k), activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+        ORT_ENFORCE(status == cudaSuccess, "FP4 GEMV decode launch failed: ", cudaGetErrorString(status));
         return;
       }
       kernel<<<decode_grid, kWarps * 32, decode_smem, stream>>>(
