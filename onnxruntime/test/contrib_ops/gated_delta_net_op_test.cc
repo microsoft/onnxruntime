@@ -67,6 +67,134 @@ struct Inputs {
   std::vector<int32_t> state_update_active;
 };
 
+void VerifyPackedQkvShapeInference(const std::vector<int64_t>& packed_qkv_shape,
+                                   const std::vector<int64_t>& expected_output_shape,
+                                   const std::string& expected_error = "",
+                                   const std::vector<int64_t>& initial_state_shape = {2, 48, 128, 128},
+                                   bool ragged = false) {
+  std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+  Model model("gated_delta_net_packed_qkv", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto packed_qkv_type;
+  packed_qkv_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  for (int64_t dim : packed_qkv_shape) {
+    auto* dimension = packed_qkv_type.mutable_tensor_type()->mutable_shape()->add_dim();
+    if (dim >= 0) dimension->set_dim_value(dim);
+  }
+  ONNX_NAMESPACE::TypeProto state_type;
+  state_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (int64_t dim : initial_state_shape) {
+    auto* dimension = state_type.mutable_tensor_type()->mutable_shape()->add_dim();
+    if (dim >= 0) dimension->set_dim_value(dim);
+  }
+  ONNX_NAMESPACE::TypeProto cu_seqlens_type;
+  cu_seqlens_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  cu_seqlens_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  auto& packed_qkv = graph.GetOrCreateNodeArg("packed_qkv", &packed_qkv_type);
+  auto& initial_state = graph.GetOrCreateNodeArg("initial_state", &state_type);
+  auto& cu_seqlens = graph.GetOrCreateNodeArg("cu_seqlens", &cu_seqlens_type);
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  auto& final_state = graph.GetOrCreateNodeArg("final_state", nullptr);
+  graph.AddNode("gdn", "GatedDeltaNet", "packed QKV shape inference",
+                {&packed_qkv, &empty, &empty, ragged ? &cu_seqlens : &empty, &empty, &empty, &initial_state},
+                {&output, &final_state}, nullptr, kMSDomain);
+  graph.SetOutputs({&output, &final_state});
+
+  if (!expected_error.empty()) {
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), expected_error);
+    return;
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(output.Shape()->dim_size(), static_cast<int>(expected_output_shape.size()));
+  for (int i = 0; i < output.Shape()->dim_size(); ++i) {
+    const int64_t expected_dimension = expected_output_shape[static_cast<size_t>(i)];
+    ASSERT_EQ(output.Shape()->dim(i).has_dim_value(), expected_dimension >= 0);
+    if (expected_dimension >= 0) {
+      EXPECT_EQ(output.Shape()->dim(i).dim_value(), expected_dimension);
+    }
+  }
+  ASSERT_EQ(final_state.Shape()->dim_size(), state_type.tensor_type().shape().dim_size());
+  for (int i = 0; i < final_state.Shape()->dim_size(); ++i) {
+    const auto& expected_dimension = state_type.tensor_type().shape().dim(i);
+    ASSERT_EQ(final_state.Shape()->dim(i).has_dim_value(), expected_dimension.has_dim_value());
+    if (expected_dimension.has_dim_value()) {
+      EXPECT_EQ(final_state.Shape()->dim(i).dim_value(), expected_dimension.dim_value());
+    }
+  }
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkv) {
+  VerifyPackedQkvShapeInference({6, 10240}, {6, 48, 128});
+  VerifyPackedQkvShapeInference({2, 5, 10240}, {2, 5, 48, 128});
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkvRejectsNonDivisibleUniformBatch) {
+  VerifyPackedQkvShapeInference({5, 10240}, {}, "must be divisible by batch");
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkvSymbolicAndRaggedShapes) {
+  VerifyPackedQkvShapeInference({6, -1}, {6, 48, 128});
+  VerifyPackedQkvShapeInference({-1, 10240}, {-1, 48, 128});
+  VerifyPackedQkvShapeInference({6, 10240}, {6, -1, 128}, "", {2, -1, 128, 128});
+  VerifyPackedQkvShapeInference({5, 10240}, {5, 48, 128}, "", {2, 48, 128, 128}, true);
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkvRejectsInvalidDimensions) {
+  VerifyPackedQkvShapeInference({6, 10241}, {}, "packed QKV last dimension");
+  VerifyPackedQkvShapeInference({6, 6144}, {}, "packed QKV last dimension");
+  VerifyPackedQkvShapeInference({6, 7936}, {}, "must be a positive multiple");
+  VerifyPackedQkvShapeInference({6, 10240}, {}, "head counts and head sizes must be positive", {2, 48, 128, 0});
+  VerifyPackedQkvShapeInference({6, 10240}, {}, "dimensions overflow int64",
+                                {2, std::numeric_limits<int64_t>::max(), 128, 128});
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, ShortOptionalInputList) {
+  std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+  Model model("gated_delta_net_short_inputs", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  ONNX_NAMESPACE::TypeProto query_type;
+  query_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  query_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(5);
+  query_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(10240);
+  auto& query = graph.GetOrCreateNodeArg("query", &query_type);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  graph.AddNode("gdn", "GatedDeltaNet", "short packed QKV inputs",
+                {&query}, {&output}, nullptr, kMSDomain);
+  graph.SetOutputs({&output});
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), "initial_state is required for packed QKV");
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, UnknownQueryShapeRequiresPairedKeyValue) {
+  for (bool key_only : {true, false}) {
+    std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+    Model model("gated_delta_net_unpaired_inputs", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    ONNX_NAMESPACE::TypeProto input_type;
+    input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    auto& query = graph.GetOrCreateNodeArg("query", &input_type);
+    auto& supplied = graph.GetOrCreateNodeArg("supplied", &input_type);
+    auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+    auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+    graph.AddNode("gdn", "GatedDeltaNet", "unpaired key or value",
+                  key_only ? std::vector<NodeArg*>{&query, &supplied}
+                           : std::vector<NodeArg*>{&query, &empty, &supplied},
+                  {&output}, nullptr, kMSDomain);
+    graph.SetOutputs({&output});
+
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), "key and value must both be present");
+  }
+}
+
 Inputs MakeInputs(const Geometry& g, uint32_t seed, bool with_state = true) {
   std::mt19937 rng(seed);
   std::uniform_real_distribution<float> u(-1.0f, 1.0f);
@@ -287,7 +415,8 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
                   bool use_webgpu = false, bool omit_final_state = false,
                   [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr,
-                  [[maybe_unused]] uint64_t test_max_storage_buffer_binding_size = 0) {
+                  [[maybe_unused]] uint64_t test_max_storage_buffer_binding_size = 0,
+                  bool packed_qkv = false) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -300,11 +429,11 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   if (use_webgpu) {
 #ifdef USE_WEBGPU
     if (test_max_storage_buffer_binding_size != 0) {
+      WebGpuExecutionProviderTestOptions test_options{};
+      test_options.max_storage_buffer_binding_size = test_max_storage_buffer_binding_size;
       webgpu_ep = webgpu_config != nullptr
-                      ? WebGpuExecutionProviderWithTestStorageBufferBindingSize(
-                            *webgpu_config, test_max_storage_buffer_binding_size)
-                      : WebGpuExecutionProviderWithTestStorageBufferBindingSize(
-                            test_max_storage_buffer_binding_size);
+                      ? WebGpuExecutionProviderWithTestOptions(*webgpu_config, test_options)
+                      : WebGpuExecutionProviderWithTestOptions(test_options);
     } else {
       webgpu_ep = webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
                                            : DefaultWebGpuExecutionProvider();
@@ -330,9 +459,26 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
     return s;
   };
 
-  test.AddInput<T>("query", shaped({g.hq, g.dk}), ToTensorType<T>(in.q));
-  test.AddInput<T>("key", shaped({g.hq, g.dk}), ToTensorType<T>(in.k));
-  test.AddInput<T>("value", shaped({g.hv, g.dv}), ToTensorType<T>(in.v));
+  if (packed_qkv) {
+    const size_t query_size = static_cast<size_t>(g.hq) * g.dk;
+    const size_t key_size = query_size;
+    const size_t value_size = static_cast<size_t>(g.hv) * g.dv;
+    std::vector<float> packed;
+    packed.reserve(static_cast<size_t>(g.total_tokens) * (query_size + key_size + value_size));
+    for (int token = 0; token < g.total_tokens; ++token) {
+      packed.insert(packed.end(), in.q.begin() + token * query_size, in.q.begin() + (token + 1) * query_size);
+      packed.insert(packed.end(), in.k.begin() + token * key_size, in.k.begin() + (token + 1) * key_size);
+      packed.insert(packed.end(), in.v.begin() + token * value_size, in.v.begin() + (token + 1) * value_size);
+    }
+    test.AddInput<T>("query", shaped({static_cast<int64_t>(query_size + key_size + value_size)}),
+                     ToTensorType<T>(packed));
+    test.AddOptionalInputEdge<T>();
+    test.AddOptionalInputEdge<T>();
+  } else {
+    test.AddInput<T>("query", shaped({g.hq, g.dk}), ToTensorType<T>(in.q));
+    test.AddInput<T>("key", shaped({g.hq, g.dk}), ToTensorType<T>(in.k));
+    test.AddInput<T>("value", shaped({g.hv, g.dv}), ToTensorType<T>(in.v));
+  }
   if (in.cu_seqlens.empty()) {
     test.AddOptionalInputEdge<int32_t>();
   } else {
@@ -559,6 +705,26 @@ TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
                       /*omit_final_state=*/true);
 }
 
+TEST(GatedDeltaNetWebGpuTest, PackedQkvPrefillAndDecode) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  Geometry prefill{128, 2, 2, 6, 8, 5};
+  Options prefill_options;
+  prefill_options.update_rule = "linear";
+  RunTypedCase<float>(prefill, prefill_options, MakeInputs(prefill, 215), 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                      /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+
+  Geometry decode{2, 2, 2, 6, 8, 5};
+  RunTypedCase<float>(decode, Options{}, MakeInputs(decode, 216), 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                      /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+}
+
 #ifdef USE_WEBGPU
 TEST(GatedDeltaNetWebGpuTest, PackedQkvAndParamsWithSegmentedBacking) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
@@ -638,6 +804,23 @@ TEST(GatedDeltaNetWebGpuTest, LongUniformNonLinearRulesUseRecurrentFallback) {
 }
 
 #ifdef USE_WEBGPU
+TEST(GatedDeltaNetWebGpuPlanTest, RaggedChunkCapacityIsLinear) {
+  using onnxruntime::contrib::webgpu::GatedDeltaNetChunkCapacity;
+
+  EXPECT_EQ(GatedDeltaNetChunkCapacity(130, 3, 16, true), 11u);
+  EXPECT_EQ(GatedDeltaNetChunkCapacity(130, 2, 16, false), 10u);
+  for (uint64_t batch : {1u, 8u, 64u, 256u}) {
+    const uint64_t capacity = GatedDeltaNetChunkCapacity(65 * batch, batch, 16, true);
+    EXPECT_GE(capacity, 5 * batch);
+    EXPECT_LE(capacity, 6 * batch);
+    constexpr uint64_t chunk_elements = 16 * (3 * 128 + 128) + 16 * 16 + 1;
+    const uint64_t workspace_bytes = (capacity * chunk_elements + 2 * 65 * batch * 128 +
+                                      2 * 65 * batch) *
+                                     sizeof(float);
+    EXPECT_LE(workspace_bytes, 64ull << 20);
+  }
+}
+
 TEST(GatedDeltaNetWebGpuPlanTest, ParallelPrefillWorkspaceIsBounded) {
   using onnxruntime::contrib::webgpu::SelectGatedDeltaNetParallelPrefillPlan;
 
@@ -683,6 +866,117 @@ TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialStateAndNonDivisibleDv) {
   options.qk_l2_norm = 1;
   RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPartialChunk) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  for (const Geometry geometry : {Geometry{65, 1, 2, 4, 128, 128}, Geometry{65, 1, 16, 48, 128, 128}}) {
+    SCOPED_TRACE(geometry.hv);
+    Inputs inputs = MakeInputs(geometry, 231);
+    inputs.cu_seqlens = {0, 65};
+    RunTypedCase<MLFloat16>(geometry, options, inputs, 3e-3f, 5e-4f,
+                            /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillSaturatedGates) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry geometry{32, 1, 1, 2, 16, 7};
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  for (bool isolated_resets : {false, true}) {
+    SCOPED_TRACE(isolated_resets);
+    Inputs inputs = MakeInputs(geometry, 235);
+    if (isolated_resets) {
+      inputs.a_log[0] = 1.0f;
+      for (int token : {0, 7, 16, 22}) {
+        inputs.decay[static_cast<size_t>(token) * geometry.hv] = std::numeric_limits<float>::max();
+      }
+    } else {
+      inputs.a_log[0] = 90.0f;
+      for (int token = 0; token < geometry.total_tokens; ++token) {
+        inputs.decay[static_cast<size_t>(token) * geometry.hv] = 1.0f;
+      }
+    }
+    RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
+                        /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillRaggedAndEmptySequence) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry geometry{130, 3, 1, 3, 16, 7};
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.scale = 0.37f;
+  for (const std::vector<int32_t>& boundaries : {std::vector<int32_t>{0, 0, 33, 130},
+                                                 std::vector<int32_t>{0, 33, 33, 130},
+                                                 std::vector<int32_t>{0, 33, 130, 130},
+                                                 std::vector<int32_t>{0, 1, 2, 130},
+                                                 std::vector<int32_t>{0, 16, 48, 130}}) {
+    SCOPED_TRACE(testing::PrintToString(boundaries));
+    for (bool with_state : {false, true}) {
+      SCOPED_TRACE(with_state);
+      Inputs inputs = MakeInputs(geometry, 232, with_state);
+      inputs.cu_seqlens = boundaries;
+      RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
+                          /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+    }
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillLargeRaggedBatch) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry geometry{2080, 64, 1, 1, 128, 128};
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  Inputs inputs = MakeInputs(geometry, 234);
+  inputs.cu_seqlens.assign(geometry.batch + 1, 0);
+  inputs.cu_seqlens.back() = geometry.total_tokens;
+  RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPackedAndUniform) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry geometry{130, 2, 2, 4, 32, 32};
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  const Inputs inputs = MakeInputs(geometry, 233);
+  RunTypedCase<MLFloat16>(geometry, options, inputs, 3e-3f, 5e-4f,
+                          /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                          /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                          /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+  RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true);
 }
 
 TEST(GatedDeltaNetWebGpuTest, CompactStateUpdates) {
@@ -814,6 +1108,15 @@ TEST(GatedDeltaNetTest, Chunked_UniformBatch) {
   RunCase(g, Options{}, MakeInputs(g, 19), 3e-2f, 3e-2f);
 }
 
+TEST(GatedDeltaNetTest, Chunked_PackedQkv) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 16, 48, kDim, kDim};
+  RunTypedCase<MLFloat16>(g, Options{}, MakeInputs(g, 21), 3e-2f, 3e-2f,
+                          /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/false,
+                          /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                          /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+}
+
 // The rank-4 [batch, sequence, heads, head_size] spelling must match the packed one exactly.
 TEST(GatedDeltaNetTest, Rank4BatchSequenceMatchesPacked) {
   if (NeedSkipGatedDeltaNetTest()) return;
@@ -896,6 +1199,15 @@ TEST(GatedDeltaNetTest, Recurrent_SingleToken) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{1, 1, 1, 2, kDim, kDim};
   RunCase(g, Options{}, MakeInputs(g, 23), 2e-2f, 2e-2f);
+}
+
+TEST(GatedDeltaNetTest, Recurrent_PackedQkvDecode) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{2, 2, 16, 48, kDim, kDim};
+  RunTypedCase<MLFloat16>(g, Options{}, MakeInputs(g, 27), 2e-2f, 2e-2f,
+                          /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/false,
+                          /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                          /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_VerifyBatch) {
@@ -1339,7 +1651,9 @@ TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
 }
 
 TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
-  auto webgpu_ep = WebGpuExecutionProviderWithTestStorageBufferBindingSize(64 * 1024);
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = 64 * 1024;
+  auto webgpu_ep = WebGpuExecutionProviderWithTestOptions(test_options);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
@@ -1380,6 +1694,30 @@ TEST(GatedDeltaNetTest, MalformedCuSeqlensIsClamped) {
     eps.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   }
+}
+
+TEST(GatedDeltaNetTest, RejectsNonDivisiblePackedQkvUniformBatch) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{5, 2, 1, 2, kDim, kDim};
+  Inputs in = MakeInputs(g, 46);
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  Options o;
+  o.update_rule = "linear";
+  AddCommonAttrs(test, o);
+  const int packed_size = 2 * g.hq * g.dk + g.hv * g.dv;
+  test.AddInput<MLFloat16>("query", {g.total_tokens, packed_size},
+                           ToFloat16(std::vector<float>(static_cast<size_t>(g.total_tokens) * packed_size, 0.0f)));
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
+  test.AddOutput<MLFloat16>("output", {g.total_tokens, g.hv, g.dv},
+                            ToFloat16(std::vector<float>(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f)));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be divisible by batch", {}, nullptr, &eps);
 }
 
 TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {

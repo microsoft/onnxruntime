@@ -1,0 +1,157 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_cu_seqlens
+#param chunk_size
+#use .getByOffset .setByOffset
+
+const CHUNK: u32 = chunk_size;
+var<workgroup> prefix_decay: array<f32, chunk_size>;
+var<workgroup> beta_values: array<f32, chunk_size>;
+var<workgroup> retrieval_matrix: array<f32, chunk_size * chunk_size>;
+var<workgroup> output_matrix: array<f32, chunk_size * chunk_size>;
+var<workgroup> chunk_keys: array<f32, chunk_size * 128>;
+var<workgroup> chunk_queries: array<f32, chunk_size * 128>;
+
+fn gdn_chunk_relative_decay(row: u32, column: u32, first: u32, value_head: u32) -> f32 {
+  if (bitcast<u32>(prefix_decay[column]) != 0xff800000u) {
+    return exp(prefix_decay[row] - prefix_decay[column]);
+  }
+  // Recompute the interval after a saturated prefix to avoid -inf - -inf.
+  var decay_sum = 0.0;
+  for (var token = column + 1u; token <= row; token++) {
+    decay_sum += parameters.getByOffset(((first + token) * uniforms.num_heads_v + value_head) * 2u);
+  }
+  return exp(decay_sum);
+}
+
+$MAIN {
+  let chunk_slot = workgroup_idx / uniforms.num_heads_v;
+  let value_head = workgroup_idx % uniforms.num_heads_v;
+  var batch = chunk_slot / (uniforms.total_chunks / uniforms.batch_size);
+  var chunk_offset = batch * (uniforms.total_chunks / uniforms.batch_size);
+#if has_cu_seqlens
+  var lower = 0u;
+  var upper = uniforms.batch_size;
+  while (lower < upper) {
+    let middle = lower + (upper - lower) / 2u;
+    let boundary = u32(clamp(cu_seqlens.getByOffset(middle), 0, i32(uniforms.total_tokens))) / CHUNK + middle;
+    if (boundary <= chunk_slot) {
+      lower = middle + 1u;
+    } else {
+      upper = middle;
+    }
+  }
+  if (lower == 0u) {
+    return;
+  }
+  batch = lower - 1u;
+  chunk_offset = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens))) / CHUNK + batch;
+#endif
+  let chunk_index = chunk_slot - chunk_offset;
+  let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
+  var first = batch * (uniforms.total_tokens / uniforms.batch_size);
+  var last = first + uniforms.total_tokens / uniforms.batch_size;
+#if has_cu_seqlens
+  first = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens)));
+  last = u32(clamp(cu_seqlens.getByOffset(batch + 1u), i32(first), i32(uniforms.total_tokens)));
+#endif
+  first += chunk_index * CHUNK;
+  if (first >= last) {
+    return;
+  }
+  let length = min(CHUNK, last - first);
+  let key_base = uniforms.total_tokens * uniforms.num_heads_q * uniforms.head_size_qk;
+  if (local_idx < CHUNK) {
+    var decay_sum = 0.0;
+    for (var row = 0u; row <= local_idx && row < length; row++) {
+      decay_sum += parameters.getByOffset(((first + row) * uniforms.num_heads_v + value_head) * 2u);
+    }
+    prefix_decay[local_idx] = decay_sum;
+    beta_values[local_idx] = 0.0;
+    if (local_idx < length) {
+      beta_values[local_idx] = parameters.getByOffset(((first + local_idx) * uniforms.num_heads_v + value_head) * 2u + 1u);
+    }
+  }
+  let total_key_elements = length * uniforms.head_size_qk;
+  for (var i = local_idx; i < total_key_elements; i += workgroup_size_x) {
+    let r = i / uniforms.head_size_qk;
+    let d = i % uniforms.head_size_qk;
+    let offset = ((first + r) * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + d;
+    chunk_keys[i] = normalized.getByOffset(key_base + offset);
+    chunk_queries[i] = normalized.getByOffset(offset);
+  }
+  workgroupBarrier();
+  for (var pair = local_idx; pair < CHUNK * CHUNK; pair += workgroup_size_x) {
+    let row = pair / CHUNK;
+    let column = pair % CHUNK;
+    var retrieval = 0.0;
+    var projected = 0.0;
+    if (column <= row && row < length) {
+      let row_base_dim = row * uniforms.head_size_qk;
+      let col_base_dim = column * uniforms.head_size_qk;
+      let qk_vec_limit = (uniforms.head_size_qk / 4u) * 4u;
+      for (var dimension = 0u; dimension < qk_vec_limit; dimension += 4u) {
+        retrieval += chunk_keys[row_base_dim + dimension] * chunk_keys[col_base_dim + dimension] +
+                     chunk_keys[row_base_dim + dimension + 1u] * chunk_keys[col_base_dim + dimension + 1u] +
+                     chunk_keys[row_base_dim + dimension + 2u] * chunk_keys[col_base_dim + dimension + 2u] +
+                     chunk_keys[row_base_dim + dimension + 3u] * chunk_keys[col_base_dim + dimension + 3u];
+        projected += chunk_queries[row_base_dim + dimension] * chunk_keys[col_base_dim + dimension] +
+                     chunk_queries[row_base_dim + dimension + 1u] * chunk_keys[col_base_dim + dimension + 1u] +
+                     chunk_queries[row_base_dim + dimension + 2u] * chunk_keys[col_base_dim + dimension + 2u] +
+                     chunk_queries[row_base_dim + dimension + 3u] * chunk_keys[col_base_dim + dimension + 3u];
+      }
+      for (var dimension = qk_vec_limit; dimension < uniforms.head_size_qk; dimension++) {
+        let column_key = chunk_keys[col_base_dim + dimension];
+        retrieval += chunk_keys[row_base_dim + dimension] * column_key;
+        projected += chunk_queries[row_base_dim + dimension] * column_key;
+      }
+      let relative_decay = gdn_chunk_relative_decay(row, column, first, value_head);
+      retrieval *= beta_values[row] * relative_decay;
+      projected *= relative_decay;
+    }
+    retrieval_matrix[pair] = select(0.0, retrieval, column < row);
+    output_matrix[pair] = projected;
+  }
+  workgroupBarrier();
+  let base = workgroup_idx * uniforms.chunk_elements;
+  let value_base = CHUNK * uniforms.head_size_qk;
+  let matrix_base = value_base + CHUNK * uniforms.head_size_v;
+  let query_base = matrix_base + CHUNK * CHUNK;
+  let carry_base = query_base + CHUNK * uniforms.head_size_qk;
+  let decay_base = carry_base + CHUNK * uniforms.head_size_qk;
+  var transformed_keys: array<f32, chunk_size>;
+  var transformed_values: array<f32, chunk_size>;
+  for (var row = 0u; row < length; row++) {
+    let row_elem = row * uniforms.head_size_qk + local_idx;
+    var key_value = 0.0;
+    var value_value = 0.0;
+    if (local_idx < uniforms.head_size_qk) {
+      key_value = beta_values[row] * exp(prefix_decay[row]) * chunk_keys[row_elem];
+    }
+    if (local_idx < uniforms.head_size_v) {
+      value_value = beta_values[row] * f32(value.getByOffset(((first + row) * uniforms.num_heads_v + value_head) * uniforms.head_size_v + local_idx));
+    }
+    for (var column = 0u; column < row; column++) {
+      let coefficient = retrieval_matrix[row * CHUNK + column];
+      key_value -= coefficient * transformed_keys[column];
+      value_value -= coefficient * transformed_values[column];
+    }
+    transformed_keys[row] = key_value;
+    transformed_values[row] = value_value;
+    if (local_idx < uniforms.head_size_qk) {
+      prepared.setByOffset(base + row * uniforms.head_size_qk + local_idx, key_value);
+      prepared.setByOffset(base + query_base + row * uniforms.head_size_qk + local_idx, exp(prefix_decay[row]) * chunk_queries[row_elem]);
+      prepared.setByOffset(base + carry_base + row * uniforms.head_size_qk + local_idx, gdn_chunk_relative_decay(length - 1u, row, first, value_head) * chunk_keys[row_elem]);
+    }
+    if (local_idx < uniforms.head_size_v) {
+      prepared.setByOffset(base + value_base + row * uniforms.head_size_v + local_idx, value_value);
+    }
+  }
+  for (var pair = local_idx; pair < CHUNK * CHUNK; pair += workgroup_size_x) {
+    prepared.setByOffset(base + matrix_base + pair, output_matrix[pair]);
+  }
+  if (local_idx == 0u) {
+    prepared.setByOffset(base + decay_base, exp(prefix_decay[length - 1u]));
+  }
+}

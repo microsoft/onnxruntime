@@ -4402,6 +4402,48 @@ TEST(ModOpTest, FloorMod_float_special_values_opset28) {
       {-0.0f, 0.0f, 5.0f, -5.0f, nan, nan, nan, nan});
 }
 
+TEST(ModOpTest, FloorMod_opset28_provider_fallback) {
+  InlinedVector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+#ifdef USE_CANN
+  OrtCANNProviderOptions cann_options{};
+  cann_options.enable_cann_graph = 1;
+  auto cann_factory = CannProviderFactoryCreator::Create(&cann_options);
+  ASSERT_NE(cann_factory, nullptr);
+  providers.push_back(cann_factory->CreateProvider());
+#endif
+  providers.push_back(DefaultMIGraphXExecutionProvider());
+  providers.push_back(DefaultOpenVINOExecutionProvider());
+  for (auto& provider : providers) {
+    if (!provider) {
+      continue;
+    }
+    SCOPED_TRACE(provider->Type());
+    const std::vector<int64_t> shape{4};
+    const float infinity = std::numeric_limits<float>::infinity();
+    const std::vector<float> x{-5.0f, 5.0f, -5.0f, 5.0f};
+    const std::vector<float> y{3.0f, -3.0f, infinity, -infinity};
+    OpTester test("Mod", 28);
+    test.AddAttribute<int64_t>("fmod", 0);
+    test.AddInput<float>("X", shape, x);
+    test.AddInput<float>("Y", shape, y);
+    test.AddOutput<float>("Z", shape, {1.0f, -1.0f, infinity, -infinity});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    std::string model_data;
+    auto& model = test.BuildModel();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    model.ToProto().SerializeToString(&model_data);
+    EPVerificationParams params;
+    params.ep_node_assignment = provider->Type() == kCpuExecutionProvider
+                                    ? ExpectedEPNodeAssignment::All
+                                    : ExpectedEPNodeAssignment::None;
+    RunAndVerifyOutputsWithEP(
+        AsByteSpan(model_data.data(), model_data.size()), CurrentTestName(), std::move(provider),
+        {{"X", CreateInputOrtValueOnCPU<float>(shape, x)}, {"Y", CreateInputOrtValueOnCPU<float>(shape, y)}},
+        params);
+  }
+}
+
 #if defined(USE_CUDA)
 TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   OpTester test("Mod", 13);
@@ -4924,6 +4966,38 @@ TEST(BitShiftOpTest, SignedInt32Opset28) {
 
 TEST(BitShiftOpTest, SignedInt64Opset28) {
   TestSignedBitShiftOpset28<int64_t>();
+}
+
+template <typename T>
+void TestBitShiftOpset28ProviderFallback(const std::vector<T>& x, const std::vector<T>& y,
+                                         const std::vector<T>& expected) {
+  const std::vector<int64_t> shape{static_cast<int64_t>(x.size())};
+  OpTester test("BitShift", 28);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<T>("X", shape, x);
+  test.AddInput<T>("Y", shape, y);
+  test.AddOutput<T>("Z", shape, expected);
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  auto provider = DefaultOpenVINOExecutionProvider();
+  if (!provider) {
+    return;
+  }
+
+  auto& model = test.BuildModel();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::None;
+  RunAndVerifyOutputsWithEP(
+      AsByteSpan(model_data.data(), model_data.size()), CurrentTestName(), std::move(provider),
+      {{"X", CreateInputOrtValueOnCPU<T>(shape, x)}, {"Y", CreateInputOrtValueOnCPU<T>(shape, y)}},
+      params);
+}
+
+TEST(BitShiftOpTest, Opset28ProviderFallback) {
+  TestBitShiftOpset28ProviderFallback<int32_t>({-8, -3, -2, -2}, {1, 2, -1, 32}, {-4, -1, -1, -1});
+  TestBitShiftOpset28ProviderFallback<uint32_t>({8, 255, 1, 42}, {1, 32, 33, 64}, {4, 0, 0, 0});
 }
 
 template <typename T>

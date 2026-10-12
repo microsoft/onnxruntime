@@ -273,12 +273,13 @@ Status RunBinaryProgram(ComputeContext& context,
       program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type});
     }
     // Mode Vectorize broadcast
-    // cache hint: "V{a_rank};{b_rank};{output_rank}"
+    // Boolx4 storage does not distinguish vector reads from lane broadcasts.
     program
         .AddIndices(std::move(reshaped_output_shape))
         .AddIndices(std::move(reshaped_lhs_shape))
         .AddIndices(std::move(reshaped_rhs_shape))
-        .CacheHint("V");
+        .CacheHint("V", is_lhs_bool && (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4),
+                   is_rhs_bool && (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4));
   } else {
     // Mode Broadcast
     // cache hint: "B"

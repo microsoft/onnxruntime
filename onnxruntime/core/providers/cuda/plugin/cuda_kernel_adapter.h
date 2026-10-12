@@ -537,6 +537,7 @@ struct CudaKernelAdapterRuntimeConfig {
   int sdpa_kernel = 0;
   int device_id = 0;
   bool do_copy_in_default_stream = true;
+  bool enable_cuda_graph = false;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
   std::mutex captured_host_buffers_mutex;
@@ -760,6 +761,7 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   config->sdpa_kernel = init_config.sdpa_kernel;
   config->device_id = init_config.device_id;
   config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
+  config->enable_cuda_graph = init_config.enable_cuda_graph;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
 }
 
@@ -1156,6 +1158,7 @@ class CudaKernel : public OpKernel {
 
     return device_prop_;
   }
+  inline int GetDeviceId() const { return device_id_; }
   int GetCudnnConvAlgo() const { return runtime_config_->cudnn_conv_algo; }
   bool GetCudnnConvUseMaxWorkspace() const { return runtime_config_->cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return runtime_config_->cudnn_conv1d_pad_to_nc1d; }

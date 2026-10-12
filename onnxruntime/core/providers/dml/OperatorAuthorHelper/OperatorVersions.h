@@ -459,6 +459,7 @@ namespace OperatorHelper
 
     namespace OnnxOperatorSet28
     {
+        static const int sc_sinceVer_Cast = 28;
         static const int sc_sinceVer_Mod = 28;
     }
 

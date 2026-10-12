@@ -171,8 +171,10 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       auto fmax = std::floor(center + support + 0.5f);
       int64_t xmin_real = static_cast<int64_t>(fmin);
       int64_t xmax_real = static_cast<int64_t>(fmax);
-      int64_t xmin_cut = std::max<int64_t>(xmin_real, 0);
-      int64_t xmax_cut = std::min<int64_t>(xmax_real, input_size);
+      xmax_real = xmin_real + std::clamp<int64_t>(
+                                  xmax_real - xmin_real, 0, narrow<int64_t>(window_size));
+      int64_t xmin_cut = std::clamp<int64_t>(xmin_real, 0, input_size);
+      int64_t xmax_cut = std::clamp<int64_t>(xmax_real, 0, input_size);
 
       xmin = exclude_outside ? xmin_cut : xmin_real;
       xmax = exclude_outside ? xmax_cut : xmax_real;
@@ -187,14 +189,13 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
         total_weight += w;
       }
 
-      if (!exclude_outside) {
-        int64_t neg_xsize = xmin < 0 ? -xmin : 0;
+      if (!exclude_outside && xmin_cut < xmax_cut) {
+        int64_t neg_xsize = std::clamp<int64_t>(-xmin, 0, xmax - 1);
         for (x = 0; x < neg_xsize; x++) {
           scale_buffer[narrow<size_t>(neg_xsize)] += scale_buffer[narrow<size_t>(x)];
         }
 
-        int64_t bound_xsize =
-            xmax + xmin > input_size ? xmax + xmin - input_size : 0;
+        int64_t bound_xsize = std::clamp<int64_t>(xmax + xmin - input_size, 0, xmax - 1);
         for (x = xmax - bound_xsize; x < xmax; x++) {
           scale_buffer[narrow<size_t>(xmax - bound_xsize - 1)] +=
               scale_buffer[narrow<size_t>(x)];
