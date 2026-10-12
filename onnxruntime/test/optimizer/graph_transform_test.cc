@@ -4498,10 +4498,11 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
            "whether the im2col program was selected";
   };
 
-  RunWebGpuFusionTransformerTest(build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
-                                 /*per_sample_tolerance=*/2e-2,
-                                 /*relative_per_sample_tolerance=*/2e-2,
-                                 /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
+  RunWebGpuFusionTransformerTest(
+      build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
+      /*per_sample_tolerance=*/2e-2,
+      /*relative_per_sample_tolerance=*/2e-2,
+      /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
                                    session_options.enable_profiling = true;
                                    session_options.profile_file_prefix = ORT_TSTR("webgpu_im2col_activation"); });
 
@@ -7171,7 +7172,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithSharedShapeP
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
 }
 
 // Full-session test of a Reshape chain whose first shape input is produced by a Where node.
