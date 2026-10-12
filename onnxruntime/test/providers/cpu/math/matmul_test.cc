@@ -504,15 +504,27 @@ TEST(MathOpTest, MatMulZeroKDoubleType) {
 }
 
 template <typename T>
-void RunMatMulZeroKBroadcastCpuTest() {
+void RunMatMulZeroKBroadcastCpuTest(bool transpose_a_with_vector_b = false) {
+  const std::vector<int64_t> a_dims = transpose_a_with_vector_b ? std::vector<int64_t>{2, 0, 3}
+                                                                : std::vector<int64_t>{2, 1, 3, 0};
+  const std::vector<int64_t> b_dims = transpose_a_with_vector_b ? std::vector<int64_t>{0}
+                                                                : std::vector<int64_t>{1, 4, 0, 5};
+  const std::vector<int64_t> output_dims = transpose_a_with_vector_b ? std::vector<int64_t>{2, 3}
+                                                                     : std::vector<int64_t>{2, 4, 3, 5};
+  const size_t output_size = static_cast<size_t>(TensorShape(output_dims).Size());
+  const auto* domain = transpose_a_with_vector_b ? kMSDomain : kOnnxDomain;
+  const int opset = transpose_a_with_vector_b ? 1 : 13;
   Model model("zero_k_cpu_broadcast", false, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+              IOnnxRuntimeOpSchemaRegistryList(), {{domain, opset}}, {},
               DefaultLoggingManager().DefaultLogger());
   ModelTestBuilder builder(model.MainGraph());
-  auto* a = builder.MakeInput<T>({2, 1, 3, 0}, std::vector<T>{});
-  auto* b = builder.MakeInput<T>({1, 4, 0, 5}, std::vector<T>{});
-  auto* y = builder.MakeOutput<T>(std::vector<int64_t>{2, 4, 3, 5});
-  builder.AddNode("MatMul", {a, b}, {y});
+  auto* a = builder.MakeInput<T>(a_dims, std::vector<T>{});
+  auto* b = builder.MakeInput<T>(b_dims, std::vector<T>{});
+  auto* y = builder.MakeOutput<T>(output_dims);
+  auto& node = builder.AddNode(transpose_a_with_vector_b ? "FusedMatMul" : "MatMul", {a, b}, {y}, domain);
+  if (transpose_a_with_vector_b) {
+    node.AddAttribute("transA", int64_t{1});
+  }
   builder.SetGraphOutputs();
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
   const std::string bytes = model.ToProto().SerializeAsString();
@@ -524,14 +536,14 @@ void RunMatMulZeroKBroadcastCpuTest() {
   ASSERT_STATUS_OK(session.Initialize());
   const auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   OrtValue output;
-  CreateMLValue<T>(allocator, {2, 4, 3, 5}, std::vector<T>(120, T{-99}), &output);
+  CreateMLValue<T>(allocator, output_dims, std::vector<T>(output_size, T{-99}), &output);
   std::vector<OrtValue> outputs{output};
   for (int run = 0; run < 2; ++run) {
     // Poison every batch so untouched memory cannot appear correctly zeroed.
-    std::fill_n(output.GetMutable<Tensor>()->MutableData<T>(), 120, T{-99});
+    std::fill_n(output.GetMutable<Tensor>()->MutableData<T>(), output_size, T{-99});
     ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &outputs));
     const auto& tensor = outputs[0].Get<Tensor>();
-    ASSERT_EQ(tensor.Shape(), TensorShape({2, 4, 3, 5}));
+    ASSERT_EQ(tensor.Shape(), TensorShape(output_dims));
     ASSERT_EQ(tensor.DataRaw(), output.Get<Tensor>().DataRaw());
     for (T value : tensor.DataAsSpan<T>()) {
       EXPECT_EQ(value, T{}) << "run=" << run;
@@ -546,6 +558,16 @@ TEST(MathOpTest, MatMulZeroKBroadcastCpuFloat) {
 TEST(MathOpTest, MatMulZeroKBroadcastCpuDouble) {
   RunMatMulZeroKBroadcastCpuTest<double>();
 }
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(MathOpTest, FusedMatMulZeroKTransposeARightVectorCpuFloat) {
+  RunMatMulZeroKBroadcastCpuTest<float>(true);
+}
+
+TEST(MathOpTest, FusedMatMulZeroKTransposeARightVectorCpuDouble) {
+  RunMatMulZeroKBroadcastCpuTest<double>(true);
+}
+#endif
 
 TEST(MathOpTest, MatMulHelperZeroBatchBroadcast) {
   const auto check = [](const TensorShape& a, const TensorShape& b, const TensorShape& expected) {
