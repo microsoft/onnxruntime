@@ -246,7 +246,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       NarrowToFloat<T>(skip_data, skip_fp32.get(), static_cast<size_t>(skip_size));
       skip_data_f = skip_fp32.get();
     } else if (has_prepacked_skip_) {
-      skip_data_f = prepacked_skip_fp32_data_.get();
+      skip_data_f = static_cast<const float*>(prepacked_skip_fp32_data_.get());
     }
 
     if (gamma_data) {
@@ -254,7 +254,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       NarrowToFloat<T>(gamma_data, gamma_fp32.get(), num_elems);
       gamma_data_f = gamma_fp32.get();
     } else if (has_prepacked_gamma_) {
-      gamma_data_f = prepacked_gamma_fp32_data_.get();
+      gamma_data_f = static_cast<const float*>(prepacked_gamma_fp32_data_.get());
     }
 
     if (beta_data) {
@@ -262,7 +262,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       NarrowToFloat<T>(beta_data, beta_fp32.get(), num_elems);
       beta_data_f = beta_fp32.get();
     } else if (has_prepacked_beta_) {
-      beta_data_f = prepacked_beta_fp32_data_.get();
+      beta_data_f = static_cast<const float*>(prepacked_beta_fp32_data_.get());
     }
 
     if (bias_data) {
@@ -270,7 +270,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       NarrowToFloat<T>(bias_data, bias_fp32.get(), num_elems);
       bias_data_f = bias_fp32.get();
     } else if (has_prepacked_bias_) {
-      bias_data_f = prepacked_bias_fp32_data_.get();
+      bias_data_f = static_cast<const float*>(prepacked_bias_fp32_data_.get());
     }
 
     concurrency::ThreadPool::TryBatchParallelFor(
@@ -299,16 +299,15 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 template <typename T, bool simplified>
 Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                              bool& is_packed, PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
   if (input_idx == 1) {  // skip
-    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_skip_fp32_data_, is_packed);
+    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_skip_fp32_data_, is_packed, prepacked_weights);
     if (is_packed) {
       prepacked_skip_shape_ = tensor.Shape();
       has_prepacked_skip_ = true;
     }
   } else if (input_idx == 2) {  // gamma
-    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_gamma_fp32_data_, is_packed);
+    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_gamma_fp32_data_, is_packed, prepacked_weights);
     if (is_packed) {
       prepacked_gamma_shape_ = tensor.Shape();
       has_prepacked_gamma_ = true;
@@ -316,14 +315,14 @@ Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx
   } else if (input_idx == 3) {
     if constexpr (simplified) {
       // bias
-      ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
+      ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed, prepacked_weights);
       if (is_packed) {
         prepacked_bias_shape_ = tensor.Shape();
         has_prepacked_bias_ = true;
       }
     } else {
       // beta
-      ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_beta_fp32_data_, is_packed);
+      ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_beta_fp32_data_, is_packed, prepacked_weights);
       if (is_packed) {
         prepacked_beta_shape_ = tensor.Shape();
         has_prepacked_beta_ = true;
@@ -331,11 +330,38 @@ Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx
     }
   } else if (input_idx == 4) {  // bias
     ORT_ENFORCE(!simplified, "SkipSimplifiedLayerNormalization should only has 4 inputs (input, skip, gamma, and beta). Got 5.");
-    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
+    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed, prepacked_weights);
     if (is_packed) {
       prepacked_bias_shape_ = tensor.Shape();
       has_prepacked_bias_ = true;
     }
+  }
+
+  return Status::OK();
+}
+
+template <typename T, bool simplified>
+Status SkipLayerNorm<T, simplified>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                               gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                               int input_idx,
+                                                               /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = true;
+  if (input_idx == 1) {  // skip
+    prepacked_skip_fp32_data_ = std::move(prepacked_buffers[0]);
+  } else if (input_idx == 2) {  // gamma
+    prepacked_gamma_fp32_data_ = std::move(prepacked_buffers[0]);
+  } else if (input_idx == 3) {
+    if constexpr (simplified) {
+      // bias
+      prepacked_bias_fp32_data_ = std::move(prepacked_buffers[0]);
+    } else {
+      // beta
+      prepacked_beta_fp32_data_ = std::move(prepacked_buffers[0]);
+    }
+  } else if (input_idx == 4) {  // bias
+    prepacked_bias_fp32_data_ = std::move(prepacked_buffers[0]);
+  } else {
+    used_shared_buffers = false;
   }
 
   return Status::OK();

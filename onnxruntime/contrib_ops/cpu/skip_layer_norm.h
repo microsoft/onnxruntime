@@ -19,6 +19,11 @@ class SkipLayerNorm final : public OpKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> prepacked_buffer_sizes,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
  private:
   float epsilon_;
   TensorShape prepacked_skip_shape_;
@@ -29,10 +34,12 @@ class SkipLayerNorm final : public OpKernel {
   bool has_prepacked_gamma_;
   bool has_prepacked_beta_;
   bool has_prepacked_bias_;
-  IAllocatorUniquePtr<float> prepacked_skip_fp32_data_;
-  IAllocatorUniquePtr<float> prepacked_gamma_fp32_data_;
-  IAllocatorUniquePtr<float> prepacked_beta_fp32_data_;
-  IAllocatorUniquePtr<float> prepacked_bias_fp32_data_;
+  // f32 copies of narrow float initializers made in PrePack(). Owned by the kernel, or by the session when it
+  // caches the pre-packed weights (see UseSharedPrePackedBuffers()).
+  IAllocatorUniquePtr<void> prepacked_skip_fp32_data_;
+  IAllocatorUniquePtr<void> prepacked_gamma_fp32_data_;
+  IAllocatorUniquePtr<void> prepacked_beta_fp32_data_;
+  IAllocatorUniquePtr<void> prepacked_bias_fp32_data_;
 };
 
 }  // namespace contrib
