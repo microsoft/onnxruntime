@@ -708,8 +708,8 @@ TEST_F(ActivationOpTest, Softplus_Opset22) {
 }
 
 #if defined(USE_CUDA)
-template <typename T>
-static void CheckCudaSoftplusSmallPositiveTails() {
+template <typename T, typename Reference>
+static void CheckCudaActivationSmallPositiveTails(const char* op_name, const Reference& reference) {
   if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
   std::vector<T> input;
   std::vector<T> expected;
@@ -717,15 +717,14 @@ static void CheckCudaSoftplusSmallPositiveTails() {
                       -12.0f, -8.0f, -5.0f, -1.0f, -0.125f, 0.0f, 0.125f,
                       1.0f, 5.0f, 8.0f, 14.0f, 20.0f, 40.0f, 100.0f}) {
     input.emplace_back(value);
-    const double result = std::max(static_cast<double>(value), 0.0) +
-                          std::log1p(std::exp(-std::abs(static_cast<double>(value))));
+    const double result = reference(static_cast<double>(value));
     if constexpr (std::is_same_v<T, double>) {
       expected.emplace_back(result);
     } else {
       expected.emplace_back(static_cast<float>(result));
     }
   }
-  OpTester tester("Softplus", 22);
+  OpTester tester(op_name, 22);
   const std::vector<int64_t> dimensions{static_cast<int64_t>(input.size())};
   tester.AddInput<T>("X", dimensions, input);
   tester.AddOutput<T>("Y", dimensions, expected);
@@ -736,6 +735,37 @@ static void CheckCudaSoftplusSmallPositiveTails() {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+template <typename T>
+static void CheckCudaSoftplusSmallPositiveTails() {
+  CheckCudaActivationSmallPositiveTails<T>("Softplus", [](double value) {
+    return std::max(value, 0.0) + std::log1p(std::exp(-std::abs(value)));
+  });
+}
+
+template <typename T>
+static void CheckCudaSigmoidSmallPositiveTails() {
+  CheckCudaActivationSmallPositiveTails<T>("Sigmoid", [](double value) {
+    const double exponent = std::exp(-std::abs(value));
+    return value > 0 ? 1.0 / (1.0 + exponent) : exponent / (1.0 + exponent);
+  });
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidFloatSmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<float>();
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidDoubleSmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<double>();
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidFloat16SmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<MLFloat16>();
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidBFloat16SmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<BFloat16>();
 }
 
 TEST_F(ActivationOpTest, CudaSoftplusFloatSmallPositiveTails) {
