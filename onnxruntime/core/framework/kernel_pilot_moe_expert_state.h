@@ -56,6 +56,10 @@ class KernelPilotMoeExpertState {
   // Must be called before registering any MoE kernels.
   Status SetSwapEpsilon(double epsilon);
 
+  // Sets the maximum concurrent adaptive swaps on each CUDA device.
+  // Must be called before registering any MoE kernels. Zero disables adaptive swaps.
+  Status SetMaxInFlightSwapsPerDevice(size_t max_in_flight_swaps_per_device);
+
   // Registers one resolved MoE kernel and allocates its contiguous counter range and
   // provider-independent KernelPilot. Registration closes after initialization.
   Status RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
@@ -138,6 +142,7 @@ class KernelPilotMoeExpertState {
   double alpha_{0.9};
   size_t cpu_offload_expert_count_{0};
   double swap_epsilon_{0.0};
+  size_t max_in_flight_swaps_per_device_{4};
   bool cpu_offload_enabled_{false};
   bool initialized_{false};
 };

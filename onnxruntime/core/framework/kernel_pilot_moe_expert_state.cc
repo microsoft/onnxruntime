@@ -71,6 +71,13 @@ Status KernelPilotMoeExpertState::SetSwapEpsilon(double epsilon) {
   return Status::OK();
 }
 
+Status KernelPilotMoeExpertState::SetMaxInFlightSwapsPerDevice(size_t max_in_flight_swaps_per_device) {
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
+                "MoE maximum in-flight swaps per device cannot change after node registration.");
+  max_in_flight_swaps_per_device_ = max_in_flight_swaps_per_device;
+  return Status::OK();
+}
+
 Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
                                                std::string_view node_type, size_t expert_count) {
   ORT_RETURN_IF(initialized_, "MoE expert registration is closed.");
@@ -247,7 +254,6 @@ KernelPilot* KernelPilotMoeExpertState::GetKernelPilot(const OpKernel* kernel) {
 }
 
 Status KernelPilotMoeExpertState::ScheduleSwaps() {
-  constexpr size_t kMaxInFlightSwapsPerDevice = 4;
   InlinedHashMap<int, size_t> pending_by_device;
   InlinedVector<KernelState*> ordered_states;
   ordered_states.reserve(kernels_.size());
@@ -269,7 +275,7 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
     auto* cache = state->pilot.GetMoeExpertCache();
     const int device_id = cache->DeviceId();
     if (cache->HasPendingSwap() ||
-        pending_by_device[device_id] >= kMaxInFlightSwapsPerDevice ||
+        pending_by_device[device_id] >= max_in_flight_swaps_per_device_ ||
         state->cuda_experts.empty() ||
         state->cuda_experts.size() == state->experts.count) {
       continue;

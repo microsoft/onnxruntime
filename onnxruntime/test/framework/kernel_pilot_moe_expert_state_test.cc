@@ -467,29 +467,38 @@ TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapUsesStrictEpsilonAndDeterminis
   }
 }
 
-TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapAllowsMoreThanTwoPerDevice) {
-  KernelPilotMoeExpertState state;
-  ASSERT_STATUS_OK(state.SetCounterAlpha(0));
-  ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(3));
-  for (size_t i = 0; i < 3; ++i) {
-    MakeEligibleForCudaFp16MoePlacement(kernels_[i]);
-    ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", i, "MoE", 2));
-  }
-  ASSERT_STATUS_OK(state.FinalizeInitialization());
-  std::array<FakeMoeExpertCache, 3> caches;
-  for (size_t i = 0; i < caches.size(); ++i) {
-    ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[i])->AttachMoeExpertCache(&caches[i]));
-  }
+TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapHonorsPerDeviceLimit) {
+  for (const size_t max_in_flight_swaps : {0U, 2U, 4U}) {
+    SCOPED_TRACE(max_in_flight_swaps);
+    KernelPilotMoeExpertState state;
+    ASSERT_STATUS_OK(state.SetCounterAlpha(0));
+    ASSERT_STATUS_OK(state.SetMaxInFlightSwapsPerDevice(max_in_flight_swaps));
+    ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(3));
+    for (size_t i = 0; i < 3; ++i) {
+      MakeEligibleForCudaFp16MoePlacement(kernels_[i]);
+      ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", i, "MoE", 2));
+    }
+    ASSERT_STATUS_OK(state.FinalizeInitialization());
+    std::array<FakeMoeExpertCache, 3> caches;
+    for (size_t i = 0; i < caches.size(); ++i) {
+      ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[i])->AttachMoeExpertCache(&caches[i]));
+    }
 
-  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
-  const int selected[] = {1};
-  for (const auto* kernel : kernels_) {
-    ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
+    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+    const int selected[] = {1};
+    for (const auto* kernel : kernels_) {
+      ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
+    }
+    ASSERT_STATUS_OK(state.EndRun());
+    const size_t expected_swap_count = std::min(max_in_flight_swaps, caches.size());
+    for (size_t i = 0; i < caches.size(); ++i) {
+      if (i < expected_swap_count) {
+        EXPECT_EQ(caches[i].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
+      } else {
+        EXPECT_TRUE(caches[i].Swaps().empty());
+      }
+    }
   }
-  ASSERT_STATUS_OK(state.EndRun());
-  EXPECT_EQ(caches[0].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
-  EXPECT_EQ(caches[1].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
-  EXPECT_EQ(caches[2].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 1}}));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {
@@ -521,8 +530,11 @@ TEST_F(KernelPilotMoeExpertStateTest, ValidatesSwapEpsilon) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.SetSwapEpsilon(0));
   ASSERT_STATUS_OK(state.SetSwapEpsilon(1.5));
+  ASSERT_STATUS_OK(state.SetMaxInFlightSwapsPerDevice(0));
+  ASSERT_STATUS_OK(state.SetMaxInFlightSwapsPerDevice(8));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
   EXPECT_FALSE(state.SetSwapEpsilon(0.5).IsOK());
+  EXPECT_FALSE(state.SetMaxInFlightSwapsPerDevice(2).IsOK());
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {

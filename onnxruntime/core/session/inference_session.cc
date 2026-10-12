@@ -2780,7 +2780,8 @@ common::Status InferenceSession::Initialize() {
            (value.empty() || value.find_first_not_of('0') != std::string::npos)) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
-          option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon) {
+          option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
+          option == kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
       }
@@ -2819,6 +2820,18 @@ common::Status InferenceSession::Initialize() {
                             std::isfinite(swap_epsilon) && swap_epsilon >= 0.0,
                         kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
                         " must be finite and non-negative. Received: \"", *moe_swap_epsilon, "\".");
+    }
+    const auto moe_max_in_flight_swaps =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice);
+    if (moe_max_in_flight_swaps) {
+      int64_t max_in_flight_swaps = -1;
+      ORT_RETURN_IF_NOT(enable_moe_cpu_offload,
+                        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice,
+                        " requires MoE CPU offload to be enabled.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_max_in_flight_swaps, max_in_flight_swaps) &&
+                            max_in_flight_swaps >= 0,
+                        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice,
+                        " must be a non-negative integer. Received: \"", *moe_max_in_flight_swaps, "\".");
     }
     const auto moe_counter_state_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);

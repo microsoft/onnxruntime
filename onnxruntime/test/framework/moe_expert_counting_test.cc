@@ -1261,6 +1261,7 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
            std::pair{kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0.1"},
+           std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "2"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "-1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "invalid"}}) {
     SessionOptions options;
@@ -1283,7 +1284,9 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "1.1"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "nan"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "inf"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "invalid"}}) {
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "invalid"},
+           std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "-1"},
+           std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "invalid"}}) {
     auto options = CountingOptions();
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(entry.first, entry.second));
     InferenceSessionWrapper session(options, GetEnvironment());

@@ -50,6 +50,11 @@ static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
 static const char* const kOrtSessionOptionsConfigMoeExpertSwapEpsilon =
     "session.moe_expert_swap_epsilon";
 
+// Maximum number of adaptive MoE expert swaps that may be in flight concurrently on one CUDA device.
+// Must be a non-negative integer. Zero disables adaptive swaps. The default is 4.
+static const char* const kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice =
+    "session.moe_max_in_flight_swaps_per_device";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";

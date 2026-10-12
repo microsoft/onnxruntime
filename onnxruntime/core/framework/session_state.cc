@@ -1704,18 +1704,28 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   if (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload) {
     double alpha = 0.0;
     double swap_epsilon = 0.0;
+    int64_t max_in_flight_swaps_per_device = -1;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
     const auto alpha_value =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
     const auto swap_epsilon_value =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0");
+    const auto max_in_flight_swaps_per_device_value = sess_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "4");
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(swap_epsilon_value, swap_epsilon),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
                       " value: ", swap_epsilon_value);
+    ORT_RETURN_IF_NOT(
+        TryParseStringWithClassicLocale(max_in_flight_swaps_per_device_value, max_in_flight_swaps_per_device) &&
+            max_in_flight_swaps_per_device >= 0,
+        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice,
+        " must be a non-negative integer. Received: \"", max_in_flight_swaps_per_device_value, "\".");
     ORT_RETURN_IF_ERROR(state->SetCounterAlpha(alpha));
     ORT_RETURN_IF_ERROR(state->SetSwapEpsilon(swap_epsilon));
+    ORT_RETURN_IF_ERROR(
+        state->SetMaxInFlightSwapsPerDevice(static_cast<size_t>(max_in_flight_swaps_per_device)));
     if (enable_moe_cpu_offload) {
       ORT_RETURN_IF_ERROR(
           state->SetCpuOffloadExpertCount(static_cast<size_t>(cpu_offload_expert_count)));

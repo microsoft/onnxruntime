@@ -65,6 +65,7 @@ The numerical policy parameters are exposed as session configuration entries:
 | `session.moe_cpu_offload_experts` | Offload count | Global number of experts to execute from CPU (`>= 0`); default `0`. |
 | `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient in `[0, 1]`; selected experts receive `1 - alpha`; default `0.9`. |
 | `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`; default `0`. |
+| `session.moe_max_in_flight_swaps_per_device` | Swap concurrency | Maximum concurrent adaptive swaps per CUDA device (`>= 0`); `0` disables adaptive swaps; default `4`. |
 
 The optional `session.moe_expert_counter_state_file` path is configured separately.
 

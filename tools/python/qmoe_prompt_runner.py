@@ -72,6 +72,12 @@ def parse_args():
         default=0.9,
         help="MoE expert popularity counter decay coefficient.",
     )
+    parser.add_argument(
+        "--moe-max-in-flight-swaps-per-device",
+        type=int,
+        default=4,
+        help="Maximum number of concurrent adaptive expert swaps per CUDA device.",
+    )
     return parser.parse_args()
 
 
@@ -154,20 +160,31 @@ def configure_provider(config, provider, cuda_sdpa_kernel):
             config.set_provider_option(provider, "sdpa_kernel", str(cuda_sdpa_kernel))
 
 
-def create_model(genai, model_path, provider, cuda_sdpa_kernel, cpu_offload_experts, counter_alpha):
+def create_model(
+    genai,
+    model_path,
+    provider,
+    cuda_sdpa_kernel,
+    cpu_offload_experts,
+    counter_alpha,
+    max_in_flight_swaps_per_device,
+):
     config = genai.Config(str(model_path))
     configure_provider(config, provider, cuda_sdpa_kernel)
+    session_options = {
+        "log_severity_level": 1,
+        "session.enable_moe_expert_statistics": "1",
+        "session.moe_cpu_offload_experts": str(cpu_offload_experts),
+        "session.moe_expert_counter_alpha": str(counter_alpha),
+    }
+    if cpu_offload_experts > 0:
+        session_options["session.moe_max_in_flight_swaps_per_device"] = str(max_in_flight_swaps_per_device)
     config.overlay(
         json.dumps(
             {
                 "model": {
                     "decoder": {
-                        "session_options": {
-                            "log_severity_level": 1,
-                            "session.enable_moe_expert_statistics": "1",
-                            "session.moe_cpu_offload_experts": str(cpu_offload_experts),
-                            "session.moe_expert_counter_alpha": str(counter_alpha),
-                        }
+                        "session_options": session_options,
                     }
                 }
             }
@@ -228,6 +245,8 @@ def main():
         raise ValueError("--moe-cpu-offload-experts must be non-negative.")
     if not math.isfinite(args.moe_expert_counter_alpha) or not 0 <= args.moe_expert_counter_alpha <= 1:
         raise ValueError("--moe-expert-counter-alpha must be finite and in [0, 1].")
+    if args.moe_max_in_flight_swaps_per_device < 0:
+        raise ValueError("--moe-max-in-flight-swaps-per-device must be non-negative.")
     if args.output.resolve() == args.counter_log.resolve():
         raise ValueError("--output and --counter-log must refer to different files.")
     prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
@@ -246,6 +265,7 @@ def main():
             args.cuda_sdpa_kernel,
             args.moe_cpu_offload_experts,
             args.moe_expert_counter_alpha,
+            args.moe_max_in_flight_swaps_per_device,
         )
         tokenizer = genai.Tokenizer(model)
         results = []
