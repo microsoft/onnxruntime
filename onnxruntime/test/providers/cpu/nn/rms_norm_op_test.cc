@@ -13,7 +13,7 @@ namespace test {
 template <typename InputType, typename OutputType>
 static void CheckCudaRmsNormTypes() {
   if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
-  using StashType = std::conditional_t<std::is_same_v<InputType, double>, double, float>;
+  using ScaleType = std::conditional_t<std::is_same_v<OutputType, double>, double, float>;
   const auto as_double = [](auto value) {
     if constexpr (std::is_same_v<decltype(value), MLFloat16> || std::is_same_v<decltype(value), BFloat16>) {
       return static_cast<double>(value.ToFloat());
@@ -27,17 +27,19 @@ static void CheckCudaRmsNormTypes() {
     std::vector<OutputType> scale(input.size());
     std::vector<OutputType> expected(input.size());
     for (int row = 0; row < 3; ++row) {
-      double sum = 0.0;
+      float sum = 0.0f;
       for (int channel = 0; channel < width; ++channel) {
         const int index = row * width + channel;
         input[index] = InputType(static_cast<float>((channel % 7) - 3) * 0.25f + row);
         scale[index] = OutputType(1.0f + row * 0.5f);
-        sum += as_double(input[index]) * as_double(input[index]);
+        const float x = static_cast<float>(as_double(input[index]));
+        sum += x * x;
       }
       for (int channel = 0; channel < width; ++channel) {
         const int index = row * width + channel;
-        const InputType normalized(static_cast<StashType>(as_double(input[index]) / std::sqrt(sum / width + 1e-5)));
-        expected[index] = OutputType(static_cast<float>(as_double(normalized) * as_double(scale[index])));
+        const InputType normalized(static_cast<float>(as_double(input[index])) / std::sqrt(sum / width + 1e-5f));
+        expected[index] = OutputType(static_cast<ScaleType>(as_double(normalized)) *
+                                     static_cast<ScaleType>(as_double(scale[index])));
       }
     }
     OpTester tester("RMSNormalization", 23);
@@ -67,6 +69,70 @@ TEST(RMSNormalizationOpTest, CudaRegisteredTypesAndBroadcast) {
   CheckCudaRmsNormTypes<MLFloat16, float>();
   CheckCudaRmsNormTypes<BFloat16, BFloat16>();
   CheckCudaRmsNormTypes<double, double>();
+}
+
+TEST(RMSNormalizationOpTest, CudaDoubleUsesFloatStashAndDoubleScale) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
+  for (int width : {7, 32, 513, 2688}) {
+    SCOPED_TRACE(testing::Message() << "width=" << width);
+    std::vector<double> input(width);
+    std::vector<double> scale(width);
+    for (int channel = 0; channel < width; ++channel) {
+      const double sign = channel % 2 == 0 ? 1.0 : -1.0;
+      input[channel] = 1.0 + sign * std::ldexp(1.0, -28);
+      scale[channel] = 1.0 + sign * std::ldexp(1.0, -40);
+    }
+    // Every input rounds to 1 in the default FP32 stash; the scale remains double.
+    OpTester tester("RMSNormalization", 23);
+    tester.AddAttribute<float>("epsilon", 0.0f);
+    tester.AddInput<double>("X", {1, width}, input);
+    tester.AddInput<double>("scale", {width}, scale);
+    tester.AddOutput<double>("Y", {1, width}, scale);
+    tester.SetOutputAbsErr("Y", 0.0f);
+    tester.SetOutputRelErr("Y", 0.0f);
+    SessionOptions options;
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
+TEST(RMSNormalizationOpTest, CudaDoubleExplicitDoubleStash) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
+  const std::vector<double> input{1.0 + std::ldexp(1.0, -28), 1.0 - std::ldexp(1.0, -28)};
+  const std::vector<double> scale{1.0 + std::ldexp(1.0, -40), 1.0 - std::ldexp(1.0, -40)};
+  OpTester tester("RMSNormalization", 23);
+  tester.AddAttribute<float>("epsilon", 0.0f);
+  tester.AddAttribute<int64_t>("stash_type", 11);
+  tester.AddInput<double>("X", {1, 2}, input);
+  tester.AddInput<double>("scale", {2}, scale);
+  tester.AddOutput<double>("Y", {1, 2}, {input[0] * scale[0], input[1] * scale[1]});
+  tester.SetOutputAbsErr("Y", 0.0f);
+  tester.SetOutputRelErr("Y", 0.0f);
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(RMSNormalizationOpTest, CudaRejectsUnsupportedStashTypes) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
+  for (int64_t stash_type : {10, 11, 16}) {
+    SCOPED_TRACE(testing::Message() << "stash_type=" << stash_type);
+    OpTester tester("RMSNormalization", 23);
+    tester.AddAttribute<int64_t>("stash_type", stash_type);
+    tester.AddInput<float>("X", {1, 2}, {1.0f, 1.0f});
+    tester.AddInput<float>("scale", {2}, {1.0f, 1.0f});
+    tester.AddOutput<float>("Y", {1, 2}, {1.0f, 1.0f});
+    SessionOptions options;
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options, OpTester::ExpectResult::kExpectFailure,
+               "CUDA RMSNormalization supports stash_type=1 (FLOAT)", {}, nullptr, &providers);
+  }
 }
 
 template <typename InputType, typename OutputType>

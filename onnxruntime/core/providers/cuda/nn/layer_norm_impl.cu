@@ -326,7 +326,9 @@ __global__ void cuApplyLayerNorm(
           if constexpr (stash_normalized) {
             // ONNX RMSNormalization rounds standardization to X's type before scaling.
             const T normalized = static_cast<T>(c_inv_std_dev * curr);
-            ovals[i] = static_cast<V>(gamma_i * static_cast<U>(normalized));
+            using ScaleType = std::conditional_t<std::is_same_v<V, double>, double, U>;
+            const ScaleType scale = gamma != nullptr ? static_cast<ScaleType>(gamma[index]) : ScaleType(1);
+            ovals[i] = static_cast<V>(scale * static_cast<ScaleType>(normalized));
           } else {
             ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
           }
@@ -435,6 +437,7 @@ LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
 RMSNORM_LINEAR_IMPL(float, float, float)
 RMSNORM_LINEAR_IMPL(half, float, half)
 RMSNORM_LINEAR_IMPL(double, double, double)
+RMSNORM_LINEAR_IMPL(double, float, double)
 RMSNORM_LINEAR_IMPL(float, float, half)
 RMSNORM_LINEAR_IMPL(half, float, float)
 RMSNORM_LINEAR_IMPL(BFloat16, float, BFloat16)
