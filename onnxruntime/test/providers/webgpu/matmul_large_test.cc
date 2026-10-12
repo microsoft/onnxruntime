@@ -206,7 +206,10 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
     test.SetOutputRelErr("Y", 0.02f);
   }
 
-  test.ConfigEp(std::move(webgpu_ep))
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options)
+      .ConfigEp(std::move(webgpu_ep))
       .Config(expected_result, expected_error == nullptr ? "" : expected_error)
       .RunWithConfig();
 }
