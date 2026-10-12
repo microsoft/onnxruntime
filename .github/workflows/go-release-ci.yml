@@ -33,7 +33,7 @@ jobs:
             cc: gcc
             asset: onnxruntime-linux-x64-1.31.0.tgz
             root: onnxruntime-linux-x64-1.31.0
-            sha256: cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57
+            sha256: dc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57
             library: libonnxruntime.so
           - os: linux
             arch: arm64
@@ -222,6 +222,7 @@ jobs:
             printf '%s  %s\n' "$SHA256" "$archive" | shasum -a 256 -c - | tee "$EVIDENCE/digest.txt"
           fi
           tar -xzf "$archive" -C "$runtime_dir"
+          rm "$runtime_dir/$ARCHIVE_ROOT/lib/$LIBRARY"
           lib="$runtime_dir/$ARCHIVE_ROOT/lib"
           test -f "$lib/$LIBRARY"
           printf 'ORT_LIB_PATH=%s\n' "$lib" >> "$GITHUB_ENV"
