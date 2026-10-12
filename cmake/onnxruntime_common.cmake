@@ -294,7 +294,24 @@ endif()
 
 # Link the default 1DS telemetry backend.
 if(onnxruntime_USE_1DS_TELEMETRY)
-  if(TARGET mat)
+  if(onnxruntime_USE_VCPKG)
+    target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+      set(_ort_telemetry_exclude_libs "libstdc++_nonshared.a")
+      foreach(_ort_telemetry_archive
+          MSTelemetry::mat MSTelemetry::sqlite3_bundled MSTelemetry::zlib_bundled
+          CURL::libcurl ZLIB::ZLIB
+          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto MbedTLS::everest MbedTLS::p256m
+          OpenSSL::SSL OpenSSL::Crypto)
+        if(TARGET ${_ort_telemetry_archive})
+          list(APPEND _ort_telemetry_exclude_libs "$<TARGET_FILE_NAME:${_ort_telemetry_archive}>")
+        endif()
+      endforeach()
+      list(JOIN _ort_telemetry_exclude_libs ":" _ort_telemetry_exclude_libs)
+      target_link_options(onnxruntime_common INTERFACE "LINKER:--exclude-libs=${_ort_telemetry_exclude_libs}")
+    endif()
+  elseif(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.

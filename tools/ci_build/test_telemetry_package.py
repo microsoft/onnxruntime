@@ -12,10 +12,15 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
+
+from util.vcpkg_helpers import add_port_configs
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CONFIG = _ROOT / "cmake" / "onnxruntime_telemetry_config.cmake"
@@ -196,7 +201,7 @@ class TelemetryPackageTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(error, " ".join(result.stderr.split()))
 
-    def test_source_sdk_selection_with_and_without_vcpkg(self):
+    def test_source_sdk_selection_without_vcpkg(self):
         external = (_ROOT / "cmake" / "external" / "onnxruntime_external_deps.cmake").read_text(encoding="utf-8")
         telemetry = external[external.index("# 1DS SDK (cpp_client_telemetry)") :]
         telemetry = telemetry[: telemetry.index("FILE(TO_NATIVE_PATH")]
@@ -281,11 +286,8 @@ class TelemetryPackageTest(unittest.TestCase):
                     endfunction()
                     foreach(disable_exceptions OFF ON)
                       check_source(Windows OFF SYSTEM "${disable_exceptions}")
-                      check_source(Windows ON SYSTEM "${disable_exceptions}")
                       check_source(Linux OFF FETCH "${disable_exceptions}")
-                      check_source(Linux ON SYSTEM "${disable_exceptions}")
                       check_source(Darwin OFF SYSTEM "${disable_exceptions}")
-                      check_source(Darwin ON SYSTEM "${disable_exceptions}")
                     endforeach()
                     """
                 ),
@@ -302,11 +304,264 @@ class TelemetryPackageTest(unittest.TestCase):
                 f"-Dexpected_sdk_version={url.rsplit('/v', 1)[-1].removesuffix('.zip')}",
             )
 
-    def test_vcpkg_telemetry_feature_installs_transport_not_sdk(self):
+    def test_vcpkg_telemetry_feature_installs_pinned_sdk(self):
         manifest = json.loads((_ROOT / "cmake" / "vcpkg.json").read_text(encoding="utf-8"))
         dependencies = manifest["features"]["telemetry"]["dependencies"]
-        self.assertEqual({dependency["name"] for dependency in dependencies}, {"curl", "mbedtls"})
-        self.assertTrue(all(dependency["platform"] == "linux" for dependency in dependencies))
+        self.assertEqual(
+            dependencies,
+            [{"name": "cpp-client-telemetry", "default-features": False, "version>=": "3.10.281.1"}],
+        )
+        self.assertIn({"name": "cpp-client-telemetry", "version": "3.10.281.1"}, manifest["overrides"])
+        configuration = json.loads((_ROOT / "cmake" / "vcpkg-configuration.json").read_text(encoding="utf-8"))
+        self.assertIn(
+            {
+                "kind": "git",
+                "repository": "https://github.com/microsoft/vcpkg",
+                "baseline": "67e816ef4b11c01fa923a18d16ecf863216fda55",
+                "packages": ["cpp-client-telemetry"],
+            },
+            configuration["registries"],
+        )
+
+    def test_vcpkg_overlay_preserves_platform_policies(self):
+        port = _ROOT / "cmake" / "vcpkg-ports" / "cpp-client-telemetry"
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-overlay-") as temporary:
+            root = Path(temporary)
+            for platform_name in ("Windows", "Linux", "Darwin", "iOS", "Android"):
+                for disable_exceptions in (False, True):
+                    with self.subTest(platform_name=platform_name, disable_exceptions=disable_exceptions):
+                        script = root / "policy.cmake"
+                        with script.open("w", encoding="utf-8") as output:
+                            output.write(
+                                f"set(PORT cpp-client-telemetry)\nset(VERSION 3.10.281.1)\n"
+                                f'set(CURRENT_PACKAGES_DIR "{root.as_posix()}/package")\n'
+                                f"set(VCPKG_TARGET_IS_OSX {'ON' if platform_name == 'Darwin' else 'OFF'})\n"
+                                f"set(VCPKG_TARGET_IS_IOS {'ON' if platform_name == 'iOS' else 'OFF'})\n"
+                                f"set(VCPKG_TARGET_IS_ANDROID {'ON' if platform_name == 'Android' else 'OFF'})\n"
+                            )
+                            add_port_configs(output, not disable_exceptions, False, disable_exceptions)
+                            output.write(
+                                textwrap.dedent(
+                                    """
+                                    function(vcpkg_check_linkage)
+                                      if(NOT ARGN STREQUAL "ONLY_STATIC_LIBRARY")
+                                        message(FATAL_ERROR "ORT must embed a static SDK")
+                                      endif()
+                                    endfunction()
+                                    function(vcpkg_from_github)
+                                      cmake_parse_arguments(SDK "" "OUT_SOURCE_PATH;REPO;REF;SHA512;HEAD_REF" "" ${ARGN})
+                                      if(NOT SDK_REPO STREQUAL "microsoft/cpp_client_telemetry" OR
+                                         NOT SDK_REF STREQUAL "v3.10.281.1" OR
+                                         NOT SDK_SHA512 STREQUAL expected_hash)
+                                        message(FATAL_ERROR "Overlay must use the registry's release archive")
+                                      endif()
+                                      file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/source")
+                                      file(WRITE "${CURRENT_PACKAGES_DIR}/source/LICENSE" "fixture")
+                                      file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/source/lib/http")
+                                      file(WRITE "${CURRENT_PACKAGES_DIR}/source/lib/http/HttpClient_Android.hpp" "fixture")
+                                      set(${SDK_OUT_SOURCE_PATH} "${CURRENT_PACKAGES_DIR}/source" PARENT_SCOPE)
+                                    endfunction()
+                                    function(vcpkg_cmake_configure)
+                                      cmake_parse_arguments(SDK "" "SOURCE_PATH" "OPTIONS" ${ARGN})
+                                      foreach(option IN LISTS SDK_OPTIONS VCPKG_CMAKE_CONFIGURE_OPTIONS)
+                                        if(option MATCHES "^-D([^=]+)=(.*)$")
+                                          set(${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
+                                        endif()
+                                      endforeach()
+                                      if(NOT MATSDK_DISABLE_LOGGING OR
+                                         NOT MATSDK_DISABLE_EXCEPTIONS STREQUAL expected_exceptions OR
+                                         NOT MATSDK_ENABLE_DEVICE_ID STREQUAL expected_device_id OR
+                                         NOT MATSDK_SQLITE_PROVIDER STREQUAL expected_sqlite OR
+                                         NOT MATSDK_ZLIB_PROVIDER STREQUAL expected_zlib OR
+                                         NOT MATSDK_CURL_TLS_BACKEND STREQUAL "MBEDTLS" OR
+                                         NOT MATSDK_ANDROID_HTTP_CLIENT STREQUAL "JAVA" OR
+                                         MATSDK_ENABLE_CAPI_HTTP_CLIENT OR MATSDK_ANDROID_USE_ROOM OR
+                                         MATSDK_USE_WININET OR BUILD_SHARED_LIBS)
+                                        message(FATAL_ERROR "Overlay telemetry policies do not match ORT")
+                                      endif()
+                                      if(VCPKG_TARGET_IS_ANDROID AND
+                                         (NOT VCPKG_CXX_FLAGS MATCHES "ANDROID_SUPPRESS_LOGCAT" OR
+                                          NOT VCPKG_C_FLAGS MATCHES "ANDROID_SUPPRESS_LOGCAT"))
+                                        message(FATAL_ERROR "Android SDK logging must be compiled out")
+                                      endif()
+                                    endfunction()
+                                    function(vcpkg_cmake_install)
+                                    endfunction()
+                                    function(vcpkg_cmake_config_fixup)
+                                    endfunction()
+                                    function(vcpkg_install_copyright)
+                                    endfunction()
+                                    """
+                                )
+                            )
+                            output.write(f'include("{(port / "portfile.cmake").as_posix()}")\n')
+                        self._run(
+                            "cmake",
+                            f"-Dexpected_exceptions={'ON' if disable_exceptions else 'OFF'}",
+                            f"-Dexpected_device_id={'ON' if platform_name in ('iOS', 'Android') else 'OFF'}",
+                            f"-Dexpected_sqlite={'SYSTEM' if platform_name in ('Darwin', 'iOS') else 'MINIMAL'}",
+                            f"-Dexpected_zlib={'SYSTEM' if platform_name in ('Darwin', 'iOS') else 'VENDORED'}",
+                            "-Dexpected_hash=934ac980096f571aa4eaeba5159ee87a687e32e174c548190c3926c5c29c1054f7"
+                            "b7924647457c8bcc97a78dd216651577dbb958a7895175d49a97784fb3bf51",
+                            "-P",
+                            str(script),
+                        )
+
+    def test_vcpkg_sdk_selection_and_android_bridge(self):
+        external = (_ROOT / "cmake" / "external" / "onnxruntime_external_deps.cmake").read_text(encoding="utf-8")
+        telemetry = external[external.index("# 1DS SDK (cpp_client_telemetry)") :]
+        telemetry = telemetry[: telemetry.index("FILE(TO_NATIVE_PATH")]
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-vcpkg-") as temporary:
+            root = Path(temporary)
+            (root / "telemetry.cmake").write_text(telemetry, encoding="utf-8")
+            java = root / "java" / "com" / "microsoft" / "applications" / "events"
+            java.mkdir(parents=True)
+            for name in ("HttpClient.java", "HttpClientRequest.java"):
+                (java / name).write_text("package com.microsoft.applications.events;\n", encoding="utf-8")
+            (root / "LICENSE-1DS").write_text("fixture license\n", encoding="utf-8")
+            script = root / "selection.cmake"
+            script.write_text(
+                textwrap.dedent(
+                    """
+                    set(onnxruntime_USE_1DS_TELEMETRY ON)
+                    set(onnxruntime_USE_VCPKG ON)
+                    set(CMAKE_SYSTEM_NAME Android)
+                    set(CMAKE_BINARY_DIR "${CMAKE_CURRENT_LIST_DIR}/build")
+                    set(ANDROID ON)
+                    set(BUILD_SHARED_LIBS ON)
+                    function(find_package)
+                      if(NOT ARGN STREQUAL "MSTelemetry;3.10.281.1;EXACT;CONFIG;REQUIRED")
+                        message(FATAL_ERROR "The installed pinned SDK must be required")
+                      endif()
+                      set(MSTelemetry_ANDROID_HTTP_CLIENT JAVA PARENT_SCOPE)
+                      set(MSTelemetry_ANDROID_JAVA_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/java" PARENT_SCOPE)
+                      set(MSTelemetry_DIR "${CMAKE_CURRENT_LIST_DIR}" PARENT_SCOPE)
+                    endfunction()
+                    include("${CMAKE_CURRENT_LIST_DIR}/telemetry.cmake")
+                    if(NOT BUILD_SHARED_LIBS OR DEFINED CACHE{MATSDK_DISABLE_LOGGING})
+                      message(FATAL_ERROR "Installed SDK selection must not change caller build policy")
+                    endif()
+                    """
+                ),
+                encoding="utf-8",
+            )
+            self._run("cmake", "-P", str(script))
+            for name in ("HttpClient.java", "HttpClientRequest.java"):
+                self.assertEqual(
+                    (
+                        root / "build" / "android" / "telemetry-java" / "ai" / "onnxruntime" / "telemetry" / name
+                    ).read_text(encoding="utf-8"),
+                    "package ai.onnxruntime.telemetry;\n",
+                )
+            self.assertEqual(
+                (root / "build" / "android" / "telemetry-resources" / "META-INF" / "LICENSE-1DS").read_text(
+                    encoding="utf-8"
+                ),
+                "fixture license\n",
+            )
+
+    def test_vcpkg_static_install_and_consume(self):
+        common = (_ROOT / "cmake" / "onnxruntime_common.cmake").read_text(encoding="utf-8")
+        linking = common[common.index("# Link the default 1DS telemetry backend.") :]
+        linking = linking[: linking.index("\nif (NOT onnxruntime_BUILD_SHARED_LIB)\n")]
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-installed-") as temporary:
+            root = Path(temporary)
+            sdk = root / "sdk"
+            producer = root / "producer"
+            consumer = root / "consumer"
+            for directory in (sdk, producer, consumer):
+                directory.mkdir()
+            (sdk / "mat.c").write_text("int mat_value(void) { return 42; }\n", encoding="utf-8")
+            (sdk / "CMakeLists.txt").write_text(
+                textwrap.dedent(
+                    """
+                    cmake_minimum_required(VERSION 3.28)
+                    project(installed_sdk C)
+                    include(CMakePackageConfigHelpers)
+                    add_library(mat STATIC mat.c)
+                    install(TARGETS mat EXPORT MSTelemetryTargets ARCHIVE DESTINATION lib)
+                    install(EXPORT MSTelemetryTargets NAMESPACE MSTelemetry:: DESTINATION share/MSTelemetry)
+                    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/MSTelemetryConfig.cmake"
+                      "include(\\"\\${CMAKE_CURRENT_LIST_DIR}/MSTelemetryTargets.cmake\\")\\n")
+                    write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/MSTelemetryConfigVersion.cmake"
+                      VERSION 3.10.281.1 COMPATIBILITY ExactVersion)
+                    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/MSTelemetryConfig.cmake"
+                      "${CMAKE_CURRENT_BINARY_DIR}/MSTelemetryConfigVersion.cmake" DESTINATION share/MSTelemetry)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (producer / "linking.cmake").write_text(linking, encoding="utf-8")
+            (producer / "common.c").write_text(
+                "int mat_value(void);\nint ort_value(void) { return mat_value(); }\n", encoding="utf-8"
+            )
+            (producer / "CMakeLists.txt").write_text(
+                textwrap.dedent(
+                    """
+                    cmake_minimum_required(VERSION 3.28)
+                    project(onnxruntime C)
+                    include(GNUInstallDirs)
+                    set(onnxruntime_USE_1DS_TELEMETRY ON)
+                    set(onnxruntime_USE_VCPKG ON)
+                    set(onnxruntime_BUILD_SHARED_LIB OFF)
+                    find_package(MSTelemetry 3.10.281.1 EXACT CONFIG REQUIRED)
+                    add_library(onnxruntime_common STATIC common.c)
+                    include("${CMAKE_CURRENT_SOURCE_DIR}/linking.cmake")
+                    set(PROJECT_CONFIG_CONTENT "include(CMakeFindDependencyMacro)\\n")
+                    include("${TELEMETRY_CONFIG}")
+                    string(APPEND PROJECT_CONFIG_CONTENT
+                      "include(\\"\\${CMAKE_CURRENT_LIST_DIR}/onnxruntimeTargets.cmake\\")\\n")
+                    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/onnxruntimeConfig.cmake" "${PROJECT_CONFIG_CONTENT}")
+                    install(TARGETS onnxruntime_common EXPORT onnxruntimeTargets ARCHIVE DESTINATION lib)
+                    install(EXPORT onnxruntimeTargets NAMESPACE onnxruntime:: DESTINATION lib/cmake/onnxruntime)
+                    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/onnxruntimeConfig.cmake"
+                      DESTINATION lib/cmake/onnxruntime)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (consumer / "main.c").write_text(
+                "int ort_value(void);\nint main(void) { return ort_value() == 42 ? 0 : 1; }\n", encoding="utf-8"
+            )
+            (consumer / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.28)\nproject(consumer C)\n"
+                "find_package(onnxruntime CONFIG REQUIRED)\nfind_package(onnxruntime CONFIG REQUIRED)\n"
+                "add_executable(consumer main.c)\n"
+                "target_link_libraries(consumer PRIVATE onnxruntime::onnxruntime_common)\n"
+                "enable_testing()\nadd_test(NAME consumer COMMAND consumer)\n",
+                encoding="utf-8",
+            )
+            install = root / "install"
+            for directory in (sdk, producer):
+                build = root / f"{directory.name}-build"
+                self._run(
+                    "cmake",
+                    "-S",
+                    str(directory),
+                    "-B",
+                    str(build),
+                    f"-DCMAKE_INSTALL_PREFIX={install}",
+                    f"-DCMAKE_PREFIX_PATH={install}",
+                    f"-DTELEMETRY_CONFIG={_CONFIG}",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                )
+                self._run("cmake", "--build", str(build), "--config", "Release")
+                self._run("cmake", "--install", str(build), "--config", "Release")
+            self._run(
+                "cmake",
+                "-S",
+                str(consumer),
+                "-B",
+                str(root / "consumer-build"),
+                f"-DCMAKE_PREFIX_PATH={install}",
+            )
+            self._run("cmake", "--build", str(root / "consumer-build"), "--config", "Release")
+            self._run("ctest", "--test-dir", str(root / "consumer-build"), "-C", "Release", "--output-on-failure")
+            exported = (install / "lib" / "cmake" / "onnxruntime" / "onnxruntimeTargets.cmake").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("MSTelemetry::mat", exported)
+            self.assertNotIn("onnxruntime::mat", exported)
 
     def test_production_include_without_module_search_path(self):
         includes = [

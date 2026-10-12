@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import ast
 import sys
 import unittest
 from pathlib import Path
@@ -122,6 +123,33 @@ class BuildArgsTest(unittest.TestCase):
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
+
+    def test_vcpkg_selects_sdk_for_native_and_android_1ds(self):
+        source = Path(__file__).with_name("build.py").read_text(encoding="utf-8")
+        function = next(
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef) and node.name == "generate_vcpkg_install_options"
+        )
+        selection = next(
+            node for node in function.body if isinstance(node, ast.If) and "--x-feature=telemetry" in ast.unparse(node)
+        )
+        code = compile(ast.Module(body=[selection], type_ignores=[]), "build.py", "exec")
+        for platform_name in ("windows", "linux", "macos"):
+            for target in ((), ("--android",), ("--build_wasm",)):
+                for policy in ((), ("--minimal_build", "--disable_exceptions"), ("--no_telemetry",)):
+                    with self.subTest(platform_name=platform_name, target=target, policy=policy):
+                        args = self._parse(*target, *policy, platform_name=platform_name)
+                        options = []
+                        exec(code, {"args": args, "vcpkg_install_options": options})
+                        self.assertEqual(
+                            "--x-feature=telemetry" in options,
+                            args.use_telemetry and not args.use_windows_telemetry and not args.build_wasm,
+                        )
+        args = self._parse("--use_windows_telemetry", platform_name="windows")
+        options = []
+        exec(code, {"args": args, "vcpkg_install_options": options})
+        self.assertNotIn("--x-feature=telemetry", options)
 
     def test_use_acl_emits_deprecation_warning(self):
         with self.assertWarnsRegex(FutureWarning, "The ACL EP is deprecated"):

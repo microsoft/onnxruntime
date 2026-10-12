@@ -1,14 +1,29 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
 
-from ..vcpkg_helpers import generate_triplet_for_posix_platform
+from ..vcpkg_helpers import add_port_configs, generate_triplet_for_posix_platform
 
 
 class PosixTripletTest(unittest.TestCase):
+    def test_telemetry_exception_policy_matches_triplet(self):
+        for has_exception in (False, True):
+            with self.subTest(has_exception=has_exception):
+                output = io.StringIO()
+                add_port_configs(output, has_exception, False, not has_exception)
+                self.assertIn(
+                    'if(PORT STREQUAL "cpp-client-telemetry")\n'
+                    "    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS\n"
+                    f'        "-DMATSDK_DISABLE_EXCEPTIONS={"OFF" if has_exception else "ON"}"\n'
+                    "    )\n"
+                    "endif()\n",
+                    output.getvalue(),
+                )
+
     def test_binskim_flags_match_target_platform(self):
         targets = (("linux", "x64"), ("linux", "arm64"), ("osx", "x64"), ("osx", "arm64"), ("osx", "universal2"))
         for os_name, target_abi in targets:

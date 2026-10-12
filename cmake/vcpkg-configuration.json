@@ -1,5 +1,5 @@
 {
-    "$comment": "Baseline pinned to versions compatible with ORT's vcpkg tool. The 1DS SDK uses its GitHub source pin independently of this registry; Linux vcpkg builds still resolve curl/mbedTLS through vcpkg.",
+    "$comment": "Keep the compatible global baseline; pin cpp-client-telemetry 3.10.281.1 from microsoft/vcpkg#54342 separately. Its overlay retains ORT-specific logging, device-ID, and build policies.",
     "default-registry": {
         "kind": "git",
         "repository": "https://github.com/Microsoft/vcpkg",
@@ -8,5 +8,12 @@
     "overlay-ports": [
         "./vcpkg-ports"
     ],
-    "registries": []
+    "registries": [
+        {
+            "kind": "git",
+            "repository": "https://github.com/microsoft/vcpkg",
+            "baseline": "67e816ef4b11c01fa923a18d16ecf863216fda55",
+            "packages": ["cpp-client-telemetry"]
+        }
+    ]
 }

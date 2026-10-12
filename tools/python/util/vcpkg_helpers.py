@@ -131,6 +131,13 @@ endif()
     f.write(r"""
 endif() # End ONNX-specific block
 """)
+    f.write(
+        'if(PORT STREQUAL "cpp-client-telemetry")\n'
+        "    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS\n"
+        f'        "-DMATSDK_DISABLE_EXCEPTIONS={"OFF" if has_exception else "ON"}"\n'
+        "    )\n"
+        "endif()\n"
+    )
 
 
 def add_copyright_header(f) -> None:
