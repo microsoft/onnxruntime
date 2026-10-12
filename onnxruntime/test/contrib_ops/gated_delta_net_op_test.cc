@@ -924,6 +924,28 @@ TEST(GatedDeltaNetWebGpuTest, PackedGateProjectionsDecodeAndChunkwisePrefill) {
   }
 }
 
+TEST(GatedDeltaNetWebGpuTest, PackedGateProjectionsRecurrentPrefillWithActiveCapture) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Options options;
+  options.chunk_size = 16;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.state_update_capacity = 8;
+  const Geometry geometry{65, 1, 16, 48, 128, 128};
+  Inputs inputs = MakeInputs(geometry, 243);
+  inputs.cu_seqlens = {0, geometry.total_tokens};
+  inputs.capture_count = {3};
+  inputs.state_update_active = {1};
+  for (bool packed_qkv : {false, true}) {
+    SCOPED_TRACE(packed_qkv);
+    RunTypedCase<MLFloat16>(geometry, options, inputs, 3e-3f, 5e-4f,
+                            false, nullptr, true, false, nullptr, 0, packed_qkv, true);
+  }
+}
+
 TEST(GatedDeltaNetWebGpuTest, PackedGateProjectionsUniformAndRagged) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
