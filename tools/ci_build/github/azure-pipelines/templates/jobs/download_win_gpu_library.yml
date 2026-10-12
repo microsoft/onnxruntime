@@ -10,10 +10,14 @@ parameters:
     default: '12.8'
     values:
       - 13.0
+      - 13.3
       - 12.8
   - name: CudnnFolder
     type: string
     default: '9.14.0.64_cuda13'
+  - name: TensorRTFolder
+    type: string
+    default: ''
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -27,7 +31,7 @@ steps:
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CudaVersion }} $(Agent.TempDirectory)
 
-    # Since CUDA 13.0, CUDA DLLs are  in bin\x64 folder instead of bin folder for Windows.
+    # Since CUDA 13, CUDA DLLs are in bin\x64 instead of bin on Windows.
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin\x64;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
       displayName: 'Append CUDA SDK Directory to PATH'
@@ -39,7 +43,7 @@ steps:
           dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
-    - ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    - ${{ if startsWith(parameters.CudaVersion, '13.') }}:
       - task: AzureCLI@2
         displayName: 'Download CUDNN ${{ parameters.CudnnFolder }}'
         inputs:
@@ -67,12 +71,17 @@ steps:
         $cuda12_trt_version = '10.14.1.48'
         $cuda13_trt_version = '10.14.1.48'
 
-        $trtFolder = ""
-        if ("${{ parameters.CudaVersion }}" -eq "13.0") {
-          $trtFolder = "TensorRT-$cuda13_trt_version.Windows.win10.cuda-13.0"
+        $trtFolder = "${{ parameters.TensorRTFolder }}"
+        if ([string]::IsNullOrEmpty($trtFolder)) {
+          if ("${{ parameters.CudaVersion }}" -eq "13.0") {
+            $trtFolder = "TensorRT-$cuda13_trt_version.Windows.win10.cuda-13.0"
+          }
+          elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
+            $trtFolder = "TensorRT-$cuda12_trt_version.Windows.win10.cuda-12.9"
+          }
         }
-        elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
-          $trtFolder = "TensorRT-$cuda12_trt_version.Windows.win10.cuda-12.9"
+        if ([string]::IsNullOrEmpty($trtFolder)) {
+          throw "TensorRTFolder is required for CUDA ${{ parameters.CudaVersion }}"
         }
 
         Write-Host "Setting TrtFolderRuntime variable to: $trtFolder"
