@@ -258,10 +258,9 @@ static void RunTransposeAWithRightVector(const char* op_name, bool use_cuda = fa
           if (use_cuda) {
             SessionOptions options;
             ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-            test.Run(options);
-          } else {
-            test.Run();
+            test.Config(options);
           }
+          test.RunWithConfig();
         }
       }
     }
