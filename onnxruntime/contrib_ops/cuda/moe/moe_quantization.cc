@@ -2133,6 +2133,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0;
     static const bool fp4_gemv_fused_route =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_FUSED_ROUTE", 1) != 0;
+    static const bool fp4_gemv_fc1_pdl =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_FC1_PDL", 0) != 0;
     bool fused_route_launched = false;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     const bool routing_snapshot_active = routing_snapshot_ != nullptr;
@@ -2243,7 +2245,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
             p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
             fc1_gemv_sm80_layout, use_raw_nvfp4_gemv, skip_expand ? p_r2u : nullptr, num_rows, stream,
-            nvfp4_weights_row_major_, fused_route_launched && skip_expand);
+            nvfp4_weights_row_major_, fused_route_launched && skip_expand && fp4_gemv_fc1_pdl);
       };
       auto launch_fc2 = [&](MoeGemvConfig cfg) {
         gemv::launch_moe_gemv_fp4_symmetric<T>(
