@@ -9,6 +9,27 @@
 namespace onnxruntime {
 namespace webgpu {
 
+namespace {
+
+bool IsMatMulAlgorithmConfigurationCompatible(const MatMulExecutionPlan& plan) {
+  switch (plan.algorithm) {
+    case MatMulAlgorithm::SubgroupMatrix:
+      return std::holds_alternative<MatMulSubgroupMatrixConfiguration>(plan.configuration);
+    case MatMulAlgorithm::Gemv:
+      return std::holds_alternative<MatMulGemvConfiguration>(plan.configuration);
+    case MatMulAlgorithm::Naive:
+      return std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration);
+    case MatMulAlgorithm::Subgroup:
+      return std::holds_alternative<MatMulSubgroupConfiguration>(plan.configuration);
+    case MatMulAlgorithm::Packed:
+    case MatMulAlgorithm::PackedSplitK:
+      return std::holds_alternative<MatMulPackedConfiguration>(plan.configuration);
+  }
+  return false;
+}
+
+}  // namespace
+
 bool IsMatMulPackedConfigurationValid(
     const MatMulPackedConfiguration& configuration,
     bool is_vec4,
@@ -60,52 +81,6 @@ std::optional<uint32_t> TryGetMatMulPackedDispatchGroupCount(
   return static_cast<uint32_t>(group_count);
 }
 
-bool IsMatMulAlgorithmConfigurationCompatible(const MatMulExecutionPlan& plan) {
-  switch (plan.algorithm) {
-    case MatMulAlgorithm::SubgroupMatrix:
-      return std::holds_alternative<MatMulSubgroupMatrixConfiguration>(plan.configuration);
-    case MatMulAlgorithm::Gemv:
-      return std::holds_alternative<MatMulGemvConfiguration>(plan.configuration);
-    case MatMulAlgorithm::Naive:
-      return std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration);
-    case MatMulAlgorithm::Subgroup:
-      return std::holds_alternative<MatMulSubgroupConfiguration>(plan.configuration);
-    case MatMulAlgorithm::Packed:
-    case MatMulAlgorithm::PackedSplitK:
-      return std::holds_alternative<MatMulPackedConfiguration>(plan.configuration);
-  }
-  return false;
-}
-
-bool MeetsMatMulAlgorithmPrerequisites(
-    MatMulAlgorithm algorithm,
-    const MatMulAlgorithmPrerequisites& prerequisites) {
-  switch (algorithm) {
-    case MatMulAlgorithm::SubgroupMatrix:
-      return prerequisites.can_use_subgroup_matrix;
-    case MatMulAlgorithm::Gemv:
-      return prerequisites.can_run_gemv;
-    case MatMulAlgorithm::Subgroup:
-      return prerequisites.has_subgroup_capability &&
-             (prerequisites.subgroup_size == 8 ||
-              prerequisites.subgroup_size == 16 ||
-              prerequisites.subgroup_size == 32) &&
-             prerequisites.has_nonzero_k;
-    case MatMulAlgorithm::PackedSplitK:
-      return prerequisites.has_nonzero_k &&
-             prerequisites.split_k_configured &&
-             !prerequisites.deterministic_compute &&
-             prerequisites.is_vec4 &&
-             !prerequisites.has_fused_activation &&
-             prerequisites.split_k_bias_layout_supported;
-    case MatMulAlgorithm::Packed:
-      return prerequisites.has_nonzero_k;
-    case MatMulAlgorithm::Naive:
-      return true;
-  }
-  return false;
-}
-
 MatMulExecutionPlanner::MatMulExecutionPlanner(SplitKConfig split_k_config)
     : split_k_config_{std::move(split_k_config)} {}
 
@@ -126,16 +101,20 @@ MatMulAlgorithm MatMulExecutionPlanner::SelectAlgorithm(
   return SelectCommonAlgorithm(params);
 }
 
-MatMulExecutionPlan MatMulExecutionPlanner::CreateExecutionPlan(
+Status MatMulExecutionPlanner::CreateExecutionPlan(
     const MatMulAlgorithmSelectionParams& params,
-    std::optional<MatMulAlgorithm> forced_algorithm) const {
+    std::optional<MatMulAlgorithm> forced_algorithm,
+    MatMulExecutionPlan& plan) const {
   const MatMulAlgorithm algorithm = SelectAlgorithm(params, forced_algorithm);
   std::optional<MatMulAlgorithmConfiguration> configuration =
       SelectVendorConfiguration(algorithm, params);
   if (!configuration.has_value()) {
     configuration = SelectCommonConfiguration(algorithm, params);
   }
-  return MatMulExecutionPlan{algorithm, std::move(*configuration)};
+  MatMulExecutionPlan candidate{algorithm, std::move(*configuration)};
+  ORT_RETURN_IF_ERROR(ValidateExecutionPlan(params, candidate));
+  plan = std::move(candidate);
+  return Status::OK();
 }
 
 std::optional<MatMulAlgorithm> MatMulExecutionPlanner::SelectVendorAlgorithm(
@@ -192,6 +171,82 @@ MatMulAlgorithmConfiguration MatMulExecutionPlanner::SelectCommonConfiguration(
     }
   }
   return MatMulNaiveConfiguration{};
+}
+
+Status MatMulExecutionPlanner::ValidateExecutionPlan(
+    const MatMulAlgorithmSelectionParams& params,
+    const MatMulExecutionPlan& plan) const {
+  ORT_RETURN_IF_NOT(IsMatMulAlgorithmConfigurationCompatible(plan),
+                    "MatMul algorithm ", MatMulAlgorithmName(plan.algorithm),
+                    " received an incompatible vendor configuration.");
+
+  switch (plan.algorithm) {
+    case MatMulAlgorithm::SubgroupMatrix:
+      ORT_RETURN_IF_NOT(params.can_use_subgroup_matrix,
+                        "MatMul algorithm subgroup_matrix does not support these inputs or this device.");
+      break;
+    case MatMulAlgorithm::Gemv:
+      ORT_RETURN_IF_NOT(params.can_run_gemv,
+                        "MatMul algorithm gemv does not support these inputs or this device.");
+      break;
+    case MatMulAlgorithm::Naive:
+      break;
+    case MatMulAlgorithm::Subgroup: {
+      const auto& configuration = std::get<MatMulSubgroupConfiguration>(plan.configuration);
+      const bool supported_size = configuration.subgroup_size == 8 ||
+                                  configuration.subgroup_size == 16 ||
+                                  configuration.subgroup_size == 32;
+      ORT_RETURN_IF_NOT(params.has_subgroup_capability && params.k > 0 && supported_size &&
+                            configuration.subgroup_size == params.subgroup_size,
+                        "MatMul algorithm subgroup does not support these inputs, configuration, or device.");
+      break;
+    }
+    case MatMulAlgorithm::Packed:
+    case MatMulAlgorithm::PackedSplitK: {
+      const bool use_split_k = plan.algorithm == MatMulAlgorithm::PackedSplitK;
+      const auto& configuration = std::get<MatMulPackedConfiguration>(plan.configuration);
+      ORT_RETURN_IF_NOT(params.k > 0 &&
+                            IsMatMulPackedConfigurationValid(configuration, params.is_vec4, use_split_k),
+                        "MatMul algorithm ", MatMulAlgorithmName(plan.algorithm),
+                        " has invalid inputs or packed configuration.");
+      if (use_split_k) {
+        ORT_RETURN_IF_NOT(!params.deterministic_compute && params.is_vec4 &&
+                              !params.has_fused_activation &&
+                              (!params.has_bias || params.is_channels_last),
+                          "MatMul algorithm packed_split_k does not support these inputs.");
+      }
+
+      ORT_RETURN_IF_NOT(params.packed_m >= 0 && params.n >= 0,
+                        "MatMul packed dimensions must be nonnegative.");
+      ORT_RETURN_IF_NOT(
+          TryGetMatMulPackedDispatchGroupCount(
+              static_cast<uint64_t>(params.n), configuration.workgroup_size[0],
+              configuration.elements_per_thread[0])
+                  .has_value() &&
+              TryGetMatMulPackedDispatchGroupCount(
+                  static_cast<uint64_t>(params.packed_m), configuration.workgroup_size[1],
+                  configuration.elements_per_thread[1])
+                  .has_value() &&
+              TryGetMatMulPackedDispatchGroupCount(
+                  params.packed_batch_size, configuration.workgroup_size[2],
+                  configuration.elements_per_thread[2])
+                  .has_value(),
+          "MatMul packed dispatch dimensions exceed uint32 limits.");
+
+      if (use_split_k) {
+        const auto splits_per_batch = TryGetMatMulPackedDispatchGroupCount(
+            static_cast<uint64_t>(params.k), configuration.split_dim_inner, 1);
+        ORT_RETURN_IF_NOT(
+          params.packed_batch_size > 0 && splits_per_batch.has_value() &&
+                static_cast<uint64_t>(*splits_per_batch) <=
+                    std::numeric_limits<uint32_t>::max() / params.packed_batch_size,
+            "MatMul packed Split-K dispatch dimension exceeds uint32 limits.");
+      }
+      break;
+    }
+  }
+
+  return Status::OK();
 }
 
 bool MatMulExecutionPlanner::ShouldUseSplitK(
