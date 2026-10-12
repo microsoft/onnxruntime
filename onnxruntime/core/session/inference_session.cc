@@ -2780,6 +2780,7 @@ common::Status InferenceSession::Initialize() {
            (value.empty() || value.find_first_not_of('0') != std::string::npos)) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
+          option == kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight ||
           option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
           option == kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice) {
         return ORT_MAKE_STATUS(
@@ -2809,6 +2810,19 @@ common::Status InferenceSession::Initialize() {
         kOrtSessionOptionsConfigMoeCpuOffloadExperts,
         " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
     const bool enable_moe_cpu_offload = moe_cpu_offload_expert_count > 0;
+    const auto moe_counter_probability_weight =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight);
+    if (moe_counter_probability_weight) {
+      double probability_weight = -1.0;
+      ORT_RETURN_IF_NOT(enable_moe_cpu_offload,
+                        kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight,
+                        " requires MoE CPU offload to be enabled.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_counter_probability_weight, probability_weight) &&
+                            std::isfinite(probability_weight) &&
+                            probability_weight >= 0.0 && probability_weight <= 1.0,
+                        kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight,
+                        " must be finite and in [0, 1]. Received: \"", *moe_counter_probability_weight, "\".");
+    }
     const auto moe_swap_epsilon =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertSwapEpsilon);
     if (moe_swap_epsilon) {

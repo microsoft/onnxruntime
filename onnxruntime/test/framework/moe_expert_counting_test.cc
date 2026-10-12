@@ -1029,6 +1029,7 @@ void RunAdaptiveCpuOffloadPublishesCompletedSwapsAtNextInvocation() {
 
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "4"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0"));
   InferenceSessionWrapper session(options, GetEnvironment());
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
@@ -1260,6 +1261,7 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "true"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "0.5"},
            std::pair{kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0.1"},
            std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "2"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "-1"},
@@ -1285,6 +1287,9 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "nan"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "inf"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "invalid"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "-0.1"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "1.1"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "invalid"},
            std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "-1"},
            std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "invalid"}}) {
     auto options = CountingOptions();

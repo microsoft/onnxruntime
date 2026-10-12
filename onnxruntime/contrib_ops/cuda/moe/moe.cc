@@ -630,9 +630,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = Stream(context);
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   KernelPilot* moe_pilot = nullptr;
+  bool use_probability_weighted_counters = false;
   if (cpu_offload_enabled_) {
     moe_pilot = context->GetKernelPilot();
     ORT_RETURN_IF_NOT(moe_pilot, "FP16/BF16 MoE CPU offload requires a KernelPilot.");
+    use_probability_weighted_counters = moe_pilot->MoeExpertCounterProbabilityWeight() > 0.0;
     ORT_RETURN_IF_ERROR(PrepareExpertSwapForInvocation(stream, moe_pilot));
   }
 #endif
@@ -818,12 +820,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(host_expert_indices,
                       "Failed to allocate a pinned routing buffer for FP16/BF16 MoE CPU offload.");
     CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&routing_copy_ready, cudaEventDisableTiming));
+    if (run_cpu_experts || use_probability_weighted_counters) {
+      host_expert_scales = AllocateBufferOnCPUPinned<float>(expanded_rows);
+      ORT_RETURN_IF_NOT(host_expert_scales,
+                        "Failed to allocate a pinned routing probability buffer for FP16/BF16 MoE CPU offload.");
+    }
     if (run_cpu_experts) {
       const size_t host_element_count =
           static_cast<size_t>(SafeInt<int64_t>(moe_params.num_rows) * moe_params.hidden_size);
       host_input = AllocateBufferOnCPUPinned<T>(host_element_count);
-      host_expert_scales = AllocateBufferOnCPUPinned<float>(expanded_rows);
-      ORT_RETURN_IF_NOT(host_input && host_expert_scales,
+      ORT_RETURN_IF_NOT(host_input,
                         "Failed to allocate pinned host buffers for FP16/BF16 MoE CPU execution.");
 
       CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&input_ready, cudaEventDisableTiming));
@@ -927,7 +933,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
                                          indices_bytes, cudaMemcpyDeviceToHost, stream));
     routing_copy_pending = true;
-    if (run_cpu_experts) {
+    if (run_cpu_experts || use_probability_weighted_counters) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_scales.get(), expert_scales,
                                            scales_bytes, cudaMemcpyDeviceToHost, stream));
     }
@@ -1062,8 +1068,14 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(moe_pilot, "FP16/BF16 MoE CPU offload requires a KernelPilot.");
     CUDA_RETURN_IF_ERROR(cudaEventSynchronize(routing_copy_ready));
     routing_copy_complete = true;
-    ORT_RETURN_IF_ERROR(
-        moe_pilot->Moe().Collect(gsl::make_span(host_expert_indices.get(), expanded_rows)));
+    if (use_probability_weighted_counters) {
+      ORT_RETURN_IF_ERROR(moe_pilot->Moe().CollectWeighted(
+          gsl::make_span(host_expert_indices.get(), expanded_rows),
+          gsl::make_span(host_expert_scales.get(), expanded_rows)));
+    } else {
+      ORT_RETURN_IF_ERROR(
+          moe_pilot->Moe().Collect(gsl::make_span(host_expert_indices.get(), expanded_rows)));
+    }
 
     if (run_cpu_experts) {
       CUDA_RETURN_IF_ERROR(cudaEventSynchronize(input_copy_ready));

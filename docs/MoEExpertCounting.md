@@ -13,9 +13,11 @@ Configure the update with:
 
 ```text
 session.moe_expert_counter_alpha=<finite value in [0, 1]> # default: 0.9
+session.moe_expert_counter_probability_weight=<finite value in [0, 1]> # default: 0
 ```
 
-The selected-expert increment is `1 - alpha`.
+The selected-expert increment is `1 - alpha`. With CPU offload, the optional probability weight `lambda` changes the
+selected contribution from `1` to `(1 - lambda) + lambda * routing_probability`.
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
 capture are not supported when counting, counter-update logging, or CPU offload is enabled.
@@ -25,10 +27,12 @@ sources. They reject counter configuration except for explicitly disabling count
 Each node invocation updates every expert counter belonging to that node:
 
 ```text
-c(t+1) = alpha * c(t) + (1 - alpha) * (1 if used otherwise 0)
+c(t+1) = alpha * c(t) + (1 - alpha) * contribution
 ```
 
-Selecting an expert for several token rows still contributes one `1 - alpha`. Unused experts still receive the decay term.
+By default, `contribution` is `1` for a selected expert and `0` otherwise. With probability weighting, repeated
+selections use the maximum routing probability observed for that expert during the invocation. Unused experts still
+receive the decay term.
 Counts persist across `Run()` calls. Only successful kernel invocations commit their collected usage.
 A failed run can retain updates from earlier successful kernels, including CUDA nodes whose
 expert computations were still in flight when their counters were updated. Updates are not transactional across an

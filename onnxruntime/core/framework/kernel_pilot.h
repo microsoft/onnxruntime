@@ -57,6 +57,8 @@ class KernelPilot {
   // was only queried, without starting an invocation, has nothing to commit.
   Status RecordUsage();
 
+  double MoeExpertCounterProbabilityWeight() const noexcept { return moe_expert_counter_probability_weight_; }
+
  private:
   friend class KernelPilotMoeExpertState;
   void FinishRegistration() noexcept;
@@ -71,6 +73,7 @@ class KernelPilot {
   gsl::span<int> moe_cuda_experts_;
   IKernelPilotMoeExpertCache* moe_cache_{nullptr};
   size_t moe_expert_count_{0};
+  double moe_expert_counter_probability_weight_{0.0};
 };
 
 }  // namespace onnxruntime

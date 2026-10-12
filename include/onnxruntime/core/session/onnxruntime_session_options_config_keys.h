@@ -39,6 +39,11 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
     "session.moe_expert_counter_alpha";
 
+// Blend between binary selection and routing-probability contributions to expert counters.
+// Must be finite and in [0, 1]. Zero preserves binary counting; one uses routing probabilities. The default is 0.
+static const char* const kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight =
+    "session.moe_expert_counter_probability_weight";
+
 // Number of FP16/BF16 MoE experts to execute on CPU across the session. All expert weights remain in CPU memory, while
 // CUDA-resident copies are created for the remaining experts. The value must be a non-negative integer no greater
 // than the number of experts owned by CUDA MoE nodes. The default is 0, which disables CPU offloading.

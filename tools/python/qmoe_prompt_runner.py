@@ -73,6 +73,12 @@ def parse_args():
         help="MoE expert popularity counter decay coefficient.",
     )
     parser.add_argument(
+        "--moe-expert-counter-probability-weight",
+        type=float,
+        default=0.0,
+        help="Blend between binary selection and routing-probability expert counter contributions.",
+    )
+    parser.add_argument(
         "--moe-max-in-flight-swaps-per-device",
         type=int,
         default=4,
@@ -167,6 +173,7 @@ def create_model(
     cuda_sdpa_kernel,
     cpu_offload_experts,
     counter_alpha,
+    counter_probability_weight,
     max_in_flight_swaps_per_device,
 ):
     config = genai.Config(str(model_path))
@@ -178,6 +185,7 @@ def create_model(
         "session.moe_expert_counter_alpha": str(counter_alpha),
     }
     if cpu_offload_experts > 0:
+        session_options["session.moe_expert_counter_probability_weight"] = str(counter_probability_weight)
         session_options["session.moe_max_in_flight_swaps_per_device"] = str(max_in_flight_swaps_per_device)
     config.overlay(
         json.dumps(
@@ -245,6 +253,11 @@ def main():
         raise ValueError("--moe-cpu-offload-experts must be non-negative.")
     if not math.isfinite(args.moe_expert_counter_alpha) or not 0 <= args.moe_expert_counter_alpha <= 1:
         raise ValueError("--moe-expert-counter-alpha must be finite and in [0, 1].")
+    if (
+        not math.isfinite(args.moe_expert_counter_probability_weight)
+        or not 0 <= args.moe_expert_counter_probability_weight <= 1
+    ):
+        raise ValueError("--moe-expert-counter-probability-weight must be finite and in [0, 1].")
     if args.moe_max_in_flight_swaps_per_device < 0:
         raise ValueError("--moe-max-in-flight-swaps-per-device must be non-negative.")
     if args.output.resolve() == args.counter_log.resolve():
@@ -265,6 +278,7 @@ def main():
             args.cuda_sdpa_kernel,
             args.moe_cpu_offload_experts,
             args.moe_expert_counter_alpha,
+            args.moe_expert_counter_probability_weight,
             args.moe_max_in_flight_swaps_per_device,
         )
         tokenizer = genai.Tokenizer(model)

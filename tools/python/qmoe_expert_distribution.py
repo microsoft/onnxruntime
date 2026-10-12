@@ -101,6 +101,14 @@ def _validate_counter_event(event, line_number):
         score = selected_expert.get("score")
         if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(score) or score < 0:
             raise ValueError(f"Line {line_number}: selected expert scores must be finite non-negative numbers.")
+        routing_probability = selected_expert.get("routing_probability")
+        if routing_probability is not None and (
+            not isinstance(routing_probability, (int, float))
+            or isinstance(routing_probability, bool)
+            or not math.isfinite(routing_probability)
+            or not 0 <= routing_probability <= 1
+        ):
+            raise ValueError(f"Line {line_number}: routing_probability must be finite and in [0, 1].")
         for rank_name in ("selected_rank", "node_rank", "global_position"):
             rank = selected_expert.get(rank_name)
             if not isinstance(rank, int) or isinstance(rank, bool) or rank < 0:

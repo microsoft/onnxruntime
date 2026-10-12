@@ -8,7 +8,9 @@
 namespace onnxruntime {
 
 KernelPilot::KernelPilot(KernelPilotMoeExpertState& moe_expert_state, const OpKernel* kernel)
-    : moe_expert_state_(moe_expert_state), kernel_(kernel) {
+    : moe_expert_state_(moe_expert_state),
+      kernel_(kernel),
+      moe_expert_counter_probability_weight_(moe_expert_state.CounterProbabilityWeight()) {
 }
 
 Status KernelPilot::RecordUsage() {

@@ -69,6 +69,15 @@ class KernelPilotMoeExpertStateTest : public testing::Test {
     return pilot->RecordUsage();
   }
 
+  Status CollectWeightedAndRecord(KernelPilotMoeExpertState& state, const OpKernel* kernel,
+                                  gsl::span<const int> ids, gsl::span<const float> probabilities) {
+    auto* pilot = state.GetKernelPilot(kernel);
+    ORT_RETURN_IF_NOT(pilot, "Missing test kernel collector.");
+    ORT_RETURN_IF_ERROR(pilot->Moe().BeginInvocation(pilot->Moe().ExpertCount()));
+    ORT_RETURN_IF_ERROR(pilot->Moe().CollectWeighted(ids, probabilities));
+    return pilot->RecordUsage();
+  }
+
   static InlinedVector<double> Counters(const KernelPilotMoeExpertState& state, const OpKernel* kernel) {
     InlinedVector<double> counters;
     ORT_THROW_IF_ERROR(state.GetCounters(kernel, counters));
@@ -434,6 +443,22 @@ TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.875, 0.25, 0.5}));
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, BlendsBinarySelectionWithRoutingProbability) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterAlpha(0.5));
+  ASSERT_STATUS_OK(state.SetCounterProbabilityWeight(0.25));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  const int selected[] = {0, 2};
+  const float probabilities[] = {0.8f, 0.2f};
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[0], selected, probabilities));
+  const auto counters = Counters(state, kernels_[0]);
+  ASSERT_EQ(counters.size(), 3U);
+  EXPECT_NEAR(counters[0], 0.475, 1e-7);
+  EXPECT_EQ(counters[1], 0);
+  EXPECT_NEAR(counters[2], 0.4, 1e-7);
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapUsesStrictEpsilonAndDeterministicTies) {
   for (double epsilon : {1.0, 0.99}) {
     SCOPED_TRACE(epsilon);
@@ -519,6 +544,23 @@ TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
   EXPECT_FALSE(state.SetCounterAlpha(0.5).IsOK());
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterProbabilityWeight) {
+  for (const double probability_weight : {
+           -0.1,
+           1.1,
+           std::numeric_limits<double>::infinity(),
+           std::numeric_limits<double>::quiet_NaN()}) {
+    KernelPilotMoeExpertState state;
+    EXPECT_FALSE(state.SetCounterProbabilityWeight(probability_weight).IsOK());
+  }
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterProbabilityWeight(0));
+  ASSERT_STATUS_OK(state.SetCounterProbabilityWeight(0.5));
+  ASSERT_STATUS_OK(state.SetCounterProbabilityWeight(1));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
+  EXPECT_FALSE(state.SetCounterProbabilityWeight(0.5).IsOK());
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, ValidatesSwapEpsilon) {

@@ -48,6 +48,11 @@ class KernelPilotMoeExpertState {
   // Must be called before registering any MoE kernels.
   Status SetCounterAlpha(double alpha);
 
+  // Blends a selected expert's binary contribution with its routing probability.
+  // Zero preserves binary counting; one uses only the routing probability.
+  Status SetCounterProbabilityWeight(double probability_weight);
+  double CounterProbabilityWeight() const noexcept { return counter_probability_weight_; }
+
   // Enables static CUDA placement and sets the global number of experts offloaded to CPU.
   // Must be called before FinalizeInitialization().
   Status SetCpuOffloadExpertCount(size_t cpu_offload_expert_count);
@@ -140,6 +145,7 @@ class KernelPilotMoeExpertState {
   const logging::Logger* logging_logger_{nullptr};
   std::atomic<size_t> logging_record_count_{0};
   double alpha_{0.9};
+  double counter_probability_weight_{0.0};
   size_t cpu_offload_expert_count_{0};
   double swap_epsilon_{0.0};
   size_t max_in_flight_swaps_per_device_{4};

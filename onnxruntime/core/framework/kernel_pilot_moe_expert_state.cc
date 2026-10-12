@@ -55,6 +55,16 @@ Status KernelPilotMoeExpertState::SetCounterAlpha(double alpha) {
   return Status::OK();
 }
 
+Status KernelPilotMoeExpertState::SetCounterProbabilityWeight(double probability_weight) {
+  ORT_RETURN_IF_NOT(std::isfinite(probability_weight) &&
+                        probability_weight >= 0.0 && probability_weight <= 1.0,
+                    "MoE expert counter probability weight must be finite and in [0, 1].");
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
+                "MoE expert counter probability weight cannot change after node registration.");
+  counter_probability_weight_ = probability_weight;
+  return Status::OK();
+}
+
 Status KernelPilotMoeExpertState::SetCpuOffloadExpertCount(size_t cpu_offload_expert_count) {
   ORT_RETURN_IF(initialized_, "MoE CPU offload expert count cannot change after initialization.");
   cpu_offload_expert_count_ = cpu_offload_expert_count;
@@ -324,6 +334,11 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
   ORT_RETURN_IF_NOT(usage.ExpertCount() == range.count, "MoE kernel usage expert count does not match registration.");
   gsl::span<const int> used_expert_ids;
   ORT_RETURN_IF_ERROR(usage.GetSelectedExperts(used_expert_ids));
+  gsl::span<const float> routing_probabilities;
+  ORT_RETURN_IF_ERROR(usage.GetSelectedExpertProbabilities(routing_probabilities));
+  ORT_RETURN_IF(counter_probability_weight_ > 0.0 &&
+                    routing_probabilities.size() != used_expert_ids.size(),
+                "MoE expert counter probability weighting requires routing probabilities.");
   const bool log_counter_event =
       logging_logger_ != nullptr &&
       logging_logger_->OutputIsEnabled(logging::Severity::kINFO, logging::DataType::SYSTEM);
@@ -381,8 +396,12 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
   for (auto& counter : counters) {
     counter *= alpha_;
   }
-  for (int expert : used_expert_ids) {
-    counters_[expert_ids_.at({kernel, expert})] += 1.0 - alpha_;
+  for (size_t i = 0; i < used_expert_ids.size(); ++i) {
+    const double contribution =
+        (1.0 - counter_probability_weight_) +
+        counter_probability_weight_ * static_cast<double>(routing_probabilities.empty() ? 1.0f
+                                                                                        : routing_probabilities[i]);
+    counters_[expert_ids_.at({kernel, used_expert_ids[i]})] += (1.0 - alpha_) * contribution;
   }
 
   if (log_counter_event) {
@@ -434,8 +453,11 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
               : node_runs_on_cuda;
       event << "{\"expert_id\":" << selected_expert
             << ",\"score\":" << std::setprecision(std::numeric_limits<double>::max_digits10)
-            << logged_scores[expert]
-            << ",\"selected_rank\":" << selected_ranks.at(selected_expert)
+            << logged_scores[expert];
+      if (!routing_probabilities.empty()) {
+        event << ",\"routing_probability\":" << routing_probabilities[i];
+      }
+      event << ",\"selected_rank\":" << selected_ranks.at(selected_expert)
             << ",\"node_rank\":" << node_ranks[expert]
             << ",\"global_position\":" << global_positions.at(selected_expert)
             << ",\"device\":\"" << (runs_on_cuda ? "CUDA" : "CPU") << "\"}";
