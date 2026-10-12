@@ -3,6 +3,7 @@
 
 #include "core/platform/linux/drm_device_discovery.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string_view>
@@ -37,6 +38,14 @@ void CreatePlatformDrmCard(const fs::path& card_path, std::string_view driver) {
   uevent << "DRIVER=" << driver << "\n";
 }
 
+void CreatePciDrmCard(const fs::path& card_path, std::string_view vendor_id, std::string_view driver) {
+  fs::create_directories(card_path / "device");
+  std::ofstream vendor(card_path / "device" / "vendor");
+  vendor << vendor_id << "\n";
+  std::ofstream uevent(card_path / "device" / "uevent");
+  uevent << "DRIVER=" << driver << "\n";
+}
+
 }  // namespace
 
 TEST_F(DrmDeviceDiscoveryTest, DetectsJetsonGpuAndSkipsOtherPlatformCards) {
@@ -62,6 +71,33 @@ TEST_F(DrmDeviceDiscoveryTest, DetectsJetsonOrinPlatformGpu) {
   ASSERT_EQ(gpu_paths.size(), 1u);
   EXPECT_EQ(gpu_paths[0].card_idx, 1u);
   EXPECT_TRUE(gpu_paths[0].is_nvidia_platform_gpu);
+}
+
+TEST_F(DrmDeviceDiscoveryTest, SkipsJetsonThorDisplayControllerWhenNvidiaPciGpuPresent) {
+  // Jetson AGX Thor layout: card0 is host1x, card1 is the PCI GPU, card2 is the display controller.
+  CreatePlatformDrmCard(temp_dir_ / "card0", "drm");
+  CreatePciDrmCard(temp_dir_ / "card1", "0x10de", "nvidia");
+  CreatePlatformDrmCard(temp_dir_ / "card2", "nv_platform");
+
+  std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
+  ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
+
+  ASSERT_EQ(gpu_paths.size(), 1u);
+  EXPECT_EQ(gpu_paths[0].card_idx, 1u);
+  EXPECT_FALSE(gpu_paths[0].is_nvidia_platform_gpu);
+}
+
+TEST_F(DrmDeviceDiscoveryTest, KeepsNvidiaPlatformGpuWhenPciGpuIsNotNvidia) {
+  CreatePciDrmCard(temp_dir_ / "card0", "0x1002", "amdgpu");
+  CreatePlatformDrmCard(temp_dir_ / "card1", "nvgpu");
+
+  std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
+  ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
+
+  ASSERT_EQ(gpu_paths.size(), 2u);
+  const auto platform_gpu_count = std::count_if(gpu_paths.begin(), gpu_paths.end(),
+                                                [](const auto& path_info) { return path_info.is_nvidia_platform_gpu; });
+  EXPECT_EQ(platform_gpu_count, 1);
 }
 
 TEST_F(DrmDeviceDiscoveryTest, CreatesIntegratedNvidiaDeviceForJetsonGpu) {

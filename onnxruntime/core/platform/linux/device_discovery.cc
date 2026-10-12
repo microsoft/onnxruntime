@@ -135,6 +135,7 @@ Status DetectGpuSysfsPaths(const fs::path& sysfs_class_drm_path,
   };
 
   std::vector<GpuSysfsPathInfo> gpu_sysfs_paths{};
+  bool found_nvidia_pci_gpu = false;
 
   auto dir_iterator = fs::directory_iterator{sysfs_class_drm_path, error_code};
   ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_class_drm_path, "Iterating over DRM sysfs devices"));
@@ -162,9 +163,25 @@ Status DetectGpuSysfsPaths(const fs::path& sysfs_class_drm_path,
         LOGS_DEFAULT(VERBOSE) << "Skipping non-PCI DRM card: " << dir_item_path;
         continue;
       }
+    } else if (uint16_t vendor_id{};
+               ReadValueFromFile(vendor_path, vendor_id).IsOK() && vendor_id == pci_vendor_ids::kNvidia) {
+      found_nvidia_pci_gpu = true;
     }
 
     gpu_sysfs_paths.push_back({card_idx, dir_item_path, is_nvidia_platform_gpu});
+  }
+
+  // On Jetson Thor the GPU is a PCI device, and the display controller is a separate non-PCI DRM card bound to the
+  // nv_platform driver. If an NVIDIA PCI GPU was found, don't also report NVIDIA platform cards as GPUs.
+  if (found_nvidia_pci_gpu) {
+    std::erase_if(gpu_sysfs_paths, [&](const GpuSysfsPathInfo& path_info) {
+      if (path_info.is_nvidia_platform_gpu) {
+        LOGS_DEFAULT(VERBOSE) << "Skipping NVIDIA platform DRM card because an NVIDIA PCI GPU was found: "
+                              << path_info.path;
+        return true;
+      }
+      return false;
+    });
   }
 
   gpu_sysfs_paths_out = std::move(gpu_sysfs_paths);
