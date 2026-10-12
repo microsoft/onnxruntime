@@ -438,6 +438,62 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput_Initializer
             kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
+TEST(LayerNormTest, LayerNorm_Float16ScaleBias_SharedPrepackedWeights) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 3, 2};
+  std::vector<MLFloat16> gamma = ToFloat16({-0.6953f, 5.1824f});
+  std::vector<MLFloat16> bias = ToFloat16({0.6435f, -0.3964f});
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f}));
+  // gamma and bias are initializers, so the CPU kernel pre-packs them (converts them to float).
+  test.AddInput<MLFloat16>("gamma", {2}, gamma, true);
+  test.AddInput<MLFloat16>("bias", {2}, bias, true);
+  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
+
+  OrtValue gamma_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({2}), gamma.data(),
+                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), gamma_value);
+  OrtValue bias_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({2}), bias.data(),
+                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), bias_value);
+
+  SessionOptions so;
+  // Set up gamma and bias as shared initializers to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("gamma", &gamma_value), Status::OK());
+  ASSERT_EQ(so.AddInitializer("bias", &bias_value), Status::OK());
+
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1 pre-packs gamma and bias and caches them in the shared container
+  test.Config(so)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, static_cast<size_t>(2));
+  ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  ASSERT_EQ(test.GetNumPrePackedWeightsShared(), static_cast<size_t>(2));
+
+  // Session 2 uses the cached pre-packed gamma and bias
+  size_t number_of_pre_packed_weights_counter_session_2 = 0;
+  test.Config(so)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_2, static_cast<size_t>(2));
+  ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(2));
+}
+#endif
+
 // LayerNormalization became an ONNX operator in opset 17. It uses the same implementation so this is a sanity check.
 TYPED_TEST(LayerNormTest, LayerNorm17_opset) {
   auto run_test = [](bool is_initializer) {
