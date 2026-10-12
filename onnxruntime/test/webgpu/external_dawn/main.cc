@@ -169,6 +169,9 @@ int main(int argc, char* argv[]) {
       std::unordered_map<std::string, std::string> provider_options;
       if (!no_proc_table) {
         provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<uintptr_t>(&dawn::native::GetProcs()));
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+        provider_options["weightLoadAcceleration"] = "preferred";
+#endif
       }
       const int custom_id = cache_pass == 2 ? std::numeric_limits<int16_t>::max() : static_cast<int>(cache_pass + 1);
       if (host_device_mode) {

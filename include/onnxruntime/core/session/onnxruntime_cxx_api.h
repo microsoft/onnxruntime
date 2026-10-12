@@ -1809,6 +1809,12 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                   size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+  ModelCompilationOptions& SetOutputModelExternalInitializersBuffer(const ORTCHAR_T* logical_file_name,
+                                                                    size_t initializer_size_threshold,
+                                                                    OrtAllocator* allocator,
+                                                                    void** output_buffer_ptr,
+                                                                    size_t* output_buffer_size_ptr);
+  ModelCompilationOptions& SetOutputModelExternalInitializersAlignment(size_t alignment, size_t minimum_size);
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc
   ModelCompilationOptions& SetOutputModelGetInitializerLocationFunc(
@@ -1822,7 +1828,7 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
 
   /// Register or clear the external EPContext write callback. Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc.
-  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state = nullptr);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation

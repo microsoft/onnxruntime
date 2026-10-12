@@ -261,6 +261,69 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
   EXPECT_GT(packed->total_workspace_bytes, separate->total_workspace_bytes);
 }
 
+// Budget H512-only group ratios with rotary/sink scratch and reject malformed or inactive XQA layouts.
+TEST(GroupQueryAttentionWorkspaceEstimateTest, H512EstimatorDominatesCompleteRuntimeWorkspace) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  for (int group : {3, 33}) {
+    SCOPED_TRACE(testing::Message() << "group=" << group);
+    auto config = Config();
+    config.num_heads = 2 * group;
+    config.do_rotary = true;
+    auto shapes = SeparateShapes(1, 512);
+    shapes[0] = Known({2, 1, config.num_heads * 512});
+    shapes[7] = Known({256, 256});
+    shapes[8] = Known({256, 256});
+    shapes[11] = Known({config.num_heads});
+    const auto estimate = EstimateGroupQueryAttentionWorkspace(config, shapes, Device(), options);
+    ASSERT_TRUE(estimate.has_value());
+    EXPECT_TRUE(HasGQAReachableBackend(estimate->sized_backends, GQAReachableBackend::Xqa));
+
+    GQAWorkspaceProblem problem;
+    problem.qkv_element_size = problem.cache_element_size = 2;
+    problem.batch_size = 2;
+    problem.sequence_length = 1;
+    problem.num_heads = config.num_heads;
+    problem.kv_num_heads = config.kv_num_heads;
+    problem.head_size = 512;
+    problem.present_kv_cache_capacity = 256;
+    problem.is_windowed_kv_cache = true;
+    problem.do_rotary = true;
+    GQAConcreteRoute route;
+    route.backend = GQABackend::Xqa;
+    route.preparation.preprocess_mode = GQAPreprocessMode::Xqa;
+    route.xqa.device_major = 8;
+    route.xqa.multi_processor_count = Device().multiProcessorCount;
+    route.xqa.head_sink_storage = GQAXqaHeadSinkStorage::DynamicConversion;
+    const auto complete = GetGQACompleteWorkspaceRecipe(problem, route);
+    ASSERT_TRUE(complete.status.IsOK()) << complete.status.message;
+    EXPECT_TRUE(complete.recipe.xqa.is_h512);
+    EXPECT_EQ(complete.recipe.xqa.internal_scratch_bytes,
+              static_cast<size_t>(2 * config.num_heads * 32 * 514 * sizeof(float)));
+    EXPECT_GT(complete.recipe.xqa.dynamic_head_sink_bytes, 0U);
+    EXPECT_GE(estimate->total_workspace_bytes, complete.recipe.total_workspace_bytes);
+
+    auto invalid = complete.recipe;
+    invalid.xqa.is_h512 = false;
+    EXPECT_FALSE(contrib::cuda::ValidateGQACompleteWorkspaceRecipe(invalid).IsOK());
+    invalid = complete.recipe;
+    ++invalid.xqa.output_accumulator_bytes;
+    EXPECT_FALSE(contrib::cuda::ValidateGQACompleteWorkspaceRecipe(invalid).IsOK());
+    invalid = complete.recipe;
+    invalid.xqa.semaphore_bytes = sizeof(int32_t);
+    EXPECT_FALSE(contrib::cuda::ValidateGQACompleteWorkspaceRecipe(invalid).IsOK());
+
+    route.backend = GQABackend::Unfused;
+    route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+    route.unfused.total_sequence_length = 256;
+    const auto unfused = GetGQACompleteWorkspaceRecipe(problem, route);
+    ASSERT_TRUE(unfused.status.IsOK()) << unfused.status.message;
+    invalid = unfused.recipe;
+    invalid.xqa.is_h512 = true;
+    EXPECT_FALSE(contrib::cuda::ValidateGQACompleteWorkspaceRecipe(invalid).IsOK());
+  }
+}
+
 TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterParsesAttributesAndTypes) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);

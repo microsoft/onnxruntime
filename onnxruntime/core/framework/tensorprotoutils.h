@@ -58,6 +58,8 @@ inline constexpr std::array<uint8_t, ONNX_NAMESPACE::TensorProto_DataType_DataTy
         sizeof(uint8_t),   // FLOAT8E8M0
         sizeof(uint8_t),   // UINT2
         sizeof(uint8_t),   // INT2
+        sizeof(uint8_t),   // FLOAT6E2M3: packed 6-bit elements
+        sizeof(uint8_t),   // FLOAT6E3M2: packed 6-bit elements
     };
 
 consteval bool IsTensorProtoDataTypeElementSizeMapComplete() {
@@ -325,12 +327,20 @@ common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::
 common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                                   const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                   const IExternalDataLoader& ext_data_loader,
+                                                  const AllocatorPtr& allocator,
                                                   Tensor& tensor);
 
 // Load any saved pre-packed blobs referenced by an external TensorProto without loading its tensor data.
 common::Status LoadPrepackedWeightsFromExternalData(const Env& env, const std::filesystem::path& model_path,
                                                     const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                     PrepackedWeightsForGraph& prepacked_info);
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+common::Status RegisterExternalDataLoadCandidateFromTensorProto(
+    const Env& env, const std::filesystem::path& model_path,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    const IExternalDataLoader& ext_data_loader);
+#endif
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the

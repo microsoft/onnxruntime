@@ -142,7 +142,7 @@ do
   ls "$python3_dir"
   PIP_REQUIREMENTS=(-r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt)
   if [[ "${PYTHON_EXE}" == */cp3??-cp3??t/* ]]; then
-    # ONNX does not publish free-threaded wheels, and ONNX-dependent tooling would resolve its unsupported source build.
+    # ONNX-dependent tooling lacks wheels for some free-threaded versions; avoid unsupported source builds.
     PIP_REQUIREMENTS=(-r "${FREE_THREADED_REQUIREMENTS}")
   fi
   if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then
