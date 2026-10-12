@@ -4182,7 +4182,7 @@ TEST(MoETest, MoECpuLogHasCounterUpdateSchema) {
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "{routing \"request\"}");
   EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
-  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({1.0 - 0.9, 1.0 - 0.9}));
   EXPECT_TRUE(event.contains("node_index"));
   EXPECT_TRUE(event.contains("node_name"));
   EXPECT_EQ(event["node_type"], "MoE");
