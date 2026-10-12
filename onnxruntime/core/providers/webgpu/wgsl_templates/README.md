@@ -34,11 +34,12 @@ configurations, data types, and optimization requirements.
 ## How It Works
 
 Templates are processed at **build time** to generate C++ header files embedded
-in the WebGPU EP binary.
+in the WebGPU EP binary. The generated C++ emits WGSL on pipeline cache misses;
+cache hits do not run source generation.
 
 **Advantages:**
 
-- Zero runtime overhead for template processing
+- No runtime template-language interpreter
 - Smaller binary size (no JavaScript engine required)
 - Type-safe template parameters validated at compile time
 - Optimal for production deployments
@@ -58,7 +59,10 @@ This section describes how to use the template system during development.
    - [Reference: Built-in Utilities](https://github.com/fs-eire/wgsl-template?tab=readme-ov-file#Utilities)
    - [Example: Pad](../tensor/pad.wgsl.template)
 
-2. In the implementation of `YourProgram::GenerateShaderCode()`, load and use the generated template files.
+2. Use the generated template files from the static
+   `YourShader::GenerateShaderCode(const Config&, ConfiguredShaderHelper&)` function.
+   Declare specialization and uniforms using the
+   [shader input categories](../../../../../docs/design/webgpu_shader_value_categories.md).
 
    - [Example: Pad](../tensor/pad.cc)
 
