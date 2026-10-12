@@ -67,6 +67,10 @@ static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "is_virtual"
 //                     hardware/driver that must transform internal constants).
 //  - "all": EP supports weightless mode for all initializers (internal and external).
 //
+// Values added later, such as "all_or_external_only", are not valid for this key: applications written for earlier
+// versions would not recognize them. ORT treats such a value as not recognized. Report them in
+// "weightless_supported_modes" instead.
+//
 // Since version 1.32, "weightless_supported_modes" (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) describes
 // all the modes an EP supports. EPs should keep reporting this key, with the value they reported before, so that
 // applications written for earlier versions keep working. Applications should prefer the newer key when present.

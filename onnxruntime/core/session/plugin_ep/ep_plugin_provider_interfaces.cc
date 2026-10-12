@@ -9,6 +9,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -41,9 +42,10 @@
 namespace onnxruntime {
 
 namespace {
-// Parses a value of the "weightless_supported_modes" or "weightless_support" EP metadata entries.
-// Returns std::nullopt for values this version of ORT does not recognize.
-std::optional<OrtWeightlessSupport> ParseWeightlessSupportEpMetadata(const std::string& value) {
+// Parses a value of the "weightless_supported_modes" or "weightless_support" EP metadata entry `key`.
+// Returns std::nullopt for values this version of ORT does not recognize. "weightless_support" only allows the values
+// defined in version 1.29, so "all_or_external_only" is only recognized in "weightless_supported_modes".
+std::optional<OrtWeightlessSupport> ParseWeightlessSupportEpMetadata(std::string_view key, const std::string& value) {
   if (value == "none") {
     return OrtWeightlessSupport_NONE;
   }
@@ -53,7 +55,7 @@ std::optional<OrtWeightlessSupport> ParseWeightlessSupportEpMetadata(const std::
   if (value == "all") {
     return OrtWeightlessSupport_ALL;
   }
-  if (value == "all_or_external_only") {
+  if (value == "all_or_external_only" && key == kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) {
     return OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
   }
 
@@ -109,7 +111,8 @@ EpDeviceWeightlessSupport GetEpDeviceWeightlessSupport(const OrtEpDevice& ep_dev
                           kOrtEpDevice_EpMetadataKey_WeightlessSupport}) {
     auto it = ep_metadata.find(key);
     if (it != ep_metadata.end()) {
-      return {MakeString("EP metadata '", key, "' = '", it->second, "'"), ParseWeightlessSupportEpMetadata(it->second)};
+      return {MakeString("EP metadata '", key, "' = '", it->second, "'"),
+              ParseWeightlessSupportEpMetadata(key, it->second)};
     }
   }
 
