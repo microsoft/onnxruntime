@@ -88,10 +88,8 @@ Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape& X_shape = X->Shape();
 
   TensorShapeVector axes;
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {  // axes is an input
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+  const Tensor* axes_tensor = ctx->InputCount() > 1 ? ctx->Input<Tensor>(1) : nullptr;
+  if (axes_tensor != nullptr) {
     ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
                 "An axes tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);

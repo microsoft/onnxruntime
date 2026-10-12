@@ -48,6 +48,12 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
                                         const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
 
+  if (op_type == "SpaceToDepth") {
+    NodeAttrHelper node_helper(node_unit);
+    ORT_RETURN_IF_NOT(node_helper.Get("mode", "DCR") == "DCR",
+                      "QNN EP only supports SpaceToDepth with DCR mode.");
+  }
+
   if (op_type == "GridSample") {
     NodeAttrHelper node_helper(node_unit);
     std::string mode = node_helper.Get("mode", "linear");
@@ -56,12 +62,6 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
     std::string padding_mode = node_helper.Get("padding_mode", "zeros");
     ORT_RETURN_IF_NOT(utils::ArrayHasString(gridsample_supported_padding_modes, padding_mode), "GridSample does not support padding_mode ",
                       padding_mode.c_str());
-  }
-
-  if (op_type == "SpaceToDepth") {
-    NodeAttrHelper node_helper(node_unit);
-    std::string mode = node_helper.Get("mode", "DCR");
-    ORT_RETURN_IF_NOT(mode == "DCR", "QNN SpaceToDepth only supports DCR mode.");
   }
 
   // To DO: Remove once QNN CPU supports ScatterND

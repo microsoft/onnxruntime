@@ -238,8 +238,15 @@ class T5EncoderDecoderInitHelper:
                     if "cross" in output.name:
                         assert output.name in output_name_to_node
 
-                        transpose_node = output_name_to_node[output.name]
-                        assert transpose_node and transpose_node.op_type == "Transpose"
+                        output_node = output_name_to_node[output.name]
+                        if output_node.op_type == "Concat" and len(output_node.input) == 1:
+                            transpose_node = output_name_to_node[output_node.input[0]]
+                            transpose_node.output[0] = output.name
+                            onnx_model.remove_node(output_node)
+                        else:
+                            transpose_node = output_node
+                        if not transpose_node or transpose_node.op_type != "Transpose":
+                            continue
 
                         permutation = OnnxModel.get_node_attribute(transpose_node, "perm")
                         assert isinstance(permutation, list)

@@ -37,6 +37,15 @@ instead of `onnxruntime/rust/target`.
     RUST_ONNXRUNTIME_LIBRARY_PATH=<absolute path to shared library/libonnxruntime.so> CARGO_TARGET_DIR=build/rust cargo test --manifest-path rust/Cargo.toml --features model-fetching
 ```
 
+When validating against an in-tree or otherwise separate set of C headers, set
+`ORT_RUST_HEADER_LOCATION` to either `onnxruntime_c_api.h` or the include directory
+containing it. A source checkout automatically uses
+`include/onnxruntime/core/session/onnxruntime_c_api.h`; installed packages continue to use
+`<ORT_RUST_LIB_LOCATION>/include/onnxruntime/onnxruntime_c_api.h`.
+
+The download strategy reads the version from the source or vendored `VERSION_NUMBER`.
+Set `ORT_RUST_VERSION` only when neither file is available.
+
 ## cargo test with sanitizer support
 
 **If you are using a nightly Rust compiler and are on one the platforms listed in [Rust sanitizer support](https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html).**

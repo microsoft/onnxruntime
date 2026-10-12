@@ -11,6 +11,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
+#include "core/graph/constants.h"
 #include "core/session/abi_devices.h"
 #include "core/session/utils.h"
 
@@ -29,13 +30,9 @@ std::string ToLower(std::string_view s) {
   return result;
 }
 
-bool MatchesDevice(const OrtHardwareDevice* hd, std::string_view value) {
-  if (value.empty() || hd == nullptr) {
-    return value.empty();
-  }
-
+bool MatchesDevice(OrtHardwareDeviceType type, std::string_view value) {
   const std::string device = ToLower(value);
-  switch (hd->type) {
+  switch (type) {
     case OrtHardwareDeviceType::OrtHardwareDeviceType_CPU:
       return device == "cpu";
     case OrtHardwareDeviceType::OrtHardwareDeviceType_GPU:
@@ -54,7 +51,7 @@ const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_cons
   }
 
   for (const auto* hd : hardware_devices) {
-    if (MatchesDevice(hd, device_constraint)) {
+    if (hd != nullptr && MatchesDevice(hd->type, device_constraint)) {
       return hd;
     }
   }
@@ -122,9 +119,8 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
 
   if (!device_ok) {
     if (ep_info.hardware_devices.empty()) {
-      return result;
-    }
-    if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
+      device_ok = ep_info.ep_name == kCpuExecutionProvider && MatchesDevice(OrtHardwareDeviceType_CPU, *ec.device);
+    } else if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
       device_ok = true;
       constraint_devices = {matched_hd};
     }
