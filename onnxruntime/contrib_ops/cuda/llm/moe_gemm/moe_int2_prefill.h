@@ -23,6 +23,10 @@ struct Int2MoePrefillParams {
   int* unpermuted_to_permuted = nullptr;
   void* output = nullptr;
   bool is_bf16 = false;
+  bool fake_int4_activations = false;
+  bool is_nvfp4 = false;
+  const float* fc1_global_scales = nullptr;
+  const float* fc2_global_scales = nullptr;
   int64_t num_rows = 0;
   int hidden_size = 0;
   int inter_size = 0;

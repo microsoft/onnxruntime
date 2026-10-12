@@ -1358,5 +1358,89 @@ def test_nvfp4_kpacked_mtp_qwen38_official_shape(onnx_dtype, num_tokens, capfd, 
     assert "DequantWeightBytes=" not in diagnostics
 
 
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("num_tokens", [17, 65, 257])
+@pytest.mark.parametrize("hidden_size,inter_size", [(128, 64), (64, 128)])
+def test_nvfp4_packed_prefill_reference(onnx_dtype, num_tokens, hidden_size, inter_size, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    shape = dict(
+        hidden_size=hidden_size,
+        inter_size=inter_size,
+        num_experts=16,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=onnx_dtype,
+        use_swiglu=True,
+        use_bias=True,
+        gemv_mode="0",
+        offline_prepacked=True,
+        input_scale=0.1,
+        enable_cuda_graph=True,
+    )
+    packed = TestQMoENVFP4()._run_nvfp4_moe_test(**shape)
+    assert "Route=packed_nvfp4_prefill" in capfd.readouterr().out
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "0")
+    dense = TestQMoENVFP4()._run_nvfp4_moe_test(**{**shape, "enable_cuda_graph": False})
+    tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+    torch.testing.assert_close(packed, dense, atol=tolerance, rtol=tolerance)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+def test_nvfp4_packed_prefill_qwen_dimensions(onnx_dtype, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    shape = dict(
+        hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=65,
+        onnx_dtype=onnx_dtype, use_swiglu=True, use_bias=True, gemv_mode="0",
+        offline_prepacked=True, input_scale=0.05,
+    )
+    packed = TestQMoENVFP4()._run_nvfp4_moe_test(**shape, enable_cuda_graph=True)
+    assert "Route=packed_nvfp4_prefill" in capfd.readouterr().out
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "0")
+    dense = TestQMoENVFP4()._run_nvfp4_moe_test(**shape)
+    tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+    torch.testing.assert_close(packed, dense, atol=tolerance, rtol=tolerance)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
+def test_nvfp4_packed_prefill_empty_experts(capfd, monkeypatch):
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    logits = numpy.tile(numpy.arange(16, dtype=numpy.float32), (65, 1))
+    shape = dict(
+        hidden_size=64, inter_size=64, num_experts=16, top_k=2, num_tokens=65,
+        onnx_dtype=TensorProto.FLOAT16, use_swiglu=True, use_bias=True,
+        gemv_mode="0", offline_prepacked=True, input_scale=0.1,
+        router_logits_override=logits, row_tile_size=17, enable_cuda_graph=True,
+    )
+    packed = TestQMoENVFP4()._run_nvfp4_moe_test(**shape)
+    assert "Route=packed_nvfp4_prefill" in capfd.readouterr().out
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "0")
+    dense = TestQMoENVFP4()._run_nvfp4_moe_test(**{**shape, "enable_cuda_graph": False})
+    torch.testing.assert_close(packed, dense, atol=0.005, rtol=0.005)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
+@pytest.mark.parametrize("mode", ["raw_layout", "unsupported_shape", "decode"])
+def test_nvfp4_packed_prefill_fallback(mode, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    decode = mode == "decode"
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=512 if decode else (80 if mode == "unsupported_shape" else 64),
+        inter_size=512 if decode else 64,
+        num_experts=16, top_k=10, num_tokens=1 if decode else 17,
+        onnx_dtype=TensorProto.FLOAT16, use_swiglu=True,
+        gemv_mode="1" if decode else "0", offline_prepacked=mode != "raw_layout",
+        input_scale=0.1,
+    )
+    diagnostics = capfd.readouterr().out
+    assert "Route=packed_nvfp4_prefill" not in diagnostics
+    assert f"Route={'fp4_gemv_raw' if decode else 'grouped_moe'}" in diagnostics
+
+
 if __name__ == "__main__":
     unittest.main()
