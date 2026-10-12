@@ -20,6 +20,13 @@ extern "C" void ortenv_teardown();
 namespace onnxruntime {
 namespace test {
 
+TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {
+  const auto missing_path = Utils::example_ep_info.library_path.parent_path() / "missing_ep_library";
+  Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, "missing_ep_library",
+                                                                    missing_path.c_str())};
+  ASSERT_FALSE(status.IsOK());
+}
+
 TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
   const std::string& registration_name = Utils::example_ep_info.registration_name;

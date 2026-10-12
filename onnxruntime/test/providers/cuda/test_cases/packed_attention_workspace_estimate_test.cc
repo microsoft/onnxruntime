@@ -21,6 +21,7 @@
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
+#include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -326,8 +327,8 @@ std::optional<PackedAttentionWorkspaceAggregate> EstimateFromNode(
   const std::vector<NodeArg*> inputs{&input};
   const std::vector<NodeArg*> outputs;
   Node node{"packed_attention", op_type, "", inputs, outputs, &attributes, kMSDomain};
-  return EstimatePackedAttentionWorkspace(
-      node, input_shapes, Sm80Device(), options);
+  return EstimatePackedAttentionWorkspaceForTest(
+      &node, input_shapes, Sm80Device(), options);
 }
 
 void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,

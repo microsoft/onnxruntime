@@ -302,13 +302,16 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
 TEST(FlatbufferUtilsTest, Float6InitializerOrtFormatRoundTrip) {
   for (auto type : {ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3,
                     ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2}) {
-    for (int64_t count : {int64_t{4}, int64_t{88}}) {
+    for (int64_t count : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4},
+                          int64_t{5}, int64_t{6}, int64_t{7},
+                          int64_t{89}, int64_t{90}, int64_t{91}}) {
+      SCOPED_TRACE(::testing::Message() << "type=" << type << " count=" << count);
       ONNX_NAMESPACE::TensorProto initializer;
       initializer.set_name("float6");
       initializer.set_data_type(type);
       initializer.add_dims(count);
       for (int64_t i = 0; i < count; ++i) {
-        initializer.add_int32_data(static_cast<int32_t>(i % 32));
+        initializer.add_int32_data(static_cast<int32_t>((i * 7 + 1) % 64));
       }
 
       std::vector<uint8_t> external_data;
@@ -323,11 +326,16 @@ TEST(FlatbufferUtilsTest, Float6InitializerOrtFormatRoundTrip) {
       builder.Finish(tensor_offset);
 
       const auto* tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
-      if (count == 4) {
-        EXPECT_NE(tensor->raw_data(), nullptr);
+      const size_t packed_size = static_cast<size_t>((count * 6 + 7) / 8);
+      if (count < 89) {
+        ASSERT_NE(tensor->raw_data(), nullptr);
+        EXPECT_EQ(tensor->raw_data()->size(), packed_size);
+        EXPECT_EQ(tensor->external_data_offset(), -1);
+        EXPECT_TRUE(external_data.empty());
       } else {
         EXPECT_EQ(tensor->external_data_offset(), 0);
-        EXPECT_EQ(external_data.size(), 66U);
+        EXPECT_EQ(tensor->raw_data(), nullptr);
+        EXPECT_EQ(external_data.size(), packed_size);
       }
 
       ExternalDataReader reader = [&external_data](uint64_t offset, gsl::span<uint8_t> bytes) {
@@ -338,10 +346,17 @@ TEST(FlatbufferUtilsTest, Float6InitializerOrtFormatRoundTrip) {
       ONNX_NAMESPACE::TensorProto loaded;
       OrtFormatLoadOptions options;
       ASSERT_STATUS_OK(LoadInitializerOrtFormat(*tensor, loaded, options, reader));
-      std::vector<uint8_t> expected_data, loaded_data;
-      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(initializer, expected_data));
+      EXPECT_EQ(loaded.name(), initializer.name());
+      EXPECT_EQ(loaded.data_type(), type);
+      ASSERT_EQ(loaded.dims_size(), 1);
+      EXPECT_EQ(loaded.dims(0), count);
+      std::vector<uint8_t> loaded_data;
       ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(loaded, loaded_data));
-      EXPECT_EQ(expected_data, loaded_data);
+      ASSERT_EQ(loaded_data.size(), static_cast<size_t>(count));
+      for (int64_t i = 0; i < count; ++i) {
+        EXPECT_EQ(loaded_data[static_cast<size_t>(i)], static_cast<uint8_t>((i * 7 + 1) % 64))
+            << "element " << i;
+      }
     }
   }
 }
@@ -575,16 +590,16 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithDimTooLargeFor
 
 #ifdef ENABLE_TRAINING_APIS
 template <typename F6>
-void TestFloat6OrtTensorRoundTrip(bool use_external_data) {
+void TestFloat6OrtTensorRoundTrip(bool use_external_data, int64_t count) {
+  SCOPED_TRACE(::testing::Message() << "external=" << use_external_data << " count=" << count);
   static onnxruntime::CPUExecutionProviderInfo info;
   static onnxruntime::CPUExecutionProvider cpu_provider(info);
   AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
-  Tensor input{DataTypeImpl::GetType<F6>(), TensorShape({4}), cpu_allocator};
-  const std::array<uint8_t, 4> expected_runtime_bits{0x01, 0x02, 0x03, 0x04};
+  Tensor input{DataTypeImpl::GetType<F6>(), TensorShape({count}), cpu_allocator};
   auto* input_data = input.MutableData<F6>();
-  for (size_t i = 0; i < expected_runtime_bits.size(); ++i) {
-    input_data[i] = F6(expected_runtime_bits[i], F6::FromBits());
+  for (int64_t i = 0; i < count; ++i) {
+    input_data[i] = F6(static_cast<uint8_t>((i * 7 + 1) % 64), F6::FromBits());
   }
 
   std::vector<uint8_t> external_data;
@@ -603,14 +618,16 @@ void TestFloat6OrtTensorRoundTrip(bool use_external_data) {
   builder.Finish(tensor_offset);
 
   const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
-  const std::array<uint8_t, 3> expected_packed_bytes{0x81, 0x30, 0x10};
+  const size_t packed_size = static_cast<size_t>((count * 6 + 7) / 8);
   if (use_external_data) {
     ASSERT_EQ(fbs_tensor->external_data_offset(), 0);
-    ASSERT_EQ(external_data, std::vector<uint8_t>(expected_packed_bytes.begin(), expected_packed_bytes.end()));
+    ASSERT_EQ(fbs_tensor->raw_data(), nullptr);
+    ASSERT_EQ(external_data.size(), packed_size);
   } else {
     ASSERT_NE(fbs_tensor->raw_data(), nullptr);
-    ASSERT_EQ(fbs_tensor->raw_data()->size(), expected_packed_bytes.size());
-    ASSERT_TRUE(std::equal(expected_packed_bytes.begin(), expected_packed_bytes.end(), fbs_tensor->raw_data()->begin()));
+    ASSERT_EQ(fbs_tensor->external_data_offset(), -1);
+    ASSERT_EQ(fbs_tensor->raw_data()->size(), packed_size);
+    ASSERT_TRUE(external_data.empty());
   }
 
   ExternalDataReader reader = [&external_data](uint64_t offset, gsl::span<uint8_t> bytes) {
@@ -623,26 +640,40 @@ void TestFloat6OrtTensorRoundTrip(bool use_external_data) {
   ASSERT_STATUS_OK(LoadOrtTensorOrtFormat(*fbs_tensor, cpu_allocator, tensor_name, output,
                                           use_external_data ? reader : ExternalDataReader{}));
   ASSERT_EQ(tensor_name, "float6");
+  ASSERT_EQ(output.Shape().NumDimensions(), 1);
+  ASSERT_EQ(output.Shape()[0], count);
   const auto* output_data = output.Data<F6>();
-  for (size_t i = 0; i < expected_runtime_bits.size(); ++i) {
-    ASSERT_EQ(output_data[i].ToBits(), expected_runtime_bits[i]);
+  for (int64_t i = 0; i < count; ++i) {
+    EXPECT_EQ(output_data[i].ToBits(), static_cast<uint8_t>((i * 7 + 1) % 64)) << "element " << i;
   }
 }
 
 TEST(FlatbufferUtilsTest, Float6E2M3OrtTensorInlineRoundTrip) {
-  TestFloat6OrtTensorRoundTrip<Float6E2M3>(false);
+  for (int64_t count : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4},
+                        int64_t{5}, int64_t{6}, int64_t{7}}) {
+    TestFloat6OrtTensorRoundTrip<Float6E2M3>(false, count);
+  }
 }
 
 TEST(FlatbufferUtilsTest, Float6E3M2OrtTensorInlineRoundTrip) {
-  TestFloat6OrtTensorRoundTrip<Float6E3M2>(false);
+  for (int64_t count : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4},
+                        int64_t{5}, int64_t{6}, int64_t{7}}) {
+    TestFloat6OrtTensorRoundTrip<Float6E3M2>(false, count);
+  }
 }
 
 TEST(FlatbufferUtilsTest, Float6E2M3OrtTensorExternalRoundTrip) {
-  TestFloat6OrtTensorRoundTrip<Float6E2M3>(true);
+  for (int64_t count : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{5},
+                        int64_t{6}, int64_t{7}, int64_t{89}, int64_t{90}, int64_t{91}}) {
+    TestFloat6OrtTensorRoundTrip<Float6E2M3>(true, count);
+  }
 }
 
 TEST(FlatbufferUtilsTest, Float6E3M2OrtTensorExternalRoundTrip) {
-  TestFloat6OrtTensorRoundTrip<Float6E3M2>(true);
+  for (int64_t count : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{5},
+                        int64_t{6}, int64_t{7}, int64_t{89}, int64_t{90}, int64_t{91}}) {
+    TestFloat6OrtTensorRoundTrip<Float6E3M2>(true, count);
+  }
 }
 
 // tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)

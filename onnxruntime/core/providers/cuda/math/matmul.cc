@@ -3,10 +3,14 @@
 
 #include "core/providers/cuda/math/matmul.h"
 
+#include <string>
+#include <type_traits>
+
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/math/matmul_small_n_gemv.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/tunable/math/matmul.h"
 #endif
@@ -14,8 +18,11 @@
 namespace onnxruntime {
 namespace cuda {
 
-bool SmallNGemvEnabledFromEnvironment() {
-  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SMALL_N_GEMV", false);
+GemmDispatchPolicy GetGemmDispatchPolicy(const OpKernelInfo& info) {
+  return ResolveGemmDispatchPolicy(
+      ParseEnvironmentVariable<std::string>(kSmallNGemvEnvVar),
+      info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaEnableGemmAutoTune),
+      ParseEnvironmentVariable<std::string>(kGemmAutoTuneEnvVar));
 }
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
@@ -297,6 +304,62 @@ template Status FuncMatMul<MLFloat16>(
     Tensor* Y);
 
 template <typename T>
+Status MatMul<T>::RunSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c,
+                                int m, int n, int k) const {
+  using ElementT = std::conditional_t<std::is_same_v<T, MLFloat16>, half, nv_bfloat16>;
+  auto counter = GetScratchBuffer<unsigned int>(SmallNGemvCounterElements(n), GetComputeStream(ctx));
+  auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), GetComputeStream(ctx));
+  return LaunchSmallNGemv(Stream(ctx), static_cast<const ElementT*>(a), static_cast<const ElementT*>(b),
+                          static_cast<ElementT*>(c), m, n, k, workspace.get(), counter.get());
+}
+
+template <typename T>
+template <typename RunCublas>
+Status MatMul<T>::SelectSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c,
+                                   int m, int n, int k, const RunCublas& run_cublas,
+                                   bool& use_small_n) const {
+  const cudaDeviceProp& device_prop = GetDeviceProp();
+  GemmTuneKey key;
+  key.device_uuid = GetDeviceUuid(device_prop);
+  key.data_type = std::is_same_v<T, MLFloat16> ? GemmDataType::kFloat16 : GemmDataType::kBFloat16;
+  key.m = m;
+  key.n = n;
+  key.k = k;
+  key.small_n_vectorized = SmallNGemvUsesVectorizedKernel(n, k, a, b);
+
+  std::optional<GemmKernel> kernel = GemmAutoTuneCache::Instance().Lookup(key);
+  if (!kernel.has_value()) {
+    cudaStream_t stream = Stream(ctx);
+    bool capturing = false;
+    ORT_RETURN_IF_ERROR(IsCudaStreamCapturing(stream, capturing));
+    // Timing needs a stream sync, so an untuned shape met during capture keeps the default kernel.
+    if (!capturing) {
+      GemmTuneL2State l2;
+      l2.flush_bytes = GemmAutoTuneFlushBytes(device_prop);
+      auto flush_buffer = GetScratchBuffer<void>(l2.flush_bytes, GetComputeStream(ctx));
+      l2.flush_buffer = flush_buffer.get();
+      l2.hot_buffer = a;
+      l2.hot_bytes = static_cast<size_t>(m) * k * sizeof(T);
+      auto counter = GetScratchBuffer<unsigned int>(SmallNGemvCounterElements(n), GetComputeStream(ctx));
+      auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), GetComputeStream(ctx));
+      using ElementT = std::conditional_t<std::is_same_v<T, MLFloat16>, half, nv_bfloat16>;
+      std::vector<GemmTuneCandidate> candidates;
+      candidates.push_back({GemmKernel::kCublas, run_cublas});
+      candidates.push_back({GemmKernel::kSmallNGemv, [&]() {
+                              return LaunchSmallNGemv(stream, static_cast<const ElementT*>(a),
+                                                      static_cast<const ElementT*>(b), static_cast<ElementT*>(c),
+                                                      m, n, k, workspace.get(), counter.get());
+                            }});
+      GemmKernel tuned = GemmKernel::kCublas;
+      ORT_RETURN_IF_ERROR(TuneGemmKernel(key, stream, candidates, l2, tuned));
+      kernel = tuned;
+    }
+  }
+  use_small_n = kernel.value_or(GemmKernel::kCublas) == GemmKernel::kSmallNGemv;
+  return Status::OK();
+}
+
+template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -328,10 +391,29 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   auto& device_prop = GetDeviceProp();
 
   if (helper.OutputOffsets().size() == 1) {
-    if constexpr (std::is_same<T, MLFloat16>::value) {
-      // cuBLAS tiles this class of shape onto a handful of CTAs and spends
-      // several microseconds on a few hundred KiB of weights.
-      if (small_n_gemv_enabled_ && !transa && !transb && alpha_ == 1.0f &&
+    auto run_cublas = [&]() -> Status {
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+          GetCublasHandle(ctx),
+          transB,
+          transA,
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.K()),
+          &alpha,
+          reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+          ldb,
+          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          lda,
+          &zero,
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          ldc,
+          device_prop,
+          UseTF32()));
+      return Status::OK();
+    };
+
+    if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
+      if (gemm_policy_ != GemmDispatchPolicy::kCublas && !transa && !transb && alpha_ == 1.0f &&
           static_cast<int64_t>(lda) == helper.K() && static_cast<int64_t>(ldb) == helper.N() &&
           static_cast<int64_t>(ldc) == helper.N() &&
           CanUseSmallNGemv(helper.M(), helper.N(), helper.K(), left_X->DataRaw(), right_X->DataRaw(),
@@ -339,34 +421,17 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
         const int m = static_cast<int>(helper.M());
         const int n = static_cast<int>(helper.N());
         const int k = static_cast<int>(helper.K());
-        const size_t counter_elements = SmallNGemvCounterElements(n);
-        auto counter = GetScratchBuffer<unsigned int>(counter_elements, this->GetComputeStream(ctx));
-        auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), this->GetComputeStream(ctx));
-        return LaunchSmallNGemv(Stream(ctx),
-                                reinterpret_cast<const half*>(left_X->Data<T>()),
-                                reinterpret_cast<const half*>(right_X->Data<T>()),
-                                reinterpret_cast<half*>(Y->MutableData<T>()),
-                                m, n, k, workspace.get(), counter.get());
+        bool use_small_n = gemm_policy_ == GemmDispatchPolicy::kSmallNGemv;
+        if (gemm_policy_ == GemmDispatchPolicy::kAutoTune) {
+          ORT_RETURN_IF_ERROR(SelectSmallNGemv(ctx, left_X->DataRaw(), right_X->DataRaw(), Y->MutableDataRaw(),
+                                               m, n, k, run_cublas, use_small_n));
+        }
+        if (use_small_n) {
+          return RunSmallNGemv(ctx, left_X->DataRaw(), right_X->DataRaw(), Y->MutableDataRaw(), m, n, k);
+        }
       }
     }
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        GetCublasHandle(ctx),
-        transB,
-        transA,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &alpha,
-        reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-        ldb,
-        reinterpret_cast<const CudaT*>(left_X->Data<T>()),
-        lda,
-        &zero,
-        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-        ldc,
-        device_prop,
-        UseTF32()));
-    return Status::OK();
+    return run_cublas();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(GetCublasHandle(ctx),

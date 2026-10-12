@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/embed_layer_norm_fusion.h"
 
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -446,7 +447,7 @@ template <typename T>
 bool CheckEmbeddingData(const T* data, int64_t batch_size, int64_t element_count) {
   // check that all batches has same data.
   size_t data_length = SafeInt<size_t>(batch_size) * element_count;
-  for (size_t i = gsl::narrow<size_t>(element_count); i < data_length; i++) {
+  for (size_t i = narrow<size_t>(element_count); i < data_length; i++) {
     if (data[i] != data[i % element_count]) {
       return false;
     }
@@ -480,13 +481,13 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(float));
+    utils::SetRawDataInTensorProto(initializer, data, narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, data, narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   NodeArg& node_arg = graph_utils::AddInitializerWithOrtValue(graph, initializer);

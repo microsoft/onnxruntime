@@ -320,6 +320,64 @@ TEST(MathTest, Col2imNdRowBounds) {
   }
 }
 
+TEST(MathTest, Im2colNdRows) {
+  const int64_t shape[] = {3, 3, 5}, blocks[] = {2, 2, 6}, kernel[] = {2, 2, 3};
+  const int64_t stride[] = {1, 2, 2}, dilation[] = {1, 1, 2}, pads[] = {0, 1, 5, 0, 1, 5};
+  auto check = [&](auto padding) {
+    using T = decltype(padding);
+    std::array<T, 90> image;
+    std::array<T, 576> expected;
+    std::array<T, 578> actual;
+    actual.fill(T(91));
+    for (size_t i = 0; i < image.size(); ++i) image[i] = static_cast<T>(i);
+    size_t index = 0;
+    for (int c = 0; c < 2; ++c)
+      for (int kz = 0; kz < 2; ++kz)
+        for (int ky = 0; ky < 2; ++ky)
+          for (int kx = 0; kx < 3; ++kx)
+            for (int z = 0; z < 2; ++z)
+              for (int y = 0; y < 2; ++y)
+                for (int x = 0; x < 6; ++x) {
+                  const int iy = 2 * y - 1 + ky, ix = 2 * x - 5 + 2 * kx;
+                  expected[index++] = iy >= 0 && iy < 3 && ix >= 0 && ix < 5
+                                          ? image[((c * 3 + z + kz) * 3 + iy) * 5 + ix]
+                                          : padding;
+                }
+    math::Im2col<T, StorageOrder::NCHW>()(
+        image.data(), shape, blocks, 24, kernel, stride, dilation, pads, 3, actual.data() + 1, false, padding);
+    EXPECT_EQ(0, std::memcmp(expected.data(), actual.data() + 1, sizeof(expected)));
+    EXPECT_EQ(actual.front(), T(91));
+    EXPECT_EQ(actual.back(), T(91));
+  };
+  check(-12345.0f);
+  check(int8_t{-113});
+  check(uint8_t{243});
+}
+
+TEST(MathTest, Im2colNdSpecialValues) {
+  const uint32_t bits[] = {0, 0x80000000, 1, 0x80000001, 0x7f7fffff, 0xff7fffff,
+                           0x7f800000, 0xff800000, 0x7fc00123, 0xffc00321, 0x7f800123};
+  float image[std::size(bits)];
+  std::memcpy(image, bits, sizeof(bits));
+  const int64_t shape[] = {11}, kernel[] = {3}, dilation[] = {1}, pads[] = {2, 2};
+  for (int64_t step : {1, 3}) {
+    SCOPED_TRACE(step);
+    const int64_t stride[] = {step}, blocks[] = {12 / step + 1};
+    InlinedVector<float> expected(static_cast<size_t>(3 * blocks[0]), 0.0f), actual(expected.size());
+    for (int64_t tap = 0; tap < 3; ++tap) {
+      for (int64_t x = 0; x < blocks[0]; ++x) {
+        const int64_t ix = x * step - 2 + tap;
+        if (ix >= 0 && ix < shape[0]) {
+          std::memcpy(&expected[tap * blocks[0] + x], &image[ix], sizeof(float));
+        }
+      }
+    }
+    math::Im2col<float, StorageOrder::NCHW>()(
+        image, shape, blocks, 3, kernel, stride, dilation, pads, 1, actual.data());
+    EXPECT_EQ(0, std::memcmp(expected.data(), actual.data(), expected.size() * sizeof(float)));
+  }
+}
+
 TEST(MathTest, Col2imNdSpecialValues) {
   const int64_t blocks[] = {17}, kernel[] = {3}, one[] = {1}, pads[] = {1, 1};
   const uint32_t bits[] = {0, 0x80000000, 1, 0x80000001, 0x7f7fffff, 0xff7fffff,

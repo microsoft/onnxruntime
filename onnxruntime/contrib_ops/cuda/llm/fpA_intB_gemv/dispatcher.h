@@ -394,31 +394,37 @@ void dispatcher(Params& params, cudaStream_t s) {
   // register footprint (and the columns covered per block, CtaN * kInterleave) at the value the
   // 4-bit kernel was tuned for.
   static constexpr int CtaN = Details::kStepK >= 64 ? (EnableZero ? 2 : 4) : (EnableZero ? 4 : 8);
+  // From M = 4 on, the M x StepK activation tile and the CtaM x CtaN accumulators push the 4/8-bit
+  // kernel to ~250 registers (two 128-thread blocks per SM), and the N = 5120 decode projections
+  // then launch only 160 blocks. Halving CtaN frees registers and doubles the block count; on
+  // RTX 4090 it makes the M = 4..8 GEMVs 2-12% faster with DRAM-resident weights. The 2-bit layout
+  // already uses the narrow tile.
+  static constexpr int CtaNLargeM = Details::kStepK >= 64 ? CtaN : (CtaN / 2 < 2 ? 2 : CtaN / 2);
 
-#define DISPATCHER_FOR_M(target_m, CtaM, Threads)                                                  \
-  do {                                                                                             \
-    if (params.m == target_m) {                                                                    \
-      exec_kernel<Details, CtaM, CtaN, Threads, GroupSize, EnableActScale, EnableZero, EnableBias, \
-                  ApplyAlphaInAdvance>(params, s);                                                 \
-      return;                                                                                      \
-    }                                                                                              \
+#define DISPATCHER_FOR_M(target_m, CtaM, TileN, Threads)                                            \
+  do {                                                                                              \
+    if (params.m == target_m) {                                                                     \
+      exec_kernel<Details, CtaM, TileN, Threads, GroupSize, EnableActScale, EnableZero, EnableBias, \
+                  ApplyAlphaInAdvance>(params, s);                                                  \
+      return;                                                                                       \
+    }                                                                                               \
   } while (0);
 
-  DISPATCHER_FOR_M(1, 1, 128);
-  DISPATCHER_FOR_M(2, 2, 128);
-  DISPATCHER_FOR_M(3, 3, 128);
-  DISPATCHER_FOR_M(4, 4, 128);
-  DISPATCHER_FOR_M(5, 5, 128);
-  DISPATCHER_FOR_M(6, 6, 128);
-  DISPATCHER_FOR_M(7, 7, 128);
-  DISPATCHER_FOR_M(8, 8, 128);
-  DISPATCHER_FOR_M(9, 9, 128);
-  DISPATCHER_FOR_M(10, 10, 128);
-  DISPATCHER_FOR_M(11, 11, 128);
-  DISPATCHER_FOR_M(12, 12, 128);
-  DISPATCHER_FOR_M(13, 13, 128);
-  DISPATCHER_FOR_M(14, 14, 128);
-  DISPATCHER_FOR_M(15, 15, 128);
+  DISPATCHER_FOR_M(1, 1, CtaN, 128);
+  DISPATCHER_FOR_M(2, 2, CtaN, 128);
+  DISPATCHER_FOR_M(3, 3, CtaN, 128);
+  DISPATCHER_FOR_M(4, 4, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(5, 5, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(6, 6, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(7, 7, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(8, 8, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(9, 9, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(10, 10, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(11, 11, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(12, 12, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(13, 13, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(14, 14, CtaNLargeM, 128);
+  DISPATCHER_FOR_M(15, 15, CtaNLargeM, 128);
   ORT_THROW("unsupported m");
 #undef DISPATCHER_FOR_M
 }

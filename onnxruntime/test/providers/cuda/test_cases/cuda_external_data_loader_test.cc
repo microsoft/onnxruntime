@@ -25,6 +25,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "cuda_runtime.h"
 #include "gtest/gtest.h"
+#include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -46,6 +47,7 @@ void CreateExternalDataFile(size_t length, PathString& path,
   FILE* file = nullptr;
   path = ORT_TSTR("cuda_external_data_loader_XXXXXX");
   CreateTestFile(file, path);
+  ASSERT_NE(file, nullptr);
 
   std::vector<uint8_t> chunk(1024 * 1024);
   ASSERT_EQ(kFilePrefixSize, fwrite(chunk.data(), 1, kFilePrefixSize, file));
@@ -256,8 +258,8 @@ TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {
     }
 
     Tensor tensor(DataTypeImpl::GetType<bool>(), TensorShape({static_cast<int64_t>(input.size())}), *allocator);
-    ASSERT_STATUS_OK(loader->LoadTensor(
-        Env::Default(), path, kFilePrefixSize, input.size(), tensor));
+    ASSERT_STATUS_OK(LoadCudaExternalDataForTest(
+        loader.get(), Env::Default(), path, kFilePrefixSize, input.size(), &tensor));
     std::array<uint8_t, 4> output{};
     ASSERT_EQ(cudaSuccess, cudaMemcpy(
                                output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
@@ -323,6 +325,7 @@ TEST(CudaExternalDataLoaderTest, ExternalInitializerSessionMatchesWithLoaderEnab
   PathString model_path = ORT_TSTR("cuda_external_initializer_model_XXXXXX");
   FILE* model_file = nullptr;
   ASSERT_NO_FATAL_FAILURE(CreateTestFile(model_file, model_path));
+  ASSERT_NE(model_file, nullptr);
   ScopedFileDeleter model_deleter{model_path};
   std::unique_ptr<FILE, int (*)(FILE*)> model_file_owner(model_file, fclose);
   const auto model_bytes = model.SerializeAsString();

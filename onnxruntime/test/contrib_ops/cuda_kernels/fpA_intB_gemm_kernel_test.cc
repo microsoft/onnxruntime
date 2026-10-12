@@ -102,7 +102,7 @@ float compare(void* a, void* b, size_t size, float scale) {
   float total_diff = 0.f;
   float max_val = 0.f;
   int diff_count = 0;
-  float threshold = 1e-7;
+  float threshold = 1e-7f;
   for (size_t n = 0; n < size; ++n) {
     float va = static_cast<float>(pa[n]);
     float vb = static_cast<float>(pb[n]);
@@ -462,7 +462,7 @@ class KernelTestFixture : public ::testing::Test {
     }
 #endif
     auto& gemm_runner = *runner;
-    int ws_bytes = gemm_runner.getWorkspaceSize(m_, n_, k_);
+    const size_t ws_bytes = gemm_runner.getWorkspaceSize(m_, n_, k_);
     CudaBuffer ws_buffer(ws_bytes);
     char* ws_ptr = reinterpret_cast<char*>(ws_buffer.data());
 

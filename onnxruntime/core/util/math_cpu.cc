@@ -601,6 +601,58 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
     T* data_col,
     bool accumulate_output,
     T padding_value) {
+  if (!accumulate_output && rank > 0) {
+    const ptrdiff_t last = rank - 1;
+    const int64_t width = im_shape[last];
+    const int64_t row_size = output_shape[last];
+    const int64_t step = stride[last];
+    InlinedVector<int64_t> offsets(rank);
+    InlinedVector<int64_t> position(last, 0);
+    for (int64_t c = 0; c < channels_col; ++c) {
+      int64_t channel = c;
+      for (ptrdiff_t d = last; d >= 0; --d) {
+        offsets[d] = (channel % kernel_shape[d]) * dilation[d] - pad[d];
+        channel /= kernel_shape[d];
+      }
+      const int64_t first_col = offsets[last] < 0
+                                    ? std::min(row_size, -(offsets[last] + 1) / step + 1)
+                                    : 0;
+      const int64_t first_x = offsets[last] < 0
+                                  ? step - 1 - (-(offsets[last] + 1) % step)
+                                  : offsets[last];
+      const int64_t count = first_col == row_size || first_x >= width
+                                ? 0
+                                : std::min(row_size - first_col, (width - 1 - first_x) / step + 1);
+      do {
+        int64_t index = channel;
+        bool valid = count > 0;
+        for (ptrdiff_t d = 0; valid && d < last; ++d) {
+          const int64_t coordinate = position[d] * stride[d] + offsets[d];
+          valid = is_a_ge_zero_and_a_lt_b(coordinate, im_shape[d]);
+          if (valid) {
+            index = index * im_shape[d] + coordinate;
+          }
+        }
+        if (valid) {
+          std::fill_n(data_col, first_col, padding_value);
+          const T* src = data_im + index * width + first_x;
+          T* dst = data_col + first_col;
+          if (step == 1) {
+            std::copy_n(src, count, dst);
+          } else {
+            for (int64_t x = 0; x < count; ++x) {
+              dst[x] = src[x * step];
+            }
+          }
+          std::fill_n(dst + count, row_size - first_col - count, padding_value);
+        } else {
+          std::fill_n(data_col, row_size, padding_value);
+        }
+        data_col += row_size;
+      } while (NextPosition(last, output_shape, position.data()));
+    }
+    return;
+  }
   int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + rank, 1LL, std::multiplies<int64_t>());
   std::vector<int64_t> d_offset(rank, 0);
   std::vector<int64_t> d_iter(rank, 0);

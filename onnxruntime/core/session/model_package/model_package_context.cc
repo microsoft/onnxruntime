@@ -417,11 +417,10 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
       if (const ::ModelExecutorInfoEntry* ei =
               ::ModelVariantInfo_FindExecutorInfo(variant, "ort")) {
         if (ei->json != nullptr && ei->json[0] != '\0') {
-          try {
-            ort_obj = json::parse(ei->json);
-          } catch (const std::exception& e) {
+          ort_obj = json::parse(ei->json, nullptr, false);
+          if (ort_obj->is_discarded()) {
             ORT_THROW("Failed to parse executor_info[\"ort\"] JSON for variant '",
-                      ort_variant.variant_name, "' in component '", component_name, "': ", e.what());
+                      ort_variant.variant_name, "' in component '", component_name, "'");
           }
         }
       }
@@ -505,12 +504,12 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
 
       // Variant-scope additional_metadata.
       if (variant->additional_metadata_json != nullptr) {
-        try {
-          ort_variant.consumer_metadata = json::parse(variant->additional_metadata_json);
-        } catch (const std::exception& e) {
+        auto consumer_metadata = json::parse(variant->additional_metadata_json, nullptr, false);
+        if (consumer_metadata.is_discarded()) {
           ORT_THROW("Failed to parse additional_metadata JSON for variant '", ort_variant.variant_name,
-                    "' in component '", component_name, "': ", e.what());
+                    "' in component '", component_name, "'");
         }
+        ort_variant.consumer_metadata = std::move(consumer_metadata);
       }
 
       model_variant_infos_.push_back(ort_variant);

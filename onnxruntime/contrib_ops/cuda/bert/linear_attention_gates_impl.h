@@ -4,12 +4,14 @@
 #pragma once
 
 #include <cuda_fp16.h>
-#include "contrib_ops/bert/linear_attention_gates_common.h"
+#include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 
 // decay = decay_scale * Softplus(a + dt_bias); beta = Sigmoid(b).
 // `beta` and `b` may both be nullptr; the two per-head parameter vectors are float32.

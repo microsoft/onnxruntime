@@ -53,6 +53,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
       mul1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
       mul1_node.GetOutputEdgesCount() != 1 ||
+      graph.NodeProducesGraphOutput(mul1_node) ||
       !IsSupportedDataType(mul1_node)) {
     return matchResult;
   }
@@ -138,6 +139,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
       pow1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
       pow1_node.GetOutputEdgesCount() != 1 ||
+      graph.NodeProducesGraphOutput(pow1_node) ||
       !IsSupportedDataType(pow1_node)) {
     return matchResult;
   }

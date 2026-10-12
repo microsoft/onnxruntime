@@ -28,15 +28,7 @@ class TestBackend(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_prepare_model_bytes_allows_unreleased_opset_when_policy_disabled(self):
-        model = helper.make_model(
-            helper.make_graph(
-                [helper.make_node("Identity", ["X"], ["Y"])],
-                "unreleased_opset",
-                [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
-                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
-            ),
-            opset_imports=[helper.make_opsetid("", 28)],
-        )
+        model = self._make_unreleased_opset_model()
 
         original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
         try:
@@ -47,6 +39,36 @@ class TestBackend(unittest.TestCase):
 
         result = rep.run(np.array([1.0], dtype=np.float32))
         np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
+
+    def test_prepare_model_path_allows_unreleased_opset_when_policy_disabled(self):
+        model = self._make_unreleased_opset_model()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = os.path.join(tmpdir, "unreleased_opset.onnx")
+            with open(model_path, "wb") as model_file:
+                model_file.write(model.SerializeToString())
+
+            original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
+            try:
+                OnnxRuntimeBackend.allowReleasedOpsetsOnly = False
+                rep = backend.prepare(model_path)
+            finally:
+                OnnxRuntimeBackend.allowReleasedOpsetsOnly = original_policy
+
+        result = rep.run(np.array([1.0], dtype=np.float32))
+        np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
+
+    @staticmethod
+    def _make_unreleased_opset_model():
+        model = helper.make_model(
+            helper.make_graph(
+                [helper.make_node("Identity", ["X"], ["Y"])],
+                "unreleased_opset",
+                [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
+            ),
+            opset_imports=[helper.make_opsetid("", 28)],
+        )
+        return model
 
     def test_allocation_plan_works_with_only_execute_path_to_fetches_option(self):
         """

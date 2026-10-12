@@ -10,14 +10,14 @@ popd
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 FREE_THREADED_REQUIREMENTS=$(mktemp)
-grep -v '^onnx==' requirements.txt > "${FREE_THREADED_REQUIREMENTS}"
+grep -Ev '^(onnx|onnx-ir|onnxscript)==' requirements.txt > "${FREE_THREADED_REQUIREMENTS}"
 trap 'rm -f "${FREE_THREADED_REQUIREMENTS}"' EXIT
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   PIP_REQUIREMENTS=(-r requirements.txt)
   if [[ "${PYTHON_EXE}" == */cp3??-cp3??t/* ]]; then
-    # ONNX does not publish free-threaded aarch64 wheels, and its source build requires the unavailable stable ABI.
+    # ONNX does not publish free-threaded wheels, and ONNX-dependent tooling would resolve its unsupported source build.
     PIP_REQUIREMENTS=(-r "${FREE_THREADED_REQUIREMENTS}")
   fi
   if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then

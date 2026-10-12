@@ -71,7 +71,7 @@ Status EpLibraryPlugin::Unload() {
   // Current implementation assumes any error is permanent so does not leave pieces around to re-attempt Unload.
   if (handle_) {
     if (!factories_.empty()) {
-      try {
+      ORT_TRY {
         for (size_t idx = 0, end = factories_.size(); idx < end; ++idx) {
           auto* factory = factories_[idx];
           if (factory == nullptr) {
@@ -89,8 +89,11 @@ Status EpLibraryPlugin::Unload() {
         }
 
         factories_.clear();
-      } catch (const std::exception& ex) {
-        LOGS_DEFAULT(ERROR) << "Failed releasing EP factories from " << library_path_ << ": " << ex.what();
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS_DEFAULT(ERROR) << "Failed releasing EP factories from " << library_path_ << ": " << ex.what();
+        });
       }
     }
 

@@ -16,6 +16,20 @@
 namespace onnxruntime {
 namespace webgpu {
 
+namespace detail {
+
+std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path) {
+  auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
+  auto dump_mutex = std::make_shared<std::mutex>();
+  return [dump_file = std::move(dump_file),
+          dump_mutex = std::move(dump_mutex)](std::string_view shader_content) {
+    std::lock_guard<std::mutex> lock{*dump_mutex};
+    *dump_file << shader_content << "\n";
+  };
+}
+
+}  // namespace detail
+
 ProgramArtifact::ProgramArtifact(std::string program_name,
                                  wgpu::ComputePipeline&& compute_pipeline,
                                  wgpu::BindGroupLayout&& bind_group_layout,
@@ -29,10 +43,7 @@ ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
     : webgpu_context_{webgpu_context} {
   if (std::string dump_file_path = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_SHADER_DUMP_FILE");
       !dump_file_path.empty()) {
-    auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
-    shader_dump_fn_ = [dump_file = std::move(dump_file)](std::string_view shader_content) {
-      *dump_file << shader_content << "\n";
-    };
+    shader_dump_fn_ = detail::CreateShaderDumpFunction(std::move(dump_file_path));
   }
 }
 
@@ -102,6 +113,10 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
   }
   const bool has_uniform_binding =
       std::any_of(shape_uniform_ranks.begin(), shape_uniform_ranks.end(), [](int rank) { return rank > 0; }) ||
+      std::any_of(program.Inputs().cbegin(), program.Inputs().cend(),
+                  [](const ProgramInput& input) { return input.is_buffer_view; }) ||
+      std::any_of(program.Outputs().cbegin(), program.Outputs().cend(),
+                  [](const ProgramOutput& output) { return output.is_buffer_view; }) ||
       std::any_of(program.UniformVariables().cbegin(), program.UniformVariables().cend(),
                   [](const ProgramUniformVariableValue& uniform) { return uniform.length > 0; });
 
@@ -310,6 +325,7 @@ Status ProgramManager::Build(const ProgramBase& program,
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   auto result = programs_.find(key);
   if (result != programs_.end()) {
     return &result->second;
@@ -319,6 +335,7 @@ const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
 }
 
 const ProgramArtifact* ProgramManager::Set(const std::string& key, ProgramArtifact&& program) {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   return &(programs_.emplace(key, std::move(program)).first->second);
 }
 

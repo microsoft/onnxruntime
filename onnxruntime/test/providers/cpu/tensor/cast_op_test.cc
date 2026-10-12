@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <type_traits>
@@ -2322,6 +2323,46 @@ TEST(CastOpTest, Float6E2M3) {
 
 TEST(CastOpTest, Float6E3M2) {
   CastOpTestFloat6<Float6E3M2>();
+}
+
+template <typename F6>
+void TestFloat6RoundingAtEveryMidpoint() {
+  for (uint8_t bits = 0; bits < 0x1F; ++bits) {
+    const float lower = static_cast<float>(F6(bits, F6::FromBits()));
+    const float upper = static_cast<float>(F6(bits + 1, F6::FromBits()));
+    const float midpoint = (lower + upper) / 2;
+    const uint8_t nearest_even = (bits & 1) == 0 ? bits : bits + 1;
+    EXPECT_EQ(F6(std::nextafter(midpoint, lower)).ToBits(), bits);
+    EXPECT_EQ(F6(midpoint).ToBits(), nearest_even);
+    EXPECT_EQ(F6(std::nextafter(midpoint, upper)).ToBits(), bits + 1);
+    EXPECT_EQ(F6(-midpoint).ToBits(), static_cast<uint8_t>(0x20 | nearest_even));
+  }
+}
+
+TEST(CastOpTest, Float6RoundingAtEveryMidpoint) {
+  TestFloat6RoundingAtEveryMidpoint<Float6E2M3>();
+  TestFloat6RoundingAtEveryMidpoint<Float6E3M2>();
+}
+
+TEST(CastOpTest, DoubleToFloat6RoundingNearMidpoints) {
+  const std::vector<int64_t> shape{3};
+  const double e2_midpoint = 1.1875;
+  const double e3_midpoint = 1.375;
+  const std::vector<double> e2_values{std::nextafter(e2_midpoint, 0.0), e2_midpoint,
+                                      std::nextafter(e2_midpoint, 2.0)};
+  const std::vector<double> e3_values{std::nextafter(e3_midpoint, 0.0), e3_midpoint,
+                                      std::nextafter(e3_midpoint, 2.0)};
+  const std::vector<Float6E2M3> e2_expected{
+      Float6E2M3(0x09, Float6E2M3::FromBits()), Float6E2M3(0x0A, Float6E2M3::FromBits()),
+      Float6E2M3(0x0A, Float6E2M3::FromBits())};
+  const std::vector<Float6E3M2> e3_expected{
+      Float6E3M2(0x0D, Float6E3M2::FromBits()), Float6E3M2(0x0E, Float6E3M2::FromBits()),
+      Float6E3M2(0x0E, Float6E3M2::FromBits())};
+
+  TestCastOp<double, Float6E2M3>(gsl::make_span(e2_values), gsl::make_span(e2_expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 28);
+  TestCastOp<double, Float6E3M2>(gsl::make_span(e3_values), gsl::make_span(e3_expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 28);
 }
 
 TEST(CastOpTest, Float6EncodingBoundaries) {

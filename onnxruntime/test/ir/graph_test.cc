@@ -14,12 +14,14 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_helpers.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/temp_dir.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
@@ -2098,6 +2100,109 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     ASSERT_TRUE(false);
   }
 }
+
+TEST_F(GraphTest, InjectFloat6ExternalInitializedTensors) {
+  for (const auto data_type : {TensorProto_DataType_FLOAT6E2M3, TensorProto_DataType_FLOAT6E3M2}) {
+    for (const bool owned : {false, true}) {
+      constexpr size_t count = 132;
+      const std::string name = "float6";
+      Model model{"float6_injection", false, *logger_};
+      Graph& graph = model.MainGraph();
+      TensorProto initializer;
+      initializer.set_name(name);
+      initializer.set_data_type(data_type);
+      initializer.add_dims(count);
+      ExternalDataInfo::SetExternalLocationToProto("float6.bin", 0, count * 6 / 8, initializer);
+      graph.AddInitializedTensor(initializer);
+
+      const auto* type = DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType();
+      TensorShape shape{count};
+      std::vector<uint8_t> bits(count);
+      for (size_t i = 0; i < count; ++i) bits[i] = static_cast<uint8_t>(i % 64);
+      OrtValue value;
+      if (owned) {
+        Tensor::InitOrtValue(type, shape, CPUAllocator::DefaultInstance(), value);
+        std::copy(bits.begin(), bits.end(),
+                  static_cast<uint8_t*>(value.GetMutable<Tensor>()->MutableDataRaw()));
+      } else {
+        Tensor::InitOrtValue(type, shape, bits.data(),
+                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), value);
+      }
+
+      ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors({{name, value}}));
+      const TensorProto* replaced = nullptr;
+      ASSERT_TRUE(graph.GetInitializedTensor(name, replaced));
+      ASSERT_NE(replaced, nullptr);
+      EXPECT_FALSE(utils::HasExternalData(*replaced));
+      ASSERT_EQ(replaced->raw_data().size(), count * 6 / 8);
+      std::vector<uint8_t> decoded;
+      ASSERT_STATUS_OK(utils::UnpackInitializerData(*replaced, decoded));
+      EXPECT_EQ(decoded, bits);
+    }
+  }
+}
+
+TEST_F(GraphTest, InjectFloat6ExternalInitializersFromFilesInMemory) {
+  for (const auto data_type : {TensorProto_DataType_FLOAT6E2M3, TensorProto_DataType_FLOAT6E3M2}) {
+    constexpr size_t count = 4;
+    Model model{"float6_file_injection", false, *logger_};
+    Graph& graph = model.MainGraph();
+    TensorProto initializer;
+    initializer.set_name("float6");
+    initializer.set_data_type(data_type);
+    initializer.add_dims(count);
+    ExternalDataInfo::SetExternalLocationToProto("float6.bin", 1, 3, initializer);
+    graph.AddInitializedTensor(initializer);
+
+    std::string data{"\0\x01\x42\xc3", 4};
+    InlinedHashMap<PathString, std::pair<char*, size_t>> files{
+        {ORT_TSTR("float6.bin"), {data.data(), data.size()}}};
+    files.at(ORT_TSTR("float6.bin")).second = data.size() - 1;
+    EXPECT_FALSE(graph.InjectExternalInitializersFromFilesInMemory(files).IsOK());
+    files.at(ORT_TSTR("float6.bin")).second = data.size();
+    ASSERT_STATUS_OK(graph.InjectExternalInitializersFromFilesInMemory(files));
+    const TensorProto* replaced = nullptr;
+    ASSERT_TRUE(graph.GetInitializedTensor("float6", replaced));
+    ASSERT_NE(replaced, nullptr);
+    EXPECT_FALSE(utils::HasExternalData(*replaced));
+    ASSERT_EQ(replaced->raw_data().size(), 3U);
+    EXPECT_EQ(replaced->raw_data(), data.substr(1));
+    std::vector<uint8_t> decoded;
+    ASSERT_STATUS_OK(utils::UnpackInitializerData(*replaced, decoded));
+    EXPECT_EQ(decoded, (std::vector<uint8_t>{1, 8, 52, 48}));
+  }
+}
+
+TEST_F(GraphTest, InlineFloat6ExternalTensorAttribute) {
+  TemporaryDirectory temp_dir{ORT_TSTR("float6_attribute_test")};
+  const auto model_path = std::filesystem::path(temp_dir.Path()) / ORT_TSTR("model.onnx");
+  const auto data_path = std::filesystem::path(temp_dir.Path()) / ORT_TSTR("attribute.bin");
+  for (const auto type : {TensorProto_DataType_FLOAT6E2M3, TensorProto_DataType_FLOAT6E3M2}) {
+    {
+      std::ofstream output(data_path, std::ios::binary);
+      output.write("\x01\x42\xc3", 3);
+    }
+    ModelProto source;
+    source.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    source.mutable_graph()->set_name("float6_attribute");
+    source.add_opset_import()->set_version(17);
+    TensorProto tensor;
+    tensor.set_data_type(type);
+    tensor.add_dims(4);
+    ExternalDataInfo::SetExternalLocationToProto("attribute.bin", 0, 3, tensor);
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(std::move(source), model_path.native(), model, nullptr, *logger_));
+    auto& graph = model->MainGraph();
+    NodeAttributes attributes;
+    attributes.emplace("value", ONNX_NAMESPACE::MakeAttribute("value", tensor));
+    graph.AddNode("attribute_node", "Custom", "", {}, {}, &attributes, "test");
+    ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+    ASSERT_EQ(graph.NumberOfNodes(), 1);
+    const auto& inlined = graph.Nodes().begin()->GetAttributes().at("value").t();
+    EXPECT_FALSE(utils::HasExternalData(inlined));
+    EXPECT_EQ(inlined.raw_data(), std::string("\x01\x42\xc3", 3));
+  }
+}
 #endif
 
 TEST_F(GraphTest, AddRemoveInitializerHandling) {
@@ -3620,6 +3725,71 @@ TEST_F(GraphTest, OuterScopeInitializerTypeInfoPropagatedToSubgraph) {
   std::shared_ptr<Model> model;
   std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
   ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *logger_));
+}
+
+// A locally produced value captured by a nested graph must be serialized as value_info. Otherwise,
+// reloading cannot recover its type when the producer's schema has no type-inference function.
+TEST_F(GraphTest, LocalImplicitInputTypeInfoSurvivesSerialization) {
+  auto registry = std::make_shared<onnxruntime::OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schemas = {
+      OpSchema()
+          .SetName("NoInferProducer")
+          .SetDomain("FakeTestDomain")
+          .Output(0, "Y", "Output whose type is supplied by the graph", "T")
+          .TypeConstraint("T", OpSchema::all_tensor_types(), "Any tensor type")};
+  ASSERT_STATUS_OK(registry->RegisterOpSet(schemas, "FakeTestDomain", 0, 1));
+
+  IOnnxRuntimeOpSchemaRegistryList registries = {registry};
+  Model model("local_capture", false, ModelMetaData(), PathString(), registries,
+              {{kOnnxDomain, 13}, {"FakeTestDomain", 1}}, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  SetTypeAndShape(float_tensor.mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+  TypeProto bool_scalar;
+  SetTypeAndShape(bool_scalar.mutable_tensor_type(), TensorProto_DataType_BOOL, {});
+
+  NodeArg& captured = graph.GetOrCreateNodeArg("captured", &float_tensor);
+  graph.AddNode("producer", "NoInferProducer", "Producer without schema inference", {}, {&captured},
+                nullptr, "FakeTestDomain");
+
+  NodeArg& cond = graph.GetOrCreateNodeArg("cond", &bool_scalar);
+  NodeArg& if_output = graph.GetOrCreateNodeArg("if_output", &float_tensor);
+
+  auto make_branch = [](const std::string& graph_name, const std::string& output_name) {
+    GraphProto branch;
+    branch.set_name(graph_name);
+
+    auto* output = branch.add_output();
+    output->set_name(output_name);
+    SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+    auto* identity = branch.add_node();
+    identity->set_name(graph_name + "_identity");
+    identity->set_op_type("Identity");
+    identity->add_input("captured");
+    identity->add_output(output_name);
+    return branch;
+  };
+
+  NodeAttributes attributes;
+  attributes.emplace("then_branch", utils::MakeAttribute("then_branch", make_branch("then_branch", "then_out")));
+  attributes.emplace("else_branch", utils::MakeAttribute("else_branch", make_branch("else_branch", "else_out")));
+  graph.AddNode("if_node", "If", "Captures a local producer output", {&cond}, {&if_output}, &attributes);
+  graph.SetInputs({&cond});
+  graph.SetOutputs({&if_output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ModelProto serialized = model.ToProto();
+  const auto captured_value_info = std::find_if(
+      serialized.graph().value_info().cbegin(), serialized.graph().value_info().cend(),
+      [](const ValueInfoProto& value_info) { return value_info.name() == "captured"; });
+  ASSERT_NE(captured_value_info, serialized.graph().value_info().cend());
+  EXPECT_EQ(captured_value_info->type().tensor_type().elem_type(), TensorProto_DataType_FLOAT);
+
+  std::shared_ptr<Model> reloaded_model;
+  ASSERT_STATUS_OK(Model::Load(std::move(serialized), reloaded_model, &registries, *logger_));
 }
 
 // Negative companion to OuterScopeInitializerTypeInfoPropagatedToSubgraph.

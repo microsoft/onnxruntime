@@ -2,7 +2,7 @@ name: 'Locate vcvarsall and Setup Environment'
 description: 'Locates vcvarsall.bat, sets up the environment, and handles PATH updates.'
 inputs:
   architecture:
-    description: 'Target architecture (x64 or x86)'
+    description: 'Target architecture (x64, x86, or arm64)'
     required: true
     default: 'x64'
 outputs:

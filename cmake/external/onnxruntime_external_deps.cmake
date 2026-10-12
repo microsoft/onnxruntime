@@ -1054,11 +1054,6 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     message(STATUS "Telemetry: using the vcpkg MSTelemetry::mat package")
     set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
   else()
-    # Linux packages must not depend on a host libcurl. Build an internal HTTP(S)-only static curl
-    # before configuring 1DS so its CURL::libcurl reference resolves to the pinned target.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-      include(external/telemetry_linux_http.cmake)
-    endif()
     set(_ort_requested_apple_architectures "${CMAKE_OSX_ARCHITECTURES}")
 
     # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
@@ -1081,15 +1076,23 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
     set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
     set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    set(MATSDK_DISABLE_LOGGING ON CACHE BOOL "Compile internal 1DS logging out" FORCE)
     if(APPLE)
       set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
     endif()
-    # ORT supplies CURL::libcurl on Linux through its pinned static mbedTLS
-    # transport. On Apple/Android the SDK selects the native transport.
-    set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use ORT's selected 1DS curl target" FORCE)
     set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
-    set(MATSDK_SQLITE_PROVIDER VENDORED CACHE STRING "Use bundled 1DS SQLite" FORCE)
-    set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use bundled 1DS zlib" FORCE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      set(MATSDK_CURL_PROVIDER FETCH CACHE STRING "Build the SDK's pinned curl with mbedTLS" FORCE)
+    else()
+      set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use the platform HTTP transport" FORCE)
+    endif()
+    if(APPLE)
+      set(MATSDK_SQLITE_PROVIDER SYSTEM CACHE STRING "Use Apple's system SQLite" FORCE)
+      set(MATSDK_ZLIB_PROVIDER SYSTEM CACHE STRING "Use Apple's system libz" FORCE)
+    else()
+      set(MATSDK_SQLITE_PROVIDER MINIMAL CACHE STRING "Build the SDK's minimal private SQLite" FORCE)
+      set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Build the SDK's private zlib" FORCE)
+    endif()
     # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
     # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
     set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
@@ -1099,22 +1102,21 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # canonical Apple/system or fetched mbedTLS transport selection.
     set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
-    if(NOT Patch_FOUND)
-      message(FATAL_ERROR
-              "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
-    endif()
-    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
-        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
-        ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
-      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-    target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT onnxruntime_BUILD_SHARED_LIB)
+      # curl's imported mbedTLS helper is not exported with ORT's static package.
+      get_target_property(_ort_curl_link_libraries libcurl_static INTERFACE_LINK_LIBRARIES)
+      list(FILTER _ort_curl_link_libraries EXCLUDE REGEX "CURL::mbedtls")
+      set_target_properties(libcurl_static PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${_ort_curl_link_libraries}")
+      target_link_libraries(libcurl_static PRIVATE mbedtls)
+    endif()
     if(ANDROID)
       target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
     endif()

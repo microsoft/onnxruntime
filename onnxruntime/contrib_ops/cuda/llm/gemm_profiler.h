@@ -62,7 +62,8 @@ inline int GetProfileTimedRuns(float probe_ms, float best_ms) {
   if (probe_ms * kMaxRuns <= kTimedBudgetMs) {
     return kMaxRuns;
   }
-  if (probe_ms > kPruneRatio * best_ms) {
+  // best_ms can be FLT_MAX when no tactic has been profiled yet.
+  if (probe_ms > kPruneRatio * static_cast<double>(best_ms)) {
     return 0;
   }
   return std::max(1, static_cast<int>(kTimedBudgetMs / probe_ms));
@@ -215,6 +216,12 @@ class GemmPluginProfiler {
 
   virtual bool checkTactic(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/) const {
     return true;
+  }
+
+  // Maps a measured tactic time to the value compared when choosing the best tactic. Subclasses
+  // can bias the choice toward tactics the synthetic profiling setup is known to under-rate.
+  virtual float getSelectionTime(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/, float time) const {
+    return time;
   }
 
   virtual std::vector<Config> getTactics(int m, int n, int k) const = 0;
@@ -506,7 +513,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
         continue;
       }
       // Profile particular tactic for given M, N and K
-      time = profileTacticForProblem(m, n, k, candidateConfig, workspace, stream, bestTime);
+      time = getSelectionTime(m, n, k, candidateConfig,
+                              profileTacticForProblem(m, n, k, candidateConfig, workspace, stream, bestTime));
 
 #if ORT_LLM_VERBOSE > 1
       if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {

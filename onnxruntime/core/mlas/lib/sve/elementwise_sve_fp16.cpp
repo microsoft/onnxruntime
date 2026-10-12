@@ -32,9 +32,9 @@ Abstract:
 
 --*/
 
-#include "mlasi_sve.h"
+#include <numbers>
 
-#include <cmath>  // M_SQRT1_2
+#include "mlasi_sve.h"
 
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
@@ -134,7 +134,7 @@ constexpr struct {
 } MlasSveGeluConstantsFp16 = {
     0.5f,
     1.0f,
-    static_cast<float>(M_SQRT1_2),
+    1.0f / std::numbers::sqrt2_v<float>,
     0.7978845608028654f,
     0.035677408136300125f,
     -5.0f,

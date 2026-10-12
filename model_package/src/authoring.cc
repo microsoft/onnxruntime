@@ -37,11 +37,10 @@ ModelPackageStatus* NullArg(const char* name) {
 }
 
 ModelPackageStatus* ParseJsonString(const char* json, const char* where, ordered_json* out) {
-  try {
-    *out = ordered_json::parse(json);
-  } catch (const ordered_json::parse_error& e) {
+  *out = ordered_json::parse(json, nullptr, false);
+  if (out->is_discarded()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      std::string(where) + ": JSON parse error: " + e.what());
+                      std::string(where) + ": JSON parse error.");
   }
   return nullptr;
 }
