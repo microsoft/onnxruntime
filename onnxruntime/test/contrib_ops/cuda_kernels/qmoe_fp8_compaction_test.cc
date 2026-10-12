@@ -184,6 +184,115 @@ bool SupportsFp8Gemv() {
 }
 #endif
 
+template <typename T, typename S>
+void TestFp8GemvCodeDecoding(int scale_type, int block_size, int k, int fusion, bool graph) {
+  constexpr int n = 256;
+  const int source_n = fusion == 1 ? n / 2 : n;
+  const int scales_per_expert =
+      ((source_n + block_size - 1) / block_size) * ((k + block_size - 1) / block_size);
+  std::vector<uint8_t> weights(2 * source_n * k);
+  std::vector<uint8_t> up_weights(weights.size());
+  for (int expert = 0; expert < 2; ++expert) {
+    for (int row = 0; row < source_n; ++row) {
+      const int code = fusion == 1 ? row * 2 : row;
+      std::fill_n(weights.begin() + (expert * source_n + row) * k, k, static_cast<uint8_t>(code));
+      std::fill_n(up_weights.begin() + (expert * source_n + row) * k, k, static_cast<uint8_t>(code + 1));
+    }
+  }
+  std::vector<S> scales(2 * scales_per_expert, S(1.25f));
+  std::fill(scales.begin() + scales_per_expert, scales.end(), S(0.5f));
+  std::vector<T> input(2 * k, T(0.0f));
+  input[0] = T(1.0f);
+  input[k] = T(-2.0f);
+  const std::array<int, 2> experts{1, 0};
+  const std::array<int, 2> source_rows{1, 0};
+  CudaBuffer device_weights(weights.size());
+  CudaBuffer device_up_weights(up_weights.size());
+  CudaBuffer device_scales(scales.size() * sizeof(S));
+  CudaBuffer device_input(input.size() * sizeof(T));
+  CudaBuffer device_experts(sizeof(experts));
+  CudaBuffer device_source_rows(sizeof(source_rows));
+  CudaBuffer device_output(2 * n * sizeof(T));
+  device_weights.Upload(weights.data());
+  device_up_weights.Upload(up_weights.data());
+  device_scales.Upload(scales.data());
+  device_input.Upload(input.data());
+  device_experts.Upload(experts.data());
+  device_source_rows.Upload(source_rows.data());
+  qmoe::QMoEFp8ProjectionParams params;
+  params.weights = device_weights.As<uint8_t>();
+  params.scales = device_scales.data;
+  params.scale_type = scale_type;
+  if (fusion == 1) {
+    params.up_weights = device_up_weights.As<uint8_t>();
+    params.up_scales = device_scales.data;
+    params.up_scale_type = scale_type;
+  }
+  params.fusion = fusion;
+  params.experts = device_experts.As<int>();
+  params.row_to_unpermuted = device_source_rows.As<int>();
+  params.num_experts = 2;
+  params.num_rows = 2;
+  params.expanded_rows = 2;
+  params.n = n;
+  params.k = k;
+  params.block_size = block_size;
+  cudaStream_t stream;
+  CUDA_CALL_THROW(cudaStreamCreate(&stream));
+  if (graph) {
+    cudaGraph_t captured;
+    cudaGraphExec_t executable;
+    CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+    qmoe::LaunchQMoEFp8Projection(params, device_input.As<T>(), device_output.As<T>(), stream);
+    CUDA_CALL_THROW(cudaStreamEndCapture(stream, &captured));
+    CUDA_CALL_THROW(cudaGraphInstantiate(&executable, captured, nullptr, nullptr, 0));
+    CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+    CUDA_CALL_THROW(cudaGraphExecDestroy(executable));
+    CUDA_CALL_THROW(cudaGraphDestroy(captured));
+  } else {
+    qmoe::LaunchQMoEFp8Projection(params, device_input.As<T>(), device_output.As<T>(), stream);
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  }
+  CUDA_CALL_THROW(cudaStreamDestroy(stream));
+  std::array<T, 2 * n> actual{};
+  device_output.Download(actual.data());
+  for (int row = 0; row < 2; ++row) {
+    for (int col = 0; col < n; ++col) {
+      const int code = fusion == 2 ? col / 2 + (col % 2) * (n / 2) : col;
+      SCOPED_TRACE(row);
+      SCOPED_TRACE(code);
+      const float value = static_cast<float>(actual[row * n + col]);
+      if ((code & 127) == 127) {
+        EXPECT_TRUE(std::isnan(value));
+        continue;
+      }
+      const T scaled_weight(FiniteFp8Reference(code) * (row == 0 ? 0.5f : 1.25f));
+      const T expected(static_cast<float>(scaled_weight) * (row == 0 ? -2.0f : 1.0f));
+      EXPECT_EQ(value, static_cast<float>(expected));
+    }
+  }
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp8GemvAllCodesWithMappedRowsPartialKBlocksAndGraphReplay) {
+  for (int block_size : {16, 128}) {
+    for (int fusion : {0, 1, 2}) {
+      for (bool graph : {false, true}) {
+        SCOPED_TRACE(block_size);
+        SCOPED_TRACE(fusion);
+        SCOPED_TRACE(graph);
+        const int k = block_size * 2 + 1;
+        TestFp8GemvCodeDecoding<half, float>(0, block_size, k, fusion, graph);
+        TestFp8GemvCodeDecoding<half, half>(1, block_size, k, fusion, graph);
+        TestFp8GemvCodeDecoding<half, __nv_bfloat16>(2, block_size, k, fusion, graph);
+        TestFp8GemvCodeDecoding<__nv_bfloat16, float>(0, block_size, k, fusion, graph);
+        TestFp8GemvCodeDecoding<__nv_bfloat16, half>(1, block_size, k, fusion, graph);
+        TestFp8GemvCodeDecoding<__nv_bfloat16, __nv_bfloat16>(2, block_size, k, fusion, graph);
+      }
+    }
+  }
+}
+
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 template <typename T>
 void TestNvfp4GemvScaleCodes(int k) {
