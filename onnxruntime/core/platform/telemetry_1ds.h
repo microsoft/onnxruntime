@@ -155,8 +155,7 @@ class OneDsTelemetry : public Telemetry {
   void Initialize();
 
   // Shutdown telemetry SDK logger
-  static void Shutdown();
-  static void ShutdownAtExit() noexcept;
+  void Shutdown();
 
   // Helper to get platform name
   std::string GetPlatformInfo() const;
