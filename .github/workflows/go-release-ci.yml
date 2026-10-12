@@ -188,7 +188,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'gcc target failed' }
           $target | Tee-Object -Append -FilePath "$env:EVIDENCE/summary.txt"
           if ($target -notmatch '^x86_64-.*mingw') { throw "wrong GCC target: $target" }
-          $sync = & $env:CC -print-file-name=libsynchronization.a
+          $sync = & $env:CC '-print-file-name=libsynchronization.a'
           if ($LASTEXITCODE -ne 0) { throw 'GCC synchronization lookup failed' }
           if (![IO.Path]::IsPathFullyQualified($sync) -or !(Test-Path -PathType Leaf $sync)) {
             throw "missing race synchronization library: $sync"
