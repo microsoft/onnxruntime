@@ -288,6 +288,13 @@ W_L1 = max over p ∈ AdmittedPhases and r ∈ P(p):
          CompleteWorkspace(corner(p, envelope), r)
 ```
 
+At runtime the GQA kernel uses the same partition: `is_first_prompt` selects prefill, a non-first
+single-token step selects decode, and any other multi-token step selects chunked prefill. When
+`total_sequence_length` resides on the GPU and the helper cannot distinguish the first prompt from
+a later chunk, the existing runtime behavior reports the multi-token step as non-first, so policy
+enforcement conservatively uses the chunked-prefill mask. L1 has already admitted and sized both
+general phases.
+
 Everything L1 needs is static:
 
 | Ingredient | Source |
@@ -334,7 +341,8 @@ The L1 budget must be reconciled with what the kernel actually declares/consumes
   `GetGQACompleteWorkspaceRecipe`, overflow-checked and validated) drives both the partition-time
   estimator and runtime allocation. The GQA-first committed-policy slice also passes the validated
   KV envelope and dispatch intent into `DeclareWorkspaceRequirements`, resolves the same committed
-  route mask, and stores that mask in the kernel for runtime enforcement. Route ranking is
+  prefill, decode, and chunked-prefill route masks, and stores those masks in the kernel for
+  phase-aware runtime enforcement. Route ranking is
   canonicalized across L1 and L2 when their knowledge differs (for example, L1 knows a constant
   head sink *may* be prepacked while L2 knows the exact post-PrePack state). Sharing formulas makes
   each concrete Run's allocation provably **bounded by** `W_L1`; it does not make them equal because
@@ -409,14 +417,16 @@ Intent, not mechanism — portable across ops/EPs. The first GQA implementation 
 
 - **`latency`:** preserve the current route priority
   (XQA → cuDNN → Flash/fast-decode → MEA → unfused). This is an ordered heuristic, not a measured
-  latency model. If a permitted route has no analytical workspace oracle, strict capacity-aware L1
-  remains unavailable.
+  latency model. Decode-only routes are absent from the prefill and chunked-prefill masks. If a
+  permitted route has no analytical workspace oracle, strict capacity-aware L1 remains unavailable.
 - **`memory`:** among analytically bounded routes, choose the smallest bound independently for
-  prompt/general and single-token decode, then commit their union. Runtime fallback is allowed only
-  inside that union, and L1 takes the max over every route still permitted by it.
-- **`safe`:** permit every reachable route with a complete analytical bound and exclude unproven
-  routes such as cuDNN. This maximizes bounded fallback coverage; it does not mean "always choose
-  the slowest route."
+  prefill, chunked prefill, and single-token decode. The selected general-phase routes are also
+  admitted as decode fallbacks for runtime-only failures such as an XQA shared-memory rejection,
+  but decode-only routes do not leak into either general phase. L1 takes the maximum over every
+  route in each phase mask, then the maximum across phases.
+- **`safe`:** for each phase, permit every applicable reachable route with a complete analytical
+  bound and exclude unproven routes such as cuDNN. This maximizes bounded fallback coverage; it
+  does not mean "always choose the slowest route."
 
 For every non-auto committed policy, if no permitted route serves a Run, runtime returns an explicit
 error rather than escaping to an unaccounted route.
@@ -611,7 +621,7 @@ estimation contract rather than a runtime-enforced no-OOM contract.
 
 ```
 prefill/chunk :  CompleteWorkspace(S_q=P, S_kv=C, Flash) = lse + lse_accum + out_accum
-decode        :  CompleteWorkspace(S_q=1, S_kv=C, XQA)   = GetXQAScratchSize(C)          [small]
+decode        :  max(CompleteWorkspace(XQA), CompleteWorkspace(Flash))                    [fallback-closed]
 W_L1 = max(...) = flash prefill term        ← ~38x below the unfused reservation
 ```
 
@@ -681,9 +691,10 @@ Stage 2: Static route predicate + route-aware, envelope-driven estimate.
          - Reclaims most VRAM via static analysis (Case A models).
 
 Stage 3: Committed policy + enforcement.
-         - Resolve GQA auto/latency/memory/safe intents to a phase-aware route mask.
+         - Resolve GQA auto/latency/memory/safe intents to phase-aware route masks.
          - Share that resolver across L1, L2, and runtime.
-         - Runtime may fall back only inside the committed mask and otherwise fails explicitly.
+         - Runtime classifies prefill, decode, or chunked prefill and may fall back only inside
+           that phase's committed mask; otherwise it fails explicitly.
          - Follow-up: add a low-workspace fallback so stricter policies can remain total in Case B.
 
 Stage 4: Envelope profiling Run to validate and calibrate.
