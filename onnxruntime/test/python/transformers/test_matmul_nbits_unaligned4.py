@@ -157,11 +157,16 @@ def _worker():
 class TestMatMulNBitsUnaligned4(unittest.TestCase):
     def test_tail_dispatch_matches_padded_aligned_kernels(self):
         # Run in a subprocess so the dispatch receipts written to stderr can be inspected.
+        env = os.environ.copy()
+        package_root = str(Path(ort.__file__).resolve().parent.parent)
+        pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, [package_root, pythonpath]))
         result = subprocess.run(
             [sys.executable, str(Path(__file__).resolve()), "--worker"],
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
         self.assertEqual(result.returncode, 0, result.stdout[-2000:] + result.stderr[-6000:])
         if "SKIP" in result.stdout:
