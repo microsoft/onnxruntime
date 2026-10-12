@@ -416,13 +416,13 @@ TEST(MoeExpertCountingTest, ContextExposesSessionOwnedCollector) {
   EXPECT_EQ(counters, (InlinedVector<double>{0, 0, 0, 0}));
   ASSERT_STATUS_OK(context.RecordKernelUsage());
   ASSERT_STATUS_OK(state->GetCounters(kernel, counters));
-  EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+  EXPECT_EQ(counters, (InlinedVector<double>{1.0 - 0.9, 0, 1.0 - 0.9, 0}));
 
   OpKernelContextInternal unused_context(session_state, frame, *kernel, session_state.Logger(), terminate, nullptr);
   ASSERT_NE(unused_context.GetKernelPilot(), nullptr);
   ASSERT_STATUS_OK(unused_context.RecordKernelUsage());
   ASSERT_STATUS_OK(state->GetCounters(kernel, counters));
-  EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+  EXPECT_EQ(counters, (InlinedVector<double>{1.0 - 0.9, 0, 1.0 - 0.9, 0}));
 }
 
 TEST(MoeExpertCountingTest, FailedKernelDoesNotCommitCollectedUsage) {
@@ -454,7 +454,7 @@ TEST(MoeExpertCountingTest, FailedKernelDoesNotCommitCollectedUsage) {
   fail = false;
   RunCountingModel(session);
   for (const auto& [kernel, counters] : CountersByKernel(*session.GetSessionState().GetMoeExpertState())) {
-    EXPECT_EQ(counters, (InlinedVector<double>{0, 0, 0.1, 0}));
+    EXPECT_EQ(counters, (InlinedVector<double>{0, 0, 1.0 - 0.9, 0}));
   }
 }
 
@@ -629,19 +629,17 @@ TEST(MoeExpertCountingTest, SharesStateWithSubgraphs) {
   const auto counters_by_kernel = CountersByKernel(*state);
   ASSERT_EQ(counters_by_kernel.size(), 4U);
   for (const auto& [kernel, counters] : counters_by_kernel) {
-    EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+    EXPECT_EQ(counters, (InlinedVector<double>{1.0 - 0.9, 0, 1.0 - 0.9, 0}));
   }
 }
 
 TEST(MoeExpertCountingTest, AppliesConfiguredExponentialCounters) {
   const auto model = MakeCountingModel();
-  for (const auto& [alpha, beta, expected] : {
-           std::tuple{"0.5", "0.25", 0.375}, std::tuple{"0.5", "0.5", 0.75},
-           std::tuple{"0", "0", 0.0}, std::tuple{"1", "0", 0.0}, std::tuple{"0", "1", 1.0}}) {
-    SCOPED_TRACE(MakeString("alpha=", alpha, ", beta=", beta));
+  for (const auto& [alpha, expected] : {
+           std::pair{"0.5", 0.75}, std::pair{"0", 1.0}, std::pair{"1", 0.0}}) {
+    SCOPED_TRACE(MakeString("alpha=", alpha));
     auto options = CountingOptions();
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterAlpha, alpha));
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterBeta, beta));
     InferenceSessionWrapper session(options, GetEnvironment());
     ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
     ASSERT_STATUS_OK(session.Initialize());
@@ -671,7 +669,7 @@ TEST(MoeExpertCountingTest, LoadsInitialStateFile) {
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(session.GetSessionState().GetMoeExpertState()->GetCounters(
       session.GetSessionState().GetKernel(0), counters));
-  EXPECT_EQ(counters, (InlinedVector<double>{3.25, 0, 0.1, 0}));
+  EXPECT_EQ(counters, (InlinedVector<double>{3.25, 0, 1.0 - 0.9, 0}));
 }
 
 #if defined(USE_CUDA)
@@ -1154,7 +1152,6 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "true"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "-1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "invalid"}}) {
     SessionOptions options;
@@ -1175,12 +1172,9 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
   for (const auto& entry : {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "-0.1"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "1.1"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.95"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "nan"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "-0.1"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "0.2"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "inf"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "invalid"}}) {
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "inf"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "invalid"}}) {
     auto options = CountingOptions();
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(entry.first, entry.second));
     InferenceSessionWrapper session(options, GetEnvironment());

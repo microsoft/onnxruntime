@@ -114,7 +114,7 @@ TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSub
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], selected));
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(state.GetCounters(kernels_[2], counters));
-  EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+  EXPECT_EQ(counters, (InlinedVector<double>{1.0 - 0.9, 0, 1.0 - 0.9, 0}));
 
   const auto stats = state.GetExpertStats();
   ASSERT_EQ(stats.size(), 9U);
@@ -161,7 +161,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
   EXPECT_EQ(event["node_index"], 7);
   EXPECT_EQ(event["node_type"], "Identity");
   EXPECT_EQ(event["selected_experts"], nlohmann::json({2, 0}));
-  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.0, 0.1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({1.0 - 0.9, 0.0, 1.0 - 0.9}));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, LogsGraphScopeForSubgraphNode) {
@@ -193,7 +193,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsGraphScopeForSubgraphNode) {
 
 TEST_F(KernelPilotMoeExpertStateTest, LimitsLogsWithoutLimitingCountersAndResetsBudgetPerRun) {
   KernelPilotMoeExpertState state;
-  ASSERT_STATUS_OK(state.SetCounterParameters(0, 1));
+  ASSERT_STATUS_OK(state.SetCounterAlpha(0));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   auto sink = std::make_unique<CapturingSink>();
@@ -233,7 +233,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LimitsLogsWithoutLimitingCountersAndResets
 
 TEST_F(KernelPilotMoeExpertStateTest, DisabledInfoDoesNotConsumeLogBudget) {
   KernelPilotMoeExpertState state;
-  ASSERT_STATUS_OK(state.SetCounterParameters(0, 1));
+  ASSERT_STATUS_OK(state.SetCounterAlpha(0));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   auto sink = std::make_unique<CapturingSink>();
@@ -268,7 +268,7 @@ TEST_F(KernelPilotMoeExpertStateTest, ParallelNodesShareLogBudget) {
     std::mutex mutex_;
   };
   KernelPilotMoeExpertState state;
-  ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 0.5));
+  ASSERT_STATUS_OK(state.SetCounterAlpha(0.5));
   for (size_t i = 0; i < 3; ++i) {
     ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], MakeString("main/", i, "/4:body"), 0, "MoE", 2));
   }
@@ -306,7 +306,7 @@ TEST_F(KernelPilotMoeExpertStateTest, ParallelNodesShareLogBudget) {
 
 TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   KernelPilotMoeExpertState state;
-  ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 0.25));
+  ASSERT_STATUS_OK(state.SetCounterAlpha(0.5));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
   std::istringstream initial(
       "moe_expert_state 1\n"
@@ -317,39 +317,31 @@ TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   const int selected[] = {2, 0, 2};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{2.25, 1, 0.75}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{2.5, 1, 1}));
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{1.375, 0.5, 0.625}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{1.75, 0.5, 1}));
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], {}));
-  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.6875, 0.25, 0.3125}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.875, 0.25, 0.5}));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, ValidatesCounterParameters) {
-  for (const auto& [alpha, beta] : {
-           std::pair{-0.1, 1.0},
-           std::pair{1.1, 1.0},
-           std::pair{0.0, 1.1},
-           std::pair{0.9, 0.2},
-           std::pair{1.0, std::numeric_limits<double>::epsilon()},
-           std::pair{std::numeric_limits<double>::infinity(), 1.0},
-           std::pair{std::numeric_limits<double>::quiet_NaN(), 0.0},
-           std::pair{1.0, -0.1},
-           std::pair{1.0, std::numeric_limits<double>::infinity()},
-           std::pair{0.0, std::numeric_limits<double>::quiet_NaN()}}) {
-    SCOPED_TRACE(MakeString("alpha=", alpha, ", beta=", beta));
+  for (const double alpha : {
+           -0.1,
+           1.1,
+           std::numeric_limits<double>::infinity(),
+           std::numeric_limits<double>::quiet_NaN()}) {
+    SCOPED_TRACE(MakeString("alpha=", alpha));
     KernelPilotMoeExpertState state;
-    EXPECT_FALSE(state.SetCounterParameters(alpha, beta).IsOK());
+    EXPECT_FALSE(state.SetCounterAlpha(alpha).IsOK());
   }
-  for (const auto& [alpha, beta] : {
-           std::pair{0.0, 0.0}, std::pair{1.0, 0.0}, std::pair{0.0, 1.0},
-           std::pair{0.9, 0.1}, std::pair{0.5, 0.5}, std::pair{0.5, 0.25}}) {
-    SCOPED_TRACE(MakeString("alpha=", alpha, ", beta=", beta));
+  for (const double alpha : {0.0, 0.5, 0.9, 1.0}) {
+    SCOPED_TRACE(MakeString("alpha=", alpha));
     KernelPilotMoeExpertState state;
-    EXPECT_STATUS_OK(state.SetCounterParameters(alpha, beta));
+    EXPECT_STATUS_OK(state.SetCounterAlpha(alpha));
   }
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
-  EXPECT_FALSE(state.SetCounterParameters(0.5, 0.25).IsOK());
+  EXPECT_FALSE(state.SetCounterAlpha(0.5).IsOK());
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
@@ -419,17 +411,15 @@ TEST_F(KernelPilotMoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 0}));
   const int selected[] = {1};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 0.1}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 1.0 - 0.9}));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, ValidCoefficientsKeepCountersBounded) {
-  for (const auto& [alpha, beta] : {
-           std::pair{0.0, 0.0}, std::pair{1.0, 0.0}, std::pair{0.0, 1.0},
-           std::pair{0.9, 0.1}, std::pair{0.5, 0.25}}) {
+  for (const double alpha : {0.0, 0.5, 0.9, 1.0}) {
     for (const double initial_value : {0.0, std::numeric_limits<double>::max()}) {
-      SCOPED_TRACE(MakeString("alpha=", alpha, ", beta=", beta, ", initial=", initial_value));
+      SCOPED_TRACE(MakeString("alpha=", alpha, ", initial=", initial_value));
       KernelPilotMoeExpertState state;
-      ASSERT_STATUS_OK(state.SetCounterParameters(alpha, beta));
+      ASSERT_STATUS_OK(state.SetCounterAlpha(alpha));
       ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
       std::stringstream initial;
       initial << std::setprecision(std::numeric_limits<double>::max_digits10)

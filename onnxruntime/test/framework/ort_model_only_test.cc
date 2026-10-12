@@ -172,8 +172,7 @@ TEST(OrtModelOnlyTests, RejectsMoeExpertCountingInMinimalBuild) {
            std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"},
            std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "true"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "counters.txt"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"}}) {
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"}}) {
     SCOPED_TRACE(key);
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(key, value));

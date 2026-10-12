@@ -41,16 +41,12 @@ Status KernelPilotMoeExpertState::EndRun() {
   return Status::OK();
 }
 
-Status KernelPilotMoeExpertState::SetCounterParameters(double alpha, double beta) {
-  ORT_RETURN_IF_NOT(std::isfinite(alpha) && alpha >= 0.0,
-                    "MoE expert counter alpha must be finite and non-negative.");
-  ORT_RETURN_IF_NOT(std::isfinite(beta) && beta >= 0.0,
-                    "MoE expert counter beta must be finite and non-negative.");
-  ORT_RETURN_IF_NOT(alpha + beta <= 1.0, "MoE expert counter alpha + beta must be at most 1.");
+Status KernelPilotMoeExpertState::SetCounterAlpha(double alpha) {
+  ORT_RETURN_IF_NOT(std::isfinite(alpha) && alpha >= 0.0 && alpha <= 1.0,
+                    "MoE expert counter alpha must be finite and in [0, 1].");
   ORT_RETURN_IF(initialized_ || !kernels_.empty(),
                 "MoE expert counter parameters cannot change after node registration.");
   alpha_ = alpha;
-  beta_ = beta;
   return Status::OK();
 }
 
@@ -250,7 +246,7 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
     counter *= alpha_;
   }
   for (int expert : used_expert_ids) {
-    counters_[expert_ids_.at({kernel, expert})] += beta_;
+    counters_[expert_ids_.at({kernel, expert})] += 1.0 - alpha_;
   }
 
   if (logging_logger_ != nullptr &&

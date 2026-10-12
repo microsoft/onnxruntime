@@ -2779,8 +2779,7 @@ common::Status InferenceSession::Initialize() {
           (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts &&
            (value.empty() || value.find_first_not_of('0') != std::string::npos)) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
-          option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
-          option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
+          option == kOrtSessionOptionsConfigMoeExpertCounterAlpha) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
       }
@@ -2817,8 +2816,7 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF(moe_counter_state_file->empty(),
                     kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
     }
-    for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha,
-                            kOrtSessionOptionsConfigMoeExpertCounterBeta}) {
+    for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha}) {
       ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() &&
                         !enable_moe_expert_counting && !enable_moe_expert_statistics && !enable_moe_cpu_offload,
                     key, " requires expert counting, statistics logging, or MoE CPU offload to be enabled.");
