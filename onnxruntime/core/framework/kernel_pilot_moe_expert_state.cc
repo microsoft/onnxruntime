@@ -268,7 +268,16 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
     size_t in_flight{0};
     size_t blocked_candidates{0};
   };
+  struct ScheduledSwap {
+    const KernelState* state;
+    int device_id;
+    int outgoing_cuda_expert;
+    int incoming_cpu_expert;
+    double outgoing_score;
+    double incoming_score;
+  };
   std::map<int, SwapQueueMetrics> metrics_by_device;
+  InlinedVector<ScheduledSwap> scheduled_swaps;
   InlinedVector<KernelState*> ordered_states;
   ordered_states.reserve(kernels_.size());
   for (auto& [kernel, state] : kernels_) {
@@ -328,6 +337,8 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
         continue;
       }
       ORT_RETURN_IF_ERROR(cache->StartSwap(coldest_cuda_expert, hottest_cpu_expert));
+      scheduled_swaps.push_back(
+          {state, device_id, coldest_cuda_expert, hottest_cpu_expert, cuda_min, cpu_max});
       ++metrics.in_flight;
     }
   }
@@ -352,6 +363,22 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
             << ",\"blocked_candidates\":" << metrics.blocked_candidates << "}";
       total_in_flight += metrics.in_flight;
       total_blocked_candidates += metrics.blocked_candidates;
+    }
+    event << "],\"scheduled_swaps\":[";
+    for (size_t i = 0; i < scheduled_swaps.size(); ++i) {
+      if (i != 0) {
+        event << ",";
+      }
+      const auto& swap = scheduled_swaps[i];
+      event << "{\"graph_scope\":";
+      common::WriteJsonString(event, swap.state->key.first);
+      event << ",\"node_index\":" << swap.state->key.second
+            << ",\"device_id\":" << swap.device_id
+            << ",\"outgoing_cuda_expert\":" << swap.outgoing_cuda_expert
+            << ",\"incoming_cpu_expert\":" << swap.incoming_cpu_expert
+            << ",\"outgoing_score\":" << std::setprecision(std::numeric_limits<double>::max_digits10)
+            << swap.outgoing_score
+            << ",\"incoming_score\":" << swap.incoming_score << "}";
     }
     event << "],\"total_in_flight\":" << total_in_flight
           << ",\"total_blocked_candidates\":" << total_blocked_candidates << "}";

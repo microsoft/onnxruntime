@@ -118,7 +118,8 @@ published placement; an asynchronous swap is not visible until the kernel publis
 
 At the end of each successful run, `moe_expert_swaps` reports the number of in-flight swaps and eligible candidates
 blocked by the concurrency limit, both per CUDA device and in total. Candidates are recalculated after every run and
-are not retained in a persistent queue.
+are not retained in a persistent queue. `scheduled_swaps` identifies every exchange started by that run, including
+the node, the outgoing CUDA expert, the incoming CPU expert, and their counter scores.
 
 ```json
 "selected_experts": [
@@ -129,6 +130,20 @@ are not retained in a persistent queue.
     "node_rank": 3,
     "global_position": 1024,
     "device": "CUDA"
+  }
+]
+```
+
+```json
+"scheduled_swaps": [
+  {
+    "graph_scope": "main",
+    "node_index": 12,
+    "device_id": 0,
+    "outgoing_cuda_expert": 41,
+    "incoming_cpu_expert": 173,
+    "outgoing_score": 0.05,
+    "incoming_score": 0.2
   }
 ]
 ```

@@ -62,9 +62,11 @@ When INFO output is disabled, counter records are neither formatted nor charged 
 Only logging-budget reservation uses an atomic; counting-only updates remain unsynchronized across disjoint kernel ranges.
 
 After each successful CPU-offload `Run()`, INFO logging also emits one `moe_expert_swaps` JSON record. It reports
-`in_flight` swaps and `blocked_candidates` per CUDA device, plus session-wide totals. A blocked candidate is currently
-eligible for a swap but was not started because the per-device concurrency limit was reached. Candidates are recomputed
-after every run rather than retained in a persistent queue. This record is not part of the counter-record logging budget.
+`in_flight` swaps and `blocked_candidates` per CUDA device, plus session-wide totals. Its `scheduled_swaps` array
+identifies each exchange started by that run with the graph scope, node index, device, outgoing CUDA expert, incoming
+CPU expert, and both pre-swap scores. A blocked candidate is currently eligible for a swap but was not started because
+the per-device concurrency limit was reached. Candidates are recomputed after every run rather than retained in a
+persistent queue. This record is not part of the counter-record logging budget.
 
 A `KernelPilot` is allocated for each kernel at initialization; its `KernelPilotMoeExpertSelection` member counts repeated routing IDs only once.
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value

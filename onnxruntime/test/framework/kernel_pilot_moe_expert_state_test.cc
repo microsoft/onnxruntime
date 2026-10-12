@@ -550,6 +550,19 @@ TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapHonorsPerDeviceLimit) {
     EXPECT_EQ(event["request_id"], "request");
     EXPECT_EQ(event["total_in_flight"], expected_swap_count);
     EXPECT_EQ(event["total_blocked_candidates"], caches.size() - expected_swap_count);
+    ASSERT_EQ(event["scheduled_swaps"].size(), expected_swap_count);
+    for (size_t i = 0; i < expected_swap_count; ++i) {
+      EXPECT_EQ(event["scheduled_swaps"][i],
+                nlohmann::json({
+                    {"graph_scope", "main"},
+                    {"node_index", i},
+                    {"device_id", 0},
+                    {"outgoing_cuda_expert", 0},
+                    {"incoming_cpu_expert", 1},
+                    {"outgoing_score", 0.0},
+                    {"incoming_score", 1.0},
+                }));
+    }
     ASSERT_EQ(event["devices"].size(), 1U);
     EXPECT_EQ(event["devices"][0],
               nlohmann::json({
