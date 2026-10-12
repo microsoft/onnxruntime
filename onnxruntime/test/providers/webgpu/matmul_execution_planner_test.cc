@@ -220,7 +220,7 @@ TEST(MatMulExecutionPlannerTest, VendorCanTuneForcedAlgorithmConfiguration) {
   params.adapter_architecture = "test-architecture";
   params.a_data_type = 10;
   params.b_data_type = 10;
-    params.k = 64;
+  params.k = 64;
 
   const MatMulExecutionPlan plan =
       CreatePlan(planner, params, MatMulAlgorithm::Packed);
@@ -625,24 +625,54 @@ TEST(MatMulExecutionPlanValidationTest, RejectsInvalidVendorConfigurations) {
 
   IncompatibleConfigurationPlanner incompatible_planner;
   EXPECT_FALSE(incompatible_planner.CreateExecutionPlan(
-      params, MatMulAlgorithm::Packed, plan).IsOK());
+                                       params, MatMulAlgorithm::Packed, plan)
+                   .IsOK());
 
   InvalidPackedConfigurationPlanner invalid_packed_planner;
   EXPECT_FALSE(invalid_packed_planner.CreateExecutionPlan(
-      params, MatMulAlgorithm::Packed, plan).IsOK());
+                                         params, MatMulAlgorithm::Packed, plan)
+                   .IsOK());
 
   MismatchedSubgroupConfigurationPlanner mismatched_subgroup_planner;
   params.has_subgroup_capability = true;
   params.subgroup_size = 16;
   EXPECT_FALSE(mismatched_subgroup_planner.CreateExecutionPlan(
-      params, MatMulAlgorithm::Subgroup, plan).IsOK());
+                                              params, MatMulAlgorithm::Subgroup, plan)
+                   .IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, RejectsPackedDimensionsOutsideUint32Range) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.packed_m = 32;
+  params.n = 64;
+  params.k = 64;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+  constexpr int64_t max_shader_dimension = std::numeric_limits<uint32_t>::max();
+
+  params.packed_m = max_shader_dimension;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  params.packed_m = max_shader_dimension + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+
+  params.packed_m = 32;
+  params.n = max_shader_dimension;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  params.n = max_shader_dimension + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+
+  params.n = 64;
+  params.k = max_shader_dimension;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  params.k = max_shader_dimension + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
 }
 
 TEST(MatMulExecutionPlanValidationTest, RejectsPackedDispatchOverflow) {
   MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
   params.k = 64;
-  params.n = std::numeric_limits<int64_t>::max();
+  params.packed_batch_size = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1;
   MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
   EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
@@ -664,7 +694,8 @@ TEST(MatMulExecutionPlanValidationTest, RejectsSplitKDispatchOverflow) {
   MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
   EXPECT_FALSE(planner.CreateExecutionPlan(
-      params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
+                          params, MatMulAlgorithm::PackedSplitK, plan)
+                   .IsOK());
 }
 
 TEST(MatMulAlgorithmPrerequisiteTest, IntelAVec4RequiresCompatibleRowsPerThread) {
@@ -686,7 +717,8 @@ TEST(MatMulExecutionPlanValidationTest, IntelCapabilityDoesNotIncludeAutomaticTh
   MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
   EXPECT_TRUE(planner.CreateExecutionPlan(
-      below_heuristic_threshold, MatMulAlgorithm::Subgroup, plan).IsOK());
+                         below_heuristic_threshold, MatMulAlgorithm::Subgroup, plan)
+                  .IsOK());
   EXPECT_NE(planner.SelectAlgorithm(below_heuristic_threshold), MatMulAlgorithm::Subgroup);
 }
 

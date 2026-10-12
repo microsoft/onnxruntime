@@ -216,8 +216,11 @@ Status MatMulExecutionPlanner::ValidateExecutionPlan(
                           "MatMul algorithm packed_split_k does not support these inputs.");
       }
 
-      ORT_RETURN_IF_NOT(params.packed_m >= 0 && params.n >= 0,
-                        "MatMul packed dimensions must be nonnegative.");
+      constexpr int64_t max_shader_dimension = std::numeric_limits<uint32_t>::max();
+      ORT_RETURN_IF_NOT(params.packed_m >= 0 && params.packed_m <= max_shader_dimension &&
+                            params.n >= 0 && params.n <= max_shader_dimension &&
+                            params.k <= max_shader_dimension,
+                        "MatMul packed dimensions must fit in uint32.");
       ORT_RETURN_IF_NOT(
           TryGetMatMulPackedDispatchGroupCount(
               static_cast<uint64_t>(params.n), configuration.workgroup_size[0],
@@ -237,7 +240,7 @@ Status MatMulExecutionPlanner::ValidateExecutionPlan(
         const auto splits_per_batch = TryGetMatMulPackedDispatchGroupCount(
             static_cast<uint64_t>(params.k), configuration.split_dim_inner, 1);
         ORT_RETURN_IF_NOT(
-          params.packed_batch_size > 0 && splits_per_batch.has_value() &&
+            params.packed_batch_size > 0 && splits_per_batch.has_value() &&
                 static_cast<uint64_t>(*splits_per_batch) <=
                     std::numeric_limits<uint32_t>::max() / params.packed_batch_size,
             "MatMul packed Split-K dispatch dimension exceeds uint32 limits.");
