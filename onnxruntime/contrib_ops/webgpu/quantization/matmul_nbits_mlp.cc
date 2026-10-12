@@ -66,23 +66,25 @@ std::string EmitGateActivationExpr(MlpActivationKind kind, std::string_view gate
   F(bool, acc_f32_)
 
 struct MatMulNBitsMlpDecodeProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_CONFIG);
-    Config(uint32_t tile_size, bool has_gate_bias, bool has_up_bias, bool has_norm_input, bool has_skip_input,
-           bool has_skip_output, bool single_scale_weights, uint32_t tile_size_k_vec, uint32_t k_unroll_tiles,
-           MlpActivationKind activation_kind, bool acc_f32)
-        : tile_size_(tile_size),
-          has_gate_bias_(has_gate_bias),
-          has_up_bias_(has_up_bias),
-          has_norm_input_(has_norm_input),
-          has_skip_input_(has_skip_input),
-          has_skip_output_(has_skip_output),
-          single_scale_weights_(single_scale_weights),
-          tile_size_k_vec_(tile_size_k_vec),
-          k_unroll_tiles_(k_unroll_tiles),
-          activation_kind_(activation_kind),
-          acc_f32_(acc_f32) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t tile_size, bool has_gate_bias, bool has_up_bias, bool has_norm_input, bool has_skip_input,
+                           bool has_skip_output, bool single_scale_weights, uint32_t tile_size_k_vec, uint32_t k_unroll_tiles,
+                           MlpActivationKind activation_kind, bool acc_f32) {
+    Config result{};
+    result.tile_size_ = uint32_t(tile_size);
+    result.has_gate_bias_ = bool(has_gate_bias);
+    result.has_up_bias_ = bool(has_up_bias);
+    result.has_norm_input_ = bool(has_norm_input);
+    result.has_skip_input_ = bool(has_skip_input);
+    result.has_skip_output_ = bool(has_skip_output);
+    result.single_scale_weights_ = bool(single_scale_weights);
+    result.tile_size_k_vec_ = uint32_t(tile_size_k_vec);
+    result.k_unroll_tiles_ = uint32_t(k_unroll_tiles);
+    result.activation_kind_ = MlpActivationKind(activation_kind);
+    result.acc_f32_ = bool(acc_f32);
+
+    return result;
+  }
   static constexpr std::string_view name = "MatMulNBitsMlpDecode";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -142,17 +144,19 @@ struct MatMulNBitsMlpDecodeProgramShader {
         WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K_of_a", ProgramUniformVariableDataType::Uint32},
-      {"K_of_b", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"skip_size", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, N)                                                      \
+  U(Uint32, K)                                                      \
+  U(Uint32, K_of_a)                                                 \
+  U(Uint32, K_of_b)                                                 \
+  U(Uint32, block_size)                                             \
+  U(Uint32, blocks_per_col)                                         \
+  U(Uint32, num_N_tile)                                             \
+  U(Uint32, batch_count)                                            \
+  U(Uint32, skip_size)                                              \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MAT_MUL_N_BITS_MLP_DECODE_PROGRAM_CONFIG
 
@@ -161,10 +165,13 @@ using MatMulNBitsMlpDecodeProgram = ConfiguredProgram<MatMulNBitsMlpDecodeProgra
 #define WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_CONFIG(F) F(MlpActivationKind, activation_kind_)
 
 struct MatMulNBitsMlpProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_CONFIG);
-    Config(MlpActivationKind activation_kind) : activation_kind_(activation_kind) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_CONFIG);
+  static Config MakeConfig(MlpActivationKind activation_kind) {
+    Config result{};
+    result.activation_kind_ = MlpActivationKind(activation_kind);
+
+    return result;
+  }
   static constexpr std::string_view name = "MatMulNBitsMlp";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -182,7 +189,10 @@ struct MatMulNBitsMlpProgramShader {
     return Status::OK();
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, vec_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MAT_MUL_N_BITS_MLP_PROGRAM_CONFIG
 

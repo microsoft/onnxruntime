@@ -19,18 +19,24 @@ using onnxruntime::webgpu::ComputeContext;
   F(bool, use_seqlens_for_position_)
 
 struct RotaryEmbeddingProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_ROTARY_EMBEDDING_PROGRAM_CONFIG);
-    Config(bool interleaved, bool use_seqlens_for_position = false)
-        : interleaved_{interleaved}, use_seqlens_for_position_{use_seqlens_for_position} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+  static Config MakeConfig(bool interleaved, bool use_seqlens_for_position = false) {
+    Config result{};
+    result.interleaved_ = bool{interleaved};
+    result.use_seqlens_for_position_ = bool{use_seqlens_for_position};
+
+    return result;
+  }
   static constexpr std::string_view name = "RotaryEmbedding";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"scale", ProgramUniformVariableDataType::Float32},
-                                          {"global_shape", ProgramUniformVariableDataType::Uint32},
-                                          {"global_stride", ProgramUniformVariableDataType::Uint32},
-                                          {"input_output_stride", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, scale)                                        \
+  U(Uint32, global_shape)                                  \
+  U(Uint32, global_stride)                                 \
+  U(Uint32, input_output_stride)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_ROTARY_EMBEDDING_PROGRAM_CONFIG
 
@@ -41,30 +47,36 @@ using RotaryEmbeddingProgram = ConfiguredProgram<RotaryEmbeddingProgramShader>;
   F(bool, has_qk_norm_)
 
 struct FusedQKRotaryEmbeddingProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_CONFIG);
-    Config(bool interleaved, bool has_qk_norm) : interleaved_{interleaved}, has_qk_norm_{has_qk_norm} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+  static Config MakeConfig(bool interleaved, bool has_qk_norm) {
+    Config result{};
+    result.interleaved_ = bool{interleaved};
+    result.has_qk_norm_ = bool{has_qk_norm};
+
+    return result;
+  }
   static constexpr std::string_view name = "FusedQKRotaryEmbedding";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  // q_* describes query rotation domain (same definition as existing program)
-  // k_* describes key rotation domain.
-  // When has_qk_norm_ is true, the program also fuses a per-head RMS normalization
-  // (epsilon = qk_norm_epsilon, scale = q_norm_weight / k_norm_weight) over the
-  // head_size channels of Q and K before the rotary rotation. head_size and
-  // qk_norm_epsilon are required uniforms when has_qk_norm_ is true; they are
-  // ignored otherwise but must still be supplied (callers pass placeholder values).
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"scale", ProgramUniformVariableDataType::Float32},
-      {"q_global_shape", ProgramUniformVariableDataType::Uint32},
-      {"q_global_stride", ProgramUniformVariableDataType::Uint32},
-      {"q_input_output_stride", ProgramUniformVariableDataType::Uint32},
-      {"k_global_shape", ProgramUniformVariableDataType::Uint32},
-      {"k_input_output_stride", ProgramUniformVariableDataType::Uint32},
-      {"q_domain_size", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32});
+// q_* describes query rotation domain (same definition as existing program)
+// k_* describes key rotation domain.
+// When has_qk_norm_ is true, the program also fuses a per-head RMS normalization
+// (epsilon = qk_norm_epsilon, scale = q_norm_weight / k_norm_weight) over the
+// head_size channels of Q and K before the rotary rotation. head_size and
+// qk_norm_epsilon are required uniforms when has_qk_norm_ is true; they are
+// ignored otherwise but must still be supplied (callers pass placeholder values).
+#define WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, scale)                                                  \
+  U(Uint32, q_global_shape)                                          \
+  U(Uint32, q_global_stride)                                         \
+  U(Uint32, q_input_output_stride)                                   \
+  U(Uint32, k_global_shape)                                          \
+  U(Uint32, k_input_output_stride)                                   \
+  U(Uint32, q_domain_size)                                           \
+  U(Uint32, head_size)                                               \
+  U(Float32, qk_norm_epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_FUSED_Q_K_ROTARY_EMBEDDING_PROGRAM_CONFIG
 

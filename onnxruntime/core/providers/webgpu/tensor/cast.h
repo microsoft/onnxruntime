@@ -19,20 +19,25 @@ namespace webgpu {
   F(bool, is_from_uint8_)
 
 struct CastProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CAST_PROGRAM_CONFIG);
-    Config(int32_t to, bool is_from_int64, bool is_from_float, bool is_from_unsigned, bool is_from_uint8)
-        : to_{to},
-          is_from_int64_{is_from_int64},
-          is_from_float_{is_from_float},
-          is_from_unsigned_{is_from_unsigned},
-          is_from_uint8_{is_from_uint8} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CAST_PROGRAM_CONFIG);
+  static Config MakeConfig(int32_t to, bool is_from_int64, bool is_from_float, bool is_from_unsigned, bool is_from_uint8) {
+    Config result{};
+    result.to_ = int32_t{to};
+    result.is_from_int64_ = bool{is_from_int64};
+    result.is_from_float_ = bool{is_from_float};
+    result.is_from_unsigned_ = bool{is_from_unsigned};
+    result.is_from_uint8_ = bool{is_from_uint8};
+
+    return result;
+  }
   static constexpr std::string_view name = "Cast";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_CAST_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, vec_size)                          \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CAST_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CAST_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CAST_PROGRAM_CONFIG
 

@@ -22,18 +22,24 @@ namespace webgpu {
   F(bool, has_seq_lens_)
 
 struct LstmStateCopyProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_LSTM_STATE_COPY_PROGRAM_CONFIG);
-    Config(bool to_state, int layout, bool has_seq_lens = false)
-        : to_state_(to_state), layout_(layout), has_seq_lens_(has_seq_lens) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_LSTM_STATE_COPY_PROGRAM_CONFIG);
+  static Config MakeConfig(bool to_state, int layout, bool has_seq_lens = false) {
+    Config result{};
+    result.to_state_ = bool(to_state);
+    result.layout_ = int(layout);
+    result.has_seq_lens_ = bool(has_seq_lens);
+
+    return result;
+  }
   static constexpr std::string_view name = "LstmStateCopy";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"direction", ProgramUniformVariableDataType::Uint32},
-      {"num_directions", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_LSTM_STATE_COPY_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                   \
+  U(Uint32, hidden_size)                                  \
+  U(Uint32, direction)                                    \
+  U(Uint32, num_directions)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_LSTM_STATE_COPY_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_LSTM_STATE_COPY_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_LSTM_STATE_COPY_PROGRAM_CONFIG
 
@@ -56,34 +62,38 @@ using LstmStateCopyProgram = ConfiguredProgram<LstmStateCopyProgramShader>;
   F(std::string, h_activation_fn_)
 
 struct LstmCellProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_LSTM_CELL_PROGRAM_CONFIG);
-    Config(bool has_bias, bool has_peephole, bool has_Y, bool has_seq_lens, bool input_forget, bool has_clip,
-           int layout, const std::string& f_activation_fn, const std::string& g_activation_fn,
-           const std::string& h_activation_fn)
-        : has_bias_(has_bias),
-          has_peephole_(has_peephole),
-          has_Y_(has_Y),
-          has_seq_lens_(has_seq_lens),
-          input_forget_(input_forget),
-          has_clip_(has_clip),
-          layout_(layout),
-          f_activation_fn_(f_activation_fn),
-          g_activation_fn_(g_activation_fn),
-          h_activation_fn_(h_activation_fn) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_LSTM_CELL_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias, bool has_peephole, bool has_Y, bool has_seq_lens, bool input_forget, bool has_clip,
+                           int layout, const std::string& f_activation_fn, const std::string& g_activation_fn,
+                           const std::string& h_activation_fn) {
+    Config result{};
+    result.has_bias_ = bool(has_bias);
+    result.has_peephole_ = bool(has_peephole);
+    result.has_Y_ = bool(has_Y);
+    result.has_seq_lens_ = bool(has_seq_lens);
+    result.input_forget_ = bool(input_forget);
+    result.has_clip_ = bool(has_clip);
+    result.layout_ = int(layout);
+    result.f_activation_fn_ = std::string(f_activation_fn);
+    result.g_activation_fn_ = std::string(g_activation_fn);
+    result.h_activation_fn_ = std::string(h_activation_fn);
+
+    return result;
+  }
   static constexpr std::string_view name = "LstmCell";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"input_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"direction", ProgramUniformVariableDataType::Uint32},
-      {"num_directions", ProgramUniformVariableDataType::Uint32},
-      {"timestep", ProgramUniformVariableDataType::Uint32},
-      {"seq_length", ProgramUniformVariableDataType::Uint32},
-      {"clip_value", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_LSTM_CELL_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                             \
+  U(Uint32, input_size)                             \
+  U(Uint32, hidden_size)                            \
+  U(Uint32, direction)                              \
+  U(Uint32, num_directions)                         \
+  U(Uint32, timestep)                               \
+  U(Uint32, seq_length)                             \
+  U(Float32, clip_value)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_LSTM_CELL_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_LSTM_CELL_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_LSTM_CELL_PROGRAM_CONFIG
 
@@ -96,19 +106,25 @@ using LstmCellProgram = ConfiguredProgram<LstmCellProgramShader>;
   F(int, layout_)
 
 struct LstmWriteYProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_LSTM_WRITE_Y_PROGRAM_CONFIG);
-    Config(bool has_seq_lens, int layout) : has_seq_lens_(has_seq_lens), layout_(layout) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_LSTM_WRITE_Y_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_seq_lens, int layout) {
+    Config result{};
+    result.has_seq_lens_ = bool(has_seq_lens);
+    result.layout_ = int(layout);
+
+    return result;
+  }
   static constexpr std::string_view name = "LstmWriteY";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"direction", ProgramUniformVariableDataType::Uint32},
-      {"num_directions", ProgramUniformVariableDataType::Uint32},
-      {"timestep", ProgramUniformVariableDataType::Uint32},
-      {"seq_length", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_LSTM_WRITE_Y_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                \
+  U(Uint32, hidden_size)                               \
+  U(Uint32, direction)                                 \
+  U(Uint32, num_directions)                            \
+  U(Uint32, timestep)                                  \
+  U(Uint32, seq_length)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_LSTM_WRITE_Y_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_LSTM_WRITE_Y_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_LSTM_WRITE_Y_PROGRAM_CONFIG
 

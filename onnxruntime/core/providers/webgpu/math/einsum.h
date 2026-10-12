@@ -17,7 +17,7 @@ struct SymbolInfo {
 
 using EinsumSymbolIndices = std::map<std::string, std::vector<size_t>>;
 #define WEBGPU_EINSUM_TERM_CONFIG(F) F(EinsumSymbolIndices, symbol_to_indices)
-WEBGPU_DECLARE_CONFIG(EinsumTerm, WEBGPU_EINSUM_TERM_CONFIG);
+WEBGPU_DECLARE_SPECIALIZATION(EinsumTerm, WEBGPU_EINSUM_TERM_CONFIG);
 #undef WEBGPU_EINSUM_TERM_CONFIG
 
 class EinsumEquation {
@@ -43,17 +43,22 @@ class EinsumEquation {
   F(bool, is_scalar_)
 
 struct EinsumProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_EINSUM_PROGRAM_CONFIG);
-    // The const equation stays alive through RunProgram; no recipe containers
-    // need to be copied or allocated on a warm cache hit.
-    explicit Config(const EinsumEquation& equation)
-        : input_terms_{equation.lhs_}, output_terms_{&equation.rhs_, 1}, is_scalar_{equation.output_dims.empty()} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_EINSUM_PROGRAM_CONFIG);
+  static Config MakeConfig(const EinsumEquation& equation) {
+    Config result{};
+    result.input_terms_ = gsl::span<const EinsumTerm>{equation.lhs_};
+    result.output_terms_ = gsl::span<const EinsumTerm>{&equation.rhs_, 1};
+    result.is_scalar_ = bool{equation.output_dims.empty()};
+
+    return result;
+  }
   static constexpr std::string_view name = "Einsum";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_EINSUM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_EINSUM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_EINSUM_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_EINSUM_PROGRAM_CONFIG
 

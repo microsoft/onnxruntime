@@ -196,7 +196,7 @@ Status SubgroupMatrixGemmProgramShader::GenerateShaderCode([[maybe_unused]] cons
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  if (config.config_.Is(8, 16, 16)) {
+  if (IsSubgroupMatrixShape(config.config_, 8, 16, 16)) {
     return GenerateShaderCode8x16x16(shader, output, config.has_c_, config.trans_a_, config.trans_b_,
                                      config.sg_mat_count_m_, config.sg_mat_count_n_, config.split_k_);
   }

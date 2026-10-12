@@ -101,12 +101,10 @@ void AppendConfigValue(std::string& key, const T& value) {
 
 #define WEBGPU_CONFIG_FIELD(type, name) type name{};
 #define WEBGPU_CONFIG_ENCODE(type, name) onnxruntime::webgpu::AppendConfigValue(key, name);
-#define WEBGPU_CONFIG_MEMBERS(fields) \
-  using ShaderConfigSchema = void;    \
-  fields(WEBGPU_CONFIG_FIELD) void AppendTo([[maybe_unused]] std::string& key) const { fields(WEBGPU_CONFIG_ENCODE) }
-#define WEBGPU_DECLARE_CONFIG(name, fields) \
-  struct name final {                       \
-    WEBGPU_CONFIG_MEMBERS(fields)           \
+#define WEBGPU_DECLARE_SPECIALIZATION(name, fields)                                                                     \
+  struct name final {                                                                                                   \
+    using ShaderConfigSchema = name;                                                                                    \
+    fields(WEBGPU_CONFIG_FIELD) void AppendTo([[maybe_unused]] std::string& key) const { fields(WEBGPU_CONFIG_ENCODE) } \
   }
 
 }  // namespace onnxruntime::webgpu

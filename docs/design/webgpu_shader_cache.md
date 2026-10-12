@@ -1,136 +1,129 @@
 # Native WebGPU shader cache identity
 
-This describes the current #33153 implementation. The proposed
-[explicit input categories](webgpu_shader_value_categories.md) refine its
-authoring contract after the correctness fixes merged in #33242; that refinement
-is not yet implemented.
+Native programs use `ConfiguredProgram<Spec>`. A static generator receives a
+closed specialization type and `ConfiguredShaderHelper`. The framework encodes
+specialization and common structural metadata before querying the existing
+device-local ready/pending pipeline cache.
 
-Native WebGPU programs use `ConfiguredProgram<Spec>`. Each generator receives one
-declared configuration and a restricted `ConfiguredShaderHelper`. The framework
-encodes the configuration and the metadata exposed by that helper before looking
-up the existing device-local pipeline cache. Operators do not supply cache hints
-or select whether tensor types and ranks participate in identity.
+Within an immutable device environment, equal keys must describe compatible WGSL,
+pipeline settings and binding/uniform layout. Runtime tensor values and uniform
+payloads can change while the executable shader remains reusable. The
+[value-category contract](webgpu_shader_value_categories.md) explains each
+category, dependency rule and exception.
 
-The invariant is: within one device environment, equal keys describe the same
-generated shader, pipeline settings and cached binding/uniform layout. This
-depends on generators and their helpers reading only declared inputs and immutable
-code. Mutable globals, environment reads and other hidden generation state violate
-the contract.
-
-## Declare a program
+## Declare inputs
 
 ```cpp
-#define WEBGPU_EXAMPLE_CONFIG(F) \
-  F(bool, has_optional_output)  \
-  F(float, embedded_epsilon)
+#define EXAMPLE_SPECIALIZATION(F) F(bool, use_fast_path)
+#define EXAMPLE_UNIFORMS(U) \
+  U(Uint32, element_count)  \
+  U(Float32, epsilon)
 
 struct ExampleShader {
-  WEBGPU_DECLARE_CONFIG(Config, WEBGPU_EXAMPLE_CONFIG);
+  WEBGPU_DECLARE_SPECIALIZATION(Config, EXAMPLE_SPECIALIZATION);
+  WEBGPU_DECLARE_UNIFORMS(EXAMPLE_UNIFORMS);
   static constexpr std::string_view name = "Example";
-  static Status GenerateShaderCode(const Config& config, ConfiguredShaderHelper& shader);
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
+  static Status GenerateShaderCode(const Config& config,
+                                  ConfiguredShaderHelper& shader);
 };
-#undef WEBGPU_EXAMPLE_CONFIG
-
+#undef EXAMPLE_SPECIALIZATION
+#undef EXAMPLE_UNIFORMS
 using ExampleProgram = ConfiguredProgram<ExampleShader>;
 ```
 
-The field list declares the data and its encoder together. Adding a declared
-field automatically changes identity when that value changes. A configuration
-requiring a constructor can use `WEBGPU_CONFIG_MEMBERS(fields)` inside its final
-`Config` struct. Do not add data members outside the macro or write an encoder.
+Each specialization field automatically participates in exact encoding. Generated
+specialization structs are final aggregates and cannot be extended with extra
+members. Use a static `Spec::MakeConfig(...)` host factory when initialization
+requires conversion, validation or derivation. It returns the generated Config.
+Do not write an encoder, schema marker or open configuration class.
 
-The program owns its configuration and exposes it only as a const reference.
-The static generator has no receiver carrying additional instance state. The
-wrapper checks the generator signature, final configuration type and absence of
-instance fields on `Spec`. Direct construction through the old `Program<T>` base
-and manual `CacheHint` calls are unavailable.
+Uniform declarations generate the existing layout metadata and named slots.
+`shader.Uniform(Uniforms::epsilon).Expr()` emits `uniforms.epsilon`, without
+exposing its payload to C++. Host code still supplies the values through the
+existing `AddUniformVariables`/`AppendUniforms` packing path. Uniform types and
+active lengths participate in common identity; their values do not.
 
-Scalar values, strings, supported sequences/maps, and nested schema objects have
-exact encodings. Pointers and arbitrary object representations are rejected.
-Convert host objects to the values that generation actually needs: for example,
-a tensor-presence Boolean, a dtype enum, an owned permutation, or the activation
-kind and its source-selection flags. Do not copy numerical activation parameters
-into configuration when the shader reads those parameters from uniforms.
+For dynamic diagnostic names, a factory returns `ShaderProgramSetup<Config>`
+with `{specialization, name}`. The wrapper copies the name to its host-side
+ProgramBase and passes only specialization to the generator. Source selection
+must be represented by the specialization, code identity or common metadata,
+not by the diagnostic label.
 
-String views and spans must refer to immutable values that remain alive throughout
-program execution and source generation. Their contents, rather than their
-addresses, participate in identity. Einsum borrows its invocation's const indexing
-recipe this way, avoiding additional recipe allocations on cache hits.
+## Common, derived and runtime values
 
-Use `ShaderLiteral` for static WGSL fragments. Its immediate constructor accepts
-only constant character arrays with static lifetime, so the framework can encode
-their process-local code identity without copying or hashing the text on each hit.
-Runtime strings still use content encoding. Binary Min/Max/Pow select their
-implementation with a declared enum and keyed element types; their implementation
-text is generated only on cache misses.
+The framework captures shader/element types, ranks, counts, static-shape mode,
+segments, buffer-view ownership, embedded offsets and output atomic status.
+Shader types include vector width. It also records effective workgroup sizes,
+subgroup size, indirect-dispatch presence, override values, index ranks and
+uniform schema lengths/types. Shared declarations in `shader_metadata.h` generate
+common property accessors and encoding; conditional layout handling stays central.
 
-## Runtime data and shape specialization
+A generator obtains type/shape expressions through its restricted helper. It has
+no live Tensor, ComputeContext, ProgramBase or uniform-payload accessor. Helper
+objects returned by that interface must preserve the same boundary.
 
-The framework always captures input/output shader types (including vector width),
-element types, ranks, counts, segment counts, buffer-view ownership and output
-atomic status. Non-uniform buffer offsets are keyed; dynamic view offsets are
-uniform values. It also captures index ranks, uniform types and lengths, override
-constant values, workgroup/subgroup settings and indirect-dispatch presence.
-Static generator metadata is identified by `Spec`; device capabilities and limits
-are scoped by the existing device-local cache.
+A derived value is computed from already-covered parents. For example, LayerNorm
+bias presence follows from input count; inverse-statistic presence follows from
+output count plus mean presence. Do not independently store a derived value and
+exempt it from encoding. When the dependency is unclear, keep it specialized.
 
-Ordinary uniform payloads, buffer handles and dispatch counts do not enter the
-key. Changing runtime data should reuse a shader with the same structure.
+`ProgramTensorMetadataDependency::None` uses dynamic extents but still keys types
+and ranks. `Shape` specializes on effective dimensions and keys them centrally.
+Only capture the shape information generation needs: rank, an indexing recipe,
+or explicit static extents. Runtime dispatch counts, buffer handles, tensor data
+and uniform offsets remain outside identity unless they also select a source or
+pipeline variant.
 
-`ProgramTensorMetadataDependency::None` uses dynamic dimensions. Types and ranks
-are still keyed automatically. The restricted helper adds shape uniforms when
-needed. `ProgramTensorMetadataDependency::Shape` explicitly specializes on the
-effective dimensions; those dimensions are included in the key. This preserves
-existing static-shape optimizations without exposing a live tensor to generators.
+Static generator metadata and literal constants belong to code identity. Device
+features and limits are scoped by the device cache. Mutable policy must be keyed
+or invalidate that cache. Hidden globals/environment reads violate this contract;
+arbitrary C++ helper purity is not mechanically proven. The proposed Clang checker
+is deferred.
 
-Avoid putting an entire host shape into configuration when generation only uses
-its rank. Similarly, use an indexing recipe rather than concrete extents when
-the shader reads extents from uniforms. Pool, GatherBlockQuantized and Einsum
-illustrate these distinctions.
+## Storage and lookup
 
-## Lookup and diagnostics
+Supported scalars, enums, strings, sequences/maps and nested closed schemas have
+exact encodings. Sequence/string lengths delimit variable-size fields; float bits
+are preserved. Unsupported objects and arbitrary pointers are rejected. The cache
+compares the complete binary key after hashing, so a hash collision cannot alias
+unequal keys.
 
-The compact binary string contains exact values, with length delimiters for
-variable-sized fields and bit-preserving floating-point encoding. The existing
-map checks full string equality after hashing; a hash collision cannot alias
-different keys. Ready-cache and pending-build reuse use the same identity.
+Use `ShaderLiteral` for immutable static WGSL. Its immediate constructor accepts
+constant static character arrays, allowing code identity instead of copying and
+hashing their contents on every hit. Runtime strings retain content encoding.
+Borrowed spans/string views must remain alive and immutable through encoding and
+generation. Einsum uses this to avoid an extra recipe allocation on warm calls.
 
-A warm lookup constructs a key and queries that cache. It does not regenerate
-WGSL, compile a pipeline or query an additional pipeline cache. Key construction
-still allocates a string, and variable-sized configuration contributes copying
-and hashing work. Conservatively distinct configurations may compile identical
-source; this implementation does not deduplicate them by source.
+A warm lookup constructs one key and queries the existing cache. It does not
+regenerate WGSL, run a dependency graph, or query a second pipeline cache.
+Min/Max/Pow helper text and derived Einsum symbols are generated only on misses.
+Key construction still allocates a string, and conservative specialization may
+produce distinct keys for equivalent shaders. This is not source deduplication.
 
-Generator identity uses a process-local token. Keys are not stable disk-cache
-identities. Use `ProgramCacheKeyForLogging` for diagnostics, shader dumps and
-profiling; binary keys can contain NUL bytes.
+Keys use process-local generator/code identity and are not persistent disk-cache
+identifiers. Use `ProgramManager::KeyForLogging` for dumps and profiling. It assigns opaque
+`shader:<id>` labels without exposing addresses. Its synchronized diagnostic table
+is populated only when logging, dumping, profiling or an error requests a label,
+and is released with the ProgramManager. No diagnostic lookup runs on quiet,
+unprofiled cache hits; diagnostic mode uses extra memory proportional to its
+distinct observed keys.
 
 ## Validation and maintenance
 
-The build runs `tools/python/webgpu/check_shader_config.py` after source changes.
-The existing WGSL template test job also runs this check and its small unit suite.
-It rejects legacy program inheritance, manual hints/encoders and ordinary extra
-configuration member declarations outside the schema. Shader and pipeline creation
-must remain in `ProgramManager`. These checks complement
-the C++ API restrictions; they are not a proof of arbitrary C++ helper purity.
+`tools/python/webgpu/check_shader_config.py` rejects legacy program construction,
+manual hints/encoders, open-member schemas and legacy uniform declarations. Shader
+and pipeline creation remain owned by ProgramManager. `--report <path>` writes a
+field inventory derived from the declarations. The policy is part of the existing
+WGSL test job and incremental build; it does not require Clang.
 
-`ConfiguredProgramTest` covers automatic fields, type/vector metadata, excluded
-uniform values, exact equality under forced hash collisions, length delimiters,
-printable diagnostics, and a small set of known GPU collisions in both orders.
-Existing operator suites validate the migrated generation logic. No Cartesian
-product of every operator's variants is required to test field encoding.
+Small CPU framework cases cover specialization, common metadata, excluded runtime
+payloads, effective defaults, uniform expression types, host labels, canonical
+inactive fields, exact equality and code identity. The numerical regressions
+merged in #33242 remain the single permanent GPU coverage for those collisions.
+Existing operator suites validate generator migrations; no exhaustive variant
+matrix is required merely to test automatic field encoding.
 
-When extending the helper or pipeline descriptor, update central identity for
-every newly observable property and add a focused framework test. Review new
-generation helpers for hidden mutable state. Retain a numerical regression when
-a concrete cache collision is found: two individually correct cold variants can
-still expose a warm-cache defect when executed together.
-
-Key fields need not be mathematically independent. For example, one BiasAdd
-input's shader type determines the common dtype/vector width, and LayerNorm's
-output count plus one role bit distinguishes its optional statistics outputs.
-The framework may conservatively capture redundant structural metadata to avoid
-requiring every operator author to maintain such implications. An absent field
-is a defect only if the complete key fails to distinguish incompatible artifacts.
+When adding a helper-visible property, classify it and update common identity as
+needed. Review transitive helper behavior, borrowed lifetimes and cache scope.
+A field inventory accounts for declared inputs; it does not prove absence of all
+hidden state in arbitrary C++.

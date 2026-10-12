@@ -13,17 +13,22 @@ namespace webgpu {
 #define WEBGPU_SLICE_PROGRAM_CONFIG(F)
 
 struct SliceProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SLICE_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SLICE_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "Slice";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"starts", ProgramUniformVariableDataType::Uint32},
-                                          {"steps", ProgramUniformVariableDataType::Uint32},
-                                          {"signs", ProgramUniformVariableDataType::Int32});
+#define WEBGPU_SLICE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                        \
+  U(Uint32, starts)                             \
+  U(Uint32, steps)                              \
+  U(Int32, signs)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SLICE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SLICE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SLICE_PROGRAM_CONFIG
 

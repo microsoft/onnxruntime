@@ -17,6 +17,7 @@
 #include "core/common/common.h"
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/program_cache_key.h"
 
 namespace onnxruntime {
 class Tensor;
@@ -26,11 +27,11 @@ class WebGpuContext;
 
 namespace detail {
 std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path);
-}
+Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z, uint32_t limit_per_dimension);
+}  // namespace detail
 
-// Callback state for asynchronous pipeline creation. The created pipeline is written into
-// `pipeline` by the callback, so only this (heap-allocated) object must remain alive until the
-// future completes.
+// Shared by the pending build and Dawn's one-shot callback. Dropping a build after a failed
+// wait must not destroy the state before callback completion or cancellation.
 struct PipelineCallbackContext {
   wgpu::ComputePipeline pipeline;
   Status status;
@@ -59,12 +60,13 @@ class ProgramManager {
  public:
   ProgramManager(WebGpuContext& webgpu_context);
 
+  // May pad the grid. Both the logical and normalized counts must fit a u32 workgroup index.
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
   Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 
   // Starts building a compute pipeline for `program` and returns immediately. The compiled pipeline
-  // is delivered via `callback_context.pipeline` once `future` completes. The caller owns
-  // `callback_context` and must keep it (and `bind_group_layout`) alive until `future` completes.
+  // is delivered via `callback_context->pipeline` once `future` completes. The callback retains
+  // its own reference to the result state, including when the caller abandons a failed wait.
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,
                const std::span<uint32_t> inputs_segments,
@@ -76,8 +78,8 @@ class ProgramManager {
                wgpu::BindGroupLayout& bind_group_layout,
                std::vector<int>& shape_uniform_ranks,
                wgpu::Future& future,
-               PipelineCallbackContext& callback_context) const;
-  // Pipeline cache lookup / insert. These are the only members shared across sessions, so both
+               const std::shared_ptr<PipelineCallbackContext>& callback_context) const;
+  // Pipeline cache lookup / insert. These operations share state across sessions, so both
   // are serialized. Build() is deliberately not: callers invoke it between Get() and Set(), which
   // keeps shader compilation - by far the expensive part - outside the lock. Two sessions racing
   // on the same key therefore compile it twice; Set() keeps the first artifact and the loser is
@@ -87,6 +89,8 @@ class ProgramManager {
   // std::unordered_map keeps element references stable across rehash.
   const ProgramArtifact* Get(const std::string& key) const;
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
+
+  std::string KeyForLogging(const std::string& key) const { return diagnostic_ids_.Format(key); }
 
  private:
   wgpu::PipelineLayout CreatePipelineLayout(const ProgramBase& program,
@@ -100,6 +104,7 @@ class ProgramManager {
   WebGpuContext& webgpu_context_;
 
   std::function<void(std::string_view)> shader_dump_fn_;
+  ShaderDiagnosticIds diagnostic_ids_;
 };
 
 }  // namespace webgpu

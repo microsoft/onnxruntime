@@ -29,29 +29,33 @@ using onnxruntime::webgpu::ComputeContext;
   F(bool, use_silu_)
 
 struct VarlenCausalConvWithStateProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_VARLEN_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG);
-    Config(bool has_bias, bool has_state, bool state_in_final_state, bool has_state_update, bool has_capture_count,
-           bool use_silu)
-        : has_bias_(has_bias),
-          has_state_(has_state),
-          state_in_final_state_(state_in_final_state),
-          has_state_update_(has_state_update),
-          has_capture_count_(has_capture_count),
-          use_silu_(use_silu) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias, bool has_state, bool state_in_final_state, bool has_state_update, bool has_capture_count,
+                           bool use_silu) {
+    Config result{};
+    result.has_bias_ = bool(has_bias);
+    result.has_state_ = bool(has_state);
+    result.state_in_final_state_ = bool(state_in_final_state);
+    result.has_state_update_ = bool(has_state_update);
+    result.has_capture_count_ = bool(has_capture_count);
+    result.use_silu_ = bool(use_silu);
+
+    return result;
+  }
   static constexpr std::string_view name = "VarlenCausalConvWithState";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"channels", ProgramUniformVariableDataType::Uint32},
-      {"kernel_size", ProgramUniformVariableDataType::Uint32},
-      {"dilation", ProgramUniformVariableDataType::Uint32},
-      {"pad", ProgramUniformVariableDataType::Uint32},
-      {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"num_invocations", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_VARLEN_CAUSAL_CONV_WITH_STATE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, channels)                                                   \
+  U(Uint32, kernel_size)                                                \
+  U(Uint32, dilation)                                                   \
+  U(Uint32, pad)                                                        \
+  U(Uint32, state_update_capacity)                                      \
+  U(Uint32, batch_size)                                                 \
+  U(Uint32, total_tokens)                                               \
+  U(Uint32, num_invocations)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_CAUSAL_CONV_WITH_STATE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_VARLEN_CAUSAL_CONV_WITH_STATE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_VARLEN_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG
 

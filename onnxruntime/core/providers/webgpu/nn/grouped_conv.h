@@ -21,14 +21,16 @@ namespace webgpu {
   F(bool, depthwise_vec_)
 
 struct GroupedConvProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GROUPED_CONV_PROGRAM_CONFIG);
-    Config(const Activation& activation, bool has_bias, bool is_channels_last, bool depthwise_vec = false)
-        : activation_(activation),
-          has_bias_(has_bias),
-          is_channels_last_(is_channels_last),
-          depthwise_vec_(depthwise_vec) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GROUPED_CONV_PROGRAM_CONFIG);
+  static Config MakeConfig(const Activation& activation, bool has_bias, bool is_channels_last, bool depthwise_vec = false) {
+    Config result{};
+    result.activation_ = MakeShaderActivation(activation);
+    result.has_bias_ = bool(has_bias);
+    result.is_channels_last_ = bool(is_channels_last);
+    result.depthwise_vec_ = bool(depthwise_vec);
+
+    return result;
+  }
   static constexpr std::string_view name = "GroupedConv";
   // depthwise_vec selects the NHWC depthwise form, in which every group has exactly one output
   // channel so input and output channels correspond 1:1. That lets x, w and the output all be
@@ -36,14 +38,17 @@ struct GroupedConvProgramShader {
   // because its input channels do not line up with output vectors.
 
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"dilations", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32},
-      {"pads", ProgramUniformVariableDataType::Uint32},
-      {"output_channels_per_group", ProgramUniformVariableDataType::Uint32},
-      {"components", ProgramUniformVariableDataType::Uint32},
-      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+#define WEBGPU_GROUPED_CONV_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                               \
+  U(Uint32, dilations)                                 \
+  U(Uint32, strides)                                   \
+  U(Uint32, pads)                                      \
+  U(Uint32, output_channels_per_group)                 \
+  U(Uint32, components)                                \
+  U(Float32, activation_param_0)                       \
+  U(Float32, activation_param_1)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GROUPED_CONV_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GROUPED_CONV_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GROUPED_CONV_PROGRAM_CONFIG
 

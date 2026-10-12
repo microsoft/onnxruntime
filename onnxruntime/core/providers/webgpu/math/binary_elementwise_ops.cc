@@ -42,7 +42,7 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
-  if (config.is_int64_input_ || config.is_int64_output_) {
+  if ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) || (shader.OutputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)) {
     // INT64 input or output (component=1): declare shared base and element_count for use in the shader.
     shader.MainFunctionBody()
         << "let base = global_idx * 4u;\n"
@@ -53,7 +53,7 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
   if (config.is_lhs_scalar_ || config.is_rhs_scalar_ || !config.is_broadcast_) {
-    if (config.is_int64_input_) {
+    if ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)) {
       // INT64 inputs have component=1; read 4 individual elements into vec4 for uniform processing.
       // Guard lanes 1-3 against OOB reads when size is not divisible by 4.
       const auto a_offset = [&](const std::string& idx) {
@@ -164,7 +164,7 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
     }
   }
 
-  if (config.is_int64_output_) {
+  if ((shader.OutputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)) {
     // INT64 output (component=1): write each component of the vec4 result individually.
     shader.MainFunctionBody() << "let result = " << config.expression_.Text() << ";\n"
                               << c.SetByOffset("base", "result[0]") << "\n"
@@ -246,9 +246,7 @@ Status RunBinaryProgram(ComputeContext& context,
                                    is_rhs_scalar,
                                    shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4,
                                    shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4,
-                                   vectorize,
-                                   is_int64_input,
-                                   is_int64_output};
+                                   vectorize};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({

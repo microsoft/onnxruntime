@@ -18,22 +18,27 @@ namespace webgpu {
   F(int32_t, rank_)
 
 struct ResizeNearestProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_RESIZE_NEAREST_PROGRAM_CONFIG);
-    Config(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode,
-           onnxruntime::ResizeNearestMode nearest_mode, bool extrapolation_enabled, int32_t rank)
-        : coordinate_transform_mode_{coordinate_transform_mode},
-          nearest_mode_{nearest_mode},
-          extrapolation_enabled_{extrapolation_enabled},
-          rank_{rank} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_RESIZE_NEAREST_PROGRAM_CONFIG);
+  static Config MakeConfig(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode,
+                           onnxruntime::ResizeNearestMode nearest_mode, bool extrapolation_enabled, int32_t rank) {
+    Config result{};
+    result.coordinate_transform_mode_ = onnxruntime::ResizeCoordinateTransformationMode{coordinate_transform_mode};
+    result.nearest_mode_ = onnxruntime::ResizeNearestMode{nearest_mode};
+    result.extrapolation_enabled_ = bool{extrapolation_enabled};
+    result.rank_ = int32_t{rank};
+
+    return result;
+  }
   static constexpr std::string_view name = "ResizeNearest2D";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"roi", ProgramUniformVariableDataType::Float32},
-                                          {"scales", ProgramUniformVariableDataType::Float32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"extrapolation_value", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_RESIZE_NEAREST_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, roi)                                        \
+  U(Float32, scales)                                     \
+  U(Uint32, output_size)                                 \
+  U(Float32, extrapolation_value)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_RESIZE_NEAREST_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_RESIZE_NEAREST_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_RESIZE_NEAREST_PROGRAM_CONFIG
 
@@ -45,21 +50,26 @@ using ResizeNearestProgram = ConfiguredProgram<ResizeNearestProgramShader>;
   F(int32_t, rank_)
 
 struct ResizeBilinearProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_RESIZE_BILINEAR_PROGRAM_CONFIG);
-    Config(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode, bool extrapolation_enabled,
-           int32_t rank)
-        : coordinate_transform_mode_{coordinate_transform_mode},
-          extrapolation_enabled_{extrapolation_enabled},
-          rank_{rank} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_RESIZE_BILINEAR_PROGRAM_CONFIG);
+  static Config MakeConfig(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode, bool extrapolation_enabled,
+                           int32_t rank) {
+    Config result{};
+    result.coordinate_transform_mode_ = onnxruntime::ResizeCoordinateTransformationMode{coordinate_transform_mode};
+    result.extrapolation_enabled_ = bool{extrapolation_enabled};
+    result.rank_ = int32_t{rank};
+
+    return result;
+  }
   static constexpr std::string_view name = "ResizeBilinear";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"roi", ProgramUniformVariableDataType::Float32},
-                                          {"scales", ProgramUniformVariableDataType::Float32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"extrapolation_value", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_RESIZE_BILINEAR_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, roi)                                         \
+  U(Float32, scales)                                      \
+  U(Uint32, output_size)                                  \
+  U(Float32, extrapolation_value)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_RESIZE_BILINEAR_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_RESIZE_BILINEAR_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_RESIZE_BILINEAR_PROGRAM_CONFIG
 
@@ -71,21 +81,26 @@ using ResizeBilinearProgram = ConfiguredProgram<ResizeBilinearProgramShader>;
   F(int32_t, rank_)
 
 struct ResizeTrilinearProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_RESIZE_TRILINEAR_PROGRAM_CONFIG);
-    Config(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode, bool extrapolation_enabled,
-           int32_t rank)
-        : coordinate_transform_mode_{coordinate_transform_mode},
-          extrapolation_enabled_{extrapolation_enabled},
-          rank_{rank} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_RESIZE_TRILINEAR_PROGRAM_CONFIG);
+  static Config MakeConfig(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode, bool extrapolation_enabled,
+                           int32_t rank) {
+    Config result{};
+    result.coordinate_transform_mode_ = onnxruntime::ResizeCoordinateTransformationMode{coordinate_transform_mode};
+    result.extrapolation_enabled_ = bool{extrapolation_enabled};
+    result.rank_ = int32_t{rank};
+
+    return result;
+  }
   static constexpr std::string_view name = "ResizeTrilinear";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"roi", ProgramUniformVariableDataType::Float32},
-                                          {"scales", ProgramUniformVariableDataType::Float32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"extrapolation_value", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_RESIZE_TRILINEAR_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, roi)                                          \
+  U(Float32, scales)                                       \
+  U(Uint32, output_size)                                   \
+  U(Float32, extrapolation_value)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_RESIZE_TRILINEAR_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_RESIZE_TRILINEAR_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_RESIZE_TRILINEAR_PROGRAM_CONFIG
 
@@ -98,23 +113,28 @@ using ResizeTrilinearProgram = ConfiguredProgram<ResizeTrilinearProgramShader>;
   F(int32_t, rank_)
 
 struct ResizeBiCubicProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_RESIZE_BI_CUBIC_PROGRAM_CONFIG);
-    Config(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode, bool extrapolation_enabled,
-           bool exclude_outside, int32_t rank)
-        : coordinate_transform_mode_{coordinate_transform_mode},
-          extrapolation_enabled_{extrapolation_enabled},
-          exclude_outside_{exclude_outside},
-          rank_{rank} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_RESIZE_BI_CUBIC_PROGRAM_CONFIG);
+  static Config MakeConfig(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode, bool extrapolation_enabled,
+                           bool exclude_outside, int32_t rank) {
+    Config result{};
+    result.coordinate_transform_mode_ = onnxruntime::ResizeCoordinateTransformationMode{coordinate_transform_mode};
+    result.extrapolation_enabled_ = bool{extrapolation_enabled};
+    result.exclude_outside_ = bool{exclude_outside};
+    result.rank_ = int32_t{rank};
+
+    return result;
+  }
   static constexpr std::string_view name = "ResizeBiCubic";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"roi", ProgramUniformVariableDataType::Float32},
-                                          {"scales", ProgramUniformVariableDataType::Float32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"extrapolation_value", ProgramUniformVariableDataType::Float32},
-                                          {"cubic_coeff_a", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_RESIZE_BI_CUBIC_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, roi)                                         \
+  U(Float32, scales)                                      \
+  U(Uint32, output_size)                                  \
+  U(Float32, extrapolation_value)                         \
+  U(Float32, cubic_coeff_a)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_RESIZE_BI_CUBIC_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_RESIZE_BI_CUBIC_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_RESIZE_BI_CUBIC_PROGRAM_CONFIG
 

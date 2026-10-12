@@ -13,17 +13,23 @@ namespace webgpu {
 #define WEBGPU_TRILU_PROGRAM_CONFIG(F) F(bool, upper_)
 
 struct TriluProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_TRILU_PROGRAM_CONFIG);
-    Config(bool upper) : upper_{upper} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TRILU_PROGRAM_CONFIG);
+  static Config MakeConfig(bool upper) {
+    Config result{};
+    result.upper_ = bool{upper};
+
+    return result;
+  }
   static constexpr std::string_view name = "Trilu";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"matrix_h", ProgramUniformVariableDataType::Uint32},
-                                          {"matrix_w", ProgramUniformVariableDataType::Uint32},
-                                          {"k", ProgramUniformVariableDataType::Int32});
+#define WEBGPU_TRILU_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                        \
+  U(Uint32, matrix_h)                           \
+  U(Uint32, matrix_w)                           \
+  U(Int32, k)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TRILU_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TRILU_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_TRILU_PROGRAM_CONFIG
 

@@ -35,24 +35,26 @@ namespace {
   F(bool, acc_f32_)
 
 struct MatMulNBitsQkvDecodeProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_CONFIG);
-    Config(uint32_t tile_size, bool single_scale_weights, uint32_t tile_size_k_vec, uint32_t k_unroll_tiles,
-           bool has_norm, bool has_skip_input, bool has_skip_output, bool acc_f32)
-        : tile_size_(tile_size),
-          single_scale_weights_(single_scale_weights),
-          tile_size_k_vec_(tile_size_k_vec),
-          k_unroll_tiles_(k_unroll_tiles),
-          has_norm_(has_norm),
-          has_skip_input_(has_skip_input),
-          has_skip_output_(has_skip_output),
-          acc_f32_(acc_f32) {
-      // The no-norm variant runs against an already-normalized input tensor and therefore
-      // never owns the residual skip path nor the residual passthrough output.
-      ORT_ENFORCE(has_norm_ || (!has_skip_input_ && !has_skip_output_),
-                  "MatMulNBitsQkvDecodeProgram: skip input/output require has_norm=true.");
-    }
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t tile_size, bool single_scale_weights, uint32_t tile_size_k_vec, uint32_t k_unroll_tiles,
+                           bool has_norm, bool has_skip_input, bool has_skip_output, bool acc_f32) {
+    Config result{};
+    result.tile_size_ = uint32_t(tile_size);
+    result.single_scale_weights_ = bool(single_scale_weights);
+    result.tile_size_k_vec_ = uint32_t(tile_size_k_vec);
+    result.k_unroll_tiles_ = uint32_t(k_unroll_tiles);
+    result.has_norm_ = bool(has_norm);
+    result.has_skip_input_ = bool(has_skip_input);
+    result.has_skip_output_ = bool(has_skip_output);
+    result.acc_f32_ = bool(acc_f32);
+
+    // The no-norm variant runs against an already-normalized input tensor and therefore
+    // never owns the residual skip path nor the residual passthrough output.
+    ORT_ENFORCE(result.has_norm_ || (!result.has_skip_input_ && !result.has_skip_output_),
+                "MatMulNBitsQkvDecodeProgram: skip input/output require has_norm=true.");
+
+    return result;
+  }
   static constexpr std::string_view name = "MatMulNBitsQkvDecode";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -110,18 +112,20 @@ struct MatMulNBitsQkvDecodeProgramShader {
         WGSL_TEMPLATE_VARIABLE(v_scales_b, v_scales_b));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"Nq", ProgramUniformVariableDataType::Uint32},
-      {"Nkv", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K_of_a", ProgramUniformVariableDataType::Uint32},
-      {"K_of_b", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"skip_size", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, Nq)                                                     \
+  U(Uint32, Nkv)                                                    \
+  U(Uint32, K)                                                      \
+  U(Uint32, K_of_a)                                                 \
+  U(Uint32, K_of_b)                                                 \
+  U(Uint32, block_size)                                             \
+  U(Uint32, blocks_per_col)                                         \
+  U(Uint32, num_N_tile)                                             \
+  U(Uint32, batch_count)                                            \
+  U(Uint32, skip_size)                                              \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_CONFIG
 

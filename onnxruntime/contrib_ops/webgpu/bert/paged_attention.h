@@ -36,22 +36,26 @@ using namespace onnxruntime::webgpu;
 #define WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_CONFIG(F)
 
 struct ScatterKVToPagedCacheProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "ScatterKVToPagedCache";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"token_count", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"num_blocks", ProgramUniformVariableDataType::Uint32},
-      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, token_count)                                             \
+  U(Uint32, batch_size)                                              \
+  U(Uint32, kv_num_heads)                                            \
+  U(Uint32, head_size)                                               \
+  U(Uint32, block_size)                                              \
+  U(Uint32, num_blocks)                                              \
+  U(Uint32, max_num_blocks_per_seq)                                  \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SCATTER_K_V_TO_PAGED_CACHE_PROGRAM_CONFIG
 
@@ -80,20 +84,24 @@ using ScatterKVToPagedCacheProgram = ConfiguredProgram<ScatterKVToPagedCacheProg
 #define WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_CONFIG(F)
 
 struct PagedAttentionRotaryProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "PagedAttentionRotary";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"n_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"rotary_dim", ProgramUniformVariableDataType::Uint32},
-      {"interleaved", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                          \
+  U(Uint32, n_heads)                                             \
+  U(Uint32, head_size)                                           \
+  U(Uint32, rotary_dim)                                          \
+  U(Uint32, interleaved)                                         \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_PAGED_ATTENTION_ROTARY_PROGRAM_CONFIG
 
@@ -118,19 +126,23 @@ using PagedAttentionRotaryProgram = ConfiguredProgram<PagedAttentionRotaryProgra
 #define WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG(F)
 
 struct PagedAttentionSplitPackedQKVProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "PagedAttentionSplitPackedQKV";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"token_count", ProgramUniformVariableDataType::Uint32},
-      {"q_hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"packed_hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, token_count)                                                     \
+  U(Uint32, q_hidden_size)                                                   \
+  U(Uint32, kv_hidden_size)                                                  \
+  U(Uint32, packed_hidden_size)                                              \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_PAGED_ATTENTION_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG
 
@@ -157,20 +169,24 @@ using PagedAttentionSplitPackedQKVProgram = ConfiguredProgram<PagedAttentionSpli
 #define WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_CONFIG(F)
 
 struct PagedAttentionGatherKVProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "PagedAttentionGatherKV";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"max_kv_len", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                              \
+  U(Uint32, kv_num_heads)                                            \
+  U(Uint32, head_size)                                               \
+  U(Uint32, block_size)                                              \
+  U(Uint32, max_kv_len)                                              \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_PAGED_ATTENTION_GATHER_K_V_PROGRAM_CONFIG
 
@@ -192,18 +208,22 @@ using PagedAttentionGatherKVProgram = ConfiguredProgram<PagedAttentionGatherKVPr
 #define WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_CONFIG(F)
 
 struct PagedAttentionUnpackQueryProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "PagedAttentionUnpackQuery";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"max_seqlen_q", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, num_heads)                                                 \
+  U(Uint32, head_size)                                                 \
+  U(Uint32, max_seqlen_q)                                              \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_PAGED_ATTENTION_UNPACK_QUERY_PROGRAM_CONFIG
 
@@ -221,19 +241,23 @@ using PagedAttentionUnpackQueryProgram = ConfiguredProgram<PagedAttentionUnpackQ
 #define WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_CONFIG(F)
 
 struct PagedAttentionRepackOutputProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "PagedAttentionRepackOutput";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                                 \
+  U(Uint32, num_heads)                                                  \
+  U(Uint32, head_size)                                                  \
+  U(Uint32, hidden_size)                                                \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_PAGED_ATTENTION_REPACK_OUTPUT_PROGRAM_CONFIG
 
@@ -245,16 +269,20 @@ using PagedAttentionRepackOutputProgram = ConfiguredProgram<PagedAttentionRepack
 #define WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_CONFIG(F)
 
 struct PagedAttentionPackMetadataProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "PagedAttentionPackMetadata";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                                 \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_PAGED_ATTENTION_PACK_METADATA_PROGRAM_CONFIG
 
@@ -265,16 +293,20 @@ using PagedAttentionPackMetadataProgram = ConfiguredProgram<PagedAttentionPackMe
 #define WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_CONFIG(F)
 
 struct PagedAttentionPrepareMetadataProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "PagedAttentionPrepareMetadata";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                                    \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_PAGED_ATTENTION_PREPARE_METADATA_PROGRAM_CONFIG
 

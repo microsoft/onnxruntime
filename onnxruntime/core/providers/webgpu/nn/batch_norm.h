@@ -16,14 +16,22 @@ namespace webgpu {
   F(DataLayout, format_)
 
 struct BatchNormalizationProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_BATCH_NORMALIZATION_PROGRAM_CONFIG);
-    Config(float epsilon, int64_t spatial, DataLayout format) : epsilon_{epsilon}, spatial_{spatial}, format_{format} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_BATCH_NORMALIZATION_PROGRAM_CONFIG);
+  static Config MakeConfig(float epsilon, int64_t spatial, DataLayout format) {
+    Config result{};
+    result.epsilon_ = float{epsilon};
+    result.spatial_ = int64_t{spatial};
+    result.format_ = DataLayout{format};
+
+    return result;
+  }
   static constexpr std::string_view name = "BatchNormalization";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_BATCH_NORMALIZATION_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_BATCH_NORMALIZATION_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_BATCH_NORMALIZATION_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_BATCH_NORMALIZATION_PROGRAM_CONFIG
 

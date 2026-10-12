@@ -21,24 +21,28 @@ namespace webgpu {
   F(bool, need_handle_matmul_)
 
 struct GemmNaiveProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GEMM_NAIVE_PROGRAM_CONFIG);
-    Config(bool transA, bool transB, bool need_handle_bias, bool need_handle_matmul)
-        : transA_{transA},
-          transB_{transB},
-          need_handle_bias_{need_handle_bias},
-          need_handle_matmul_{need_handle_matmul} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GEMM_NAIVE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool transA, bool transB, bool need_handle_bias, bool need_handle_matmul) {
+    Config result{};
+    result.transA_ = bool{transA};
+    result.transB_ = bool{transB};
+    result.need_handle_bias_ = bool{need_handle_bias};
+    result.need_handle_matmul_ = bool{need_handle_matmul};
+
+    return result;
+  }
   static constexpr std::string_view name = "GemmNaive";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"alpha", ProgramUniformVariableDataType::Float32},
-      {"beta", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_GEMM_NAIVE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                             \
+  U(Uint32, M)                                       \
+  U(Uint32, N)                                       \
+  U(Uint32, K)                                       \
+  U(Float32, alpha)                                  \
+  U(Float32, beta)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GEMM_NAIVE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GEMM_NAIVE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GEMM_NAIVE_PROGRAM_CONFIG
 

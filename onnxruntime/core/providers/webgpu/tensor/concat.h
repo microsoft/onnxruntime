@@ -16,16 +16,23 @@ namespace webgpu {
   F(bool, is_int64_)
 
 struct ConcatProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CONCAT_PROGRAM_CONFIG);
-    Config(size_t axis, bool is_int64) : axis_{axis}, is_int64_{is_int64} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CONCAT_PROGRAM_CONFIG);
+  static Config MakeConfig(size_t axis, bool is_int64) {
+    Config result{};
+    result.axis_ = size_t{axis};
+    result.is_int64_ = bool{is_int64};
+
+    return result;
+  }
   static constexpr std::string_view name = "Concat";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"offsets", ProgramUniformVariableDataType::Uint32},
-                                          {"sizes_in_concat_axis", ProgramUniformVariableDataType::Uint32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_CONCAT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, offsets)                             \
+  U(Uint32, sizes_in_concat_axis)                \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CONCAT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CONCAT_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CONCAT_PROGRAM_CONFIG
 

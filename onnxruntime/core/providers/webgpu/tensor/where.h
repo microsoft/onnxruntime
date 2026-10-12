@@ -17,13 +17,20 @@ namespace webgpu {
   F(bool, is_int64_)
 
 struct WhereProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_WHERE_PROGRAM_CONFIG);
-    Config(bool is_broadcast, bool is_int64 = false) : is_broadcast_{is_broadcast}, is_int64_{is_int64} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_WHERE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool is_broadcast, bool is_int64 = false) {
+    Config result{};
+    result.is_broadcast_ = bool{is_broadcast};
+    result.is_int64_ = bool{is_int64};
+
+    return result;
+  }
   static constexpr std::string_view name = "Where";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_WHERE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, vec_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_WHERE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_WHERE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_WHERE_PROGRAM_CONFIG
 

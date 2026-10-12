@@ -24,7 +24,7 @@ namespace {
 
 std::string ActivationIdentity(const webgpu::Activation& activation) {
   std::string key;
-  webgpu::AppendConfigValue(key, webgpu::ShaderActivation{activation});
+  webgpu::AppendConfigValue(key, webgpu::MakeShaderActivation(activation));
   return key;
 }
 
@@ -103,8 +103,8 @@ const std::vector<ActivationKind>& AllActivationKinds() {
 TEST(WebGpuActivationSnippetTest, ConstantsUseShortestRoundTripForm) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.125f, 0.375f);
-    for (const std::string& wgsl : {GetActivationSnippet(activation, "vec4<f32>", "f32"),
-                                    GetActivationDeclaration(activation, "vec4<f32>", "f32")}) {
+    for (const std::string& wgsl : {GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32"),
+                                    GetActivationDeclaration(MakeShaderActivation(activation), "vec4<f32>", "f32")}) {
       for (const std::string& literal : ExtractNumericLiterals(wgsl)) {
         // Each literal must be the canonical shortest form of the f32 it parses to.
         const float parsed = std::strtof(literal.c_str(), nullptr);
@@ -121,8 +121,8 @@ TEST(WebGpuActivationSnippetTest, ConstantsAreLocaleIndependent) {
   std::vector<std::pair<std::string, std::string>> classic;
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.125f, 0.375f);
-    classic.emplace_back(GetActivationSnippet(activation, "vec4<f32>", "f32"),
-                         GetActivationDeclaration(activation, "vec4<f32>", "f32"));
+    classic.emplace_back(GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32"),
+                         GetActivationDeclaration(MakeShaderActivation(activation), "vec4<f32>", "f32"));
   }
 
   const ScopedGlobalLocale comma_locale{std::locale(std::locale::classic(), new CommaDecimalPoint)};
@@ -132,9 +132,9 @@ TEST(WebGpuActivationSnippetTest, ConstantsAreLocaleIndependent) {
   size_t index = 0;
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.125f, 0.375f);
-    EXPECT_EQ(GetActivationSnippet(activation, "vec4<f32>", "f32"), classic[index].first)
+    EXPECT_EQ(GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32"), classic[index].first)
         << "activation kind " << static_cast<int>(kind) << " emits locale-dependent snippet text";
-    EXPECT_EQ(GetActivationDeclaration(activation, "vec4<f32>", "f32"), classic[index].second)
+    EXPECT_EQ(GetActivationDeclaration(MakeShaderActivation(activation), "vec4<f32>", "f32"), classic[index].second)
         << "activation kind " << static_cast<int>(kind) << " emits locale-dependent helper text";
     ++index;
   }
@@ -163,8 +163,8 @@ TEST(WebGpuActivationSnippetTest, KnownConstantsAreNotTruncated) {
   for (const Expectation& expectation : expectations) {
     const Activation activation = MakeActivation(expectation.kind);
     const std::string wgsl = expectation.declaration
-                                 ? GetActivationDeclaration(activation, "vec4<f32>", "f32")
-                                 : GetActivationSnippet(activation, "vec4<f32>", "f32");
+                                 ? GetActivationDeclaration(MakeShaderActivation(activation), "vec4<f32>", "f32")
+                                 : GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32");
 
     bool found = false;
     for (const std::string& literal : ExtractNumericLiterals(wgsl)) {
@@ -185,7 +185,7 @@ TEST(WebGpuActivationSnippetTest, ParametersAreReadFromUniformsNotBaked) {
 
   for (ActivationKind kind : parameterized) {
     const Activation activation = MakeActivation(kind, 0.13579f, 0.24680f);
-    const std::string wgsl = GetActivationSnippet(activation, "vec4<f32>", "f32");
+    const std::string wgsl = GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32");
 
     EXPECT_NE(wgsl.find("uniforms.activation_param_0"), std::string::npos)
         << "kind " << static_cast<int>(kind) << " does not read its parameter from a uniform: " << wgsl;
@@ -201,8 +201,8 @@ TEST(WebGpuActivationSnippetTest, QuickGeluUnitAlphaIsASeparateShaderAndCacheKey
   EXPECT_TRUE(silu.HasUnitQuickGeluAlpha());
   EXPECT_FALSE(general.HasUnitQuickGeluAlpha());
 
-  const std::string silu_wgsl = GetActivationSnippet(silu, "vec4<f32>", "f32");
-  const std::string general_wgsl = GetActivationSnippet(general, "vec4<f32>", "f32");
+  const std::string silu_wgsl = GetActivationSnippet(MakeShaderActivation(silu), "vec4<f32>", "f32");
+  const std::string general_wgsl = GetActivationSnippet(MakeShaderActivation(general), "vec4<f32>", "f32");
 
   EXPECT_EQ(silu_wgsl.find("activation_param_0"), std::string::npos)
       << "SiLU must not read an alpha uniform: " << silu_wgsl;
@@ -217,14 +217,14 @@ TEST(WebGpuActivationSnippetTest, ParameterValuesDoNotAffectTheCacheKey) {
   const Activation leaky_a = MakeActivation(ActivationKind::LeakyRelu, 0.01f);
   const Activation leaky_b = MakeActivation(ActivationKind::LeakyRelu, 0.25f);
   EXPECT_EQ(ActivationIdentity(leaky_a), ActivationIdentity(leaky_b));
-  EXPECT_EQ(GetActivationSnippet(leaky_a, "vec4<f32>", "f32"),
-            GetActivationSnippet(leaky_b, "vec4<f32>", "f32"));
+  EXPECT_EQ(GetActivationSnippet(MakeShaderActivation(leaky_a), "vec4<f32>", "f32"),
+            GetActivationSnippet(MakeShaderActivation(leaky_b), "vec4<f32>", "f32"));
 
   const Activation clip_a = MakeActivation(ActivationKind::Clip, 0.0f, 6.0f);
   const Activation clip_b = MakeActivation(ActivationKind::Clip, -1.0f, 1.0f);
   EXPECT_EQ(ActivationIdentity(clip_a), ActivationIdentity(clip_b));
-  EXPECT_EQ(GetActivationSnippet(clip_a, "vec4<f32>", "f32"),
-            GetActivationSnippet(clip_b, "vec4<f32>", "f32"));
+  EXPECT_EQ(GetActivationSnippet(MakeShaderActivation(clip_a), "vec4<f32>", "f32"),
+            GetActivationSnippet(MakeShaderActivation(clip_b), "vec4<f32>", "f32"));
 
   EXPECT_NE(ActivationIdentity(MakeActivation(ActivationKind::Relu)),
             ActivationIdentity(MakeActivation(ActivationKind::Sigmoid)));
@@ -238,8 +238,8 @@ TEST(WebGpuActivationSnippetTest, ParameterlessActivationsReadNoUniforms) {
 
   for (ActivationKind kind : parameterless) {
     const Activation activation = MakeActivation(kind, 7.25f, 9.5f);
-    const std::string snippet = GetActivationSnippet(activation, "vec4<f32>", "f32");
-    const std::string declaration = GetActivationDeclaration(activation, "vec4<f32>", "f32");
+    const std::string snippet = GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32");
+    const std::string declaration = GetActivationDeclaration(MakeShaderActivation(activation), "vec4<f32>", "f32");
     EXPECT_EQ(snippet.find("uniforms.activation_param"), std::string::npos)
         << "kind " << static_cast<int>(kind) << " unexpectedly reads a parameter uniform: " << snippet;
     EXPECT_EQ(declaration.find("uniforms.activation_param"), std::string::npos)
@@ -251,8 +251,8 @@ TEST(WebGpuActivationSnippetTest, ParameterlessActivationsReadNoUniforms) {
 TEST(WebGpuActivationSnippetTest, HelperIsEmittedWheneverItIsCalled) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.5f, 1.5f);
-    const std::string snippet = GetActivationSnippet(activation, "vec4<f32>", "f32");
-    const std::string declaration = GetActivationDeclaration(activation, "vec4<f32>", "f32");
+    const std::string snippet = GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32");
+    const std::string declaration = GetActivationDeclaration(MakeShaderActivation(activation), "vec4<f32>", "f32");
 
     if (snippet.find("fused_act_erf") != std::string::npos) {
       EXPECT_NE(declaration.find("fn fused_act_erf"), std::string::npos)
@@ -273,10 +273,10 @@ TEST(WebGpuActivationSnippetTest, HelperIsEmittedWheneverItIsCalled) {
 TEST(WebGpuActivationSnippetTest, EveryKindProducesASnippet) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.5f, 1.5f);
-    EXPECT_FALSE(GetActivationSnippet(activation, "vec4<f32>", "f32").empty())
+    EXPECT_FALSE(GetActivationSnippet(MakeShaderActivation(activation), "vec4<f32>", "f32").empty())
         << "activation kind " << static_cast<int>(kind) << " produced no snippet";
   }
-  EXPECT_TRUE(GetActivationSnippet(MakeActivation(ActivationKind::None), "vec4<f32>", "f32").empty());
+  EXPECT_TRUE(GetActivationSnippet(MakeShaderActivation(MakeActivation(ActivationKind::None)), "vec4<f32>", "f32").empty());
 }
 
 }  // namespace test

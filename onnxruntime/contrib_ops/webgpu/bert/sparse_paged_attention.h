@@ -52,18 +52,22 @@ enum class SparseSelectedKvSource {
 #define WEBGPU_SPARSE_PAGED_ATTENTION_SCATTER_K_V_PROGRAM_CONFIG(F)
 
 struct SparsePagedAttentionScatterKVProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_PAGED_ATTENTION_SCATTER_K_V_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_PAGED_ATTENTION_SCATTER_K_V_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparsePagedAttentionScatterKV";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"cache_slot_count", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPARSE_PAGED_ATTENTION_SCATTER_K_V_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, kv_num_heads)                                                    \
+  U(Uint32, head_size)                                                       \
+  U(Uint32, cache_slot_count)                                                \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_PAGED_ATTENTION_SCATTER_K_V_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_PAGED_ATTENTION_SCATTER_K_V_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_PAGED_ATTENTION_SCATTER_K_V_PROGRAM_CONFIG
 
@@ -92,18 +96,23 @@ using SparsePagedAttentionScatterKVProgram = ConfiguredProgram<SparsePagedAttent
 #define WEBGPU_SPARSE_PAGED_ATTENTION_TOKEN_META_PROGRAM_CONFIG(F) F(bool, has_auxiliary_lengths_)
 
 struct SparsePagedAttentionTokenMetaProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_PAGED_ATTENTION_TOKEN_META_PROGRAM_CONFIG);
-    Config(bool has_auxiliary_lengths) : has_auxiliary_lengths_(has_auxiliary_lengths) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_PAGED_ATTENTION_TOKEN_META_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_auxiliary_lengths) {
+    Config result{};
+    result.has_auxiliary_lengths_ = bool(has_auxiliary_lengths);
+
+    return result;
+  }
   static constexpr std::string_view name = "SparsePagedAttentionTokenMeta";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"auxiliary_capacity", ProgramUniformVariableDataType::Uint32},
-      {"max_main_positions", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPARSE_PAGED_ATTENTION_TOKEN_META_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                                     \
+  U(Uint32, auxiliary_capacity)                                             \
+  U(Uint32, max_main_positions)                                             \
+  U(Uint32, dispatch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_PAGED_ATTENTION_TOKEN_META_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_PAGED_ATTENTION_TOKEN_META_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_PAGED_ATTENTION_TOKEN_META_PROGRAM_CONFIG
 
@@ -146,33 +155,37 @@ using SparsePagedAttentionTokenMetaProgram = ConfiguredProgram<SparsePagedAttent
   F(bool, direct_output_)
 
 struct SparsePagedAttentionMainProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_PAGED_ATTENTION_MAIN_PROGRAM_CONFIG);
-    Config(int head_size, bool is_causal, bool use_local_window, bool use_selected, bool dedup_selected,
-           bool use_slot_mapping, bool direct_output)
-        : head_size_(head_size),
-          is_causal_(is_causal),
-          use_local_window_(use_local_window),
-          use_selected_(use_selected),
-          dedup_selected_(dedup_selected),
-          use_slot_mapping_(use_slot_mapping),
-          direct_output_(direct_output) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_PAGED_ATTENTION_MAIN_PROGRAM_CONFIG);
+  static Config MakeConfig(int head_size, bool is_causal, bool use_local_window, bool use_selected, bool dedup_selected,
+                           bool use_slot_mapping, bool direct_output) {
+    Config result{};
+    result.head_size_ = int(head_size);
+    result.is_causal_ = bool(is_causal);
+    result.use_local_window_ = bool(use_local_window);
+    result.use_selected_ = bool(use_selected);
+    result.dedup_selected_ = bool(dedup_selected);
+    result.use_slot_mapping_ = bool(use_slot_mapping);
+    result.direct_output_ = bool(direct_output);
+
+    return result;
+  }
   static constexpr std::string_view name = "SparsePagedAttentionMain";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"num_blocks", ProgramUniformVariableDataType::Uint32},
-      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
-      {"max_main_positions", ProgramUniformVariableDataType::Uint32},
-      {"max_selected_entries", ProgramUniformVariableDataType::Uint32},
-      {"local_window_size", ProgramUniformVariableDataType::Uint32},
-      {"workgroup_count", ProgramUniformVariableDataType::Uint32},
-      {"scale", ProgramUniformVariableDataType::Float32},
-      {"softcap", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_SPARSE_PAGED_ATTENTION_MAIN_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, num_heads)                                                \
+  U(Uint32, kv_num_heads)                                             \
+  U(Uint32, block_size)                                               \
+  U(Uint32, num_blocks)                                               \
+  U(Uint32, max_num_blocks_per_seq)                                   \
+  U(Uint32, max_main_positions)                                       \
+  U(Uint32, max_selected_entries)                                     \
+  U(Uint32, local_window_size)                                        \
+  U(Uint32, workgroup_count)                                          \
+  U(Float32, scale)                                                   \
+  U(Float32, softcap)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_PAGED_ATTENTION_MAIN_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_PAGED_ATTENTION_MAIN_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_PAGED_ATTENTION_MAIN_PROGRAM_CONFIG
 
@@ -201,23 +214,29 @@ using SparsePagedAttentionMainProgram = ConfiguredProgram<SparsePagedAttentionMa
   F(bool, direct_output_)
 
 struct SparsePagedAttentionAuxiliaryProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_PAGED_ATTENTION_AUXILIARY_PROGRAM_CONFIG);
-    Config(int head_size, bool auxiliary_kv_shared, bool direct_output)
-        : head_size_(head_size), auxiliary_kv_shared_(auxiliary_kv_shared), direct_output_(direct_output) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_PAGED_ATTENTION_AUXILIARY_PROGRAM_CONFIG);
+  static Config MakeConfig(int head_size, bool auxiliary_kv_shared, bool direct_output) {
+    Config result{};
+    result.head_size_ = int(head_size);
+    result.auxiliary_kv_shared_ = bool(auxiliary_kv_shared);
+    result.direct_output_ = bool(direct_output);
+
+    return result;
+  }
   static constexpr std::string_view name = "SparsePagedAttentionAuxiliary";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
-      {"auxiliary_capacity", ProgramUniformVariableDataType::Uint32},
-      {"auxiliary_num_heads", ProgramUniformVariableDataType::Uint32},
-      {"max_selected_entries", ProgramUniformVariableDataType::Uint32},
-      {"workgroup_count", ProgramUniformVariableDataType::Uint32},
-      {"scale", ProgramUniformVariableDataType::Float32},
-      {"softcap", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_SPARSE_PAGED_ATTENTION_AUXILIARY_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, num_heads)                                                     \
+  U(Uint32, kv_num_heads)                                                  \
+  U(Uint32, auxiliary_capacity)                                            \
+  U(Uint32, auxiliary_num_heads)                                           \
+  U(Uint32, max_selected_entries)                                          \
+  U(Uint32, workgroup_count)                                               \
+  U(Float32, scale)                                                        \
+  U(Float32, softcap)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_PAGED_ATTENTION_AUXILIARY_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_PAGED_ATTENTION_AUXILIARY_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_PAGED_ATTENTION_AUXILIARY_PROGRAM_CONFIG
 
@@ -243,18 +262,24 @@ using SparsePagedAttentionAuxiliaryProgram = ConfiguredProgram<SparsePagedAttent
   F(bool, has_head_sink_)
 
 struct SparsePagedAttentionFinalizeProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_PAGED_ATTENTION_FINALIZE_PROGRAM_CONFIG);
-    Config(bool has_main, bool has_auxiliary, bool has_head_sink)
-        : has_main_(has_main), has_auxiliary_(has_auxiliary), has_head_sink_(has_head_sink) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_PAGED_ATTENTION_FINALIZE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_main, bool has_auxiliary, bool has_head_sink) {
+    Config result{};
+    result.has_main_ = bool(has_main);
+    result.has_auxiliary_ = bool(has_auxiliary);
+    result.has_head_sink_ = bool(has_head_sink);
+
+    return result;
+  }
   static constexpr std::string_view name = "SparsePagedAttentionFinalize";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"workgroup_count", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPARSE_PAGED_ATTENTION_FINALIZE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, num_heads)                                                    \
+  U(Uint32, head_size)                                                    \
+  U(Uint32, workgroup_count)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_PAGED_ATTENTION_FINALIZE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_PAGED_ATTENTION_FINALIZE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_PAGED_ATTENTION_FINALIZE_PROGRAM_CONFIG
 

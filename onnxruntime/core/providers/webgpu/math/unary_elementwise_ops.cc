@@ -247,10 +247,12 @@ class Clip final : public UnaryElementwise {
 #define WEBGPU_CLIP_INT64_PROGRAM_CONFIG(F)
 
 struct ClipInt64ProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CLIP_INT64_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CLIP_INT64_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "ClipInt64";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh) {
     const auto& input = sh.AddInput("x", ShaderUsage::UseUniform);
@@ -262,9 +264,12 @@ struct ClipInt64ProgramShader {
     return Status::OK();
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
-                                          {"clip_min", ProgramUniformVariableDataType::Int32},
-                                          {"clip_max", ProgramUniformVariableDataType::Int32});
+#define WEBGPU_CLIP_INT64_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, vec_size)                                \
+  U(Int32, clip_min)                                 \
+  U(Int32, clip_max)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CLIP_INT64_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CLIP_INT64_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CLIP_INT64_PROGRAM_CONFIG
 

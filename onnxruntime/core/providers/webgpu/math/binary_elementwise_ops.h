@@ -18,7 +18,6 @@ enum class BinaryImplementation { None,
                                   Pow };
 
 #define WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG(F) \
-  F(std::string, program_name_)                     \
   F(ShaderLiteral, expression_)                     \
   F(BinaryImplementation, implementation_)          \
   F(bool, is_broadcast_)                            \
@@ -26,34 +25,33 @@ enum class BinaryImplementation { None,
   F(bool, is_rhs_scalar_)                           \
   F(bool, is_lhs_use_4_components_)                 \
   F(bool, is_rhs_use_4_components_)                 \
-  F(bool, vectorize_)                               \
-  F(bool, is_int64_input_)                          \
-  F(bool, is_int64_output_)
+  F(bool, vectorize_)
 
 struct BinaryElementwiseProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG);
-    Config(const std::string& kernel_name, ShaderLiteral expression, BinaryImplementation implementation,
-           const bool is_broadcast, const bool is_lhs_scalar, const bool is_rhs_scalar,
-           const bool is_lhs_use_4_components, const bool is_rhs_use_4_components, const bool vectorize,
-           const bool is_int64_input = false, const bool is_int64_output = false)
-        : program_name_{kernel_name},
-          expression_{expression},
-          implementation_{implementation},
-          is_broadcast_{is_broadcast},
-          is_lhs_scalar_{is_lhs_scalar},
-          is_rhs_scalar_{is_rhs_scalar},
-          is_lhs_use_4_components_{is_lhs_use_4_components},
-          is_rhs_use_4_components_{is_rhs_use_4_components},
-          vectorize_{vectorize},
-          is_int64_input_{is_int64_input},
-          is_int64_output_{is_int64_output} {}
-  };
-  static std::string_view Name(const Config& config) { return config.program_name_; }
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG);
+  static onnxruntime::webgpu::ShaderProgramSetup<Config> MakeConfig(const std::string& kernel_name, ShaderLiteral expression, BinaryImplementation implementation,
+                                                                    const bool is_broadcast, const bool is_lhs_scalar, const bool is_rhs_scalar,
+                                                                    const bool is_lhs_use_4_components, const bool is_rhs_use_4_components, const bool vectorize) {
+    Config result{};
+
+    result.expression_ = ShaderLiteral{expression};
+    result.implementation_ = BinaryImplementation{implementation};
+    result.is_broadcast_ = bool{is_broadcast};
+    result.is_lhs_scalar_ = bool{is_lhs_scalar};
+    result.is_rhs_scalar_ = bool{is_rhs_scalar};
+    result.is_lhs_use_4_components_ = bool{is_lhs_use_4_components};
+    result.is_rhs_use_4_components_ = bool{is_rhs_use_4_components};
+    result.vectorize_ = bool{vectorize};
+
+    return {std::move(result), kernel_name};
+  }
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
-                                          {"element_count", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_BINARY_ELEMENTWISE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, vec_size)                                        \
+  U(Uint32, element_count)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_BINARY_ELEMENTWISE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_BINARY_ELEMENTWISE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_BINARY_ELEMENTWISE_PROGRAM_CONFIG
 

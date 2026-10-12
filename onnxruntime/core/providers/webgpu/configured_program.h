@@ -11,6 +11,23 @@
 
 namespace onnxruntime::webgpu {
 
+// Diagnostic names are host-only; generators receive only values.
+template <typename Config>
+struct ShaderProgramSetup {
+  Config values;
+  std::string_view name;
+};
+
+template <ProgramUniformVariableDataType Type>
+class ShaderUniformExpression final {
+ public:
+  explicit ShaderUniformExpression(ShaderUniform<Type> uniform) : uniform_{uniform} {}
+  std::string Expr() const { return "uniforms." + std::string{uniform_.name}; }
+
+ private:
+  ShaderUniform<Type> uniform_;
+};
+
 // No ProgramBase, Tensor, Context or uniform payload accessor is exposed to generators.
 // Only keyed metadata is observable. Shape expressions use uniforms unless the
 // host explicitly selects keyed static dimensions.
@@ -29,6 +46,11 @@ class ConfiguredShaderHelper final {
 
   const ShaderIndicesHelper& AddIndices(const std::string& name,
                                         ShaderUsage usage = ShaderUsage::None);
+
+  template <ProgramUniformVariableDataType Type>
+  ShaderUniformExpression<Type> Uniform(ShaderUniform<Type> uniform) const {
+    return ShaderUniformExpression<Type>{uniform};
+  }
 
   size_t InputCount() const;
   size_t OutputCount() const;
@@ -53,7 +75,7 @@ class ConfiguredProgram final : public Program<Spec> {
  public:
   using Config = typename Spec::Config;
   template <typename... Args>
-  explicit ConfiguredProgram(Args&&... args) : ConfiguredProgram(Config(std::forward<Args>(args)...), 0) {}
+  explicit ConfiguredProgram(Args&&... args) : ConfiguredProgram(MakeConfig(std::forward<Args>(args)...), 0) {}
   ConfiguredProgram(ConfiguredProgram&&) = default;
   ConfiguredProgram& operator=(ConfiguredProgram&&) = delete;
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ConfiguredProgram);
@@ -69,14 +91,22 @@ class ConfiguredProgram final : public Program<Spec> {
   void AppendSpecializationKey(std::string& key) const final { config_.AppendTo(key); }
 
  private:
-  static std::string_view DisplayName(const Config& config) {
-    if constexpr (requires { Spec::Name(config); })
-      return Spec::Name(config);
-    else
-      return Spec::name;
+  template <typename... Args>
+  static ShaderProgramSetup<Config> MakeConfig(Args&&... args) {
+    if constexpr (requires { Spec::MakeConfig(std::forward<Args>(args)...); }) {
+      auto result = Spec::MakeConfig(std::forward<Args>(args)...);
+      if constexpr (std::is_same_v<decltype(result), Config>) {
+        return {std::move(result), Spec::name};
+      } else {
+        return result;
+      }
+    } else {
+      return {Config(std::forward<Args>(args)...), Spec::name};
+    }
   }
-  ConfiguredProgram(Config config, int) : Program<Spec>{DisplayName(config)}, config_{std::move(config)} {
-    static_assert(std::is_same_v<typename Config::ShaderConfigSchema, void>);
+  ConfiguredProgram(ShaderProgramSetup<Config> setup, int)
+      : Program<Spec>{setup.name}, config_{std::move(setup.values)} {
+    static_assert(std::is_same_v<typename Config::ShaderConfigSchema, Config>);
     static_assert(std::is_final_v<Config>);
     static_assert(std::is_empty_v<Spec>, "Generator specifications must not contain instance state");
     static_assert(

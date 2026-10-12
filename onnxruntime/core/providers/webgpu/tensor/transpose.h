@@ -16,20 +16,24 @@ namespace webgpu {
 #define WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_CONFIG(F)
 
 struct OIHW2OHWIProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "OIHW2OHWI";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"O", ProgramUniformVariableDataType::Uint32},
-      {"I", ProgramUniformVariableDataType::Uint32},
-      {"H", ProgramUniformVariableDataType::Uint32},
-      {"W", ProgramUniformVariableDataType::Uint32},
-      {"Ci_tiles", ProgramUniformVariableDataType::Uint32},
-      {"H_W_tiles", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, O)                                             \
+  U(Uint32, I)                                             \
+  U(Uint32, H)                                             \
+  U(Uint32, W)                                             \
+  U(Uint32, Ci_tiles)                                      \
+  U(Uint32, H_W_tiles)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_O_I_H_W2_O_H_W_I_PROGRAM_CONFIG
 
@@ -55,15 +59,21 @@ class Transpose final : public WebGpuKernel, public TransposeBase {
   F(bool, use_shared_)
 
 struct TransposeProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_TRANSPOSE_PROGRAM_CONFIG);
-    Config(const gsl::span<const size_t>& permutations, bool use_shared)
-        : perm_(permutations.begin(), permutations.end()), use_shared_(use_shared) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TRANSPOSE_PROGRAM_CONFIG);
+  static Config MakeConfig(const gsl::span<const size_t>& permutations, bool use_shared) {
+    Config result{};
+    result.perm_ = InlinedVector<int64_t>(permutations.begin(), permutations.end());
+    result.use_shared_ = bool(use_shared);
+
+    return result;
+  }
   static constexpr std::string_view name = "Transpose";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_TRANSPOSE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TRANSPOSE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TRANSPOSE_PROGRAM_SHADER_UNIFORMS
   WEBGPU_PROGRAM_DEFINE_CONSTANTS({"tile_size", Transpose::TILE_SIZE},
                                   {"tile_rows", Transpose::TILE_ROWS});
 };

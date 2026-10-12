@@ -71,8 +71,8 @@ Status RMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
   const bool split_norm_dim = norm_size % 512 == 0 && norm_count == 1;
 
   // Reuse LayerNormProgram with simplified=true, has_bias=false, no mean output
-  LayerNormProgram program{/*has_bias=*/false, /*simplified=*/true, /*has_mean_output=*/false,
-                           /*has_inv_std_dev_output=*/inv_std_dev != nullptr, split_norm_dim};
+  LayerNormProgram program{/*simplified=*/true, /*has_mean_output=*/false,
+                           split_norm_dim, /*fp32_normalization=*/false};
 
   program.AddInputs({{x, ProgramTensorMetadataDependency::None, GetOverrideShape(x->Shape(), components), components}})
       .AddInputs(

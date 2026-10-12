@@ -18,13 +18,18 @@ using namespace onnxruntime::webgpu;
 #define WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_CONFIG(F)
 
 struct DP4AMatMulQuantizeProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "DP4AMatMulQuantize";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_D_P4_A_MAT_MUL_QUANTIZE_PROGRAM_CONFIG
 
@@ -41,32 +46,36 @@ using DP4AMatMulQuantizeProgram = ConfiguredProgram<DP4AMatMulQuantizeProgramSha
   F(bool, acc_f32_)
 
 struct DP4AMatMulNBitsProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_CONFIG);
-    Config(uint32_t block_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
-           bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32)
-        : block_size_(block_size),
-          nbits_(nbits),
-          has_bias_(has_bias),
-          has_zero_points_(has_zero_points),
-          has_weight_idx_(has_weight_idx),
-          has_weight_idx_indirect_(has_weight_idx_indirect),
-          is_qualcomm_(is_qualcomm),
-          acc_f32_(acc_f32) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t block_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
+                           bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32) {
+    Config result{};
+    result.block_size_ = uint32_t(block_size);
+    result.nbits_ = uint32_t(nbits);
+    result.has_bias_ = bool(has_bias);
+    result.has_zero_points_ = bool(has_zero_points);
+    result.has_weight_idx_ = bool(has_weight_idx);
+    result.has_weight_idx_indirect_ = bool(has_weight_idx_indirect);
+    result.is_qualcomm_ = bool(is_qualcomm);
+    result.acc_f32_ = bool(acc_f32);
+
+    return result;
+  }
   static constexpr std::string_view name = "DP4AMatMulNBits";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K8", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32},
-      {"num_M_tile", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_count)                                        \
+  U(Uint32, M)                                                  \
+  U(Uint32, N)                                                  \
+  U(Uint32, K)                                                  \
+  U(Uint32, K8)                                                 \
+  U(Uint32, K16)                                                \
+  U(Uint32, num_M_tile)                                         \
+  U(Uint32, num_N_tile)                                         \
+  U(Uint32, zero_blocks_per_col)                                \
+  U(Uint32, weight_idx)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_D_P4_A_MAT_MUL_N_BITS_PROGRAM_CONFIG
 
@@ -85,36 +94,40 @@ using DP4AMatMulNBitsProgram = ConfiguredProgram<DP4AMatMulNBitsProgramShader>;
   F(bool, acc_f32_)
 
 struct DP4AMatMulNBitsSmallMProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_CONFIG);
-    Config(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias,
-           bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, bool broadcast_a_row = false,
-           bool acc_f32 = false)
-        : tile_size_k_vec_(tile_size_k_vec),
-          tile_size_(tile_size),
-          nbits_(nbits),
-          has_bias_(has_bias),
-          has_zero_points_(has_zero_points),
-          has_weight_idx_(has_weight_idx),
-          has_weight_idx_indirect_(has_weight_idx_indirect),
-          single_scale_weights_(single_scale_weights),
-          broadcast_a_row_(broadcast_a_row),
-          acc_f32_(acc_f32) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias,
+                           bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, bool broadcast_a_row = false,
+                           bool acc_f32 = false) {
+    Config result{};
+    result.tile_size_k_vec_ = uint32_t(tile_size_k_vec);
+    result.tile_size_ = uint32_t(tile_size);
+    result.nbits_ = uint32_t(nbits);
+    result.has_bias_ = bool(has_bias);
+    result.has_zero_points_ = bool(has_zero_points);
+    result.has_weight_idx_ = bool(has_weight_idx);
+    result.has_weight_idx_indirect_ = bool(has_weight_idx_indirect);
+    result.single_scale_weights_ = bool(single_scale_weights);
+    result.broadcast_a_row_ = bool(broadcast_a_row);
+    result.acc_f32_ = bool(acc_f32);
+
+    return result;
+  }
   static constexpr std::string_view name = "DP4AMatMulNBitsSmallMProgram";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32},
-      {"K32", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_count)                                                \
+  U(Uint32, M)                                                          \
+  U(Uint32, N)                                                          \
+  U(Uint32, K)                                                          \
+  U(Uint32, K16)                                                        \
+  U(Uint32, K32)                                                        \
+  U(Uint32, block_size)                                                 \
+  U(Uint32, num_N_tile)                                                 \
+  U(Uint32, zero_blocks_per_col)                                        \
+  U(Uint32, weight_idx)                                                 \
+  U(Uint32, dispatch_M)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_D_P4_A_MAT_MUL_N_BITS_SMALL_M_PROGRAM_CONFIG
 

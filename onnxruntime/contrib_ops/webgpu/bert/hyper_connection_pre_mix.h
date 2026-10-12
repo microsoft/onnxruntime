@@ -14,17 +14,22 @@ using namespace onnxruntime::webgpu;
 #define WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_CONFIG(F) F(int, gate_layout_)
 
 struct HyperConnectionPreMixProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_CONFIG);
-    Config(int gate_layout) : gate_layout_(gate_layout) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_CONFIG);
+  static Config MakeConfig(int gate_layout) {
+    Config result{};
+    result.gate_layout_ = int(gate_layout);
+
+    return result;
+  }
   static constexpr std::string_view name = "HyperConnectionPreMix";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"count", ProgramUniformVariableDataType::Uint32},
-      {"branches", ProgramUniformVariableDataType::Uint32},
-      {"hidden", ProgramUniformVariableDataType::Uint32},
-      {"reduction_scale", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, count)                                                 \
+  U(Uint32, branches)                                              \
+  U(Uint32, hidden)                                                \
+  U(Float32, reduction_scale)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_HYPER_CONNECTION_PRE_MIX_PROGRAM_CONFIG
 

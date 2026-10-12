@@ -14,15 +14,20 @@ using namespace onnxruntime::webgpu;
 #define WEBGPU_SCALED_SI_L_U_PROGRAM_CONFIG(F) F(bool, has_scale_)
 
 struct ScaledSiLUProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SCALED_SI_L_U_PROGRAM_CONFIG);
-    Config(bool has_scale) : has_scale_(has_scale) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SCALED_SI_L_U_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_scale) {
+    Config result{};
+    result.has_scale_ = bool(has_scale);
+
+    return result;
+  }
   static constexpr std::string_view name = "ScaledSiLU";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"count", ProgramUniformVariableDataType::Uint32},
-      {"alpha", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_SCALED_SI_L_U_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, count)                                      \
+  U(Float32, alpha)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SCALED_SI_L_U_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SCALED_SI_L_U_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SCALED_SI_L_U_PROGRAM_CONFIG
 

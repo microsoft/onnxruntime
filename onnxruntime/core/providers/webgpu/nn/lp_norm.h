@@ -13,17 +13,22 @@ namespace webgpu {
 #define WEBGPU_LP_NORM_PROGRAM_CONFIG(F) F(int64_t, p_)
 
 struct LpNormProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_LP_NORM_PROGRAM_CONFIG);
-    Config(int64_t p) : p_{p} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_LP_NORM_PROGRAM_CONFIG);
+  static Config MakeConfig(int64_t p) {
+    Config result{};
+    result.p_ = int64_t{p};
+
+    return result;
+  }
   static constexpr std::string_view name = "LpNorm";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"norm_count", ProgramUniformVariableDataType::Uint32},
-      {"norm_size", ProgramUniformVariableDataType::Uint32},
-      {"stride_factor", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_LP_NORM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, norm_count)                           \
+  U(Uint32, norm_size)                            \
+  U(Uint32, stride_factor)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_LP_NORM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_LP_NORM_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_LP_NORM_PROGRAM_CONFIG
 

@@ -10,6 +10,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/configured_program.h"
+#include "core/providers/webgpu/shader_metadata.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/string_utils.h"
 #include "core/providers/webgpu/string_macros.h"
@@ -38,23 +39,23 @@ const ShaderIndicesHelper& ConfiguredShaderHelper::AddIndices(const std::string&
   return shader_.AddIndices(name, usage | ShaderUsage::UseUniform);
 }
 
-size_t ConfiguredShaderHelper::InputCount() const { return shader_.program_.Inputs().size(); }
-size_t ConfiguredShaderHelper::OutputCount() const { return shader_.program_.Outputs().size(); }
-uint32_t ConfiguredShaderHelper::WorkgroupSizeX() const { return shader_.program_.WorkgroupSizeX(); }
-uint32_t ConfiguredShaderHelper::WorkgroupSizeY() const { return shader_.program_.WorkgroupSizeY(); }
-uint32_t ConfiguredShaderHelper::WorkgroupSizeZ() const { return shader_.program_.WorkgroupSizeZ(); }
+size_t ConfiguredShaderHelper::InputCount() const { return ShaderProgramMetadata{shader_.program_}.InputCount(); }
+size_t ConfiguredShaderHelper::OutputCount() const { return ShaderProgramMetadata{shader_.program_}.OutputCount(); }
+uint32_t ConfiguredShaderHelper::WorkgroupSizeX() const { return ShaderProgramMetadata{shader_.program_}.WorkgroupSizeX(); }
+uint32_t ConfiguredShaderHelper::WorkgroupSizeY() const { return ShaderProgramMetadata{shader_.program_}.WorkgroupSizeY(); }
+uint32_t ConfiguredShaderHelper::WorkgroupSizeZ() const { return ShaderProgramMetadata{shader_.program_}.WorkgroupSizeZ(); }
 int ConfiguredShaderHelper::InputElementType(size_t index) const {
-  return shader_.program_.Inputs().at(index).tensor->GetElementType();
+  return ShaderTensorMetadata{shader_.program_.Inputs().at(index)}.ElementType();
 }
 int ConfiguredShaderHelper::OutputElementType(size_t index) const {
-  return shader_.program_.Outputs().at(index).tensor->GetElementType();
+  return ShaderTensorMetadata{shader_.program_.Outputs().at(index)}.ElementType();
 }
 ProgramVariableDataType ConfiguredShaderHelper::InputType(size_t index) const {
-  return shader_.program_.Inputs().at(index).var_type;
+  return ShaderTensorMetadata{shader_.program_.Inputs().at(index)}.Type();
 }
 
 ProgramVariableDataType ConfiguredShaderHelper::OutputType(size_t index) const {
-  return shader_.program_.Outputs().at(index).var_type;
+  return ShaderTensorMetadata{shader_.program_.Outputs().at(index)}.Type();
 }
 
 OStringStream& ConfiguredShaderHelper::AdditionalImplementation() { return shader_.AdditionalImplementation(); }
@@ -135,6 +136,7 @@ Status ShaderHelper::Init() {
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
+                "        @builtin(subgroup_id) subgroup_index : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
   }
   // When using indirect dispatch, avoid @builtin(num_workgroups) to skip Dawn's validation

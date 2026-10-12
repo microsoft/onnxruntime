@@ -19,17 +19,22 @@ using onnxruntime::webgpu::ComputeContext;
 #define WEBGPU_ENGRAM_GATE_SCALAR_PROGRAM_CONFIG(F)
 
 struct EngramGateScalarProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_ENGRAM_GATE_SCALAR_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_ENGRAM_GATE_SCALAR_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "EngramGateScalar";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"rows", ProgramUniformVariableDataType::Uint32},
-                                          {"hc_mult", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32},
-                                          {"epsilon", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_ENGRAM_GATE_SCALAR_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                            \
+  U(Uint32, hc_mult)                                         \
+  U(Uint32, hidden_size)                                     \
+  U(Uint32, hidden_vec_size)                                 \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_ENGRAM_GATE_SCALAR_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_ENGRAM_GATE_SCALAR_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_ENGRAM_GATE_SCALAR_PROGRAM_CONFIG
 
@@ -39,15 +44,20 @@ using EngramGateScalarProgram = ConfiguredProgram<EngramGateScalarProgramShader>
 #define WEBGPU_ENGRAM_GATE_PROGRAM_CONFIG(F)
 
 struct EngramGateProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_ENGRAM_GATE_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_ENGRAM_GATE_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "EngramGate";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
-                                          {"hc_mult", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_ENGRAM_GATE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total)                                    \
+  U(Uint32, hc_mult)                                  \
+  U(Uint32, hidden_vec_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_ENGRAM_GATE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_ENGRAM_GATE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_ENGRAM_GATE_PROGRAM_CONFIG
 
@@ -58,16 +68,21 @@ using EngramGateProgram = ConfiguredProgram<EngramGateProgramShader>;
 #define WEBGPU_ENGRAM_GATE_NORM_PROGRAM_CONFIG(F)
 
 struct EngramGateNormProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_ENGRAM_GATE_NORM_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_ENGRAM_GATE_NORM_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "EngramGateNorm";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"rows", ProgramUniformVariableDataType::Uint32},
-                                          {"hc_mult", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"epsilon", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_ENGRAM_GATE_NORM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                          \
+  U(Uint32, hc_mult)                                       \
+  U(Uint32, hidden_size)                                   \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_ENGRAM_GATE_NORM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_ENGRAM_GATE_NORM_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_ENGRAM_GATE_NORM_PROGRAM_CONFIG
 

@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -21,18 +21,24 @@ using namespace onnxruntime::webgpu;
 #define WEBGPU_TRANSFER_B_S_D_TO_B_N_S_H_PROGRAM_CONFIG(F) F(bool, has_bias_)
 
 struct TransferBSDToBNSHProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_TRANSFER_B_S_D_TO_B_N_S_H_PROGRAM_CONFIG);
-    Config(bool has_bias) : has_bias_(has_bias) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TRANSFER_B_S_D_TO_B_N_S_H_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias) {
+    Config result{};
+    result.has_bias_ = bool(has_bias);
+
+    return result;
+  }
   static constexpr std::string_view name = "TransferBSDToBNSH";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32},
-                                          {"batch_offset", ProgramUniformVariableDataType::Uint32},
-                                          {"sequence_offset", ProgramUniformVariableDataType::Uint32},
-                                          {"head_offset", ProgramUniformVariableDataType::Uint32},
-                                          {"bias_offset", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_TRANSFER_B_S_D_TO_B_N_S_H_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, data_size)                                              \
+  U(Uint32, batch_offset)                                           \
+  U(Uint32, sequence_offset)                                        \
+  U(Uint32, head_offset)                                            \
+  U(Uint32, bias_offset)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TRANSFER_B_S_D_TO_B_N_S_H_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TRANSFER_B_S_D_TO_B_N_S_H_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_TRANSFER_B_S_D_TO_B_N_S_H_PROGRAM_CONFIG
 
@@ -41,23 +47,27 @@ using TransferBSDToBNSHProgram = ConfiguredProgram<TransferBSDToBNSHProgramShade
 #define WEBGPU_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG(F)
 
 struct SplitPackedQKVProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "SplitPackedQKV";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPLIT_PACKED_Q_K_V_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, input_size)                                      \
+  U(Uint32, hidden_size)                                     \
+  U(Uint32, kv_hidden_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPLIT_PACKED_Q_K_V_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPLIT_PACKED_Q_K_V_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPLIT_PACKED_Q_K_V_PROGRAM_CONFIG
 
 using SplitPackedQKVProgram = ConfiguredProgram<SplitPackedQKVProgramShader>;
 
 #define WEBGPU_ATTENTION_PROBS_PROGRAM_CONFIG(F) \
-  F(std::string, program_name_)                  \
   F(bool, feed_past_key_)                        \
   F(bool, has_present_key_)                      \
   F(bool, has_attention_bias_)                   \
@@ -69,40 +79,44 @@ using SplitPackedQKVProgram = ConfiguredProgram<SplitPackedQKVProgramShader>;
   F(bool, is_unidirectional_)
 
 struct AttentionProbsProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_ATTENTION_PROBS_PROGRAM_CONFIG);
-    Config(const std::string& kernel_name, bool feed_past_key, bool has_present_key, bool has_attention_bias,
-           int tile_size, int components, bool is_first_prompt, bool has_seqlen_k = false,
-           bool past_present_share_buffer = false, bool is_unidirectional = false)
-        : program_name_{kernel_name},
-          feed_past_key_(feed_past_key),
-          has_present_key_(has_present_key),
-          has_attention_bias_(has_attention_bias),
-          tile_size_(tile_size),
-          components_(components),
-          has_seqlen_k_(has_seqlen_k),
-          past_present_share_buffer_(past_present_share_buffer),
-          is_first_prompt_(is_first_prompt),
-          is_unidirectional_(is_unidirectional) {}
-  };
-  static std::string_view Name(const Config& config) { return config.program_name_; }
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_ATTENTION_PROBS_PROGRAM_CONFIG);
+  static onnxruntime::webgpu::ShaderProgramSetup<Config> MakeConfig(const std::string& kernel_name, bool feed_past_key, bool has_present_key, bool has_attention_bias,
+                                                                    int tile_size, int components, bool is_first_prompt, bool has_seqlen_k = false,
+                                                                    bool past_present_share_buffer = false, bool is_unidirectional = false) {
+    Config result{};
+
+    result.feed_past_key_ = bool(feed_past_key);
+    result.has_present_key_ = bool(has_present_key);
+    result.has_attention_bias_ = bool(has_attention_bias);
+    result.tile_size_ = int(tile_size);
+    result.components_ = int(components);
+    result.has_seqlen_k_ = bool(has_seqlen_k);
+    result.past_present_share_buffer_ = bool(past_present_share_buffer);
+    result.is_first_prompt_ = bool(is_first_prompt);
+    result.is_unidirectional_ = bool(is_unidirectional);
+
+    return {std::move(result), kernel_name};
+  }
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
-                                          {"K", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"head_size", ProgramUniformVariableDataType::Uint32},
-                                          {"alpha", ProgramUniformVariableDataType::Float32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
-                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_ATTENTION_PROBS_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, M)                                            \
+  U(Uint32, K)                                            \
+  U(Uint32, N)                                            \
+  U(Uint32, num_heads)                                    \
+  U(Uint32, head_size)                                    \
+  U(Float32, alpha)                                       \
+  U(Uint32, past_sequence_length)                         \
+  U(Uint32, kv_sequence_length)                           \
+  U(Uint32, present_sequence_length)                      \
+  U(Uint32, n_reps)                                       \
+  U(Uint32, is_first_prompt)                              \
+  U(Uint32, num_total_seq_length_tile)                    \
+  U(Uint32, num_seq_length_tile)                          \
+  U(Uint32, attn_bias_dim0)                               \
+  U(Uint32, attn_bias_dim1)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_ATTENTION_PROBS_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_ATTENTION_PROBS_PROGRAM_SHADER_UNIFORMS
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 };
@@ -119,37 +133,41 @@ using AttentionProbsProgram = ConfiguredProgram<AttentionProbsProgramShader>;
   F(int, local_window_size_)
 
 struct InPlaceSoftmaxProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_IN_PLACE_SOFTMAX_PROGRAM_CONFIG);
-    Config(int work_group_size, int components, bool use_smooth_softmax, bool has_seqlen_k, bool has_head_sink,
-           int local_window_size)
-        : work_group_size_(work_group_size),
-          components_(components),
-          use_smooth_softmax_(use_smooth_softmax),
-          has_seqlen_k_(has_seqlen_k),
-          has_head_sink_(has_head_sink),
-          local_window_size_(local_window_size) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_IN_PLACE_SOFTMAX_PROGRAM_CONFIG);
+  static Config MakeConfig(int work_group_size, int components, bool use_smooth_softmax, bool has_seqlen_k, bool has_head_sink,
+                           int local_window_size) {
+    Config result{};
+    result.work_group_size_ = int(work_group_size);
+    result.components_ = int(components);
+    result.use_smooth_softmax_ = bool(use_smooth_softmax);
+    result.has_seqlen_k_ = bool(has_seqlen_k);
+    result.has_head_sink_ = bool(has_head_sink);
+    result.local_window_size_ = int(local_window_size);
+
+    return result;
+  }
   static constexpr std::string_view name = "InPlaceSoftmax";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
-                                          {"elements_per_thread", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
-                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_IN_PLACE_SOFTMAX_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                    \
+  U(Uint32, num_heads)                                     \
+  U(Uint32, past_sequence_length)                          \
+  U(Uint32, kv_sequence_length)                            \
+  U(Uint32, present_sequence_length)                       \
+  U(Uint32, sequence_length)                               \
+  U(Uint32, total_sequence_length_comp)                    \
+  U(Uint32, elements_per_thread)                           \
+  U(Uint32, is_first_prompt)                               \
+  U(Uint32, local_window_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_IN_PLACE_SOFTMAX_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_IN_PLACE_SOFTMAX_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_IN_PLACE_SOFTMAX_PROGRAM_CONFIG
 
 using InPlaceSoftmaxProgram = ConfiguredProgram<InPlaceSoftmaxProgramShader>;
 
 #define WEBGPU_VX_ATTENTION_SCORE_PROGRAM_CONFIG(F) \
-  F(std::string, program_name_)                     \
   F(bool, feed_past_value_)                         \
   F(bool, has_present_value_)                       \
   F(int, tile_size_)                                \
@@ -158,34 +176,38 @@ using InPlaceSoftmaxProgram = ConfiguredProgram<InPlaceSoftmaxProgramShader>;
   F(bool, is_first_prompt_)
 
 struct VxAttentionScoreProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_VX_ATTENTION_SCORE_PROGRAM_CONFIG);
-    Config(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size,
-           bool is_first_prompt, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
-        : program_name_{kernel_name},
-          feed_past_value_(feed_past_value),
-          has_present_value_(has_present_value),
-          tile_size_(tile_size),
-          seqlen_k_(seqlen_k != nullptr),
-          past_present_share_buffer_(past_present_share_buffer),
-          is_first_prompt_(is_first_prompt) {}
-  };
-  static std::string_view Name(const Config& config) { return config.program_name_; }
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VX_ATTENTION_SCORE_PROGRAM_CONFIG);
+  static onnxruntime::webgpu::ShaderProgramSetup<Config> MakeConfig(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size,
+                                                                    bool is_first_prompt, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false) {
+    Config result{};
+
+    result.feed_past_value_ = bool(feed_past_value);
+    result.has_present_value_ = bool(has_present_value);
+    result.tile_size_ = int(tile_size);
+    result.seqlen_k_ = bool(seqlen_k != nullptr);
+    result.past_present_share_buffer_ = bool(past_present_share_buffer);
+    result.is_first_prompt_ = bool(is_first_prompt);
+
+    return {std::move(result), kernel_name};
+  }
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
-                                          {"K", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"head_size", ProgramUniformVariableDataType::Uint32},
-                                          {"v_hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
-                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_VX_ATTENTION_SCORE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, M)                                               \
+  U(Uint32, K)                                               \
+  U(Uint32, N)                                               \
+  U(Uint32, num_heads)                                       \
+  U(Uint32, head_size)                                       \
+  U(Uint32, v_hidden_size)                                   \
+  U(Uint32, past_sequence_length)                            \
+  U(Uint32, kv_sequence_length)                              \
+  U(Uint32, present_sequence_length)                         \
+  U(Uint32, n_reps)                                          \
+  U(Uint32, is_first_prompt)                                 \
+  U(Uint32, num_head_size_tile)                              \
+  U(Uint32, num_seq_length_tile)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VX_ATTENTION_SCORE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_VX_ATTENTION_SCORE_PROGRAM_SHADER_UNIFORMS
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 };
@@ -199,7 +221,7 @@ class Attention final : public WebGpuKernel, public onnxruntime::contrib::Attent
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
-  mutable MatMulOptImplCache matmul_compute_cache_;
+  mutable MatMulComputeDispatcher matmul_compute_dispatcher_;
   bool weights_are_constant_ = false;
 };
 

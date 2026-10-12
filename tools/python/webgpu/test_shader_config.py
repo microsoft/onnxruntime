@@ -3,25 +3,26 @@
 
 import unittest
 
-from check_shader_config import check_source
+from check_shader_config import check_source, schema_fields
 
 
 class ShaderConfigPolicyTest(unittest.TestCase):
-    def test_declared_fields_and_constructor_locals_are_allowed(self):
+    def test_closed_declarations_and_host_factories_are_allowed(self):
         source = """
-struct Config final {
-  WEBGPU_CONFIG_MEMBERS(FIELDS);
-  Config(bool value) : flag_{value} {
-    int local = 0;
-  }
-};
+WEBGPU_DECLARE_SPECIALIZATION(Config, FIELDS);
+static Config MakeConfig(bool value) { return Config{value}; }
+WEBGPU_DECLARE_UNIFORMS(UNIFORMS);
 """
         self.assertEqual(check_source(source), [])
 
-    def test_unencoded_members_are_rejected(self):
-        for field in ("bool omitted;", "int omitted = 2;", "std::vector<int> omitted;", "bool omitted{};"):
-            with self.subTest(field=field):
-                source = f"struct Config final {{\nWEBGPU_CONFIG_MEMBERS(FIELDS);\n{field}\n}};"
+    def test_open_configuration_and_legacy_uniforms_are_rejected(self):
+        for source in (
+            "struct Config final { WEBGPU_CONFIG_MEMBERS(FIELDS); bool omitted; };",
+            "WEBGPU_DECLARE_CONFIG(Config, FIELDS);",
+            "WEBGPU_CONFIG_FIELD(bool, omitted);",
+            "WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(uniform);",
+        ):
+            with self.subTest(source=source):
                 self.assertTrue(check_source(source))
 
     def test_legacy_and_handwritten_encoders_are_rejected(self):
@@ -39,6 +40,16 @@ struct Config final {
     def test_comments_and_shader_literals_are_ignored(self):
         self.assertEqual(
             check_source('/* program.CacheHint(x); */ const char* s = R"(class Old : public Program<Old> {})";'), []
+        )
+
+    def test_inventory_uses_declared_fields(self):
+        source = "#define FIELDS(F) F(bool, fast) \\\n F(gsl::span<const int>, recipe)\n"
+        self.assertEqual(
+            schema_fields(source, "FIELDS"),
+            [
+                {"type": "bool", "name": "fast"},
+                {"type": "gsl::span<const int>", "name": "recipe"},
+            ],
         )
 
 

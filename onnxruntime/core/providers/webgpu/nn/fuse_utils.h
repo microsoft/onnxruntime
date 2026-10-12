@@ -70,22 +70,15 @@ using Activation = struct Activation {
 #define WEBGPU_ACTIVATION_CONFIG(F)   \
   F(ActivationKind, activation_kind_) \
   F(bool, unit_quick_gelu_alpha_)
-struct ShaderActivation final {
-  WEBGPU_CONFIG_MEMBERS(WEBGPU_ACTIVATION_CONFIG);
-  ShaderActivation() = default;
-  ShaderActivation(const Activation& activation)
-      : activation_kind_{activation.activation_kind_}, unit_quick_gelu_alpha_{activation.HasUnitQuickGeluAlpha()} {}
-  bool HasUnitQuickGeluAlpha() const { return unit_quick_gelu_alpha_; }
-};
+WEBGPU_DECLARE_SPECIALIZATION(ShaderActivation, WEBGPU_ACTIVATION_CONFIG);
+inline ShaderActivation MakeShaderActivation(const Activation& activation) {
+  return {activation.activation_kind_, activation.HasUnitQuickGeluAlpha()};
+}
+inline const ShaderActivation& MakeShaderActivation(const ShaderActivation& activation) { return activation; }
 #undef WEBGPU_ACTIVATION_CONFIG
 
 // Fixed slots keep activation uniform definitions and values index-aligned.
 constexpr size_t kActivationUniformVariableCount = 2;
-
-// Activation uniforms must be last in each program's uniform definition list.
-#define WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES                                     \
-  {"activation_param_0", onnxruntime::webgpu::ProgramUniformVariableDataType::Float32}, \
-  { "activation_param_1", onnxruntime::webgpu::ProgramUniformVariableDataType::Float32 }
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation);
 

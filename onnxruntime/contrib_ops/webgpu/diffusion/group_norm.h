@@ -27,24 +27,28 @@ using onnxruntime::webgpu::WebGpuKernel;
   F(bool, has_bias_)
 
 struct GroupNormStatsProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GROUP_NORM_STATS_PROGRAM_CONFIG);
-    Config(int components, uint32_t workgroup_size, bool has_skip, bool skip_broadcast, bool has_bias)
-        : components_{components},
-          workgroup_size_{workgroup_size},
-          has_skip_{has_skip},
-          skip_broadcast_{skip_broadcast},
-          has_bias_{has_bias} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GROUP_NORM_STATS_PROGRAM_CONFIG);
+  static Config MakeConfig(int components, uint32_t workgroup_size, bool has_skip, bool skip_broadcast, bool has_bias) {
+    Config result{};
+    result.components_ = int{components};
+    result.workgroup_size_ = uint32_t{workgroup_size};
+    result.has_skip_ = bool{has_skip};
+    result.skip_broadcast_ = bool{skip_broadcast};
+    result.has_bias_ = bool{has_bias};
+
+    return result;
+  }
   static constexpr std::string_view name = "GroupNormStats";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"hw", ProgramUniformVariableDataType::Uint32},
-      {"c_comp", ProgramUniformVariableDataType::Uint32},
-      {"cg_comp", ProgramUniformVariableDataType::Uint32},
-      {"groups", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_GROUP_NORM_STATS_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, hw)                                            \
+  U(Uint32, c_comp)                                        \
+  U(Uint32, cg_comp)                                       \
+  U(Uint32, groups)                                        \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GROUP_NORM_STATS_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GROUP_NORM_STATS_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GROUP_NORM_STATS_PROGRAM_CONFIG
 
@@ -61,25 +65,29 @@ using GroupNormStatsProgram = ConfiguredProgram<GroupNormStatsProgramShader>;
   F(bool, has_sum_output_)
 
 struct GroupNormApplyProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GROUP_NORM_APPLY_PROGRAM_CONFIG);
-    Config(int components, bool use_silu, bool has_skip, bool skip_broadcast, bool has_bias, bool has_sum_output)
-        : components_{components},
-          use_silu_{use_silu},
-          has_skip_{has_skip},
-          skip_broadcast_{skip_broadcast},
-          has_bias_{has_bias},
-          has_sum_output_{has_sum_output} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GROUP_NORM_APPLY_PROGRAM_CONFIG);
+  static Config MakeConfig(int components, bool use_silu, bool has_skip, bool skip_broadcast, bool has_bias, bool has_sum_output) {
+    Config result{};
+    result.components_ = int{components};
+    result.use_silu_ = bool{use_silu};
+    result.has_skip_ = bool{has_skip};
+    result.skip_broadcast_ = bool{skip_broadcast};
+    result.has_bias_ = bool{has_bias};
+    result.has_sum_output_ = bool{has_sum_output};
+
+    return result;
+  }
   static constexpr std::string_view name = "GroupNormApply";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"hw", ProgramUniformVariableDataType::Uint32},
-      {"c_comp", ProgramUniformVariableDataType::Uint32},
-      {"cg_comp", ProgramUniformVariableDataType::Uint32},
-      {"groups", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_GROUP_NORM_APPLY_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                   \
+  U(Uint32, hw)                                            \
+  U(Uint32, c_comp)                                        \
+  U(Uint32, cg_comp)                                       \
+  U(Uint32, groups)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GROUP_NORM_APPLY_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GROUP_NORM_APPLY_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GROUP_NORM_APPLY_PROGRAM_CONFIG
 

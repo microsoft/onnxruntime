@@ -42,14 +42,21 @@ class Softmax final : public WebGpuKernel {
   F(bool, is_fp32_)
 
 struct SoftmaxProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SOFTMAX_PROGRAM_CONFIG);
-    Config(uint32_t wg, bool is_fp32) : wg_{wg}, is_fp32_{is_fp32} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SOFTMAX_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t wg, bool is_fp32) {
+    Config result{};
+    result.wg_ = uint32_t{wg};
+    result.is_fp32_ = bool{is_fp32};
+
+    return result;
+  }
   static constexpr std::string_view name = "Softmax";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"packedCols", ProgramUniformVariableDataType::Int32});
+#define WEBGPU_SOFTMAX_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Int32, packedCols)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SOFTMAX_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SOFTMAX_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SOFTMAX_PROGRAM_CONFIG
 

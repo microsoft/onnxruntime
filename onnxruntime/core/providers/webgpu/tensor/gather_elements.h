@@ -13,16 +13,21 @@ namespace webgpu {
 #define WEBGPU_GATHER_ELEMENTS_PROGRAM_CONFIG(F)
 
 struct GatherElementsProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GATHER_ELEMENTS_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATHER_ELEMENTS_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "GatherElements";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"axis_dim_limit", ProgramUniformVariableDataType::Int32},
-                                          {"axis", ProgramUniformVariableDataType::Int32});
+#define WEBGPU_GATHER_ELEMENTS_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                  \
+  U(Int32, axis_dim_limit)                                \
+  U(Int32, axis)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATHER_ELEMENTS_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATHER_ELEMENTS_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GATHER_ELEMENTS_PROGRAM_CONFIG
 

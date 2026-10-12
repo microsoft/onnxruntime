@@ -13,13 +13,19 @@ namespace webgpu {
 #define WEBGPU_DEPTH_TO_SPACE_PROGRAM_CONFIG(F) F(InlinedVector<int64_t>, perm_)
 
 struct DepthToSpaceProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_DEPTH_TO_SPACE_PROGRAM_CONFIG);
-    Config(int64_t* perm) : perm_(perm, perm + 6) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_DEPTH_TO_SPACE_PROGRAM_CONFIG);
+  static Config MakeConfig(int64_t* perm) {
+    Config result{};
+    result.perm_ = InlinedVector<int64_t>(perm, perm + 6);
+
+    return result;
+  }
   static constexpr std::string_view name = "DepthToSpace";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_DEPTH_TO_SPACE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_DEPTH_TO_SPACE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_DEPTH_TO_SPACE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_DEPTH_TO_SPACE_PROGRAM_CONFIG
 

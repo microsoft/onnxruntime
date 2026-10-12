@@ -3,13 +3,11 @@
 
 #pragma once
 
-#include <memory>
-#include <mutex>
-
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/configured_program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -17,35 +15,6 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
-class MatMulOptImpl {
- public:
-  virtual ~MatMulOptImpl() = default;
-
-  virtual Status Compute(ComputeContext& context,
-                         const std::vector<const Tensor*>& inputs,
-                         Tensor* output,
-                         const Activation& activation,
-                         bool is_channels_last,
-                         bool b_is_constant,
-                         /*out*/ bool& handled) = 0;
-};
-
-class MatMulOptImplCache {
- public:
-  MatMulOptImplCache() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulOptImplCache);
-
-  MatMulOptImpl* GetOrCreate(const ComputeContextBase& context);
-
- private:
-  std::once_flag subgroup_impl_init_flag_;
-  std::unique_ptr<MatMulOptImpl> subgroup_impl_;
-};
-
-Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output,
-                     bool is_channels_last, MatMulOptImplCache& cache,
-                     bool b_is_constant = false);
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
@@ -73,7 +42,7 @@ class MatMul final : public WebGpuKernel {
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
-  mutable MatMulOptImplCache compute_cache_;
+  mutable MatMulComputeDispatcher compute_dispatcher_;
   bool b_is_constant_ = false;
 };
 
@@ -82,27 +51,35 @@ class MatMul final : public WebGpuKernel {
   F(size_t, output_rank_)                      \
   F(int64_t, output_number_)                   \
   F(bool, has_bias_)                           \
-  F(bool, is_channels_last_)
+  F(bool, is_channels_last_)                   \
+  F(bool, is_zero_k_)
 
 struct MatMulNaiveProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_NAIVE_PROGRAM_CONFIG);
-    Config(const Activation& activation, const size_t output_rank, int64_t output_number, bool has_bias,
-           bool is_channels_last = false)
-        : activation_(activation),
-          output_rank_(output_rank),
-          output_number_(output_number),
-          has_bias_{has_bias},
-          is_channels_last_(is_channels_last) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_NAIVE_PROGRAM_CONFIG);
+  static Config MakeConfig(const Activation& activation, const size_t output_rank, int64_t output_number,
+                           bool has_bias, bool is_channels_last = false, bool is_zero_k = false) {
+    Config result{};
+    result.activation_ = MakeShaderActivation(activation);
+    result.output_rank_ = size_t(output_rank);
+    result.output_number_ = int64_t(output_number);
+    result.has_bias_ = bool{has_bias};
+    result.is_channels_last_ = bool(is_channels_last);
+    result.is_zero_k_ = bool(is_zero_k);
+
+    return result;
+  }
   static constexpr std::string_view name = "MatMulNaive";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"M", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"K", ProgramUniformVariableDataType::Uint32},
-                                          WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+#define WEBGPU_MAT_MUL_NAIVE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                \
+  U(Uint32, M)                                          \
+  U(Uint32, N)                                          \
+  U(Uint32, K)                                          \
+  U(Float32, activation_param_0)                        \
+  U(Float32, activation_param_1)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_NAIVE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MAT_MUL_NAIVE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MAT_MUL_NAIVE_PROGRAM_CONFIG
 

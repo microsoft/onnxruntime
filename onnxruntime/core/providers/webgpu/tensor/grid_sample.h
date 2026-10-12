@@ -19,21 +19,27 @@ namespace webgpu {
   F(bool, align_corners_)
 
 struct GridSampleProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GRID_SAMPLE_PROGRAM_CONFIG);
-    Config(int mode, int padding_mode, bool align_corners)
-        : mode_{mode}, padding_mode_{padding_mode}, align_corners_{align_corners} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GRID_SAMPLE_PROGRAM_CONFIG);
+  static Config MakeConfig(int mode, int padding_mode, bool align_corners) {
+    Config result{};
+    result.mode_ = int{mode};
+    result.padding_mode_ = int{padding_mode};
+    result.align_corners_ = bool{align_corners};
+
+    return result;
+  }
   static constexpr std::string_view name = "GridSample";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"C", ProgramUniformVariableDataType::Uint32},
-      {"H_in", ProgramUniformVariableDataType::Uint32},
-      {"W_in", ProgramUniformVariableDataType::Uint32},
-      {"H_out", ProgramUniformVariableDataType::Uint32},
-      {"W_out", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_GRID_SAMPLE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                              \
+  U(Uint32, C)                                        \
+  U(Uint32, H_in)                                     \
+  U(Uint32, W_in)                                     \
+  U(Uint32, H_out)                                    \
+  U(Uint32, W_out)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GRID_SAMPLE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GRID_SAMPLE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GRID_SAMPLE_PROGRAM_CONFIG
 

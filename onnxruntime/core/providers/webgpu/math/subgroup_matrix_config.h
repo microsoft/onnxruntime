@@ -64,15 +64,11 @@ static_assert(ValidateComponentTypeName<4>({wgpu::SubgroupMatrixComponentType::F
   F(uint32_t, K)                                            \
   F(uint32_t, subgroupSize)                                 \
   F(bool, needsPrepack)
-struct SubgroupMatrixConfig final {
-  WEBGPU_CONFIG_MEMBERS(WEBGPU_SUBGROUP_MATRIX_CONFIG);
+WEBGPU_DECLARE_SPECIALIZATION(SubgroupMatrixConfig, WEBGPU_SUBGROUP_MATRIX_CONFIG);
 #undef WEBGPU_SUBGROUP_MATRIX_CONFIG
-
-  // True if this config's subgroup-matrix shape equals (m, n, k).
-  constexpr bool Is(uint32_t m, uint32_t n, uint32_t k) const {
-    return M == m && N == n && K == k;
-  }
-};
+constexpr bool IsSubgroupMatrixShape(const SubgroupMatrixConfig& config, uint32_t m, uint32_t n, uint32_t k) {
+  return config.M == m && config.N == n && config.K == k;
+}
 
 // A fixed-size adapter already guarantees the required size. An adapter exposing a range needs
 // subgroup-size control so the kernel can select its required size instead of relying on the

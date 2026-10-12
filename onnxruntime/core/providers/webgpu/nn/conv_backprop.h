@@ -17,6 +17,38 @@
 namespace onnxruntime {
 namespace webgpu {
 
+#define WEBGPU_CONV_TRANSPOSE3_D_PROGRAM_CONFIG(F) \
+  F(bool, is_channels_last_)                       \
+  F(bool, has_bias_)                               \
+  F(bool, is_prepacked_)                           \
+  F(int, components_)
+
+struct ConvTranspose3DProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CONV_TRANSPOSE3_D_PROGRAM_CONFIG);
+  static Config MakeConfig(bool is_channels_last, bool has_bias, bool is_prepacked, int components) {
+    Config result{};
+    result.is_channels_last_ = bool(is_channels_last);
+    result.has_bias_ = bool(has_bias);
+    result.is_prepacked_ = bool(is_prepacked);
+    result.components_ = int(components);
+
+    return result;
+  }
+  static constexpr std::string_view name = "ConvTranspose3D";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+#define WEBGPU_CONV_TRANSPOSE3_D_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                    \
+  U(Uint32, strides)                                        \
+  U(Uint32, dilations)                                      \
+  U(Uint32, pads)                                           \
+  U(Uint32, input_channels_per_group)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CONV_TRANSPOSE3_D_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CONV_TRANSPOSE3_D_PROGRAM_SHADER_UNIFORMS
+};
+#undef WEBGPU_CONV_TRANSPOSE3_D_PROGRAM_CONFIG
+
+using ConvTranspose3DProgram = ConfiguredProgram<ConvTranspose3DProgramShader>;
+
 #define WEBGPU_CONV_TRANSPOSE2_D_PROGRAM_CONFIG(F) \
   F(bool, is_channels_last_)                       \
   F(bool, has_bias_)                               \
@@ -27,30 +59,33 @@ namespace webgpu {
   F(bool, pack_input_as4_)
 
 struct ConvTranspose2DProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CONV_TRANSPOSE2_D_PROGRAM_CONFIG);
-    Config(bool is_channels_last, bool has_bias, uint32_t components, uint32_t a_components, uint32_t b_components,
-           uint32_t input_channels_remainder, bool pack_input_as4)
-        : is_channels_last_(is_channels_last),
-          has_bias_(has_bias),
-          components_(components),
-          a_components_(a_components),
-          b_components_(b_components),
-          input_channels_remainder_(input_channels_remainder),
-          pack_input_as4_(pack_input_as4) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CONV_TRANSPOSE2_D_PROGRAM_CONFIG);
+  static Config MakeConfig(bool is_channels_last, bool has_bias, uint32_t components, uint32_t a_components, uint32_t b_components, uint32_t input_channels_remainder, bool pack_input_as4) {
+    Config result{};
+    result.is_channels_last_ = bool(is_channels_last);
+    result.has_bias_ = bool(has_bias);
+    result.components_ = uint32_t(components);
+    result.a_components_ = uint32_t(a_components);
+    result.b_components_ = uint32_t(b_components);
+    result.input_channels_remainder_ = uint32_t(input_channels_remainder);
+    result.pack_input_as4_ = bool(pack_input_as4);
+
+    return result;
+  }
   static constexpr std::string_view name = "ConvTranspose2D";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32},
-      {"filter_dims", ProgramUniformVariableDataType::Uint32},
-      {"dilations", ProgramUniformVariableDataType::Uint32},
-      {"effective_filter_dims", ProgramUniformVariableDataType::Uint32},
-      {"pads", ProgramUniformVariableDataType::Uint32},
-      {"input_channels_per_group_int", ProgramUniformVariableDataType::Uint32},
-      {"input_channels_per_group", ProgramUniformVariableDataType::Uint32},
-      {"output_channels_per_group", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_CONV_TRANSPOSE2_D_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                    \
+  U(Uint32, strides)                                        \
+  U(Uint32, filter_dims)                                    \
+  U(Uint32, dilations)                                      \
+  U(Uint32, effective_filter_dims)                          \
+  U(Uint32, pads)                                           \
+  U(Uint32, input_channels_per_group_int)                   \
+  U(Uint32, input_channels_per_group)                       \
+  U(Uint32, output_channels_per_group)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CONV_TRANSPOSE2_D_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CONV_TRANSPOSE2_D_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CONV_TRANSPOSE2_D_PROGRAM_CONFIG
 

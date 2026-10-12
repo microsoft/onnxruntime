@@ -16,31 +16,34 @@ namespace webgpu {
   F(bool, is_max_pool_)               \
   F(bool, is_nhwc_)                   \
   F(size_t, kernel_rank_)             \
-  F(bool, is_float16_)                \
   F(bool, count_include_pad_)         \
   F(bool, use_parallel_reduction_)
 
 struct PoolProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_POOL_PROGRAM_CONFIG);
-    Config(bool is_max_pool, bool is_nhwc, const TensorShapeVector& kernel_shape, bool is_float16,
-           bool count_include_pad, bool use_parallel_reduction)
-        : is_max_pool_{is_max_pool},
-          is_nhwc_{is_nhwc},
-          kernel_rank_{kernel_shape.size()},
-          is_float16_{is_float16},
-          count_include_pad_{count_include_pad},
-          use_parallel_reduction_{use_parallel_reduction} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_POOL_PROGRAM_CONFIG);
+  static Config MakeConfig(bool is_max_pool, bool is_nhwc, const TensorShapeVector& kernel_shape,
+                           bool count_include_pad, bool use_parallel_reduction) {
+    Config result{};
+    result.is_max_pool_ = bool{is_max_pool};
+    result.is_nhwc_ = bool{is_nhwc};
+    result.kernel_rank_ = size_t{kernel_shape.size()};
+    result.count_include_pad_ = bool{count_include_pad};
+    result.use_parallel_reduction_ = bool{use_parallel_reduction};
+
+    return result;
+  }
   static constexpr std::string_view name = "Pool";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"kernel_size", ProgramUniformVariableDataType::Uint32},
-                                          {"kernel_strides", ProgramUniformVariableDataType::Uint32},
-                                          {"pads", ProgramUniformVariableDataType::Uint32},
-                                          {"strides", ProgramUniformVariableDataType::Uint32},
-                                          {"dilations", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_POOL_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                       \
+  U(Uint32, kernel_size)                       \
+  U(Uint32, kernel_strides)                    \
+  U(Uint32, pads)                              \
+  U(Uint32, strides)                           \
+  U(Uint32, dilations)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_POOL_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_POOL_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_POOL_PROGRAM_CONFIG
 

@@ -9,35 +9,70 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void MatMulReadFnSource(ConfiguredShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
-                        const ShaderIndicesHelper* batch_dims, bool transA, bool transB);
+// Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
+// `ProgramBase.SetDispatchGroupSize()` may be normalized in
+// `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
+// `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
+// Reject normalization-added workgroups before accesses or workgroup barriers.
+void InitializeLogicalWorkgroupIDAndGlobalID(ConfiguredShaderHelper& shader);
 
-void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
-                                  const ShaderVariableHelper* bias, std::string activation_snippet,
+void MatMulReadFnSource(ConfiguredShaderHelper& shader,
+                        const ShaderVariableHelper& a,
+                        const ShaderVariableHelper& b,
+                        const ShaderIndicesHelper* batch_dims,
+                        bool transA,
+                        bool transB);
+
+void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader,
+                                  const ShaderVariableHelper& output,
+                                  const ShaderVariableHelper* bias,
+                                  std::string activation_snippet,
                                   bool is_channels_last);
 
-void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
-                                const ShaderVariableHelper* bias, bool c_is_scalar);
+void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader,
+                                const ShaderVariableHelper& output,
+                                const ShaderVariableHelper* bias,
+                                bool c_is_scalar);
 
-void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output, bool is_gemm,
+void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader,
+                                   const ShaderVariableHelper& output,
+                                   bool is_gemm,
                                    ProgramVariableDataType output_variable_type);
 
 // The two following functions are used to generate shader code for vec4 and scalar.
 // It is used in GEMM, Matmul, and Conv.
-Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
-                                  uint32_t workgroup_size_x, uint32_t workgroup_size_y, const std::string& data_type,
-                                  const ShaderIndicesHelper* batch_dims, bool transpose_a = false,
-                                  bool transpose_b = false, float alpha = 1.0f, bool need_handle_matmul = true,
+Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader,
+                                  const InlinedVector<int64_t>& elements_per_thread,
+                                  uint32_t workgroup_size_x,
+                                  uint32_t workgroup_size_y,
+                                  const std::string& data_type,
+                                  const ShaderIndicesHelper* batch_dims,
+                                  bool transpose_a = false,
+                                  bool transpose_b = false,
+                                  float alpha = 1.0f,
+                                  bool need_handle_matmul = true,
                                   // When B is transposed, the components of output is might 1 though A and B is vec4.
                                   // e.g. A{32, 32}, B{33, 32} => Y{32, 33}
-                                  int output_components = 4, uint32_t tile_inner = 32, bool split_k = false,
-                                  uint32_t split_dim_inner = 32);
+                                  int output_components = 4,
+                                  uint32_t tile_inner = 32,
+                                  bool split_k = false,
+                                  uint32_t split_dim_inner = 32,
+                                  bool use_f32_accumulation = false);
 
-Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
-                              uint32_t workgroup_size_x, uint32_t workgroup_size_y, const std::string& data_type,
-                              const ShaderIndicesHelper* batch_dims, bool transpose_a = false, bool transpose_b = false,
-                              float alpha = 1.0f, bool need_handle_matmul = true, uint32_t tile_inner = 32,
-                              bool split_k = false, uint32_t split_dim_inner = 32);
+Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader,
+                              const InlinedVector<int64_t>& elements_per_thread,
+                              uint32_t workgroup_size_x,
+                              uint32_t workgroup_size_y,
+                              const std::string& data_type,
+                              const ShaderIndicesHelper* batch_dims,
+                              bool transpose_a = false,
+                              bool transpose_b = false,
+                              float alpha = 1.0f,
+                              bool need_handle_matmul = true,
+                              uint32_t tile_inner = 32,
+                              bool split_k = false,
+                              uint32_t split_dim_inner = 32,
+                              bool use_f32_accumulation = false);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

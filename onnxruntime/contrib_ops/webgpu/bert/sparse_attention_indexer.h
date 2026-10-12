@@ -20,14 +20,18 @@ using onnxruntime::webgpu::WebGpuKernel;
 #define WEBGPU_SPARSE_ATTENTION_INDEXER_FILL_PROGRAM_CONFIG(F)
 
 struct SparseAttentionIndexerFillProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_ATTENTION_INDEXER_FILL_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_ATTENTION_INDEXER_FILL_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparseAttentionIndexerFill";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPARSE_ATTENTION_INDEXER_FILL_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_ATTENTION_INDEXER_FILL_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_ATTENTION_INDEXER_FILL_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_ATTENTION_INDEXER_FILL_PROGRAM_CONFIG
 
@@ -38,20 +42,26 @@ using SparseAttentionIndexerFillProgram = ConfiguredProgram<SparseAttentionIndex
   F(bool, has_current_)
 
 struct SparseAttentionIndexerQsaConcatProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_CONCAT_PROGRAM_CONFIG);
-    Config(bool has_past, bool has_current) : has_past_{has_past}, has_current_{has_current} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_CONCAT_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_past, bool has_current) {
+    Config result{};
+    result.has_past_ = bool{has_past};
+    result.has_current_ = bool{has_current};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparseAttentionIndexerQsaConcat";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"key_row_stride", ProgramUniformVariableDataType::Uint32},
-      {"key_offset", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_CONCAT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total)                                                            \
+  U(Uint32, sequence_length)                                                  \
+  U(Uint32, past_sequence_length)                                             \
+  U(Uint32, total_sequence_length)                                            \
+  U(Uint32, head_size)                                                        \
+  U(Uint32, key_row_stride)                                                   \
+  U(Uint32, key_offset)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_CONCAT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_CONCAT_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_CONCAT_PROGRAM_CONFIG
 
@@ -60,28 +70,33 @@ using SparseAttentionIndexerQsaConcatProgram = ConfiguredProgram<SparseAttention
 #define WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_SELECT_PROGRAM_CONFIG(F) F(bool, has_mask_)
 
 struct SparseAttentionIndexerQsaSelectProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_SELECT_PROGRAM_CONFIG);
-    Config(bool has_mask) : has_mask_{has_mask} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_SELECT_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_mask) {
+    Config result{};
+    result.has_mask_ = bool{has_mask};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparseAttentionIndexerQsaSelect";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"query_row_stride", ProgramUniformVariableDataType::Uint32},
-      {"rotary_width", ProgramUniformVariableDataType::Uint32},
-      {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
-      {"rotary_cache_batch_stride", ProgramUniformVariableDataType::Uint32},
-      {"compress_ratio", ProgramUniformVariableDataType::Uint32},
-      {"capacity", ProgramUniformVariableDataType::Uint32},
-      {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"block_topk", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32},
-      {"scale", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_SELECT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                                             \
+  U(Uint32, sequence_length)                                                  \
+  U(Uint32, num_heads)                                                        \
+  U(Uint32, head_size)                                                        \
+  U(Uint32, query_row_stride)                                                 \
+  U(Uint32, rotary_width)                                                     \
+  U(Uint32, max_rotary_length)                                                \
+  U(Uint32, rotary_cache_batch_stride)                                        \
+  U(Uint32, compress_ratio)                                                   \
+  U(Uint32, capacity)                                                         \
+  U(Uint32, past_sequence_length)                                             \
+  U(Uint32, total_sequence_length)                                            \
+  U(Uint32, block_topk)                                                       \
+  U(Float32, epsilon)                                                         \
+  U(Float32, scale)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_SELECT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_SELECT_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_ATTENTION_INDEXER_QSA_SELECT_PROGRAM_CONFIG
 
@@ -90,17 +105,21 @@ using SparseAttentionIndexerQsaSelectProgram = ConfiguredProgram<SparseAttention
 #define WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_COMPRESSED_PROGRAM_CONFIG(F)
 
 struct SparseAttentionIndexerCsaCopyCompressedProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_COMPRESSED_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_COMPRESSED_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparseAttentionIndexerCsaCopyCompressed";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"past_length", ProgramUniformVariableDataType::Uint32},
-      {"present_length", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_COMPRESSED_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total)                                                                     \
+  U(Uint32, head_size)                                                                 \
+  U(Uint32, past_length)                                                               \
+  U(Uint32, present_length)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_COMPRESSED_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_COMPRESSED_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_COMPRESSED_PROGRAM_CONFIG
 
@@ -110,26 +129,31 @@ using SparseAttentionIndexerCsaCopyCompressedProgram =
 #define WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COMPRESS_PROGRAM_CONFIG(F) F(bool, has_past_buffer_)
 
 struct SparseAttentionIndexerCsaCompressProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COMPRESS_PROGRAM_CONFIG);
-    Config(bool has_past_buffer) : has_past_buffer_{has_past_buffer} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COMPRESS_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_past_buffer) {
+    Config result{};
+    result.has_past_buffer_ = bool{has_past_buffer};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparseAttentionIndexerCsaCompress";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"work_items", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"rotary_width", ProgramUniformVariableDataType::Uint32},
-      {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
-      {"rotary_cache_batch_stride", ProgramUniformVariableDataType::Uint32},
-      {"compress_ratio", ProgramUniformVariableDataType::Uint32},
-      {"past_compressed_length", ProgramUniformVariableDataType::Uint32},
-      {"present_compressed_length", ProgramUniformVariableDataType::Uint32},
-      {"past_buffer_length", ProgramUniformVariableDataType::Uint32},
-      {"overlap_length", ProgramUniformVariableDataType::Uint32},
-      {"new_window_count", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COMPRESS_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, work_items)                                                         \
+  U(Uint32, sequence_length)                                                    \
+  U(Uint32, head_size)                                                          \
+  U(Uint32, rotary_width)                                                       \
+  U(Uint32, max_rotary_length)                                                  \
+  U(Uint32, rotary_cache_batch_stride)                                          \
+  U(Uint32, compress_ratio)                                                     \
+  U(Uint32, past_compressed_length)                                             \
+  U(Uint32, present_compressed_length)                                          \
+  U(Uint32, past_buffer_length)                                                 \
+  U(Uint32, overlap_length)                                                     \
+  U(Uint32, new_window_count)                                                   \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COMPRESS_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COMPRESS_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COMPRESS_PROGRAM_CONFIG
 
@@ -140,19 +164,25 @@ using SparseAttentionIndexerCsaCompressProgram = ConfiguredProgram<SparseAttenti
   F(bool, has_current_)
 
 struct SparseAttentionIndexerCsaCopyBufferProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_BUFFER_PROGRAM_CONFIG);
-    Config(bool has_past_buffer, bool has_current) : has_past_buffer_{has_past_buffer}, has_current_{has_current} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_BUFFER_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_past_buffer, bool has_current) {
+    Config result{};
+    result.has_past_buffer_ = bool{has_past_buffer};
+    result.has_current_ = bool{has_current};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparseAttentionIndexerCsaCopyBuffer";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"past_buffer_length", ProgramUniformVariableDataType::Uint32},
-      {"present_buffer_length", ProgramUniformVariableDataType::Uint32},
-      {"present_buffer_start", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_BUFFER_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total)                                                                 \
+  U(Uint32, sequence_length)                                                       \
+  U(Uint32, head_size)                                                             \
+  U(Uint32, past_buffer_length)                                                    \
+  U(Uint32, present_buffer_length)                                                 \
+  U(Uint32, present_buffer_start)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_BUFFER_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_BUFFER_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_COPY_BUFFER_PROGRAM_CONFIG
 
@@ -161,26 +191,30 @@ using SparseAttentionIndexerCsaCopyBufferProgram = ConfiguredProgram<SparseAtten
 #define WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_SELECT_PROGRAM_CONFIG(F)
 
 struct SparseAttentionIndexerCsaSelectProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_SELECT_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_SELECT_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "SparseAttentionIndexerCsaSelect";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"rotary_width", ProgramUniformVariableDataType::Uint32},
-      {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
-      {"rotary_cache_batch_stride", ProgramUniformVariableDataType::Uint32},
-      {"compress_ratio", ProgramUniformVariableDataType::Uint32},
-      {"capacity", ProgramUniformVariableDataType::Uint32},
-      {"present_compressed_length", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32},
-      {"scale", ProgramUniformVariableDataType::Float32},
-      {"head_weight_scale", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_SELECT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                                             \
+  U(Uint32, sequence_length)                                                  \
+  U(Uint32, num_heads)                                                        \
+  U(Uint32, head_size)                                                        \
+  U(Uint32, rotary_width)                                                     \
+  U(Uint32, max_rotary_length)                                                \
+  U(Uint32, rotary_cache_batch_stride)                                        \
+  U(Uint32, compress_ratio)                                                   \
+  U(Uint32, capacity)                                                         \
+  U(Uint32, present_compressed_length)                                        \
+  U(Float32, epsilon)                                                         \
+  U(Float32, scale)                                                           \
+  U(Float32, head_weight_scale)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_SELECT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_SELECT_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SPARSE_ATTENTION_INDEXER_CSA_SELECT_PROGRAM_CONFIG
 

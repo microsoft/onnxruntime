@@ -16,15 +16,22 @@ namespace webgpu {
   F(bool, is_int64_)
 
 struct GatherProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GATHER_PROGRAM_CONFIG);
-    Config(const uint32_t axis, bool is_int64) : axis_{axis}, is_int64_{is_int64} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATHER_PROGRAM_CONFIG);
+  static Config MakeConfig(const uint32_t axis, bool is_int64) {
+    Config result{};
+    result.axis_ = uint32_t{axis};
+    result.is_int64_ = bool{is_int64};
+
+    return result;
+  }
   static constexpr std::string_view name = "Gather";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_GATHER_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, data_size)                           \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATHER_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATHER_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GATHER_PROGRAM_CONFIG
 

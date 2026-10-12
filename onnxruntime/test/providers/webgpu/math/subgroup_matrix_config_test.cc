@@ -60,7 +60,7 @@ TEST(SubgroupMatrixConfigTest, OperationPreferenceSelectsFromAdapterConfigs) {
       adapter_configs, 32, 64, true,
       {{kF16, kF16, 8, 16, 16, 32, true}, {kF16, kF16, 16, 16, 16, 32, true}});
   ASSERT_TRUE(prefer_intel.has_value());
-  EXPECT_TRUE(prefer_intel->Is(8, 16, 16));
+  EXPECT_TRUE(IsSubgroupMatrixShape(*prefer_intel, 8, 16, 16));
 
   const auto select_f32 = SelectSubgroupMatrixConfigFromAdapterConfigs(
       adapter_configs, 32, 32, false, {{kF32, kF32, 8, 8, 8, 32, false}});

@@ -14,8 +14,11 @@ namespace webgpu {
 // which are used in the MatMulWriteFnSource function.
 namespace {
 
-void HandleMaybeHaveBiasForGEMM(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
-                                const ShaderVariableHelper* c, int output_components, bool c_is_scalar) {
+void HandleMaybeHaveBiasForGEMM(ConfiguredShaderHelper& shader,
+                                const ShaderVariableHelper& output,
+                                const ShaderVariableHelper* c,
+                                int output_components,
+                                bool c_is_scalar) {
   shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));\n";
 
   if (c != nullptr) {
@@ -36,8 +39,11 @@ void HandleMaybeHaveBiasForGEMM(ConfiguredShaderHelper& shader, const ShaderVari
   shader.AdditionalImplementation() << output.SetByIndices("coords", "value") << "\n";
 }
 
-void HandleMaybeBiasForMatMul(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
-                              const ShaderVariableHelper* bias, std::string activation_snippet, bool is_channels_last) {
+void HandleMaybeBiasForMatMul(ConfiguredShaderHelper& shader,
+                              const ShaderVariableHelper& output,
+                              const ShaderVariableHelper* bias,
+                              std::string activation_snippet,
+                              bool is_channels_last) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
   if (bias != nullptr) {
     shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? bias->GetByOffset("colIn") : bias->GetByOffset("row")) << ");\n";
@@ -46,8 +52,11 @@ void HandleMaybeBiasForMatMul(ConfiguredShaderHelper& shader, const ShaderVariab
                                     << "    " << output.SetByIndices("coords", "value") << "\n";
 }
 
-void HandleMatMulWithSplitK(ConfiguredShaderHelper& shader, bool is_gemm, const ShaderVariableHelper& output,
-                            ProgramVariableDataType output_variable_type) {
+void HandleMatMulWithSplitK(
+    ConfiguredShaderHelper& shader,
+    bool is_gemm,
+    const ShaderVariableHelper& output,
+    ProgramVariableDataType output_variable_type) {
   if (is_gemm) {
     shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));";
   } else {
@@ -97,20 +106,6 @@ void HandleMatMulWithSplitK(ConfiguredShaderHelper& shader, bool is_gemm, const 
   }
 }
 
-// Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
-// `ProgramBase.SetDispatchGroupSize()` may be normalized in
-// `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
-// `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
-void InitializeLogicalWorkgroupIDAndGlobalID(ConfiguredShaderHelper& shader) {
-  shader.MainFunctionBody()
-      << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
-      << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
-      << "  const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n"
-      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
-}
-
 void EmitMatMulWriteFnHeader(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output) {
   const int output_components = output.NumComponents();
   shader.AdditionalImplementation()
@@ -130,10 +125,28 @@ void EmitMatMulWriteFnFooter(ConfiguredShaderHelper& shader) {
 
 }  // namespace
 
-void MatMulReadFnSource(ConfiguredShaderHelper& shader, std::string_view function_name,
-                        const ShaderVariableHelper& input, const std::string& input_name,
-                        const ShaderIndicesHelper* batch_dims, std::string_view rows,
-                        std::string_view components_per_row, bool transpose) {
+void InitializeLogicalWorkgroupIDAndGlobalID(ConfiguredShaderHelper& shader) {
+  // Dispatch normalization can pad the grid. The return must be uniform across
+  // each workgroup, including kernels that use barriers or reinterpret z for Split-K.
+  shader.MainFunctionBody()
+      << "  let logical_workgroup_id_x = workgroup_idx % uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_yz = workgroup_idx / uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_y = logical_workgroup_id_yz % uniforms.logical_dispatch_y;\n"
+      << "  let logical_workgroup_id_z = logical_workgroup_id_yz / uniforms.logical_dispatch_y;\n"
+      << "  if (logical_workgroup_id_z >= uniforms.logical_dispatch_z) { return; }\n"
+      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
+      << "  const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n"
+      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
+}
+
+void MatMulReadFnSource(ConfiguredShaderHelper& shader,
+                        std::string_view function_name,
+                        const ShaderVariableHelper& input,
+                        const std::string& input_name,
+                        const ShaderIndicesHelper* batch_dims,
+                        std::string_view rows,
+                        std::string_view components_per_row,
+                        bool transpose) {
   const int components = input.NumComponents();
   const std::string data_type = "output_element_t";
   const std::string type_string = MakeScalarOrVectorType(components, data_type);
@@ -161,46 +174,67 @@ void MatMulReadFnSource(ConfiguredShaderHelper& shader, std::string_view functio
 
   shader.AdditionalImplementation() << input.IndicesSet(input_indices, input.Rank() - 2, "u32(row)") << "\n"
                                     << input.IndicesSet(input_indices, input.Rank() - 1, "u32(colIn)") << "\n"
-                                    << "        value = " << input.GetByIndices(input_indices) << ";\n"
+                                    << "        value = " << type_string << "(" << input.GetByIndices(input_indices) << ");\n"
                                     << "    }\n"
                                     << "    return value;\n"
                                     << "}\n\n";
 }
 
-void MatMulReadFnSource(ConfiguredShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
-                        const ShaderIndicesHelper* batch_dims, bool transA, bool transB) {
+void MatMulReadFnSource(ConfiguredShaderHelper& shader,
+                        const ShaderVariableHelper& a,
+                        const ShaderVariableHelper& b,
+                        const ShaderIndicesHelper* batch_dims,
+                        bool transA,
+                        bool transB) {
   MatMulReadFnSource(shader, "mm_readA", a, "a", batch_dims, "uniforms.dim_a_outer", "uniforms.dim_inner", transA);
   MatMulReadFnSource(shader, "mm_readB", b, "b", batch_dims, "uniforms.dim_inner", "uniforms.dim_b_outer", transB);
 }
 
-void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
-                                  const ShaderVariableHelper* bias, std::string activation_snippet,
+void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader,
+                                  const ShaderVariableHelper& output,
+                                  const ShaderVariableHelper* bias,
+                                  std::string activation_snippet,
                                   bool is_channels_last) {
   EmitMatMulWriteFnHeader(shader, output);
   HandleMaybeBiasForMatMul(shader, output, bias, activation_snippet, is_channels_last);
   EmitMatMulWriteFnFooter(shader);
 }
 
-void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output,
-                                const ShaderVariableHelper* bias, bool c_is_scalar) {
+void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader,
+                                const ShaderVariableHelper& output,
+                                const ShaderVariableHelper* bias,
+                                bool c_is_scalar) {
   EmitMatMulWriteFnHeader(shader, output);
   HandleMaybeHaveBiasForGEMM(shader, output, bias, output.NumComponents(), c_is_scalar);
   EmitMatMulWriteFnFooter(shader);
 }
 
-void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output, bool is_gemm,
+void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader,
+                                   const ShaderVariableHelper& output,
+                                   bool is_gemm,
                                    ProgramVariableDataType output_variable_type) {
   EmitMatMulWriteFnHeader(shader, output);
   HandleMatMulWithSplitK(shader, is_gemm, output, output_variable_type);
   EmitMatMulWriteFnFooter(shader);
 }
 
-Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
-                                  uint32_t workgroup_size_x, uint32_t workgroup_size_y, const std::string& data_type,
-                                  const ShaderIndicesHelper* batch_dims, bool transpose_a, bool transpose_b,
-                                  float alpha, bool need_handle_matmul, int output_components, uint32_t tile_inner,
-                                  bool split_k, uint32_t split_dim_inner) {
-  const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
+Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader,
+                                  const InlinedVector<int64_t>& elements_per_thread,
+                                  uint32_t workgroup_size_x,
+                                  uint32_t workgroup_size_y,
+                                  const std::string& data_type,
+                                  const ShaderIndicesHelper* batch_dims,
+                                  bool transpose_a,
+                                  bool transpose_b,
+                                  float alpha,
+                                  bool need_handle_matmul,
+                                  int output_components,
+                                  uint32_t tile_inner,
+                                  bool split_k,
+                                  uint32_t split_dim_inner,
+                                  bool use_f32_accumulation) {
+  const std::string accumulation_type = use_f32_accumulation ? "f32" : data_type;
+  const std::string write_type = split_k ? "output_value_t" : MakeScalarOrVectorType(output_components, data_type);
 
   std::string write_data_to_sub_a_vec4_snippet =
       transpose_a ? std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, kStart + inputRow, globalRowStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
@@ -250,7 +284,7 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
       << "  let globalCol = i32(logical_global_id.x);\n"
       << "  let globalRowStart = i32(logical_workgroup_id.y) * " << tile_a_outer << ";\n"
       << "  let globalColStart = i32(logical_workgroup_id.x) * " << tile_b_outer << ";\n"
-      << "  var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
+      << "  var acc: array<vec4<" << accumulation_type << ">, rowPerThread>;\n";
 
   if (split_k) {
     // With Split-K, the original "workgroup" (with dispatch_z == 1 in API side) is split into
@@ -334,17 +368,17 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
     if (transpose_a && transpose_b) {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[tileCol * innerElementSize][k];\n"
-          << "      let BCached1 =  mm_Bsub[tileCol * innerElementSize + 1][k];\n"
-          << "      let BCached2 =  mm_Bsub[tileCol * innerElementSize + 2][k];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize][k]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 1][k]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 2][k]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[tileCol * innerElementSize + 3][k];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 3][k]);\n";
       }
       shader.MainFunctionBody()
-          << "      let ACached0 = mm_Asub[k * innerElementSize][localRow];\n"
-          << "      let ACached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
-          << "      let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
-          << (inner_elements_size == 3 ? "" : "      let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
+          << "      let ACached0 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize][localRow]);\n"
+          << "      let ACached1 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 1][localRow]);\n"
+          << "      let ACached2 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 2][localRow]);\n"
+          << (inner_elements_size == 3 ? "" : "      let ACached3 = vec4<" + accumulation_type + ">(mm_Asub[k * innerElementSize + 3][localRow]);\n")
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
           << "             acc[i].x += ACached0[i] * BCached0.x + ACached1[i] * BCached0.y + ACached2[i] * BCached0.z + ACached3[i] * BCached0.w;\n"
           << "             acc[i].y += ACached0[i] * BCached1.x + ACached1[i] * BCached1.y + ACached2[i] * BCached1.z + ACached3[i] * BCached1.w;\n"
@@ -354,17 +388,17 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
     } else if (transpose_a && !transpose_b) {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[k * innerElementSize][tileCol];\n"
-          << "      let BCached1 = mm_Bsub[k * innerElementSize + 1][tileCol];\n"
-          << "      let BCached2 = mm_Bsub[k * innerElementSize + 2][tileCol];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize][tileCol]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 1][tileCol]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 2][tileCol]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[k * innerElementSize + 3][tileCol];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 3][tileCol]);\n";
       }
       shader.MainFunctionBody()
-          << "      let ACached0 = mm_Asub[k * innerElementSize][localRow];\n"
-          << "      let ACached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
-          << "      let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
-          << (inner_elements_size == 3 ? "" : "      let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
+          << "      let ACached0 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize][localRow]);\n"
+          << "      let ACached1 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 1][localRow]);\n"
+          << "      let ACached2 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 2][localRow]);\n"
+          << (inner_elements_size == 3 ? "" : "      let ACached3 = vec4<" + accumulation_type + ">(mm_Asub[k * innerElementSize + 3][localRow]);\n")
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
           << "        let ACached = mm_Asub[tileCol][i];\n"
           << "        acc[i] = BCached0 * ACached0[i] + acc[i];\n"
@@ -375,15 +409,15 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
     } else if (!transpose_a && transpose_b) {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[tileCol * innerElementSize][k];\n"
-          << "      let BCached1 =  mm_Bsub[tileCol * innerElementSize + 1][k];\n"
-          << "      let BCached2 =  mm_Bsub[tileCol * innerElementSize + 2][k];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize][k]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 1][k]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 2][k]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[tileCol * innerElementSize + 3][k];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 3][k]);\n";
       }
       shader.MainFunctionBody()
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
-          << "        let ACached = mm_Asub[tileRow + i][k];\n"
+          << "        let ACached = vec" << inner_elements_size << "<" << accumulation_type << ">(mm_Asub[tileRow + i][k]);\n"
           << "        acc[i].x += dot(ACached, BCached0);\n"
           << "        acc[i].y += dot(ACached, BCached1);\n"
           << "        acc[i].z += dot(ACached, BCached2);\n"
@@ -392,15 +426,15 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
     } else {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[k * innerElementSize][tileCol];\n"
-          << "      let BCached1 = mm_Bsub[k * innerElementSize + 1][tileCol];\n"
-          << "      let BCached2 = mm_Bsub[k * innerElementSize + 2][tileCol];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize][tileCol]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 1][tileCol]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 2][tileCol]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[k * innerElementSize + 3][tileCol];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 3][tileCol]);\n";
       }
       shader.MainFunctionBody()
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
-          << "        let ACached = mm_Asub[tileRow + i][k];\n"
+          << "        let ACached = vec" << inner_elements_size << "<" << accumulation_type << ">(mm_Asub[tileRow + i][k]);\n"
           << "        acc[i] = BCached0 * ACached.x + acc[i];\n"
           << "        acc[i] = BCached1 * ACached.y + acc[i];\n"
           << "        acc[i] = BCached2 * ACached.z + acc[i];\n"
@@ -415,7 +449,7 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
     // Calculate alpha * acc
     if (alpha != 1.0f) {
       shader.MainFunctionBody() << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
-                                << "    acc[innerRow] = output_element_t(uniforms.alpha) * acc[innerRow];\n"
+                                << "    acc[innerRow] = " << accumulation_type << "(uniforms.alpha) * acc[innerRow];\n"
                                 << "  }\n";
     }
   }
@@ -424,10 +458,10 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
   shader.MainFunctionBody() << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n";
   if (output_components == 1) {
     shader.MainFunctionBody() << " for (var i = 0; i < innerElementSize; i = i + 1) {\n"
-                              << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, acc[innerRow][i]);\n"
+                              << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, " << write_type << "(acc[innerRow][i]));\n"
                               << "  }\n";
   } else {
-    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);\n";
+    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, " << write_type << "(acc[innerRow]));\n";
   }
 
   shader.MainFunctionBody() << "  }\n";
@@ -435,13 +469,24 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader, const InlinedV
   return Status::OK();
 }
 
-Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader, const InlinedVector<int64_t>& elements_per_thread,
-                              uint32_t workgroup_size_x, uint32_t workgroup_size_y, const std::string& data_type,
-                              const ShaderIndicesHelper* batch_dims, bool transpose_a, bool transpose_b, float alpha,
-                              bool need_handle_matmul, uint32_t tile_inner, bool split_k, uint32_t split_dim_inner) {
+Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader,
+                              const InlinedVector<int64_t>& elements_per_thread,
+                              uint32_t workgroup_size_x,
+                              uint32_t workgroup_size_y,
+                              const std::string& data_type,
+                              const ShaderIndicesHelper* batch_dims,
+                              bool transpose_a,
+                              bool transpose_b,
+                              float alpha,
+                              bool need_handle_matmul,
+                              uint32_t tile_inner,
+                              bool split_k,
+                              uint32_t split_dim_inner,
+                              bool use_f32_accumulation) {
   ORT_UNUSED_PARAMETER(split_k);
   ORT_UNUSED_PARAMETER(split_dim_inner);
 
+  const std::string accumulation_type = use_f32_accumulation ? "f32" : data_type;
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];
 
@@ -477,7 +522,7 @@ Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader, const InlinedVecto
                             << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
                             << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
                             << " var kStart = 0;\n"
-                            << " var acc: array<array<" << data_type << ", colPerThread>, rowPerThread>;\n";
+                            << " var acc: array<array<" << accumulation_type << ", colPerThread>, rowPerThread>;\n";
 
   shader.MainFunctionBody()
       << "let tileRow = i32(local_id.y) * rowPerThread;\n"
@@ -519,21 +564,21 @@ Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader, const InlinedVecto
 
     // Compute acc values for a single thread.
     shader.MainFunctionBody()
-        << "var BCached: array<" << data_type << ", colPerThread>;\n"
+        << "var BCached: array<" << accumulation_type << ", colPerThread>;\n"
         << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
         << "    for (var inner = 0; inner < i32(colPerThread); inner = inner + 1) {\n";
     if (transpose_b) {
-      shader.MainFunctionBody() << "      BCached[inner] = mm_Bsub[tileCol + inner][k];\n";
+      shader.MainFunctionBody() << "      BCached[inner] = " << accumulation_type << "(mm_Bsub[tileCol + inner][k]);\n";
     } else {
       shader.MainFunctionBody()
-          << "      BCached[inner] = mm_Bsub[k][tileCol + inner];\n";
+          << "      BCached[inner] = " << accumulation_type << "(mm_Bsub[k][tileCol + inner]);\n";
     }
     shader.MainFunctionBody() << "    }\n"
                               << "    for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n";
     if (transpose_a) {
-      shader.MainFunctionBody() << "      let ACached = mm_Asub[k][tileRow + innerRow];\n";
+      shader.MainFunctionBody() << "      let ACached = " << accumulation_type << "(mm_Asub[k][tileRow + innerRow]);\n";
     } else {
-      shader.MainFunctionBody() << "      let ACached = mm_Asub[tileRow + innerRow][k];\n";
+      shader.MainFunctionBody() << "      let ACached = " << accumulation_type << "(mm_Asub[tileRow + innerRow][k]);\n";
     }
     shader.MainFunctionBody() << "      for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
                               << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] + ACached * BCached[innerCol];\n"
@@ -547,7 +592,7 @@ Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader, const InlinedVecto
     if (alpha != 1.0f) {
       shader.MainFunctionBody() << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
                                 << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-                                << "    acc[innerRow][innerCol] = output_element_t(uniforms.alpha) * acc[innerRow][innerCol];\n"
+                                << "    acc[innerRow][innerCol] = " << accumulation_type << "(uniforms.alpha) * acc[innerRow][innerCol];\n"
                                 << "  }\n"
                                 << "}\n";
     }
@@ -556,7 +601,7 @@ Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader, const InlinedVecto
   shader.MainFunctionBody()
       << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
       << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-      << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, acc[innerRow][innerCol]);\n"
+      << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, " << data_type << "(acc[innerRow][innerCol]));\n"
       << "  }\n"
       << "}\n";
   return Status::OK();

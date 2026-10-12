@@ -16,28 +16,30 @@ namespace webgpu {
 void RegisterClipInt64Kernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 #define WEBGPU_UNARY_ELEMENTWISE_PROGRAM_CONFIG(F) \
-  F(std::string, program_name_)                    \
   F(ShaderLiteral, expression_)                    \
   F(ShaderLiteral, additional_impl_)               \
   F(uint32_t, additional_usage_)
 
 struct UnaryElementwiseProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_UNARY_ELEMENTWISE_PROGRAM_CONFIG);
-    Config(const std::string& kernel_name, ShaderLiteral expression, ShaderLiteral additional_impl,
-           ShaderUsage usage)
-        : program_name_{kernel_name},
-          expression_{expression},
-          additional_impl_{additional_impl},
-          additional_usage_{usage.usage} {}
-  };
-  static std::string_view Name(const Config& config) { return config.program_name_; }
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_UNARY_ELEMENTWISE_PROGRAM_CONFIG);
+  static onnxruntime::webgpu::ShaderProgramSetup<Config> MakeConfig(const std::string& kernel_name, ShaderLiteral expression, ShaderLiteral additional_impl,
+                                                                    ShaderUsage usage) {
+    Config result{};
+
+    result.expression_ = ShaderLiteral{expression};
+    result.additional_impl_ = ShaderLiteral{additional_impl};
+    result.additional_usage_ = uint32_t{usage.usage};
+
+    return {std::move(result), kernel_name};
+  }
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"vec_size", ProgramUniformVariableDataType::Uint32},  // output size
-      {"attr", ProgramUniformVariableDataType::Float32});    // float type attribute(s)
-                                                             // TODO: add u32/i32 attribute(s) if needed
+#define WEBGPU_UNARY_ELEMENTWISE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, vec_size)                                       \
+  U(Float32, attr)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_UNARY_ELEMENTWISE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_UNARY_ELEMENTWISE_PROGRAM_SHADER_UNIFORMS  // float type attribute(s)
+                                                         // TODO: add u32/i32 attribute(s) if needed
 };
 #undef WEBGPU_UNARY_ELEMENTWISE_PROGRAM_CONFIG
 

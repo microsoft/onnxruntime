@@ -13,15 +13,21 @@ namespace webgpu {
 #define WEBGPU_TILE_PROGRAM_CONFIG(F) F(bool, is_int64_)
 
 struct TileProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_TILE_PROGRAM_CONFIG);
-    Config(bool is_int64) : is_int64_{is_int64} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TILE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool is_int64) {
+    Config result{};
+    result.is_int64_ = bool{is_int64};
+
+    return result;
+  }
   static constexpr std::string_view name = "Tile";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"repeats", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_TILE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                       \
+  U(Uint32, repeats)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TILE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TILE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_TILE_PROGRAM_CONFIG
 

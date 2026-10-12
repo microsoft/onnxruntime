@@ -15,16 +15,22 @@ namespace webgpu {
 #define WEBGPU_SPLIT_PROGRAM_CONFIG(F) F(size_t, output_count_)
 
 struct SplitProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SPLIT_PROGRAM_CONFIG);
-    Config(size_t output_count) : output_count_{output_count} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SPLIT_PROGRAM_CONFIG);
+  static Config MakeConfig(size_t output_count) {
+    Config result{};
+    result.output_count_ = size_t{output_count};
+
+    return result;
+  }
   static constexpr std::string_view name = "Split";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32},
-                                          {"total_segment_elements", ProgramUniformVariableDataType::Uint32},
-                                          {"segment_sizes", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SPLIT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, input_size)                         \
+  U(Uint32, total_segment_elements)             \
+  U(Uint32, segment_sizes)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SPLIT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SPLIT_PROGRAM_SHADER_UNIFORMS
 
   // The outputs are separate bindings, so the branch over them has to be unrolled at shader
   // generation time. Their sizes are uniforms, so shapes that differ only in split sizes share

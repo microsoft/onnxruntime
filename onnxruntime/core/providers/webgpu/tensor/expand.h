@@ -15,16 +15,21 @@ namespace webgpu {
   F(bool, output_last_dim_divisible_by_4_)
 
 struct ExpandProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_EXPAND_PROGRAM_CONFIG);
-    Config(const bool input_last_dim_divisible_by_4, const bool output_last_dim_divisible_by_4)
-        : input_last_dim_divisible_by_4_{input_last_dim_divisible_by_4},
-          output_last_dim_divisible_by_4_{output_last_dim_divisible_by_4} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_EXPAND_PROGRAM_CONFIG);
+  static Config MakeConfig(const bool input_last_dim_divisible_by_4, const bool output_last_dim_divisible_by_4) {
+    Config result{};
+    result.input_last_dim_divisible_by_4_ = bool{input_last_dim_divisible_by_4};
+    result.output_last_dim_divisible_by_4_ = bool{output_last_dim_divisible_by_4};
+
+    return result;
+  }
   static constexpr std::string_view name = "Expand";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_EXPAND_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, data_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_EXPAND_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_EXPAND_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_EXPAND_PROGRAM_CONFIG
 

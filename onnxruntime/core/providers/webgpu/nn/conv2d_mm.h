@@ -29,22 +29,24 @@ namespace webgpu {
   F(InlinedVector<int64_t>, elements_per_thread_)
 
 struct Conv2dMMProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CONV2D_M_M_PROGRAM_CONFIG);
-    Config(const Activation& activation, uint32_t tile_inner, bool fit_a_outer, bool fit_b_outer, bool fit_inner,
-           bool is_channels_last, bool is_vec4, bool has_bias, std::vector<uint32_t>&& element_size,
-           InlinedVector<int64_t>&& elements_per_thread)
-        : activation_(activation),
-          tile_inner_(tile_inner),
-          fit_a_outer_(fit_a_outer),
-          fit_b_outer_(fit_b_outer),
-          fit_inner_(fit_inner),
-          is_channels_last_(is_channels_last),
-          is_vec4_(is_vec4),
-          has_bias_(has_bias),
-          element_size_(std::move(element_size)),
-          elements_per_thread_(std::move(elements_per_thread)) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CONV2D_M_M_PROGRAM_CONFIG);
+  static Config MakeConfig(const Activation& activation, uint32_t tile_inner, bool fit_a_outer, bool fit_b_outer, bool fit_inner,
+                           bool is_channels_last, bool is_vec4, bool has_bias, std::vector<uint32_t>&& element_size,
+                           InlinedVector<int64_t>&& elements_per_thread) {
+    Config result{};
+    result.activation_ = MakeShaderActivation(activation);
+    result.tile_inner_ = uint32_t(tile_inner);
+    result.fit_a_outer_ = bool(fit_a_outer);
+    result.fit_b_outer_ = bool(fit_b_outer);
+    result.fit_inner_ = bool(fit_inner);
+    result.is_channels_last_ = bool(is_channels_last);
+    result.is_vec4_ = bool(is_vec4);
+    result.has_bias_ = bool(has_bias);
+    result.element_size_ = std::vector<uint32_t>(std::move(element_size));
+    result.elements_per_thread_ = InlinedVector<int64_t>(std::move(elements_per_thread));
+
+    return result;
+  }
   static constexpr std::string_view name = "Conv2dMM";
   static std::string Conv2dCommonSnippet(const Config& config, const ShaderVariableHelper& x,
                                          const ShaderVariableHelper& w, const ShaderActivation& activation,
@@ -52,17 +54,20 @@ struct Conv2dMMProgramShader {
                                          uint32_t inner_element_size_w = 4, uint32_t inner_element_size = 4);
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"dim_a_outer", ProgramUniformVariableDataType::Uint32},
-      {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-      {"dim_inner", ProgramUniformVariableDataType::Uint32},
-      {"pads", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32},
-      {"dilations", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32},
-      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+#define WEBGPU_CONV2D_M_M_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, dim_a_outer)                             \
+  U(Uint32, dim_b_outer)                             \
+  U(Uint32, dim_inner)                               \
+  U(Uint32, pads)                                    \
+  U(Uint32, strides)                                 \
+  U(Uint32, dilations)                               \
+  U(Uint32, logical_dispatch_x)                      \
+  U(Uint32, logical_dispatch_y)                      \
+  U(Uint32, logical_dispatch_z)                      \
+  U(Float32, activation_param_0)                     \
+  U(Float32, activation_param_1)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CONV2D_M_M_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CONV2D_M_M_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CONV2D_M_M_PROGRAM_CONFIG
 

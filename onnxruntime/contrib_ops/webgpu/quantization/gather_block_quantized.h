@@ -30,31 +30,36 @@ using onnxruntime::webgpu::ComputeContext;
   F(std::string, scale_broadcast_axes_)
 
 struct GatherBlockQuantizedProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_CONFIG);
-    Config(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, int bits,
-           bool has_zeropoint, const TensorShape& x_shape, bool is_fp_quantized = false, int32_t fp_elem_type = 0,
-           std::string scale_broadcast_axes = {})
-        : is_signed_{is_signed},
-          is_uint8_{is_uint8},
-          indices_rank_{indices_rank},
-          gather_axis_{gather_axis},
-          bits_{bits},
-          has_zeropoint_{has_zeropoint},
-          x_rank_{x_shape.NumDimensions()},
-          is_fp_quantized_{is_fp_quantized},
-          fp_elem_type_{fp_elem_type},
-          scale_broadcast_axes_{std::move(scale_broadcast_axes)} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_CONFIG);
+  static Config MakeConfig(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, int bits,
+                           bool has_zeropoint, const TensorShape& x_shape, bool is_fp_quantized = false, int32_t fp_elem_type = 0,
+                           std::string scale_broadcast_axes = {}) {
+    Config result{};
+    result.is_signed_ = bool{is_signed};
+    result.is_uint8_ = bool{is_uint8};
+    result.indices_rank_ = size_t{indices_rank};
+    result.gather_axis_ = int{gather_axis};
+    result.bits_ = int{bits};
+    result.has_zeropoint_ = bool{has_zeropoint};
+    result.x_rank_ = size_t{x_shape.NumDimensions()};
+    result.is_fp_quantized_ = bool{is_fp_quantized};
+    result.fp_elem_type_ = int32_t{fp_elem_type};
+    result.scale_broadcast_axes_ = std::string{std::move(scale_broadcast_axes)};
+
+    return result;
+  }
   static constexpr std::string_view name = "GatherBlockQuantized";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"quantize_axis", ProgramUniformVariableDataType::Uint32},
-                                          {"gather_axis", ProgramUniformVariableDataType::Uint32},
-                                          {"block_size", ProgramUniformVariableDataType::Uint32},
-                                          {"scale_qaxis_dim", ProgramUniformVariableDataType::Uint32},
-                                          {"zp_packed_qaxis_dim", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                         \
+  U(Uint32, quantize_axis)                                       \
+  U(Uint32, gather_axis)                                         \
+  U(Uint32, block_size)                                          \
+  U(Uint32, scale_qaxis_dim)                                     \
+  U(Uint32, zp_packed_qaxis_dim)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATHER_BLOCK_QUANTIZED_PROGRAM_SHADER_UNIFORMS
 
   // When true, `data` holds FP8 or FP4 codes (rather than integer block-quantized codes) and
   // GenerateShaderCode emits a dequantization lookup table (indexed on the raw bit pattern)

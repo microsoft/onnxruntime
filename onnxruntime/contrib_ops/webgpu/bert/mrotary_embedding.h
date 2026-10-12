@@ -22,24 +22,30 @@ using namespace onnxruntime::webgpu;
   F(mrotary_embedding_helper::MRopeLayout, mrope_layout_)
 
 struct MRotaryEmbeddingProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG);
-    Config(bool interleaved, bool transposed, mrotary_embedding_helper::MRopeLayout mrope_layout)
-        : interleaved_{interleaved}, transposed_{transposed}, mrope_layout_{mrope_layout} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+  static Config MakeConfig(bool interleaved, bool transposed, mrotary_embedding_helper::MRopeLayout mrope_layout) {
+    Config result{};
+    result.interleaved_ = bool{interleaved};
+    result.transposed_ = bool{transposed};
+    result.mrope_layout_ = mrotary_embedding_helper::MRopeLayout{mrope_layout};
+
+    return result;
+  }
   static constexpr std::string_view name = "MRotaryEmbedding";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"scale", ProgramUniformVariableDataType::Float32},
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"rotary_embedding_dim", ProgramUniformVariableDataType::Uint32},
-      {"max_sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"mrope_section", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, scale)                                          \
+  U(Uint32, output_size)                                     \
+  U(Uint32, batch_size)                                      \
+  U(Uint32, sequence_length)                                 \
+  U(Uint32, num_heads)                                       \
+  U(Uint32, head_size)                                       \
+  U(Uint32, rotary_embedding_dim)                            \
+  U(Uint32, max_sequence_length)                             \
+  U(Uint32, mrope_section)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG
 

@@ -156,29 +156,33 @@ static_assert(SelectDecodeMTile(4, 64, 128 / 4, sizeof(float), 8, false, 16384) 
 static_assert(SelectDecodeMTile(4, 64, 128 / 4, sizeof(MLFloat16), 0, false, 16384) == 4);
 static_assert(SelectDecodeMTile(4, 64, 128 / 4, sizeof(float), 0, true, 16384) == 4);
 
-FlashAttentionProgramShader::Config::Config(const std::string& kernel_name, bool has_attention_bias, bool is_qualcomm,
-                                            bool is_fp16, int qkv_head_size, int qkv_num_heads, bool is_unidirectional,
-                                            bool is_nvidia, bool is_apple, bool has_subgroups, bool q_BNSH,
-                                            bool use_seqlen_k, bool has_head_sink, bool has_local_window,
-                                            uint32_t kv_cache_quantization_bits, int compressed_head_size_u32,
-                                            bool use_seqlens_q)
-    : program_name_{kernel_name},
-      has_attention_bias_(has_attention_bias),
-      is_qualcomm_(is_qualcomm),
-      qkv_head_size_(qkv_head_size),
-      qkv_num_heads_(qkv_num_heads),
-      is_unidirectional_(is_unidirectional),
-      is_nvidia_(is_nvidia),
-      use_shm_path_(is_apple || is_nvidia || !has_subgroups),
-      q_BNSH_(q_BNSH),
-      use_seqlen_k_(use_seqlen_k),
-      has_head_sink_(has_head_sink),
-      has_local_window_(has_local_window),
-      max_k_step_(SelectDensePrefillMaxKStep(use_shm_path_, is_fp16, qkv_head_size)),
-      kv_cache_quantization_(kv_cache_quantization_bits != 0),
-      kv_cache_quantization_bits_(kv_cache_quantization_bits),
-      compressed_head_size_u32_(compressed_head_size_u32),
-      use_seqlens_q_(use_seqlens_q) {}
+ShaderProgramSetup<FlashAttentionProgramShader::Config> FlashAttentionProgramShader::MakeConfig(const std::string& kernel_name, bool has_attention_bias, bool is_qualcomm,
+                                                                                                bool is_fp16, int qkv_head_size, int qkv_num_heads, bool is_unidirectional,
+                                                                                                bool is_nvidia, bool is_apple, bool has_subgroups, bool q_BNSH,
+                                                                                                bool use_seqlen_k, bool has_head_sink, bool has_local_window,
+                                                                                                uint32_t kv_cache_quantization_bits, int compressed_head_size_u32,
+                                                                                                bool use_seqlens_q) {
+  Config result{};
+
+  result.has_attention_bias_ = bool(has_attention_bias);
+  result.is_qualcomm_ = bool(is_qualcomm);
+  result.qkv_head_size_ = int(qkv_head_size);
+  result.qkv_num_heads_ = int(qkv_num_heads);
+  result.is_unidirectional_ = bool(is_unidirectional);
+  result.is_nvidia_ = bool(is_nvidia);
+  result.use_shm_path_ = bool(is_apple || is_nvidia || !has_subgroups);
+  result.q_BNSH_ = bool(q_BNSH);
+  result.use_seqlen_k_ = bool(use_seqlen_k);
+  result.has_head_sink_ = bool(has_head_sink);
+  result.has_local_window_ = bool(has_local_window);
+  result.max_k_step_ = int(SelectDensePrefillMaxKStep(result.use_shm_path_, is_fp16, qkv_head_size));
+  result.kv_cache_quantization_ = bool(kv_cache_quantization_bits != 0);
+  result.kv_cache_quantization_bits_ = uint32_t(kv_cache_quantization_bits);
+  result.compressed_head_size_u32_ = int(compressed_head_size_u32);
+  result.use_seqlens_q_ = bool(use_seqlens_q);
+
+  return {std::move(result), kernel_name};
+}
 
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgramShader::GenerateShaderCode(
     [[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh) {

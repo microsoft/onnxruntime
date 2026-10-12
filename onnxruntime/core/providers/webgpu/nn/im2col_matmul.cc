@@ -121,7 +121,7 @@ Status Im2ColMatMulProgramShader::GenerateShaderCode([[maybe_unused]] const Conf
       WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(config.activation_.activation_kind_)),
       WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_),
       // Alpha 1 selects the QuickGelu variant without the multiply or alpha uniform.
-      WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, config.activation_.HasUnitQuickGeluAlpha()),
+      WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, config.activation_.unit_quick_gelu_alpha_),
       WGSL_TEMPLATE_PARAMETER(tile_m, config.tile_m_), WGSL_TEMPLATE_PARAMETER(tile_n, config.tile_n_),
       WGSL_TEMPLATE_PARAMETER(use_subgroup, config.use_subgroup_), WGSL_TEMPLATE_PARAMETER(vec_size, config.vec_size_),
       WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(src, src), WGSL_TEMPLATE_VARIABLE(weight, weight));

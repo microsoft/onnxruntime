@@ -186,7 +186,7 @@ std::string GetActivationSnippet(const ShaderActivation& activation, std::string
       return "value = tanh(value);";
     case ActivationKind::QuickGelu:
       // Alpha 1 omits the multiply and uniform read.
-      if (activation.HasUnitQuickGeluAlpha()) {
+      if (activation.unit_quick_gelu_alpha_) {
         return "value = value * (" + value_type_cast(FloatLiteral(1.0f)) + " / (" +
                value_type_cast(FloatLiteral(1.0f)) + " + exp(-value)));";
       }

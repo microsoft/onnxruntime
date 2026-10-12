@@ -13,17 +13,22 @@ namespace webgpu {
 #define WEBGPU_CUM_SUM_PROGRAM_CONFIG(F)
 
 struct CumSumProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CUM_SUM_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CUM_SUM_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "CumSum";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"axis", ProgramUniformVariableDataType::Uint32},
-                                          {"exclusive", ProgramUniformVariableDataType::Uint32},
-                                          {"reverse", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_CUM_SUM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                          \
+  U(Uint32, axis)                                 \
+  U(Uint32, exclusive)                            \
+  U(Uint32, reverse)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CUM_SUM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CUM_SUM_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CUM_SUM_PROGRAM_CONFIG
 

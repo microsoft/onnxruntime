@@ -22,18 +22,24 @@ namespace webgpu {
   F(bool, has_seq_lens_)
 
 struct GruStateCopyProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GRU_STATE_COPY_PROGRAM_CONFIG);
-    Config(bool to_state, int layout, bool has_seq_lens = false)
-        : to_state_(to_state), layout_(layout), has_seq_lens_(has_seq_lens) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GRU_STATE_COPY_PROGRAM_CONFIG);
+  static Config MakeConfig(bool to_state, int layout, bool has_seq_lens = false) {
+    Config result{};
+    result.to_state_ = bool(to_state);
+    result.layout_ = int(layout);
+    result.has_seq_lens_ = bool(has_seq_lens);
+
+    return result;
+  }
   static constexpr std::string_view name = "GruStateCopy";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"direction", ProgramUniformVariableDataType::Uint32},
-      {"num_directions", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_GRU_STATE_COPY_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                  \
+  U(Uint32, hidden_size)                                 \
+  U(Uint32, direction)                                   \
+  U(Uint32, num_directions)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GRU_STATE_COPY_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GRU_STATE_COPY_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GRU_STATE_COPY_PROGRAM_CONFIG
 
@@ -54,27 +60,31 @@ using GruStateCopyProgram = ConfiguredProgram<GruStateCopyProgramShader>;
   F(std::string, f_activation_fn_)
 
 struct GruGateProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GRU_GATE_PROGRAM_CONFIG);
-    Config(bool has_bias, bool linear_before_reset, bool has_clip, int layout, const std::string& f_activation_fn)
-        : has_bias_(has_bias),
-          linear_before_reset_(linear_before_reset),
-          has_clip_(has_clip),
-          layout_(layout),
-          f_activation_fn_(f_activation_fn) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GRU_GATE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias, bool linear_before_reset, bool has_clip, int layout, const std::string& f_activation_fn) {
+    Config result{};
+    result.has_bias_ = bool(has_bias);
+    result.linear_before_reset_ = bool(linear_before_reset);
+    result.has_clip_ = bool(has_clip);
+    result.layout_ = int(layout);
+    result.f_activation_fn_ = std::string(f_activation_fn);
+
+    return result;
+  }
   static constexpr std::string_view name = "GruGate";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"input_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"direction", ProgramUniformVariableDataType::Uint32},
-      {"num_directions", ProgramUniformVariableDataType::Uint32},
-      {"timestep", ProgramUniformVariableDataType::Uint32},
-      {"seq_length", ProgramUniformVariableDataType::Uint32},
-      {"clip_value", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_GRU_GATE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                            \
+  U(Uint32, input_size)                            \
+  U(Uint32, hidden_size)                           \
+  U(Uint32, direction)                             \
+  U(Uint32, num_directions)                        \
+  U(Uint32, timestep)                              \
+  U(Uint32, seq_length)                            \
+  U(Float32, clip_value)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GRU_GATE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GRU_GATE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GRU_GATE_PROGRAM_CONFIG
 
@@ -95,30 +105,34 @@ using GruGateProgram = ConfiguredProgram<GruGateProgramShader>;
   F(std::string, g_activation_fn_)
 
 struct GruHiddenProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_GRU_HIDDEN_PROGRAM_CONFIG);
-    Config(bool has_bias, bool has_Y, bool has_seq_lens, bool linear_before_reset, bool has_clip, int layout,
-           const std::string& g_activation_fn)
-        : has_bias_(has_bias),
-          has_Y_(has_Y),
-          has_seq_lens_(has_seq_lens),
-          linear_before_reset_(linear_before_reset),
-          has_clip_(has_clip),
-          layout_(layout),
-          g_activation_fn_(g_activation_fn) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GRU_HIDDEN_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias, bool has_Y, bool has_seq_lens, bool linear_before_reset, bool has_clip, int layout,
+                           const std::string& g_activation_fn) {
+    Config result{};
+    result.has_bias_ = bool(has_bias);
+    result.has_Y_ = bool(has_Y);
+    result.has_seq_lens_ = bool(has_seq_lens);
+    result.linear_before_reset_ = bool(linear_before_reset);
+    result.has_clip_ = bool(has_clip);
+    result.layout_ = int(layout);
+    result.g_activation_fn_ = std::string(g_activation_fn);
+
+    return result;
+  }
   static constexpr std::string_view name = "GruHidden";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"input_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"direction", ProgramUniformVariableDataType::Uint32},
-      {"num_directions", ProgramUniformVariableDataType::Uint32},
-      {"timestep", ProgramUniformVariableDataType::Uint32},
-      {"seq_length", ProgramUniformVariableDataType::Uint32},
-      {"clip_value", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_GRU_HIDDEN_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                              \
+  U(Uint32, input_size)                              \
+  U(Uint32, hidden_size)                             \
+  U(Uint32, direction)                               \
+  U(Uint32, num_directions)                          \
+  U(Uint32, timestep)                                \
+  U(Uint32, seq_length)                              \
+  U(Float32, clip_value)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GRU_HIDDEN_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GRU_HIDDEN_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_GRU_HIDDEN_PROGRAM_CONFIG
 

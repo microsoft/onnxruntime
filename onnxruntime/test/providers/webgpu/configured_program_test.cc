@@ -1,31 +1,42 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
 #include <array>
-#include <cmath>
 #include <string>
 #include <unordered_map>
 
 #include "gtest/gtest.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/tensor.h"
 #include "core/providers/webgpu/configured_program.h"
-#include "core/providers/webgpu/nn/layer_norm.h"
-#include "core/providers/webgpu/nn/instance_norm.h"
+#include "core/providers/webgpu/shader_metadata.h"
 #include "core/providers/webgpu/program_cache_key.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/util/include/default_providers.h"
 
 namespace onnxruntime::test {
 namespace {
 using namespace webgpu;
 
-struct OtherLayerNormShader : LayerNormShader {};
+#define WEBGPU_TEST_FIELDS(F) F(bool, flag0) F(bool, flag1) F(bool, flag2) F(bool, flag3)
+struct TestShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TEST_FIELDS);
+  static constexpr std::string_view name = "Test";
+  static Status GenerateShaderCode(const Config&, ConfiguredShaderHelper&) { return Status::OK(); }
+};
+#undef WEBGPU_TEST_FIELDS
+using TestProgram = ConfiguredProgram<TestShader>;
+struct OtherTestShader : TestShader {};
+
+#define WEBGPU_TEST_FLOAT_FIELDS(F) F(float, epsilon)
+struct FloatShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TEST_FLOAT_FIELDS);
+  static constexpr std::string_view name = "FloatTest";
+  static Status GenerateShaderCode(const Config&, ConfiguredShaderHelper&) { return Status::OK(); }
+};
+#undef WEBGPU_TEST_FLOAT_FIELDS
 
 #define WEBGPU_TEST_METADATA_CONFIG(F)
 struct MetadataShader {
-  WEBGPU_DECLARE_CONFIG(Config, WEBGPU_TEST_METADATA_CONFIG);
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TEST_METADATA_CONFIG);
   static constexpr std::string_view name = "MetadataTest";
   static Status GenerateShaderCode(const Config&, ConfiguredShaderHelper&) { return Status::OK(); }
 };
@@ -39,18 +50,18 @@ std::string Key(const ProgramBase& program) {
 }
 
 TEST(ConfiguredProgramTest, EveryDeclaredFlagChangesIdentity) {
-  LayerNormProgram baseline{false, false, false, false, false, false};
-  ConfiguredProgram<OtherLayerNormShader> same_name{false, false, false, false, false, false};
+  TestProgram baseline{false, false, false, false};
+  ConfiguredProgram<OtherTestShader> same_name{false, false, false, false};
   EXPECT_NE(Key(baseline), Key(same_name));
   InlinedHashSet<std::string> keys{Key(baseline)};
-  for (size_t bit = 0; bit < 6; ++bit) {
-    std::array<bool, 6> flags{};
+  for (size_t bit = 0; bit < 4; ++bit) {
+    std::array<bool, 4> flags{};
     flags[bit] = true;
-    LayerNormProgram variant{flags[0], flags[1], flags[2], flags[3], flags[4], flags[5]};
+    TestProgram variant{flags[0], flags[1], flags[2], flags[3]};
     EXPECT_TRUE(keys.insert(Key(variant)).second);
   }
-  ComputeChannelScaleShiftProgram low_epsilon{4, 1e-5f, 64};
-  ComputeChannelScaleShiftProgram high_epsilon{4, 1.0f, 64};
+  ConfiguredProgram<FloatShader> low_epsilon{1e-5f};
+  ConfiguredProgram<FloatShader> high_epsilon{1.0f};
   EXPECT_NE(Key(low_epsilon), Key(high_epsilon));
 }
 
@@ -97,143 +108,58 @@ TEST(ConfiguredProgramTest, ExactKeysRemainDistinctWhenHashesCollide) {
     size_t operator()(const std::string&) const { return 0; }
   };
   std::unordered_map<std::string, int, ConstantHash> cache;
-  LayerNormProgram mean{false, false, true, false, false, false};
-  LayerNormProgram inv_std{false, false, false, true, false, false};
+  TestProgram mean{false, false, true, false};
+  TestProgram inv_std{false, false, false, true};
   cache.emplace(Key(mean), 1);
   cache.emplace(Key(inv_std), 2);
   ASSERT_EQ(cache.size(), 2u);
   EXPECT_EQ(cache.at(Key(mean)), 1);
   EXPECT_EQ(cache.at(Key(inv_std)), 2);
   EXPECT_NE(Key(mean).find('\0'), std::string::npos);
-  const auto display = ProgramCacheKeyForLogging(Key(mean));
-  EXPECT_TRUE(display.starts_with("configured:"));
+  ShaderDiagnosticIds diagnostics;
+  ShaderDiagnosticIds other_cache;
+  const auto display = diagnostics.Format(Key(mean));
+  EXPECT_TRUE(display.starts_with("shader:"));
+  EXPECT_EQ(display.find_first_not_of("0123456789", 7), std::string::npos);
+  EXPECT_EQ(display, diagnostics.Format(Key(mean)));
+  EXPECT_NE(display, diagnostics.Format(Key(inv_std)));
+  EXPECT_NE(display, other_cache.Format(Key(mean)));
   EXPECT_EQ(display.find('\0'), std::string::npos);
 }
 
-class LayerNormOutputsTester final : public OpTester {
- public:
-  explicit LayerNormOutputsTester(bool reverse) : OpTester("LayerNormalization", 17), reverse_{reverse} {}
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LayerNormOutputsTester);
-
-  void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
-                std::vector<std::function<void(Node&)>>&) override {
-    auto& absent = graph.GetOrCreateNodeArg("", nullptr);
-    for (int i : {0, 1}) {
-      const bool mean = (i == 0) != reverse_;
-      graph.AddNode(mean ? "mean" : "inverse_std", "LayerNormalization", "", inputs,
-                    mean ? std::vector<NodeArg*>{outputs[0], outputs[1]}
-                         : std::vector<NodeArg*>{outputs[2], &absent, outputs[3]});
-    }
-  }
-
- private:
-  const bool reverse_;
-};
-
-TEST(ConfiguredProgramTest, OptionalOutputRolesExecuteCorrectlyInEitherOrder) {
-  for (bool reverse : {false, true}) {
-    auto provider = DefaultWebGpuExecutionProvider();
-    if (!provider) GTEST_SKIP() << "WebGPU EP unavailable";
-    LayerNormOutputsTester test{reverse};
-    test.AddInput<float>("x", {1, 4}, {1, 2, 3, 4});
-    test.AddInput<float>("scale", {4}, {1, 1, 1, 1});
-    const float inv_std = 1.0f / std::sqrt(1.25f + 1e-5f);
-    const std::vector<float> normalized{-1.5f * inv_std, -0.5f * inv_std, 0.5f * inv_std, 1.5f * inv_std};
-    test.AddOutput<float>("mean_y", {1, 4}, normalized);
-    test.AddOutput<float>("mean", {1, 1}, {2.5f});
-    test.AddOutput<float>("inverse_y", {1, 4}, normalized);
-    test.AddOutput<float>("inverse_std", {1, 1}, {inv_std});
-    SessionOptions options;
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-    test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
-  }
+TEST(ConfiguredProgramTest, CommonDefaultsAndUniformExpressions) {
+  MetadataProgram defaults;
+  MetadataProgram explicit_defaults;
+  explicit_defaults.SetWorkgroupSize(uint32_t(WORKGROUP_SIZE), 1, 1);
+  EXPECT_EQ(Key(defaults), Key(explicit_defaults));
+  EXPECT_EQ(ShaderProgramMetadata{defaults}.WorkgroupSizeX(), uint32_t(WORKGROUP_SIZE));
+  using Uniform = ShaderUniform<ProgramUniformVariableDataType::Float32>;
+  using Expression = ShaderUniformExpression<ProgramUniformVariableDataType::Float32>;
+  static_assert(!std::is_convertible_v<Expression, float>);
+  static_assert(!std::is_convertible_v<Expression, bool>);
+  EXPECT_EQ(Expression{Uniform{"epsilon"}}.Expr(), "uniforms.epsilon");
 }
 
-class CachePairTester final : public OpTester {
- public:
-  CachePairTester(const char* op, const char* domain, int version, size_t input_count, bool reverse)
-      : OpTester(op, version, domain), op_{op}, domain_{domain}, input_count_{input_count}, reverse_{reverse} {}
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CachePairTester);
-
-  void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
-                std::vector<std::function<void(Node&)>>&) override {
-    for (size_t step = 0; step < 2; ++step) {
-      const size_t index = reverse_ ? 1 - step : step;
-      std::vector<NodeArg*> node_inputs(inputs.begin() + index * input_count_,
-                                        inputs.begin() + (index + 1) * input_count_);
-      auto& node =
-          graph.AddNode(MakeString("variant", index), op_, "", node_inputs, {outputs[index]}, nullptr, domain_);
-      if (std::string_view{op_} == "InstanceNormalization") {
-        node.AddAttribute("epsilon", index == 0 ? 1e-5f : 1.0f);
-      }
-    }
+#define WEBGPU_NAMED_TEST_FIELDS(F) F(bool, fast) F(uint32_t, tile)
+struct NamedTestShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_NAMED_TEST_FIELDS);
+  static ShaderProgramSetup<Config> MakeConfig(std::string_view name, bool fast, uint32_t tile) {
+    return {{fast, fast ? tile : 0u}, name};
   }
-
- private:
-  const char* op_;
-  const char* domain_;
-  const size_t input_count_;
-  const bool reverse_;
+  static Status GenerateShaderCode(const Config&, ConfiguredShaderHelper&) { return Status::OK(); }
 };
+#undef WEBGPU_NAMED_TEST_FIELDS
 
-TEST(ConfiguredProgramTest, KnownCollisionsExecuteCorrectlyInEitherOrder) {
-  for (bool reverse : {false, true}) {
-    for (const char* op : {
-#ifndef DISABLE_CONTRIB_OPS
-             "BiasAdd", "BiasSplitGelu",
-#endif
-             "InstanceNormalization", "And"}) {
-      SCOPED_TRACE(MakeString(op, " reverse=", reverse));
-      ConfigOptions provider_options;
-      ASSERT_STATUS_OK(provider_options.AddConfigEntry("ep.webgpuexecutionprovider.validationMode", "full"));
-      ASSERT_STATUS_OK(provider_options.AddConfigEntry("ep.webgpuexecutionprovider.preferredLayout", "NCHW"));
-      auto provider = WebGpuExecutionProviderWithOptions(provider_options);
-      if (!provider) GTEST_SKIP() << "WebGPU EP unavailable";
-      const std::string_view name{op};
-      const bool bias = name == "BiasAdd" || name == "BiasSplitGelu";
-      const size_t inputs_per_node = name == "BiasAdd" || name == "InstanceNormalization" ? 3 : 2;
-      CachePairTester test{op, bias ? kMSDomain : kOnnxDomain, bias ? 1 : 17, inputs_per_node, reverse};
-      if (bias) {
-        const int64_t first_channels = name == "BiasAdd" ? 6 : 8;
-        const int64_t first_output = name == "BiasAdd" ? first_channels : first_channels / 2;
-        const int64_t second_output = name == "BiasAdd" ? 8 : 4;
-        test.AddInput<float>("x0", {1, 1, first_channels}, std::vector<float>(first_channels, 1));
-        test.AddInput<float>("b0", {first_channels}, std::vector<float>(first_channels, 2));
-        if (name == "BiasAdd") {
-          test.AddInput<float>("r0", {1, 1, first_channels}, std::vector<float>(first_channels, 3));
-        }
-        test.AddInput<MLFloat16>("x1", {1, 1, 8}, std::vector<MLFloat16>(8, MLFloat16{1.0f}));
-        test.AddInput<MLFloat16>("b1", {8}, std::vector<MLFloat16>(8, MLFloat16{2.0f}));
-        if (name == "BiasAdd") {
-          test.AddInput<MLFloat16>("r1", {1, 1, 8}, std::vector<MLFloat16>(8, MLFloat16{3.0f}));
-        }
-        const float expected = name == "BiasAdd" ? 6.0f : 9.0f * 0.5f * (1.0f + std::erf(3.0f / std::sqrt(2.0f)));
-        test.AddOutput<float>("y0", {1, 1, first_output}, std::vector<float>(first_output, expected));
-        test.AddOutput<MLFloat16>("y1", {1, 1, second_output},
-                                  std::vector<MLFloat16>(second_output, MLFloat16{expected}));
-      } else if (name == "InstanceNormalization") {
-        for (const char* suffix : {"0", "1"}) {
-          test.AddInput<float>(MakeString("x", suffix).c_str(), {1, 1, 4}, {1, 2, 3, 4});
-          test.AddInput<float>(MakeString("s", suffix).c_str(), {1}, {1});
-          test.AddInput<float>(MakeString("b", suffix).c_str(), {1}, {0});
-        }
-        const float inv = 1.0f / std::sqrt(1.25f + 1e-5f);
-        test.AddOutput<float>("y0", {1, 1, 4}, {-1.5f * inv, -0.5f * inv, 0.5f * inv, 1.5f * inv});
-        test.AddOutput<float>("y1", {1, 1, 4}, {-1, -1.0f / 3, 1.0f / 3, 1});
-      } else {
-        test.AddInput<bool>("a0", {2, 1}, {true, false});
-        test.AddInput<bool>("b0", {1, 4}, {true, false, true, false});
-        test.AddInput<bool>("a1", {1, 4}, {true, false, true, false});
-        test.AddInput<bool>("b1", {2, 1}, {true, false});
-        const std::array<bool, 8> expected{true, false, true, false, false, false, false, false};
-        test.AddOutput<bool>("y0", {2, 4}, expected.data(), expected.size());
-        test.AddOutput<bool>("y1", {2, 4}, expected.data(), expected.size());
-      }
-      SessionOptions options;
-      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-      test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
-    }
-  }
+TEST(ConfiguredProgramTest, HostLabelsAndInactiveFieldsDoNotForkIdentity) {
+  ConfiguredProgram<NamedTestShader> a{"first", false, 4};
+  ConfiguredProgram<NamedTestShader> b{"second", false, 8};
+  EXPECT_EQ(Key(a), Key(b));
+  EXPECT_NE(a.Name(), b.Name());
+  ConfiguredProgram<NamedTestShader> fast4{"first", true, 4};
+  ConfiguredProgram<NamedTestShader> fast8{"first", true, 8};
+  EXPECT_NE(Key(fast4), Key(fast8));
+  static_assert(std::is_final_v<NamedTestShader::Config>);
+  static_assert(std::is_aggregate_v<NamedTestShader::Config>);
 }
 
 TEST(ConfiguredProgramTest, VariableLengthFieldsHaveUnambiguousBoundaries) {

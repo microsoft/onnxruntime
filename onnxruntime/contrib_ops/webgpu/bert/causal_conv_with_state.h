@@ -34,27 +34,31 @@ CausalConvActivation ParseCausalConvActivation(const std::string& activation_str
   F(bool, channels_last_)
 
 struct CausalConvWithStateProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG);
-    Config(CausalConvActivation activation, bool has_bias, bool has_conv_state, bool output_present_state,
-           bool channels_last)
-        : activation_(activation),
-          has_bias_(has_bias),
-          has_conv_state_(has_conv_state),
-          output_present_state_(output_present_state),
-          channels_last_(channels_last) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG);
+  static Config MakeConfig(CausalConvActivation activation, bool has_bias, bool has_conv_state, bool output_present_state,
+                           bool channels_last) {
+    Config result{};
+    result.activation_ = CausalConvActivation(activation);
+    result.has_bias_ = bool(has_bias);
+    result.has_conv_state_ = bool(has_conv_state);
+    result.output_present_state_ = bool(output_present_state);
+    result.channels_last_ = bool(channels_last);
+
+    return result;
+  }
   static constexpr std::string_view name = "CausalConvWithState";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"channels", ProgramUniformVariableDataType::Uint32},
-      {"input_length", ProgramUniformVariableDataType::Uint32},
-      {"kernel_size", ProgramUniformVariableDataType::Uint32},
-      {"dilation", ProgramUniformVariableDataType::Uint32},
-      {"state_length", ProgramUniformVariableDataType::Uint32},
-      {"output_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                          \
+  U(Uint32, channels)                                            \
+  U(Uint32, input_length)                                        \
+  U(Uint32, kernel_size)                                         \
+  U(Uint32, dilation)                                            \
+  U(Uint32, state_length)                                        \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CAUSAL_CONV_WITH_STATE_PROGRAM_CONFIG
 
@@ -63,18 +67,23 @@ using CausalConvWithStateProgram = ConfiguredProgram<CausalConvWithStateProgramS
 #define WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_CONFIG(F) F(bool, channels_last_)
 
 struct CausalConvUpdateStateProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_CONFIG);
-    Config(bool channels_last) : channels_last_(channels_last) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool channels_last) {
+    Config result{};
+    result.channels_last_ = bool(channels_last);
+
+    return result;
+  }
   static constexpr std::string_view name = "CausalConvUpdateState";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"channels", ProgramUniformVariableDataType::Uint32},
-      {"input_length", ProgramUniformVariableDataType::Uint32},
-      {"state_length", ProgramUniformVariableDataType::Uint32},
-      {"update_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, channels)                                              \
+  U(Uint32, input_length)                                          \
+  U(Uint32, state_length)                                          \
+  U(Uint32, update_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CAUSAL_CONV_UPDATE_STATE_PROGRAM_CONFIG
 

@@ -18,30 +18,46 @@ namespace webgpu {
   F(bool, is_vec4_)                               \
   F(InlinedVector<int64_t>, elements_per_thread_) \
   F(bool, is_channels_last_)                      \
-  F(uint32_t, split_dim_inner_)
+  F(uint32_t, split_dim_inner_)                   \
+  F(uint32_t, tile_inner_)                        \
+  F(bool, use_f32_accumulation_)
 
 struct MatMulProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_PROGRAM_CONFIG);
-    Config(const Activation& activation, bool bias, bool is_vec4, const gsl::span<int64_t>& elements_per_thread,
-           bool is_channels_last = false, uint32_t split_dim_inner = 1)
-        : activation_(activation),
-          has_bias_{bias},
-          is_vec4_{is_vec4},
-          elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
-          is_channels_last_(is_channels_last),
-          split_dim_inner_(split_dim_inner) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_PROGRAM_CONFIG);
+  static Config MakeConfig(const Activation& activation,
+                           bool bias,
+                           bool is_vec4,
+                           const gsl::span<int64_t>& elements_per_thread,
+                           bool is_channels_last = false,
+                           uint32_t split_dim_inner = 1,
+                           uint32_t tile_inner = 32,
+                           bool use_f32_accumulation = false) {
+    Config result{};
+    result.activation_ = MakeShaderActivation(activation);
+    result.has_bias_ = bool{bias};
+    result.is_vec4_ = bool{is_vec4};
+    result.elements_per_thread_ = InlinedVector<int64_t>(elements_per_thread.begin(), elements_per_thread.end());
+    result.is_channels_last_ = bool(is_channels_last);
+    result.split_dim_inner_ = uint32_t(split_dim_inner);
+    result.tile_inner_ = uint32_t(tile_inner);
+    result.use_f32_accumulation_ = bool(use_f32_accumulation);
+
+    return result;
+  }
   static constexpr std::string_view name = "MatMul";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
-                                          {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-                                          {"dim_inner", ProgramUniformVariableDataType::Uint32},
-                                          {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
-                                          {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
-                                          {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32},
-                                          {"splits_per_batch", ProgramUniformVariableDataType::Uint32},
-                                          WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+#define WEBGPU_MAT_MUL_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, dim_a_outer)                          \
+  U(Uint32, dim_b_outer)                          \
+  U(Uint32, dim_inner)                            \
+  U(Uint32, logical_dispatch_x)                   \
+  U(Uint32, logical_dispatch_y)                   \
+  U(Uint32, logical_dispatch_z)                   \
+  U(Uint32, splits_per_batch)                     \
+  U(Float32, activation_param_0)                  \
+  U(Float32, activation_param_1)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MAT_MUL_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MAT_MUL_PROGRAM_CONFIG
 
@@ -58,21 +74,26 @@ using MatMulProgram = ConfiguredProgram<MatMulProgramShader>;
   F(bool, bias_is_scalar_)
 
 struct MatMulFillBiasOrZeroBeforeSplitKProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MAT_MUL_FILL_BIAS_OR_ZERO_BEFORE_SPLIT_K_PROGRAM_CONFIG);
-    Config(bool is_gemm, bool has_bias, uint32_t output_components, bool bias_is_scalar)
-        : is_gemm_(is_gemm),
-          has_bias_(has_bias),
-          output_components_(output_components),
-          bias_is_scalar_(bias_is_scalar) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_FILL_BIAS_OR_ZERO_BEFORE_SPLIT_K_PROGRAM_CONFIG);
+  static Config MakeConfig(bool is_gemm, bool has_bias, uint32_t output_components, bool bias_is_scalar) {
+    Config result{};
+    result.is_gemm_ = bool(is_gemm);
+    result.has_bias_ = bool(has_bias);
+    result.output_components_ = uint32_t(output_components);
+    result.bias_is_scalar_ = bool(bias_is_scalar);
+
+    return result;
+  }
   static constexpr std::string_view name = "MatMul_Fill_Bias_Or_Zero_Before_Split_K";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
-                                          {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-                                          {"beta", ProgramUniformVariableDataType::Float32},
-                                          {"batch_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MAT_MUL_FILL_BIAS_OR_ZERO_BEFORE_SPLIT_K_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, dim_a_outer)                                                           \
+  U(Uint32, dim_b_outer)                                                           \
+  U(Float32, beta)                                                                 \
+  U(Uint32, batch_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_FILL_BIAS_OR_ZERO_BEFORE_SPLIT_K_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MAT_MUL_FILL_BIAS_OR_ZERO_BEFORE_SPLIT_K_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MAT_MUL_FILL_BIAS_OR_ZERO_BEFORE_SPLIT_K_PROGRAM_CONFIG
 

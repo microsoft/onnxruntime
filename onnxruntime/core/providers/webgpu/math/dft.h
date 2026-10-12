@@ -20,23 +20,27 @@ namespace webgpu {
   F(bool, is_onesided_)
 
 struct DFTProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_F_T_PROGRAM_CONFIG);
-    Config(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided)
-        : length_{length},
-          input_components_{input_components},
-          output_components_{output_components},
-          is_inverse_{is_inverse},
-          is_onesided_{is_onesided} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_D_F_T_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided) {
+    Config result{};
+    result.length_ = uint32_t{length};
+    result.input_components_ = uint32_t{input_components};
+    result.output_components_ = uint32_t{output_components};
+    result.is_inverse_ = bool{is_inverse};
+    result.is_onesided_ = bool{is_onesided};
+
+    return result;
+  }
   static constexpr std::string_view name = "DFT";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch", ProgramUniformVariableDataType::Uint32},
-      {"signal_length", ProgramUniformVariableDataType::Uint32},
-      {"inner", ProgramUniformVariableDataType::Uint32},
-      {"output_length", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_D_F_T_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch)                              \
+  U(Uint32, signal_length)                      \
+  U(Uint32, inner)                              \
+  U(Uint32, output_length)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_D_F_T_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_D_F_T_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_D_F_T_PROGRAM_CONFIG
 
@@ -52,23 +56,27 @@ using DFTProgram = ConfiguredProgram<DFTProgramShader>;
   F(bool, is_onesided_)
 
 struct DFTDirectProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_D_F_T_DIRECT_PROGRAM_CONFIG);
-    Config(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided)
-        : length_{length},
-          input_components_{input_components},
-          output_components_{output_components},
-          is_inverse_{is_inverse},
-          is_onesided_{is_onesided} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_D_F_T_DIRECT_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided) {
+    Config result{};
+    result.length_ = uint32_t{length};
+    result.input_components_ = uint32_t{input_components};
+    result.output_components_ = uint32_t{output_components};
+    result.is_inverse_ = bool{is_inverse};
+    result.is_onesided_ = bool{is_onesided};
+
+    return result;
+  }
   static constexpr std::string_view name = "DFTDirect";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch", ProgramUniformVariableDataType::Uint32},
-      {"signal_length", ProgramUniformVariableDataType::Uint32},
-      {"inner", ProgramUniformVariableDataType::Uint32},
-      {"output_length", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_D_F_T_DIRECT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch)                                     \
+  U(Uint32, signal_length)                             \
+  U(Uint32, inner)                                     \
+  U(Uint32, output_length)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_D_F_T_DIRECT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_D_F_T_DIRECT_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_D_F_T_DIRECT_PROGRAM_CONFIG
 

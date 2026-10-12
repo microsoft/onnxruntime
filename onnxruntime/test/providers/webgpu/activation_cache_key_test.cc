@@ -13,7 +13,7 @@ namespace {
 
 std::string ActivationIdentity(const webgpu::Activation& activation) {
   std::string key;
-  webgpu::AppendConfigValue(key, webgpu::ShaderActivation{activation});
+  webgpu::AppendConfigValue(key, webgpu::MakeShaderActivation(activation));
   return key;
 }
 

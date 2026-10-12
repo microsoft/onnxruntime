@@ -16,22 +16,29 @@ namespace webgpu {
   F(bool, is_channels_last_)
 
 struct Conv3DNaiveProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_CONV3_D_NAIVE_PROGRAM_CONFIG);
-    Config(const Activation& activation, bool has_bias, bool is_channels_last)
-        : activation_(activation), has_bias_(has_bias), is_channels_last_(is_channels_last) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CONV3_D_NAIVE_PROGRAM_CONFIG);
+  static Config MakeConfig(const Activation& activation, bool has_bias, bool is_channels_last) {
+    Config result{};
+    result.activation_ = MakeShaderActivation(activation);
+    result.has_bias_ = bool(has_bias);
+    result.is_channels_last_ = bool(is_channels_last);
+
+    return result;
+  }
   static constexpr std::string_view name = "Conv3DNaive";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"filter_dims", ProgramUniformVariableDataType::Uint32},
-      {"pads", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32},
-      {"dilations", ProgramUniformVariableDataType::Uint32},
-      {"x_spatial", ProgramUniformVariableDataType::Uint32},
-      {"x_channels", ProgramUniformVariableDataType::Uint32},
-      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+#define WEBGPU_CONV3_D_NAIVE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                \
+  U(Uint32, filter_dims)                                \
+  U(Uint32, pads)                                       \
+  U(Uint32, strides)                                    \
+  U(Uint32, dilations)                                  \
+  U(Uint32, x_spatial)                                  \
+  U(Uint32, x_channels)                                 \
+  U(Float32, activation_param_0)                        \
+  U(Float32, activation_param_1)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CONV3_D_NAIVE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CONV3_D_NAIVE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_CONV3_D_NAIVE_PROGRAM_CONFIG
 

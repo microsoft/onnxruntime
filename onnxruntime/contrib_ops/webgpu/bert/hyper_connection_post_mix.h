@@ -16,16 +16,22 @@ using namespace onnxruntime::webgpu;
   F(bool, has_stream_mix_)
 
 struct HyperConnectionPostMixProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_HYPER_CONNECTION_POST_MIX_PROGRAM_CONFIG);
-    Config(int gate_layout, bool has_stream_mix) : gate_layout_(gate_layout), has_stream_mix_(has_stream_mix) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_HYPER_CONNECTION_POST_MIX_PROGRAM_CONFIG);
+  static Config MakeConfig(int gate_layout, bool has_stream_mix) {
+    Config result{};
+    result.gate_layout_ = int(gate_layout);
+    result.has_stream_mix_ = bool(has_stream_mix);
+
+    return result;
+  }
   static constexpr std::string_view name = "HyperConnectionPostMix";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"count", ProgramUniformVariableDataType::Uint32},
-      {"branches", ProgramUniformVariableDataType::Uint32},
-      {"hidden", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_HYPER_CONNECTION_POST_MIX_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, count)                                                  \
+  U(Uint32, branches)                                               \
+  U(Uint32, hidden)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_HYPER_CONNECTION_POST_MIX_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_HYPER_CONNECTION_POST_MIX_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_HYPER_CONNECTION_POST_MIX_PROGRAM_CONFIG
 

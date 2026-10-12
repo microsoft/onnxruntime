@@ -32,15 +32,21 @@ inline int Log2OfPowerOfTwo(int value) {
   F(int, components_)
 
 struct HadamardTransformProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_HADAMARD_TRANSFORM_PROGRAM_CONFIG);
-    Config(int slice_size_log2, int components) : slice_size_log2_(slice_size_log2), components_(components) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_HADAMARD_TRANSFORM_PROGRAM_CONFIG);
+  static Config MakeConfig(int slice_size_log2, int components) {
+    Config result{};
+    result.slice_size_log2_ = int(slice_size_log2);
+    result.components_ = int(components);
+
+    return result;
+  }
   static constexpr std::string_view name = "HadamardTransform";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_slices", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_HADAMARD_TRANSFORM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, num_slices)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_HADAMARD_TRANSFORM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_HADAMARD_TRANSFORM_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_HADAMARD_TRANSFORM_PROGRAM_CONFIG
 

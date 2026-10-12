@@ -5,6 +5,7 @@
 #include <vector>
 #include <iterator>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -17,11 +18,7 @@
 
 namespace onnxruntime {
 namespace webgpu {
-std::string Conv2dMMProgramShader::Conv2dCommonSnippet(const Config& config, const ShaderVariableHelper& x,
-                                                       const ShaderVariableHelper& w,
-                                                       const ShaderActivation& activation, std::string data_type,
-                                                       uint32_t inner_element_size_x, uint32_t inner_element_size_w,
-                                                       uint32_t inner_element_size) {
+std::string Conv2dMMProgramShader::Conv2dCommonSnippet(const Config& config, const ShaderVariableHelper& x, const ShaderVariableHelper& w, const ShaderActivation& activation, std::string data_type, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size) {
   auto get_x_snippet = [&](int32_t inner_element_size) -> std::string {
     switch (inner_element_size) {
       case 1:
@@ -44,14 +41,8 @@ std::string Conv2dMMProgramShader::Conv2dCommonSnippet(const Config& config, con
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
   };
-  const std::string coord_a_snippet =
-      config.is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh / " +
-                                     std::to_string(inner_element_size_x == 3 ? 4 : inner_element_size_x) + ");"
-                               : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
-  const std::string coord_res_snippet = config.is_channels_last_
-                                            ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col / " +
-                                                  std::to_string(inner_element_size) + ");"
-                                            : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
+  const std::string coord_a_snippet = config.is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh / " + std::to_string(inner_element_size_x == 3 ? 4 : inner_element_size_x) + ");" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
+  const std::string coord_res_snippet = config.is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col / " + std::to_string(inner_element_size) + ");" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
   const std::string xHeight = config.is_channels_last_ ? "i32(uniforms.x_shape[1])" : "i32(uniforms.x_shape[2])";
   const std::string xWidth = config.is_channels_last_ ? "i32(uniforms.x_shape[2])" : "i32(uniforms.x_shape[3])";
@@ -60,8 +51,7 @@ std::string Conv2dMMProgramShader::Conv2dCommonSnippet(const Config& config, con
   std::stringstream read_x_snippet;
   read_x_snippet
       << "let inChannels = i32(uniforms.w_shape[2]);\n"
-      << "let outWidth = "
-      << (config.is_channels_last_ ? "i32(uniforms.result_shape[2])" : "i32(uniforms.result_shape[3])") << ";\n"
+      << "let outWidth = " << (config.is_channels_last_ ? "i32(uniforms.result_shape[2])" : "i32(uniforms.result_shape[3])") << ";\n"
       << "let outRow = " << row << " / outWidth;\n "
       << "let outCol = " << row << " % outWidth;\n"
       << "let WRow = " << col << " / (i32(uniforms.w_shape[1]) * inChannels);\n"
@@ -75,7 +65,8 @@ std::string Conv2dMMProgramShader::Conv2dCommonSnippet(const Config& config, con
       << "if (xRow >= 0 && xRow < " << xHeight << " && xCol >= 0 && xCol < " << xWidth << ") {\n"
       << "  " << coord_a_snippet << "\n"
       << "  let xIndex = getIndexFromCoords4D(coord, vec4<i32>(uniforms.x_shape));\n"
-      << "  " << get_x_snippet(inner_element_size_x) << "}\n"
+      << "  " << get_x_snippet(inner_element_size_x)
+      << "}\n"
       << "return resData;";
   std::stringstream sample_x;
   if (config.is_channels_last_) {
@@ -120,27 +111,25 @@ std::string Conv2dMMProgramShader::Conv2dCommonSnippet(const Config& config, con
              << "return " << TypeSnippet(inner_element_size_w, data_type) << "(0.0);\n";
   }
   const std::string res_type = TypeSnippet(inner_element_size, data_type);
-  const std::string a_type = config.is_channels_last_ ? TypeSnippet(inner_element_size_x, data_type)
-                                                      : TypeSnippet(inner_element_size_w, data_type);
-  const std::string b_type = config.is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type)
-                                                      : TypeSnippet(inner_element_size_x, data_type);
+  const std::string a_type = config.is_channels_last_ ? TypeSnippet(inner_element_size_x, data_type) : TypeSnippet(inner_element_size_w, data_type);
+  const std::string b_type = config.is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type) : TypeSnippet(inner_element_size_x, data_type);
   const std::string apply_activation = GetActivationSnippet(activation, res_type, data_type);
   std::stringstream user_code;
   // Emit activation helpers before mm_write uses them.
   user_code << GetActivationDeclaration(activation, res_type, data_type);
   user_code << "fn mm_readA(batch : i32, row : i32, colIn : i32) -> " << a_type << " {\n"
-            << (config.is_channels_last_ ? sample_x.str() : sample_w.str()) << "}\n"
+            << (config.is_channels_last_ ? sample_x.str() : sample_w.str())
+            << "}\n"
             << "\n"
             << "fn mm_readB(batch : i32, row : i32, colIn : i32) -> " << b_type << " {\n"
-            << (config.is_channels_last_ ? sample_w.str() : sample_x.str()) << "}\n"
+            << (config.is_channels_last_ ? sample_w.str() : sample_x.str())
+            << "}\n"
             << "\n"
             << "fn mm_write(batch : i32, row : i32, colIn : i32, valueIn : " << res_type << ") {\n"
             << "  let col = colIn * " << inner_element_size << ";\n"
             << "  if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) {\n"
             << "    var value = valueIn;\n"
-            << "    let outWidth = "
-            << (config.is_channels_last_ ? " i32(uniforms.result_shape[2]) " : " i32(uniforms.result_shape[3]) ")
-            << ";\n"
+            << "    let outWidth = " << (config.is_channels_last_ ? " i32(uniforms.result_shape[2]) " : " i32(uniforms.result_shape[3]) ") << ";\n"
             << "    " << coord_res_snippet << "\n"
             << "    " << BiasSnippet(config.has_bias_) << "\n"
             << "    " << apply_activation << "\n"
@@ -150,22 +139,16 @@ std::string Conv2dMMProgramShader::Conv2dCommonSnippet(const Config& config, con
   return user_code.str();
 }
 
-Status Conv2dMMProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                 ConfiguredShaderHelper& shader) {
+Status Conv2dMMProgramShader::GenerateShaderCode(const Config& config, ConfiguredShaderHelper& shader) {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& result = shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias);
 
   std::stringstream declaration_functions;
-  declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : "
-                        << (config.is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << ") {\n"
-                        << "  "
-                        << result.SetByOffset("u32(flatIndex)",
-                                              (config.is_vec4_ ? "vec4<x_element_t>(value)" : "x_element_t(value)"))
-                        << "\n"
+  declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : " << (config.is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << ") {\n"
+                        << "  " << result.SetByOffset("u32(flatIndex)", (config.is_vec4_ ? "vec4<x_element_t>(value)" : "x_element_t(value)")) << "\n"
                         << "}\n"
-                        << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : "
-                        << (config.is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "){\n"
+                        << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : " << (config.is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "){\n"
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
                         << "  setOutputAtIndex(flatIndex, value);\n"
                         << "}\n";
@@ -174,24 +157,17 @@ Status Conv2dMMProgramShader::GenerateShaderCode([[maybe_unused]] const Config& 
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     inputs.push_back(&bias);
     declaration_functions << "fn getBiasByOutputCoords(coords : vec4<i32>) -> bias_value_t {" << "\n"
-                          << "  return "
-                          << bias.GetByOffset(config.is_channels_last_ ? "u32(coords.w)" : "u32(coords.y)") << ";\n"
+                          << "  return " << bias.GetByOffset(config.is_channels_last_ ? "u32(coords.w)" : "u32(coords.y)") << ";\n"
                           << "}";
   }
-  shader.AdditionalImplementation() << UtilFunctions("uniforms.result_stride") << declaration_functions.str()
-                                    << Conv2dCommonSnippet(config, x, w, config.activation_, "x_element_t",
-                                                           config.element_size_[0], config.element_size_[1],
-                                                           config.element_size_[2]);
+  shader.AdditionalImplementation()
+      << UtilFunctions("uniforms.result_stride")
+      << declaration_functions.str()
+      << Conv2dCommonSnippet(config, x, w, config.activation_, "x_element_t", config.element_size_[0], config.element_size_[1], config.element_size_[2]);
   std::string data_type = "x_element_t";
 
-  return config.is_vec4_ ? MakeMatMulPackedVec4Source(shader, config.elements_per_thread_, shader.WorkgroupSizeX(),
-                                                      shader.WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr,
-                                                      /* transpose_a = */ !config.is_channels_last_,
-                                                      /* transpose_b = */ false, 1.0f, true, 4, config.tile_inner_)
-                         : MakeMatMulPackedSource(
-                               shader, config.elements_per_thread_, shader.WorkgroupSizeX(), shader.WorkgroupSizeY(),
-                               data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !config.is_channels_last_,
-                               /* transpose_b = */ false, 1.0f, true, config.tile_inner_, /* split_t = */ false, 0);
+  return config.is_vec4_ ? MakeMatMulPackedVec4Source(shader, config.elements_per_thread_, shader.WorkgroupSizeX(), shader.WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !config.is_channels_last_, /* transpose_b = */ false, 1.0f, true, 4, config.tile_inner_, false, 0, true)
+                         : MakeMatMulPackedSource(shader, config.elements_per_thread_, shader.WorkgroupSizeX(), shader.WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !config.is_channels_last_, /* transpose_b = */ false, 1.0f, true, config.tile_inner_, /* split_t = */ false, 0, true);
 }
 
 Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
@@ -206,20 +182,20 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto output_width = is_channels_last ? output_shape[2] : output_shape[3];
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
   const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
+  const int64_t output_spatial_size = SafeMul<int64_t>(output_width, output_height);
   // TODO: enable vec4 for NCHW
   const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
 
   // TODO: fine tune size
-  const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
-  const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
+  const auto dispatch_x = is_channels_last ? output_channels : output_spatial_size;
+  const auto dispatch_y = is_channels_last ? output_spatial_size : output_channels;
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
-  auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_x, workgroup_size[0]), elements_per_thread[0])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_y, workgroup_size[1]), elements_per_thread[1])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(batch_size, workgroup_size[2]), elements_per_thread[2])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_x, static_cast<int64_t>(workgroup_size[0])), elements_per_thread[0])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_y, static_cast<int64_t>(workgroup_size[1])), elements_per_thread[1])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(batch_size, static_cast<int64_t>(workgroup_size[2])), elements_per_thread[2])),
   };
 
   uint32_t inner_element_size = is_vec4 ? (is_channels_last && in_channels % 4 != 0 ? 3 : 4) : 1;
@@ -247,7 +223,8 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     return oss.str();
   };
 
-  program.AddOutput({output, ProgramTensorMetadataDependency::None, reduced_output_shape, components})
+  program
+      .AddOutput({output, ProgramTensorMetadataDependency::None, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
       .AddUniformVariables({{static_cast<uint32_t>(dim_a_outer)},

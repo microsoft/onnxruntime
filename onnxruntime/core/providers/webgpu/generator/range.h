@@ -21,17 +21,23 @@ class Range : public WebGpuKernel {
 #define WEBGPU_RANGE_PROGRAM_CONFIG(F) F(int32_t, data_type_)
 
 struct RangeProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_RANGE_PROGRAM_CONFIG);
-    Config(int32_t data_type = 0) : data_type_{data_type} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_RANGE_PROGRAM_CONFIG);
+  static Config MakeConfig(int32_t data_type = 0) {
+    Config result{};
+    result.data_type_ = int32_t{data_type};
+
+    return result;
+  }
   static constexpr std::string_view name = "Range";
 
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"start", ProgramUniformVariableDataType::Uint32},
-                                          {"delta", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_RANGE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                        \
+  U(Uint32, start)                              \
+  U(Uint32, delta)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_RANGE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_RANGE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_RANGE_PROGRAM_CONFIG
 

@@ -17,14 +17,20 @@ using onnxruntime::webgpu::ComputeContext;
 #define WEBGPU_FAST_GELU_PROGRAM_CONFIG(F) F(int, bias_components_)
 
 struct FastGeluProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_FAST_GELU_PROGRAM_CONFIG);
-    Config(int bias_components) : bias_components_{bias_components} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_FAST_GELU_PROGRAM_CONFIG);
+  static Config MakeConfig(int bias_components) {
+    Config result{};
+    result.bias_components_ = int{bias_components};
+
+    return result;
+  }
   static constexpr std::string_view name = "FastGelu";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_FAST_GELU_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, vec_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_FAST_GELU_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_FAST_GELU_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_FAST_GELU_PROGRAM_CONFIG
 

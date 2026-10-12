@@ -346,12 +346,12 @@ class ProgramBase {
   // add a uniform variable.
   //
   // the specified uniform variable should match the uniform definition in the class,
-  // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
+  // specified by WEBGPU_DECLARE_UNIFORMS.
   ProgramBase& AddUniformVariable(ProgramUniformVariableValue&& variable);
   // add multiple uniform variables.
   //
   // the specified uniform variables should match the uniform definition in the class,
-  // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
+  // specified by WEBGPU_DECLARE_UNIFORMS.
   ProgramBase& AddUniformVariables(std::initializer_list<ProgramUniformVariableValue> variables);
 
   // set the overridable constants
@@ -529,7 +529,7 @@ class Program : public details::ProgramWrapper {
     if constexpr (details::has_member_uniform_variables<T>) {
       static_assert(details::has_uniform_variables_correct_type<T>,
                     "Derived class of \"Program\" has member \"uniform_variables\" but its type is incorrect. "
-                    "Please use macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES() or WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES() to declare uniform variables.");
+                    "Please use WEBGPU_DECLARE_UNIFORMS() to declare runtime uniform slots.");
 
       constexpr const ProgramUniformVariableDefinition* ptr = T::uniform_variables.data();
       constexpr size_t len = T::uniform_variables.size();
@@ -582,11 +582,22 @@ constexpr std::array<std::remove_cv_t<T>, L + R> _concat2(const std::array<T, L>
 #define WEBGPU_PROGRAM_EXTEND_OVERRIDABLE_CONSTANTS(BASE, ...) \
   WEBGPU_PROGRAM_EXTEND_(overridable_constants, onnxruntime::webgpu::ProgramOverridableConstantDefinition, BASE, __VA_ARGS__)
 
-#define WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(...) \
-  WEBGPU_PROGRAM_DEFINE_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, __VA_ARGS__)
+// Uniform declarations describe layout and expression names, never generation-time payloads.
+template <ProgramUniformVariableDataType Type>
+struct ShaderUniform final {
+  static constexpr auto data_type = Type;
+  std::string_view name;
+};
 
-#define WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES(BASE, ...) \
-  WEBGPU_PROGRAM_EXTEND_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, BASE, __VA_ARGS__)
+#define WEBGPU_UNIFORM_SLOT(type, name) \
+  static constexpr onnxruntime::webgpu::ShaderUniform<onnxruntime::webgpu::ProgramUniformVariableDataType::type> name{#name};
+#define WEBGPU_UNIFORM_DEFINITION(type, name) \
+  {#name, onnxruntime::webgpu::ProgramUniformVariableDataType::type},
+#define WEBGPU_DECLARE_UNIFORMS(fields) \
+  struct Uniforms final {               \
+    fields(WEBGPU_UNIFORM_SLOT)         \
+  };                                    \
+  WEBGPU_PROGRAM_DEFINE_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, fields(WEBGPU_UNIFORM_DEFINITION))
 
 }  // namespace webgpu
 }  // namespace onnxruntime

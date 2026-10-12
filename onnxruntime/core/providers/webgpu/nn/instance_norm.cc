@@ -19,10 +19,12 @@ Status ComputeChannelScaleShiftShader::GenerateShaderCode(const Config& config, 
   const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  shader.AdditionalImplementation() << "alias f32_val_t = " << (config.components == 4 ? "vec4<f32>" : (config.components == 2 ? "vec2<f32>" : "f32")) << ";\n"
-                                    << "var<workgroup> workgroup_shared_sum : array<f32_val_t, " << config.workgroup_size << ">;\n"
-                                    << "var<workgroup> workgroup_shared_squared_sum : array<f32_val_t, " << config.workgroup_size << ">;\n"
-                                    << "const workgroup_size = " << config.workgroup_size << ";\n";
+  const int components = input.NumComponents();
+  const auto workgroup_size = shader.WorkgroupSizeX();
+  shader.AdditionalImplementation() << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
+                                    << "var<workgroup> workgroup_shared_sum : array<f32_val_t, " << workgroup_size << ">;\n"
+                                    << "var<workgroup> workgroup_shared_squared_sum : array<f32_val_t, " << workgroup_size << ">;\n"
+                                    << "const workgroup_size = " << workgroup_size << ";\n";
 
   shader.MainFunctionBody() << "  let batch = workgroup_idx / uniforms.x_shape[1];\n"
                             << "  let channel = workgroup_idx % uniforms.x_shape[1];\n"
@@ -47,8 +49,8 @@ Status ComputeChannelScaleShiftShader::GenerateShaderCode(const Config& config, 
                             << "    workgroupBarrier();\n"
                             << "  }\n"
                             << "  if (local_idx == 0) {\n"
-                            << "    let sum_final = " << SumVector("workgroup_shared_sum[0]", config.components) << " / f32(height * " << config.components << ");\n"
-                            << "    let squared_sum_final = " << SumVector("workgroup_shared_squared_sum[0]", config.components) << " / f32(height * " << config.components << ");\n"
+                            << "    let sum_final = " << SumVector("workgroup_shared_sum[0]", components) << " / f32(height * " << components << ");\n"
+                            << "    let squared_sum_final = " << SumVector("workgroup_shared_squared_sum[0]", components) << " / f32(height * " << components << ");\n"
                             << "    let inv_std_dev = inverseSqrt(squared_sum_final - sum_final * sum_final + f32(" << std::to_string(config.epsilon) << "));\n"
                             << "    let channel_scale = inv_std_dev * f32(" << scale.GetByOffset("channel") << ");\n"
                             << "    let channel_shift = f32(" << bias.GetByOffset("channel") << ") - sum_final * channel_scale;\n"
@@ -73,7 +75,7 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   TensorShape output_shape(output_shape_vector);
   TensorShape reduced_output_shape(reduced_output_shape_vector);
   *output = context.CreateGPUTensor(input->DataType(), output_shape);
-  ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon, workgroup_size);
+  ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(epsilon);
   program.AddInputs({{input, ProgramTensorMetadataDependency::None, reduced_input_shape, components},
                      {scale, ProgramTensorMetadataDependency::None},
                      {bias, ProgramTensorMetadataDependency::None}})

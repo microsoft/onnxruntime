@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/program_cache_key.h"
-#include "core/providers/webgpu/configured_program.h"
+
+#include <atomic>
+#include "core/providers/webgpu/shader_metadata.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -19,11 +21,7 @@ std::string CalculateStructuredKey(const ProgramBase& program,
   // This is not a persistent cache or an encoding of a configuration pointer.
   AppendConfigValue(key, reinterpret_cast<uintptr_t>(generator_type));
   program.AppendSpecializationKey(key);
-  AppendConfigValue(key, program.WorkgroupSizeX());
-  AppendConfigValue(key, program.WorkgroupSizeY());
-  AppendConfigValue(key, program.WorkgroupSizeZ());
-  AppendConfigValue(key, program.SubgroupSize());
-  AppendConfigValue(key, program.IndirectDispatchTensor() != nullptr);
+  ShaderProgramMetadata{program}.AppendTo(key);
   AppendConfigValue(key, program.OverridableConstants().size());
   for (const auto& value : program.OverridableConstants()) {
     AppendConfigValue(key, value.has_value);
@@ -53,33 +51,11 @@ std::string CalculateStructuredKey(const ProgramBase& program,
     AppendConfigValue(key, uniform.length);
     if (uniform.length != 0) AppendConfigValue(key, uniform.data_type);
   }
-  const auto append_tensor = [&](const auto& tensor, uint32_t segments, size_t owner) {
-    AppendConfigValue(key, tensor.var_type);
-    AppendConfigValue(key, tensor.tensor->GetElementType());
-    const auto& shape = tensor.use_override_shape ? tensor.override_shape : tensor.tensor->Shape();
-    AppendConfigValue(key, shape.NumDimensions());
-    const bool static_shape =
-        (tensor.dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
-    AppendConfigValue(key, static_shape);
-    if (static_shape) {
-      AppendConfigValue(key, shape.GetDims());
-    }
-    AppendConfigValue(key, segments);
-    AppendConfigValue(key, tensor.is_buffer_view);
-    if (tensor.is_buffer_view) {
-      AppendConfigValue(key, owner);
-    } else {
-      AppendConfigValue(key, tensor.buffer_offset_in_elements);
-    }
-  };
-  AppendConfigValue(key, program.Inputs().size());
   for (size_t i = 0; i < program.Inputs().size(); ++i) {
-    append_tensor(program.Inputs()[i], inputs_segments[i], program.InputBufferOwner(i));
+    ShaderTensorMetadata{program.Inputs()[i], inputs_segments[i], program.InputBufferOwner(i)}.AppendTo(key);
   }
-  AppendConfigValue(key, program.Outputs().size());
   for (size_t i = 0; i < program.Outputs().size(); ++i) {
-    append_tensor(program.Outputs()[i], outputs_segments[i], program.OutputBufferOwner(i));
-    AppendConfigValue(key, program.Outputs()[i].is_atomic);
+    ShaderTensorMetadata{program.Outputs()[i], outputs_segments[i], program.OutputBufferOwner(i)}.AppendTo(key);
   }
   AppendConfigValue(key, program.Indices().size());
   for (const auto& indices : program.Indices()) AppendConfigValue(key, indices.NumDimensions());
@@ -88,15 +64,16 @@ std::string CalculateStructuredKey(const ProgramBase& program,
 
 }  // namespace
 
-std::string ProgramCacheKeyForLogging(std::string_view key) {
-  if (key.empty() || key[0] != '\1') return std::string{key};
-  constexpr char hex[] = "0123456789abcdef";
-  std::string result{"configured:"};
-  for (unsigned char byte : key) {
-    result.push_back(hex[byte >> 4]);
-    result.push_back(hex[byte & 15]);
+std::string ShaderDiagnosticIds::Format(const std::string& key) const {
+  static std::atomic<uint64_t> next_id{1};
+  uint64_t id;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto [entry, inserted] = ids_.try_emplace(key, 0);
+    if (inserted) entry->second = next_id.fetch_add(1, std::memory_order_relaxed);
+    id = entry->second;
   }
-  return result;
+  return "shader:" + std::to_string(id);
 }
 
 std::string CalculateProgramCacheKey(const ProgramBase& program,

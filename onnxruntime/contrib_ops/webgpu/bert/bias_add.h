@@ -15,15 +15,18 @@ using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 #define WEBGPU_BIAS_ADD_CONFIG(F)
-WEBGPU_DECLARE_CONFIG(BiasAddConfig, WEBGPU_BIAS_ADD_CONFIG);
+WEBGPU_DECLARE_SPECIALIZATION(BiasAddConfig, WEBGPU_BIAS_ADD_CONFIG);
 #undef WEBGPU_BIAS_ADD_CONFIG
 
 struct BiasAddShader {
   using Config = BiasAddConfig;
   static constexpr std::string_view name = "BiasAdd";
   static Status GenerateShaderCode(const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"channels", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_BIAS_ADD_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                   \
+  U(Uint32, channels)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_BIAS_ADD_SHADER_UNIFORMS);
+#undef WEBGPU_BIAS_ADD_SHADER_UNIFORMS
 };
 
 using BiasAddProgram = ConfiguredProgram<BiasAddShader>;

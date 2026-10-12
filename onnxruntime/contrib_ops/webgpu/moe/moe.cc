@@ -27,11 +27,15 @@ namespace {
   F(bool, normalize_routing_weights_)
 
 struct MoEGateProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_GATE_PROGRAM_CONFIG);
-    Config(int k, bool is_fp16, bool normalize_routing_weights)
-        : k_{k}, is_fp16_{is_fp16}, normalize_routing_weights_{normalize_routing_weights} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_GATE_PROGRAM_CONFIG);
+  static Config MakeConfig(int k, bool is_fp16, bool normalize_routing_weights) {
+    Config result{};
+    result.k_ = int{k};
+    result.is_fp16_ = bool{is_fp16};
+    result.normalize_routing_weights_ = bool{normalize_routing_weights};
+
+    return result;
+  }
   static constexpr std::string_view name = "MoeGate";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
@@ -47,10 +51,12 @@ struct MoEGateProgramShader {
                                WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32},
-      {"token_offset", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MO_E_GATE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                   \
+  U(Uint32, cols)                                   \
+  U(Uint32, token_offset)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_GATE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_GATE_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MO_E_GATE_PROGRAM_CONFIG
 
@@ -59,10 +65,12 @@ using MoEGateProgram = ConfiguredProgram<MoEGateProgramShader>;
 #define WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_CONFIG(F)
 
 struct MoEHiddenStateGatherProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "MoeHiddenStateGather";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& hiddenstate_for_expert = shader.AddInput("hiddenstate_for_expert", ShaderUsage::UseElementTypeAlias);
@@ -76,11 +84,13 @@ struct MoEHiddenStateGatherProgramShader {
                                WGSL_TEMPLATE_VARIABLE(tokens, tokens));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"expert_idx", ProgramUniformVariableDataType::Uint32},
-      {"num_experts", ProgramUniformVariableDataType::Uint32},
-      {"num_tokens", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, expert_idx)                                            \
+  U(Uint32, num_experts)                                           \
+  U(Uint32, num_tokens)                                            \
+  U(Uint32, hidden_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MO_E_HIDDEN_STATE_GATHER_PROGRAM_CONFIG
 
@@ -89,10 +99,12 @@ using MoEHiddenStateGatherProgram = ConfiguredProgram<MoEHiddenStateGatherProgra
 #define WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_CONFIG(F)
 
 struct MoEZeroTensorProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "MoeZeroTensor";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& tensor = shader.AddOutput("tensor", ShaderUsage::UseElementTypeAlias);
@@ -100,7 +112,10 @@ struct MoEZeroTensorProgramShader {
                                WGSL_TEMPLATE_VARIABLE(tensor, tensor));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MO_E_ZERO_TENSOR_PROGRAM_CONFIG
 
@@ -109,10 +124,12 @@ using MoEZeroTensorProgram = ConfiguredProgram<MoEZeroTensorProgramShader>;
 #define WEBGPU_MO_E_ZERO_U32_PROGRAM_CONFIG(F)
 
 struct MoEZeroU32ProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_ZERO_U32_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_ZERO_U32_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "MoeZeroU32";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& output = shader.AddOutput("output");
@@ -120,7 +137,10 @@ struct MoEZeroU32ProgramShader {
                                WGSL_TEMPLATE_VARIABLE(output, output));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MO_E_ZERO_U32_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_ZERO_U32_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_ZERO_U32_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MO_E_ZERO_U32_PROGRAM_CONFIG
 
@@ -129,10 +149,13 @@ using MoEZeroU32Program = ConfiguredProgram<MoEZeroU32ProgramShader>;
 #define WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_CONFIG(F) F(bool, has_bias_)
 
 struct MoEExpertMatMulProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_CONFIG);
-    Config(bool has_bias) : has_bias_{has_bias} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias) {
+    Config result{};
+    result.has_bias_ = bool{has_bias};
+
+    return result;
+  }
   static constexpr std::string_view name = "MoeExpertMatMul";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
@@ -148,11 +171,13 @@ struct MoEExpertMatMulProgramShader {
                                WGSL_TEMPLATE_VARIABLE(weights, weights));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32},
-      {"inner", ProgramUniformVariableDataType::Uint32},
-      {"expert_idx", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                             \
+  U(Uint32, cols)                                             \
+  U(Uint32, inner)                                            \
+  U(Uint32, expert_idx)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MO_E_EXPERT_MAT_MUL_PROGRAM_CONFIG
 
@@ -164,11 +189,15 @@ using MoEExpertMatMulProgram = ConfiguredProgram<MoEExpertMatMulProgramShader>;
   F(bool, has_fc3_)
 
 struct MoEActivationProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG);
-    Config(MoEActivationType activation_type, int swiglu_fusion, bool has_fc3)
-        : activation_type_{activation_type}, swiglu_fusion_{swiglu_fusion}, has_fc3_{has_fc3} {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG);
+  static Config MakeConfig(MoEActivationType activation_type, int swiglu_fusion, bool has_fc3) {
+    Config result{};
+    result.activation_type_ = MoEActivationType{activation_type};
+    result.swiglu_fusion_ = int{swiglu_fusion};
+    result.has_fc3_ = bool{has_fc3};
+
+    return result;
+  }
   static constexpr std::string_view name = "MoeActivation";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
@@ -185,12 +214,14 @@ struct MoEActivationProgramShader {
                                WGSL_TEMPLATE_VARIABLE(output, output));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32},
-      {"alpha", ProgramUniformVariableDataType::Float32},
-      {"beta", ProgramUniformVariableDataType::Float32},
-      {"swiglu_limit", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_MO_E_ACTIVATION_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                         \
+  U(Uint32, cols)                                         \
+  U(Float32, alpha)                                       \
+  U(Float32, beta)                                        \
+  U(Float32, swiglu_limit)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_ACTIVATION_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_ACTIVATION_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG
 
@@ -199,10 +230,12 @@ using MoEActivationProgram = ConfiguredProgram<MoEActivationProgramShader>;
 #define WEBGPU_MO_E_FINAL_MIX_PROGRAM_CONFIG(F)
 
 struct MoEFinalMixProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_MO_E_FINAL_MIX_PROGRAM_CONFIG);
-    Config() {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_FINAL_MIX_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
   static constexpr std::string_view name = "MoeFinalMix";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
@@ -216,11 +249,13 @@ struct MoEFinalMixProgramShader {
                                WGSL_TEMPLATE_VARIABLE(router_values, router_values));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"num_experts", ProgramUniformVariableDataType::Uint32},
-      {"expert_idx", ProgramUniformVariableDataType::Uint32},
-      {"token_offset", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_MO_E_FINAL_MIX_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, hidden_size)                                 \
+  U(Uint32, num_experts)                                 \
+  U(Uint32, expert_idx)                                  \
+  U(Uint32, token_offset)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_FINAL_MIX_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_FINAL_MIX_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_MO_E_FINAL_MIX_PROGRAM_CONFIG
 

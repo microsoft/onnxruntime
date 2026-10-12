@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/pad_fusion.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
@@ -13,6 +14,17 @@ bool VerifyNotCastChild(const Node& child_node) {
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {7, 10, 11, 19, 22}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12, 22})) {
     return false;
+  }
+
+  if (child_node.OpType() == "MaxPool") {
+    // MaxPool excludes implicit padding from the maximum. A zero-valued explicit Pad is equivalent
+    // only when zero is the element type's minimum value, which is true only for UINT8 here.
+    const auto* input_type = child_node.InputDefs()[0]->TypeAsProto();
+    if (input_type == nullptr || !utils::HasTensorType(*input_type) ||
+        !utils::HasElemType(input_type->tensor_type()) ||
+        input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      return false;
+    }
   }
 
   // Don't fuse if MaxPool has optional output indices tensor because output indices tensor
@@ -44,6 +56,57 @@ bool VerifyNotCastChild(const Node& child_node) {
       if (child_node.GetAttributes().at("count_include_pad").i() == 0) {
         return false;
       }
+    }
+  }
+
+  return true;
+}
+
+bool CanFusePadIntoPool(const Node& pool_node, const std::vector<int64_t>& pads_values) {
+  if (pool_node.OpType() != "MaxPool" && pool_node.OpType() != "AveragePool") {
+    return true;
+  }
+
+  const size_t input_rank = pads_values.size() / 2;
+  const size_t spatial_rank = input_rank - 2;
+  const auto& pool_attributes = pool_node.GetAttributes();
+
+  const auto kernel_shape_iter = pool_attributes.find("kernel_shape");
+  if (kernel_shape_iter == pool_attributes.end() ||
+      static_cast<size_t>(kernel_shape_iter->second.ints_size()) != spatial_rank) {
+    return false;
+  }
+
+  const auto pool_pads_iter = pool_attributes.find("pads");
+  const auto* pool_pads = pool_pads_iter != pool_attributes.end() && !pool_pads_iter->second.ints().empty()
+                              ? &pool_pads_iter->second.ints()
+                              : nullptr;
+  if (pool_pads != nullptr && static_cast<size_t>(pool_pads->size()) != spatial_rank * 2) {
+    return false;
+  }
+
+  const auto ceil_mode_iter = pool_attributes.find("ceil_mode");
+  const bool has_ceil_mode = ceil_mode_iter != pool_attributes.end() && ceil_mode_iter->second.i() == 1;
+
+  for (size_t dim = 0; dim < spatial_rank; ++dim) {
+    const int64_t kernel = kernel_shape_iter->second.ints(static_cast<int>(dim));
+    const int64_t pool_pad_head = pool_pads == nullptr ? 0 : pool_pads->Get(static_cast<int>(dim));
+    const int64_t pool_pad_tail = pool_pads == nullptr ? 0 : pool_pads->Get(static_cast<int>(dim + spatial_rank));
+    const int64_t pad_head = pads_values[dim + 2];
+    const int64_t pad_tail = pads_values[dim + input_rank + 2];
+
+    // With ceil_mode, a window starting in explicit trailing padding is valid before fusion but is
+    // excluded after that padding becomes implicit, which can change the output shape.
+    if (has_ceil_mode && pad_tail != 0) {
+      return false;
+    }
+
+    // PoolAttributes requires each pad to be smaller than the corresponding kernel. Check using
+    // subtraction to avoid overflowing while calculating the fused pad value.
+    if (kernel <= 0 || pool_pad_head < 0 || pool_pad_tail < 0 ||
+        pool_pad_head >= kernel || pool_pad_tail >= kernel ||
+        pad_head >= kernel - pool_pad_head || pad_tail >= kernel - pool_pad_tail) {
+      return false;
     }
   }
 
@@ -116,7 +179,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
       return false;
     }
 
-    // constant_value should be zero because Conv and MaxPool allow only 0 as padding value.
+    // Only constant zero padding is supported.
     if (node.InputDefs().size() > 2) {
       const auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
       Initializer pad_constant_value{graph, *pad_constant_value_proto, graph.ModelPath()};
@@ -197,6 +260,10 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
     }
   }
 
+  if (!CanFusePadIntoPool(target_padding_node, pads_values)) {
+    return Status::OK();
+  }
+
   UpdatePaddingAttribute(target_padding_node, pads_values, pads_size);
 
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
@@ -204,7 +271,12 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   // Un-pad the output shape of Cast node
   if (child_node.OpType() == "Cast") {
     auto* cast_output_node_arg = child_node.MutableOutputDefs()[0];
-    cast_output_node_arg->SetShape(*pad_node.MutableInputDefs()[0]->Shape());
+    const auto* pad_input_shape = pad_node.MutableInputDefs()[0]->Shape();
+    if (pad_input_shape != nullptr) {
+      cast_output_node_arg->SetShape(*pad_input_shape);
+    } else {
+      cast_output_node_arg->ClearShape();
+    }
   }
   graph.RemoveNode(pad_node.Index());
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;

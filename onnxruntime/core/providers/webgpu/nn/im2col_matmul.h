@@ -29,39 +29,44 @@ namespace webgpu {
   F(ShaderActivation, activation_)
 
 struct Im2ColMatMulProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_IM2_COL_MAT_MUL_PROGRAM_CONFIG);
-    Config(bool has_bias, uint32_t tile_m, uint32_t tile_n, uint32_t vec_size, bool use_subgroup,
-           const Activation& activation)
-        : has_bias_(has_bias),
-          tile_m_(tile_m),
-          tile_n_(tile_n),
-          vec_size_(vec_size),
-          use_subgroup_(use_subgroup),
-          activation_(activation) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_IM2_COL_MAT_MUL_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias, uint32_t tile_m, uint32_t tile_n, uint32_t vec_size, bool use_subgroup,
+                           const Activation& activation) {
+    Config result{};
+    result.has_bias_ = bool(has_bias);
+    result.tile_m_ = uint32_t(tile_m);
+    result.tile_n_ = uint32_t(tile_n);
+    result.vec_size_ = uint32_t(vec_size);
+    result.use_subgroup_ = bool(use_subgroup);
+    result.activation_ = MakeShaderActivation(activation);
+
+    return result;
+  }
   static constexpr std::string_view name = "Im2ColMatMul";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch", ProgramUniformVariableDataType::Uint32},
-      {"src_h", ProgramUniformVariableDataType::Uint32},
-      {"src_w", ProgramUniformVariableDataType::Uint32},
-      {"channel_i", ProgramUniformVariableDataType::Uint32},
-      {"kernel_h", ProgramUniformVariableDataType::Uint32},
-      {"kernel_w", ProgramUniformVariableDataType::Uint32},
-      {"output_h", ProgramUniformVariableDataType::Uint32},
-      {"output_w", ProgramUniformVariableDataType::Uint32},
-      {"im2col_m", ProgramUniformVariableDataType::Uint32},
-      {"im2col_k", ProgramUniformVariableDataType::Uint32},
-      {"im2col_n", ProgramUniformVariableDataType::Uint32},
-      {"M_tiles", ProgramUniformVariableDataType::Uint32},
-      {"N_tiles", ProgramUniformVariableDataType::Uint32},
-      {"K_tiles", ProgramUniformVariableDataType::Uint32},
-      {"dilations", ProgramUniformVariableDataType::Uint32},
-      {"pads", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32},
-      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+#define WEBGPU_IM2_COL_MAT_MUL_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch)                                        \
+  U(Uint32, src_h)                                        \
+  U(Uint32, src_w)                                        \
+  U(Uint32, channel_i)                                    \
+  U(Uint32, kernel_h)                                     \
+  U(Uint32, kernel_w)                                     \
+  U(Uint32, output_h)                                     \
+  U(Uint32, output_w)                                     \
+  U(Uint32, im2col_m)                                     \
+  U(Uint32, im2col_k)                                     \
+  U(Uint32, im2col_n)                                     \
+  U(Uint32, M_tiles)                                      \
+  U(Uint32, N_tiles)                                      \
+  U(Uint32, K_tiles)                                      \
+  U(Uint32, dilations)                                    \
+  U(Uint32, pads)                                         \
+  U(Uint32, strides)                                      \
+  U(Float32, activation_param_0)                          \
+  U(Float32, activation_param_1)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_IM2_COL_MAT_MUL_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_IM2_COL_MAT_MUL_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_IM2_COL_MAT_MUL_PROGRAM_CONFIG
 

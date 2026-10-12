@@ -22,25 +22,29 @@ using onnxruntime::webgpu::ComputeContext;
   F(bool, split_hidden_dim_)
 
 struct SkipLayerNormProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SKIP_LAYER_NORM_PROGRAM_CONFIG);
-    Config(bool hasBeta, bool hasBias, bool has_input_skip_bias_sum, bool simplified, bool split_hidden_dim) {
-      hasBeta_ = hasBeta;
-      hasBias_ = hasBias;
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SKIP_LAYER_NORM_PROGRAM_CONFIG);
+  static Config MakeConfig(bool hasBeta, bool hasBias, bool has_input_skip_bias_sum, bool simplified, bool split_hidden_dim) {
+    Config result{};
 
-      has_input_skip_bias_sum_ = has_input_skip_bias_sum;
-      simplified_ = simplified;
-      split_hidden_dim_ = split_hidden_dim;
-    }
-  };
+    result.hasBeta_ = hasBeta;
+    result.hasBias_ = hasBias;
+
+    result.has_input_skip_bias_sum_ = has_input_skip_bias_sum;
+    result.simplified_ = simplified;
+    result.split_hidden_dim_ = split_hidden_dim;
+
+    return result;
+  }
   static constexpr std::string_view name = "SkipLayerNorm";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"components", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32},
-      {"skip_size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SKIP_LAYER_NORM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, components)                                   \
+  U(Uint32, hidden_size)                                  \
+  U(Float32, epsilon)                                     \
+  U(Uint32, skip_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SKIP_LAYER_NORM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SKIP_LAYER_NORM_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SKIP_LAYER_NORM_PROGRAM_CONFIG
 

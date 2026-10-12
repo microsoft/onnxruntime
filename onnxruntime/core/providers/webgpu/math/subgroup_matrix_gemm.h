@@ -38,27 +38,32 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
   F(uint32_t, split_k_)
 
 struct SubgroupMatrixGemmProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_CONFIG);
-    Config(bool has_c, bool trans_a, bool trans_b, SubgroupMatrixConfig config, uint32_t sg_mat_count_m,
-           uint32_t sg_mat_count_n, uint32_t split_k)
-        : has_c_(has_c),
-          trans_a_(trans_a),
-          trans_b_(trans_b),
-          config_(config),
-          sg_mat_count_m_(sg_mat_count_m),
-          sg_mat_count_n_(sg_mat_count_n),
-          split_k_(split_k) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_c, bool trans_a, bool trans_b, SubgroupMatrixConfig config, uint32_t sg_mat_count_m,
+                           uint32_t sg_mat_count_n, uint32_t split_k) {
+    Config result{};
+    result.has_c_ = bool(has_c);
+    result.trans_a_ = bool(trans_a);
+    result.trans_b_ = bool(trans_b);
+    result.config_ = SubgroupMatrixConfig(config);
+    result.sg_mat_count_m_ = uint32_t(sg_mat_count_m);
+    result.sg_mat_count_n_ = uint32_t(sg_mat_count_n);
+    result.split_k_ = uint32_t(split_k);
+
+    return result;
+  }
   static constexpr std::string_view name = "SubgroupMatrixGemm";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"K", ProgramUniformVariableDataType::Uint32},
-                                          {"alpha", ProgramUniformVariableDataType::Float32},
-                                          {"beta", ProgramUniformVariableDataType::Float32},
-                                          {"c_stride_m", ProgramUniformVariableDataType::Uint32},
-                                          {"c_stride_n", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, M)                                                 \
+  U(Uint32, N)                                                 \
+  U(Uint32, K)                                                 \
+  U(Float32, alpha)                                            \
+  U(Float32, beta)                                             \
+  U(Uint32, c_stride_m)                                        \
+  U(Uint32, c_stride_n)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SUBGROUP_MATRIX_GEMM_PROGRAM_CONFIG
 

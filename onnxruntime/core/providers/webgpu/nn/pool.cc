@@ -95,7 +95,7 @@ Status PoolProgramShader::GenerateShaderCode([[maybe_unused]] const Config& conf
   constexpr const size_t kStringInitialSize = 128;
   if (config.is_max_pool_) {
     SS(var_decl_ss, kStringInitialSize);
-    var_decl_ss << "  var value = input_value_t(" << (config.is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f")
+    var_decl_ss << "  var value = input_value_t(" << ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) ? "-65504.0h" : "-3.4028234663852886e+38f")
                 << ");\n";
     var_decl_code = SS_GET(var_decl_ss);
 
@@ -128,7 +128,7 @@ Status PoolProgramShader::GenerateShaderCode([[maybe_unused]] const Config& conf
     } else {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       downsampling_ss << "  if (count > 0u) {\n"
-                      << "    value /= input_value_t(" << (config.is_float16_ ? "f16" : "f32") << "(count));\n"
+                      << "    value /= input_value_t(" << ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) ? "f16" : "f32") << "(count));\n"
                       << "  }\n";
     }
     downsampling_code = SS_GET(downsampling_ss);
@@ -171,7 +171,7 @@ Status PoolProgramShader::GenerateShaderCode([[maybe_unused]] const Config& conf
   std::string sum_or_max_shared;
   if (config.use_parallel_reduction_) {
     shader.AdditionalImplementation() << "var<workgroup> sum_or_max_shared : array<"
-                                      << (config.is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
+                                      << ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) ? "f16" : "f32") << ",workgroup_size_x >;\n"
                                       << (!config.is_max_pool_
                                               ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n"
                                               : "");
@@ -210,7 +210,7 @@ Status PoolProgramShader::GenerateShaderCode([[maybe_unused]] const Config& conf
     if (!config.is_max_pool_) {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       output_ss << "    if (count_shared[0] > 0u) {\n"
-                << "      value /= " << (config.is_float16_ ? "f16" : "f32") << "(count_shared[0]);\n"
+                << "      value /= " << ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) ? "f16" : "f32") << "(count_shared[0]);\n"
                 << "    }\n";
     }
     output_ss << "    " << output.SetByOffset("workgroup_idx", "value") << ";\n"
@@ -327,7 +327,6 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   } else if constexpr (PoolType::type != onnxruntime::PoolType::kAveragePool) {
     ORT_NOT_IMPLEMENTED("Unsupported PoolType.");
   }
-  bool is_float16 = X->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   bool count_include_pad = pool_attrs_.count_include_pad;
 
   // Number of elements
@@ -358,7 +357,7 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   }
   output_size /= components;
 
-  PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, use_parallel_reduction};
+  PoolProgram program{is_max_pool, is_nhwc, kernel_shape, count_include_pad, use_parallel_reduction};
 
   program
       .AddInputs({{X, ProgramTensorMetadataDependency::None, components}})

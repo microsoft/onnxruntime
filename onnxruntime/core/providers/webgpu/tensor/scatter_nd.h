@@ -24,17 +24,23 @@ enum class ScatterNDReduction : int {
   F(int32_t, data_type_)
 
 struct ScatterNDProgramShader {
-  struct Config final {
-    WEBGPU_CONFIG_MEMBERS(WEBGPU_SCATTER_N_D_PROGRAM_CONFIG);
-    Config(ScatterNDReduction reduction, MLDataType data_type)
-        : reduction_(reduction), data_type_(data_type->AsPrimitiveDataType()->GetDataType()) {}
-  };
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SCATTER_N_D_PROGRAM_CONFIG);
+  static Config MakeConfig(ScatterNDReduction reduction, MLDataType data_type) {
+    Config result{};
+    result.reduction_ = ScatterNDReduction(reduction);
+    result.data_type_ = int32_t(data_type->AsPrimitiveDataType()->GetDataType());
+
+    return result;
+  }
   static constexpr std::string_view name = "ScatterND";
   static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"last_index_dimension", ProgramUniformVariableDataType::Uint32},
-                                          {"num_updates_elements", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SCATTER_N_D_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                              \
+  U(Uint32, last_index_dimension)                     \
+  U(Uint32, num_updates_elements)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SCATTER_N_D_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SCATTER_N_D_PROGRAM_SHADER_UNIFORMS
 };
 #undef WEBGPU_SCATTER_N_D_PROGRAM_CONFIG
 

@@ -10,8 +10,7 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
-Status GemmSubgroupProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                     ConfiguredShaderHelper& shader) {
+Status GemmSubgroupProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                                       ShaderUsage::UseValueTypeAlias |
                                                                       ShaderUsage::UseElementTypeAlias);
@@ -25,8 +24,8 @@ Status GemmSubgroupProgramShader::GenerateShaderCode([[maybe_unused]] const Conf
     MatMulReadFnSource(shader, a, b, nullptr, config.transA_, config.transB_);
   }
 
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, config.elements_per_thread_, nullptr, config.is_vec4_,
-                                               config.a_vec4_, config.b_is_fp16_, config.transA_, config.transB_,
+  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, config.elements_per_thread_, nullptr, config.is_vec4_, config.a_vec4_,
+                                               config.b_is_fp16_, config.use_f32_accumulation_, config.transA_, config.transB_,
                                                config.alpha_, config.need_handle_matmul_));
   const ShaderVariableHelper* c = nullptr;
   if (config.need_handle_bias_) {
@@ -75,6 +74,7 @@ Status ApplyGemmIntel(const Tensor* a,
   const bool a_vec4 = is_xe_3lpg && (K % 4 == 0);
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
   const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
   // Components for A, B
   int a_components = a_vec4 ? 4 : 1;
   int b_components = is_vec4 ? 4 : 1;
@@ -99,7 +99,8 @@ Status ApplyGemmIntel(const Tensor* a,
   const uint32_t dispatch_y = narrow<uint32_t>((M + kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1]));
 
-  GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, is_vec4, a_vec4, b_is_fp16, elements_per_thread};
+  GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar,
+                              is_vec4, a_vec4, b_is_fp16, use_f32_accumulation, elements_per_thread};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::None, a_components},
@@ -110,15 +111,18 @@ Status ApplyGemmIntel(const Tensor* a,
     program.AddInput({c, ProgramTensorMetadataDependency::None, c_components});
   }
 
-  program.AddOutputs({{y, ProgramTensorMetadataDependency::None, output_components}})
+  program
+      .AddOutputs({{y, ProgramTensorMetadataDependency::None, output_components}})
       .SetDispatchGroupSize(dispatch_x, dispatch_y, 1)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1)
       .AddUniformVariables({{alpha},
                             {beta},
                             {M}, /* dim_a_outer */
                             {N}, /* dim_b_outer */
-                            {K}} /*dim_inner */
-      );
+                            {K}, /* dim_inner */
+                            {dispatch_x},
+                            {dispatch_y},
+                            {1U}});
 
   return context.RunProgram(program);
 }
