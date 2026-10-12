@@ -6,10 +6,43 @@
 #include <limits>
 #include <utility>
 
+#include "core/common/safeint.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
 namespace {
+
+constexpr uint64_t kMaxUint32 = std::numeric_limits<uint32_t>::max();
+
+bool IsUint32Dimension(int64_t dimension) {
+  return dimension >= 0 && static_cast<uint64_t>(dimension) <= kMaxUint32;
+}
+
+bool IsMatMulNaiveOutputSizeValid(const MatMulAlgorithmSelectionParams& params) {
+  if (!IsUint32Dimension(params.m) ||
+      !IsUint32Dimension(params.n) ||
+      !IsUint32Dimension(params.k)) {
+    return false;
+  }
+
+  const uint64_t output_rows = static_cast<uint64_t>(params.m) / GetMaxComponents(params.m);
+  const uint64_t output_columns = static_cast<uint64_t>(params.n) / GetMaxComponents(params.n);
+  uint64_t output_size = params.batch_size;
+  for (const uint64_t factor : {output_rows, output_columns}) {
+    if (factor != 0 && output_size > kMaxUint32 / factor) {
+      return false;
+    }
+    output_size *= factor;
+  }
+  return output_size <= kMaxUint32;
+}
+
+bool IsDispatchGroupCountProductValid(uint32_t x, uint32_t y, uint32_t z) {
+  uint32_t xy{};
+  uint32_t xyz{};
+  return SafeMultiply(x, y, xy) && SafeMultiply(xy, z, xyz);
+}
 
 bool IsMatMulAlgorithmConfigurationCompatible(const MatMulExecutionPlan& plan) {
   switch (plan.algorithm) {
@@ -186,10 +219,14 @@ Status MatMulExecutionPlanner::ValidateExecutionPlan(
                         "MatMul algorithm subgroup_matrix does not support these inputs or this device.");
       break;
     case MatMulAlgorithm::Gemv:
-      ORT_RETURN_IF_NOT(params.can_run_gemv,
+      ORT_RETURN_IF_NOT(params.can_run_gemv &&
+                            IsUint32Dimension(params.n) &&
+                            IsUint32Dimension(params.k),
                         "MatMul algorithm gemv does not support these inputs or this device.");
       break;
     case MatMulAlgorithm::Naive:
+      ORT_RETURN_IF_NOT(IsMatMulNaiveOutputSizeValid(params),
+                        "MatMul algorithm naive dimensions or vectorized output size exceed uint32 limits.");
       break;
     case MatMulAlgorithm::Subgroup: {
       const auto& configuration = std::get<MatMulSubgroupConfiguration>(plan.configuration);
@@ -216,35 +253,34 @@ Status MatMulExecutionPlanner::ValidateExecutionPlan(
                           "MatMul algorithm packed_split_k does not support these inputs.");
       }
 
-      constexpr int64_t max_shader_dimension = std::numeric_limits<uint32_t>::max();
-      ORT_RETURN_IF_NOT(params.packed_m >= 0 && params.packed_m <= max_shader_dimension &&
-                            params.n >= 0 && params.n <= max_shader_dimension &&
-                            params.k <= max_shader_dimension,
+      ORT_RETURN_IF_NOT(IsUint32Dimension(params.packed_m) &&
+                            IsUint32Dimension(params.n) &&
+                            IsUint32Dimension(params.k),
                         "MatMul packed dimensions must fit in uint32.");
-      ORT_RETURN_IF_NOT(
-          TryGetMatMulPackedDispatchGroupCount(
-              static_cast<uint64_t>(params.n), configuration.workgroup_size[0],
-              configuration.elements_per_thread[0])
-                  .has_value() &&
-              TryGetMatMulPackedDispatchGroupCount(
-                  static_cast<uint64_t>(params.packed_m), configuration.workgroup_size[1],
-                  configuration.elements_per_thread[1])
-                  .has_value() &&
-              TryGetMatMulPackedDispatchGroupCount(
-                  params.packed_batch_size, configuration.workgroup_size[2],
-                  configuration.elements_per_thread[2])
-                  .has_value(),
-          "MatMul packed dispatch dimensions exceed uint32 limits.");
+      const auto dispatch_x = TryGetMatMulPackedDispatchGroupCount(
+          static_cast<uint64_t>(params.n), configuration.workgroup_size[0],
+          configuration.elements_per_thread[0]);
+      const auto dispatch_y = TryGetMatMulPackedDispatchGroupCount(
+          static_cast<uint64_t>(params.packed_m), configuration.workgroup_size[1],
+          configuration.elements_per_thread[1]);
+      const auto dispatch_z = TryGetMatMulPackedDispatchGroupCount(
+          params.packed_batch_size, configuration.workgroup_size[2],
+          configuration.elements_per_thread[2]);
+      ORT_RETURN_IF_NOT(dispatch_x.has_value() && dispatch_y.has_value() && dispatch_z.has_value(),
+                        "MatMul packed dispatch dimensions exceed uint32 limits.");
 
+      uint32_t final_dispatch_z = *dispatch_z;
       if (use_split_k) {
         const auto splits_per_batch = TryGetMatMulPackedDispatchGroupCount(
             static_cast<uint64_t>(params.k), configuration.split_dim_inner, 1);
-        ORT_RETURN_IF_NOT(
-            params.packed_batch_size > 0 && splits_per_batch.has_value() &&
-                static_cast<uint64_t>(*splits_per_batch) <=
-                    std::numeric_limits<uint32_t>::max() / params.packed_batch_size,
-            "MatMul packed Split-K dispatch dimension exceeds uint32 limits.");
+        uint32_t split_dispatch_z{};
+        ORT_RETURN_IF_NOT(params.packed_batch_size > 0 && splits_per_batch.has_value() &&
+                              SafeMultiply(final_dispatch_z, *splits_per_batch, split_dispatch_z),
+                          "MatMul packed Split-K dispatch dimension exceeds uint32 limits.");
+        final_dispatch_z = split_dispatch_z;
       }
+      ORT_RETURN_IF_NOT(IsDispatchGroupCountProductValid(*dispatch_x, *dispatch_y, final_dispatch_z),
+                        "MatMul packed combined dispatch group count exceeds uint32 limits.");
       break;
     }
   }
