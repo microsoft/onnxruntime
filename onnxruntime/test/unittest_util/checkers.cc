@@ -186,7 +186,7 @@ template <typename T>
 struct TensorCheckFloat6 {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
                   const std::string& /*provider_type*/) const {
-    const auto size = actual.Shape().Size();
+    const auto size = static_cast<size_t>(actual.Shape().Size());
     const auto* expected_data = expected.Data<T>();
     const auto* actual_data = actual.Data<T>();
     if (params.sort_output) {
