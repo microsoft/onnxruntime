@@ -19,6 +19,7 @@
 #include "core/graph/graph.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
 #include "test/providers/cuda/test_cases/cuda_test_bridge.h"
@@ -54,6 +55,7 @@ using contrib::cuda::PackedAttentionWorkspaceOperator;
 using contrib::cuda::PackedMultiHeadAttentionInputShapes;
 using contrib::cuda::PackedMultiHeadAttentionProblem;
 using contrib::cuda::PackedMultiHeadAttentionQkvFormat;
+using contrib::cuda::SetPackedAttentionLevel1MemoryEstimate;
 using contrib::cuda::SetPackedAttentionWorkspaceRequirements;
 
 namespace {
@@ -344,8 +346,22 @@ void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
   }
 }
 
+void SetFirstDimensionSymbolic(
+    ONNX_NAMESPACE::ValueInfoProto& value_info,
+    const char* dimension_name) {
+  auto* dimension =
+      value_info.mutable_type()
+          ->mutable_tensor_type()
+          ->mutable_shape()
+          ->mutable_dim(0);
+  dimension->clear_dim_value();
+  dimension->set_dim_param(dimension_name);
+}
+
 std::string BuildPackedAttentionKernelModel(
-    PackedAttentionWorkspaceOperator op) {
+    PackedAttentionWorkspaceOperator op,
+    bool capacity_geometry = false,
+    bool unknown_token_count = false) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* onnx_opset = model.add_opset_import();
@@ -364,12 +380,19 @@ std::string BuildPackedAttentionKernelModel(
   auto* num_heads = node->add_attribute();
   num_heads->set_name("num_heads");
   num_heads->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  num_heads->set_i(2);
+  num_heads->set_i(capacity_geometry ? 1 : 2);
 
   constexpr int32_t kFloat16 =
       ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   constexpr int32_t kInt32 =
       ONNX_NAMESPACE::TensorProto_DataType_INT32;
+  const int64_t token_count = capacity_geometry ? 128 : 6;
+  const int64_t batch_size = capacity_geometry ? 1 : 2;
+  const int64_t sequence_length = capacity_geometry ? 128 : 4;
+  const int64_t input_hidden_size = capacity_geometry ? 64 : 6;
+  const int64_t num_heads_value = capacity_geometry ? 1 : 2;
+  const int64_t head_size = capacity_geometry ? 64 : 4;
+  const int64_t hidden_size = num_heads_value * head_size;
   if (op == PackedAttentionWorkspaceOperator::PackedAttention) {
     node->set_op_type("PackedAttention");
     for (const char* input_name :
@@ -383,17 +406,28 @@ std::string BuildPackedAttentionKernelModel(
     qkv_hidden_sizes->set_name("qkv_hidden_sizes");
     qkv_hidden_sizes->set_type(
         ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
-    qkv_hidden_sizes->add_ints(8);
-    qkv_hidden_sizes->add_ints(8);
-    qkv_hidden_sizes->add_ints(8);
+    qkv_hidden_sizes->add_ints(hidden_size);
+    qkv_hidden_sizes->add_ints(hidden_size);
+    qkv_hidden_sizes->add_ints(hidden_size);
 
-    SetValueInfo(*graph->add_input(), "input", kFloat16, {6, 6});
-    SetValueInfo(*graph->add_input(), "weights", kFloat16, {6, 24});
-    SetValueInfo(*graph->add_input(), "bias", kFloat16, {24});
-    SetValueInfo(*graph->add_input(), "token_offset", kInt32, {2, 4});
+    auto* input = graph->add_input();
+    SetValueInfo(*input, "input", kFloat16,
+                 {token_count, input_hidden_size});
+    SetValueInfo(*graph->add_input(), "weights", kFloat16,
+                 {input_hidden_size, 3 * hidden_size});
+    SetValueInfo(*graph->add_input(), "bias", kFloat16,
+                 {3 * hidden_size});
+    SetValueInfo(*graph->add_input(), "token_offset", kInt32,
+                 {batch_size, sequence_length});
     SetValueInfo(*graph->add_input(), "cumulative_sequence_length",
-                 kInt32, {3});
-    SetValueInfo(*graph->add_output(), "output", kFloat16, {6, 8});
+                 kInt32, {batch_size + 1});
+    auto* output = graph->add_output();
+    SetValueInfo(*output, "output", kFloat16,
+                 {token_count, hidden_size});
+    if (unknown_token_count) {
+      SetFirstDimensionSymbolic(*input, "tokens");
+      SetFirstDimensionSymbolic(*output, "tokens");
+    }
   } else {
     node->set_op_type("PackedMultiHeadAttention");
     node->add_input("query");
@@ -404,11 +438,20 @@ std::string BuildPackedAttentionKernelModel(
     node->add_input("cumulative_sequence_length");
     node->add_output("output");
 
-    SetValueInfo(*graph->add_input(), "query", kFloat16, {6, 2, 3, 4});
-    SetValueInfo(*graph->add_input(), "token_offset", kInt32, {2, 4});
+    auto* query = graph->add_input();
+    SetValueInfo(*query, "query", kFloat16,
+                 {token_count, num_heads_value, 3, head_size});
+    SetValueInfo(*graph->add_input(), "token_offset", kInt32,
+                 {batch_size, sequence_length});
     SetValueInfo(*graph->add_input(), "cumulative_sequence_length",
-                 kInt32, {3});
-    SetValueInfo(*graph->add_output(), "output", kFloat16, {6, 8});
+                 kInt32, {batch_size + 1});
+    auto* output = graph->add_output();
+    SetValueInfo(*output, "output", kFloat16,
+                 {token_count, hidden_size});
+    if (unknown_token_count) {
+      SetFirstDimensionSymbolic(*query, "tokens");
+      SetFirstDimensionSymbolic(*output, "tokens");
+    }
   }
 
   std::string bytes;
@@ -537,6 +580,22 @@ TEST(PackedAttentionWorkspaceEstimateTest, Level2AdaptersDeclareOneAlignedRoot) 
             kPackedAttentionWorkspaceAlignment);
 }
 
+TEST(PackedAttentionWorkspaceEstimateTest, Level1AdapterMapsRouteAggregate) {
+  PackedAttentionWorkspaceAggregate workspace;
+  workspace.total_workspace_bytes = 4096;
+  Level1MemoryEstimate estimate;
+  SetPackedAttentionLevel1MemoryEstimate(workspace, estimate);
+  EXPECT_EQ(estimate.runtime_workspace_bytes,
+            std::optional<size_t>{4096});
+  EXPECT_EQ(estimate.persistent_prepack_bytes, 0U);
+  EXPECT_EQ(estimate.initialization_scratch_bytes, 0U);
+
+  workspace.total_workspace_bytes = 0;
+  SetPackedAttentionLevel1MemoryEstimate(workspace, estimate);
+  EXPECT_EQ(estimate.runtime_workspace_bytes,
+            std::optional<size_t>{0});
+}
+
 TEST(PackedAttentionWorkspaceEstimateTest, PackedAttentionKernelDeclaresOneAlignedRoot) {
   if (!HasCudaDevice()) {
     GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
@@ -635,6 +694,142 @@ TEST(PackedAttentionWorkspaceEstimateTest, PackedMultiHeadAttentionKernelDeclare
   ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
       gsl::make_span(zero_shapes), requirements));
   EXPECT_TRUE(requirements.empty());
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Estimate) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required for the budget integration test.";
+  }
+
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  auto make_session_options = [](size_t memory_limit_kb) {
+    SessionOptions session_options;
+    session_options.graph_optimization_level =
+        TransformerLevel::Default;
+    const std::string partitioning_settings =
+        std::to_string(memory_limit_kb) + ",";
+    ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings,
+        partitioning_settings.c_str()));
+    return session_options;
+  };
+  const auto kilobytes_above = [](size_t bytes) {
+    return bytes / 1024 + 1;
+  };
+
+  for (const auto op :
+       {PackedAttentionWorkspaceOperator::PackedAttention,
+        PackedAttentionWorkspaceOperator::PackedMultiHeadAttention}) {
+    SCOPED_TRACE(op == PackedAttentionWorkspaceOperator::PackedAttention
+                     ? "PackedAttention"
+                     : "PackedMultiHeadAttention");
+    const char* op_type =
+        op == PackedAttentionWorkspaceOperator::PackedAttention
+            ? "PackedAttention"
+            : "PackedMultiHeadAttention";
+    const std::string model_bytes =
+        BuildPackedAttentionKernelModel(op, /*capacity_geometry=*/true);
+
+    std::optional<PackedAttentionWorkspaceAggregate> estimate;
+    {
+      InferenceSessionWrapper session(make_session_options(4096),
+                                      GetEnvironment());
+      auto cuda_ep =
+          std::make_shared<CUDAExecutionProvider>(provider_info);
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+      ASSERT_STATUS_OK(session.Load(
+          model_bytes.data(), static_cast<int>(model_bytes.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+
+      const Node* node =
+          FindNodeByOpType(session.GetGraph(), op_type);
+      ASSERT_NE(node, nullptr);
+      ASSERT_EQ(node->GetExecutionProviderType(),
+                kCudaExecutionProvider);
+      const auto input_shapes = ResolveNodeInputShapes(
+          *node, &session.GetGraph(), MaxShapeInferenceResult{});
+      estimate = EstimatePackedAttentionWorkspaceForTest(
+          node, gsl::make_span(input_shapes),
+          cuda_ep->GetDeviceProp(),
+          *cuda_ep->GetAttentionKernelOptions());
+      ASSERT_TRUE(estimate.has_value());
+    }
+
+    constexpr size_t kOutputBytes =
+        128 * 64 * sizeof(MLFloat16);
+    constexpr size_t kFallbackWorkspaceBytes =
+        kOutputBytes / 2;
+    ASSERT_GT(estimate->total_workspace_bytes,
+              kFallbackWorkspaceBytes);
+
+    {
+      const size_t accepted_limit_kb = kilobytes_above(
+          kOutputBytes + estimate->total_workspace_bytes);
+      InferenceSessionWrapper session(
+          make_session_options(accepted_limit_kb),
+          GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+          std::make_shared<CUDAExecutionProvider>(provider_info)));
+      ASSERT_STATUS_OK(session.Load(
+          model_bytes.data(), static_cast<int>(model_bytes.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      const Node* node =
+          FindNodeByOpType(session.GetGraph(), op_type);
+      ASSERT_NE(node, nullptr);
+      EXPECT_EQ(node->GetExecutionProviderType(),
+                kCudaExecutionProvider);
+    }
+
+    {
+      const size_t rejected_limit_kb = kilobytes_above(
+          kOutputBytes + kFallbackWorkspaceBytes);
+      ASSERT_LT(rejected_limit_kb * 1024,
+                kOutputBytes + estimate->total_workspace_bytes);
+      InferenceSessionWrapper session(
+          make_session_options(rejected_limit_kb),
+          GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+          std::make_shared<CUDAExecutionProvider>(provider_info)));
+      ASSERT_STATUS_OK(session.Load(
+          model_bytes.data(), static_cast<int>(model_bytes.size())));
+      const auto status = session.Initialize();
+      EXPECT_FALSE(status.IsOK())
+          << "PA/PMHA are CUDA-only; a budget rejection must leave no "
+             "kernel instead of silently admitting the generic fallback.";
+    }
+  }
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, GetCapabilityFailsClosedWithoutShapeProof) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required for the fail-closed integration test.";
+  }
+
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  for (const auto op :
+       {PackedAttentionWorkspaceOperator::PackedAttention,
+        PackedAttentionWorkspaceOperator::PackedMultiHeadAttention}) {
+    SCOPED_TRACE(op == PackedAttentionWorkspaceOperator::PackedAttention
+                     ? "PackedAttention"
+                     : "PackedMultiHeadAttention");
+    const std::string model_bytes = BuildPackedAttentionKernelModel(
+        op, /*capacity_geometry=*/true,
+        /*unknown_token_count=*/true);
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings,
+        "4096,"));
+    InferenceSessionWrapper session(session_options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(provider_info)));
+    ASSERT_STATUS_OK(session.Load(
+        model_bytes.data(), static_cast<int>(model_bytes.size())));
+    const auto status = session.Initialize();
+    EXPECT_FALSE(status.IsOK())
+        << "PA/PMHA are CUDA-only; missing shape proof must decline CUDA.";
+  }
 }
 
 TEST(PackedAttentionWorkspaceEstimateTest, PositionalShapesHandlePmhaHolesAndLayouts) {

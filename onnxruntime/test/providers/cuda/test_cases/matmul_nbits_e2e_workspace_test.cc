@@ -426,6 +426,76 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   }
 }
 
+TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLegacyDequantWorkspace) {
+  if (CudaDeviceComputeCapabilityOrNegative() < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
+  }
+
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+                {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"0"}}});
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(
+      nullptr, 0, kE2eM, kE2eN, kE2eK, 0, false);
+
+  auto make_session_options = [](size_t memory_limit_kb) {
+    SessionOptions session_options;
+    ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBGemm, "0"));
+    const std::string partitioning_settings =
+        std::to_string(memory_limit_kb) + ",";
+    ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings,
+        partitioning_settings.c_str()));
+    return session_options;
+  };
+
+  {
+    InferenceSessionWrapper session(make_session_options(1024),
+                                    GetEnvironment());
+    auto cuda_ep =
+        std::make_shared<CUDAExecutionProvider>(
+            CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(
+        model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node =
+        FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(node, nullptr);
+    ASSERT_EQ(node->GetExecutionProviderType(),
+              kCudaExecutionProvider);
+    const auto estimate = EstimateMatMulNBitsMemoryForTest(
+        node, cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"0"}});
+    ASSERT_TRUE(estimate.has_value());
+    ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
+    EXPECT_EQ(*estimate->runtime_workspace_bytes,
+              size_t{kE2eN * kE2eK * sizeof(MLFloat16)});
+    EXPECT_EQ(estimate->persistent_prepack_bytes, 0U);
+    EXPECT_EQ(estimate->initialization_scratch_bytes, 0U);
+  }
+
+  {
+    // Static accounting plus the generic 50% fallback is below 500 KiB.
+    // The route-complete legacy dequant estimate is above it.
+    InferenceSessionWrapper session(make_session_options(500),
+                                    GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(
+            CUDAExecutionProviderInfo{})));
+    ASSERT_STATUS_OK(session.Load(
+        model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node =
+        FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(node, nullptr);
+    EXPECT_NE(node->GetExecutionProviderType(),
+              kCudaExecutionProvider);
+  }
+}
+
 TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {

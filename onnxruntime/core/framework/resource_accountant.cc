@@ -570,7 +570,8 @@ Status CreateAccountants(
     std::optional<ResourceAccountantMap>& acc_map) {
   WorkspaceEstimatorConfig estimator_config{
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM),
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize)};
   ORT_RETURN_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
       config_options, estimator_config.cuda_gqa_workspace_max_total_sequence_length));
 

@@ -18,6 +18,7 @@
 #include "core/framework/workspace_requirement.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "contrib_ops/cuda/bert/packed_attention_workspace.h"
+#include "core/framework/level1_memory_estimate.h"
 
 namespace onnxruntime {
 // Do not forward-declare Node here. This adapter is included from both the
@@ -87,6 +88,10 @@ std::optional<PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspac
 void SetPackedAttentionWorkspaceRequirements(
     const PackedAttentionWorkspaceAggregate& estimate,
     InlinedVector<WorkspaceRequirement>& requirements);
+
+void SetPackedAttentionLevel1MemoryEstimate(
+    const PackedAttentionWorkspaceAggregate& workspace,
+    Level1MemoryEstimate& estimate);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -43,6 +43,8 @@ namespace onnxruntime {
 namespace test {
 
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
+using onnxruntime::contrib::cuda::ComputeMatMulNBitsFpAIntBChunkMinRows;
+using onnxruntime::contrib::cuda::ComputeMatMulNBitsLegacyWorkspacePlan;
 using onnxruntime::contrib::cuda::ComputeMatMulNBitsPrepackMemoryEstimate;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
 using onnxruntime::contrib::cuda::FpAIntBProfileSafeMCap;
@@ -50,6 +52,8 @@ using onnxruntime::contrib::cuda::kMatMulNBitsWeightNotPrepacked;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm80;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm90;
 using onnxruntime::contrib::cuda::MatMulNBits;
+using onnxruntime::contrib::cuda::MatMulNBitsFpAIntBMaxRowsPerLaunch;
+using onnxruntime::contrib::cuda::MatMulNBitsFpAIntBRowsPerLaunch;
 using onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize;
 using onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize;
 using onnxruntime::llm::kernels::weight_only::GetProfileTimedRuns;
@@ -140,6 +144,70 @@ TEST(MatMulNBitsWorkspace, FormulaReturnsNulloptOnInvalidNegativeDim) {
 #endif
 }
 
+TEST(MatMulNBitsWorkspace, LegacyWorkspacePlanMatchesRuntimeChunkPolicy) {
+  const auto full = ComputeMatMulNBitsLegacyWorkspacePlan(
+      /*n=*/256, /*k=*/1024, /*block_size=*/32,
+      sizeof(uint16_t), /*can_chunk=*/true,
+      /*force_chunked=*/false, /*chunk_target_rows=*/64);
+  ASSERT_TRUE(full.has_value());
+  EXPECT_FALSE(full->use_chunked);
+  EXPECT_EQ(full->k_padded, 1024);
+  EXPECT_EQ(full->scratch_rows, 256);
+  EXPECT_EQ(full->workspace_bytes, size_t{256 * 1024 * 2});
+
+  const auto forced = ComputeMatMulNBitsLegacyWorkspacePlan(
+      /*n=*/256, /*k=*/1000, /*block_size=*/32,
+      sizeof(uint16_t), /*can_chunk=*/true,
+      /*force_chunked=*/true, /*chunk_target_rows=*/64);
+  ASSERT_TRUE(forced.has_value());
+  EXPECT_TRUE(forced->use_chunked);
+  EXPECT_EQ(forced->k_padded, 1024);
+  EXPECT_EQ(forced->scratch_rows, 64);
+  EXPECT_EQ(forced->workspace_bytes, size_t{64 * 1024 * 2});
+
+  const auto cannot_chunk = ComputeMatMulNBitsLegacyWorkspacePlan(
+      /*n=*/256, /*k=*/1000, /*block_size=*/32,
+      sizeof(uint16_t), /*can_chunk=*/false,
+      /*force_chunked=*/true, /*chunk_target_rows=*/64);
+  ASSERT_TRUE(cannot_chunk.has_value());
+  EXPECT_FALSE(cannot_chunk->use_chunked);
+  EXPECT_EQ(cannot_chunk->workspace_bytes, size_t{256 * 1024 * 2});
+
+  EXPECT_FALSE(ComputeMatMulNBitsLegacyWorkspacePlan(
+                   std::numeric_limits<int64_t>::max(),
+                   std::numeric_limits<int64_t>::max(),
+                   /*block_size=*/32, sizeof(float),
+                   /*can_chunk=*/false, /*force_chunked=*/false,
+                   /*chunk_target_rows=*/64)
+                   .has_value());
+}
+
+TEST(MatMulNBitsWorkspace, FpAIntBWorkspaceRowsHonorChunkPolicy) {
+  EXPECT_EQ(MatMulNBitsFpAIntBRowsPerLaunch(
+                /*m=*/8192, /*m_chunk_size=*/4096,
+                /*m_chunk_min_rows=*/512, /*force_chunked=*/false),
+            4096);
+  EXPECT_EQ(MatMulNBitsFpAIntBRowsPerLaunch(
+                /*m=*/512, /*m_chunk_size=*/256,
+                /*m_chunk_min_rows=*/1024, /*force_chunked=*/false),
+            512);
+  EXPECT_EQ(MatMulNBitsFpAIntBRowsPerLaunch(
+                /*m=*/512, /*m_chunk_size=*/256,
+                /*m_chunk_min_rows=*/1024, /*force_chunked=*/true),
+            256);
+  EXPECT_EQ(MatMulNBitsFpAIntBMaxRowsPerLaunch(
+                /*max_m=*/8192, /*m_chunk_size=*/256,
+                /*m_chunk_min_rows=*/1024, /*force_chunked=*/false),
+            1024);
+  EXPECT_EQ(MatMulNBitsFpAIntBMaxRowsPerLaunch(
+                /*max_m=*/8192, /*m_chunk_size=*/256,
+                /*m_chunk_min_rows=*/1024, /*force_chunked=*/true),
+            256);
+  EXPECT_EQ(ComputeMatMulNBitsFpAIntBChunkMinRows(
+                /*n=*/256, /*k=*/1024, sizeof(uint16_t)),
+            104857);
+}
+
 TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
   // B: 256*1024*4/8 = 131072 bytes.
   // Scale: 256*(1024/32)*sizeof(fp16) = 16384 bytes.
@@ -156,6 +224,13 @@ TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
       kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/true);
   ASSERT_TRUE(with_zero_points.has_value());
   EXPECT_EQ(with_zero_points->persistent_prepack_bytes, size_t{131072 + 2 * 16384});
+
+  const auto two_bit = ComputeMatMulNBitsPrepackMemoryEstimate(
+      /*n=*/256, /*k=*/1024, /*nbits=*/2, /*block_size=*/64,
+      kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false);
+  ASSERT_TRUE(two_bit.has_value());
+  EXPECT_EQ(two_bit->persistent_prepack_bytes,
+            size_t{65536 + 8192});
 
   const auto offline_prepacked = ComputeMatMulNBitsPrepackMemoryEstimate(
       /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,

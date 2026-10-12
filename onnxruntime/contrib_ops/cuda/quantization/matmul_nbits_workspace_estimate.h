@@ -10,8 +10,10 @@
 // lives in matmul_nbits.cc.
 //
 // The whole header body is conditionally compiled: core CUDA EP code is compiled in configurations
-// where DISABLE_CONTRIB_OPS is set, so this must not declare anything there.
-#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+// where DISABLE_CONTRIB_OPS is set, so this must not declare anything there. The legacy
+// dequantize+GEMM route exists independently of USE_FPA_INTB_GEMM, so the estimator remains
+// available in both fpA-enabled and fpA-disabled contrib builds.
+#if !defined(DISABLE_CONTRIB_OPS)
 
 #include <cstddef>
 #include <cstdint>
@@ -45,6 +47,7 @@ struct MatMulNBitsMemoryEstimateOptions {
   std::optional<std::string_view> profile_m;
   // Applies only to the explicit-shape overload and only when the node's canonical input shape is dynamic.
   bool input_shape_is_upper_bound = false;
+  std::optional<std::string_view> m_chunk_size;
 };
 
 // Product of all input-A dimensions except the final K dimension. A known zero takes precedence
@@ -71,4 +74,4 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#endif  // !defined(DISABLE_CONTRIB_OPS)
